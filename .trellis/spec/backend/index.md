@@ -2,11 +2,12 @@
 
 ## Status and source of truth
 
-These documents are the initial implementation contract for a greenfield backend. They are
-derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
+These documents are the initial implementation contract for a greenfield backend. The repository
+now contains a minimal environment-verification API shell in
+[`backend/app/api_main.py`](../../../backend/app/api_main.py), but no product pipeline or domain
+vertical slice. The contracts are derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`;
-they do not
-describe existing application code.
+rules that name future pipeline modules still describe the intended first product slice.
 
 The first vertical slice must follow these defaults unless its task records an explicit design
 decision. After that slice is merged, replace illustrative paths and snippets with links to real

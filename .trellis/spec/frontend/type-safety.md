@@ -9,9 +9,13 @@ guide.
 
 ## OpenAPI-generated wire types
 
-FastAPI's checked-in OpenAPI document is the cross-layer source of truth. Generate TypeScript
-operation/schema types into `src/lib/api/generated/` with a deterministic tool such as
-`openapi-typescript`; a typed client such as `openapi-fetch` may consume them. Generated files:
+FastAPI's checked-in [`backend/openapi.json`](../../../backend/openapi.json) is the cross-layer
+source of truth. `make api-generate` exports it deterministically through
+[`backend/scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py), then uses
+`openapi-typescript` to write
+[`frontend/src/lib/api/generated/schema.d.ts`](../../../frontend/src/lib/api/generated/schema.d.ts).
+The shared [`client.ts`](../../../frontend/src/lib/api/client.ts) consumes those paths through
+`openapi-fetch`. Generated files:
 
 - are never edited manually;
 - are regenerated whenever API schemas change;

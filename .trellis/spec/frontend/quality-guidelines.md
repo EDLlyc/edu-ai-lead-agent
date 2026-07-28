@@ -2,16 +2,26 @@
 
 ## Contract status
 
-These are initial gates for the React + TypeScript + Vite frontend. The first vertical slice must
-add real package scripts, CI jobs, component tests, and an end-to-end test, then update this guide
-with their paths.
+These are initial gates for the React + TypeScript + Vite frontend. Local package scripts and the
+environment-shell component tests now exist in the paths linked below. CI jobs and the product
+end-to-end flow remain required follow-ups when those scopes are introduced.
 
 ## Required gates
 
-The initial tool defaults are ESLint with TypeScript and React Hooks rules, Prettier, `tsc` in
-strict no-emit mode, Vitest, React Testing Library, `jest-axe` or equivalent automated
-accessibility checks, and Playwright for the critical flow. Equivalent tools are acceptable if the
-same behaviors are enforced and the change is documented.
+The implemented toolchain is declared in
+[`frontend/package.json`](../../../frontend/package.json): ESLint with type-aware TypeScript and
+React Hooks rules, Prettier, strict project-reference `tsc`, Vitest 4, React Testing Library,
+`jest-axe`, and Playwright. `make frontend-check` runs formatting, lint, type checking, component
+tests, OpenAPI contract drift checking, and a production Vite build. Playwright is installed for
+the later product flow; browser
+binaries and product E2E tests are intentionally deferred until that flow exists. Equivalent tools
+are acceptable only if the same behaviors are enforced and the change is documented.
+
+The current environment-shell regression suite is
+[`frontend/src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx). It asserts that the page
+does not claim product/publishing behavior, command-copy feedback is available through a live
+region, and axe reports no detectable accessibility violations. Product feature tests listed below
+remain required when those features are implemented.
 
 CI must run, in a deterministic order where dependencies require it:
 

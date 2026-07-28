@@ -2,9 +2,14 @@
 
 ## Contract status
 
-There is no backend application code at bootstrap time. This is the required initial layout for
-the first vertical slice, based on `技术报告.pdf`. Once real modules exist, update this guide to
-cite them instead of treating this tree as illustrative.
+The repository contains only the installable environment shell:
+[`api_main.py`](../../../backend/app/api_main.py),
+[`core/config.py`](../../../backend/app/core/config.py), and
+[`test_health.py`](../../../backend/tests/test_health.py). The environment tooling also exports
+[`openapi.json`](../../../backend/openapi.json) through
+[`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). The expanded tree below remains the
+required layout for the first product vertical slice based on `技术报告.pdf`; the environment shell
+does not establish pipeline, domain, scheduler, or worker behavior.
 
 ## Target layout
 

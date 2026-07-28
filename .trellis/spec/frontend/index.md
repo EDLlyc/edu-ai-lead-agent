@@ -2,11 +2,12 @@
 
 ## Status and source of truth
 
-These documents are the initial implementation contract for a greenfield internal SPA. They are
-derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
+These documents are the initial implementation contract for a greenfield internal SPA. The
+repository now contains an accessible environment-verification shell in
+[`frontend/src/app/App.tsx`](../../../frontend/src/app/App.tsx), but no material-package feature or
+product API consumption. The contracts are derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`;
-no frontend
-application exists yet.
+rules for material packages remain the target for the first product vertical slice.
 
 The first vertical slice targets React, TypeScript in strict mode, and Vite. It must update these
 guides with real component, hook, generated-client, and test paths after implementation. A task
