@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend non-negotiable architecture and process boundaries."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Target backend package layout and deployable entry-point ownership."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL/pgvector, async SQLAlchemy, migrations, and local persistence rules."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend dependency, type, test, and security quality gates."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend non-negotiable stack and product boundaries."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"React/Vite package layout and generated API ownership."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict TypeScript and generated OpenAPI contract requirements."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend lint, test, accessibility, and build gates."}
+{"file":".trellis/tasks/07-28-setup-development-environment/research/environment-audit.md","reason":"Observed local tool versions and setup constraints."}

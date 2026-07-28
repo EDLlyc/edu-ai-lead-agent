@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify backend toolchain, tests, security, and no business-scope leakage."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify Compose and pgvector setup matches persistence rules."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify frontend lint, type, test, build, and accessibility setup."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify strict TypeScript and generated API tooling choices."}
+{"file":".trellis/tasks/07-28-setup-development-environment/research/environment-audit.md","reason":"Verify implementation matches observed local constraints."}
