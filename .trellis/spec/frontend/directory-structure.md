@@ -1,0 +1,107 @@
+# Frontend Directory Structure
+
+## Contract status
+
+No frontend source exists at bootstrap time. The following React + TypeScript + Vite tree is the
+initial target for the first vertical slice. Update this document with links to the real feature
+and test files after that slice is merged.
+
+## Target layout
+
+```text
+frontend/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── index.html
+└── src/
+    ├── app/
+    │   ├── App.tsx
+    │   ├── providers.tsx
+    │   └── router.tsx
+    ├── components/
+    │   └── ui/
+    ├── features/
+    │   ├── material-packages/
+    │   │   ├── api/
+    │   │   ├── components/
+    │   │   ├── hooks/
+    │   │   ├── pages/
+    │   │   └── tests/
+    │   └── pipeline-runs/
+    │       ├── api/
+    │       ├── components/
+    │       └── hooks/
+    ├── lib/
+    │   ├── api/
+    │   │   ├── generated/
+    │   │   └── client.ts
+    │   ├── clipboard.ts
+    │   └── download.ts
+    ├── styles/
+    │   ├── globals.css
+    │   └── tokens.css
+    ├── test/
+    │   └── setup.ts
+    ├── main.tsx
+    └── vite-env.d.ts
+```
+
+## Ownership rules
+
+### App shell
+
+`src/app/` owns provider composition, routing, error boundaries, and application-level layout.
+It does not own feature API calls or material-package rendering details. Keep `main.tsx` limited to
+bootstrapping the app.
+
+### Features
+
+A feature owns its pages, domain-specific components, query/mutation hooks, key factory, and view
+mapping. Import another feature through its explicit public exports when needed; do not reach into
+unrelated internal directories.
+
+The first vertical slice should center on `material-packages`: load a package, display selected
+topic and provenance, copy text, download the image, and show validation/audit state. A separate
+`pipeline-runs` feature maps generated API states such as `queued`, `running`, `no_topic`,
+`awaiting_manual_use`, and `failed` into presentation states without coupling polling logic to
+presentation components.
+
+### Shared UI and libraries
+
+`src/components/ui/` contains reusable visual primitives with no product data-fetching knowledge,
+such as `Button`, `StatusBadge`, or `VisuallyHidden`. Do not move a component there until at least
+two features need the abstraction.
+
+`src/lib/api/generated/` is generated from FastAPI OpenAPI and never edited manually.
+`src/lib/api/client.ts` configures the typed transport, base URL, authentication when introduced,
+request IDs, and shared error translation. Browser capability helpers such as clipboard/download
+belong in named modules, not a catch-all `utils.ts`.
+
+### Styles and assets
+
+Use CSS custom properties in `tokens.css` for color, spacing, type, focus, and surface tokens.
+Use CSS Modules next to feature/components for scoped styles as the initial default. Global CSS is
+limited to reset/base behavior and application tokens. Static assets belong under the feature that
+owns them or Vite's public directory only when they require a stable public URL.
+
+## Naming and imports
+
+- React component files and exported components: `PascalCase.tsx`.
+- Hooks: `useSomething.ts`; functions and variables: `camelCase`.
+- CSS Modules: `ComponentName.module.css`.
+- Tests: `ComponentName.test.tsx` or `useSomething.test.ts` next to the feature code or in its
+  declared test folder.
+- Generated files remain in their generator-defined naming scheme.
+- Prefer configured absolute aliases such as `@/features/...` for cross-directory imports and
+  relative imports within a small local folder. Do not create long `../../../` chains.
+
+## Avoid
+
+- A root `components/` directory filled with feature-specific screens.
+- API calls directly in presentation components.
+- Handwritten copies of OpenAPI request/response interfaces.
+- Global stores for all server responses and form fields.
+- A generic `helpers.ts` or `types.ts` spanning unrelated domains.
+- Social-platform SDKs, credentials, automated posting routes, or “publish now” UI.
+- Leaving this proposed tree uncited after real source exists.
