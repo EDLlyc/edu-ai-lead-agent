@@ -8,8 +8,9 @@ The repository contains only the installable environment shell:
 [`test_health.py`](../../../backend/tests/test_health.py). The environment tooling also exports
 [`openapi.json`](../../../backend/openapi.json) through
 [`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). The expanded tree below remains the
-required layout for the first product vertical slice based on `技术报告.pdf`; the environment shell
-does not establish pipeline, domain, scheduler, or worker behavior.
+required layout for the first product capability slices based on [`main.tex`](../../../main.tex)
+and [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf); the environment shell does not establish
+pipeline, domain, scheduler, or worker behavior.
 
 ## Target layout
 

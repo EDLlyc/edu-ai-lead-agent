@@ -2,9 +2,11 @@
 
 ## Purpose and status
 
-This guide translates the workflow in `技术报告.pdf` into a testable initial implementation
-contract. No pipeline code exists at bootstrap time. The first vertical slice must implement a
-small end-to-end subset and then update this document with real stage, schema, and test paths.
+This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
+[`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable initial implementation contract.
+No pipeline code exists yet. The first implemented capability is authoritative-source acquisition
+and evidence ingestion; each later slice must update this document with real stage, schema, and
+test paths.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
