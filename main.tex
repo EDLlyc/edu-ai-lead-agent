@@ -1,0 +1,535 @@
+% 编译方式：XeLaTeX（Overleaf 请选择 XeLaTeX 编译器）
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.75cm,bottom=1.8cm,left=1.85cm,right=1.85cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{fontspec}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
+
+% 字体：本地与常见 XeLaTeX 环境均可稳定渲染中文。
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+% 品牌与信息层级颜色。
+\definecolor{navy}{HTML}{102A43}
+\definecolor{ocean}{HTML}{1769AA}
+\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}
+\definecolor{sky}{HTML}{EAF3FA}
+\definecolor{slate}{HTML}{486581}
+\definecolor{ink}{HTML}{243B53}
+\definecolor{muted}{HTML}{627D98}
+\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}
+\definecolor{amber}{HTML}{D97706}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ocean,
+  urlcolor=teal,
+  pdfauthor={赛先生品牌内容系统},
+  pdftitle={面向家长的每日自动 AI 教育内容 Agent 技术路线与系统架构设计方案 v0.3}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.32em}
+\setlength{\headheight}{22.2pt}
+\setlength{\tabcolsep}{6pt}
+\onehalfspacing
+\raggedbottom
+
+% 页眉页脚。
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\sffamily\color{slate} 技术路线方案 · 每日自动 AI 教育内容 Agent}
+\rhead{\small\sffamily\color{slate} 赛先生品牌内容系统 · v0.3}
+\cfoot{\small\sffamily\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height \headrulewidth\hfill}}
+
+% 标题格式。
+\titleformat{\section}
+  {\Large\bfseries\sffamily\color{navy}}
+  {\tikz[baseline=(n.base)]\node[fill=ocean,text=white,rounded corners=2pt,
+    inner xsep=7pt,inner ysep=2pt,font=\bfseries\sffamily] (n) {\thesection};}
+  {0.75em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\sffamily\color{navy}}{\thesubsubsection}{0.55em}{}
+\titlespacing*{\section}{0pt}{1.25em}{0.55em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.3em}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\keyvalue}[2]{\noindent\textbf{\sffamily\color{navy}#1：}\textcolor{ink}{#2}\par}
+\newcommand{\statuspill}[2]{%
+  \tikz[baseline=(pill.base)]\node[fill=#1!13,text=#1,draw=#1!35,rounded corners=5pt,
+  inner xsep=6pt,inner ysep=2pt,font=\scriptsize\bfseries\sffamily] (pill) {#2};}
+
+\tcbset{
+  enhanced,
+  boxrule=0.55pt,
+  arc=1.7mm,
+  left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm
+}
+\newtcolorbox{focusbox}[1][]{
+  colback=mint,colframe=teal!55,
+  borderline west={2.6pt}{0pt}{teal},#1
+}
+\newtcolorbox{infobox}[1][]{
+  colback=sky,colframe=ocean!38,
+  borderline west={2.4pt}{0pt}{ocean},#1
+}
+\newtcolorbox{boundarybox}[1][]{
+  colback=paper,colframe=line,
+  borderline west={2.4pt}{0pt}{amber},#1
+}
+
+% 代码块样式（结构化输出示例）。
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{ocean!28},
+  backgroundcolor=\color{paper},
+  keywordstyle=\color{ocean}\bfseries,
+  stringstyle=\color{teal!85!black},
+  commentstyle=\color{muted},
+  showstringspaces=false,
+  xleftmargin=0.8em,
+  xrightmargin=0.8em,
+  framesep=0.65em
+}
+
+\begin{document}
+
+% ------------------- 标题区 -------------------
+\begin{center}
+  \statuspill{teal}{EVIDENCE FIRST}\hspace{0.5em}
+  \statuspill{ocean}{ARCHITECTURE v0.3}\par\vspace{0.8em}
+  {\color{ocean}\large\bfseries\sffamily 技术路线与系统架构设计方案}\par\vspace{0.55em}
+  {\fontsize{23}{29}\selectfont\bfseries\sffamily\color{navy}
+    面向家长的每日自动 AI 教育内容 Agent}\par\vspace{0.45em}
+  {\large\sffamily\color{slate}
+    权威证据采集 · 智能选题 · 品牌知识增强 · 可审计内容生成}\par\vspace{1em}
+  \tikz\draw[teal,line width=1.2pt] (0,0)--(3.2,0);
+\end{center}
+
+\keyvalue{项目目标}{每天从可治理的权威来源自动形成候选证据池，筛选最值得家长关注的 AI 与科学教育话题，并生成可核验、符合赛先生品牌口径的图文素材包。}
+\keyvalue{建设顺序}{先建立稳定、可追溯的权威源自动采集能力，再依次建设数据治理、自动选题、品牌检索、生成审校与素材交付。}
+\keyvalue{安全边界}{系统只提供审核、复制、下载与原始来源查看，不保存社交平台凭据，不自动发布朋友圈。}
+\keyvalue{部署基线}{Ubuntu + Docker Compose；Python 3.11、FastAPI、PostgreSQL/pgvector、MinIO、React/TypeScript/Vite；模型能力由公司 AI 平台提供。}
+\keyvalue{文档版本}{v0.3 · 权威证据优先的能力建设路线}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}核心定位}\quad
+系统不是“让模型自由寻找并讲述新闻”，而是先建立受治理的证据输入，再让选题与生成能力在证据边界内工作。每一条可外部核验的核心事实都必须回到保存的原始来源；品牌知识负责表达方式，不能替代事实依据。
+\end{focusbox}
+
+% ------------------- 1. 项目背景与目标 -------------------
+\section{项目背景与建设目标}
+
+销售团队向家长持续传递科学教育、AI 政策与科技前沿内容时，传统人工模式存在三类长期问题：\textbf{选题投入高}、\textbf{权威事实难持续核验}、\textbf{品牌表达不稳定}。如果直接从“模型生成”开始，短期可以得到演示结果，却无法证明信息是否完整、来源是否可靠、后续能否自动运行。
+
+因此，本系统采用“\textbf{权威证据优先}”的建设原则：先让来源、采集、快照与溯源形成稳定底座，再逐层增加数据治理、评分选择、品牌知识与生成能力。系统的最终输出是可供销售人员人工审核与使用的“每日素材包”，而不是自动发布工具。
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}YY}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 设计原则 &
+\color{white}\bfseries\sffamily 具体含义 &
+\color{white}\bfseries\sffamily 对系统的约束 \\
+\midrule
+证据先于生成 & 先保存可复查的原始来源，再进入摘要、评分与写作 & 模型记忆不能作为事实来源 \\
+\rowcolor{paper}
+证据与品牌分离 & 事实语料回答“发生了什么”，品牌语料回答“如何表达” & 品牌文档不能证明新闻或政策事实 \\
+确定性校验优先 & Schema、证据覆盖、禁用词、日期与隐私规则先执行 & LLM 审校不能覆盖硬性失败 \\
+\rowcolor{paper}
+持久状态与幂等 & 每次任务、尝试、输入和产物都可以恢复与追踪 & 重试不能重复产生外部副作用 \\
+人工在环 & 素材包用于审核、复制和下载 & 不提供自动社交发布能力 \\
+\bottomrule
+\end{tabularx}
+
+% ------------------- 2. 架构与端到端流程 -------------------
+\section{目标架构与端到端工作流}
+
+系统由十个连续能力节点组成。第一节点“权威源自动采集”是建设起点，也是后续所有模型能力的事实入口。
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.64cm and 0.42cm,
+  block/.style={rectangle,draw=ocean!72,fill=sky,rounded corners=3pt,
+    text width=2.52cm,minimum height=1.02cm,align=center,font=\small\bfseries\sffamily,
+    line width=0.65pt,text=navy},
+  first/.style={block,draw=teal,fill=mint,line width=1.15pt},
+  deliver/.style={block,draw=navy!65,fill=paper},
+  arrow/.style={-Stealth,thick,color=ocean!82}
+]
+  \node (A) [first] {1. 权威源自动采集\\{\scriptsize 来源登记 · 原始快照}};
+  \node (B) [block,right=of A] {2. 清洗与去重\\{\scriptsize 规范化 · 事件聚类}};
+  \node (C) [block,right=of B] {3. 选题评分\\{\scriptsize 硬性否决 · 多维评分}};
+  \node (D) [block,right=of C] {4. 锁定当日话题\\{\scriptsize 阈值 · 无题熔断}};
+
+  \node (E) [block,below=0.72cm of D] {5. 双域检索\\{\scriptsize 事实证据 · 品牌知识}};
+  \node (F) [block,left=of E] {6. 结构化文案\\{\scriptsize 声明 · 证据绑定}};
+  \node (G) [block,left=of F] {7. 确定性校验\\{\scriptsize Schema · 规则门禁}};
+  \node (H) [block,left=of G] {8. LLM 风险审校\\{\scriptsize 品牌 · 语气 · 含义}};
+
+  \node (I) [deliver,below=0.72cm of H] {9. 视觉生成\\{\scriptsize 审核后生图 · 对象存储}};
+  \node (J) [deliver,right=of I] {10. 每日素材包\\{\scriptsize 查看 · 复制 · 下载}};
+
+  \draw [arrow] (A) -- (B);
+  \draw [arrow] (B) -- (C);
+  \draw [arrow] (C) -- (D);
+  \draw [arrow] (D) -- (E);
+  \draw [arrow] (E) -- (F);
+  \draw [arrow] (F) -- (G);
+  \draw [arrow] (G) -- (H);
+  \draw [arrow] (H) -- (I);
+  \draw [arrow] (I) -- (J);
+
+  \node[draw=teal!55,dashed,rounded corners=5pt,fit=(A),inner sep=5pt,
+    label={[font=\scriptsize\bfseries\sffamily,text=teal]above:建设第一步}] {};
+\end{tikzpicture}
+\end{center}
+
+\begin{boundarybox}
+\textbf{\sffamily\color{navy}系统边界}\quad
+调度器负责产生持久任务，Worker 负责执行采集与模型调用，API 负责短事务与状态查询，PostgreSQL 是运行状态和证据关系的事实来源。任何抓取文本和模型输出都视为不可信数据；销售团队仍负责最终审核与手动分发。
+\end{boundarybox}
+
+% ------------------- 3. 第一步 -------------------
+\section{建设第一步：权威源自动采集与证据入库}
+
+\subsection{目标、输出与明确边界}
+
+第一步不以“抓到若干网页”为完成标准，而是建立一个可持续运行、可追踪失败、可复查原文的证据入口。它的输出是\textbf{可查询、可审计的候选证据池}，供下一步清洗、去重、事件聚类与分类使用。
+
+\noindent\begin{tabularx}{\textwidth}{L{2.7cm}YY}
+\toprule
+\rowcolor{teal}
+\color{white}\bfseries\sffamily 范畴 &
+\color{white}\bfseries\sffamily 本步骤负责 &
+\color{white}\bfseries\sffamily 本步骤不负责 \\
+\midrule
+来源 & 登记、分级、启停、抓取策略、责任归属 & 自动判断未知网站是否权威 \\
+\rowcolor{paper}
+采集 & 定时增量获取、原始响应保存、正文解析、失败分类 & 选题评分与内容生成 \\
+证据 & 保存 URL、时间、来源、原文快照和版本信息 & 用品牌材料替代外部事实 \\
+\rowcolor{paper}
+模型 & 无强依赖；采集链路可在无模型服务时运行 & LLM 摘要、语义分类、写作和生图 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{版本化来源登记表}
+
+所有采集目标先进入来源登记表，由业务与技术共同审核后启用。代码中不散落临时 URL；每个连接器都必须绑定稳定的 \texttt{source\_id} 和来源版本。
+
+\noindent\begin{tabularx}{\textwidth}{L{2.55cm}L{3.5cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 来源级别 &
+\color{white}\bfseries\sffamily 典型来源 &
+\color{white}\bfseries\sffamily 使用规则 \\
+\midrule
+一级：主要证据 & 政府与教育主管部门、学校/高校、研究机构、国际组织、企业一手公告 & 可作为事实证据；重要或含歧义信息应尽量交叉核验 \\
+\rowcolor{paper}
+二级：可信背景 & 具名记者与清晰引用链的教育、科技、科学媒体 & 用于发现、背景或佐证；存在一手来源时优先回溯 \\
+三级：线索来源 & 社交平台、转载号、匿名账号、来源不明聚合站 & 仅发现话题，不得直接支撑最终事实声明 \\
+\bottomrule
+\end{tabularx}
+
+来源登记至少包含：来源名称与组织类型、可信级别、允许域名、抓取方式（RSS、API 或 HTML）、栏目入口、采集频率、时区/语言、启用状态、维护人、条款与 robots 复核记录、连接器和解析器版本。
+
+\subsection{采集执行架构}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.55cm,
+  stage/.style={rectangle,draw=ocean!65,fill=sky,rounded corners=3pt,
+    text width=2.55cm,minimum height=1cm,align=center,font=\small\bfseries\sffamily,text=navy},
+  gate/.style={stage,draw=teal,fill=mint},
+  arrow/.style={-Stealth,thick,color=teal!80!black}
+]
+  \node (registry) [gate] {来源登记表\\{\scriptsize 允许域名 · 采集策略}};
+  \node (run) [stage,right=of registry] {独立调度器\\{\scriptsize 持久采集任务}};
+  \node (connector) [stage,right=of run] {来源连接器\\{\scriptsize RSS/API 优先}};
+  \node (policy) [stage,right=of connector] {安全抓取策略\\{\scriptsize 限流 · 超时 · 网络边界}};
+  \node (snapshot) [gate,below=0.65cm of policy] {不可变原始快照\\{\scriptsize 响应 · 元数据 · 哈希}};
+  \node (candidate) [stage,left=of snapshot] {候选证据记录\\{\scriptsize 规范 URL · 解析正文}};
+  \node (next) [stage,left=of candidate] {下一建设步骤\\{\scriptsize 清洗 · 去重 · 聚类}};
+
+  \draw[arrow] (registry)--(run);
+  \draw[arrow] (run)--(connector);
+  \draw[arrow] (connector)--(policy);
+  \draw[arrow] (policy)--(snapshot);
+  \draw[arrow] (snapshot)--(candidate);
+  \draw[arrow] (candidate)--(next);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.3em]
+  \item \textbf{独立调度：}调度器以独立进程运行，按来源和业务时区创建持久采集任务；数据库租约或唯一业务键避免多个实例重复入队。
+  \item \textbf{协议优先级：}优先使用 RSS 与公开 API；仅对审核过的允许域名启用 HTML 解析，并使用 \texttt{httpx}、\texttt{trafilatura} 与 \texttt{BeautifulSoup} 等适配器。
+  \item \textbf{增量采集：}使用来源文章 ID、发布时间窗口、分页游标以及可用的 ETag / Last-Modified，减少重复请求并提升新鲜度。
+  \item \textbf{先快照后转换：}在清洗和摘要前保存原始响应或规范化快照；后续派生数据必须引用快照 ID 与解析版本。
+  \item \textbf{幂等写入：}以来源文章 ID、规范 URL 与内容 SHA-256 形成多层身份；重复记录保留来源关系，不直接抹除证据历史。
+\end{enumerate}
+
+\subsection{抓取安全、韧性与失败治理}
+
+权威来源意味着事实可信度更高，不代表网页内容或网络地址天然安全。抓取器必须将页面文本视为数据，忽略其中任何试图改变系统行为的指令。
+
+\noindent\begin{tabularx}{\textwidth}{L{3cm}Y}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries\sffamily 控制面 &
+\color{white}\bfseries\sffamily 最低要求 \\
+\midrule
+网络边界 & 仅允许登记域名与 HTTPS；解析并阻断环回、私网、链路本地和云元数据地址，限制重定向次数 \\
+\rowcolor{paper}
+资源边界 & 设置连接/读取/总超时、最大响应字节、允许内容类型、并发与单来源速率 \\
+重试策略 & 仅对超时、限流和临时服务异常执行有上限的指数退避；解析失败与权限拒绝不盲目重试 \\
+\rowcolor{paper}
+合规与礼貌 & 记录 robots/条款复核结果，使用可识别 User-Agent，尊重频率限制，不绕过登录、验证码或访问控制 \\
+内容安全 & 不把页面指令拼接为系统提示；日志不记录完整正文、Cookie、授权头或敏感个人信息 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{采集与证据数据契约}
+
+\begin{longtable}{L{3.05cm}L{4.15cm}L{8.15cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 字段组 &
+\color{white}\bfseries\sffamily 关键字段 &
+\color{white}\bfseries\sffamily 说明 \\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 字段组 &
+\color{white}\bfseries\sffamily 关键字段 &
+\color{white}\bfseries\sffamily 说明 \\
+\midrule
+\endhead
+身份与运行 & \texttt{source\_id}, \texttt{acquisition\_run\_id}, \texttt{item\_id} & 关联来源版本、一次持久运行和来源侧文章身份 \\
+\rowcolor{paper}
+位置与归属 & \texttt{original\_url}, \texttt{canonical\_url}, \texttt{source\_tier} & 保存原始入口、规范地址、来源组织与可信级别 \\
+时间 & \texttt{published\_at}, \texttt{fetched\_at}, \texttt{source\_timezone} & 发布时间允许缺失但必须显式标记；抓取时间以 UTC 存储 \\
+\rowcolor{paper}
+原始快照 & \texttt{snapshot\_uri}, \texttt{content\_type}, \texttt{byte\_size} & 快照放在受控对象存储；数据库保存引用、类型与大小 \\
+内容身份 & \texttt{content\_sha256}, \texttt{etag}, \texttt{last\_modified} & 支持精确重复识别、条件请求和审计复现 \\
+\rowcolor{paper}
+解析版本 & \texttt{connector\_version}, \texttt{parser\_version}, \texttt{normalization\_version} & 解析规则变化后可以重放并解释差异 \\
+派生正文 & \texttt{title}, \texttt{clean\_text}, \texttt{language} & 作为候选证据；不能替代原始快照 \\
+\rowcolor{paper}
+执行结果 & \texttt{status}, \texttt{error\_code}, \texttt{attempt}, \texttt{request\_id} & 区分成功、未变化、暂时失败、永久失败与解析失败 \\
+\bottomrule
+\end{longtable}
+
+\subsection{第一步完成标准}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}可验收结果}\par
+\begin{itemize}[leftmargin=1.7em,itemsep=0.2em,topsep=0.35em]
+  \item 选取覆盖政策、教育机构、科研/国际组织与企业一手发布的代表性来源，完成来源登记与连接器验证；
+  \item 定时任务能够形成持久运行记录，并对重复执行保持幂等；
+  \item 每条成功候选均可回到原始 URL、来源身份、发布时间、抓取时间和不可变快照；
+  \item 超时、限流、无权限、格式变化、超大响应、重定向异常与重复内容均有可测试的安全结果；
+  \item 可按来源查看成功率、最新成功时间、新增数量、解析失败率、重复率、耗时和重试次数；
+  \item 在公司模型平台不可用时，权威源采集和证据入库仍可独立运行。
+\end{itemize}
+\end{focusbox}
+
+% ------------------- 4. 后续能力设计 -------------------
+\section{后续能力模块设计}
+
+\subsection{数据治理、去重与事件组织}
+
+在原始快照之上执行 URL 规范化、正文清洗、时间统一与来源身份归一。使用规范 URL、来源文章 ID 与正文 SHA-256 进行精确重复识别；随后使用 SimHash、Embedding 相似度和事件聚类识别同一事件的多篇报道。重复数据保留指向原始来源的关系，不能因去重丢失溯源。
+
+结构化分类输出版本化标签，例如 \texttt{policy}（政策）、\texttt{frontier}（前沿）、\texttt{case}（学校/课堂案例）、\texttt{safety}（AI 安全与隐私）。社交线索在回溯到合格事实来源前保持不可入选状态。
+
+\subsection{自动选题、硬性否决与无题熔断}
+
+评分配置声明特征范围、权重、惩罚、版本和稳定的并列规则：
+
+\begin{equation*}
+\begin{aligned}
+\text{选题总分} ={} & \text{来源可信度} + \text{AI/科学教育相关度} + \text{家长关联度} + \text{新鲜度} \\
+& + \text{传播价值} - \text{历史重复度} - \text{争议/营销风险}
+\end{aligned}
+\end{equation*}
+
+未核实线索、未成年人隐私风险、重大法律/安全不确定性、不适合品牌传播的负面事件及七天内重复事件属于硬性否决，不能被高分抵消。只有合格候选达到阈值时才锁定当日话题；否则运行状态为 \texttt{no\_topic}，当天不强行生成。
+
+\subsection{品牌知识库与双域检索}
+
+系统维护两个独立语料域：
+\begin{enumerate}[leftmargin=2em,itemsep=0.25em]
+  \item \textbf{事实证据域：}来源快照、候选文章、事件聚类与证据段落，用于证明外部事实；
+  \item \textbf{品牌知识域：}品牌理念、家长沟通原则、安全规则、禁用表达、优质案例和视觉规范，用于约束表达。
+\end{enumerate}
+
+品牌知识按版本、受众和有效期管理。初始混合检索使用 PostgreSQL 全文排序与 \texttt{pgvector} 语义检索，通过可测试的结果融合和重排序选出有限上下文。若未来选择其他全文检索扩展或服务，应另行记录架构决策。
+
+\subsection{结构化文案与声明—证据绑定}
+
+文案 Agent 只接收明确分隔的事实证据与品牌上下文，并输出可由 Pydantic v2 校验的结构：
+
+\begin{lstlisting}
+{
+  "copywriting": "面向家长的朋友圈正文",
+  "parent_takeaway": "与孩子和家庭相关的认知点",
+  "interaction": "自然、不过度营销的互动引导",
+  "source_note": "面向读者的来源说明",
+  "image_prompt": "符合品牌视觉规范的生图提示",
+  "claims": [
+    {
+      "id": "claim_01",
+      "text": "可外部核验的核心事实",
+      "kind": "external_fact",
+      "evidence_ids": ["evidence_01"]
+    }
+  ]
+}
+\end{lstlisting}
+
+每个 \texttt{external\_fact} 声明至少绑定一条合格证据，绑定关系保留原始 URL、来源级别、发布时间和支持段落。面向读者的 \texttt{source\_note} 用于展示，不能替代机器可验证的证据关系。
+
+\subsection{确定性校验、LLM 审校与有限重试}
+
+质量控制按固定顺序执行：
+\begin{enumerate}[leftmargin=2em,itemsep=0.25em]
+  \item \textbf{确定性校验：}Schema、必填字段、证据覆盖、来源级别、URL、日期、长度、禁用词、隐私、重复话题和图片规则；
+  \item \textbf{LLM 风险审校：}判断隐含夸大、焦虑制造、品牌适配、家长价值与图像风险，返回问题代码和对应声明 ID；
+  \item \textbf{有限重试：}只把结构化问题反馈给生成阶段，并限制次数；耗尽后保留草稿与问题，进入可审查失败状态。
+\end{enumerate}
+
+审校模型不是独立事实来源，不能凭自身记忆补齐缺失证据，也不能覆盖硬性否决。
+
+\subsection{视觉生成与每日素材包}
+
+只有通过校验和审校的图片提示才进入公司 AI 平台的图像能力。图片采用温暖、明亮、可信的中国家庭科学教育插画方向，避免复杂中文文字、夸张科幻感、真实未成年人身份特征和潜在侵权元素。请求指纹、模型/提示版本、尝试次数、提供方请求 ID 与对象存储状态均需保存，确保重试不重复生成。
+
+内部页面展示话题、生成日期、朋友圈正文、家长洞察、互动建议、图片、原始来源、声明证据和校验/审校状态，并提供键盘可操作的复制和下载。系统不出现“自动发布”按钮或社交平台凭据入口。
+
+% ------------------- 5. 技术栈与部署 -------------------
+\section{技术栈、运行职责与部署}
+
+\noindent\begin{tabularx}{\textwidth}{L{3cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 架构层次 &
+\color{white}\bfseries\sffamily 技术选型与责任 \\
+\midrule
+基础设施与部署 & Ubuntu、Docker Compose；本地/私有环境使用 PostgreSQL/pgvector 与 MinIO，基础设施仅绑定受控网络接口 \\
+\rowcolor{paper}
+API 服务 & Python 3.11、FastAPI、Pydantic v2；负责输入校验、短数据库事务、运行/素材包状态查询和 OpenAPI 合约 \\
+调度器 & 独立进程；按 Asia/Shanghai 业务日期创建持久任务，通过数据库租约或唯一键避免重复调度 \\
+\rowcolor{paper}
+Worker & 执行采集、解析、Embedding、LLM 与图片等长任务；使用租约、心跳、幂等键和有界重试 \\
+数据与检索 & PostgreSQL、SQLAlchemy 2 async、Alembic、pgvector；分别管理事实证据域与品牌知识域 \\
+\rowcolor{paper}
+对象存储 & MinIO / 公司 S3 兼容对象存储；保存受控原始快照、生成图片和可审计产物 \\
+模型能力 & 公司 AI 平台提供 LLM、Embedding 与图像能力；通过能力适配器隔离具体请求格式 \\
+\rowcolor{paper}
+前端交互 & React、TypeScript strict、Vite、TanStack Query；OpenAPI 生成接口类型，提供内部审核与复用工作台 \\
+\bottomrule
+\end{tabularx}
+
+\begin{infobox}
+\textbf{\sffamily\color{navy}状态与可恢复性}\quad
+数据库是运行和阶段状态的事实来源。每个持久任务记录输入版本、幂等键、尝试次数、租约、错误分类和产物引用。第一步可使用 PostgreSQL 任务认领机制；只有在吞吐量和运维需求被验证后，才考虑引入独立队列基础设施。
+\end{infobox}
+
+% ------------------- 6. 建设路线 -------------------
+\section{按能力交付的建设路线}
+
+项目不使用抽象等级标签，而是按可独立验收的能力顺序推进。每一步都建立在前一步的持久数据契约之上。
+
+\begin{longtable}{L{1.65cm}L{3.35cm}L{6.0cm}L{4.25cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 顺序 &
+\color{white}\bfseries\sffamily 建设能力 &
+\color{white}\bfseries\sffamily 核心交付 &
+\color{white}\bfseries\sffamily 完成证据 \\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 顺序 &
+\color{white}\bfseries\sffamily 建设能力 &
+\color{white}\bfseries\sffamily 核心交付 &
+\color{white}\bfseries\sffamily 完成证据 \\
+\midrule
+\endhead
+\statuspill{teal}{第一步} & 权威源自动采集与证据入库 & 来源登记、独立调度、RSS/API/HTML 连接器、安全抓取、原始快照、幂等记录与监控 & 代表性来源稳定增量入库，成功与失败均可追踪并回到原文 \\
+\rowcolor{paper}
+第二步 & 数据治理与事件组织 & 正文规范化、精确/近似去重、来源关联、事件聚类与结构化分类 & 重复不丢溯源，同一事件可聚合，多次处理结果稳定 \\
+第三步 & 选题资格、评分与锁定 & 硬性否决、版本化特征/权重、阈值、七天重复规则、\texttt{no\_topic} & 标注样本集可解释评估，无合格话题时停止生成 \\
+\rowcolor{paper}
+第四步 & 品牌知识与双域检索 & 品牌文档版本化、切块与元数据；事实/品牌分离检索；全文与向量结果融合 & 检索结果可解释，品牌材料不能被用作外部事实证据 \\
+第五步 & 证据绑定生成与质量门 & 结构化声明、证据绑定、确定性校验、LLM 风险审校、有限重试 & 无证据事实无法通过；审校失败保留问题与产物 \\
+\rowcolor{paper}
+第六步 & 视觉生成与素材交付 & 审核后生图、对象存储、素材包 API、内部审核/复制/下载页面 & 完整素材包可人工复核和使用，系统不存在自动发布路径 \\
+\bottomrule
+\end{longtable}
+
+% ------------------- 7. 验收与治理 -------------------
+\section{质量门、风险与持续治理}
+
+\subsection{跨层质量门}
+
+\begin{itemize}[leftmargin=2em,itemsep=0.25em]
+  \item \textbf{后端：}格式与 lint、严格类型检查、单元/集成测试、真实 PostgreSQL/pgvector 行为、迁移升级、采集安全和幂等测试；
+  \item \textbf{前端：}格式与 lint、TypeScript strict、生成接口漂移检查、组件测试、无障碍检查与素材复制/下载流程；
+  \item \textbf{跨层：}FastAPI OpenAPI 生成前端类型，CI 在生成结果漂移时失败；
+  \item \textbf{安全：}验证线索来源不能成为事实证据、网页指令只能作为数据、日志隐去敏感内容、系统没有自动发布端点。
+\end{itemize}
+
+\subsection{关键风险与控制策略}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.25cm}Y}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries\sffamily 风险 &
+\color{white}\bfseries\sffamily 控制策略 \\
+\midrule
+权威网站结构变化 & 连接器/解析器版本化，保存原始快照，监控解析成功率和字段缺失，支持按快照重放 \\
+\rowcolor{paper}
+来源中断或限流 & 单来源限速、有界退避、健康状态与告警；不因一个来源失败阻断全部采集 \\
+事实看似可信但缺乏支撑 & 核心声明绑定到证据段落；高影响或歧义事实优先多源核验 \\
+\rowcolor{paper}
+模型幻觉或焦虑营销 & 确定性证据覆盖与禁用规则先行，LLM 审校只判断表达和含义，不补造事实 \\
+外部调用重复计费 & 请求指纹、阶段幂等键、提供方请求 ID 与产物状态共同约束重试 \\
+\rowcolor{paper}
+自动化越过人工边界 & API、前端与配置中均不提供社交发布能力或凭据路径 \\
+\bottomrule
+\end{tabularx}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}结论}\quad
+本路线将“自动采集”从一个功能模块提升为整个系统的第一项可验收能力：来源先被治理，证据先被保存，后续评分、检索和生成才有稳定边界。这样既能尽早获得真实数据，又避免在事实底座尚未建立时先投入不可复用的生成演示。
+\end{focusbox}
+
+\end{document}
