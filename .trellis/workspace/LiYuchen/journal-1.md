@@ -48,3 +48,26 @@ Configured the reproducible Conda, FastAPI, React/Vite, PostgreSQL/pgvector, and
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: Revise technical report with evidence-first roadmap
+
+**Date**: 2026-07-28
+**Task**: Revise technical report with evidence-first roadmap
+**Branch**: `main`
+
+### Summary
+
+Reworked the editable XeLaTeX technical report into a polished v0.3 architecture document, removed P-level milestones, made authoritative-source acquisition and evidence ingestion the first construction step, added safe acquisition and provenance contracts, generated and visually verified an eight-page PDF, and synchronized Trellis architecture references.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1790cd4` | (see git log) |
+| `1e3d247` | (see git log) |
+| `4d008f6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
