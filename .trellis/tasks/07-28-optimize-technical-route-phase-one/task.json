@@ -1,0 +1,29 @@
+{
+  "id": "optimize-technical-route-phase-one",
+  "name": "optimize-technical-route-phase-one",
+  "title": "Review and optimize first technical route phase",
+  "description": "Revise main.tex into a polished v0.3 technical report with authoritative-source automated acquisition as the first construction step and no P0/P1 milestone labels.",
+  "status": "in_progress",
+  "dev_type": "documentation",
+  "scope": "main.tex and a separately generated v0.3 PDF",
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-07-28",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "main.tex",
+    "技术报告.pdf"
+  ],
+  "notes": "",
+  "meta": {}
+}

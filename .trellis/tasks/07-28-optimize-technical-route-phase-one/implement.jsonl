@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Project-wide backend boundaries and source-of-truth status for the first product slice."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Authoritative source governance, typed stages, evidence bindings, validation ordering, and manual delivery boundary."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Immutable snapshots, provenance, durable run state, idempotency, and evidence/brand domain separation."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed acquisition/provider failures, retry classifications, and durable terminal states."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Acquisition observability, privacy, correlation IDs, and metrics requirements."}
+{"file":".trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md","reason":"Architecture decisions derived from report v0.2 that the revised report must preserve or correct explicitly."}

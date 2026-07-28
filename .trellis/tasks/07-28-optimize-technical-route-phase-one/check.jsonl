@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify the revised report preserves evidence-first stages, source tiers, claim bindings, validation order, and no-publishing boundary."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify acquisition storage, provenance, source snapshots, idempotency, and terminology match the persistence contract."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify the report distinguishes retryable acquisition failures from validation and policy failures."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify the first step includes safe observability and measurable acquisition outcomes."}
+{"file":".trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md","reason":"Cross-check v0.3 against previously approved system boundaries and architecture defaults."}
