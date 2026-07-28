@@ -4,7 +4,8 @@
 
 These documents are the initial implementation contract for a greenfield backend. They are
 derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
-`.trellis/tasks/00-bootstrap-guidelines/research/technical-report-decisions.md`; they do not
+`.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`;
+they do not
 describe existing application code.
 
 The first vertical slice must follow these defaults unless its task records an explicit design

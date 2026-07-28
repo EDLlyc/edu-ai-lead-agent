@@ -4,7 +4,8 @@
 
 These documents are the initial implementation contract for a greenfield internal SPA. They are
 derived from `技术报告.pdf` version 0.2 and the bootstrap decision record at
-`.trellis/tasks/00-bootstrap-guidelines/research/technical-report-decisions.md`; no frontend
+`.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`;
+no frontend
 application exists yet.
 
 The first vertical slice targets React, TypeScript in strict mode, and Vite. It must update these
