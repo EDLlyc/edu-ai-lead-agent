@@ -1,0 +1,29 @@
+:root {
+  color-scheme: dark;
+
+  --surface-base: #0c0f11;
+  --surface-sunken: #07090a;
+  --surface-raised: #14191c;
+  --text-primary: #edf1ee;
+  --text-muted: #a5aea9;
+  --text-faint: #86918b;
+  --accent: #f4c430;
+  --accent-ink: #11130f;
+  --signal-cyan: #48e0cf;
+  --focus: #7ee9ff;
+  --border-strong: #4b5550;
+  --border-subtle: #29312e;
+  --shadow-inset: inset 0 0 2rem rgb(0 0 0 / 35%);
+
+  --font-display:
+    "Arial Narrow", "Roboto Condensed", "Noto Sans SC", sans-serif;
+  --font-body: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+}

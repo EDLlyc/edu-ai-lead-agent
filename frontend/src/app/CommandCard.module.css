@@ -1,0 +1,103 @@
+.card {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  min-height: 11.5rem;
+  border-block-start: 1px solid var(--border-strong);
+  background: linear-gradient(135deg, rgb(255 255 255 / 3%), transparent 52%);
+}
+
+.marker {
+  padding-block-start: var(--space-5);
+  border-inline-end: 1px solid var(--border-subtle);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.content {
+  padding: var(--space-5);
+}
+
+.content h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.content > p:not(.feedback) {
+  max-width: 42ch;
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.commandRow {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.commandRow code {
+  min-width: 0;
+  flex: 1;
+  padding: 0.7rem 0.8rem;
+  overflow-x: auto;
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.commandRow button {
+  min-width: 4.25rem;
+  min-height: 2.75rem;
+  border: 0;
+  border-inline-start: 1px solid var(--border-strong);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 700 0.75rem/1 var(--font-body);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    background-color 160ms linear,
+    color 160ms linear;
+}
+
+.commandRow button:hover {
+  background: var(--text-primary);
+}
+
+.commandRow button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.feedback {
+  min-height: 1.25rem;
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .card {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+
+  .content {
+    padding: var(--space-4);
+  }
+
+  .commandRow {
+    flex-direction: column;
+  }
+
+  .commandRow button {
+    border-block-start: 1px solid var(--border-strong);
+    border-inline-start: 0;
+  }
+}

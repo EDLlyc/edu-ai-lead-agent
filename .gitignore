@@ -9,12 +9,28 @@
 # Python artifacts
 __pycache__/
 *.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 coverage.xml
 .coverage
 htmlcov/
+
+# Frontend artifacts
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+
+# Local runtime output
+*.log
+logs/
+.cache/
 
 # Editors and operating systems
 .idea/
