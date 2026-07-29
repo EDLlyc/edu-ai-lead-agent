@@ -1,0 +1,12 @@
+{"file":".trellis/spec/backend/index.md","reason":"Controls the first backend vertical-slice boundaries and documentation language."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Defines API/application/domain/infrastructure ownership and separate API, scheduler, and worker entry points."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Defines SQLAlchemy async, PostgreSQL, Alembic, job claiming, idempotency, snapshots, and provenance rules."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Defines source tiers, acquisition evidence contracts, job semantics, retries, and later-stage exclusions."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed failures, retryability, terminal states, and stable API error envelopes."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Defines structured correlation, privacy, redaction, and durable observability requirements."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines strict typing, PostgreSQL integration, security, OpenAPI, and acceptance quality gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The slice crosses source HTTP, storage, database, worker, scheduler, API, OpenAPI, and deployment boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Eight source adapters must share network, extraction, normalization, and contract logic without copy-paste drift."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/current-state-audit.md","reason":"Records the verified greenfield repository state and missing infrastructure."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/source-feasibility.md","reason":"Records the four selected Tier A source contracts, limitations, and rejected alternatives."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/media-source-feasibility.md","reason":"Records the four selected Tier B media contracts, HTTPS/parser feasibility, and rejected alternatives."}

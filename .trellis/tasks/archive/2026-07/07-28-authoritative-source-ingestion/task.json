@@ -1,0 +1,31 @@
+{
+  "id": "authoritative-source-ingestion",
+  "name": "authoritative-source-ingestion",
+  "title": "Implement authoritative source acquisition and evidence ingestion",
+  "description": "Build the first production capability from technical report v0.3: governed authoritative-source acquisition, immutable snapshots, provenance, idempotent evidence ingestion, durable run state, and observable failure handling.",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "authoritative-source acquisition, immutable snapshots, provenance, durable jobs, API contracts, and integration tests",
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-07-28",
+  "completedAt": "2026-07-29",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/",
+    "compose.yaml",
+    "main.tex",
+    ".trellis/spec/backend/"
+  ],
+  "notes": "",
+  "meta": {}
+}

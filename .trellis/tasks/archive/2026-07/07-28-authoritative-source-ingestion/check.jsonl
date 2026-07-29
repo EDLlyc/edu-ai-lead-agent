@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review compliance with the first-slice backend boundaries and required spec refresh."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Review process separation and correct layer ownership."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migrations, constraints, transactions, claims, snapshots, and real PostgreSQL behavior."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Review source-tier, provenance, idempotency, retry, and out-of-scope stage compliance."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review typed outcomes, retry classification, terminal persistence, and API errors."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review structured correlation and absence of bodies, cookies, credentials, signed URLs, or personal data."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Review lint, strict typing, real service tests, security, OpenAPI drift, and end-to-end acceptance."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review complete data flow and generated/deployment contract consistency."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/current-state-audit.md","reason":"Compare the delivered slice with the verified pre-implementation gaps."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/source-feasibility.md","reason":"Review all four Tier A connectors against researched public contracts and safety limitations."}
+{"file":".trellis/tasks/07-28-authoritative-source-ingestion/research/media-source-feasibility.md","reason":"Review all four Tier B connectors against researched public contracts and HTTPS/robots decisions."}
