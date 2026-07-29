@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from app.domain.enums import SourceTier
+from app.domain.title_relevance import TITLE_RELEVANCE_RULE_VERSION
+from app.domain.value_objects import stable_key
+
+
+@dataclass(frozen=True, slots=True)
+class SourceSeed:
+    slug: str
+    display_name: str
+    organization_type: str
+    tier: SourceTier
+    connector_key: str
+    entry_url: str
+    allowed_hosts: tuple[str, ...]
+    allowed_path_prefixes: tuple[str, ...]
+    robots_status: str
+    rate_limit_seconds: float
+    owner: str = "content-operations"
+    cadence: str = "daily"
+    timezone: str = "Asia/Shanghai"
+    language: str = "zh-CN"
+    connector_version: str = "1.0.0"
+    parser_version: str = "1.0.0"
+    relevance_rule_version: str | None = TITLE_RELEVANCE_RULE_VERSION
+
+    @property
+    def source_id(self) -> UUID:
+        return uuid5(NAMESPACE_URL, f"edu-ai-source:{self.slug}")
+
+    @property
+    def config_fingerprint(self) -> str:
+        data = asdict(self)
+        data["tier"] = self.tier.value
+        return stable_key(json.dumps(data, sort_keys=True, ensure_ascii=False))
+
+    @property
+    def source_version_id(self) -> UUID:
+        return uuid5(self.source_id, self.config_fingerprint)
+
+
+SOURCE_SEEDS: tuple[SourceSeed, ...] = (
+    SourceSeed(
+        "china-government-policy",
+        "中国政府网最新政策",
+        "government",
+        SourceTier.A,
+        "gov_cn_policy_v1",
+        "https://www.gov.cn/zhengce/zuixin/ZUIXINZHENGCE.json",
+        ("www.gov.cn",),
+        ("/zhengce/",),
+        "allowed",
+        2.0,
+    ),
+    SourceSeed(
+        "bnu-news",
+        "北京师范大学新闻网",
+        "education_institution",
+        SourceTier.A,
+        "bnu_news_v1",
+        "https://news.bnu.edu.cn/",
+        ("news.bnu.edu.cn",),
+        ("/",),
+        "manual_review",
+        3.0,
+        connector_version="1.0.1",
+        parser_version="1.0.1",
+    ),
+    SourceSeed(
+        "cas-research",
+        "中国科学院科研进展",
+        "research_organization",
+        SourceTier.A,
+        "cas_research_v1",
+        "https://www.cas.cn/syky/",
+        ("www.cas.cn",),
+        ("/",),
+        "manual_review",
+        3.0,
+    ),
+    SourceSeed(
+        "sensetime-news",
+        "商汤科技新闻中心",
+        "ai_company",
+        SourceTier.A,
+        "sensetime_news_v1",
+        "https://www.sensetime.com/cn/news",
+        ("www.sensetime.com", "sensetime.com"),
+        ("/cn/news",),
+        "allowed",
+        3.0,
+    ),
+    SourceSeed(
+        "xinhua-tech",
+        "新华网科技",
+        "authoritative_media",
+        SourceTier.B,
+        "xinhua_tech_v1",
+        "https://www.news.cn/tech/",
+        ("www.news.cn", "news.cn"),
+        ("/",),
+        "allowed",
+        2.0,
+    ),
+    SourceSeed(
+        "gmw-education",
+        "光明网教育",
+        "authoritative_media",
+        SourceTier.B,
+        "gmw_education_v1",
+        "https://edu.gmw.cn/",
+        ("edu.gmw.cn", "www.gmw.cn", "gmw.cn"),
+        ("/",),
+        "allowed_with_path_exclusions",
+        3.0,
+        connector_version="1.0.1",
+        parser_version="1.0.1",
+    ),
+    SourceSeed(
+        "stdaily-tech",
+        "科技日报",
+        "authoritative_media",
+        SourceTier.B,
+        "stdaily_tech_v1",
+        "https://www.stdaily.com/",
+        ("www.stdaily.com", "stdaily.com"),
+        ("/",),
+        "allowed",
+        3.0,
+        connector_version="1.0.1",
+        parser_version="1.0.1",
+    ),
+    SourceSeed(
+        "chinanews-education",
+        "中国新闻网教育",
+        "authoritative_media",
+        SourceTier.B,
+        "chinanews_education_v1",
+        "https://www.chinanews.com.cn/edu/",
+        ("www.chinanews.com.cn", "chinanews.com.cn"),
+        ("/",),
+        "allowed_with_path_exclusions",
+        3.0,
+    ),
+)
+
+TERMS_REVIEWED_AT = datetime(2026, 7, 28, tzinfo=UTC)

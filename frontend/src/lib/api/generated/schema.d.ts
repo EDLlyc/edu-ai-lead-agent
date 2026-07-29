@@ -4,6 +4,108 @@
  */
 
 export interface paths {
+    "/api/v1/acquisition-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Acquisition Run */
+        post: operations["create_acquisition_run_api_v1_acquisition_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/acquisition-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Acquisition Run */
+        get: operations["get_acquisition_run_api_v1_acquisition_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/acquisition-runs/{run_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Acquisition Run Jobs */
+        get: operations["get_acquisition_run_jobs_api_v1_acquisition_runs__run_id__jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence Candidates */
+        get: operations["get_evidence_candidates_api_v1_evidence_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence-candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence Candidate */
+        get: operations["get_evidence_candidate_api_v1_evidence_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sources */
+        get: operations["get_sources_api_v1_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -25,6 +127,218 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcquisitionJobListResponse */
+        AcquisitionJobListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["AcquisitionJobResponse"][];
+        };
+        /** AcquisitionJobResponse */
+        AcquisitionJobResponse: {
+            /** Attempt Count */
+            attempt_count: number;
+            /** Byte Count */
+            byte_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Error Code */
+            error_code: string | null;
+            /** Filtered Count */
+            filtered_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Count */
+            new_count: number;
+            /** Outcome */
+            outcome: string | null;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Slug */
+            source_slug: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Unchanged Count */
+            unchanged_count: number;
+        };
+        /** AcquisitionRunResponse */
+        AcquisitionRunResponse: {
+            /** Acquisition Version */
+            acquisition_version: string;
+            /** Business Date */
+            business_date: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duplicate Count */
+            duplicate_count: number;
+            /** Failed Jobs */
+            failed_jobs: number;
+            /** Filtered Count */
+            filtered_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Count */
+            new_count: number;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Status Url */
+            status_url: string;
+            /** Succeeded Jobs */
+            succeeded_jobs: number;
+            /** Timezone */
+            timezone: string;
+            /** Total Jobs */
+            total_jobs: number;
+            /** Trigger */
+            trigger: string;
+            /** Unchanged Count */
+            unchanged_count: number;
+        };
+        /** CreateAcquisitionRunRequest */
+        CreateAcquisitionRunRequest: {
+            /** Source Ids */
+            source_ids?: string[] | null;
+        };
+        /** EvidenceCandidateDetailResponse */
+        EvidenceCandidateDetailResponse: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Clean Text */
+            clean_text: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Extraction Metadata */
+            extraction_metadata: {
+                [key: string]: unknown;
+            };
+            /**
+             * First Fetched At
+             * Format: date-time
+             */
+            first_fetched_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language: string;
+            /** Observations */
+            observations: components["schemas"]["ObservationResponse"][];
+            /** Original Url */
+            original_url: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Published At */
+            published_at: string | null;
+            /** Relevance Rule Version */
+            relevance_rule_version: string | null;
+            snapshot: components["schemas"]["SnapshotMetadataResponse"];
+            /** Source Display Name */
+            source_display_name: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Item Id */
+            source_item_id: string;
+            /** Source Slug */
+            source_slug: string;
+            /** Title */
+            title: string;
+            /** Trust Tier */
+            trust_tier: string;
+        };
+        /** EvidenceCandidateListResponse */
+        EvidenceCandidateListResponse: {
+            /** Items */
+            items: components["schemas"]["EvidenceCandidateSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** EvidenceCandidateSummary */
+        EvidenceCandidateSummary: {
+            /** Canonical Url */
+            canonical_url: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * First Fetched At
+             * Format: date-time
+             */
+            first_fetched_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Language */
+            language: string;
+            /** Original Url */
+            original_url: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Published At */
+            published_at: string | null;
+            /** Relevance Rule Version */
+            relevance_rule_version: string | null;
+            /** Source Display Name */
+            source_display_name: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Item Id */
+            source_item_id: string;
+            /** Source Slug */
+            source_slug: string;
+            /** Title */
+            title: string;
+            /** Trust Tier */
+            trust_tier: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Environment */
@@ -39,6 +353,122 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** ObservationResponse */
+        ObservationResponse: {
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Outcome */
+            outcome: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Snapshot Id */
+            snapshot_id: string | null;
+        };
+        /** SnapshotMetadataResponse */
+        SnapshotMetadataResponse: {
+            /** Bucket */
+            bucket: string;
+            /** Byte Size */
+            byte_size: number;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Media Type */
+            media_type: string;
+            /** Object Key */
+            object_key: string;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** SourceListResponse */
+        SourceListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["SourceResponse"][];
+        };
+        /** SourceResponse */
+        SourceResponse: {
+            /** Cadence */
+            cadence: string;
+            /** Connector Key */
+            connector_key: string;
+            /** Connector Version */
+            connector_version: string;
+            /** Display Name */
+            display_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Entry Url */
+            entry_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latest Filtered Count */
+            latest_filtered_count: number | null;
+            /** Latest Success At */
+            latest_success_at: string | null;
+            /** Organization Type */
+            organization_type: string;
+            /** Owner */
+            owner: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Relevance Rule Version */
+            relevance_rule_version: string | null;
+            /** Slug */
+            slug: string;
+            /** Tier */
+            tier: string;
+            /** Timezone */
+            timezone: string;
+            /** Version */
+            version: number;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -48,6 +478,188 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    create_acquisition_run_api_v1_acquisition_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAcquisitionRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcquisitionRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_acquisition_run_api_v1_acquisition_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcquisitionRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_acquisition_run_jobs_api_v1_acquisition_runs__run_id__jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcquisitionJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_candidates_api_v1_evidence_candidates_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                source_id?: string | null;
+                relevance_rule_version?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCandidateListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_candidate_api_v1_evidence_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCandidateDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sources_api_v1_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceListResponse"];
+                };
+            };
+        };
+    };
     healthz_healthz_get: {
         parameters: {
             query?: never;

@@ -1,0 +1,1 @@
+"""Named acquisition application services."""

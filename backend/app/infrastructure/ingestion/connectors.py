@@ -1,0 +1,356 @@
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Callable, Iterable
+from dataclasses import replace
+from datetime import UTC, datetime
+from typing import Any, Protocol
+from urllib.parse import urljoin, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import trafilatura
+from bs4 import BeautifulSoup, Tag
+
+from app.core.errors import ParseError, PolicyRejectedError
+from app.core.security import validate_allowlist
+from app.domain.entities import DiscoveredItem, ExtractedDocument, FetchedResponse, SourceProfile
+
+
+class SourceConnector(Protocol):
+    def discover(
+        self, response: FetchedResponse, profile: SourceProfile, *, limit: int
+    ) -> list[DiscoveredItem]: ...
+
+    def extract(
+        self,
+        response: FetchedResponse,
+        item: DiscoveredItem,
+        profile: SourceProfile,
+    ) -> ExtractedDocument: ...
+
+
+def _canonical_url(value: str) -> str:
+    parts = urlsplit(value)
+    return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path, "", ""))
+
+
+def _decode(response: FetchedResponse) -> str:
+    for encoding in ("utf-8", "gb18030"):
+        try:
+            return response.body.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ParseError("source response encoding is unsupported")
+
+
+def _parse_datetime(value: str | None, timezone: str) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip().replace("年", "-").replace("月", "-").replace("日", "")
+    match = re.search(
+        r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?", normalized
+    )
+    if not match:
+        return None
+    year, month, day, hour, minute = match.groups()
+    try:
+        source_timezone = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ParseError("source timezone is invalid") from error
+    local_time = datetime(
+        int(year), int(month), int(day), int(hour or 0), int(minute or 0), tzinfo=source_timezone
+    )
+    return local_time.astimezone(UTC)
+
+
+def _approved_discovered_url(value: str, profile: SourceProfile) -> str | None:
+    try:
+        return validate_allowlist(
+            value,
+            allowed_hosts=profile.allowed_hosts,
+            allowed_path_prefixes=profile.allowed_path_prefixes,
+        )
+    except PolicyRejectedError:
+        return None
+
+
+def _extract_title(soup: BeautifulSoup) -> str | None:
+    for selector in ("meta[property='og:title']", "meta[name='ArticleTitle']"):
+        node = soup.select_one(selector)
+        if isinstance(node, Tag) and node.get("content"):
+            return str(node.get("content")).strip()
+    navigation_titles = {"全部导航", "导航", "首页"}
+    for heading in soup.find_all("h1"):
+        title = heading.get_text(" ", strip=True)
+        if title and title not in navigation_titles:
+            return title
+    if soup.title:
+        return soup.title.get_text(" ", strip=True).split("_")[0].strip()
+    return None
+
+
+class GovernmentJsonConnector:
+    def discover(
+        self, response: FetchedResponse, profile: SourceProfile, *, limit: int
+    ) -> list[DiscoveredItem]:
+        try:
+            payload = json.loads(_decode(response))
+        except json.JSONDecodeError as error:
+            raise ParseError("government policy list is invalid JSON") from error
+        records = _find_policy_records(payload)
+        items: list[DiscoveredItem] = []
+        for record in records:
+            raw_url = str(record.get("URL") or record.get("url") or "").strip()
+            if not raw_url:
+                continue
+            candidate_url = _canonical_url(urljoin(response.final_url, raw_url))
+            url = _approved_discovered_url(candidate_url, profile)
+            if url is None:
+                continue
+            title = str(record.get("TITLE") or record.get("title") or "").strip() or None
+            item_id = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
+            items.append(
+                DiscoveredItem(
+                    source_item_id=item_id,
+                    url=url,
+                    title=title,
+                    published_at=_parse_datetime(
+                        str(record.get("DOCRELPUBTIME") or record.get("date") or ""),
+                        profile.timezone,
+                    ),
+                )
+            )
+            if len(items) >= limit:
+                break
+        if not items:
+            raise ParseError("government policy list contains no supported items")
+        return items
+
+    def extract(
+        self,
+        response: FetchedResponse,
+        item: DiscoveredItem,
+        profile: SourceProfile,
+    ) -> ExtractedDocument:
+        return HtmlConnector(lambda _url: True, (".pages_content", ".article", "main")).extract(
+            response, item, profile
+        )
+
+
+def _find_policy_records(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+        records = [item for item in value if isinstance(item, dict)]
+        if any("URL" in item or "url" in item for item in records):
+            return records
+    if isinstance(value, dict):
+        for item in value.values():
+            records = _find_policy_records(item)
+            if records:
+                return records
+    return []
+
+
+class HtmlConnector:
+    def __init__(
+        self,
+        link_filter: Callable[[str], bool],
+        content_selectors: tuple[str, ...],
+        *,
+        discovery_selectors: tuple[str, ...] = (),
+        published_at_from_url: Callable[[str, str], datetime | None] | None = None,
+        sort_discovered_by_published_at: bool = False,
+        prefer_detail_published_at: bool = False,
+    ) -> None:
+        self._link_filter = link_filter
+        self._content_selectors = content_selectors
+        self._discovery_selectors = discovery_selectors
+        self._published_at_from_url = published_at_from_url
+        self._sort_discovered_by_published_at = sort_discovered_by_published_at
+        self._prefer_detail_published_at = prefer_detail_published_at
+
+    def _discovery_anchors(self, soup: BeautifulSoup) -> Iterable[Tag]:
+        if not self._discovery_selectors:
+            return soup.find_all("a", href=True)
+        return (
+            anchor
+            for selector in self._discovery_selectors
+            for root in soup.select(selector)
+            for anchor in root.find_all("a", href=True)
+        )
+
+    def discover(
+        self, response: FetchedResponse, profile: SourceProfile, *, limit: int
+    ) -> list[DiscoveredItem]:
+        soup = BeautifulSoup(_decode(response), "html.parser")
+        item_indexes: dict[str, int] = {}
+        items: list[DiscoveredItem] = []
+        for anchor in self._discovery_anchors(soup):
+            href = str(anchor.get("href"))
+            candidate_url = _canonical_url(urljoin(response.final_url, href))
+            url = _approved_discovered_url(candidate_url, profile)
+            if url is None:
+                continue
+            parts = urlsplit(url)
+            if not self._link_filter(url):
+                continue
+            item_id = parts.path.rstrip("/").rsplit("/", 1)[-1]
+            title = anchor.get_text(" ", strip=True) or None
+            parent_text = anchor.parent.get_text(" ", strip=True) if anchor.parent else ""
+            published_at = _parse_datetime(parent_text, profile.timezone)
+            if published_at is None and self._published_at_from_url is not None:
+                published_at = self._published_at_from_url(url, profile.timezone)
+            existing_index = item_indexes.get(url)
+            if existing_index is not None:
+                existing = items[existing_index]
+                items[existing_index] = replace(
+                    existing,
+                    title=existing.title or title,
+                    published_at=existing.published_at or published_at,
+                )
+            elif self._sort_discovered_by_published_at or len(items) < limit:
+                item_indexes[url] = len(items)
+                items.append(
+                    DiscoveredItem(
+                        source_item_id=item_id,
+                        url=url,
+                        title=title,
+                        published_at=published_at,
+                    )
+                )
+            if (
+                not self._sort_discovered_by_published_at
+                and len(items) >= limit
+                and all(item.title for item in items)
+            ):
+                break
+        if not items:
+            raise ParseError("source list contains no approved article links")
+        if self._sort_discovered_by_published_at:
+            earliest = datetime.min.replace(tzinfo=UTC)
+            items.sort(key=lambda item: item.published_at or earliest, reverse=True)
+        return items[:limit]
+
+    def extract(
+        self,
+        response: FetchedResponse,
+        item: DiscoveredItem,
+        profile: SourceProfile,
+    ) -> ExtractedDocument:
+        html = _decode(response)
+        soup = BeautifulSoup(html, "html.parser")
+        title = _extract_title(soup) or item.title
+        selected_text: str | None = None
+        selected_selector: str | None = None
+        for selector in self._content_selectors:
+            node = soup.select_one(selector)
+            if node is not None:
+                text = node.get_text("\n", strip=True)
+                if len(text) >= 80:
+                    selected_text = text
+                    selected_selector = selector
+                    break
+        if selected_text is None:
+            selected_text = trafilatura.extract(
+                html,
+                include_comments=False,
+                include_tables=False,
+                favor_precision=True,
+                output_format="txt",
+            )
+        if not title or not selected_text or len(selected_text.strip()) < 80:
+            raise ParseError("article title or body is missing after extraction")
+        published = None if self._prefer_detail_published_at else item.published_at
+        if published is None:
+            candidates = [
+                str(node.get("content") or "")
+                for node in soup.select(
+                    "meta[property='article:published_time'], "
+                    "meta[name='PubDate'], meta[name='publishdate']"
+                )
+                if isinstance(node, Tag)
+            ]
+            page_text = soup.get_text(" ", strip=True)[:2000]
+            published = next(
+                (
+                    parsed
+                    for value in [*candidates, page_text]
+                    if (parsed := _parse_datetime(value, profile.timezone))
+                ),
+                None,
+            )
+        published = published or item.published_at
+        canonical_node = soup.select_one("link[rel='canonical']")
+        canonical = item.url
+        if isinstance(canonical_node, Tag) and canonical_node.get("href"):
+            candidate = _canonical_url(urljoin(response.final_url, str(canonical_node.get("href"))))
+            if urlsplit(candidate).hostname in profile.allowed_hosts:
+                canonical = candidate
+        return ExtractedDocument(
+            source_item_id=item.source_item_id,
+            original_url=item.url,
+            canonical_url=canonical,
+            title=title.strip(),
+            clean_text=selected_text.strip(),
+            published_at=published,
+            language=profile.language,
+            parser_version=profile.parser_version,
+            extraction_metadata={
+                "method": "selector" if selected_selector else "trafilatura",
+                "selector": selected_selector,
+                "character_count": len(selected_text.strip()),
+            },
+        )
+
+
+def _path_matches(pattern: str) -> Callable[[str], bool]:
+    compiled = re.compile(pattern)
+    return lambda url: bool(compiled.search(urlsplit(url).path))
+
+
+STDAILY_DATED_ARTICLE_PATH = r"^/web/(?:[^/]+/)?20\d{2}-\d{2}/\d{2}/content_\d+\.html$"
+
+
+def _stdaily_published_at_from_url(url: str, timezone: str) -> datetime | None:
+    match = re.search(r"/(20\d{2}-\d{2})/(\d{2})/content_\d+\.html$", urlsplit(url).path)
+    if match is None:
+        return None
+    return _parse_datetime(f"{match.group(1)}-{match.group(2)}", timezone)
+
+
+CONNECTORS: dict[str, SourceConnector] = {
+    "gov_cn_policy_v1": GovernmentJsonConnector(),
+    "bnu_news_v1": HtmlConnector(
+        _path_matches(r"/[0-9a-fA-F]{32}\.htm$"), (".article", ".content", "main")
+    ),
+    "cas_research_v1": HtmlConnector(
+        _path_matches(r"\.shtml$"), (".TRS_Editor", ".content", "article", "main")
+    ),
+    "sensetime_news_v1": HtmlConnector(
+        _path_matches(r"/cn/news/\d+/?$"), ("article", ".news-detail", ".content", "main")
+    ),
+    "xinhua_tech_v1": HtmlConnector(
+        _path_matches(r"/c\.html$"), ("#detail", ".main-aticle", "article", "main")
+    ),
+    "gmw_education_v1": HtmlConnector(
+        _path_matches(r"content_\d+\.htm$"), ("#article_inbox", ".u-mainText", "article", "main")
+    ),
+    "stdaily_tech_v1": HtmlConnector(
+        _path_matches(STDAILY_DATED_ARTICLE_PATH),
+        (".article-content", ".content", "article", "main"),
+        discovery_selectors=(".listKjxw",),
+        published_at_from_url=_stdaily_published_at_from_url,
+        sort_discovered_by_published_at=True,
+        prefer_detail_published_at=True,
+    ),
+    "chinanews_education_v1": HtmlConnector(
+        _path_matches(r"\.shtml$"), (".left_zw", ".content", "article", "main")
+    ),
+}
+
+
+def get_connector(connector_key: str) -> SourceConnector:
+    try:
+        return CONNECTORS[connector_key]
+    except KeyError as error:
+        raise ParseError("source connector version is not installed") from error

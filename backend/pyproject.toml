@@ -15,6 +15,7 @@ dependencies = [
   "fastapi>=0.116,<1",
   "feedparser>=6.0,<7",
   "httpx>=0.28,<1",
+  "minio>=7.2,<8",
   "orjson>=3.10,<4",
   "pgvector>=0.4,<1",
   "pydantic>=2.11,<3",
@@ -57,6 +58,9 @@ files = ["app"]
 addopts = "-q --strict-markers --strict-config --cov=app --cov-report=term-missing"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "integration: requires local PostgreSQL and/or MinIO services",
+]
 
 [tool.coverage.run]
 branch = true

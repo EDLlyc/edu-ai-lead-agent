@@ -1,0 +1,1 @@
+"""Authoritative-source ingestion adapters."""
