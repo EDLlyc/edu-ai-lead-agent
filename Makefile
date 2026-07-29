@@ -3,9 +3,12 @@ SHELL := /bin/bash
 CONDA_ENV ?= edu-ai
 PY_RUN := conda run --name $(CONDA_ENV)
 
-.PHONY: env-init setup setup-backend setup-frontend backend-dev api-generate api-contract-check \
-	infra-up infra-down infra-status infra-logs \
-	backend-format backend-format-check backend-lint backend-typecheck backend-test backend-check \
+.PHONY: env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
+	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
+	api-generate api-contract-check \
+	infra-up stack-up infra-down infra-status infra-logs \
+	backend-format backend-format-check backend-lint backend-typecheck backend-test \
+	backend-integration-test backend-check \
 	frontend-format frontend-format-check frontend-lint frontend-typecheck frontend-test \
 	frontend-build frontend-check \
 	check doctor
@@ -25,6 +28,24 @@ setup-frontend:
 backend-dev:
 	$(PY_RUN) python -c 'import uvicorn; from app.core.config import get_settings; settings = get_settings(); uvicorn.run("app.api_main:app", host=settings.app_host, port=settings.app_port, reload=True)'
 
+migrate:
+	$(PY_RUN) alembic -c backend/alembic.ini upgrade head
+
+seed-sources:
+	$(PY_RUN) python -m app.seed_sources
+
+acquisition-api:
+	$(PY_RUN) python -m uvicorn app.api_main:app --host 127.0.0.1 --port 8000
+
+acquisition-scheduler:
+	$(PY_RUN) python -m app.scheduler_main
+
+acquisition-worker:
+	$(PY_RUN) python -m app.worker_main
+
+source-smoke:
+	$(PY_RUN) python -m app.live_smoke
+
 api-generate:
 	$(PY_RUN) python backend/scripts/export_openapi.py
 	npm run generate:api --prefix frontend
@@ -34,7 +55,10 @@ api-contract-check:
 	npm run generate:api:check --prefix frontend
 
 infra-up: env-init
-	docker compose up -d
+	docker compose up -d postgres minio minio-init
+
+stack-up: env-init
+	docker compose up -d --build
 
 infra-down:
 	docker compose down
@@ -59,6 +83,9 @@ backend-typecheck:
 
 backend-test:
 	$(PY_RUN) pytest backend
+
+backend-integration-test:
+	$(PY_RUN) pytest backend/tests/integration -q
 
 backend-check: backend-format-check backend-lint backend-typecheck backend-test
 

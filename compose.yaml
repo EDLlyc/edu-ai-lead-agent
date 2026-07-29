@@ -64,6 +64,93 @@ services:
         /usr/bin/mc mb --ignore-existing "local/$${MINIO_BUCKET}"
         /usr/bin/mc anonymous set none "local/$${MINIO_BUCKET}"
 
+  backend-migrate:
+    build:
+      context: ./backend
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment: &backend-environment
+      APP_ENV: ${APP_ENV:-development}
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Asia/Shanghai}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-edu_ai}:${POSTGRES_PASSWORD:-edu_ai_local_change_me}@postgres:5432/${POSTGRES_DB:-edu_ai}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-edu-ai-materials}
+      MINIO_SECURE: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-edu_ai_minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-edu_ai_minio_local_change_me}
+      ACQUISITION_SCHEDULE_HOUR: ${ACQUISITION_SCHEDULE_HOUR:-6}
+      ACQUISITION_SCHEDULE_MINUTE: ${ACQUISITION_SCHEDULE_MINUTE:-30}
+      ACQUISITION_CATCHUP_HOURS: ${ACQUISITION_CATCHUP_HOURS:-12}
+      ACQUISITION_POLL_SECONDS: ${ACQUISITION_POLL_SECONDS:-2}
+      ACQUISITION_WORKER_CONCURRENCY: ${ACQUISITION_WORKER_CONCURRENCY:-4}
+      ACQUISITION_LEASE_SECONDS: ${ACQUISITION_LEASE_SECONDS:-120}
+      ACQUISITION_HEARTBEAT_SECONDS: ${ACQUISITION_HEARTBEAT_SECONDS:-30}
+      ACQUISITION_MAX_ATTEMPTS: ${ACQUISITION_MAX_ATTEMPTS:-3}
+      ACQUISITION_MAX_RESPONSE_BYTES: ${ACQUISITION_MAX_RESPONSE_BYTES:-5242880}
+      ACQUISITION_CONNECT_TIMEOUT_SECONDS: ${ACQUISITION_CONNECT_TIMEOUT_SECONDS:-10}
+      ACQUISITION_READ_TIMEOUT_SECONDS: ${ACQUISITION_READ_TIMEOUT_SECONDS:-30}
+      ACQUISITION_TOTAL_TIMEOUT_SECONDS: ${ACQUISITION_TOTAL_TIMEOUT_SECONDS:-45}
+      ACQUISITION_MAX_REDIRECTS: ${ACQUISITION_MAX_REDIRECTS:-3}
+      ACQUISITION_USER_AGENT: ${ACQUISITION_USER_AGENT:-EduAILeadAgent/0.1 (+https://github.com/EDLlyc/edu-ai-lead-agent)}
+      ACQUISITION_FIRST_RUN_ITEM_LIMIT: ${ACQUISITION_FIRST_RUN_ITEM_LIMIT:-20}
+      ACQUISITION_DAILY_ITEM_LIMIT: ${ACQUISITION_DAILY_ITEM_LIMIT:-10}
+      ACQUISITION_FIRST_RUN_SCAN_LIMIT: ${ACQUISITION_FIRST_RUN_SCAN_LIMIT:-100}
+      ACQUISITION_DAILY_SCAN_LIMIT: ${ACQUISITION_DAILY_SCAN_LIMIT:-50}
+      ACQUISITION_VERSION: ${ACQUISITION_VERSION:-acquisition-v1}
+    command:
+      - /bin/sh
+      - -c
+      - alembic -c alembic.ini upgrade head && python -m app.seed_sources
+
+  acquisition-api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+    command: ["python", "-m", "uvicorn", "app.api_main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  acquisition-scheduler:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+    command: ["python", "-m", "app.scheduler_main"]
+
+  acquisition-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+    command: ["python", "-m", "app.worker_main"]
+
 volumes:
   postgres_data:
   minio_data:
