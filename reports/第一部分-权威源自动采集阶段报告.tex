@@ -1,0 +1,384 @@
+% 编译方式：XeLaTeX
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.7cm,bottom=1.8cm,left=1.75cm,right=1.75cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{tikz}
+\usepackage{fontspec}
+\usetikzlibrary{arrows.meta,positioning,fit}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{navy}{HTML}{102A43}
+\definecolor{ocean}{HTML}{1769AA}
+\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}
+\definecolor{sky}{HTML}{EAF3FA}
+\definecolor{slate}{HTML}{486581}
+\definecolor{ink}{HTML}{243B53}
+\definecolor{muted}{HTML}{627D98}
+\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}
+\definecolor{amber}{HTML}{D97706}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ocean,
+  urlcolor=teal,
+  pdfauthor={赛先生品牌内容系统},
+  pdftitle={第一部分建设成果报告：权威源自动采集与 AI 证据入库}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.3em}
+\setlength{\headheight}{22.2pt}
+\setlength{\tabcolsep}{5pt}
+\onehalfspacing
+\raggedbottom
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\sffamily\color{slate} 第一部分建设成果报告 · 权威证据采集}
+\rhead{\small\sffamily\color{slate} 赛先生品牌内容系统 · 2026-07-29}
+\cfoot{\small\sffamily\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height \headrulewidth\hfill}}
+
+\titleformat{\section}
+  {\Large\bfseries\sffamily\color{navy}}
+  {\tikz[baseline=(n.base)]\node[fill=ocean,text=white,rounded corners=2pt,
+    inner xsep=7pt,inner ysep=2pt,font=\bfseries\sffamily] (n) {\thesection};}
+  {0.75em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.85em}{0.25em}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\keyvalue}[2]{\noindent\textbf{\sffamily\color{navy}#1：}\textcolor{ink}{#2}\par}
+\newcommand{\statuspill}[2]{%
+  \tikz[baseline=(pill.base)]\node[fill=#1!13,text=#1,draw=#1!35,rounded corners=5pt,
+  inner xsep=6pt,inner ysep=2pt,font=\scriptsize\bfseries\sffamily] (pill) {#2};}
+
+\tcbset{enhanced,boxrule=0.55pt,arc=1.7mm,left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm}
+\newtcolorbox{focusbox}[1][]{colback=mint,colframe=teal!55,
+  borderline west={2.6pt}{0pt}{teal},breakable,#1}
+\newtcolorbox{infobox}[1][]{colback=sky,colframe=ocean!38,
+  borderline west={2.4pt}{0pt}{ocean},breakable,#1}
+\newtcolorbox{boundarybox}[1][]{colback=paper,colframe=line,
+  borderline west={2.4pt}{0pt}{amber},breakable,#1}
+
+\begin{document}
+
+\begin{center}
+  \statuspill{teal}{FIRST CAPABILITY COMPLETE}\hspace{0.5em}
+  \statuspill{ocean}{LIVE ACCEPTANCE PASSED}\par\vspace{0.8em}
+  {\color{ocean}\large\bfseries\sffamily 第一部分建设成果报告}\par\vspace{0.5em}
+  {\fontsize{23}{29}\selectfont\bfseries\sffamily\color{navy}
+    权威源自动采集与 AI 证据入库}\par\vspace{0.45em}
+  {\large\sffamily\color{slate}
+    8 个固定权威来源 · AI 标题门禁 · 原文快照 · 全链路溯源}\par\vspace{0.9em}
+  \tikz\draw[teal,line width=1.2pt] (0,0)--(3.2,0);
+\end{center}
+
+\keyvalue{报告日期}{2026 年 7 月 29 日}
+\keyvalue{能力状态}{第一部分实现、独立审查、确定性测试与实时 8 来源验收均已完成}
+\keyvalue{实时运行 ID}{\texttt{a174ed10-0ef1-4983-b81f-7f8d2bed84d2}}
+\keyvalue{部署形态}{Python 3.11 + FastAPI + PostgreSQL/pgvector + MinIO + 独立 Scheduler/Worker}
+\keyvalue{相关性规则}{\texttt{ai-title-v1}，不依赖大模型即可运行}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}管理摘要}\quad
+第一部分已从“网页抓取脚本”升级为可部署、可恢复、可审计的权威证据入口。
+系统每天可从 8 个固定权威来源扫描近期列表，只对 AI、人工智能、机器人、具身智能、
+大模型、算力、AI 芯片、脑机接口及相关政策标题请求详情页；无匹配时返回 0 条，
+不使用无关政策或普通科研文章凑数。每条候选同时保存清洗正文、原文链接和不可变网页快照，
+可直接供后续 LangGraph 总结/选题节点使用。
+\end{focusbox}
+
+\section{本阶段建设目标与业务价值}
+
+本阶段解决后续 AI 内容生产的事实入口问题。它不负责摘要、选题、文案或生图，而是先回答
+三个基础问题：\textbf{数据来自哪里、是否与 AI 主题相关、未来能否回到原文复核}。
+
+\noindent\begin{tabularx}{\textwidth}{L{3.0cm}YY}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 目标 &
+\color{white}\bfseries\sffamily 已实现能力 &
+\color{white}\bfseries\sffamily 直接价值 \\
+\midrule
+固定权威来源 & 8 个政府、高校、科研机构、企业与权威媒体来源版本化登记 & 避免模型自由浏览和未知来源污染 \\
+\rowcolor{paper}
+只收相关内容 & 标题相关性规则在详情请求前执行，支持 AI 相关政策 & 降低无关正文、调用成本和后续人工筛选成本 \\
+保存完整证据 & 清洗正文、原始快照、URL、时间、哈希、解析版本与运行记录 & 文章修改或下线后仍可审计复现 \\
+\rowcolor{paper}
+每天稳定运行 & 独立调度器、持久 Job、租约、心跳、幂等与失败分类 & 服务重启后可恢复，单站失败不阻塞其他来源 \\
+下游可直接消费 & 列表提供来源/标题/时间/链接，详情提供正文与快照 & 后续节点无需重复访问官网 \\
+\bottomrule
+\end{tabularx}
+
+\section{来源范围与主题边界}
+
+\subsection{固定的 8 个来源}
+
+\noindent\begin{tabularx}{\textwidth}{L{1.1cm}L{4.0cm}L{3.6cm}Y}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries 级别 & \color{white}\bfseries 来源 &
+\color{white}\bfseries 类型 & \color{white}\bfseries 主要用途 \\
+\midrule
+A & 中国政府网最新政策 & 政府/政策 & AI 规划、法规、标准、治理与产业支持政策 \\
+\rowcolor{paper}
+A & 北京师范大学新闻网 & 高校 & AI 教育、人才培养与学校合作的一手信息 \\
+A & 中国科学院科研进展 & 科研机构 & 与 AI/智能系统明确相关的科研进展 \\
+\rowcolor{paper}
+A & 商汤科技新闻中心 & AI 企业 & 企业一手产品、模型、机器人与产业实践 \\
+B & 新华网科技 & 权威媒体 & 科技趋势、产业背景与事实佐证 \\
+\rowcolor{paper}
+B & 光明网教育 & 权威教育媒体 & AI 教育、机器人赛事和学校实践 \\
+B & 科技日报 & 科技媒体 & AI、具身智能、算力与科技产业动态 \\
+\rowcolor{paper}
+B & 中国新闻网教育 & 权威教育媒体 & AI 教育现象、治理问题与社会观察 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{AI 标题门禁}
+
+规则版本 \texttt{ai-title-v1} 使用 Unicode NFKC、大小写折叠、空白与短横线归一化，
+覆盖 AI/人工智能、AIGC、大模型、GPT/ChatGPT/DeepSeek、机器学习、算法、算力、
+AI 芯片、计算机视觉、语音/NLP、机器人、具身智能、自动驾驶、无人机和脑机接口等主题。
+
+政策词“规划、办法、标准、治理、通知、支持”等不能单独使文章通过；只有标题同时出现明确的
+AI/智能技术词时，才作为 AI 政策接受。系统同时拒绝 \textit{Travel agents}、
+\textit{Chemical agent}、商业信心指数 BCI、招生语境 UAS、智能体检、智能体育等歧义写法。
+
+\begin{boundarybox}
+\textbf{\sffamily\color{navy}保守原则}\quad
+宁可暂时漏掉标题没有明确 AI 信号的文章，也不抓取无关内容。新术语通过发布新的相关性规则和
+来源版本扩展，不能原地修改历史规则。
+\end{boundarybox}
+
+\section{系统实现与数据流}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=0.48cm,
+  stage/.style={rectangle,draw=ocean!65,fill=sky,rounded corners=3pt,
+    text width=2.35cm,minimum height=0.95cm,align=center,font=\small\bfseries\sffamily,text=navy},
+  gate/.style={stage,draw=teal,fill=mint},
+  arrow/.style={-Stealth,thick,color=teal!80!black}
+]
+  \node (source) [stage] {8 个来源\\近期列表};
+  \node (safe) [stage,right=of source] {安全抓取\\SSRF · 限速 · 超时};
+  \node (filter) [gate,right=of safe] {AI 标题门禁\\过滤后再抓详情};
+  \node (snapshot) [stage,right=of filter] {MinIO 快照\\原始网页 · 哈希};
+  \node (db) [stage,below=0.62cm of snapshot] {PostgreSQL\\Run · Job · 候选};
+  \node (api) [gate,left=of db] {证据 API\\标题 · 链接 · 正文};
+  \node (later) [stage,left=of api] {后续 LangGraph\\总结 · 选题 · 生成};
+  \draw[arrow] (source)--(safe);
+  \draw[arrow] (safe)--(filter);
+  \draw[arrow] (filter)--(snapshot);
+  \draw[arrow] (snapshot)--(db);
+  \draw[arrow] (db)--(api);
+  \draw[arrow] (api)--(later);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.25em]
+  \item 列表响应先经过允许域名、公共 IP、重定向、类型、字节与超时安全检查；
+  \item 连接器扫描有限的近期列表，合并图片空链接与文本链接，形成有序候选；
+  \item 标题门禁过滤无关项，只有相关项才发起详情请求；
+  \item 原始列表和相关详情以内容哈希写入 MinIO，不同字节不能覆盖同一对象；
+  \item PostgreSQL 保存来源版本、运行、Job、候选、Observation、计数与快照引用；
+  \item 后续节点通过 candidate ID 获取已保存正文，不把原文链接当作新的自由爬虫入口。
+\end{enumerate}
+
+\section{2026-07-29 实时验收结果}
+
+\subsection{总体运行指标}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}Y L{3.2cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries 指标 & \color{white}\bfseries 结果 &
+\color{white}\bfseries 指标 & \color{white}\bfseries 结果 \\
+\midrule
+Run ID & \texttt{\footnotesize a174ed10-0ef1-4983}\newline
+         \texttt{\footnotesize b81f-7f8d2bed84d2} & 规则版本 & \texttt{ai-title-v1} \\
+\rowcolor{paper}
+来源任务 & 8/8 成功 & 失败任务 & 0 \\
+新增相关候选 & 6 & 无相关内容来源 & 2 \\
+\rowcolor{paper}
+过滤无关标题 & 263 & 重复/未变化 & 0/0 \\
+任务执行窗口 & 约 7.5 秒 & 本轮响应字节 & 993,007 Bytes \\
+\rowcolor{paper}
+未完成 Job & 0 & 抓取租约 & 0 \\
+\bottomrule
+\end{tabularx}
+
+\begin{infobox}
+本轮中国政府网扫描 100 条政策、中国科学院扫描 15 条科研进展，均未发现标题明确关联 AI 或
+智能科技的内容，因此两个 Job 以 \texttt{no\_relevant\_items} 成功结束，没有抓取无关详情页。
+这比“每站强行返回一条”更符合证据质量目标。
+\end{infobox}
+
+\subsection{各来源过滤与接受情况}
+
+\noindent\begin{tabularx}{\textwidth}{L{4.2cm}L{3.0cm}L{2.5cm}Y}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries 来源 & \color{white}\bfseries 结果 &
+\color{white}\bfseries 过滤数 & \color{white}\bfseries 入库数 \\
+\midrule
+北京师范大学新闻网 & 成功 & 22 & 1 \\
+\rowcolor{paper}
+中国科学院科研进展 & 无相关内容 & 15 & 0 \\
+中国政府网最新政策 & 无相关内容 & 100 & 0 \\
+\rowcolor{paper}
+中国新闻网教育 & 成功 & 57 & 1 \\
+光明网教育 & 成功 & 36 & 1 \\
+\rowcolor{paper}
+商汤科技新闻中心 & 成功 & 5 & 1 \\
+科技日报 & 成功 & 7 & 1 \\
+\rowcolor{paper}
+新华网科技 & 成功 & 21 & 1 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{正式入库的 6 条相关内容}
+
+\begin{longtable}{L{2.75cm}L{6.25cm}L{2.2cm}L{2.15cm}L{1.75cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries 来源 & \color{white}\bfseries 标题/原文 &
+\color{white}\bfseries 发布时间 & \color{white}\bfseries 命中词 &
+\color{white}\bfseries 正文字符 \\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries 来源 & \color{white}\bfseries 标题/原文 &
+\color{white}\bfseries 发布时间 & \color{white}\bfseries 命中词 &
+\color{white}\bfseries 正文字符 \\
+\midrule
+\endhead
+北京师范大学 & 北京师范大学与北京航空航天大学签署关于人工智能+教育领域的合作框架协议
+\newline\href{https://news.bnu.edu.cn/zx/ttgz/293edc4b328449368e6da0fc704432d8.htm}{查看原文} &
+07-19 16:37 & 人工智能 & 1,670 \\
+\rowcolor{paper}
+中国新闻网 & AI研学营，“注水”很普遍
+\newline\href{https://www.chinanews.com.cn/edu/2026/07-14/10658982.shtml}{查看原文} &
+07-14 13:21 & AI & 4,112 \\
+光明网 & 首届北京市中学生人形机器人足球赛总决赛举行
+\newline\href{https://edu.gmw.cn/2026-07/23/content_38903218.htm}{查看原文} &
+07-23 & 机器人 & 1,690 \\
+\rowcolor{paper}
+商汤科技 & 全球首个端侧驱动本体的具身世界模型！大晓机器人发布 Kairos 3.1
+\newline\href{https://www.sensetime.com/cn/news/51170767}{查看原文} &
+07-28 & 人工智能、AI、机器人 & 3,991 \\
+科技日报 & 全国首个具身智能发展局揭牌
+\newline\href{https://www.stdaily.com/web/gdxw/2026-07/29/content_555090.html}{查看原文} &
+07-29 10:08 & 具身智能 & 607 \\
+\rowcolor{paper}
+新华网 & AI奢护新范式
+\newline\href{https://www.news.cn/tech/20260724/4162865b956b492f9f7b3ac15d1e8626/c.html}{查看原文} &
+07-24 & AI & 87 \\
+\bottomrule
+\end{longtable}
+
+上述 6 条候选均保存了清洗正文和详情快照。详情快照合计 309,371 Bytes；本轮列表与详情
+网络响应合计 993,007 Bytes。标题命中词与规则版本已写入候选提取元数据，后续可解释
+“为什么这篇文章被接受”。
+
+\section{质量、安全与独立审查}
+
+\subsection{最终质量门}
+
+\noindent\begin{tabularx}{\textwidth}{L{4.0cm}Y}
+\toprule
+\rowcolor{teal}
+\color{white}\bfseries 检查 & \color{white}\bfseries 结果 \\
+\midrule
+后端自动化测试 & 112 项全部通过，总覆盖率 86\%，标题相关性模块覆盖率 100\% \\
+\rowcolor{paper}
+代码质量 & Ruff 格式/lint 通过；strict mypy 检查 46 个源文件通过 \\
+真实服务集成 & PostgreSQL、MinIO、迁移、快照、幂等、租约、重试与无关详情阻断通过 \\
+\rowcolor{paper}
+前端合同 & OpenAPI 漂移检查、Prettier、ESLint、TypeScript、Vitest 3/3、生产构建通过 \\
+运行环境 & Doctor、pgvector 0.8.1、Alembic \texttt{20260729\_0003}、MinIO Bucket 通过 \\
+\rowcolor{paper}
+交付检查 & Compose 渲染、Shell 语法、\texttt{git diff --check}、项目凭据正则扫描通过 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{独立审查发现并修复的问题}
+
+\begin{itemize}[leftmargin=2em,itemsep=0.25em]
+  \item 收紧 \textit{agent}、BCI、UAS 等英文歧义，补充 DeepSeek、ChatGPT、GPT、chatbot、
+        intelligent system 与 Unicode 短横线形式；
+  \item 防止“深度学习”在普通教育语境误收，防止“智能体检、智能体育、智能体系”等复合词误收；
+  \item 数据库降级前恢复旧活动来源版本，避免旧 Worker 将新版本误判为无过滤版本；
+  \item 修复重试时过滤计数重复累加，终态只保存一次扫描值；
+  \item 详情页第一次请求也执行单来源限速，避免列表请求后立即连续访问。
+\end{itemize}
+
+\subsection{安全边界}
+
+系统只允许来源登记表中的 HTTPS 域名和路径，逐次校验 DNS 与重定向目标，拒绝私网、环回、
+链路本地、元数据和 Fake-IP/基准地址。响应设置连接/读取/总超时、最大字节、内容类型和
+单来源速率。日志不记录完整正文、Cookie、授权头或签名 URL。抓取 Worker 已在验收后停止，
+当前未完成任务和来源租约均为 0。
+
+\section{当前边界与下一阶段建议}
+
+\subsection{当前明确边界}
+
+\begin{itemize}[leftmargin=2em,itemsep=0.25em]
+  \item 当前只抓取 8 个已审核来源，不做全网搜索，也不接受任意 URL；
+  \item 当前规则为确定性标题门禁，可能有意漏掉标题没有明确 AI 信号的新术语；
+  \item 当前交付为服务器可部署形态，正式主机的域名/TLS、认证、备份和外部监控另行建设；
+  \item 本阶段不做摘要、聚类、选题评分、文案生成、生图或自动发布；
+  \item Docker 镜像在正常网络带宽下的完整构建和 gitleaks 工具扫描仍属于部署工具跟进项。
+\end{itemize}
+
+\subsection{下一阶段：LangGraph 工作流}
+
+建议下一阶段使用 LangGraph 编排需要状态和分支的 AI 工作流，但不替代本阶段的调度器、
+Worker、数据库租约和安全抓取。建议节点为：
+
+\begin{center}
+\statuspill{ocean}{读取候选正文}
+$\rightarrow$ \statuspill{ocean}{摘要与结构化分类}
+$\rightarrow$ \statuspill{ocean}{事件聚类/去重}
+$\rightarrow$ \statuspill{ocean}{选题资格与评分}
+$\rightarrow$ \statuspill{teal}{人工审核/生成}
+\end{center}
+
+LangGraph 节点使用 candidate ID 读取已保存正文和快照；原文链接用于引用与人工核验，
+不在每个节点重新访问官网。这样模型服务不可用或工作流重试时，也不会重复抓取权威网站。
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}阶段结论}\quad
+第一部分已经形成可信、可持续的事实输入边界：来源固定、主题可解释、无关内容可拒绝、
+正文与原始网页可追溯、失败和重试可恢复。系统已具备进入第二部分“数据治理、摘要与选题”
+建设的前提条件。
+\end{focusbox}
+
+\end{document}

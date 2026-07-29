@@ -2,9 +2,9 @@
 
 ## Contract status
 
-These are initial quality gates for Python 3.11/FastAPI. The local commands and first trusted
-environment-shell tests now live in the paths linked below. CI remains a required follow-up when
-continuous integration is introduced; it is outside the development-environment task.
+These are the implemented quality gates for Python 3.11/FastAPI and the generated frontend API
+contract. Local commands and tests live in the paths linked below. CI remains a required follow-up
+when continuous integration is introduced.
 
 ## Required engineering patterns
 
@@ -129,6 +129,172 @@ services:
 Use an explicit pgvector/PostgreSQL tag, configurable loopback binding, a named data volume,
 health check, and idempotent `CREATE EXTENSION IF NOT EXISTS vector` initialization as implemented
 in [`compose.yaml`](../../../compose.yaml).
+
+## Scenario: Live source verification behind Fake-IP DNS
+
+### 1. Scope / Trigger
+
+This contract applies when an operator runs the opt-in live check or a one-item live acquisition
+against the approved source registry, especially from WSL, Clash Verge, Mihomo, or another TUN
+environment that can synthesize DNS answers.
+
+### 2. Signatures
+
+- Entry smoke: `make source-smoke` calls `python -m app.live_smoke` and checks all eight profiles.
+- Full live acceptance: enqueue one run for the eight active source versions, start a worker with
+  `ACQUISITION_FIRST_RUN_ITEM_LIMIT=1` and `ACQUISITION_DAILY_ITEM_LIMIT=1`, then query the run,
+  jobs, and evidence-candidate APIs.
+- SSRF policy failure: `PolicyRejectedError(code="non_public_address")`.
+
+### 3. Contracts
+
+- The production resolver must return real globally routable A/AAAA answers for approved hosts.
+- `198.18.0.0/15` is reserved benchmarking/Fake-IP space and remains rejected by the fetcher.
+- Clash/Mihomo compatibility is configured at the network layer with `dns.fake-ip-filter` for the
+  approved domains; application IP validation is never weakened to accommodate synthetic DNS.
+- `make source-smoke` continues after typed per-source failures, reports every source, and exits
+  non-zero after the matrix completes when any source failed.
+- HTTP 200 is necessary but insufficient. Full live acceptance checks that each discovered URL is
+  an article rather than a section/index page and that title/body extraction is meaningful.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Approved host resolves only to public addresses | Safe fetch proceeds under normal limits |
+| Approved host resolves to `198.18.x.x` or another non-global range | Typed `non_public_address`; no request is sent |
+| One source has a typed fetch failure | Remaining sources are checked; command exits non-zero at the end |
+| Job succeeds but URL is an index page or title is navigation boilerplate | Live acceptance fails and the connector/parser version is corrected |
+| Parser correction produces unchanged body bytes | Same source item under a new source/parser version may create corrected metadata; cross-source exact duplicates may still reuse content identity |
+
+### 5. Good / Base / Bad Cases
+
+- Good: eight public DNS answers, eight HTTP successes, eight terminal-success jobs, and article
+  candidates with meaningful titles, canonical URLs, body text, snapshots, and provenance.
+- Base: deterministic fixture/contract tests pass while live smoke is skipped in CI.
+- Bad: allowing `198.18.0.0/15`, disabling SSRF checks, stopping after the first source, or treating
+  `HTTP 200`/`job=succeeded` as proof that extracted content is correct.
+
+### 6. Tests Required
+
+- Connector fixtures cover all eight sources and regress index-page discovery, duplicate blank/text
+  anchors, navigation headings, parser drift, and timezone conversion.
+- `test_live_smoke.py` proves one typed failure does not prevent later profiles from being checked.
+- PostgreSQL integration proves a new parser/source version can store corrected metadata for the
+  same source item without disabling cross-source exact-duplicate handling.
+- An operator live check records all eight entry statuses; a one-item full run asserts `8/8`
+  successful jobs and inspects the resulting titles/URLs before acceptance.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```yaml
+# Do not make synthetic proxy addresses look public to the application.
+allowed_networks:
+  - 198.18.0.0/15
+```
+
+#### Correct
+
+```yaml
+dns:
+  fake-ip-filter:
+    - '+.gov.cn'
+    - '+.bnu.edu.cn'
+    - '+.cas.cn'
+    - '+.sensetime.com'
+    - '+.news.cn'
+    - '+.gmw.cn'
+    - '+.stdaily.com'
+    - '+.chinanews.com.cn'
+```
+
+## Scenario: Tiered validation without repeated full-suite runs
+
+### 1. Scope / Trigger
+
+Use this workflow for every implementation or review loop. The purpose is fast feedback without
+weakening the final gate: run the narrowest deterministic checks while code is changing, then run
+the complete suite once after the last production-code edit.
+
+### 2. Signatures
+
+- Focused loop: `conda run --name edu-ai pytest <affected-test-files> -q`.
+- Backend layer checkpoint: `make backend-format-check backend-lint backend-typecheck` plus the
+  affected unit/contract tests.
+- Persistence checkpoint, only for schema/repository/worker/storage changes:
+  `conda run --name edu-ai pytest backend/tests/integration -q` against real services.
+- Frontend/API checkpoint, only for schema/OpenAPI changes: `make api-generate` followed by the
+  relevant frontend type/contract check.
+- One final delivery gate: `make backend-check`, `make frontend-check`, `make doctor`,
+  `docker compose config --quiet`, and `git diff --check`.
+- Live source verification remains opt-in and is never part of the ordinary automated loop.
+
+### 3. Contracts
+
+- Small edits do not trigger unrelated integration, frontend build, or live-source commands.
+- Batch related edits before static/type checks instead of rerunning the same command after each
+  line change.
+- A production-code fix after a full gate invalidates that gate. Rerun affected focused tests, then
+  perform exactly one new final full gate after the last production edit.
+- A docs-only edit after a green final code gate requires formatting/diff validation for the docs,
+  not another backend/frontend suite.
+- Sandbox/local-socket denial is an environment failure. Re-run the same real-service test with
+  permitted loopback access; do not treat it as a code defect or replace PostgreSQL with SQLite.
+
+### 4. Validation & Error Matrix
+
+| Change | Minimum during development | Final requirement |
+|---|---|---|
+| Pure domain rule | Target unit file | One final backend gate |
+| Connector/parser | Connector fixture tests | Backend gate; optional one-item live smoke |
+| Migration/repository/worker | Focused unit + real integration | Backend gate + doctor |
+| API/Pydantic/OpenAPI | Focused API tests + generated contract | Backend and frontend gates |
+| Frontend-only | Affected Vitest/type/lint check | Frontend gate |
+| Docs/spec/report only after green code | Format/diff/link inspection | No redundant code suite |
+
+### 5. Good / Base / Bad Cases
+
+- Good: title-rule edits run the title unit suite; migration edits run the focused temporary-DB
+  regression; after review fixes stop, one backend/frontend final gate runs.
+- Base: a live website check is skipped because fixture and real-service acceptance are green.
+- Bad: run all backend/frontend/integration/live checks after every small patch, or skip the final
+  complete gate because focused tests passed.
+
+### 6. Tests Required
+
+- Every new regression is added to the narrow suite that reproduces the defect.
+- Full backend coverage remains measured by `make backend-check`; generated OpenAPI/frontend types
+  must be drift-free in `make frontend-check`.
+- Persistence behavior that depends on PostgreSQL locking, migrations, constraints, or MinIO uses
+  the real integration suite exactly when those layers change.
+- Record the final command results and any intentionally unavailable tooling (for example gitleaks)
+  in the task handoff.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```bash
+# Repeated after every one-line change
+make backend-check
+make frontend-check
+make doctor
+```
+
+#### Correct
+
+```bash
+# During the edit loop
+conda run --name edu-ai pytest backend/tests/unit/test_title_relevance.py -q
+
+# Once, after the last production edit
+make backend-check
+make frontend-check
+make doctor
+git diff --check
+```
 
 ## Test pyramid and required scenarios
 

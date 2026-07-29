@@ -3,10 +3,10 @@
 ## Purpose and status
 
 This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
-[`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable initial implementation contract.
-No pipeline code exists yet. The first implemented capability is authoritative-source acquisition
-and evidence ingestion; each later slice must update this document with real stage, schema, and
-test paths.
+[`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. The first
+stage now exists: authoritative-source acquisition, deterministic title relevance, immutable
+snapshots, evidence candidates, and durable run/job state. Later scoring/generation stages remain
+prospective and must update this document when implemented.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -51,6 +51,99 @@ ignore embedded instructions.
 Normalize boilerplate, whitespace, timestamps, URLs, and source names. Deduplicate by normalized
 SHA-256 first, then use SimHash/embedding similarity and event clustering. Retain links from
 duplicates to the canonical article/event so provenance is not lost.
+
+## Scenario: Eight-source AI evidence acquisition
+
+### 1. Scope / Trigger
+
+This is the implemented boundary for the first stage. It applies to the eight approved government,
+education, research, company, and media profiles in
+[`source_profiles.py`](../../../backend/app/infrastructure/ingestion/source_profiles.py). It does
+not authorize arbitrary URLs, general web search, LangGraph execution, summarization, scoring, or
+generation.
+
+### 2. Signatures
+
+- Schedule/default: daily 06:30 `Asia/Shanghai` through `app.scheduler_main`.
+- Manual enqueue: `POST /api/v1/acquisition-runs` -> HTTP 202 and a durable run ID.
+- Run/job query: `GET /api/v1/acquisition-runs/{run_id}` and `.../{run_id}/jobs`.
+- Evidence queue: `GET /api/v1/evidence-candidates`; stored handoff:
+  `GET /api/v1/evidence-candidates/{candidate_id}`.
+- Rule: `AI_TITLE_RELEVANCE_RULE_VERSION = "ai-title-v1"` in
+  [`title_relevance.py`](../../../backend/app/domain/title_relevance.py).
+- Worker controls: `ACQUISITION_FIRST_RUN_SCAN_LIMIT`, `ACQUISITION_DAILY_SCAN_LIMIT`,
+  `ACQUISITION_FIRST_RUN_ITEM_LIMIT`, and `ACQUISITION_DAILY_ITEM_LIMIT`.
+
+### 3. Contracts
+
+- Parse a bounded raw discovery window, merge duplicate blank-image/text anchors, preserve source
+  ordering, and apply title relevance before every detail request.
+- `ai-title-v1` uses NFKC/case/whitespace/dash normalization and conservative Chinese/English
+  terms. AI policy is eligible only when policy wording appears with a direct AI/intelligent-
+  technology term. Ambiguous `agent`, `BCI`, `UAS`, generic educational `深度学习`, and compounds
+  such as `智能体检` do not pass without the required technical context.
+- Accept at most the configured relevant-item limit; never fill the quota with unrelated items.
+  A zero-match source succeeds with `outcome=no_relevant_items`, stores `filtered_count`, advances
+  the raw-list cursor, and performs no detail request.
+- Accepted candidates persist `matched_title_terms` and `relevance_rule_version`, cleaned full
+  text, original/canonical URL, publication/fetch time, source/version IDs, immutable snapshot, and
+  observations.
+- Candidate lists expose source/title/time/original+canonical URL/candidate ID/rule version. Later
+  LangGraph nodes read candidate detail and stored text/snapshot; they do not normally re-crawl the
+  original URL.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Title directly names AI/model/robotics/intelligent technology | Accept and record matched terms |
+| AI regulation/plan/standard title includes direct AI term | Accept as authoritative policy evidence |
+| General policy, culture, education, or frontier-science title lacks AI context | Filter before detail fetch |
+| Bounded window contains no relevant title | Successful zero-item job with filtered count and raw cursor |
+| List/detail host, resolved IP, redirect, type, size, or timeout violates policy | Typed failure; no unsafe fallback |
+| Fake-IP resolver returns `198.18.0.0/15` | `non_public_address`; fix DNS layer, never weaken SSRF |
+| Source HTML changes and required article data disappears | Typed parse failure and connector/parser version update |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the 2026-07-29 report run `a174ed10-0ef1-4983-b81f-7f8d2bed84d2` completed 8/8 jobs,
+  accepted six AI-centered items, and filtered 263 unrelated titles.
+- Base: China Government and CAS had no relevant title in their bounded windows; both jobs
+  succeeded with zero candidates instead of selecting unrelated policy/research.
+- Bad: fetch the first headline per site, treat any HTTP 200 as useful evidence, accept ambiguous
+  abbreviations, or let a downstream LLM independently browse the link.
+
+### 6. Tests Required
+
+- [`test_title_relevance.py`](../../../backend/tests/unit/test_title_relevance.py) covers positive,
+  negative, Unicode, English-boundary, policy, and ambiguous-compound cases.
+- Connector contracts cover all eight source fixtures, ordering, article-path restrictions,
+  duplicate anchor merging, parser drift, and source-specific selectors.
+- Real PostgreSQL/MinIO tests assert no unrelated detail fetch, zero-match success/cursor behavior,
+  filtered counts across retries, immutable snapshots, provenance, and no-refetch downstream use.
+- Opt-in live acceptance uses production-safe fetching, one accepted item per source, and records
+  run/job/title/URL results; deterministic fixture tests remain authoritative.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+items = connector.discover(list_response, profile, limit=1)
+detail = await fetcher.fetch(items[0].url, profile)
+```
+
+#### Correct
+
+```python
+discovered = connector.discover(list_response, profile, limit=scan_limit)
+evaluated = [(item, evaluate_title_relevance(item.title)) for item in discovered]
+accepted = [(item, result) for item, result in evaluated if result.is_relevant][:item_limit]
+for item in accepted:
+    detail = await fetcher.fetch(item[0].url, profile)
+```
+
+Discovery depth and accepted evidence count are separate contracts.
 
 ## Eligibility, scoring, and selection
 

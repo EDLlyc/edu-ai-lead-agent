@@ -32,6 +32,11 @@ frontend/test-results/
 logs/
 .cache/
 
+# LaTeX report build intermediates
+/reports/*.aux
+/reports/*.out
+/reports/*.toc
+
 # Editors and operating systems
 .idea/
 .vscode/

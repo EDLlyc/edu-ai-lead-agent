@@ -2,15 +2,12 @@
 
 ## Contract status
 
-The repository contains only the installable environment shell:
-[`api_main.py`](../../../backend/app/api_main.py),
-[`core/config.py`](../../../backend/app/core/config.py), and
-[`test_health.py`](../../../backend/tests/test_health.py). The environment tooling also exports
-[`openapi.json`](../../../backend/openapi.json) through
-[`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). The expanded tree below remains the
-required layout for the first product capability slices based on [`main.tex`](../../../main.tex)
-and [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf); the environment shell does not establish
-pipeline, domain, scheduler, or worker behavior.
+The first backend slice is implemented under [`backend/app`](../../../backend/app): versioned API
+routes, acquisition application services and ports, provider-independent domain rules, SQLAlchemy
+repositories/models, safe source connectors/fetching, MinIO snapshot storage, and separate API,
+scheduler, and worker entry points. OpenAPI is exported through
+[`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). Extend this real layout;
+do not recreate the earlier greenfield-only tree or collapse the process boundaries.
 
 ## Target layout
 
@@ -27,7 +24,6 @@ backend/
 │   │   └── v1/routes/
 │   ├── application/
 │   │   ├── services/
-│   │   ├── pipeline/
 │   │   └── ports/
 │   ├── core/
 │   │   ├── config.py
@@ -35,17 +31,17 @@ backend/
 │   │   ├── logging.py
 │   │   └── security.py
 │   ├── domain/
-│   │   ├── entities/
+│   │   ├── entities.py
 │   │   ├── enums.py
-│   │   └── value_objects/
+│   │   ├── state.py
+│   │   ├── title_relevance.py
+│   │   └── value_objects.py
 │   ├── infrastructure/
-│   │   ├── ai/
 │   │   ├── db/
-│   │   │   ├── models/
-│   │   │   ├── repositories/
+│   │   │   ├── models.py
+│   │   │   ├── repositories.py
 │   │   │   └── session.py
 │   │   ├── ingestion/
-│   │   ├── search/
 │   │   └── storage/
 │   ├── schemas/
 │   ├── api_main.py
@@ -58,7 +54,9 @@ backend/
 ```
 
 The deployable entry points share application and infrastructure modules but must not import one
-another. Docker Compose starts `api_main`, `scheduler_main`, and `worker_main` independently.
+another. Docker Compose starts `api_main`, `scheduler_main`, and `worker_main` independently. Add
+future AI/search packages only when their own task implements them; LangGraph is a downstream
+workflow dependency, not part of acquisition.
 
 ## Ownership rules
 
@@ -134,4 +132,4 @@ This separation prevents each multi-process FastAPI worker from firing the same 
 - Importing `app.api` from workers or the scheduler.
 - Running external HTTP/model calls while holding a database transaction open.
 - Circular imports resolved through local imports rather than corrected ownership.
-- Treating this proposed tree as permanent evidence: update it after the first vertical slice.
+- Reintroducing speculative `ai/`, `search/`, or pipeline packages before a task owns real code.

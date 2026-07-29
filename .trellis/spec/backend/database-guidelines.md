@@ -2,10 +2,12 @@
 
 ## Initial persistence contract
 
-Use PostgreSQL with pgvector. SQLAlchemy 2.x's asynchronous API with `asyncpg` and Alembic is the
-greenfield default selected during bootstrap; it is not an inherited codebase convention. The
-first vertical slice must validate this choice with real integration tests, after which this
-guide must link to the actual models, repositories, and migrations.
+Use PostgreSQL with pgvector, SQLAlchemy 2 async mappings, `asyncpg`, and Alembic. The implemented
+acquisition schema is defined in
+[`models.py`](../../../backend/app/infrastructure/db/models.py), accessed through
+[`repositories.py`](../../../backend/app/infrastructure/db/repositories.py), and migrated by
+[`backend/alembic/versions`](../../../backend/alembic/versions). PostgreSQL/MinIO integration tests,
+not SQLite or `create_all()`, are the executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
 brand knowledge, generation artifacts, and material packages. Never rely on scheduler memory for
@@ -124,6 +126,81 @@ Evidence and brand retrieval use separate queries and return separately typed re
   `head` and document downgrade limitations.
 - Enable PostgreSQL extensions, including `vector`, through a migration or documented provisioning
   step with a corresponding integration check.
+
+## Scenario: Versioned acquisition relevance migration
+
+### 1. Scope / Trigger
+
+Use this contract whenever source parsing, relevance policy, candidate provenance, or run/job
+counters change. Historical source versions, candidates, observations, and MinIO snapshots are
+audit records and must not be rewritten in place.
+
+### 2. Signatures
+
+- Upgrade: `alembic -c backend/alembic.ini upgrade head`.
+- Current head: `20260729_0003` in
+  [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
+- Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
+- Candidate contract: `evidence_candidates.relevance_rule_version VARCHAR(40) NULL`.
+- Counters: `acquisition_runs.filtered_count` and `acquisition_jobs.filtered_count`, non-null and
+  defaulting to zero.
+
+### 3. Contracts
+
+- Legacy rows keep `relevance_rule_version=NULL`; seeding creates a new immutable active version
+  with `ai-title-v1` for each of the eight sources.
+- Retry-scheduled attempts do not persist or accumulate a filtered count. The terminal scan value
+  becomes the job count; the run count is the sum of terminal job counts.
+- A downgrade from `0003` first repoints every active relevance-enabled source to its highest
+  legacy NULL-rule version. If none exists, `sources.active_version_id` becomes NULL before the
+  relevance columns are dropped.
+- Downgrade never deletes source versions, candidates, observations, or snapshot objects.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Existing legacy database upgrades to `0003` | Existing rows remain queryable; counters are zero; rule fields are NULL |
+| Source seed runs after upgrade | Exactly one fingerprinted active rule version per source; history retained |
+| Attempt schedules a retry after scanning | `filtered_count` is not added to job/run totals |
+| Terminal retry succeeds | Final scan count is stored once and aggregated once |
+| Downgrade has a legacy source version | Activate the newest legacy version before dropping columns |
+| Downgrade has no legacy source version | Set active version NULL; never point an old worker at an unfiltered new version |
+
+### 5. Good / Base / Bad Cases
+
+- Good: upgrade, seed, run, downgrade, and re-upgrade preserve all audit rows and valid active-version
+  ownership.
+- Base: a source with no relevant item stores zero candidates and a positive filtered count.
+- Bad: mutate the old source version, sum filtered counts with `+=` across retries, or drop the rule
+  column while a rule-enabled version remains active.
+
+### 6. Tests Required
+
+- [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) runs clean upgrade
+  and an independent temporary-database `0003 -> 0002` downgrade assertion.
+- [`test_title_relevance_ingestion.py`](../../../backend/tests/integration/test_title_relevance_ingestion.py)
+  asserts mixed-list filtering, zero-match cursor advancement, retry count behavior, source-version
+  preservation, and stored candidate handoff against real PostgreSQL/MinIO.
+- Assert no negative counters, no active-version/source ownership mismatch, and no terminal row
+  without `completed_at` in operational verification.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+job.filtered_count += attempt_filtered_count
+```
+
+#### Correct
+
+```python
+# Retry attempts remain non-terminal and do not publish scan totals.
+job.filtered_count = terminal_filtered_count
+```
+
+Publish one terminal value and derive the run aggregate from terminal jobs.
 
 ## Avoid
 

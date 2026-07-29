@@ -2,20 +2,17 @@
 
 ## Status and source of truth
 
-These documents are the initial implementation contract for a greenfield backend. The repository
-now contains a minimal environment-verification API shell in
-[`backend/app/api_main.py`](../../../backend/app/api_main.py), but no product pipeline or domain
-vertical slice. The contracts are aligned with the editable
+These documents are the implementation contract for the backend. The first production-shaped
+vertical slice now exists: governed acquisition from eight authoritative sources, deterministic
+AI-title relevance, PostgreSQL run/job state, immutable MinIO snapshots, provenance-bearing
+evidence candidates, and independent API/scheduler/worker processes. The contracts remain aligned
+with the editable
 [`main.tex`](../../../main.tex) source and generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf), version 0.3. The bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`
 preserves the version 0.2 starting decisions as historical context; version 0.3 and these specs
-control where the old report differs. Rules that name future pipeline modules still describe the
-intended first product slice.
-
-The first vertical slice must follow these defaults unless its task records an explicit design
-decision. After that slice is merged, replace illustrative paths and snippets with links to real
-source and tests, and revise any rule that the implementation has intentionally superseded.
+control where the old report differs. Rules for later scoring/generation stages remain prospective;
+acquisition rules link to the implemented source and tests.
 
 ## Guidelines index
 
