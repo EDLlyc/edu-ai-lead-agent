@@ -71,3 +71,26 @@ Reworked the editable XeLaTeX technical report into a polished v0.3 architecture
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: Complete authoritative-source ingestion
+
+**Date**: 2026-07-29
+**Task**: Complete authoritative-source ingestion
+**Branch**: `main`
+
+### Summary
+
+Completed the production-shaped first capability: governed daily acquisition from eight authoritative sources, deterministic AI-title filtering, safe fetching, immutable snapshots, provenance APIs, PostgreSQL/MinIO durability, deployment configuration, full verification, a live 8-of-8 acceptance run, and the phase-one LaTeX/PDF delivery report.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `da28c14` | (see git log) |
+| `cda45d3` | (see git log) |
+| `602f21a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
