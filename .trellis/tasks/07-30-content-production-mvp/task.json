@@ -1,0 +1,31 @@
+{
+  "id": "content-production-mvp",
+  "name": "content-production-mvp",
+  "title": "Complete content production MVP",
+  "description": "Plan and deliver the remaining content-production MVP: explainable daily topic selection, versioned brand RAG, evidence-bound Moments generation and audit/repair, image generation, and an internal material-package review interface.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "full-stack",
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-07-30",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-30-daily-topic-selection",
+    "07-30-brand-knowledge-rag",
+    "07-30-copy-generation-audit",
+    "07-30-material-package-ui"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

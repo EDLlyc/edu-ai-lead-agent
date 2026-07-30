@@ -1,0 +1,16 @@
+{"file":".trellis/spec/backend/index.md","reason":"Project-wide backend evidence, process, provider, idempotency, and manual-publishing boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Canonical prospective contracts for deterministic scoring, separated retrieval, typed claims, validation, audit, repair, image, and package stages."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Implemented event/fact/evidence/version/provider/checkpoint contracts consumed by the remaining MVP."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL/pgvector, immutable versions, short transactions, Alembic, vector, and evidence-versus-brand separation rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed API/provider/validation/audit/job failures, bounded retries, and reviewable terminal states."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Safe structured observability without prompts, source/brand bodies, hidden reasoning, credentials, or personal data."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tiered focused checks, real PostgreSQL/MinIO integration, generated contracts, security review, and one final full gate."}
+{"file":".trellis/spec/frontend/index.md","reason":"Internal material-package product boundaries, generated API types, provenance visibility, copy/download, and no publishing."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Feature ownership for material packages, pipeline runs, typed API hooks, browser helpers, and app routing."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Accessible package composition, source/audit visibility, copy/download behavior, and explicit async states."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"TanStack Query ownership, polling termination, typed mutations, clipboard/download effects, and hook tests."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Correct ownership of pipeline/package server state, URL filters, and local interaction state."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict generated OpenAPI contracts, view-model mapping, discriminated states, and untrusted-content handling."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Component/accessibility/API/E2E gates for the first material-package vertical slice."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace event, selection, brand, draft, audit, image, package, API, and UI data across all layers."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Code-backed existing foundations, reusable patterns, identified gaps, child boundaries, and external-input timing."}

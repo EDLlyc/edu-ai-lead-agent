@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify strict brand/evidence separation and provider/security boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify active/valid audience filtering, separated retrieval types, bounded context, and explainability."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check document/version/chunk/vector immutability, activation, re-index, constraints, and retrieval filters."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check malformed/excessive/encrypted upload, provider, retry, and safe diagnostics."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check that brand bodies, filenames where sensitive, embeddings, and credentials are not leaked."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check controlled and live retrieval quality plus real storage/search integration."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check internal upload/status behavior, typed errors, accessibility, and contract drift."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Verify the selected PostgreSQL/MinIO/provider reuse and external-input acceptance gate."}

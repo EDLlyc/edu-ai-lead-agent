@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify image only follows accepted audit, one artifact/package, manual terminal state, and no publishing."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check image/package versioning, fingerprint idempotency, object integrity, bindings, and review lifecycle."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check provider/storage/download/review retry and terminal error behavior."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check no image prompt body, credential, raw provider output, or unsafe object URL leakage."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check live image, real MinIO, API/OpenAPI, security, and integrated final gate."}
+{"file":".trellis/spec/frontend/index.md","reason":"Check internal, provenance-visible, accessible review/copy/download behavior and no publishing path."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Check package composition, all states, evidence/audit visibility, semantic controls, and feedback."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Check polling, query keys, typed mutations, clipboard/download effects, and failure handling."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check generated types, discriminated states, no unsafe casts, and untrusted content rendering."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check unit/component/accessibility/build and critical package/no-topic E2E flows."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Verify the narrow one-image/reviewer scope and provider/input acceptance prerequisites."}

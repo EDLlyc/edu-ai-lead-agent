@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Evidence/brand separation, provider/process, untrusted input, and no-publishing boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Separate brand retrieval operation, metadata, rank fusion, and brand-not-fact contract."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Brand document/version/chunk/vector schema, pgvector/full-text, immutable history, and MinIO persistence."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed upload/parse/chunk/embed/retrieval failures and bounded retries."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Private corpus and credential redaction with safe ingestion/retrieval telemetry."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Parser/security/provider/repository/retrieval tests with real PostgreSQL/MinIO."}
+{"file":".trellis/spec/frontend/index.md","reason":"Internal brand upload/status UI and generated-contract boundaries."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Typed upload/status/result contracts and untrusted filename/content handling."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace upload through object storage, parsing, chunks, embeddings, retrieval, API, and UI."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Reusable embedding/MinIO/job patterns, parser research gaps, and brand-input timing."}

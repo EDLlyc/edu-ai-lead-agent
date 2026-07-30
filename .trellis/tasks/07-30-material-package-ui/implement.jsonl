@@ -1,0 +1,15 @@
+{"file":".trellis/spec/backend/index.md","reason":"Provider, MinIO, durable jobs, provenance, security, and manual-use boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Accepted-image-prompt, idempotent image, package composition, awaiting-manual-use, and no-publish contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Image/package versions, object identity, request fingerprints, bindings, and migration rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed image/provider/storage/download/review failures and safe retries."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Safe image/provider/object telemetry without prompt bodies, credentials, or permanent object URLs."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Provider/storage/API/E2E/security checks and one final integrated gate."}
+{"file":".trellis/spec/frontend/index.md","reason":"Primary internal package review, source visibility, copy/download, accessibility, and no publishing."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Material-package/pipeline-run feature ownership, router, typed client, and browser helpers."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Package sections, status/error states, evidence, image, copy/download, and semantic accessibility."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Typed queries/mutations, polling stop, cache ownership, clipboard/download effects, and tests."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Server/URL/local state ownership for runs, packages, filters, review, copy, and downloads."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Generated package contracts, discriminated async states, safe URL/file handling, and strict TypeScript."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Component/accessibility/OpenAPI/build/E2E acceptance for the completed product vertical slice."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace accepted draft through image storage, package API, generated types, UI, and download."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Existing MinIO/frontend foundations, image-provider research gap, and live-input timing."}

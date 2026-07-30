@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Evidence binding, deterministic-before-model, durable jobs, untrusted text, and manual-use boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Typed draft/claims, evidence/brand bindings, validation, audit authority, repair, and terminal-state contracts."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Safe factual model transport, stored passages, provider metadata, checkpoint, and evidence provenance patterns."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Draft/version/claim/binding/audit persistence, short transactions, idempotency, and domain separation."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed schema/evidence/audit/provider failures, one repair, retry distinctions, and reviewable exhaustion."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Prompt/body/reasoning/brand/source/credential redaction and safe usage telemetry."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Prompt-injection, claim coverage, gate order, repair, provider, checkpoint, and live acceptance tests."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace selected topic and retrieval IDs through draft, bindings, audit, API, and image consumers."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Existing Zhipu/checkpoint patterns and copy/audit external-input requirements."}

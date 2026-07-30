@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify the integrated MVP preserves evidence, process, provider, security, and no-publishing boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Check the full stage order, deterministic gates, evidence/brand separation, durable state, and terminal package semantics."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Check selection consumes immutable governed projections without re-fetching or weakening existing contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migrations, immutable versions, constraints, locks, idempotency, vectors, and evidence/brand foreign-key separation."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review retryability, audit rejection, reviewable failure, provider safety, and API envelopes."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review structured telemetry and absence of secrets, prompts, source/brand bodies, raw model output, and PII."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Drive focused child checks and the one final backend/frontend/Doctor/Compose/security/data gate."}
+{"file":".trellis/spec/frontend/index.md","reason":"Verify the product remains internal, provenance-visible, accessible, manual, and free of publishing paths."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review material-package composition, statuses, evidence, audit, copy/download, and accessibility behavior."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Review typed API ownership, polling, cache invalidation, browser effects, and failure handling."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review generated contracts, strict TypeScript, view-state exhaustiveness, and untrusted-content boundaries."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review component, accessibility, frontend contract, production build, and critical E2E acceptance."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check all downstream consumers when stage status, payload, version, or package fields change."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Verify implementation matches the established reuse decisions, gaps, child dependencies, and input gates."}

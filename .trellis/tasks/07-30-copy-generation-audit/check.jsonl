@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify every fact binding, brand-binding scope, deterministic-first gate, audit limits, and one repair."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Verify provider input/output bounds, safe telemetry, factual provenance, and checkpoint confidentiality."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check immutable attempts/versions, relational bindings, concurrency, idempotency, and short transactions."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check invalid output versus transient provider errors, repair exhaustion, and safe terminal API states."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check no prompt, source/brand body, hidden reasoning, API key, or raw response leakage."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check controlled negative cases, restart/replay, labeled live binding inspection, and focused gates."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Verify reused model/job patterns and approved narrow MVP boundary."}
