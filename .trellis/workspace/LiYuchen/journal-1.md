@@ -137,3 +137,24 @@ Planned the remaining content-production MVP nodes and completed deterministic d
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: Brand knowledge RAG MVP
+
+**Date**: 2026-07-30
+**Task**: Brand knowledge RAG MVP
+**Branch**: `main`
+
+### Summary
+
+Completed the private Sai Xiansheng brand-knowledge MVP: safe PDF/DOCX/TXT/Markdown ingestion, immutable MinIO originals, versioned chunks and 2048-dimensional embeddings, PostgreSQL full-text plus pgvector retrieval, internal upload/activation/diagnostic UI, strict separation from factual evidence, real ingestion of two supplied slide decks, and a private 26-asset visual manifest with sidecar and path-safety guards. Full backend, frontend, migration, deployment, and private-data isolation gates passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e495a1c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
