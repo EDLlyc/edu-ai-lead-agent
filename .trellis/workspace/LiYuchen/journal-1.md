@@ -115,3 +115,25 @@ Completed the production-shaped second capability: versioned normalization and e
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: Daily topic selection MVP
+
+**Date**: 2026-07-30
+**Task**: Daily topic selection MVP
+**Branch**: `main`
+
+### Summary
+
+Planned the remaining content-production MVP nodes and completed deterministic daily Top 1/no_topic selection with immutable preview scoring, seven-day and stale-event vetoes, PostgreSQL locking and leases, scheduler/worker/API delivery, Alembic 0005/0006, generated OpenAPI types, full backend/frontend verification, and updated operational/spec contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60574ef` | (see git log) |
+| `b0d08fc` | (see git log) |
+
+### Status
+
+[OK] **Completed**
