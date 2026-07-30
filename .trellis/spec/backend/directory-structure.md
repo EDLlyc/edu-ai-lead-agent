@@ -2,10 +2,11 @@
 
 ## Contract status
 
-The first backend slice is implemented under [`backend/app`](../../../backend/app): versioned API
-routes, acquisition application services and ports, provider-independent domain rules, SQLAlchemy
-repositories/models, safe source connectors/fetching, MinIO snapshot storage, and separate API,
-scheduler, and worker entry points. OpenAPI is exported through
+The first two backend capabilities are implemented under [`backend/app`](../../../backend/app):
+versioned acquisition and governance APIs, application services/ports, provider-independent domain
+rules, SQLAlchemy repositories/models, safe source connectors, MinIO snapshot storage, optional
+Zhipu adapters, LangGraph orchestration, and separate API/acquisition/governance processes. OpenAPI
+is exported through
 [`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). Extend this real layout;
 do not recreate the earlier greenfield-only tree or collapse the process boundaries.
 
@@ -37,6 +38,7 @@ backend/
 │   │   ├── title_relevance.py
 │   │   └── value_objects.py
 │   ├── infrastructure/
+│   │   ├── ai/
 │   │   ├── db/
 │   │   │   ├── models.py
 │   │   │   ├── repositories.py
@@ -46,7 +48,9 @@ backend/
 │   ├── schemas/
 │   ├── api_main.py
 │   ├── scheduler_main.py
-│   └── worker_main.py
+│   ├── worker_main.py
+│   ├── governance_scheduler_main.py
+│   └── governance_worker_main.py
 └── tests/
     ├── contract/
     ├── integration/
@@ -54,9 +58,9 @@ backend/
 ```
 
 The deployable entry points share application and infrastructure modules but must not import one
-another. Docker Compose starts `api_main`, `scheduler_main`, and `worker_main` independently. Add
-future AI/search packages only when their own task implements them; LangGraph is a downstream
-workflow dependency, not part of acquisition.
+another. Docker Compose starts acquisition and governance processes independently. Provider/LangGraph
+modules belong only to factual governance and later approved model-oriented capabilities; they do
+not move into acquisition or authorize arbitrary browsing.
 
 ## Ownership rules
 
@@ -113,6 +117,25 @@ an HTTP or LLM-output schema.
   thread for durable work.
 
 This separation prevents each multi-process FastAPI worker from firing the same daily schedule.
+
+## Governance ownership
+
+- `application/services/governance_*` owns enqueueing, version-bundle composition, typed graph
+  nodes, worker classification, and planner reconciliation.
+- `application/ports/governance.py` is the only application-facing contract for factual analysis,
+  embeddings, checkpointer inspection, repositories, clocks, and IDs.
+- `domain/governance_*`, `domain/event_assignment.py`, and
+  `domain/governance_semantic.py` own deterministic normalization, validation, duplicate, and
+  event-policy rules; they import neither SQLAlchemy nor httpx.
+- `infrastructure/ai/` contains provider-specific transport parsing and safe error projection.
+  `infrastructure/db/governance_*` contains durable operational/artifact/query/checkpoint adapters.
+- `api/v1/routes/governance_runs.py`, `candidate_analyses.py`, and `events.py` only validate/project
+  HTTP contracts. They do not execute LangGraph or call Zhipu.
+- `governance_scheduler_main.py` plans durable work; `governance_worker_main.py` claims and executes
+  it. Both remain independently enabled and deployable.
+
+See [`governance-event-organization.md`](./governance-event-organization.md) for the executable
+cross-layer contract.
 
 ## Naming conventions
 

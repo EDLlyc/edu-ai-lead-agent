@@ -59,6 +59,8 @@ async def test_api_returns_stable_not_found_envelope(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get(f"/api/v1/acquisition-runs/{uuid4()}")
     assert response.status_code == 404
-    assert response.json() == {
-        "error": {"code": "not_found", "message": "acquisition run was not found", "details": None}
-    }
+    error = response.json()["error"]
+    assert error["code"] == "not_found"
+    assert error["message"] == "acquisition run was not found"
+    assert error["details"] is None
+    assert error["request_id"] == response.headers["x-request-id"]

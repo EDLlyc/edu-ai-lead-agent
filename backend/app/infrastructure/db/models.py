@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -429,4 +430,876 @@ class SourceObservationModel(Base):
         UniqueConstraint("idempotency_key", name="uq_source_observations_idempotency_key"),
         Index("ix_source_observations_run_id", "run_id"),
         Index("ix_source_observations_candidate_id", "candidate_id"),
+    )
+
+
+class GovernanceRunModel(Base):
+    __tablename__ = "governance_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(20), nullable=False)
+    acquisition_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "acquisition_runs.id", name="fk_governance_runs_acquisition_run_id", ondelete="RESTRICT"
+        ),
+        nullable=True,
+    )
+    manual_idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    profile_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_bundle: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    total_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    succeeded_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    review_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    failed_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("trigger IN ('acquisition', 'manual')", name="ck_governance_runs_trigger"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'partially_succeeded', "
+            "'failed', 'cancelled')",
+            name="ck_governance_runs_status",
+        ),
+        Index(
+            "uq_governance_runs_acquisition_profile",
+            "acquisition_run_id",
+            "profile_fingerprint",
+            unique=True,
+            postgresql_where=text("acquisition_run_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_governance_runs_manual_idempotency",
+            "manual_idempotency_key",
+            unique=True,
+            postgresql_where=text("manual_idempotency_key IS NOT NULL"),
+        ),
+        Index("ix_governance_runs_status_created", "status", "created_at"),
+    )
+
+
+class GovernanceJobModel(Base):
+    __tablename__ = "governance_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("governance_runs.id", name="fk_governance_jobs_run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id",
+            name="fk_governance_jobs_candidate_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    input_content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    current_stage: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'retry_scheduled', 'succeeded', "
+            "'review_required', 'failed', 'cancelled')",
+            name="ck_governance_jobs_status",
+        ),
+        UniqueConstraint("run_id", "candidate_id", name="uq_governance_jobs_run_candidate"),
+        Index("ix_governance_jobs_claim", "status", "available_at", "lease_expires_at"),
+        Index("ix_governance_jobs_run_id", "run_id"),
+        Index("ix_governance_jobs_candidate_id", "candidate_id"),
+        Index("ix_governance_jobs_idempotency_key", "idempotency_key"),
+    )
+
+
+class GovernanceAttemptModel(Base):
+    __tablename__ = "governance_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("governance_jobs.id", name="fk_governance_attempts_job_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    stage: Mapped[str] = mapped_column(String(80), nullable=False)
+    result: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "attempt_number", name="uq_governance_attempts_job_number"),
+        Index("ix_governance_attempts_job_id", "job_id"),
+    )
+
+
+class ArticleOccurrenceModel(Base):
+    __tablename__ = "article_occurrences"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    occurrence_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id",
+            name="fk_article_occurrences_candidate_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    observation_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_observations.id",
+            name="fk_article_occurrences_observation_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_snapshots.id", name="fk_article_occurrences_snapshot_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    source_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("sources.id", name="fk_article_occurrences_source_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_versions.id",
+            name="fk_article_occurrences_source_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    source_item_id: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    trust_tier: Mapped[str] = mapped_column(String(1), nullable=False)
+    original_url: Mapped[str] = mapped_column(Text, nullable=False)
+    final_url: Mapped[str] = mapped_column(Text, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    relevance_rule_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("trust_tier IN ('A', 'B')", name="ck_article_occurrences_trust_tier"),
+        UniqueConstraint("occurrence_key", name="uq_article_occurrences_occurrence_key"),
+        UniqueConstraint("observation_id", name="uq_article_occurrences_observation_id"),
+        Index("ix_article_occurrences_candidate_id", "candidate_id"),
+        Index("ix_article_occurrences_source_id", "source_id"),
+    )
+
+
+class NormalizedArticleModel(Base):
+    __tablename__ = "normalized_articles"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id",
+            name="fk_normalized_articles_candidate_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    input_content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    normalization_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    normalized_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    simhash_hex: Mapped[str] = mapped_column(String(16), nullable=False)
+    normalized_text: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "candidate_id",
+            "input_content_hash",
+            "normalization_version",
+            name="uq_normalized_articles_derivation",
+        ),
+        Index("ix_normalized_articles_normalized_hash", "normalized_hash"),
+        Index("ix_normalized_articles_candidate_id", "candidate_id"),
+    )
+
+
+class NormalizedPassageModel(Base):
+    __tablename__ = "normalized_passages"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    normalized_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_normalized_passages_normalized_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id",
+            name="fk_normalized_passages_candidate_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    passage_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_normalized_passages_ordinal"),
+        CheckConstraint(
+            "source_start >= 0 AND source_end >= source_start",
+            name="ck_normalized_passages_offsets",
+        ),
+        UniqueConstraint(
+            "normalized_article_id", "ordinal", name="uq_normalized_passages_article_ordinal"
+        ),
+        Index("ix_normalized_passages_candidate_id", "candidate_id"),
+    )
+
+
+class ModelInvocationModel(Base):
+    __tablename__ = "model_invocations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    governance_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "governance_jobs.id", name="fk_model_invocations_governance_job_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    capability: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    prompt_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    safe_usage: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("capability", "request_fingerprint", name="uq_model_invocations_request"),
+        Index("ix_model_invocations_governance_job_id", "governance_job_id"),
+    )
+
+
+class CandidateAnalysisModel(Base):
+    __tablename__ = "candidate_analyses"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    normalized_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_candidate_analyses_normalized_article_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id", name="fk_candidate_analyses_candidate_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    invocation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "model_invocations.id", name="fk_candidate_analyses_invocation_id", ondelete="RESTRICT"
+        ),
+        nullable=True,
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    taxonomy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    event_time_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    event_time_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_time_precision: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'unknown'")
+    )
+    keywords: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    validation_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'invalid', 'review_required')",
+            name="ck_candidate_analyses_status",
+        ),
+        CheckConstraint(
+            "event_time_precision IN ('exact', 'day', 'month', 'unknown')",
+            name="ck_candidate_analyses_time_precision",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(keywords) = 'array'",
+            name="ck_candidate_analyses_keywords_array",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_candidate_analyses_request"),
+        Index("ix_candidate_analyses_candidate_id", "candidate_id"),
+    )
+
+
+class AnalysisFactModel(Base):
+    __tablename__ = "analysis_facts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "candidate_analyses.id", name="fk_analysis_facts_analysis_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    fact_text: Mapped[str] = mapped_column("text", Text, nullable=False)
+    event_time_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    event_time_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_time_precision: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'unknown'")
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "event_time_precision IN ('exact', 'day', 'month', 'unknown')",
+            name="ck_analysis_facts_time_precision",
+        ),
+        CheckConstraint("status = 'accepted'", name="ck_analysis_facts_status"),
+        UniqueConstraint("analysis_id", "ordinal", name="uq_analysis_facts_analysis_ordinal"),
+        Index("ix_analysis_facts_analysis_id", "analysis_id"),
+    )
+
+
+class AnalysisEntityModel(Base):
+    __tablename__ = "analysis_entities"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "candidate_analyses.id", name="fk_analysis_entities_analysis_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_mention: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
+    support_passage_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_passages.id",
+            name="fk_analysis_entities_support_passage_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entity_type IN ('organization', 'person', 'product', 'model', "
+            "'policy', 'place', 'technology', 'other')",
+            name="ck_analysis_entities_type",
+        ),
+        UniqueConstraint("analysis_id", "ordinal", name="uq_analysis_entities_analysis_ordinal"),
+        Index("ix_analysis_entities_analysis_id", "analysis_id"),
+    )
+
+
+class AnalysisCategoryModel(Base):
+    __tablename__ = "analysis_categories"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "candidate_analyses.id", name="fk_analysis_categories_analysis_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    taxonomy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1", name="ck_analysis_categories_confidence"
+        ),
+        CheckConstraint(
+            "category IN ('ai_education_policy', 'large_generative_models', "
+            "'robotics_embodied_intelligence', 'ai_compute_chips', "
+            "'youth_science_education', 'ai_industry_application', "
+            "'ai_governance_safety')",
+            name="ck_analysis_categories_taxonomy",
+        ),
+        UniqueConstraint(
+            "analysis_id", "taxonomy_version", "category", name="uq_analysis_categories_label"
+        ),
+        Index(
+            "uq_analysis_categories_one_primary",
+            "analysis_id",
+            unique=True,
+            postgresql_where=text("is_primary = true"),
+        ),
+    )
+
+
+class EvidenceBindingModel(Base):
+    __tablename__ = "evidence_bindings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    binding_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    analysis_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "candidate_analyses.id", name="fk_evidence_bindings_analysis_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    fact_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("analysis_facts.id", name="fk_evidence_bindings_fact_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    statement_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    passage_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_passages.id", name="fk_evidence_bindings_passage_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id", name="fk_evidence_bindings_candidate_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    occurrence_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "article_occurrences.id", name="fk_evidence_bindings_occurrence_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_snapshots.id", name="fk_evidence_bindings_snapshot_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    exact_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    quote_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    quote_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    validated: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "statement_kind IN ('summary', 'fact')", name="ck_evidence_bindings_statement_kind"
+        ),
+        CheckConstraint(
+            "quote_start >= 0 AND quote_end >= quote_start", name="ck_evidence_bindings_offsets"
+        ),
+        UniqueConstraint("binding_key", name="uq_evidence_bindings_binding_key"),
+        Index("ix_evidence_bindings_analysis_id", "analysis_id"),
+        Index("ix_evidence_bindings_passage_id", "passage_id"),
+    )
+
+
+class ArticleEmbeddingModel(Base):
+    __tablename__ = "article_embeddings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    normalized_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_article_embeddings_normalized_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    vector: Mapped[list[float]] = mapped_column(Vector(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("dimensions = 2048", name="ck_article_embeddings_dimensions"),
+        CheckConstraint(
+            "purpose IN ('near_duplicate', 'event_assignment')",
+            name="ck_article_embeddings_purpose",
+        ),
+        UniqueConstraint(
+            "normalized_article_id",
+            "purpose",
+            "provider",
+            "model",
+            "input_hash",
+            "input_version",
+            name="uq_article_embeddings_derivation",
+        ),
+        Index("ix_article_embeddings_article_purpose", "normalized_article_id", "purpose"),
+    )
+
+
+class DuplicateRelationModel(Base):
+    __tablename__ = "duplicate_relations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    left_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_duplicate_relations_left_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    right_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_duplicate_relations_right_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    relation_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("left_article_id < right_article_id", name="ck_duplicate_relations_pair"),
+        CheckConstraint(
+            "relation_kind IN ('same_content', 'same_url', 'same_source_item', "
+            "'revision_of', 'near_duplicate')",
+            name="ck_duplicate_relations_kind",
+        ),
+        CheckConstraint(
+            "outcome IN ('matched', 'distinct')",
+            name="ck_duplicate_relations_outcome",
+        ),
+        CheckConstraint(
+            "threshold IS NULL OR (threshold >= 0 AND threshold <= 1)",
+            name="ck_duplicate_relations_threshold",
+        ),
+        UniqueConstraint(
+            "left_article_id",
+            "right_article_id",
+            "relation_kind",
+            "policy_version",
+            name="uq_duplicate_relations_pair_policy",
+        ),
+        Index("ix_duplicate_relations_left_article_id", "left_article_id"),
+        Index("ix_duplicate_relations_right_article_id", "right_article_id"),
+    )
+
+
+class EventClusterModel(Base):
+    __tablename__ = "event_clusters"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    current_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_event_clusters_current_version_id",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'merged', 'archived')",
+            name="ck_event_clusters_status",
+        ),
+        Index("ix_event_clusters_status", "status"),
+    )
+
+
+class EventAssignmentDecisionModel(Base):
+    __tablename__ = "event_assignment_decisions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    normalized_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_event_assignment_decisions_normalized_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    governance_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "governance_runs.id",
+            name="fk_event_assignment_decisions_governance_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    selected_event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id",
+            name="fk_event_assignment_decisions_selected_event_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(40), nullable=False)
+    recent_window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recent_window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    alternatives: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('assigned_existing', 'created_new', 'review_required')",
+            name="ck_event_assignment_decisions_outcome",
+        ),
+        UniqueConstraint(
+            "normalized_article_id",
+            "governance_run_id",
+            "policy_version",
+            name="uq_event_assignment_decisions_article_run_policy",
+        ),
+    )
+
+
+class EventClusterVersionModel(Base):
+    __tablename__ = "event_cluster_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id", name="fk_event_cluster_versions_event_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    representative_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_event_cluster_versions_representative_article_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    representative_title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_projection: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    event_time_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    event_time_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    event_time_precision: Mapped[str] = mapped_column(String(20), nullable=False)
+    member_set_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_diversity: Mapped[int] = mapped_column(Integer, nullable=False)
+    category_projection: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    entity_projection: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    clustering_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    version_bundle_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "governance_runs.id",
+            name="fk_event_cluster_versions_created_by_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_event_cluster_versions_version"),
+        CheckConstraint("source_diversity >= 1", name="ck_event_cluster_versions_source_diversity"),
+        CheckConstraint(
+            "event_time_precision IN ('exact', 'day', 'month', 'unknown')",
+            name="ck_event_cluster_versions_time_precision",
+        ),
+        UniqueConstraint("event_id", "version", name="uq_event_cluster_versions_event_version"),
+        UniqueConstraint(
+            "event_id",
+            "member_set_hash",
+            "clustering_policy_version",
+            "version_bundle_fingerprint",
+            name="uq_event_cluster_versions_projection",
+        ),
+    )
+
+
+class EventMembershipModel(Base):
+    __tablename__ = "event_memberships"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("event_clusters.id", name="fk_event_memberships_event_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    normalized_article_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "normalized_articles.id",
+            name="fk_event_memberships_normalized_article_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    assignment_decision_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_assignment_decisions.id",
+            name="fk_event_memberships_assignment_decision_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(active AND superseded_at IS NULL) OR (NOT active AND superseded_at IS NOT NULL)",
+            name="ck_event_memberships_lifecycle",
+        ),
+        UniqueConstraint(
+            "event_id",
+            "normalized_article_id",
+            "policy_version",
+            name="uq_event_memberships_event_article_policy",
+        ),
+        Index(
+            "uq_event_memberships_active_article_policy",
+            "normalized_article_id",
+            "policy_version",
+            unique=True,
+            postgresql_where=text("active = true"),
+        ),
+        Index("ix_event_memberships_event_id", "event_id"),
     )

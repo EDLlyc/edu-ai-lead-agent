@@ -5,8 +5,9 @@ PY_RUN := conda run --name $(CONDA_ENV)
 
 .PHONY: env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
+	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	api-generate api-contract-check \
-	infra-up stack-up infra-down infra-status infra-logs \
+	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
 	backend-integration-test backend-check \
 	frontend-format frontend-format-check frontend-lint frontend-typecheck frontend-test \
@@ -46,6 +47,20 @@ acquisition-worker:
 source-smoke:
 	$(PY_RUN) python -m app.live_smoke
 
+governance-scheduler:
+	$(PY_RUN) python -m app.governance_scheduler_main
+
+governance-worker:
+	$(PY_RUN) python -m app.governance_worker_main
+
+governance-fake-check:
+	$(PY_RUN) pytest backend/tests/unit/test_governance_delivery.py \
+		backend/tests/integration/test_governance_api_e2e.py -q
+
+governance-live-smoke:
+	@test -n "$(CANDIDATE_ID)" || { echo "CANDIDATE_ID is required" >&2; exit 2; }
+	$(PY_RUN) python -m app.governance_live_smoke --candidate-id "$(CANDIDATE_ID)"
+
 api-generate:
 	$(PY_RUN) python backend/scripts/export_openapi.py
 	npm run generate:api --prefix frontend
@@ -59,6 +74,9 @@ infra-up: env-init
 
 stack-up: env-init
 	docker compose up -d --build
+
+governance-stack-up: env-init
+	docker compose --profile governance up -d --build governance-scheduler governance-worker
 
 infra-down:
 	docker compose down

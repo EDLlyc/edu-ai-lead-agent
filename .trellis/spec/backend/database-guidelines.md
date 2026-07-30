@@ -1,13 +1,15 @@
 # Database Guidelines
 
-## Initial persistence contract
+## Persistence contract
 
 Use PostgreSQL with pgvector, SQLAlchemy 2 async mappings, `asyncpg`, and Alembic. The implemented
-acquisition schema is defined in
+acquisition and factual-governance schema is defined in
 [`models.py`](../../../backend/app/infrastructure/db/models.py), accessed through
-[`repositories.py`](../../../backend/app/infrastructure/db/repositories.py), and migrated by
-[`backend/alembic/versions`](../../../backend/alembic/versions). PostgreSQL/MinIO integration tests,
-not SQLite or `create_all()`, are the executable persistence contract.
+the acquisition and governance repositories under
+[`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
+[`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
+`20260729_0004`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
 brand knowledge, generation artifacts, and material packages. Never rely on scheduler memory for
@@ -17,18 +19,21 @@ whether a daily job ran.
 
 Use distinct models, repositories, and foreign-key paths for:
 
-- **Evidence data:** sources, immutable source snapshots, normalized articles, event clusters,
-  extracted evidence passages, and claim-to-evidence bindings.
+- **Evidence data:** sources, immutable source snapshots, evidence candidates and occurrences,
+  normalized articles/passages, factual analyses, purpose-specific embeddings, duplicate
+  relations, event clusters/versions/memberships, assignment decisions, and relational evidence
+  bindings.
 - **Brand data:** versioned brand documents/chunks, audience and validity metadata, safety rules,
   approved examples, and visual guidance.
 
 Both domains may have vector columns, but a brand chunk cannot satisfy a factual claim's evidence
 foreign key. Prefer database constraints over convention alone where possible.
 
-Expected initial entities include `sources`, `source_snapshots`, `articles`, `event_clusters`,
-`topic_scores`, `brand_documents`, `brand_chunks`, `pipeline_runs`, `stage_jobs`,
-`generation_artifacts`, `claims`, `claim_evidence_bindings`, and `material_packages`. Implement
-only the subset needed by each slice; do not create unused tables speculatively.
+Implemented evidence tables follow the exact model/migration names. Topic scores, brand documents,
+generation artifacts, claims for final copy, and material packages are future-slice entities and
+must not be created speculatively. The detailed governance table, uniqueness, checkpoint, vector,
+and event-version contracts are in
+[`governance-event-organization.md`](./governance-event-organization.md).
 
 ## SQLAlchemy 2 async pattern
 
@@ -138,8 +143,10 @@ audit records and must not be rewritten in place.
 ### 2. Signatures
 
 - Upgrade: `alembic -c backend/alembic.ini upgrade head`.
-- Current head: `20260729_0003` in
+- Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
+- Repository head after factual governance: `20260729_0004`; acquisition-specific downgrade tests
+  still isolate the `0003 -> 0002` contract described here.
 - Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
 - Candidate contract: `evidence_candidates.relevance_rule_version VARCHAR(40) NULL`.
 - Counters: `acquisition_runs.filtered_count` and `acquisition_jobs.filtered_count`, non-null and

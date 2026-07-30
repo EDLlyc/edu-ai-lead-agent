@@ -56,7 +56,9 @@ python_version="$(conda run --name "$conda_env_name" python --version 2>&1)" \
   || fail "Conda environment '$conda_env_name' is unavailable"
 pass "Conda environment '$conda_env_name' is available ($python_version)"
 
-conda run --name "$conda_env_name" python -c 'import alembic, fastapi, minio, pydantic, sqlalchemy' >/dev/null \
+conda run --name "$conda_env_name" python -c \
+  'import alembic, fastapi, langgraph, minio, pgvector, psycopg, pydantic, sqlalchemy; from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver' \
+  >/dev/null \
   || fail "Backend dependencies are not installed; run 'make setup-backend'"
 pass "Backend dependencies import successfully"
 
@@ -88,9 +90,33 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260729_0003" ]] \
+[[ "$migration_revision" == "20260729_0004" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
+
+governance_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''governance_runs'\'','\''governance_jobs'\'','\''governance_attempts'\'','\''article_occurrences'\'','\''normalized_articles'\'','\''normalized_passages'\'','\''candidate_analyses'\'','\''analysis_facts'\'','\''evidence_bindings'\'','\''analysis_entities'\'','\''analysis_categories'\'','\''article_embeddings'\'','\''duplicate_relations'\'','\''event_clusters'\'','\''event_cluster_versions'\'','\''event_memberships'\'','\''event_assignment_decisions'\'','\''model_invocations'\'','\''checkpoint_migrations'\'','\''checkpoints'\'','\''checkpoint_blobs'\'','\''checkpoint_writes'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$governance_table_count" == "22" ]] \
+  || fail "Governance/checkpoint schema is incomplete; run 'make migrate'"
+pass "Governance and LangGraph checkpoint tables are installed"
+
+checkpoint_revision="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT max(v) FROM checkpoint_migrations;"'
+)"
+[[ "$checkpoint_revision" == "9" ]] \
+  || fail "LangGraph checkpoint migration is incomplete; run 'make migrate'"
+pass "LangGraph checkpoint schema is at migration $checkpoint_revision"
+
+embedding_vector_type="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT format_type(attribute.atttypid, attribute.atttypmod) FROM pg_attribute AS attribute JOIN pg_class AS relation ON relation.oid = attribute.attrelid WHERE relation.relname = '\''article_embeddings'\'' AND attribute.attname = '\''vector'\'' AND NOT attribute.attisdropped;"'
+)"
+[[ "$embedding_vector_type" == "vector(2048)" ]] \
+  || fail "Governance embedding column is not vector(2048); run 'make migrate'"
+pass "Governance embedding column is $embedding_vector_type"
 
 source_count="$(
   docker compose exec -T postgres sh -c \

@@ -55,6 +55,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/candidate-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate Analyses */
+        get: operations["get_candidate_analyses_api_v1_candidate_analyses_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/candidate-analyses/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate Analysis */
+        get: operations["get_candidate_analysis_api_v1_candidate_analyses__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Events */
+        get: operations["get_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event */
+        get: operations["get_event_api_v1_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evidence-candidates": {
         parameters: {
             query?: never;
@@ -81,6 +149,57 @@ export interface paths {
         };
         /** Get Evidence Candidate */
         get: operations["get_evidence_candidate_api_v1_evidence_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/governance-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Governance Run */
+        post: operations["create_governance_run_api_v1_governance_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/governance-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Governance Run */
+        get: operations["get_governance_run_api_v1_governance_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/governance-runs/{run_id}/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Governance Run Jobs */
+        get: operations["get_governance_run_jobs_api_v1_governance_runs__run_id__jobs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -219,10 +338,442 @@ export interface components {
             /** Unchanged Count */
             unchanged_count: number;
         };
+        /** CandidateAnalysisDetailResponse */
+        CandidateAnalysisDetailResponse: {
+            /** Active Event Id */
+            active_event_id: string | null;
+            /** Active Event Version Id */
+            active_event_version_id: string | null;
+            /**
+             * Analysis Candidate Id
+             * Format: uuid
+             */
+            analysis_candidate_id: string;
+            /**
+             * Analysis Id
+             * Format: uuid
+             */
+            analysis_id: string;
+            /** Analysis Reused */
+            analysis_reused: boolean;
+            assignment: components["schemas"]["EventAssignmentResponse"] | null;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Canonical Url */
+            canonical_url: string;
+            /** Categories */
+            categories: components["schemas"]["GovernanceCategoryResponse"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duplicate Relations */
+            duplicate_relations: components["schemas"]["DuplicateRelationResponse"][];
+            /** Entities */
+            entities: components["schemas"]["GovernanceEntityResponse"][];
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Precision */
+            event_time_precision: string;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /** Evidence Bindings */
+            evidence_bindings: components["schemas"]["GovernanceEvidenceBindingResponse"][];
+            /** Facts */
+            facts: components["schemas"]["GovernanceFactResponse"][];
+            /** Keywords */
+            keywords: string[];
+            /** Model */
+            model: string;
+            /**
+             * Normalized Article Id
+             * Format: uuid
+             */
+            normalized_article_id: string;
+            /** Original Url */
+            original_url: string;
+            /** Passages */
+            passages: components["schemas"]["GovernancePassageResponse"][];
+            /** Primary Category */
+            primary_category: string | null;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider: string;
+            /** Published At */
+            published_at: string | null;
+            /**
+             * Requested Candidate Id
+             * Format: uuid
+             */
+            requested_candidate_id: string;
+            /** Schema Version */
+            schema_version: string;
+            /** Source Occurrences */
+            source_occurrences: components["schemas"]["GovernanceOccurrenceResponse"][];
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /** Taxonomy Version */
+            taxonomy_version: string;
+            /** Title */
+            title: string;
+        };
+        /** CandidateAnalysisListResponse */
+        CandidateAnalysisListResponse: {
+            /** Items */
+            items: components["schemas"]["CandidateAnalysisSummaryResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** CandidateAnalysisSummaryResponse */
+        CandidateAnalysisSummaryResponse: {
+            /**
+             * Analysis Id
+             * Format: uuid
+             */
+            analysis_id: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Canonical Url */
+            canonical_url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Precision */
+            event_time_precision: string;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /** Keywords */
+            keywords: string[];
+            /** Model */
+            model: string;
+            /**
+             * Normalized Article Id
+             * Format: uuid
+             */
+            normalized_article_id: string;
+            /** Original Url */
+            original_url: string;
+            /** Primary Category */
+            primary_category: string | null;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider: string;
+            /** Published At */
+            published_at: string | null;
+            /** Schema Version */
+            schema_version: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /** Taxonomy Version */
+            taxonomy_version: string;
+            /** Title */
+            title: string;
+        };
         /** CreateAcquisitionRunRequest */
         CreateAcquisitionRunRequest: {
             /** Source Ids */
             source_ids?: string[] | null;
+        };
+        /** CreateGovernanceRunRequest */
+        CreateGovernanceRunRequest: {
+            /** Acquisition Run Id */
+            acquisition_run_id?: string | null;
+            /**
+             * Candidate Ids
+             * @default []
+             */
+            candidate_ids: string[];
+        };
+        /** DuplicateRelationResponse */
+        DuplicateRelationResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Features */
+            features: {
+                [key: string]: unknown;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Left Article Id
+             * Format: uuid
+             */
+            left_article_id: string;
+            /** Outcome */
+            outcome: string;
+            /** Policy Version */
+            policy_version: string;
+            /** Relation Kind */
+            relation_kind: string;
+            /**
+             * Right Article Id
+             * Format: uuid
+             */
+            right_article_id: string;
+            /** Threshold */
+            threshold: number | null;
+        };
+        /** EventAssignmentResponse */
+        EventAssignmentResponse: {
+            /** Alternatives */
+            alternatives: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Features */
+            features: {
+                [key: string]: unknown;
+            };
+            /**
+             * Governance Run Id
+             * Format: uuid
+             */
+            governance_run_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Normalized Article Id
+             * Format: uuid
+             */
+            normalized_article_id: string;
+            /** Outcome */
+            outcome: string;
+            /** Policy Version */
+            policy_version: string;
+            /**
+             * Recent Window End
+             * Format: date-time
+             */
+            recent_window_end: string;
+            /**
+             * Recent Window Start
+             * Format: date-time
+             */
+            recent_window_start: string;
+            /** Review Required */
+            review_required: boolean;
+            /** Selected Event Id */
+            selected_event_id: string | null;
+            /** Thresholds */
+            thresholds: {
+                [key: string]: unknown;
+            };
+        };
+        /** EventDetailResponse */
+        EventDetailResponse: {
+            /** Categories */
+            categories: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            current_version: components["schemas"]["EventVersionResponse"];
+            /**
+             * Current Version Id
+             * Format: uuid
+             */
+            current_version_id: string;
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Count */
+            member_count: number;
+            /** Members */
+            members: components["schemas"]["EventMemberResponse"][];
+            /** Representative Title */
+            representative_title: string;
+            /** Review Count */
+            review_count: number;
+            /** Review Decisions */
+            review_decisions: components["schemas"]["EventAssignmentResponse"][];
+            /** Source Diversity */
+            source_diversity: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Versions */
+            versions: components["schemas"]["EventVersionResponse"][];
+        };
+        /** EventListResponse */
+        EventListResponse: {
+            /** Items */
+            items: components["schemas"]["EventSummaryResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** EventMemberResponse */
+        EventMemberResponse: {
+            /** Active */
+            active: boolean;
+            /** Analysis Id */
+            analysis_id: string | null;
+            assignment: components["schemas"]["EventAssignmentResponse"];
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Canonical Url */
+            canonical_url: string;
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /**
+             * Normalized Article Id
+             * Format: uuid
+             */
+            normalized_article_id: string;
+            /** Original Url */
+            original_url: string;
+            /** Passages */
+            passages: components["schemas"]["GovernancePassageResponse"][];
+            /** Policy Version */
+            policy_version: string;
+            /** Published At */
+            published_at: string | null;
+            /** Source Occurrences */
+            source_occurrences: components["schemas"]["GovernanceOccurrenceResponse"][];
+            /** Summary */
+            summary: string | null;
+            /** Title */
+            title: string;
+        };
+        /** EventSummaryResponse */
+        EventSummaryResponse: {
+            /** Categories */
+            categories: string[];
+            /**
+             * Current Version Id
+             * Format: uuid
+             */
+            current_version_id: string;
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Count */
+            member_count: number;
+            /** Representative Title */
+            representative_title: string;
+            /** Review Count */
+            review_count: number;
+            /** Source Diversity */
+            source_diversity: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** EventVersionResponse */
+        EventVersionResponse: {
+            /** Category Projection */
+            category_projection: string[];
+            /** Clustering Policy Version */
+            clustering_policy_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By Run Id
+             * Format: uuid
+             */
+            created_by_run_id: string;
+            /** Entity Projection */
+            entity_projection: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Precision */
+            event_time_precision: string;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Member Set Hash */
+            member_set_hash: string;
+            /**
+             * Representative Article Id
+             * Format: uuid
+             */
+            representative_article_id: string;
+            /** Representative Title */
+            representative_title: string;
+            /** Source Diversity */
+            source_diversity: number;
+            /** Summary Projection */
+            summary_projection: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
+            /** Version Bundle Fingerprint */
+            version_bundle_fingerprint: string;
         };
         /** EvidenceCandidateDetailResponse */
         EvidenceCandidateDetailResponse: {
@@ -333,6 +884,279 @@ export interface components {
             title: string;
             /** Trust Tier */
             trust_tier: string;
+        };
+        /** GovernanceCategoryResponse */
+        GovernanceCategoryResponse: {
+            /** Category */
+            category: string;
+            /** Confidence */
+            confidence: number;
+            /** Is Primary */
+            is_primary: boolean;
+            /** Taxonomy Version */
+            taxonomy_version: string;
+        };
+        /** GovernanceEntityResponse */
+        GovernanceEntityResponse: {
+            /** Canonical Name */
+            canonical_name: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Source Mention */
+            source_mention: string;
+            /**
+             * Support Passage Id
+             * Format: uuid
+             */
+            support_passage_id: string;
+        };
+        /** GovernanceEvidenceBindingResponse */
+        GovernanceEvidenceBindingResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Exact Quote */
+            exact_quote: string;
+            /** Fact Id */
+            fact_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Occurrence Id
+             * Format: uuid
+             */
+            occurrence_id: string;
+            /**
+             * Passage Id
+             * Format: uuid
+             */
+            passage_id: string;
+            /** Quote End */
+            quote_end: number;
+            /** Quote Start */
+            quote_start: number;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+            /** Statement Kind */
+            statement_kind: string;
+            /** Validated */
+            validated: boolean;
+        };
+        /** GovernanceFactResponse */
+        GovernanceFactResponse: {
+            /** Event Time End */
+            event_time_end: string | null;
+            /** Event Time Precision */
+            event_time_precision: string;
+            /** Event Time Start */
+            event_time_start: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Text */
+            text: string;
+        };
+        /** GovernanceJobListResponse */
+        GovernanceJobListResponse: {
+            /** Items */
+            items: components["schemas"]["GovernanceJobResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** GovernanceJobResponse */
+        GovernanceJobResponse: {
+            /** Attempt Count */
+            attempt_count: number;
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Current Stage */
+            current_stage: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Heartbeat At */
+            heartbeat_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Outcome */
+            outcome: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Safe Metadata */
+            safe_metadata: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+        };
+        /** GovernanceOccurrenceResponse */
+        GovernanceOccurrenceResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Final Url */
+            final_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Observation Id
+             * Format: uuid
+             */
+            observation_id: string;
+            /** Original Url */
+            original_url: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Published At */
+            published_at: string | null;
+            /** Relevance Rule Version */
+            relevance_rule_version: string | null;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+            /** Source Display Name */
+            source_display_name: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Source Item Id */
+            source_item_id: string;
+            /** Source Slug */
+            source_slug: string;
+            /**
+             * Source Version Id
+             * Format: uuid
+             */
+            source_version_id: string;
+            /** Trust Tier */
+            trust_tier: string;
+        };
+        /** GovernancePassageResponse */
+        GovernancePassageResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Normalized Article Id
+             * Format: uuid
+             */
+            normalized_article_id: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Passage Hash */
+            passage_hash: string;
+            /** Source End */
+            source_end: number;
+            /** Source Start */
+            source_start: number;
+            /** Text */
+            text: string;
+        };
+        /** GovernanceRunResponse */
+        GovernanceRunResponse: {
+            /** Acquisition Run Id */
+            acquisition_run_id: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Failed Jobs */
+            failed_jobs: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Latency Ms */
+            model_latency_ms: number;
+            /** Profile Fingerprint */
+            profile_fingerprint: string;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Reasoning Tokens */
+            reasoning_tokens: number;
+            /** Review Jobs */
+            review_jobs: number;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Status Url */
+            status_url: string;
+            /** Succeeded Jobs */
+            succeeded_jobs: number;
+            /** Timezone */
+            timezone: string;
+            /** Total Jobs */
+            total_jobs: number;
+            /** Trigger */
+            trigger: string;
+            /** Version Bundle */
+            version_bundle: {
+                [key: string]: string | number;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -575,6 +1399,132 @@ export interface operations {
             };
         };
     };
+    get_candidate_analyses_api_v1_candidate_analyses_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateAnalysisListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_candidate_analysis_api_v1_candidate_analyses__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateAnalysisDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_events_api_v1_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_api_v1_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_evidence_candidates_api_v1_evidence_candidates_get: {
         parameters: {
             query?: {
@@ -627,6 +1577,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceCandidateDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_run_api_v1_governance_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernanceRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_governance_run_api_v1_governance_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_governance_run_jobs_api_v1_governance_runs__run_id__jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceJobListResponse"];
                 };
             };
             /** @description Validation Error */

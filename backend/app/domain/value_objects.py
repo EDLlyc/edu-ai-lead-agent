@@ -14,6 +14,10 @@ def stable_key(*parts: object) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
+def is_sha256_hex(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
 def scheduled_instant(business_date: date, timezone: str, hour: int, minute: int) -> datetime:
     return datetime(
         business_date.year,

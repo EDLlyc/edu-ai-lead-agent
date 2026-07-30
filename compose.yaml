@@ -101,6 +101,40 @@ services:
       ACQUISITION_FIRST_RUN_SCAN_LIMIT: ${ACQUISITION_FIRST_RUN_SCAN_LIMIT:-100}
       ACQUISITION_DAILY_SCAN_LIMIT: ${ACQUISITION_DAILY_SCAN_LIMIT:-50}
       ACQUISITION_VERSION: ${ACQUISITION_VERSION:-acquisition-v1}
+      GOVERNANCE_ENABLED: ${GOVERNANCE_ENABLED:-false}
+      GOVERNANCE_POLL_SECONDS: ${GOVERNANCE_POLL_SECONDS:-5}
+      GOVERNANCE_WORKER_CONCURRENCY: ${GOVERNANCE_WORKER_CONCURRENCY:-2}
+      GOVERNANCE_LEASE_SECONDS: ${GOVERNANCE_LEASE_SECONDS:-300}
+      GOVERNANCE_HEARTBEAT_SECONDS: ${GOVERNANCE_HEARTBEAT_SECONDS:-60}
+      GOVERNANCE_MAX_ATTEMPTS: ${GOVERNANCE_MAX_ATTEMPTS:-3}
+      GOVERNANCE_RETRY_BASE_SECONDS: ${GOVERNANCE_RETRY_BASE_SECONDS:-30}
+      GOVERNANCE_PIPELINE_VERSION: ${GOVERNANCE_PIPELINE_VERSION:-governance-v1}
+      GOVERNANCE_NORMALIZATION_VERSION: ${GOVERNANCE_NORMALIZATION_VERSION:-normalization-v1}
+      GOVERNANCE_PASSAGE_SCHEMA_VERSION: ${GOVERNANCE_PASSAGE_SCHEMA_VERSION:-passage-v1}
+      GOVERNANCE_TAXONOMY_VERSION: ${GOVERNANCE_TAXONOMY_VERSION:-ai-factual-taxonomy-v1}
+      GOVERNANCE_PROMPT_VERSION: ${GOVERNANCE_PROMPT_VERSION:-factual-analysis-v1}
+      GOVERNANCE_ANALYSIS_SCHEMA_VERSION: ${GOVERNANCE_ANALYSIS_SCHEMA_VERSION:-factual-analysis-schema-v1}
+      GOVERNANCE_EMBEDDING_INPUT_VERSION: ${GOVERNANCE_EMBEDDING_INPUT_VERSION:-embedding-input-v1}
+      GOVERNANCE_SIMILARITY_RULE_VERSION: ${GOVERNANCE_SIMILARITY_RULE_VERSION:-semantic-v1}
+      GOVERNANCE_EVENT_ASSIGNMENT_VERSION: ${GOVERNANCE_EVENT_ASSIGNMENT_VERSION:-event-assignment-v1}
+      GOVERNANCE_CHECKPOINT_DATABASE_URL: postgresql://${POSTGRES_USER:-edu_ai}:${POSTGRES_PASSWORD:-edu_ai_local_change_me}@postgres:5432/${POSTGRES_DB:-edu_ai}
+      AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-disabled}
+      AI_PLATFORM_BASE_URL: ${AI_PLATFORM_BASE_URL:-}
+      AI_CHAT_MODEL: ${AI_CHAT_MODEL:-glm-5.2}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-embedding-3}
+      AI_EMBEDDING_DIMENSIONS: ${AI_EMBEDDING_DIMENSIONS:-2048}
+      AI_CONNECT_TIMEOUT_SECONDS: ${AI_CONNECT_TIMEOUT_SECONDS:-10}
+      AI_READ_TIMEOUT_SECONDS: ${AI_READ_TIMEOUT_SECONDS:-120}
+      AI_TOTAL_TIMEOUT_SECONDS: ${AI_TOTAL_TIMEOUT_SECONDS:-150}
+      AI_PROVIDER_CONCURRENCY: ${AI_PROVIDER_CONCURRENCY:-2}
+      AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-3}
+      AI_MAX_VALIDATION_CORRECTIONS: ${AI_MAX_VALIDATION_CORRECTIONS:-1}
+      AI_MAX_INPUT_CHARACTERS: ${AI_MAX_INPUT_CHARACTERS:-40000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-4096}
+      AI_MAX_TOKENS_PER_RUN: ${AI_MAX_TOKENS_PER_RUN:-200000}
+      AI_MAX_TOKENS_PER_DAY: ${AI_MAX_TOKENS_PER_DAY:-1000000}
+      AI_MAX_COST_UNITS_PER_RUN: ${AI_MAX_COST_UNITS_PER_RUN:-100000}
+      AI_MAX_COST_UNITS_PER_DAY: ${AI_MAX_COST_UNITS_PER_DAY:-500000}
     command:
       - /bin/sh
       - -c
@@ -150,6 +184,33 @@ services:
     environment:
       <<: *backend-environment
     command: ["python", "-m", "app.worker_main"]
+
+  governance-scheduler:
+    profiles: ["governance"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      GOVERNANCE_SCHEDULER_ENABLED: ${GOVERNANCE_SCHEDULER_ENABLED:-false}
+    command: ["python", "-m", "app.governance_scheduler_main"]
+
+  governance-worker:
+    profiles: ["governance"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      GOVERNANCE_WORKER_ENABLED: ${GOVERNANCE_WORKER_ENABLED:-false}
+      AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
+    command: ["python", "-m", "app.governance_worker_main"]
 
 volumes:
   postgres_data:

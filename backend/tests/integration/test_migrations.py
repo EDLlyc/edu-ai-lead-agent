@@ -24,7 +24,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260729_0003"
+    assert revision == "20260729_0004"
     assert {
         "sources",
         "source_versions",

@@ -4,9 +4,9 @@
 
 This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. The first
-stage now exists: authoritative-source acquisition, deterministic title relevance, immutable
-snapshots, evidence candidates, and durable run/job state. Later scoring/generation stages remain
-prospective and must update this document when implemented.
+two capabilities now exist: authoritative-source acquisition, followed by versioned factual
+governance and auditable event organization. Topic scoring, brand retrieval, generation, product
+UI, and publishing remain prospective and must update this document when implemented.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -16,8 +16,9 @@ typed, observable stages with deterministic gates around model calls.
 ```text
 schedule/enqueue
   -> ingest source snapshots
-  -> normalize and classify
-  -> exact dedup and event clustering
+  -> synchronize source occurrences
+  -> normalize, segment, and validate factual analysis
+  -> exact/semantic duplicate relations and event organization
   -> eligibility vetoes and versioned scoring
   -> select Top 1 or finish no_topic
   -> retrieve evidence and brand context separately
@@ -144,6 +145,25 @@ for item in accepted:
 ```
 
 Discovery depth and accepted evidence count are separate contracts.
+
+## Implemented factual-governance handoff
+
+The second capability consumes stored candidates and all of their observations/snapshots without
+re-fetching original URLs. It produces immutable normalized passages, evidence-bound factual
+analyses, purpose-specific embeddings, duplicate relations, deterministic event assignments, and
+versioned event projections. PostgreSQL run/job tables are the operational source of truth;
+LangGraph checkpoints contain only resumable IDs, hashes, versions, statuses, and small typed
+outputs.
+
+The complete executable signatures, seven-category taxonomy, idempotency bundle, fixed
+`embedding-3` 2048-dimensional contract, event thresholds, Zhipu transport rules, error matrix,
+tests, and API boundaries live in
+[`governance-event-organization.md`](./governance-event-organization.md). That document controls
+second-capability implementation details; this file controls the cross-stage handoff.
+
+Downstream topic scoring must consume governed event/fact/category/entity/source-diversity/evidence
+projections. It must not re-crawl a source, re-summarize the article, infer provenance from only
+`candidate.source_id`, or bypass a durable `review_required` assignment.
 
 ## Eligibility, scoring, and selection
 
