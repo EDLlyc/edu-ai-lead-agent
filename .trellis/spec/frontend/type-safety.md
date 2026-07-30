@@ -1,11 +1,10 @@
 # Type Safety
 
-## Initial TypeScript contract
+## Implemented TypeScript contract
 
 Compile with TypeScript strict mode, including `noUncheckedIndexedAccess` and
-`exactOptionalPropertyTypes` unless a documented tool incompatibility prevents it. The first slice
-must add the actual `tsconfig`, OpenAPI generation command, generated paths, and examples to this
-guide.
+`exactOptionalPropertyTypes`. The real `tsconfig`, OpenAPI generation commands, generated path,
+and the first consumer in `features/brand/api.ts` are now implemented.
 
 ## OpenAPI-generated wire types
 

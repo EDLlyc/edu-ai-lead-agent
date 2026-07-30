@@ -5,8 +5,9 @@
 This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. Three
 capabilities now exist: authoritative-source acquisition, versioned factual governance and
-auditable event organization, and deterministic daily Top 1/`no_topic` selection. Brand retrieval,
-generation, and product UI remain prospective. Automated publishing is prohibited.
+auditable event organization, deterministic daily Top 1/`no_topic` selection, and private
+versioned brand retrieval. Generation and material-package delivery remain prospective. Automated
+publishing is prohibited.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -204,12 +205,17 @@ documented (for example source tier, publication time, then stable ID). If none 
 
 ## Retrieval boundary
 
+The brand half of this boundary is implemented in
+[`brand-knowledge-rag.md`](./brand-knowledge-rag.md); the factual retrieval consumed by drafting
+remains a later generation-slice integration.
+
 Run two explicit retrieval operations:
 
 1. `retrieve_evidence` returns eligible source passages with snapshot IDs, URLs, tiers, publication
    times, exact text/offsets, and relevance information.
-2. `retrieve_brand_context` returns current parent-audience brand chunks with document/version IDs,
-   safety/tone metadata, and relevance information.
+2. `retrieve_brand_context` returns current parent-targeted brand chunks with document/version IDs,
+   safety/tone metadata, and relevance information to the internal drafting node. Here `parents`
+   describes the generated copy's target audience; it does not expose a parent-facing search flow.
 
 Do not place them in an unlabeled combined list. PostgreSQL full-text and pgvector retrieval may be
 fused and reranked. `ts_rank` must not be described as BM25; exact BM25 requires an explicitly

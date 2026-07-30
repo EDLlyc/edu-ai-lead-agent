@@ -129,6 +129,16 @@ services:
       CONTENT_MAX_ATTEMPTS: ${CONTENT_MAX_ATTEMPTS:-3}
       CONTENT_SCORING_VERSION: ${CONTENT_SCORING_VERSION:-scoring-v1-preview.1}
       CONTENT_SCORING_PROFILE: ${CONTENT_SCORING_PROFILE:-preview}
+      BRAND_UPLOAD_MAX_BYTES: ${BRAND_UPLOAD_MAX_BYTES:-26214400}
+      BRAND_PARSE_MAX_PAGES: ${BRAND_PARSE_MAX_PAGES:-120}
+      BRAND_PARSE_MAX_CHARACTERS: ${BRAND_PARSE_MAX_CHARACTERS:-300000}
+      BRAND_PARSE_MAX_CHUNKS: ${BRAND_PARSE_MAX_CHUNKS:-600}
+      BRAND_CHUNK_CHARACTERS: ${BRAND_CHUNK_CHARACTERS:-900}
+      BRAND_CHUNK_OVERLAP_CHARACTERS: ${BRAND_CHUNK_OVERLAP_CHARACTERS:-120}
+      BRAND_PARSER_VERSION: ${BRAND_PARSER_VERSION:-brand-parser-v1}
+      BRAND_CHUNK_VERSION: ${BRAND_CHUNK_VERSION:-brand-chunk-v1}
+      BRAND_EMBEDDING_INPUT_VERSION: ${BRAND_EMBEDDING_INPUT_VERSION:-brand-embedding-input-v1}
+      BRAND_RETRIEVAL_VERSION: ${BRAND_RETRIEVAL_VERSION:-brand-hybrid-rrf-v1}
       AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-disabled}
       AI_PLATFORM_BASE_URL: ${AI_PLATFORM_BASE_URL:-}
       AI_CHAT_MODEL: ${AI_CHAT_MODEL:-glm-5.2}
@@ -160,6 +170,7 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
     command: ["python", "-m", "uvicorn", "app.api_main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
@@ -247,6 +258,7 @@ services:
     environment:
       <<: *backend-environment
       CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-false}
+      AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
     command: ["python", "-m", "app.content_worker_main"]
 
 volumes:

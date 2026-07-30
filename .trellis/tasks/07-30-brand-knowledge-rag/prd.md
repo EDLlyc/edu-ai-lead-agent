@@ -3,7 +3,8 @@
 ## Goal
 
 Allow an internal administrator to upload and activate versioned 赛先生 brand knowledge, then
-retrieve bounded parent-audience brand context without mixing it with factual evidence.
+provide bounded parent-targeted brand context to the internal WeChat Moments copy-generation
+pipeline without mixing it with factual evidence. This is not a parent-facing search product.
 
 ## Parent and Dependency
 
@@ -23,16 +24,19 @@ retrieve bounded parent-audience brand context without mixing it with factual ev
 - Parse and chunk deterministically with stable IDs/hashes/offsets.
 - Embed active chunks through the application-owned port using fixed validated dimensions.
 - Retrieve through filtered PostgreSQL full-text plus pgvector search and deterministic rank fusion.
-- Return explainable chunk/document/version/score metadata through a brand-specific type/API.
+- Return explainable chunk/document/version/score metadata through a brand-specific typed API for
+  copy-generation consumption and internal diagnostics.
 - Support activate/deactivate and re-index without mutating or deleting history.
 
 ## Acceptance Criteria
 
 - [ ] An internal user can upload a supported document and observe durable ingestion status.
 - [ ] Re-upload/replay is idempotent; a changed file/version creates new immutable artifacts.
-- [ ] Active/valid parent-audience filtering works before retrieval.
-- [ ] Controlled queries return expected brand rules/examples and exclude inactive/wrong-audience
-      chunks.
+- [ ] Active/valid `parents` target-audience filtering works before generation-context retrieval.
+- [ ] Controlled generation-intent queries return expected brand rules/examples and exclude
+      inactive/wrong-audience chunks.
+- [ ] Product wording and API documentation identify retrieval as internal copy-generation context,
+      never a parent-facing search service.
 - [ ] Brand chunks cannot satisfy an external fact evidence binding at type, service, or DB level.
 - [ ] A bounded live evaluation on supplied documents records representative retrieval quality.
 - [ ] Malformed/excessive/encrypted files fail safely without leaking corpus content or credentials.
@@ -42,7 +46,12 @@ retrieve bounded parent-audience brand context without mixing it with factual ev
 Brand positioning, values, parent communication guidance, approved examples, prohibited language,
 safety/compliance rules, and visual guidance are required before live acceptance.
 
+The first supplied corpus contains two slide-deck PDFs and 26 visual assets. It is sufficient for
+initial positioning/product context, but approved/rejected Moments examples, an explicit prohibited-
+language policy, externally verified public achievements/data, and canonical logo/color/font files
+remain missing inputs for generation-quality acceptance.
+
 ## Out of Scope
 
 - Multiple brands/tenants, public uploads, collaborative editing, OCR-heavy scanned archives,
-  external vector/search services, or brand content as factual proof.
+  external vector/search services, parent-facing search, or brand content as factual proof.

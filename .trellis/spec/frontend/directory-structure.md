@@ -2,26 +2,28 @@
 
 ## Contract status
 
-The React + TypeScript + Vite environment shell now has real app/provider/style/test paths under
-[`frontend/src`](../../../frontend/src). The feature directories in the following tree remain the
-target for the first material-package vertical slice; do not treat the environment page as a
-product feature.
+The React + TypeScript + Vite application now has a real internal brand-knowledge feature under
+[`frontend/src/features/brand`](../../../frontend/src/features/brand), alongside the app/provider,
+generated-client, style, and test paths. Material-package directories remain the next target.
 
 Implemented shell paths:
 
 - [`src/main.tsx`](../../../frontend/src/main.tsx) only bootstraps React and providers.
 - [`src/app/providers.tsx`](../../../frontend/src/app/providers.tsx) owns the TanStack Query client.
-- [`src/app/App.tsx`](../../../frontend/src/app/App.tsx) renders the environment verification page.
-- [`src/app/CommandCard.tsx`](../../../frontend/src/app/CommandCard.tsx) owns accessible command
-  copy feedback.
+- [`src/app/App.tsx`](../../../frontend/src/app/App.tsx) composes the brand workspace shell.
+- [`src/features/brand/BrandKnowledgePanel.tsx`](../../../frontend/src/features/brand/BrandKnowledgePanel.tsx)
+  owns upload, version status/actions, and internal generation-context diagnostic presentation.
+- [`src/features/brand/api.ts`](../../../frontend/src/features/brand/api.ts) and
+  [`hooks.ts`](../../../frontend/src/features/brand/hooks.ts) own generated transport and server
+  state.
 - [`src/lib/api/client.ts`](../../../frontend/src/lib/api/client.ts) owns the generated-contract
   transport and configured API base URL.
 - [`src/lib/api/generated/schema.d.ts`](../../../frontend/src/lib/api/generated/schema.d.ts) is
   generated from the checked-in FastAPI OpenAPI document and is never edited manually.
 - [`vite.config.ts`](../../../frontend/vite.config.ts) loads the repository-root `.env` so
   `VITE_API_BASE_URL` stays paired with the backend host port without exposing unprefixed secrets.
-- [`src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx) covers boundaries, copy feedback,
-  and automated accessibility.
+- [`src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx) covers the brand/evidence boundary,
+  upload announcement, publishing prohibition, and automated accessibility.
 
 ## Target layout
 

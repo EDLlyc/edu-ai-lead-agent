@@ -3,7 +3,7 @@
   "name": "brand-knowledge-rag",
   "title": "Brand knowledge ingestion and RAG",
   "description": "Implement internal brand document upload, parsing, versioned chunking and embeddings, and separated hybrid brand retrieval.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "full-stack",
   "package": null,

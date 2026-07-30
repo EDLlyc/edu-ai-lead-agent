@@ -257,6 +257,753 @@
         "title": "AcquisitionRunResponse",
         "type": "object"
       },
+      "Body_upload_brand_document_api_v1_brand_documents_post": {
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience",
+            "default": "parents"
+          },
+          "document_kind": {
+            "$ref": "#/components/schemas/BrandDocumentKind",
+            "default": "other"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "PDF, DOCX, UTF-8 TXT, or Markdown",
+            "title": "File",
+            "type": "string"
+          },
+          "safety_tags": {
+            "default": "",
+            "maxLength": 800,
+            "title": "Safety Tags",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "tone_tags": {
+            "default": "",
+            "maxLength": 800,
+            "title": "Tone Tags",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "visual_tags": {
+            "default": "",
+            "maxLength": 800,
+            "title": "Visual Tags",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "title"
+        ],
+        "title": "Body_upload_brand_document_api_v1_brand_documents_post",
+        "type": "object"
+      },
+      "BrandAudience": {
+        "enum": [
+          "parents",
+          "internal"
+        ],
+        "title": "BrandAudience",
+        "type": "string"
+      },
+      "BrandContextChunkResponse": {
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_kind": {
+            "$ref": "#/components/schemas/BrandDocumentKind"
+          },
+          "document_title": {
+            "title": "Document Title",
+            "type": "string"
+          },
+          "full_text_score": {
+            "title": "Full Text Score",
+            "type": "number"
+          },
+          "fused_score": {
+            "title": "Fused Score",
+            "type": "number"
+          },
+          "safety_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safety Tags",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tone_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tone Tags",
+            "type": "array"
+          },
+          "vector_score": {
+            "title": "Vector Score",
+            "type": "number"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "visual_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Visual Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "document_id",
+          "version_id",
+          "document_title",
+          "document_kind",
+          "audience",
+          "text",
+          "tone_tags",
+          "safety_tags",
+          "visual_tags",
+          "full_text_score",
+          "vector_score",
+          "fused_score"
+        ],
+        "title": "BrandContextChunkResponse",
+        "type": "object"
+      },
+      "BrandContextResponse": {
+        "description": "Bounded internal brand context for copy generation, never factual evidence.",
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "evidence_eligible": {
+            "const": false,
+            "default": false,
+            "description": "Always false: brand guidance cannot support externally verifiable claims.",
+            "title": "Evidence Eligible",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrandContextChunkResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "retrieval_version": {
+            "title": "Retrieval Version",
+            "type": "string"
+          },
+          "valid_on": {
+            "format": "date",
+            "title": "Valid On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retrieval_version",
+          "query",
+          "audience",
+          "valid_on",
+          "items",
+          "count"
+        ],
+        "title": "BrandContextResponse",
+        "type": "object"
+      },
+      "BrandDocumentKind": {
+        "enum": [
+          "positioning",
+          "tone",
+          "approved_example",
+          "prohibited_language",
+          "safety_rule",
+          "visual_guidance",
+          "other"
+        ],
+        "title": "BrandDocumentKind",
+        "type": "string"
+      },
+      "BrandDocumentListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrandDocumentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "BrandDocumentListResponse",
+        "type": "object"
+      },
+      "BrandDocumentResponse": {
+        "properties": {
+          "active_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Version Id"
+          },
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience"
+          },
+          "brand_slug": {
+            "const": "sai-xiansheng",
+            "title": "Brand Slug",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_kind": {
+            "$ref": "#/components/schemas/BrandDocumentKind"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "language": {
+            "const": "zh-CN",
+            "title": "Language",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/BrandVersionResponse"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "brand_slug",
+          "title",
+          "document_kind",
+          "audience",
+          "language",
+          "status",
+          "active_version_id",
+          "versions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrandDocumentResponse",
+        "type": "object"
+      },
+      "BrandIngestionJobResponse": {
+        "properties": {
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version_id",
+          "status",
+          "attempt_count",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "BrandIngestionJobResponse",
+        "type": "object"
+      },
+      "BrandRetrievalRequest": {
+        "description": "Internal retrieval input consumed by copy-generation and operator diagnostics.",
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience",
+            "default": "parents",
+            "description": "Target audience metadata for the generated copy; this is not the identity of a search user."
+          },
+          "document_kinds": {
+            "description": "Optional brand-document kinds allowed in the generation context.",
+            "items": {
+              "$ref": "#/components/schemas/BrandDocumentKind"
+            },
+            "maxItems": 7,
+            "title": "Document Kinds",
+            "type": "array"
+          },
+          "limit": {
+            "default": 5,
+            "description": "Maximum number of bounded brand chunks returned to the generation pipeline.",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Selected topic or draft intent used to retrieve brand guidance for copy generation.",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "valid_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Business date used to filter valid brand guidance.",
+            "title": "Valid On"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "BrandRetrievalRequest",
+        "type": "object"
+      },
+      "BrandUploadAcceptedResponse": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_url": {
+            "title": "Document Url",
+            "type": "string"
+          },
+          "ingestion_job_id": {
+            "format": "uuid",
+            "title": "Ingestion Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "version_id",
+          "ingestion_job_id",
+          "created",
+          "status",
+          "document_url",
+          "status_url"
+        ],
+        "title": "BrandUploadAcceptedResponse",
+        "type": "object"
+      },
+      "BrandVersionResponse": {
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "character_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Count"
+          },
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunk_version": {
+            "title": "Chunk Version",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deactivated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deactivated At"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "embedding_dimensions": {
+            "title": "Embedding Dimensions",
+            "type": "integer"
+          },
+          "embedding_input_version": {
+            "title": "Embedding Input Version",
+            "type": "string"
+          },
+          "embedding_model": {
+            "title": "Embedding Model",
+            "type": "string"
+          },
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ingestion_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingestion Job Id"
+          },
+          "ingestion_job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingestion Job Status"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "safe_filename": {
+            "title": "Safe Filename",
+            "type": "string"
+          },
+          "safety_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safety Tags",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tone_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tone Tags",
+            "type": "array"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "visual_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Visual Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "document_id",
+          "version",
+          "safe_filename",
+          "media_type",
+          "byte_size",
+          "status",
+          "active",
+          "valid_from",
+          "valid_until",
+          "tone_tags",
+          "safety_tags",
+          "visual_tags",
+          "parser_version",
+          "chunk_version",
+          "embedding_input_version",
+          "embedding_provider",
+          "embedding_model",
+          "embedding_dimensions",
+          "page_count",
+          "character_count",
+          "chunk_count",
+          "error_code",
+          "created_at",
+          "completed_at",
+          "activated_at",
+          "deactivated_at",
+          "ingestion_job_id",
+          "ingestion_job_status"
+        ],
+        "title": "BrandVersionResponse",
+        "type": "object"
+      },
       "CandidateAnalysisDetailResponse": {
         "properties": {
           "active_event_id": {
@@ -3082,7 +3829,7 @@
     }
   },
   "info": {
-    "description": "Internal API for authoritative-source acquisition, factual governance, and auditable event organization, and deterministic daily topic selection. It does not expose generation, publishing, or arbitrary URL-fetch capabilities.",
+    "description": "Internal API for authoritative-source acquisition, factual governance, and auditable event organization, deterministic daily topic selection, and private brand knowledge ingestion with internal copy-generation context retrieval. It does not expose public brand search, publishing, or arbitrary URL-fetch capabilities.",
     "title": "Edu AI Lead Agent API",
     "version": "0.3.0"
   },
@@ -3232,6 +3979,290 @@
         "summary": "Get Acquisition Run Jobs",
         "tags": [
           "acquisition"
+        ]
+      }
+    },
+    "/api/v1/brand-context/retrieve": {
+      "post": {
+        "description": "Returns bounded active brand guidance for the internal WeChat Moments copy-generation pipeline and operator diagnostics. The audience field describes the target reader of generated copy; this endpoint is not a parent-facing search product, and its results cannot be used as factual evidence.",
+        "operationId": "retrieve_brand_context_route_api_v1_brand_context_retrieve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandRetrievalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve internal brand context for copy generation",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-documents": {
+      "get": {
+        "operationId": "read_brand_documents_api_v1_brand_documents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandDocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Brand Documents",
+        "tags": [
+          "brand-knowledge"
+        ]
+      },
+      "post": {
+        "operationId": "upload_brand_document_api_v1_brand_documents_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_brand_document_api_v1_brand_documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandUploadAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Brand Document",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-documents/{document_id}": {
+      "get": {
+        "operationId": "read_brand_document_api_v1_brand_documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Brand Document",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-documents/{document_id}/deactivate": {
+      "post": {
+        "operationId": "deactivate_brand_document_route_api_v1_brand_documents__document_id__deactivate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deactivate Brand Document Route",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-documents/{document_id}/versions/{version_id}/activate": {
+      "post": {
+        "operationId": "activate_brand_document_version_api_v1_brand_documents__document_id__versions__version_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Brand Document Version",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-ingestion-jobs/{job_id}": {
+      "get": {
+        "operationId": "read_brand_ingestion_job_api_v1_brand_ingestion_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandIngestionJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Brand Ingestion Job",
+        "tags": [
+          "brand-knowledge"
         ]
       }
     },

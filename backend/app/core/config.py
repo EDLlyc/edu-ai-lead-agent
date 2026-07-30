@@ -82,6 +82,20 @@ class Settings(BaseSettings):
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_scoring_version: str = "scoring-v1-preview.1"
     content_scoring_profile: str = "preview"
+    brand_upload_max_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        ge=64 * 1024,
+        le=25 * 1024 * 1024,
+    )
+    brand_parse_max_pages: int = Field(default=120, ge=1, le=500)
+    brand_parse_max_characters: int = Field(default=300_000, ge=1_000, le=1_000_000)
+    brand_parse_max_chunks: int = Field(default=600, ge=1, le=2_000)
+    brand_chunk_characters: int = Field(default=900, ge=300, le=3_000)
+    brand_chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
+    brand_parser_version: str = "brand-parser-v1"
+    brand_chunk_version: str = "brand-chunk-v1"
+    brand_embedding_input_version: str = "brand-embedding-input-v1"
+    brand_retrieval_version: str = "brand-hybrid-rrf-v1"
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
@@ -117,6 +131,8 @@ class Settings(BaseSettings):
             raise ValueError("governance heartbeat must be shorter than the lease")
         if self.content_heartbeat_seconds >= self.content_lease_seconds:
             raise ValueError("content heartbeat must be shorter than the lease")
+        if self.brand_chunk_overlap_characters >= self.brand_chunk_characters:
+            raise ValueError("brand chunk overlap must be shorter than the chunk")
         if (
             self.governance_scheduler_enabled or self.governance_worker_enabled
         ) and not self.governance_enabled:
@@ -166,8 +182,8 @@ class Settings(BaseSettings):
             )
             if not base_url:
                 raise ValueError("Zhipu mode requires a non-blank AI platform base URL")
-            if self.governance_worker_enabled and not api_key:
-                raise ValueError("Zhipu governance worker requires a non-blank API key")
+            if (self.governance_worker_enabled or self.content_worker_enabled) and not api_key:
+                raise ValueError("Zhipu model workers require a non-blank API key")
             parsed_base_url = urlsplit(base_url)
             if (
                 parsed_base_url.scheme != "https"
@@ -192,6 +208,10 @@ class Settings(BaseSettings):
             self.governance_event_assignment_version,
             self.content_scoring_version,
             self.content_scoring_profile,
+            self.brand_parser_version,
+            self.brand_chunk_version,
+            self.brand_embedding_input_version,
+            self.brand_retrieval_version,
         }
         if any(not value.strip() or len(value) > 80 for value in version_values):
             raise ValueError(

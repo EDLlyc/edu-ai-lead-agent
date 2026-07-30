@@ -4,8 +4,9 @@
 
 The first three backend capabilities are implemented under [`backend/app`](../../../backend/app):
 versioned acquisition and governance APIs, application services/ports, provider-independent domain
-rules, SQLAlchemy repositories/models, safe source connectors, MinIO snapshot storage, optional
-Zhipu adapters, LangGraph orchestration, deterministic topic selection, and separate API,
+rules, SQLAlchemy repositories/models, safe source connectors, MinIO snapshot and private brand
+original storage, optional Zhipu adapters, LangGraph orchestration, deterministic topic selection,
+brand ingestion/retrieval, and separate API,
 acquisition, governance, and content processes. OpenAPI is exported through
 [`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). Extend this real layout;
 do not recreate the earlier greenfield-only tree or collapse the process boundaries.
@@ -152,6 +153,22 @@ cross-layer contract.
 - `content_scheduler_main.py` and `content_worker_main.py` are independently enabled deployables.
 
 See [`topic-selection.md`](./topic-selection.md) for the executable cross-layer contract.
+
+## Brand-knowledge ownership
+
+- `domain/brand_knowledge.py` owns document metadata, upload validation, stable metadata
+  fingerprints, deterministic chunks, and brand-only retrieval results.
+- `application/ports/brand_knowledge.py` and `application/services/brand_knowledge.py` own the
+  separate storage/parser/embedding/repository contracts and resumable ingestion execution.
+- `infrastructure/brand/parser.py`, `storage/minio_brand_store.py`, and
+  `db/brand_knowledge.py` own bounded parsing, immutable originals, durable jobs, activation, and
+  hybrid retrieval.
+- `api/v1/routes/brand_knowledge.py` projects multipart and retrieval contracts; it does not parse,
+  embed, or rank in the request handler.
+- `content_worker_main.py` alternates topic and brand claims to prevent either durable queue from
+  starving the other.
+
+See [`brand-knowledge-rag.md`](./brand-knowledge-rag.md) for the executable cross-layer contract.
 
 ## Naming conventions
 

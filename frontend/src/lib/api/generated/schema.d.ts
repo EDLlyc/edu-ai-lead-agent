@@ -55,6 +55,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/brand-context/retrieve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retrieve internal brand context for copy generation
+         * @description Returns bounded active brand guidance for the internal WeChat Moments copy-generation pipeline and operator diagnostics. The audience field describes the target reader of generated copy; this endpoint is not a parent-facing search product, and its results cannot be used as factual evidence.
+         */
+        post: operations["retrieve_brand_context_route_api_v1_brand_context_retrieve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Brand Documents */
+        get: operations["read_brand_documents_api_v1_brand_documents_get"];
+        put?: never;
+        /** Upload Brand Document */
+        post: operations["upload_brand_document_api_v1_brand_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Brand Document */
+        get: operations["read_brand_document_api_v1_brand_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-documents/{document_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate Brand Document Route */
+        post: operations["deactivate_brand_document_route_api_v1_brand_documents__document_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-documents/{document_id}/versions/{version_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Brand Document Version */
+        post: operations["activate_brand_document_version_api_v1_brand_documents__document_id__versions__version_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/brand-ingestion-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Brand Ingestion Job */
+        get: operations["read_brand_ingestion_job_api_v1_brand_ingestion_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/candidate-analyses": {
         parameters: {
             query?: never;
@@ -405,6 +511,316 @@ export interface components {
             trigger: string;
             /** Unchanged Count */
             unchanged_count: number;
+        };
+        /** Body_upload_brand_document_api_v1_brand_documents_post */
+        Body_upload_brand_document_api_v1_brand_documents_post: {
+            /** @default parents */
+            audience: components["schemas"]["BrandAudience"];
+            /** @default other */
+            document_kind: components["schemas"]["BrandDocumentKind"];
+            /**
+             * File
+             * @description PDF, DOCX, UTF-8 TXT, or Markdown
+             */
+            file: string;
+            /**
+             * Safety Tags
+             * @default
+             */
+            safety_tags: string;
+            /** Title */
+            title: string;
+            /**
+             * Tone Tags
+             * @default
+             */
+            tone_tags: string;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
+            /**
+             * Visual Tags
+             * @default
+             */
+            visual_tags: string;
+        };
+        /**
+         * BrandAudience
+         * @enum {string}
+         */
+        BrandAudience: "parents" | "internal";
+        /** BrandContextChunkResponse */
+        BrandContextChunkResponse: {
+            audience: components["schemas"]["BrandAudience"];
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            document_kind: components["schemas"]["BrandDocumentKind"];
+            /** Document Title */
+            document_title: string;
+            /** Full Text Score */
+            full_text_score: number;
+            /** Fused Score */
+            fused_score: number;
+            /** Safety Tags */
+            safety_tags: string[];
+            /** Text */
+            text: string;
+            /** Tone Tags */
+            tone_tags: string[];
+            /** Vector Score */
+            vector_score: number;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Visual Tags */
+            visual_tags: string[];
+        };
+        /**
+         * BrandContextResponse
+         * @description Bounded internal brand context for copy generation, never factual evidence.
+         */
+        BrandContextResponse: {
+            audience: components["schemas"]["BrandAudience"];
+            /** Count */
+            count: number;
+            /**
+             * Evidence Eligible
+             * @description Always false: brand guidance cannot support externally verifiable claims.
+             * @default false
+             * @constant
+             */
+            evidence_eligible: false;
+            /** Items */
+            items: components["schemas"]["BrandContextChunkResponse"][];
+            /** Query */
+            query: string;
+            /** Retrieval Version */
+            retrieval_version: string;
+            /**
+             * Valid On
+             * Format: date
+             */
+            valid_on: string;
+        };
+        /**
+         * BrandDocumentKind
+         * @enum {string}
+         */
+        BrandDocumentKind: "positioning" | "tone" | "approved_example" | "prohibited_language" | "safety_rule" | "visual_guidance" | "other";
+        /** BrandDocumentListResponse */
+        BrandDocumentListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["BrandDocumentResponse"][];
+        };
+        /** BrandDocumentResponse */
+        BrandDocumentResponse: {
+            /** Active Version Id */
+            active_version_id: string | null;
+            audience: components["schemas"]["BrandAudience"];
+            /**
+             * Brand Slug
+             * @constant
+             */
+            brand_slug: "sai-xiansheng";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            document_kind: components["schemas"]["BrandDocumentKind"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Language
+             * @constant
+             */
+            language: "zh-CN";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Versions */
+            versions: components["schemas"]["BrandVersionResponse"][];
+        };
+        /** BrandIngestionJobResponse */
+        BrandIngestionJobResponse: {
+            /** Attempt Count */
+            attempt_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /**
+         * BrandRetrievalRequest
+         * @description Internal retrieval input consumed by copy-generation and operator diagnostics.
+         */
+        BrandRetrievalRequest: {
+            /**
+             * @description Target audience metadata for the generated copy; this is not the identity of a search user.
+             * @default parents
+             */
+            audience: components["schemas"]["BrandAudience"];
+            /**
+             * Document Kinds
+             * @description Optional brand-document kinds allowed in the generation context.
+             */
+            document_kinds?: components["schemas"]["BrandDocumentKind"][];
+            /**
+             * Limit
+             * @description Maximum number of bounded brand chunks returned to the generation pipeline.
+             * @default 5
+             */
+            limit: number;
+            /**
+             * Query
+             * @description Selected topic or draft intent used to retrieve brand guidance for copy generation.
+             */
+            query: string;
+            /**
+             * Valid On
+             * @description Business date used to filter valid brand guidance.
+             */
+            valid_on?: string | null;
+        };
+        /** BrandUploadAcceptedResponse */
+        BrandUploadAcceptedResponse: {
+            /** Created */
+            created: boolean;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Document Url */
+            document_url: string;
+            /**
+             * Ingestion Job Id
+             * Format: uuid
+             */
+            ingestion_job_id: string;
+            /** Status */
+            status: string;
+            /** Status Url */
+            status_url: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** BrandVersionResponse */
+        BrandVersionResponse: {
+            /** Activated At */
+            activated_at: string | null;
+            /** Active */
+            active: boolean;
+            /** Byte Size */
+            byte_size: number;
+            /** Character Count */
+            character_count: number | null;
+            /** Chunk Count */
+            chunk_count: number;
+            /** Chunk Version */
+            chunk_version: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deactivated At */
+            deactivated_at: string | null;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Embedding Dimensions */
+            embedding_dimensions: number;
+            /** Embedding Input Version */
+            embedding_input_version: string;
+            /** Embedding Model */
+            embedding_model: string;
+            /** Embedding Provider */
+            embedding_provider: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ingestion Job Id */
+            ingestion_job_id: string | null;
+            /** Ingestion Job Status */
+            ingestion_job_status: string | null;
+            /** Media Type */
+            media_type: string;
+            /** Page Count */
+            page_count: number | null;
+            /** Parser Version */
+            parser_version: string;
+            /** Safe Filename */
+            safe_filename: string;
+            /** Safety Tags */
+            safety_tags: string[];
+            /** Status */
+            status: string;
+            /** Tone Tags */
+            tone_tags: string[];
+            /** Valid From */
+            valid_from: string | null;
+            /** Valid Until */
+            valid_until: string | null;
+            /** Version */
+            version: number;
+            /** Visual Tags */
+            visual_tags: string[];
         };
         /** CandidateAnalysisDetailResponse */
         CandidateAnalysisDetailResponse: {
@@ -1626,6 +2042,217 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AcquisitionJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retrieve_brand_context_route_api_v1_brand_context_retrieve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandRetrievalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandContextResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_brand_documents_api_v1_brand_documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandDocumentListResponse"];
+                };
+            };
+        };
+    };
+    upload_brand_document_api_v1_brand_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_brand_document_api_v1_brand_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandUploadAcceptedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_brand_document_api_v1_brand_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandDocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_brand_document_route_api_v1_brand_documents__document_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandDocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_brand_document_version_api_v1_brand_documents__document_id__versions__version_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandDocumentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_brand_ingestion_job_api_v1_brand_ingestion_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandIngestionJobResponse"];
                 };
             };
             /** @description Validation Error */

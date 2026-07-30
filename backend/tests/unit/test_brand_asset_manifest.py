@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import importlib.util
+import struct
+import zlib
+from pathlib import Path
+from types import ModuleType
+
+
+def _load_builder() -> ModuleType:
+    path = Path(__file__).parents[3] / "scripts" / "build_brand_asset_manifest.py"
+    spec = importlib.util.spec_from_file_location("build_brand_asset_manifest", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _png(*, width: int = 2, height: int = 3, color_type: int = 6) -> bytes:
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", len(ihdr))
+        + b"IHDR"
+        + ihdr
+        + struct.pack(">I", zlib.crc32(b"IHDR" + ihdr))
+        + b"\x00\x00\x00\x00IEND\xaeB\x60\x82"
+    )
+
+
+def test_manifest_indexes_png_and_skips_sidecars_symlinks_and_invalid_files(
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder()
+    materials = tmp_path / "materials"
+    visual = materials / "05-visual-assets"
+    image_examples = materials / "03-image-examples"
+    visual.mkdir(parents=True)
+    image_examples.mkdir(parents=True)
+    asset = visual / "小赛与赛先生.png"
+    asset.write_bytes(_png())
+    (visual / "小赛.png:com.tencent.wedrive.fileid").write_text("sidecar")
+    (visual / "renamed.png").write_bytes(b"not a png")
+    (image_examples / "linked.png").symlink_to(asset)
+
+    manifest = builder.build_manifest(materials)
+
+    assert manifest["private"] is True
+    assert manifest["text_rag_eligible"] is False
+    assert manifest["asset_count"] == 1
+    assert manifest["skipped_sidecar_count"] == 1
+    assert manifest["skipped_unsupported_count"] == 2
+    indexed = manifest["assets"][0]
+    assert indexed["relative_path"] == "05-visual-assets/小赛与赛先生.png"
+    assert indexed["width"] == 2
+    assert indexed["height"] == 3
+    assert indexed["has_alpha"] is True
+    assert indexed["characters"] == ["xiao-sai", "sai-xiansheng"]
+
+
+def test_manifest_rejects_oversized_dimensions(tmp_path: Path) -> None:
+    builder = _load_builder()
+    materials = tmp_path / "materials"
+    visual = materials / "05-visual-assets"
+    visual.mkdir(parents=True)
+    (visual / "too-wide.png").write_bytes(_png(width=8_193, height=1))
+
+    manifest = builder.build_manifest(materials)
+
+    assert manifest["asset_count"] == 0
+    assert manifest["skipped_unsupported_count"] == 1
+
+
+def test_manifest_output_must_stay_private_and_reject_symbolic_links(tmp_path: Path) -> None:
+    builder = _load_builder()
+    materials = tmp_path / "materials"
+    materials.mkdir()
+    outside = tmp_path / "outside.json"
+    linked_output = materials / "linked.json"
+    linked_output.symlink_to(outside)
+
+    assert builder.resolve_manifest_output(materials, None) == (
+        materials / "visual-assets.manifest.json"
+    )
+    try:
+        builder.resolve_manifest_output(materials, outside)
+    except ValueError as error:
+        assert "inside" in str(error)
+    else:
+        raise AssertionError("outside manifest output must be rejected")
+    try:
+        builder.resolve_manifest_output(materials, linked_output)
+    except ValueError as error:
+        assert "symbolic link" in str(error)
+    else:
+        raise AssertionError("symbolic-link manifest output must be rejected")

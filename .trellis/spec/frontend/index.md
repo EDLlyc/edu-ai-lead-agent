@@ -2,20 +2,19 @@
 
 ## Status and source of truth
 
-These documents are the initial implementation contract for a greenfield internal SPA. The
-repository now contains an accessible environment-verification shell in
-[`frontend/src/app/App.tsx`](../../../frontend/src/app/App.tsx), but no material-package feature or
-product API consumption. The contracts are aligned with the editable
+These documents are the implementation contract for the internal SPA. The repository now contains
+an accessible brand-knowledge workspace in
+[`frontend/src/app/App.tsx`](../../../frontend/src/app/App.tsx) with generated API consumption,
+multipart upload, status polling, activation/deactivation, and internal generation-context
+diagnostics. The contracts
+are aligned with the editable
 [`main.tex`](../../../main.tex) source and generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf), version 0.3. The bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`
 preserves the version 0.2 starting decisions as historical context; version 0.3 and these specs
-control where the old report differs. Rules for material packages remain the target for the first
-product vertical slice.
+control where the old report differs. Rules for material packages remain the next product target.
 
-The first vertical slice targets React, TypeScript in strict mode, and Vite. It must update these
-guides with real component, hook, generated-client, and test paths after implementation. A task
-that changes an initial default must record the decision before editing the specs.
+React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types are implemented.
 
 ## Guidelines index
 
@@ -27,6 +26,7 @@ that changes an initial default must record the decision before editing the spec
 | [State Management](./state-management.md) | Server, local, URL, and narrowly shared client state |
 | [Type Safety](./type-safety.md) | Strict TypeScript, generated OpenAPI types, and runtime boundaries |
 | [Quality Guidelines](./quality-guidelines.md) | Tests, accessibility, generated-contract drift, and review gates |
+| [Brand Knowledge Workspace](./brand-knowledge-workspace.md) | Implemented upload, status, activation, generation-context diagnostics, generated types, accessibility, and manual-only boundary |
 
 ## Non-negotiable product boundaries
 

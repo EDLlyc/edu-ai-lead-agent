@@ -58,6 +58,21 @@ class TopicSelectionLeaseLostError(AppError):
         )
 
 
+class BrandIngestionLeaseLostError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ingestion_lease_lost",
+            "brand ingestion lease ownership was lost",
+            503,
+            True,
+        )
+
+
+class BrandUploadRejectedError(AppError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(code, message, 422)
+
+
 class ProviderError(AppError):
     """Provider boundary failure with a stable, body-free public message."""
 

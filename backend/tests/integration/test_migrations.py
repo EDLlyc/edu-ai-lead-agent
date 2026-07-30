@@ -20,11 +20,12 @@ async def test_clean_database_is_at_alembic_head(
                     "evidence_candidates",
                     "acquisition_runs",
                     "acquisition_jobs",
+                    "brand_document_versions",
                 )
             }
         )
 
-    assert revision == "20260730_0006"
+    assert revision == "20260730_0007"
     assert {
         "sources",
         "source_versions",
@@ -41,9 +42,17 @@ async def test_clean_database_is_at_alembic_head(
         "topic_selection_jobs",
         "topic_scores",
         "daily_topic_selections",
+        "brand_documents",
+        "brand_document_versions",
+        "brand_ingestion_jobs",
+        "brand_ingestion_attempts",
+        "brand_chunks",
+        "brand_chunk_embeddings",
     }.issubset(tables)
     assert columns["source_versions"]["relevance_rule_version"]["nullable"] is True
     assert columns["evidence_candidates"]["relevance_rule_version"]["nullable"] is True
     for table in ("acquisition_runs", "acquisition_jobs"):
         assert columns[table]["filtered_count"]["nullable"] is False
         assert str(columns[table]["filtered_count"]["default"]) == "0"
+    assert columns["brand_document_versions"]["metadata_fingerprint"]["nullable"] is False
+    assert columns["brand_document_versions"]["embedding_provider"]["nullable"] is False

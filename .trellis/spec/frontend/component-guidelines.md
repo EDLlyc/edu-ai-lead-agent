@@ -1,11 +1,11 @@
 # Component Guidelines
 
-## Initial component contract
+## Component contract
 
 Build function components with explicit TypeScript props and composition. Keep data loading in
-feature hooks/page containers and rendering in focused components. This is a greenfield contract;
-replace the illustrative example with actual material-package components and tests after the first
-vertical slice.
+feature hooks/page containers and rendering in focused components. The implemented
+`features/brand/BrandKnowledgePanel.tsx` follows this boundary; material-package examples below
+remain the next-slice target.
 
 ## Component boundaries
 

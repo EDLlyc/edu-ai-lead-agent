@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Computed,
     Date,
     DateTime,
     Float,
@@ -23,7 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -1595,4 +1596,297 @@ class DailyTopicSelectionModel(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_daily_topic_selections_selected_event", "selected_event_id", "business_date"),
+    )
+
+
+class BrandDocumentModel(Base):
+    __tablename__ = "brand_documents"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    brand_slug: Mapped[str] = mapped_column(String(80), nullable=False)
+    document_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    document_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    audience: Mapped[str] = mapped_column(String(40), nullable=False)
+    language: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    active_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("brand_slug = 'sai-xiansheng'", name="ck_brand_documents_single_brand"),
+        CheckConstraint(
+            "document_kind IN ('positioning', 'tone', 'approved_example', "
+            "'prohibited_language', 'safety_rule', 'visual_guidance', 'other')",
+            name="ck_brand_documents_kind",
+        ),
+        CheckConstraint("audience IN ('parents', 'internal')", name="ck_brand_documents_audience"),
+        CheckConstraint("language = 'zh-CN'", name="ck_brand_documents_language"),
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_brand_documents_status"),
+        UniqueConstraint("document_key", name="uq_brand_documents_document_key"),
+        ForeignKeyConstraint(
+            ["active_version_id", "id"],
+            ["brand_document_versions.id", "brand_document_versions.document_id"],
+            name="fk_brand_documents_active_version_document",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        Index("ix_brand_documents_scope", "brand_slug", "audience", "document_kind", "status"),
+    )
+
+
+class BrandDocumentVersionModel(Base):
+    __tablename__ = "brand_document_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    document_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_documents.id",
+            name="fk_brand_document_versions_document_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    safe_filename: Mapped[str] = mapped_column(String(180), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    bucket: Mapped[str] = mapped_column(String(120), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    metadata_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    chunk_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    embedding_input_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    embedding_provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(120), nullable=False)
+    embedding_dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    tone_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    safety_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    visual_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    character_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_brand_document_versions_version"),
+        CheckConstraint("byte_size > 0", name="ck_brand_document_versions_byte_size"),
+        CheckConstraint(
+            "embedding_dimensions = 2048", name="ck_brand_document_versions_dimensions"
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'processing', 'ready', 'failed')",
+            name="ck_brand_document_versions_status",
+        ),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_from IS NULL OR valid_until >= valid_from",
+            name="ck_brand_document_versions_validity",
+        ),
+        CheckConstraint("jsonb_typeof(tone_tags) = 'array'", name="ck_brand_versions_tone_tags"),
+        CheckConstraint(
+            "jsonb_typeof(safety_tags) = 'array'", name="ck_brand_versions_safety_tags"
+        ),
+        CheckConstraint(
+            "jsonb_typeof(visual_tags) = 'array'", name="ck_brand_versions_visual_tags"
+        ),
+        UniqueConstraint(
+            "document_id", "version", name="uq_brand_document_versions_document_version"
+        ),
+        UniqueConstraint("id", "document_id", name="uq_brand_document_versions_id_document"),
+        UniqueConstraint(
+            "document_id",
+            "sha256",
+            "metadata_fingerprint",
+            "parser_version",
+            "chunk_version",
+            "embedding_input_version",
+            "embedding_provider",
+            "embedding_model",
+            name="uq_brand_document_versions_derivation",
+        ),
+        Index(
+            "uq_brand_document_versions_one_active",
+            "document_id",
+            unique=True,
+            postgresql_where=text("active = true"),
+        ),
+        Index("ix_brand_document_versions_status", "status", "created_at"),
+    )
+
+
+class BrandIngestionJobModel(Base):
+    __tablename__ = "brand_ingestion_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_document_versions.id",
+            name="fk_brand_ingestion_jobs_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'retry_scheduled', "
+            "'succeeded', 'failed', 'cancelled')",
+            name="ck_brand_ingestion_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_brand_ingestion_jobs_attempt_count"),
+        UniqueConstraint("version_id", name="uq_brand_ingestion_jobs_version_id"),
+        Index("ix_brand_ingestion_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class BrandIngestionAttemptModel(Base):
+    __tablename__ = "brand_ingestion_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_ingestion_jobs.id",
+            name="fk_brand_ingestion_attempts_job_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'retry_scheduled', 'succeeded', 'failed')",
+            name="ck_brand_ingestion_attempts_status",
+        ),
+        UniqueConstraint("job_id", "attempt_number", name="uq_brand_ingestion_attempts_job_number"),
+        Index("ix_brand_ingestion_attempts_job_id", "job_id"),
+    )
+
+
+class BrandChunkModel(Base):
+    __tablename__ = "brand_chunks"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_document_versions.id",
+            name="fk_brand_chunks_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    char_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    search_vector: Mapped[Any] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('simple', text)", persisted=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_brand_chunks_ordinal"),
+        CheckConstraint(
+            "char_start >= 0 AND char_end > char_start", name="ck_brand_chunks_offsets"
+        ),
+        UniqueConstraint("chunk_key", name="uq_brand_chunks_chunk_key"),
+        UniqueConstraint("version_id", "ordinal", name="uq_brand_chunks_version_ordinal"),
+        Index("ix_brand_chunks_search_vector", "search_vector", postgresql_using="gin"),
+        Index("ix_brand_chunks_version_id", "version_id"),
+    )
+
+
+class BrandChunkEmbeddingModel(Base):
+    __tablename__ = "brand_chunk_embeddings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    chunk_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_chunks.id",
+            name="fk_brand_chunk_embeddings_chunk_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    vector: Mapped[list[float]] = mapped_column(Vector(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("purpose = 'brand_retrieval'", name="ck_brand_chunk_embeddings_purpose"),
+        CheckConstraint("dimensions = 2048", name="ck_brand_chunk_embeddings_dimensions"),
+        UniqueConstraint(
+            "chunk_id",
+            "purpose",
+            "provider",
+            "model",
+            "input_hash",
+            "input_version",
+            name="uq_brand_chunk_embeddings_derivation",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_brand_chunk_embeddings_request"),
+        Index("ix_brand_chunk_embeddings_chunk_id", "chunk_id"),
     )

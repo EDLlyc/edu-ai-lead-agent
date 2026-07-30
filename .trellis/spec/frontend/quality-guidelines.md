@@ -2,9 +2,9 @@
 
 ## Contract status
 
-These are initial gates for the React + TypeScript + Vite frontend. Local package scripts and the
-environment-shell component tests now exist in the paths linked below. CI jobs and the product
-end-to-end flow remain required follow-ups when those scopes are introduced.
+These are the implemented gates for the React + TypeScript + Vite frontend. Local package scripts,
+generated-contract checks, brand-workspace component/accessibility tests, and production build are
+active. CI jobs and the material-package end-to-end flow remain follow-ups.
 
 ## Required gates
 
@@ -17,11 +17,11 @@ the later product flow; browser
 binaries and product E2E tests are intentionally deferred until that flow exists. Equivalent tools
 are acceptable only if the same behaviors are enforced and the change is documented.
 
-The current environment-shell regression suite is
-[`frontend/src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx). It asserts that the page
-does not claim product/publishing behavior, command-copy feedback is available through a live
-region, and axe reports no detectable accessibility violations. Product feature tests listed below
-remain required when those features are implemented.
+The current brand-workspace regression suite is
+[`frontend/src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx). It asserts the
+brand/evidence boundary, durable upload-job feedback, absence of publishing controls, and no
+automatically detectable accessibility violations. Material-package tests listed below remain
+required when that feature is implemented.
 
 CI must run, in a deterministic order where dependencies require it:
 

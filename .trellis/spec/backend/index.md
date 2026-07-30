@@ -2,18 +2,20 @@
 
 ## Status and source of truth
 
-These documents are the implementation contract for the backend. Three production-shaped
+These documents are the implementation contract for the backend. Four production-shaped
 capabilities now exist: governed acquisition from eight authoritative sources; versioned
-normalization, evidence-bound factual analysis, duplicate relations, and event organization; and
-deterministic daily Top 1/`no_topic` selection. PostgreSQL owns durable run/job and derived-artifact
+normalization, evidence-bound factual analysis, duplicate relations, and event organization;
+deterministic daily Top 1/`no_topic` selection; and private versioned brand-document ingestion with
+separated hybrid retrieval. PostgreSQL owns durable run/job and derived-artifact
 state; MinIO keeps immutable acquisition snapshots; API, schedulers, and workers remain independent
 processes. The contracts remain aligned with the editable
 [`main.tex`](../../../main.tex) source and generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf), version 0.3. The bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`
 preserves the version 0.2 starting decisions as historical context; version 0.3 and these specs
-control where the old report differs. Rules for later brand retrieval and generation stages remain
-prospective; acquisition, governance, and topic-selection rules link to implemented code and tests.
+control where the old report differs. Generation and material-package rules remain prospective;
+acquisition, governance, topic-selection, and brand-retrieval rules link to implemented code and
+tests.
 
 ## Guidelines index
 
@@ -24,6 +26,7 @@ prospective; acquisition, governance, and topic-selection rules link to implemen
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
+| [Brand Knowledge RAG](./brand-knowledge-rag.md) | Implemented private upload, immutable versions, parser safety, provider-scoped embeddings, retrieval, API, UI, and tests |
 | [Error Handling](./error-handling.md) | Typed failures, API responses, retries, and terminal states |
 | [Logging Guidelines](./logging-guidelines.md) | Structured observability, privacy, and audit fields |
 | [Quality Guidelines](./quality-guidelines.md) | Type, test, migration, security, and contract gates |

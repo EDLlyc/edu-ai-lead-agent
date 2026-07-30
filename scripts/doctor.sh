@@ -90,7 +90,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260730_0006" ]] \
+[[ "$migration_revision" == "20260730_0007" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -109,6 +109,22 @@ topic_selection_table_count="$(
 [[ "$topic_selection_table_count" == "5" ]] \
   || fail "Topic-selection schema is incomplete; run 'make migrate'"
 pass "Topic-selection tables are installed"
+
+brand_knowledge_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''brand_documents'\'','\''brand_document_versions'\'','\''brand_ingestion_jobs'\'','\''brand_ingestion_attempts'\'','\''brand_chunks'\'','\''brand_chunk_embeddings'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$brand_knowledge_table_count" == "6" ]] \
+  || fail "Brand-knowledge schema is incomplete; run 'make migrate'"
+pass "Brand-knowledge tables are installed"
+
+brand_embedding_vector_type="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT format_type(attribute.atttypid, attribute.atttypmod) FROM pg_attribute AS attribute JOIN pg_class AS relation ON relation.oid = attribute.attrelid WHERE relation.relname = '\''brand_chunk_embeddings'\'' AND attribute.attname = '\''vector'\'' AND NOT attribute.attisdropped;"'
+)"
+[[ "$brand_embedding_vector_type" == "vector(2048)" ]] \
+  || fail "Brand embedding column is not vector(2048); run 'make migrate'"
+pass "Brand embedding column is $brand_embedding_vector_type"
 
 checkpoint_revision="$(
   docker compose exec -T postgres sh -c \

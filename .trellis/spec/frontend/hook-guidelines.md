@@ -1,10 +1,11 @@
 # Hook Guidelines
 
-## Initial hook contract
+## Implemented hook contract
 
 Use custom hooks to compose React state/effects and the typed API client, not to hide arbitrary
-business logic. TanStack Query is the initial server-state default. Update this guide with actual
-query key, hook, and test paths after the first vertical slice.
+business logic. TanStack Query owns server state. The first implemented feature uses
+`features/brand/hooks.ts`: one key factory, a document query with active-job-only polling, and
+upload/activate/deactivate mutations that invalidate that query.
 
 ## Server-state hooks
 

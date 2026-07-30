@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from datetime import date
+from io import BytesIO
+from pathlib import Path
+from uuid import uuid4
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pytest
+from app.core.errors import BrandUploadRejectedError
+from app.domain.brand_knowledge import (
+    BrandAudience,
+    BrandDocumentKind,
+    BrandUploadMetadata,
+    ParsedBrandDocument,
+    sanitize_brand_filename,
+    validated_brand_upload,
+)
+from app.infrastructure.brand.parser import BoundedBrandDocumentParser
+from app.schemas.brand_knowledge import BrandContextResponse, BrandRetrievalRequest
+
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "brand" / "parent-tone-v1.md"
+
+
+def _parser(*, max_characters: int = 20_000) -> BoundedBrandDocumentParser:
+    return BoundedBrandDocumentParser(
+        max_pages=20,
+        max_characters=max_characters,
+        max_chunks=50,
+        chunk_characters=120,
+        overlap_characters=20,
+        chunk_version="brand-chunk-v1",
+    )
+
+
+def test_markdown_validation_parse_and_chunk_are_deterministic() -> None:
+    body = FIXTURE.read_bytes()
+    upload = validated_brand_upload(
+        filename="../品牌资料/parent-tone-v1.md",
+        declared_media_type="text/markdown",
+        body=body,
+    )
+    parser = _parser()
+    parsed = parser.parse(body=upload.body, media_type=upload.media_type)
+    version_id = uuid4()
+
+    first = parser.chunk(version_id=version_id, document=parsed)
+    second = parser.chunk(version_id=version_id, document=parsed)
+
+    assert upload.safe_filename == "parent-tone-v1.md"
+    assert first == second
+    assert len(first) >= 2
+    assert all(chunk.char_end <= len(parsed.text) for chunk in first)
+    assert all(parsed.text[chunk.char_start : chunk.char_end] == chunk.text for chunk in first)
+    assert "品牌材料只能指导表达方式" in parsed.text
+
+
+def test_chunk_offsets_match_trimmed_text_exactly() -> None:
+    parser = _parser()
+    parsed = ParsedBrandDocument(
+        text="第一段结尾。   \n\n   第二段内容用于验证偏移。   ",
+        page_count=None,
+    )
+
+    chunks = parser.chunk(version_id=uuid4(), document=parsed)
+
+    assert chunks
+    assert all(parsed.text[chunk.char_start : chunk.char_end] == chunk.text for chunk in chunks)
+    assert all(chunk.text == chunk.text.strip() for chunk in chunks)
+
+
+def test_brand_metadata_fingerprint_tracks_semantic_version_metadata() -> None:
+    base = BrandUploadMetadata(
+        brand_slug="sai-xiansheng",
+        title="赛先生家长沟通规范",
+        document_kind=BrandDocumentKind.TONE,
+        audience=BrandAudience.PARENTS,
+        language="zh-CN",
+        valid_from=date(2026, 7, 1),
+        valid_until=None,
+        tone_tags=("温暖", "准确"),
+        safety_tags=("不制造焦虑",),
+        visual_tags=(),
+    )
+    reordered = BrandUploadMetadata(
+        brand_slug="sai-xiansheng",
+        title="赛先生家长沟通规范",
+        document_kind=BrandDocumentKind.TONE,
+        audience=BrandAudience.PARENTS,
+        language="zh-CN",
+        valid_from=date(2026, 7, 1),
+        valid_until=None,
+        tone_tags=("准确", "温暖"),
+        safety_tags=("不制造焦虑",),
+        visual_tags=(),
+    )
+    changed = BrandUploadMetadata(
+        brand_slug="sai-xiansheng",
+        title="赛先生家长沟通规范",
+        document_kind=BrandDocumentKind.TONE,
+        audience=BrandAudience.PARENTS,
+        language="zh-CN",
+        valid_from=date(2026, 7, 15),
+        valid_until=None,
+        tone_tags=("准确", "温暖"),
+        safety_tags=("不制造焦虑",),
+        visual_tags=(),
+    )
+
+    assert base.metadata_fingerprint == reordered.metadata_fingerprint
+    assert base.metadata_fingerprint != changed.metadata_fingerprint
+
+
+def test_upload_rejects_signature_extension_mismatch_and_non_utf8_text() -> None:
+    with pytest.raises(ValueError, match="signature"):
+        validated_brand_upload(
+            filename="rules.pdf",
+            declared_media_type="application/pdf",
+            body=b"not-a-pdf",
+        )
+    upload = validated_brand_upload(
+        filename="rules.txt",
+        declared_media_type="text/plain",
+        body=b"\xff\xfeunsafe",
+    )
+    with pytest.raises(BrandUploadRejectedError, match="UTF-8"):
+        _parser().parse(body=upload.body, media_type=upload.media_type)
+
+
+def test_docx_rejects_external_relationships_and_embedded_objects() -> None:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            '<Relationships><Relationship TargetMode="External" Target="https://example.com"/></Relationships>',
+        )
+        archive.writestr("word/document.xml", "<document />")
+    with pytest.raises(BrandUploadRejectedError, match="external relationships"):
+        _parser().parse(
+            body=buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+
+def test_parser_enforces_character_limit_without_returning_corpus_text() -> None:
+    with pytest.raises(BrandUploadRejectedError) as captured:
+        _parser(max_characters=1_000).parse(
+            body=("家长沟通原则。" * 500).encode(),
+            media_type="text/plain",
+        )
+    assert captured.value.code == "brand_text_too_large"
+    assert "家长沟通原则" not in captured.value.message
+
+
+def test_filename_is_bounded_and_drops_parent_paths() -> None:
+    assert sanitize_brand_filename("../../赛先生 语气规范.md") == "赛先生-语气规范.md"
+    with pytest.raises(ValueError):
+        sanitize_brand_filename("../..")
+
+
+def test_retrieval_schema_describes_internal_copy_generation_contract() -> None:
+    request_schema = BrandRetrievalRequest.model_json_schema()
+    response_schema = BrandContextResponse.model_json_schema()
+
+    assert "copy-generation" in request_schema["description"]
+    audience_description = request_schema["properties"]["audience"]["description"]
+    assert "target audience" in audience_description.lower()
+    assert "not the identity of a search user" in audience_description
+    assert "copy generation" in response_schema["description"]
+    assert response_schema["properties"]["evidence_eligible"]["const"] is False

@@ -8,7 +8,7 @@ acquisition and factual-governance schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260730_0006`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260730_0007`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -29,13 +29,14 @@ Use distinct models, repositories, and foreign-key paths for:
 Both domains may have vector columns, but a brand chunk cannot satisfy a factual claim's evidence
 foreign key. Prefer database constraints over convention alone where possible.
 
-Implemented evidence and topic-selection tables follow the exact model/migration names. Brand
-documents, generation artifacts, claims for final copy, and material packages are future-slice
-entities and must not be created speculatively. The detailed governance table, uniqueness,
+Implemented evidence, topic-selection, and brand-knowledge tables follow the exact model/migration
+names. Generation artifacts, claims for final copy, and material packages are future-slice entities
+and must not be created speculatively. The detailed governance table, uniqueness,
 checkpoint, vector, and event-version contracts are in
 [`governance-event-organization.md`](./governance-event-organization.md). The
 config/run/job/score/daily-lock schema and event/version composite constraints are in
-[`topic-selection.md`](./topic-selection.md).
+[`topic-selection.md`](./topic-selection.md). Brand document/version/job/chunk/vector constraints
+are in [`brand-knowledge-rag.md`](./brand-knowledge-rag.md).
 
 ## SQLAlchemy 2 async pattern
 
@@ -148,7 +149,7 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260730_0006`. Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract
+  `20260730_0007`. Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract
   described here.
 - Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
 - Candidate contract: `evidence_candidates.relevance_rule_version VARCHAR(40) NULL`.

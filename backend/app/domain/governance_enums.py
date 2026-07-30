@@ -53,6 +53,7 @@ class AnalysisStatus(StrEnum):
 class EmbeddingPurpose(StrEnum):
     NEAR_DUPLICATE = "near_duplicate"
     EVENT_ASSIGNMENT = "event_assignment"
+    BRAND_RETRIEVAL = "brand_retrieval"
 
 
 class DuplicateRelationKind(StrEnum):
