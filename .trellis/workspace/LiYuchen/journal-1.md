@@ -94,3 +94,24 @@ Completed the production-shaped first capability: governed daily acquisition fro
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: Complete factual governance and event organization
+
+**Date**: 2026-07-30
+**Task**: Complete factual governance and event organization
+**Branch**: `main`
+
+### Summary
+
+Completed the production-shaped second capability: versioned normalization and evidence-bound factual analysis, dual-purpose embeddings, exact/semantic deduplication, durable LangGraph execution, auditable event organization, internal APIs, independent deployment processes, a successful bounded live Zhipu workflow, explicit bounded gzip transport handling, executable backend specs, and final 201-test production verification.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ca954a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
