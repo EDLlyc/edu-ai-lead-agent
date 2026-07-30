@@ -90,7 +90,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260729_0004" ]] \
+[[ "$migration_revision" == "20260730_0006" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -101,6 +101,14 @@ governance_table_count="$(
 [[ "$governance_table_count" == "22" ]] \
   || fail "Governance/checkpoint schema is incomplete; run 'make migrate'"
 pass "Governance and LangGraph checkpoint tables are installed"
+
+topic_selection_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''topic_scoring_configs'\'','\''topic_selection_runs'\'','\''topic_selection_jobs'\'','\''topic_scores'\'','\''daily_topic_selections'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$topic_selection_table_count" == "5" ]] \
+  || fail "Topic-selection schema is incomplete; run 'make migrate'"
+pass "Topic-selection tables are installed"
 
 checkpoint_revision="$(
   docker compose exec -T postgres sh -c \

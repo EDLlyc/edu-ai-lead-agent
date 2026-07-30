@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     evidence_candidates,
     governance_runs,
     sources,
+    topic_selection_runs,
 )
 from app.core.config import get_settings
 from app.core.errors import AppError
@@ -47,8 +48,8 @@ app = FastAPI(
     version="0.3.0",
     description=(
         "Internal API for authoritative-source acquisition, factual governance, and auditable "
-        "event organization. It does not expose scoring, generation, publishing, or arbitrary "
-        "URL-fetch capabilities."
+        "event organization, and deterministic daily topic selection. It does not expose "
+        "generation, publishing, or arbitrary URL-fetch capabilities."
     ),
     lifespan=lifespan,
 )
@@ -60,6 +61,7 @@ app.include_router(evidence_candidates.router, prefix="/api/v1")
 app.include_router(governance_runs.router, prefix="/api/v1")
 app.include_router(candidate_analyses.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
+app.include_router(topic_selection_runs.router, prefix="/api/v1")
 
 
 @app.middleware("http")

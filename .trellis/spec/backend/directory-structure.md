@@ -2,11 +2,11 @@
 
 ## Contract status
 
-The first two backend capabilities are implemented under [`backend/app`](../../../backend/app):
+The first three backend capabilities are implemented under [`backend/app`](../../../backend/app):
 versioned acquisition and governance APIs, application services/ports, provider-independent domain
 rules, SQLAlchemy repositories/models, safe source connectors, MinIO snapshot storage, optional
-Zhipu adapters, LangGraph orchestration, and separate API/acquisition/governance processes. OpenAPI
-is exported through
+Zhipu adapters, LangGraph orchestration, deterministic topic selection, and separate API,
+acquisition, governance, and content processes. OpenAPI is exported through
 [`scripts/export_openapi.py`](../../../backend/scripts/export_openapi.py). Extend this real layout;
 do not recreate the earlier greenfield-only tree or collapse the process boundaries.
 
@@ -50,7 +50,9 @@ backend/
 │   ├── scheduler_main.py
 │   ├── worker_main.py
 │   ├── governance_scheduler_main.py
-│   └── governance_worker_main.py
+│   ├── governance_worker_main.py
+│   ├── content_scheduler_main.py
+│   └── content_worker_main.py
 └── tests/
     ├── contract/
     ├── integration/
@@ -136,6 +138,20 @@ This separation prevents each multi-process FastAPI worker from firing the same 
 
 See [`governance-event-organization.md`](./governance-event-organization.md) for the executable
 cross-layer contract.
+
+## Topic-selection ownership
+
+- `domain/topic_selection.py` owns pure deterministic feature normalization, vetoes, score totals,
+  stable ranking, and Top 1/`no_topic` decisions.
+- `application/services/topic_selection.py` owns enqueue, schedule reconciliation, execution, and
+  heartbeat coordination through `application/ports/topic_selection.py`.
+- `infrastructure/db/topic_selection.py` owns PostgreSQL config/run/job/score/lock persistence and
+  governed-event projections at the immutable run cutoff.
+- `api/v1/routes/topic_selection_runs.py` and `topic_selection_views.py` only validate/project the
+  HTTP contract; they do not score in the request process.
+- `content_scheduler_main.py` and `content_worker_main.py` are independently enabled deployables.
+
+See [`topic-selection.md`](./topic-selection.md) for the executable cross-layer contract.
 
 ## Naming conventions
 

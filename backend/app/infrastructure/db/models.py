@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -1239,6 +1240,7 @@ class EventClusterVersionModel(Base):
             name="ck_event_cluster_versions_time_precision",
         ),
         UniqueConstraint("event_id", "version", name="uq_event_cluster_versions_event_version"),
+        UniqueConstraint("id", "event_id", name="uq_event_cluster_versions_id_event"),
         UniqueConstraint(
             "event_id",
             "member_set_hash",
@@ -1302,4 +1304,295 @@ class EventMembershipModel(Base):
             postgresql_where=text("active = true"),
         ),
         Index("ix_event_memberships_event_id", "event_id"),
+    )
+
+
+class TopicScoringConfigModel(Base):
+    __tablename__ = "topic_scoring_configs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version: Mapped[str] = mapped_column(String(80), nullable=False)
+    profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("profile", "version", name="uq_topic_scoring_configs_profile_version"),
+        UniqueConstraint("fingerprint", name="uq_topic_scoring_configs_fingerprint"),
+    )
+
+
+class TopicSelectionRunModel(Base):
+    __tablename__ = "topic_selection_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(20), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    config_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_scoring_configs.id",
+            name="fk_topic_selection_runs_config_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    governed_event_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    selected_event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id",
+            name="fk_topic_selection_runs_selected_event_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    selected_event_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_topic_selection_runs_selected_event_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    no_topic_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    total_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    eligible_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "trigger IN ('manual', 'scheduled')",
+            name="ck_topic_selection_runs_trigger",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_topic_selection_runs_status",
+        ),
+        CheckConstraint(
+            "no_topic_code IS NULL OR no_topic_code IN "
+            "('no_candidates', 'all_vetoed', 'below_threshold')",
+            name="ck_topic_selection_runs_no_topic_code",
+        ),
+        CheckConstraint("total_scores >= 0", name="ck_topic_selection_runs_total_scores"),
+        CheckConstraint("eligible_scores >= 0", name="ck_topic_selection_runs_eligible_scores"),
+        CheckConstraint(
+            "(selected_event_id IS NULL) = (selected_event_version_id IS NULL)",
+            name="ck_topic_selection_runs_selected_pair",
+        ),
+        CheckConstraint(
+            "status <> 'succeeded' OR "
+            "((selected_event_id IS NOT NULL AND no_topic_code IS NULL) OR "
+            "(selected_event_id IS NULL AND no_topic_code IS NOT NULL))",
+            name="ck_topic_selection_runs_terminal_decision",
+        ),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "scoring_profile",
+            name="uq_topic_selection_runs_business_key",
+        ),
+        ForeignKeyConstraint(
+            ["selected_event_version_id", "selected_event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_topic_selection_runs_selected_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_topic_selection_runs_status_created", "status", "created_at"),
+    )
+
+
+class TopicSelectionJobModel(Base):
+    __tablename__ = "topic_selection_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_topic_selection_jobs_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_topic_selection_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_topic_selection_jobs_attempt_count"),
+        UniqueConstraint("run_id", name="uq_topic_selection_jobs_run_id"),
+        Index("ix_topic_selection_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class TopicScoreModel(Base):
+    __tablename__ = "topic_scores"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("topic_selection_runs.id", name="fk_topic_scores_run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("event_clusters.id", name="fk_topic_scores_event_id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    event_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_topic_scores_event_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    raw_features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    normalized_features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    weights: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    penalty_weights: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    positive_components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    penalty_components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    total: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    passes_threshold: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    veto_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    explanation: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("rank >= 1", name="ck_topic_scores_rank"),
+        CheckConstraint(
+            "jsonb_typeof(veto_codes) = 'array'", name="ck_topic_scores_veto_codes_array"
+        ),
+        UniqueConstraint("run_id", "event_id", name="uq_topic_scores_run_event"),
+        UniqueConstraint("run_id", "rank", name="uq_topic_scores_run_rank"),
+        ForeignKeyConstraint(
+            ["event_version_id", "event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_topic_scores_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_topic_scores_run_total", "run_id", "total"),
+    )
+
+
+class DailyTopicSelectionModel(Base):
+    __tablename__ = "daily_topic_selections"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_daily_topic_selections_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    config_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_scoring_configs.id",
+            name="fk_daily_topic_selections_config_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    selected_event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id",
+            name="fk_daily_topic_selections_selected_event_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    selected_event_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_daily_topic_selections_selected_event_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    no_topic_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision_kind IN ('selected', 'no_topic')",
+            name="ck_daily_topic_selections_decision_kind",
+        ),
+        CheckConstraint(
+            "no_topic_code IS NULL OR no_topic_code IN "
+            "('no_candidates', 'all_vetoed', 'below_threshold')",
+            name="ck_daily_topic_selections_no_topic_code",
+        ),
+        CheckConstraint(
+            "(decision_kind = 'selected' AND selected_event_id IS NOT NULL "
+            "AND selected_event_version_id IS NOT NULL AND no_topic_code IS NULL) OR "
+            "(decision_kind = 'no_topic' AND selected_event_id IS NULL "
+            "AND selected_event_version_id IS NULL AND no_topic_code IS NOT NULL)",
+            name="ck_daily_topic_selections_decision",
+        ),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "scoring_profile",
+            name="uq_daily_topic_selections_business_key",
+        ),
+        UniqueConstraint("run_id", name="uq_daily_topic_selections_run_id"),
+        ForeignKeyConstraint(
+            ["selected_event_version_id", "selected_event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_daily_topic_selections_selected_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_daily_topic_selections_selected_event", "selected_event_id", "business_date"),
     )

@@ -3,10 +3,10 @@
 ## Purpose and status
 
 This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
-[`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. The first
-two capabilities now exist: authoritative-source acquisition, followed by versioned factual
-governance and auditable event organization. Topic scoring, brand retrieval, generation, product
-UI, and publishing remain prospective and must update this document when implemented.
+[`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. Three
+capabilities now exist: authoritative-source acquisition, versioned factual governance and
+auditable event organization, and deterministic daily Top 1/`no_topic` selection. Brand retrieval,
+generation, and product UI remain prospective. Automated publishing is prohibited.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -165,7 +165,10 @@ Downstream topic scoring must consume governed event/fact/category/entity/source
 projections. It must not re-crawl a source, re-summarize the article, infer provenance from only
 `candidate.source_id`, or bypass a durable `review_required` assignment.
 
-## Eligibility, scoring, and selection
+## Implemented eligibility, scoring, and selection
+
+The executable API, migration, environment, lease, scoring, veto, and test contracts are in
+[`topic-selection.md`](./topic-selection.md). The summary below controls the cross-stage handoff.
 
 Hard vetoes are evaluated independently of the numeric total and cannot be outweighed. Initial
 vetoes include unresolved Tier C evidence, unverified rumors, unsuitable negative incidents,
@@ -190,11 +193,10 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The report does not supply numeric ranges, weights, penalties, or a threshold. Keep them in a
-versioned scoring configuration rather than hard-coding values in this spec. The first scoring
-task must document normalization and tie-break rules, evaluate a proposed configuration against a
-representative labeled candidate set, and obtain product approval before using it as the
-production default.
+The implemented `scoring-v1-preview.1` keeps numeric ranges, weights, penalties, the threshold,
+veto version, and tie-break order in an immutable persisted configuration. It has controlled tests
+and a real-event demonstration, but remains a preview profile until a later labeled calibration
+and explicit product approval create a new production configuration.
 
 Select Top 1 only from eligible candidates with `total >= threshold`. Stable tie-breakers must be
 documented (for example source tier, publication time, then stable ID). If none qualifies, persist

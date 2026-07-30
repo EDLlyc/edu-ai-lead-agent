@@ -78,7 +78,8 @@ provider SDK or provider response type.
 
 #### Database and state signatures
 
-- Repository schema head: `20260729_0004`; there must be exactly one Alembic head.
+- Governance foundation revision: `20260729_0004`; the repository's current unique Alembic head is
+  `20260730_0006` after topic-selection migrations.
 - Run states: `queued`, `running`, `succeeded`, `partially_succeeded`, `failed`, `cancelled`.
 - Job states: `queued`, `running`, `retry_scheduled`, `succeeded`, `review_required`, `failed`,
   `cancelled`.

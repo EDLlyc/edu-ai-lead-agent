@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/daily-topics/{business_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Daily Topic */
+        get: operations["read_daily_topic_api_v1_daily_topics__business_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -217,6 +234,57 @@ export interface paths {
         };
         /** Get Sources */
         get: operations["get_sources_api_v1_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topic-selection-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Topic Selection Run */
+        post: operations["create_topic_selection_run_api_v1_topic_selection_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topic-selection-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Topic Selection Run */
+        get: operations["read_topic_selection_run_api_v1_topic_selection_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/topic-selection-runs/{run_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Topic Selection Scores */
+        get: operations["read_topic_selection_scores_api_v1_topic_selection_runs__run_id__scores_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -500,6 +568,47 @@ export interface components {
              * @default []
              */
             candidate_ids: string[];
+        };
+        /** CreateTopicSelectionRunRequest */
+        CreateTopicSelectionRunRequest: {
+            /** Business Date */
+            business_date?: string | null;
+        };
+        /** DailyTopicResponse */
+        DailyTopicResponse: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "selected" | "no_topic";
+            /** No Topic Code */
+            no_topic_code: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Scoring Version */
+            scoring_version: string;
+            /** Selected Event Id */
+            selected_event_id: string | null;
+            /** Selected Event Version Id */
+            selected_event_version_id: string | null;
+            selected_score: components["schemas"]["TopicScoreResponse"] | null;
+            /** Timezone */
+            timezone: string;
         };
         /** DuplicateRelationResponse */
         DuplicateRelationResponse: {
@@ -1280,6 +1389,137 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TopicScoreListResponse */
+        TopicScoreListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["TopicScoreResponse"][];
+        };
+        /** TopicScoreResponse */
+        TopicScoreResponse: {
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Time */
+            event_time: string | null;
+            /** Event Title */
+            event_title: string;
+            /**
+             * Event Version Id
+             * Format: uuid
+             */
+            event_version_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Normalized Features */
+            normalized_features: {
+                [key: string]: number;
+            };
+            /** Passes Threshold */
+            passes_threshold: boolean;
+            /** Penalty Components */
+            penalty_components: {
+                [key: string]: number;
+            };
+            /** Penalty Weights */
+            penalty_weights: {
+                [key: string]: number;
+            };
+            /** Positive Components */
+            positive_components: {
+                [key: string]: number;
+            };
+            /** Rank */
+            rank: number;
+            /** Raw Features */
+            raw_features: {
+                [key: string]: number;
+            };
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Scoring Version */
+            scoring_version: string;
+            /** Threshold */
+            threshold: number;
+            /** Total */
+            total: number;
+            /** Veto Codes */
+            veto_codes: string[];
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+        };
+        /** TopicSelectionRunResponse */
+        TopicSelectionRunResponse: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Config Fingerprint */
+            config_fingerprint: string;
+            /** Considered Count */
+            considered_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Cutoff At
+             * Format: date-time
+             */
+            cutoff_at: string;
+            /** Eligible Count */
+            eligible_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** No Topic Code */
+            no_topic_code: string | null;
+            /** Scores Url */
+            scores_url: string;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Scoring Version */
+            scoring_version: string;
+            /** Selected Event Id */
+            selected_event_id: string | null;
+            /** Selected Event Version Id */
+            selected_event_version_id: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Status Url */
+            status_url: string;
+            /** Timezone */
+            timezone: string;
+            /** Trigger */
+            trigger: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1449,6 +1689,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandidateAnalysisDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_daily_topic_api_v1_daily_topics__business_date__get: {
+        parameters: {
+            query?: {
+                profile?: string;
+            };
+            header?: never;
+            path: {
+                business_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyTopicResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1706,6 +1979,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceListResponse"];
+                };
+            };
+        };
+    };
+    create_topic_selection_run_api_v1_topic_selection_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTopicSelectionRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicSelectionRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_topic_selection_run_api_v1_topic_selection_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicSelectionRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_topic_selection_scores_api_v1_topic_selection_runs__run_id__scores_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicScoreListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

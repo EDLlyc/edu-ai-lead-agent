@@ -24,7 +24,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260729_0004"
+    assert revision == "20260730_0006"
     assert {
         "sources",
         "source_versions",
@@ -36,6 +36,11 @@ async def test_clean_database_is_at_alembic_head(
         "source_snapshots",
         "evidence_candidates",
         "source_observations",
+        "topic_scoring_configs",
+        "topic_selection_runs",
+        "topic_selection_jobs",
+        "topic_scores",
+        "daily_topic_selections",
     }.issubset(tables)
     assert columns["source_versions"]["relevance_rule_version"]["nullable"] is True
     assert columns["evidence_candidates"]["relevance_rule_version"]["nullable"] is True

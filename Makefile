@@ -6,6 +6,7 @@ PY_RUN := conda run --name $(CONDA_ENV)
 .PHONY: env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
+	content-scheduler content-worker content-stack-up \
 	api-generate api-contract-check \
 	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
@@ -53,6 +54,12 @@ governance-scheduler:
 governance-worker:
 	$(PY_RUN) python -m app.governance_worker_main
 
+content-scheduler:
+	$(PY_RUN) python -m app.content_scheduler_main
+
+content-worker:
+	$(PY_RUN) python -m app.content_worker_main
+
 governance-fake-check:
 	$(PY_RUN) pytest backend/tests/unit/test_governance_delivery.py \
 		backend/tests/integration/test_governance_api_e2e.py -q
@@ -77,6 +84,9 @@ stack-up: env-init
 
 governance-stack-up: env-init
 	docker compose --profile governance up -d --build governance-scheduler governance-worker
+
+content-stack-up: env-init
+	docker compose --profile content up -d --build content-scheduler content-worker
 
 infra-down:
 	docker compose down

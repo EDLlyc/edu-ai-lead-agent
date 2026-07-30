@@ -42,7 +42,7 @@ async def test_governance_schema_and_checkpoint_contract(
             }
         )
 
-    assert revision == "20260729_0004"
+    assert revision == "20260730_0006"
     assert vector_enabled is True
     assert checkpoint_version == 9
     assert vector_type == "vector(2048)"
@@ -70,6 +70,11 @@ async def test_governance_schema_and_checkpoint_contract(
         "checkpoints",
         "checkpoint_blobs",
         "checkpoint_writes",
+        "topic_scoring_configs",
+        "topic_selection_runs",
+        "topic_selection_jobs",
+        "topic_scores",
+        "daily_topic_selections",
     }.issubset(tables)
 
     psycopg_url = make_url(integration_context.settings.database_url.get_secret_value()).set(

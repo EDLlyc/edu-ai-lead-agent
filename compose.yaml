@@ -118,6 +118,17 @@ services:
       GOVERNANCE_SIMILARITY_RULE_VERSION: ${GOVERNANCE_SIMILARITY_RULE_VERSION:-semantic-v1}
       GOVERNANCE_EVENT_ASSIGNMENT_VERSION: ${GOVERNANCE_EVENT_ASSIGNMENT_VERSION:-event-assignment-v1}
       GOVERNANCE_CHECKPOINT_DATABASE_URL: postgresql://${POSTGRES_USER:-edu_ai}:${POSTGRES_PASSWORD:-edu_ai_local_change_me}@postgres:5432/${POSTGRES_DB:-edu_ai}
+      CONTENT_ENABLED: ${CONTENT_ENABLED:-false}
+      CONTENT_SCHEDULE_HOUR: ${CONTENT_SCHEDULE_HOUR:-7}
+      CONTENT_SCHEDULE_MINUTE: ${CONTENT_SCHEDULE_MINUTE:-30}
+      CONTENT_CATCHUP_HOURS: ${CONTENT_CATCHUP_HOURS:-12}
+      CONTENT_POLL_SECONDS: ${CONTENT_POLL_SECONDS:-2}
+      CONTENT_WORKER_CONCURRENCY: ${CONTENT_WORKER_CONCURRENCY:-1}
+      CONTENT_LEASE_SECONDS: ${CONTENT_LEASE_SECONDS:-120}
+      CONTENT_HEARTBEAT_SECONDS: ${CONTENT_HEARTBEAT_SECONDS:-30}
+      CONTENT_MAX_ATTEMPTS: ${CONTENT_MAX_ATTEMPTS:-3}
+      CONTENT_SCORING_VERSION: ${CONTENT_SCORING_VERSION:-scoring-v1-preview.1}
+      CONTENT_SCORING_PROFILE: ${CONTENT_SCORING_PROFILE:-preview}
       AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-disabled}
       AI_PLATFORM_BASE_URL: ${AI_PLATFORM_BASE_URL:-}
       AI_CHAT_MODEL: ${AI_CHAT_MODEL:-glm-5.2}
@@ -211,6 +222,32 @@ services:
       GOVERNANCE_WORKER_ENABLED: ${GOVERNANCE_WORKER_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
     command: ["python", "-m", "app.governance_worker_main"]
+
+  content-scheduler:
+    profiles: ["content"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      CONTENT_SCHEDULER_ENABLED: ${CONTENT_SCHEDULER_ENABLED:-false}
+    command: ["python", "-m", "app.content_scheduler_main"]
+
+  content-worker:
+    profiles: ["content"]
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-false}
+    command: ["python", "-m", "app.content_worker_main"]
 
 volumes:
   postgres_data:

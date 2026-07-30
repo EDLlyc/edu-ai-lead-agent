@@ -753,6 +753,123 @@
         "title": "CreateGovernanceRunRequest",
         "type": "object"
       },
+      "CreateTopicSelectionRunRequest": {
+        "properties": {
+          "business_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Date"
+          }
+        },
+        "title": "CreateTopicSelectionRunRequest",
+        "type": "object"
+      },
+      "DailyTopicResponse": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "selected",
+              "no_topic"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "no_topic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Topic Code"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "scoring_version": {
+            "title": "Scoring Version",
+            "type": "string"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "selected_event_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Version Id"
+          },
+          "selected_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TopicScoreResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "business_date",
+          "timezone",
+          "scoring_version",
+          "scoring_profile",
+          "decision",
+          "run_id",
+          "selected_event_id",
+          "selected_event_version_id",
+          "no_topic_code",
+          "decided_at",
+          "selected_score"
+        ],
+        "title": "DailyTopicResponse",
+        "type": "object"
+      },
       "DuplicateRelationResponse": {
         "properties": {
           "created_at": {
@@ -2608,6 +2725,320 @@
         "title": "SourceResponse",
         "type": "object"
       },
+      "TopicScoreListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TopicScoreResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "TopicScoreListResponse",
+        "type": "object"
+      },
+      "TopicScoreResponse": {
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "event_title": {
+            "title": "Event Title",
+            "type": "string"
+          },
+          "event_version_id": {
+            "format": "uuid",
+            "title": "Event Version Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_features": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Normalized Features",
+            "type": "object"
+          },
+          "passes_threshold": {
+            "title": "Passes Threshold",
+            "type": "boolean"
+          },
+          "penalty_components": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Penalty Components",
+            "type": "object"
+          },
+          "penalty_weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Penalty Weights",
+            "type": "object"
+          },
+          "positive_components": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Positive Components",
+            "type": "object"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "raw_features": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Raw Features",
+            "type": "object"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "scoring_version": {
+            "title": "Scoring Version",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "veto_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Veto Codes",
+            "type": "array"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Weights",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "event_id",
+          "event_version_id",
+          "event_title",
+          "event_time",
+          "scoring_version",
+          "scoring_profile",
+          "raw_features",
+          "normalized_features",
+          "weights",
+          "penalty_weights",
+          "positive_components",
+          "penalty_components",
+          "total",
+          "threshold",
+          "passes_threshold",
+          "eligible",
+          "veto_codes",
+          "rank"
+        ],
+        "title": "TopicScoreResponse",
+        "type": "object"
+      },
+      "TopicSelectionRunResponse": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "config_fingerprint": {
+            "title": "Config Fingerprint",
+            "type": "string"
+          },
+          "considered_count": {
+            "title": "Considered Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "format": "date-time",
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "no_topic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Topic Code"
+          },
+          "scores_url": {
+            "title": "Scores Url",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "scoring_version": {
+            "title": "Scoring Version",
+            "type": "string"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "selected_event_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Version Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "trigger": {
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "business_date",
+          "timezone",
+          "scoring_version",
+          "scoring_profile",
+          "config_fingerprint",
+          "config",
+          "status",
+          "considered_count",
+          "eligible_count",
+          "selected_event_id",
+          "selected_event_version_id",
+          "no_topic_code",
+          "cutoff_at",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "status_url",
+          "scores_url"
+        ],
+        "title": "TopicSelectionRunResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2651,7 +3082,7 @@
     }
   },
   "info": {
-    "description": "Internal API for authoritative-source acquisition, factual governance, and auditable event organization. It does not expose scoring, generation, publishing, or arbitrary URL-fetch capabilities.",
+    "description": "Internal API for authoritative-source acquisition, factual governance, and auditable event organization, and deterministic daily topic selection. It does not expose generation, publishing, or arbitrary URL-fetch capabilities.",
     "title": "Edu AI Lead Agent API",
     "version": "0.3.0"
   },
@@ -2906,6 +3337,61 @@
         "summary": "Get Candidate Analysis",
         "tags": [
           "governance"
+        ]
+      }
+    },
+    "/api/v1/daily-topics/{business_date}": {
+      "get": {
+        "operationId": "read_daily_topic_api_v1_daily_topics__business_date__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "business_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Business Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "default": "preview",
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyTopicResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Daily Topic",
+        "tags": [
+          "topic-selection"
         ]
       }
     },
@@ -3347,6 +3833,133 @@
         "summary": "Get Sources",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/api/v1/topic-selection-runs": {
+      "post": {
+        "operationId": "create_topic_selection_run_api_v1_topic_selection_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTopicSelectionRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicSelectionRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Topic Selection Run",
+        "tags": [
+          "topic-selection"
+        ]
+      }
+    },
+    "/api/v1/topic-selection-runs/{run_id}": {
+      "get": {
+        "operationId": "read_topic_selection_run_api_v1_topic_selection_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicSelectionRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Topic Selection Run",
+        "tags": [
+          "topic-selection"
+        ]
+      }
+    },
+    "/api/v1/topic-selection-runs/{run_id}/scores": {
+      "get": {
+        "operationId": "read_topic_selection_scores_api_v1_topic_selection_runs__run_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicScoreListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Topic Selection Scores",
+        "tags": [
+          "topic-selection"
         ]
       }
     },

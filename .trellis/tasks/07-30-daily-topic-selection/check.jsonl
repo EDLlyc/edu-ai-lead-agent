@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify veto precedence, normalized explainable score, stable rank, Top 1/no_topic, and downstream stop."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Verify immutable governed event cutoff, evidence provenance, and no re-fetch/re-analysis."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check one daily lock, config/version immutability, concurrency, counters, and replay idempotency."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check typed invalid config, conflicts, run failures, and safe API responses."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check labeled evaluation, unit/integration/API coverage, static gates, and final handoff evidence."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Check the child output contract and product-approved scoring proposal/review process."}

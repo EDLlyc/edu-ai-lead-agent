@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend boundaries for durable deterministic selection over stored governed evidence."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Eligibility veto, versioned scoring, Top 1/no_topic, tie-break, and downstream-stop contracts."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Exact event/fact/evidence/version input contract and no-refetch boundary."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Selection config/run/score/lock migrations, transactions, constraints, and idempotency."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed veto, invalid config, conflict, retry, and terminal run behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Pure scoring tests, real PostgreSQL concurrency, API contracts, and focused verification."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace event projection through scoring persistence, APIs, and downstream consumers."}
+{"file":".trellis/tasks/07-30-content-production-mvp/research/current-integration-seams.md","reason":"Existing governance seams and approved scoring-v1 evaluation process."}

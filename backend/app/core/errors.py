@@ -48,6 +48,16 @@ class GovernanceLeaseLostError(AppError):
         super().__init__("governance_lease_lost", "governance lease ownership was lost", 503, True)
 
 
+class TopicSelectionLeaseLostError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "topic_selection_lease_lost",
+            "topic selection lease ownership was lost",
+            503,
+            True,
+        )
+
+
 class ProviderError(AppError):
     """Provider boundary failure with a stable, body-free public message."""
 

@@ -69,6 +69,20 @@ class Settings(BaseSettings):
         "postgresql://edu_ai:edu_ai_local_change_me@127.0.0.1:5432/edu_ai"
     )
 
+    content_enabled: bool = False
+    content_scheduler_enabled: bool = False
+    content_worker_enabled: bool = False
+    content_schedule_hour: int = Field(default=7, ge=0, le=23)
+    content_schedule_minute: int = Field(default=30, ge=0, le=59)
+    content_catchup_hours: int = Field(default=12, ge=1, le=24)
+    content_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    content_worker_concurrency: int = Field(default=1, ge=1, le=8)
+    content_lease_seconds: int = Field(default=120, ge=30, le=3600)
+    content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
+    content_max_attempts: int = Field(default=3, ge=1, le=10)
+    content_scoring_version: str = "scoring-v1-preview.1"
+    content_scoring_profile: str = "preview"
+
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
     ai_platform_api_key: SecretStr | None = None
@@ -101,10 +115,16 @@ class Settings(BaseSettings):
             raise ValueError("acquisition heartbeat must be shorter than the lease")
         if self.governance_heartbeat_seconds >= self.governance_lease_seconds:
             raise ValueError("governance heartbeat must be shorter than the lease")
+        if self.content_heartbeat_seconds >= self.content_lease_seconds:
+            raise ValueError("content heartbeat must be shorter than the lease")
         if (
             self.governance_scheduler_enabled or self.governance_worker_enabled
         ) and not self.governance_enabled:
             raise ValueError("governance processes require governance to be enabled")
+        if (
+            self.content_scheduler_enabled or self.content_worker_enabled
+        ) and not self.content_enabled:
+            raise ValueError("content processes require content to be enabled")
         if self.acquisition_total_timeout_seconds < self.acquisition_read_timeout_seconds:
             raise ValueError("acquisition total timeout must cover the read timeout")
         if (
@@ -170,6 +190,8 @@ class Settings(BaseSettings):
             self.governance_embedding_input_version,
             self.governance_similarity_rule_version,
             self.governance_event_assignment_version,
+            self.content_scoring_version,
+            self.content_scoring_profile,
         }
         if any(not value.strip() or len(value) > 80 for value in version_values):
             raise ValueError(
