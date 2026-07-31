@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+.gemini/
 
 # Python artifacts
 __pycache__/
@@ -31,6 +32,7 @@ frontend/test-results/
 *.log
 logs/
 .cache/
+output/
 
 # LaTeX report build intermediates
 /reports/*.aux
