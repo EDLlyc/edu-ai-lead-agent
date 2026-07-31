@@ -158,3 +158,47 @@ Completed the private Sai Xiansheng brand-knowledge MVP: safe PDF/DOCX/TXT/Markd
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: Image generation and material package UI
+
+**Date**: 2026-07-31
+**Task**: Image generation and material package UI
+**Branch**: `main`
+
+### Summary
+
+Completed the final content-production MVP child task: one-image generation through the ToAPIs gpt-image-2 contract, private MinIO storage, versioned material packages, accessible internal review/copy/download UI, migration 0009, and spec updates.
+
+### Main Changes
+
+- Added ToAPIs gpt-image-2 image adapter with deterministic fake provider, request-fingerprint idempotency, bounded polling/download, and typed error states
+- Added private MinIO image store with content-addressed keys and checksum
+- Added material package service, schemas, run/package/review APIs, and controlled image-download route
+- Added migration 20260731_0009 and synced migration test head-revision assertions
+- Added MaterialPackagePanel UI with generated OpenAPI types, TanStack Query polling, and accessible states
+- Updated agent-pipeline.md with the image generation code-spec and database-guidelines.md with the head-revision sync rule
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4f31610` | (see git log) |
+| `7f3a9eb` | (see git log) |
+| `c4835d1` | (see git log) |
+| `b0a4aab` | (see git log) |
+| `ea08db8` | (see git log) |
+
+### Testing
+
+- [OK] Backend: ruff format/lint, mypy, 184 unit + 39 integration tests pass
+- [OK] Frontend: prettier, eslint, tsc, vitest, vite build pass
+- [OK] API contract check passes; end-to-end smoke returns 200/404 as expected
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Run parent task 07-30-content-production-mvp integration gate and archive it
