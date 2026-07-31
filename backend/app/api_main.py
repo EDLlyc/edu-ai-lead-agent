@@ -19,6 +19,7 @@ from app.api.v1.routes import (
     events,
     evidence_candidates,
     governance_runs,
+    material_packages,
     sources,
     topic_selection_runs,
 )
@@ -26,9 +27,10 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.infrastructure.ai.brand import GovernanceEmbeddingBrandAdapter
-from app.infrastructure.ai.factory import create_embedding_model
+from app.infrastructure.ai.factory import create_embedding_model, create_image_generator
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
+from app.infrastructure.storage.minio_image_store import MinioImageStore
 from app.schemas.common import ErrorDetail, ErrorEnvelope
 
 settings = get_settings()
@@ -47,8 +49,11 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     embedding_client: httpx.AsyncClient | None = None
+    image_client: httpx.AsyncClient | None = None
     _app.state.brand_original_store = MinioBrandOriginalStore(settings)
     _app.state.brand_embedding_model = None
+    _app.state.image_store = MinioImageStore(settings)
+    _app.state.image_generator = None
     provider_ready = settings.ai_provider_mode == "fake" or (
         settings.ai_provider_mode == "zhipu"
         and settings.ai_platform_api_key is not None
@@ -60,11 +65,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _app.state.brand_embedding_model = GovernanceEmbeddingBrandAdapter(
             create_embedding_model(settings, client=embedding_client)
         )
+    if settings.image_enabled and settings.image_provider_mode != "disabled":
+        if settings.image_provider_mode == "toapis":
+            image_client = httpx.AsyncClient(follow_redirects=False)
+        _app.state.image_generator = create_image_generator(settings, client=image_client)
     try:
         yield
     finally:
         if embedding_client is not None:
             await embedding_client.aclose()
+        if image_client is not None:
+            await image_client.aclose()
         await engine.dispose()
 
 
@@ -90,6 +101,7 @@ app.include_router(events.router, prefix="/api/v1")
 app.include_router(topic_selection_runs.router, prefix="/api/v1")
 app.include_router(brand_knowledge.router, prefix="/api/v1")
 app.include_router(copy_generation.router, prefix="/api/v1")
+app.include_router(material_packages.router, prefix="/api/v1")
 
 
 @app.middleware("http")

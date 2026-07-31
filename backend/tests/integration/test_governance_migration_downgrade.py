@@ -63,7 +63,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             await populated.execute("DELETE FROM governance_runs")
         finally:
             await populated.close()
-        assert revision_after_refusal == "20260730_0008"
+        assert revision_after_refusal == "20260731_0009"
         await asyncio.to_thread(command.downgrade, config, "20260729_0003")
 
         downgraded_url = make_url(test_url)

@@ -2378,3 +2378,151 @@ class CopyGenerationCheckpointModel(Base):
             "jsonb_typeof(issue_codes) = 'array'", name="ck_copy_checkpoints_issue_codes_array"
         ),
     )
+
+
+class ImageArtifactModel(Base):
+    __tablename__ = "image_artifacts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_runs.id", name="fk_image_artifacts_run_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_image_artifacts_draft_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    pipeline_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    reference_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    provider_upload_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    media_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bucket: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    object_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'review_required')",
+            name="ck_image_artifacts_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_image_artifacts_attempt_count"),
+        CheckConstraint(
+            "(status = 'succeeded' AND media_type IS NOT NULL AND width = 1024 AND height = 1024 "
+            "AND byte_size IS NOT NULL AND sha256 IS NOT NULL AND bucket IS NOT NULL "
+            "AND object_key IS NOT NULL) "
+            "OR status <> 'succeeded'",
+            name="ck_image_artifacts_success_shape",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_image_artifacts_request_fingerprint"),
+        UniqueConstraint("run_id", "draft_version_id", name="uq_image_artifacts_run_draft"),
+        Index("ix_image_artifacts_status_created", "status", "created_at"),
+    )
+
+
+class MaterialPackageModel(Base):
+    __tablename__ = "material_packages"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_runs.id", name="fk_material_packages_run_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_material_packages_draft_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    image_artifact_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id", name="fk_material_packages_image_artifact_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    package_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    topic_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    copy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    source_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    audit_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    review_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default=text("'pending'")
+    )
+    review_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'ready', 'awaiting_manual_use', 'completed', "
+            "'rejected', 'failed')",
+            name="ck_material_packages_status",
+        ),
+        CheckConstraint(
+            "review_status IN ('pending', 'approved', 'rejected')",
+            name="ck_material_packages_review_status",
+        ),
+        CheckConstraint("package_version >= 1", name="ck_material_packages_version"),
+        UniqueConstraint("run_id", "package_version", name="uq_material_packages_run_version"),
+        UniqueConstraint("request_fingerprint", name="uq_material_packages_request_fingerprint"),
+        Index("ix_material_packages_status_created", "status", "created_at"),
+    )
+
+
+class MaterialReviewModel(Base):
+    __tablename__ = "material_reviews"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    package_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "material_packages.id", name="fk_material_reviews_package_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewer: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('approved', 'rejected')", name="ck_material_reviews_decision"
+        ),
+        UniqueConstraint("package_id", name="uq_material_reviews_package_id"),
+    )

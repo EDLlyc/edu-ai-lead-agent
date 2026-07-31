@@ -170,6 +170,30 @@ class ProviderIdentityMismatchError(ProviderError):
         )
 
 
+class ImageProviderConfigurationError(ProviderError):
+    def __init__(self) -> None:
+        super().__init__("image_provider_not_configured", "image provider is not configured", 503)
+
+
+class ImageProviderRejectedError(ProviderError):
+    def __init__(self) -> None:
+        super().__init__(
+            "image_provider_rejected", "image provider rejected the image request", 422
+        )
+
+
+class ImageProviderTimeoutError(ProviderError):
+    def __init__(self) -> None:
+        super().__init__(
+            "image_provider_timeout", "image provider did not finish in time", 503, True
+        )
+
+
+class ImageOutputValidationError(ProviderError):
+    def __init__(self) -> None:
+        super().__init__("image_output_invalid", "generated image failed safety validation", 422)
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderValidationIssue:
     """Bounded, content-free structured-output validation diagnostic."""

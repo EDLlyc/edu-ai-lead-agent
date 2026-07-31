@@ -107,6 +107,21 @@ class Settings(BaseSettings):
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
 
+    image_enabled: bool = False
+    image_provider_mode: Literal["disabled", "fake", "toapis"] = "disabled"
+    toapis_base_url: str = "https://toapis.com"
+    toapis_api_key: SecretStr | None = None
+    image_model: str = "gpt-image-2"
+    image_prompt_version: str = "image-prompt-v1"
+    image_pipeline_version: str = "image-pipeline-v1"
+    image_max_attempts: int = Field(default=3, ge=1, le=6)
+    image_poll_initial_seconds: float = Field(default=5.0, ge=0.1, le=30)
+    image_poll_interval_seconds: float = Field(default=7.0, ge=0.1, le=30)
+    image_provider_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    image_provider_window_seconds: float = Field(default=120.0, gt=1, le=180)
+    image_max_download_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
+    image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
+
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
     ai_platform_api_key: SecretStr | None = None
@@ -204,6 +219,26 @@ class Settings(BaseSettings):
                 or parsed_base_url.fragment
             ):
                 raise ValueError("Zhipu base URL must be an HTTPS origin/path without credentials")
+        if self.image_enabled and self.image_provider_mode == "disabled":
+            raise ValueError("image provider must be enabled when image generation is enabled")
+        if self.image_provider_mode == "toapis":
+            key = self.toapis_api_key.get_secret_value().strip() if self.toapis_api_key else ""
+            if not key:
+                raise ValueError("ToAPIs image mode requires TOAPIS_API_KEY")
+            parsed_toapis = urlsplit(self.toapis_base_url)
+            if (
+                parsed_toapis.scheme != "https"
+                or parsed_toapis.hostname != "toapis.com"
+                or parsed_toapis.port not in {None, 443}
+                or parsed_toapis.path not in {"", "/"}
+                or parsed_toapis.username is not None
+                or parsed_toapis.password is not None
+                or parsed_toapis.query
+                or parsed_toapis.fragment
+            ):
+                raise ValueError("ToAPIs base URL must be exactly https://toapis.com")
+        if not self.image_model.strip() or any(ch.isspace() for ch in self.image_model):
+            raise ValueError("image model identifier must be non-blank and contain no whitespace")
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")
         version_values = {
@@ -229,6 +264,8 @@ class Settings(BaseSettings):
             self.copy_audit_schema_version,
             self.copy_rule_version,
             self.copy_preview_policy_version,
+            self.image_prompt_version,
+            self.image_pipeline_version,
         }
         if any(not value.strip() or len(value) > 80 for value in version_values):
             raise ValueError(

@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
+from app.application.ports.image_generation import ImageGenerator
 from app.core.config import Settings
 from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
@@ -17,6 +18,10 @@ from app.infrastructure.ai.copy_generation import (
 from app.infrastructure.ai.fake import (
     DeterministicFakeEmbeddingModel,
     DeterministicFakeFactualAnalysisModel,
+)
+from app.infrastructure.ai.image_generation import (
+    DeterministicFakeImageGenerator,
+    ToApisImageGenerator,
 )
 from app.infrastructure.ai.zhipu import ZhipuEmbeddingModel, ZhipuFactualAnalysisModel
 
@@ -47,6 +52,29 @@ def create_embedding_model(
         concurrency=settings.ai_provider_concurrency,
         max_attempts=settings.ai_max_attempts,
         max_input_characters=settings.ai_max_input_characters,
+    )
+
+
+def create_image_generator(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> ImageGenerator:
+    if settings.image_provider_mode == "disabled":
+        raise RuntimeError("image provider is disabled")
+    if settings.image_provider_mode == "fake":
+        return DeterministicFakeImageGenerator(model=settings.image_model)
+    if client is None or settings.toapis_api_key is None:
+        raise RuntimeError("ToAPIs image provider requires an owned client and API key")
+    return ToApisImageGenerator(
+        client=client,
+        base_url=settings.toapis_base_url,
+        api_key=SecretStr(settings.toapis_api_key.get_secret_value()),
+        model=settings.image_model,
+        max_attempts=settings.image_max_attempts,
+        initial_poll_seconds=settings.image_poll_initial_seconds,
+        poll_interval_seconds=settings.image_poll_interval_seconds,
+        provider_window_seconds=settings.image_provider_window_seconds,
+        timeout_seconds=settings.image_provider_timeout_seconds,
+        max_download_bytes=settings.image_max_download_bytes,
     )
 
 

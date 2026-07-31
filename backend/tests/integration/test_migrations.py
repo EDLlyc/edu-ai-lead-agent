@@ -21,6 +21,7 @@ async def test_clean_database_is_at_alembic_head(
                     "acquisition_runs",
                     "acquisition_jobs",
                     "brand_document_versions",
+                    "image_artifacts",
                 )
             }
         )
@@ -36,7 +37,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260730_0008"
+    assert revision == "20260731_0009"
     assert {
         "sources",
         "source_versions",
@@ -70,6 +71,9 @@ async def test_clean_database_is_at_alembic_head(
         "copy_audits",
         "copy_issues",
         "copy_generation_checkpoints",
+        "image_artifacts",
+        "material_packages",
+        "material_reviews",
     }.issubset(tables)
     assert columns["source_versions"]["relevance_rule_version"]["nullable"] is True
     assert columns["evidence_candidates"]["relevance_rule_version"]["nullable"] is True
@@ -78,6 +82,7 @@ async def test_clean_database_is_at_alembic_head(
         assert str(columns[table]["filtered_count"]["default"]) == "0"
     assert columns["brand_document_versions"]["metadata_fingerprint"]["nullable"] is False
     assert columns["brand_document_versions"]["embedding_provider"]["nullable"] is False
+    assert columns["image_artifacts"]["pipeline_version"]["nullable"] is False
     assert "fk_copy_draft_versions_repair_same_run" in foreign_keys["copy_draft_versions"]
     assert (
         "fk_copy_claim_evidence_bindings_provenance" in foreign_keys["copy_claim_evidence_bindings"]
