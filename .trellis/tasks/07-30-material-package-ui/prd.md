@@ -13,7 +13,10 @@ an accessible internal review, copy, and image-download experience.
 
 ## Requirements
 
-- Verify and pin the approved image provider/model/output contract before live use.
+- Use the approved ToAPIs provider at `https://toapis.com` with model `gpt-image-2`, exactly one
+  `1:1` / `1k` output, and the documented asynchronous generation contract.
+- Upload one approved local Sai Xiansheng/Xiaosai PNG reference through the provider upload API;
+  never ask the model to redraw a textual logo or persist the transient public upload URL.
 - Generate exactly one image for one accepted prompt/fingerprint and store it privately in MinIO.
 - Persist provider/model/prompt versions, dimensions, safe provider ID, object identity, attempts,
   statuses, and idempotency without raw provider material or credentials.
@@ -37,8 +40,9 @@ an accessible internal review, copy, and image-download experience.
 
 ## External Input
 
-Visual guidance, logo/asset usage rules, and a compatible Zhipu/company image model credential are
-required before live acceptance.
+The approved visual assets are available under `private/brand-materials/05-visual-assets/`. Live
+acceptance requires `TOAPIS_API_KEY` to be injected locally as a secret; it must not be committed,
+logged, returned by an API, or stored in provider/job metadata.
 
 ## Out of Scope
 

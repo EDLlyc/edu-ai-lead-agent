@@ -8,15 +8,30 @@ inline editing, multiple variants, complex approval, public access, or publishin
 
 ## Image Contract
 
-- Add application-owned `ImageGenerator` with deterministic fake and a bounded provider adapter.
-- Research/pin endpoint, model, dimensions/aspect ratio, output format, moderation/error schema,
-  timeout, response-byte/base64/URL behavior, account permission, and cost/rate limits before live
-  use.
+- Add application-owned `ImageGenerator` with deterministic fake and a bounded ToAPIs adapter.
+- Pin `POST /v1/uploads/images`, `POST /v1/images/generations`, and
+  `GET /v1/images/generations/{task_id}` at the HTTPS origin `https://toapis.com`.
+- Submit `model=gpt-image-2`, `n=1`, `size=1:1`, `resolution=1k`,
+  `response_format=url`, and a stable `client_business_id` derived from the application request
+  fingerprint. Use one uploaded approved PNG through `reference_images=[url]`.
+- Poll after an initial five seconds, then every 5-10 seconds with jitter; honor `Retry-After` on
+  429/503 and stop after a bounded 120-second provider window. Treat `queued`, `in_progress`,
+  `completed`, and `failed` as the only accepted task statuses.
+- A completed task must contain exactly one `result.data[].url`. Download it immediately because
+  provider URLs expire after 24 hours. Accept only HTTPS `files.toapis.com`, no redirects, an
+  allowlisted raster content type, bounded bytes, and the expected 1024x1024 dimensions before
+  private MinIO storage.
+- `TOAPIS_API_KEY` is the only provider credential. The local upload URL, generated URL, raw
+  provider response, prompt body, and bearer token are transient and must not enter logs, APIs, or
+  durable job metadata. Persist only safe task/upload IDs, model/version identity, checksums,
+  attempts, dimensions, status, and typed error codes.
 - One accepted prompt/profile fingerprint maps to at most one successful artifact. Provider calls
   occur outside transactions; persistence checks the fingerprint/provider state before retry.
 - Validate prompt/rules before call and returned content type/size/dimensions after call. Do not
   accept unsafe minor identity, infringement-prone marks, complex rendered Chinese text, or raw
-  provider material.
+  provider material. The model may use the approved character reference, but it must not invent,
+  trace, or typeset a logo; brand text remains an application/UI overlay outside the generated
+  bitmap.
 
 ## Storage and Package
 

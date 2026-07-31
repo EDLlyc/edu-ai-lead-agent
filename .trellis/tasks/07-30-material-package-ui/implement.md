@@ -1,7 +1,9 @@
 # Implementation Plan: Functional Image and Material Package UI
 
-- [ ] Run a short image endpoint/model/account/output compatibility probe.
-- [ ] Add image port/fake/live adapter with critical bounds, typed errors, and request fingerprint.
+- [ ] Run one bounded ToAPIs `gpt-image-2` account/upload/generation/poll/download compatibility
+      probe using `1:1`, `1k`, one image, and one approved local reference PNG.
+- [ ] Add image port/fake/ToAPIs adapter with critical bounds, typed errors, request fingerprint,
+      safe provider IDs, transient URL handling, and secret-safe diagnostics.
 - [ ] Add minimal image artifact/package/version/review persistence and migration.
 - [ ] Generate one image, store it privately in MinIO, and expose controlled download.
 - [ ] Add package assembly plus run/package/review APIs and regenerate OpenAPI types.
