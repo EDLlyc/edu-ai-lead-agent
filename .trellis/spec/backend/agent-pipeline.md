@@ -405,6 +405,97 @@ Retry only classified transient faults with bounded exponential backoff and jitt
 veto, missing evidence, invalid structured output without a bounded repair policy, or failed
 deterministic validation as if it were a network timeout.
 
+## Scenario: One-image generation through the ToAPIs gpt-image-2 contract
+
+### 1. Scope / Trigger
+
+- Trigger: an accepted draft/image prompt must produce exactly one stored image. This is a
+  cross-layer contract (AI provider, MinIO storage, DB artifact, controlled download API).
+- Only an accepted draft may call the image provider. `no_topic` and failed drafts never reach it.
+
+### 2. Signatures
+
+- Provider origin: `https://toapis.com`; pinned model `gpt-image-2`.
+- Upload: `POST /v1/uploads/images` (one approved local PNG reference; the returned public URL is
+  transient and never persisted).
+- Generate: `POST /v1/images/generations` with `model=gpt-image-2`, `n=1`, `size=1:1`,
+  `resolution=1k`, `response_format=url`, `client_business_id=<request fingerprint>`, and
+  `reference_images=[<upload_url>]`.
+- Poll: `GET /v1/images/generations/{task_id}` after an initial 5s, then every 5-10s with jitter,
+  honoring `Retry-After` on 429/503, bounded by a 120s provider window.
+- Download: the completed task's `result.data[].url` is downloaded immediately (URLs expire after
+  24h); only `https://files.toapis.com` is accepted, no redirects.
+- Storage: sanitized content-addressed MinIO key, private access, with sha256 checksum.
+- DB artifact: `image_artifacts` row with provider/model/prompt version, dimensions, safe provider
+  ID, object identity, attempts, status, and request fingerprint.
+
+### 3. Contracts
+
+- One accepted prompt/profile fingerprint maps to at most one successful artifact. Provider calls
+  occur outside transactions; persistence re-checks the fingerprint/provider state before retry.
+- `TOAPIS_API_KEY` is the only credential. The upload URL, generated URL, raw provider response,
+  prompt body, and bearer token are transient — they must not enter logs, APIs, or durable job
+  metadata. Persist only safe task/upload IDs, model/version identity, checksums, attempts,
+  dimensions, status, and typed error codes.
+- Validate prompt/rules before the call and returned content type/size/dimensions after the call:
+  allowlisted raster content type, bounded bytes (`image_max_download_bytes`, default 20 MiB), and
+  exactly 1024x1024 before private MinIO storage.
+- Config (`Settings`): `image_enabled` (default false, fail-closed), `image_provider_mode`
+  (`disabled`/`fake`/`toapis`), `toapis_base_url`, `toapis_api_key`, `image_model`,
+  `image_prompt_version`, `image_pipeline_version`, `image_max_attempts` (1-6),
+  `image_poll_initial_seconds`, `image_poll_interval_seconds`, `image_provider_window_seconds`
+  (1-180), `image_max_download_bytes` (1 KiB-50 MiB).
+- `image_enabled=True` with `image_provider_mode="disabled"` raises at startup; `toapis` mode
+  requires a non-empty `TOAPIS_API_KEY` and an HTTPS `toapis_base_url`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Retry/replay/concurrency on same fingerprint | At most one successful image artifact |
+| Unsafe prompt or provider output | Typed `review_required`/`failed` state before package readiness |
+| Provider returns non-HTTPS URL, redirect, or wrong host | Reject download, fail the attempt |
+| Returned content type not allowlisted / size or dimensions wrong | Reject, do not store |
+| 429/503 during polling | Honor `Retry-After`, retry within the 120s window |
+| Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
+| `TOAPIS_API_KEY` missing in `toapis` mode | Startup fails closed |
+
+### 5. Good / Base / Bad Cases
+
+- Good: one accepted prompt produces one 1024x1024 PNG in MinIO, one artifact row, controlled
+  download.
+- Base: `fake` provider returns a deterministic 1024x1024 PNG without network, for offline tests.
+- Bad: persist the transient upload/generated URL, store raw provider response, or accept a
+  non-1024 image.
+
+### 6. Tests Required
+
+- [`test_image_generation.py`](../../../backend/tests/unit/test_image_generation.py) asserts fake
+  determinism (same fingerprint -> same bytes, 1024x1024 PNG), payload shape, fingerprint
+  stability, and error classification for malformed provider responses.
+- [`image_live_smoke.py`](../../../backend/app/image_live_smoke.py) runs one bounded ToAPIs
+  upload/generate/poll/download acceptance call with `TOAPIS_API_KEY` injected locally as a secret;
+  it prints only provider/model/size/bytes/output, never the key, prompt body, or raw response.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+payload = {"model": "gpt-image-2", "prompt": prompt, "reference_images": [persisted_upload_url]}
+artifact = ImageArtifact(provider_task_url=result_url)  # persist expiring URL
+```
+
+#### Correct
+
+```python
+payload = {"model": "gpt-image-2", "prompt": prompt, "client_business_id": fingerprint,
+           "reference_images": [transient_upload_url], "response_format": "url"}
+image_bytes = await _download(result_url)  # https://files.toapis.com only, no redirect
+artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
+                         width=1024, height=1024)  # no URL persisted
+```
+
 ## Material package boundary
 
 The accepted package contains the selected topic, generated date, copy, parent takeaway,

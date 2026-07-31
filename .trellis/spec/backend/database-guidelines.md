@@ -149,8 +149,8 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260730_0007`. Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract
-  described here.
+  `20260731_0009` (adds generated image artifacts and internal material packages).
+  Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract described here.
 - Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
 - Candidate contract: `evidence_candidates.relevance_rule_version VARCHAR(40) NULL`.
 - Counters: `acquisition_runs.filtered_count` and `acquisition_jobs.filtered_count`, non-null and
@@ -195,6 +195,14 @@ audit records and must not be rewritten in place.
   preservation, and stored candidate handoff against real PostgreSQL/MinIO.
 - Assert no negative counters, no active-version/source ownership mismatch, and no terminal row
   without `completed_at` in operational verification.
+- **Head-revision assertion sync**: every new Alembic revision bumps the repository head, so the
+  hard-coded `revision == "<head>"` assertions in
+  [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py),
+  [`test_governance_migrations.py`](../../../backend/tests/integration/test_governance_migrations.py),
+  and
+  [`test_governance_migration_downgrade.py`](../../../backend/tests/integration/test_governance_migration_downgrade.py)
+  must be updated to the new head in the same commit. The downgrade test asserts the revision
+  *after* a refused downgrade equals the current head, not a stale governance-only revision.
 
 ### 7. Wrong vs Correct
 
