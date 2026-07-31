@@ -195,6 +195,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/copy-generation-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Copy Generation Run */
+        post: operations["create_copy_generation_run_api_v1_copy_generation_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/copy-generation-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Copy Generation Run */
+        get: operations["read_copy_generation_run_api_v1_copy_generation_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/copy-generation-runs/{run_id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Copy Generation Detail */
+        get: operations["read_copy_generation_detail_api_v1_copy_generation_runs__run_id__detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/daily-topics/{business_date}": {
         parameters: {
             query?: never;
@@ -970,10 +1021,207 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CopyClaimResponse */
+        CopyClaimResponse: {
+            /** Brand Chunk Ids */
+            brand_chunk_ids: string[];
+            /** Claim Id */
+            claim_id: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "external_fact" | "brand_statement" | "opinion";
+            /** Text */
+            text: string;
+        };
+        /** CopyDraftResponse */
+        CopyDraftResponse: {
+            /** Audit Accepted */
+            audit_accepted: boolean | null;
+            /** Claims */
+            claims: components["schemas"]["CopyClaimResponse"][];
+            /** Copywriting */
+            copywriting: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Image Prompt */
+            image_prompt: string;
+            /** Interaction */
+            interaction: string;
+            /** Issues */
+            issues: components["schemas"]["CopyIssue"][];
+            /** Parent Takeaway */
+            parent_takeaway: string;
+            /** Repair Of Version Id */
+            repair_of_version_id: string | null;
+            /** Source Note */
+            source_note: string;
+            /** Validation Passed */
+            validation_passed: boolean;
+            /** Version */
+            version: number;
+        };
+        /** CopyGenerationDetailResponse */
+        CopyGenerationDetailResponse: {
+            /** Active Draft Version Id */
+            active_draft_version_id: string | null;
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Daily Topic Selection Id
+             * Format: uuid
+             */
+            daily_topic_selection_id: string;
+            /**
+             * Decision Kind
+             * @enum {string}
+             */
+            decision_kind: "selected" | "no_topic";
+            /** Detail Url */
+            detail_url: string;
+            /** Drafts */
+            drafts: components["schemas"]["CopyDraftResponse"][];
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** No Topic Code */
+            no_topic_code: string | null;
+            /** Repair Count */
+            repair_count: number;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Selected Event Id */
+            selected_event_id: string | null;
+            /** Selected Event Version Id */
+            selected_event_version_id: string | null;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "no_topic" | "accepted" | "review_required" | "failed";
+            /** Status Url */
+            status_url: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /** CopyGenerationRunResponse */
+        CopyGenerationRunResponse: {
+            /** Active Draft Version Id */
+            active_draft_version_id: string | null;
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Daily Topic Selection Id
+             * Format: uuid
+             */
+            daily_topic_selection_id: string;
+            /**
+             * Decision Kind
+             * @enum {string}
+             */
+            decision_kind: "selected" | "no_topic";
+            /** Detail Url */
+            detail_url: string;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** No Topic Code */
+            no_topic_code: string | null;
+            /** Repair Count */
+            repair_count: number;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Selected Event Id */
+            selected_event_id: string | null;
+            /** Selected Event Version Id */
+            selected_event_version_id: string | null;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "no_topic" | "accepted" | "review_required" | "failed";
+            /** Status Url */
+            status_url: string;
+            /** Timezone */
+            timezone: string;
+        };
+        /** CopyIssue */
+        CopyIssue: {
+            /** Claim Id */
+            claim_id?: string | null;
+            /** Code */
+            code: string;
+            /** Field */
+            field?: string | null;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @default error
+             * @enum {string}
+             */
+            severity: "warning" | "error";
+        };
         /** CreateAcquisitionRunRequest */
         CreateAcquisitionRunRequest: {
             /** Source Ids */
             source_ids?: string[] | null;
+        };
+        /** CreateCopyGenerationRunRequest */
+        CreateCopyGenerationRunRequest: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /**
+             * Scoring Profile
+             * @default preview
+             */
+            scoring_profile: string;
         };
         /** CreateGovernanceRunRequest */
         CreateGovernanceRunRequest: {
@@ -2316,6 +2564,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandidateAnalysisDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_copy_generation_run_api_v1_copy_generation_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCopyGenerationRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyGenerationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_copy_generation_run_api_v1_copy_generation_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyGenerationRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_copy_generation_detail_api_v1_copy_generation_runs__run_id__detail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopyGenerationDetailResponse"];
                 };
             };
             /** @description Validation Error */

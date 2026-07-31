@@ -29,13 +29,13 @@ and active brand context; validate and audit it, then allow at most one automati
 
 ## Acceptance Criteria
 
-- [ ] A controlled valid topic produces a schema-valid Chinese draft with complete bindings.
-- [ ] An unbound or hallucinated factual claim fails before audit.
-- [ ] The auditor cannot add evidence, override deterministic failure, or expose raw model material.
-- [ ] One repair can resolve typed issues; a second failure remains durable and reviewable.
-- [ ] Prompt injection, exaggeration, anxiety, privacy, unsafe image, provider, restart, replay, and
+- [x] A controlled valid topic produces a schema-valid Chinese draft with complete bindings.
+- [x] An unbound or hallucinated factual claim fails before audit.
+- [x] The auditor cannot add evidence, override deterministic failure, or expose raw model material.
+- [x] One repair can resolve typed issues; a second failure remains durable and reviewable.
+- [x] Prompt injection, exaggeration, anxiety, privacy, unsafe image, provider, restart, replay, and
       concurrency cases have deterministic coverage.
-- [ ] One bounded live Zhipu draft/audit is manually checked against every evidence/brand binding.
+- [x] One bounded live Zhipu draft/audit is manually checked against every evidence/brand binding.
 
 ## External Input
 

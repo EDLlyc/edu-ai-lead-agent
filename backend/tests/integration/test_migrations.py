@@ -24,8 +24,19 @@ async def test_clean_database_is_at_alembic_head(
                 )
             }
         )
+        foreign_keys = await connection.run_sync(
+            lambda sync: {
+                table: {item["name"] for item in inspect(sync).get_foreign_keys(table)}
+                for table in ("copy_draft_versions", "copy_claim_evidence_bindings")
+            }
+        )
+        checks = await connection.run_sync(
+            lambda sync: {
+                item["name"] for item in inspect(sync).get_check_constraints("copy_issues")
+            }
+        )
 
-    assert revision == "20260730_0007"
+    assert revision == "20260730_0008"
     assert {
         "sources",
         "source_versions",
@@ -48,6 +59,17 @@ async def test_clean_database_is_at_alembic_head(
         "brand_ingestion_attempts",
         "brand_chunks",
         "brand_chunk_embeddings",
+        "copy_generation_runs",
+        "copy_generation_jobs",
+        "copy_generation_attempts",
+        "copy_draft_versions",
+        "copy_draft_claims",
+        "copy_claim_evidence_bindings",
+        "copy_claim_brand_bindings",
+        "copy_validation_results",
+        "copy_audits",
+        "copy_issues",
+        "copy_generation_checkpoints",
     }.issubset(tables)
     assert columns["source_versions"]["relevance_rule_version"]["nullable"] is True
     assert columns["evidence_candidates"]["relevance_rule_version"]["nullable"] is True
@@ -56,3 +78,8 @@ async def test_clean_database_is_at_alembic_head(
         assert str(columns[table]["filtered_count"]["default"]) == "0"
     assert columns["brand_document_versions"]["metadata_fingerprint"]["nullable"] is False
     assert columns["brand_document_versions"]["embedding_provider"]["nullable"] is False
+    assert "fk_copy_draft_versions_repair_same_run" in foreign_keys["copy_draft_versions"]
+    assert (
+        "fk_copy_claim_evidence_bindings_provenance" in foreign_keys["copy_claim_evidence_bindings"]
+    )
+    assert any(name.endswith("ck_copy_issues_stage_audit_shape") for name in checks)

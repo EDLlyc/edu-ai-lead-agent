@@ -1449,6 +1449,549 @@
         "title": "CandidateAnalysisSummaryResponse",
         "type": "object"
       },
+      "CopyClaimResponse": {
+        "properties": {
+          "brand_chunk_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Brand Chunk Ids",
+            "type": "array"
+          },
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "external_fact",
+              "brand_statement",
+              "opinion"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "text",
+          "kind",
+          "evidence_ids",
+          "brand_chunk_ids"
+        ],
+        "title": "CopyClaimResponse",
+        "type": "object"
+      },
+      "CopyDraftResponse": {
+        "properties": {
+          "audit_accepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Accepted"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/CopyClaimResponse"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "copywriting": {
+            "title": "Copywriting",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image_prompt": {
+            "title": "Image Prompt",
+            "type": "string"
+          },
+          "interaction": {
+            "title": "Interaction",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/CopyIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "parent_takeaway": {
+            "title": "Parent Takeaway",
+            "type": "string"
+          },
+          "repair_of_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repair Of Version Id"
+          },
+          "source_note": {
+            "title": "Source Note",
+            "type": "string"
+          },
+          "validation_passed": {
+            "title": "Validation Passed",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "repair_of_version_id",
+          "copywriting",
+          "parent_takeaway",
+          "interaction",
+          "source_note",
+          "image_prompt",
+          "validation_passed",
+          "audit_accepted",
+          "claims",
+          "issues",
+          "created_at"
+        ],
+        "title": "CopyDraftResponse",
+        "type": "object"
+      },
+      "CopyGenerationDetailResponse": {
+        "properties": {
+          "active_draft_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Draft Version Id"
+          },
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_topic_selection_id": {
+            "format": "uuid",
+            "title": "Daily Topic Selection Id",
+            "type": "string"
+          },
+          "decision_kind": {
+            "enum": [
+              "selected",
+              "no_topic"
+            ],
+            "title": "Decision Kind",
+            "type": "string"
+          },
+          "detail_url": {
+            "title": "Detail Url",
+            "type": "string"
+          },
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/CopyDraftResponse"
+            },
+            "title": "Drafts",
+            "type": "array"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "no_topic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Topic Code"
+          },
+          "repair_count": {
+            "title": "Repair Count",
+            "type": "integer"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "selected_event_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Version Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "no_topic",
+              "accepted",
+              "review_required",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "daily_topic_selection_id",
+          "business_date",
+          "timezone",
+          "scoring_profile",
+          "decision_kind",
+          "selected_event_id",
+          "selected_event_version_id",
+          "no_topic_code",
+          "status",
+          "active_draft_version_id",
+          "repair_count",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "status_url",
+          "detail_url",
+          "drafts"
+        ],
+        "title": "CopyGenerationDetailResponse",
+        "type": "object"
+      },
+      "CopyGenerationRunResponse": {
+        "properties": {
+          "active_draft_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Draft Version Id"
+          },
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_topic_selection_id": {
+            "format": "uuid",
+            "title": "Daily Topic Selection Id",
+            "type": "string"
+          },
+          "decision_kind": {
+            "enum": [
+              "selected",
+              "no_topic"
+            ],
+            "title": "Decision Kind",
+            "type": "string"
+          },
+          "detail_url": {
+            "title": "Detail Url",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "no_topic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Topic Code"
+          },
+          "repair_count": {
+            "title": "Repair Count",
+            "type": "integer"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "selected_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Id"
+          },
+          "selected_event_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Version Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "no_topic",
+              "accepted",
+              "review_required",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "daily_topic_selection_id",
+          "business_date",
+          "timezone",
+          "scoring_profile",
+          "decision_kind",
+          "selected_event_id",
+          "selected_event_version_id",
+          "no_topic_code",
+          "status",
+          "active_draft_version_id",
+          "repair_count",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "status_url",
+          "detail_url"
+        ],
+        "title": "CopyGenerationRunResponse",
+        "type": "object"
+      },
+      "CopyIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          },
+          "code": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "default": "error",
+            "enum": [
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "CopyIssue",
+        "type": "object"
+      },
       "CreateAcquisitionRunRequest": {
         "properties": {
           "source_ids": {
@@ -1469,6 +2012,27 @@
           }
         },
         "title": "CreateAcquisitionRunRequest",
+        "type": "object"
+      },
+      "CreateCopyGenerationRunRequest": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "default": "preview",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Scoring Profile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "business_date"
+        ],
+        "title": "CreateCopyGenerationRunRequest",
         "type": "object"
       },
       "CreateGovernanceRunRequest": {
@@ -4368,6 +4932,133 @@
         "summary": "Get Candidate Analysis",
         "tags": [
           "governance"
+        ]
+      }
+    },
+    "/api/v1/copy-generation-runs": {
+      "post": {
+        "operationId": "create_copy_generation_run_api_v1_copy_generation_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCopyGenerationRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyGenerationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Copy Generation Run",
+        "tags": [
+          "copy-generation"
+        ]
+      }
+    },
+    "/api/v1/copy-generation-runs/{run_id}": {
+      "get": {
+        "operationId": "read_copy_generation_run_api_v1_copy_generation_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyGenerationRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Copy Generation Run",
+        "tags": [
+          "copy-generation"
+        ]
+      }
+    },
+    "/api/v1/copy-generation-runs/{run_id}/detail": {
+      "get": {
+        "operationId": "read_copy_generation_detail_api_v1_copy_generation_runs__run_id__detail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopyGenerationDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Copy Generation Detail",
+        "tags": [
+          "copy-generation"
         ]
       }
     },

@@ -993,6 +993,14 @@ class EvidenceBindingModel(Base):
             "quote_start >= 0 AND quote_end >= quote_start", name="ck_evidence_bindings_offsets"
         ),
         UniqueConstraint("binding_key", name="uq_evidence_bindings_binding_key"),
+        UniqueConstraint(
+            "id",
+            "candidate_id",
+            "passage_id",
+            "occurrence_id",
+            "snapshot_id",
+            name="uq_evidence_bindings_copy_provenance",
+        ),
         Index("ix_evidence_bindings_analysis_id", "analysis_id"),
         Index("ix_evidence_bindings_passage_id", "passage_id"),
     )
@@ -1889,4 +1897,484 @@ class BrandChunkEmbeddingModel(Base):
         ),
         UniqueConstraint("request_fingerprint", name="uq_brand_chunk_embeddings_request"),
         Index("ix_brand_chunk_embeddings_chunk_id", "chunk_id"),
+    )
+
+
+class CopyGenerationRunModel(Base):
+    __tablename__ = "copy_generation_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    daily_topic_selection_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "daily_topic_selections.id",
+            name="fk_copy_generation_runs_daily_topic_selection_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    topic_selection_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_copy_generation_runs_topic_selection_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    decision_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    selected_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    selected_event_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    no_topic_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    pipeline_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    version_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_bundle: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    active_draft_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    repair_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision_kind IN ('selected', 'no_topic')", name="ck_copy_generation_runs_decision"
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'no_topic', 'accepted', 'review_required', 'failed')",
+            name="ck_copy_generation_runs_status",
+        ),
+        CheckConstraint("repair_count BETWEEN 0 AND 1", name="ck_copy_generation_runs_repair"),
+        CheckConstraint(
+            "(decision_kind = 'selected' AND selected_event_id IS NOT NULL "
+            "AND selected_event_version_id IS NOT NULL AND no_topic_code IS NULL) OR "
+            "(decision_kind = 'no_topic' AND selected_event_id IS NULL "
+            "AND selected_event_version_id IS NULL AND no_topic_code IS NOT NULL)",
+            name="ck_copy_generation_runs_topic_shape",
+        ),
+        UniqueConstraint(
+            "daily_topic_selection_id",
+            "version_fingerprint",
+            name="uq_copy_generation_runs_topic_version",
+        ),
+        ForeignKeyConstraint(
+            ["selected_event_version_id", "selected_event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_copy_generation_runs_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["active_draft_version_id", "id"],
+            ["copy_draft_versions.id", "copy_draft_versions.run_id"],
+            name="fk_copy_generation_runs_active_draft_run",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        Index("ix_copy_generation_runs_status_created", "status", "created_at"),
+    )
+
+
+class CopyGenerationJobModel(Base):
+    __tablename__ = "copy_generation_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_runs.id",
+            name="fk_copy_generation_jobs_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'retry_scheduled', "
+            "'succeeded', 'failed', 'cancelled')",
+            name="ck_copy_generation_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_copy_generation_jobs_attempt_count"),
+        UniqueConstraint("run_id", name="uq_copy_generation_jobs_run_id"),
+        Index("ix_copy_generation_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class CopyDraftVersionModel(Base):
+    __tablename__ = "copy_draft_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_runs.id",
+            name="fk_copy_draft_versions_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    repair_of_version_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    copywriting: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_takeaway: Mapped[str] = mapped_column(Text, nullable=False)
+    interaction: Mapped[str] = mapped_column(Text, nullable=False)
+    source_note: Mapped[str] = mapped_column(Text, nullable=False)
+    image_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    validation_passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    audit_accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("version IN (1, 2)", name="ck_copy_draft_versions_version"),
+        CheckConstraint(
+            "(version = 1 AND repair_of_version_id IS NULL) OR "
+            "(version = 2 AND repair_of_version_id IS NOT NULL)",
+            name="ck_copy_draft_versions_repair_lineage",
+        ),
+        UniqueConstraint("id", "run_id", name="uq_copy_draft_versions_id_run"),
+        ForeignKeyConstraint(
+            ["repair_of_version_id", "run_id"],
+            ["copy_draft_versions.id", "copy_draft_versions.run_id"],
+            name="fk_copy_draft_versions_repair_same_run",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("run_id", "version", name="uq_copy_draft_versions_run_version"),
+        UniqueConstraint("provider", "request_fingerprint", name="uq_copy_draft_versions_request"),
+        Index("ix_copy_draft_versions_run_id", "run_id"),
+    )
+
+
+class CopyGenerationAttemptModel(Base):
+    __tablename__ = "copy_generation_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_jobs.id",
+            name="fk_copy_generation_attempts_job_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    draft_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_copy_generation_attempts_draft_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+    )
+    capability: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "capability IN ('generation', 'audit', 'workflow')",
+            name="ck_copy_generation_attempts_capability",
+        ),
+        CheckConstraint(
+            "status IN ('succeeded', 'failed')", name="ck_copy_generation_attempts_status"
+        ),
+        UniqueConstraint(
+            "capability", "request_fingerprint", name="uq_copy_generation_attempts_request"
+        ),
+        Index("ix_copy_generation_attempts_job_id", "job_id"),
+    )
+
+
+class CopyDraftClaimModel(Base):
+    __tablename__ = "copy_draft_claims"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_copy_draft_claims_draft_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    claim_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('external_fact', 'brand_statement', 'opinion')",
+            name="ck_copy_draft_claims_kind",
+        ),
+        CheckConstraint("ordinal >= 0", name="ck_copy_draft_claims_ordinal"),
+        UniqueConstraint("draft_version_id", "claim_key", name="uq_copy_draft_claims_draft_key"),
+        UniqueConstraint("draft_version_id", "ordinal", name="uq_copy_draft_claims_draft_ordinal"),
+    )
+
+
+class CopyClaimEvidenceBindingModel(Base):
+    __tablename__ = "copy_claim_evidence_bindings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_claims.id",
+            name="fk_copy_claim_evidence_bindings_claim_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    evidence_binding_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    candidate_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    passage_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    occurrence_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    snapshot_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_tier: Mapped[str] = mapped_column(String(1), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exact_quote: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("source_tier IN ('A', 'B')", name="ck_copy_evidence_source_tier"),
+        ForeignKeyConstraint(
+            [
+                "evidence_binding_id",
+                "candidate_id",
+                "passage_id",
+                "occurrence_id",
+                "snapshot_id",
+            ],
+            [
+                "evidence_bindings.id",
+                "evidence_bindings.candidate_id",
+                "evidence_bindings.passage_id",
+                "evidence_bindings.occurrence_id",
+                "evidence_bindings.snapshot_id",
+            ],
+            name="fk_copy_claim_evidence_bindings_provenance",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("claim_id", "evidence_binding_id", name="uq_copy_claim_evidence_binding"),
+    )
+
+
+class CopyClaimBrandBindingModel(Base):
+    __tablename__ = "copy_claim_brand_bindings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    claim_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_claims.id",
+            name="fk_copy_claim_brand_bindings_claim_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    brand_chunk_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_chunks.id",
+            name="fk_copy_claim_brand_bindings_brand_chunk_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("claim_id", "brand_chunk_id", name="uq_copy_claim_brand_binding"),
+    )
+
+
+class CopyValidationResultModel(Base):
+    __tablename__ = "copy_validation_results"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_copy_validation_results_draft_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    result_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("draft_version_id", name="uq_copy_validation_results_draft"),
+        UniqueConstraint("result_fingerprint", name="uq_copy_validation_results_fingerprint"),
+    )
+
+
+class CopyAuditModel(Base):
+    __tablename__ = "copy_audits"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_copy_audits_draft_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    attempt_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_attempts.id",
+            name="fk_copy_audits_attempt_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    result_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("draft_version_id", name="uq_copy_audits_draft"),
+        UniqueConstraint("result_fingerprint", name="uq_copy_audits_fingerprint"),
+    )
+
+
+class CopyIssueModel(Base):
+    __tablename__ = "copy_issues"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    draft_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_draft_versions.id",
+            name="fk_copy_issues_draft_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    stage: Mapped[str] = mapped_column(String(30), nullable=False)
+    audit_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("copy_audits.id", name="fk_copy_issues_audit_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    field_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    claim_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_message: Mapped[str] = mapped_column(String(240), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("stage IN ('deterministic', 'audit')", name="ck_copy_issues_stage"),
+        CheckConstraint(
+            "(stage = 'deterministic' AND audit_id IS NULL) OR "
+            "(stage = 'audit' AND audit_id IS NOT NULL)",
+            name="ck_copy_issues_stage_audit_shape",
+        ),
+        CheckConstraint("severity IN ('warning', 'error')", name="ck_copy_issues_severity"),
+        CheckConstraint("ordinal >= 0", name="ck_copy_issues_ordinal"),
+        UniqueConstraint(
+            "draft_version_id", "stage", "ordinal", name="uq_copy_issues_draft_stage_ordinal"
+        ),
+    )
+
+
+class CopyGenerationCheckpointModel(Base):
+    __tablename__ = "copy_generation_checkpoints"
+
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "copy_generation_runs.id",
+            name="fk_copy_generation_checkpoints_run_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    draft_version_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    issue_codes: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "jsonb_typeof(issue_codes) = 'array'", name="ck_copy_checkpoints_issue_codes_array"
+        ),
     )

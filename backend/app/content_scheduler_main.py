@@ -8,9 +8,11 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
+from app.application.services.copy_generation import build_copy_version_bundle
 from app.application.services.topic_selection import reconcile_daily_topic_selection
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 
@@ -31,6 +33,7 @@ async def run_content_scheduler() -> None:
 
     engine = create_engine(settings)
     repository = PostgresTopicSelectionRepository(create_session_factory(engine))
+    copy_repository = PostgresCopyGenerationRepository(create_session_factory(engine))
 
     async def reconcile() -> None:
         run_id = await reconcile_daily_topic_selection(
@@ -40,6 +43,13 @@ async def run_content_scheduler() -> None:
         )
         if run_id is not None:
             logger.info("topic_selection_run_reconciled", run_id=str(run_id))
+        created = await copy_repository.reconcile_ready_topics(
+            timezone=settings.business_timezone,
+            scoring_profile=settings.content_scoring_profile,
+            version_bundle=build_copy_version_bundle(settings),
+        )
+        if created:
+            logger.info("copy_generation_runs_reconciled", created_count=created)
 
     scheduler = AsyncIOScheduler(timezone=settings.business_timezone)
     scheduler.add_job(

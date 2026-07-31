@@ -6,8 +6,14 @@ from contextlib import asynccontextmanager
 import httpx
 from pydantic import SecretStr
 
+from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
 from app.core.config import Settings
+from app.infrastructure.ai.copy_generation import (
+    DeterministicFakeMaterialDraftAuditor,
+    DeterministicFakeMaterialDraftGenerator,
+    create_zhipu_copy_models,
+)
 from app.infrastructure.ai.fake import (
     DeterministicFakeEmbeddingModel,
     DeterministicFakeFactualAnalysisModel,
@@ -91,6 +97,40 @@ async def governance_models(
                 max_attempts=settings.ai_max_attempts,
                 max_input_characters=settings.ai_max_input_characters,
             ),
+        )
+    finally:
+        await client.aclose()
+
+
+@asynccontextmanager
+async def copy_models(
+    settings: Settings,
+) -> AsyncIterator[tuple[MaterialDraftGenerator, MaterialDraftAuditor]]:
+    if settings.ai_provider_mode == "disabled":
+        raise RuntimeError("copy model provider is disabled")
+    if settings.ai_provider_mode == "fake":
+        yield (
+            DeterministicFakeMaterialDraftGenerator(model=settings.ai_chat_model),
+            DeterministicFakeMaterialDraftAuditor(model=settings.ai_chat_model),
+        )
+        return
+    if settings.ai_platform_base_url is None or settings.ai_platform_api_key is None:
+        raise RuntimeError("validated Zhipu settings are unavailable")
+    client = httpx.AsyncClient(follow_redirects=False)
+    try:
+        yield create_zhipu_copy_models(
+            client=client,
+            base_url=settings.ai_platform_base_url,
+            api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
+            model=settings.ai_chat_model,
+            connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+            read_timeout_seconds=settings.ai_read_timeout_seconds,
+            total_timeout_seconds=settings.ai_total_timeout_seconds,
+            concurrency=settings.ai_provider_concurrency,
+            max_attempts=settings.ai_max_attempts,
+            max_input_characters=settings.ai_max_input_characters,
+            max_output_tokens=settings.copy_max_output_tokens,
+            max_validation_corrections=settings.ai_max_validation_corrections,
         )
     finally:
         await client.aclose()

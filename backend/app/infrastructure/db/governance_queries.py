@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -472,14 +473,17 @@ async def get_event_detail(session: AsyncSession, event_id: UUID) -> EventDetail
 async def _accepted_analysis_for_article(
     session: AsyncSession, normalized_article_id: UUID
 ) -> CandidateAnalysisModel | None:
-    return await session.scalar(
-        select(CandidateAnalysisModel)
-        .where(
-            CandidateAnalysisModel.normalized_article_id == normalized_article_id,
-            CandidateAnalysisModel.status == "accepted",
-        )
-        .order_by(CandidateAnalysisModel.created_at.desc(), CandidateAnalysisModel.id.desc())
-        .limit(1)
+    return cast(
+        CandidateAnalysisModel | None,
+        await session.scalar(
+            select(CandidateAnalysisModel)
+            .where(
+                CandidateAnalysisModel.normalized_article_id == normalized_article_id,
+                CandidateAnalysisModel.status == "accepted",
+            )
+            .order_by(CandidateAnalysisModel.created_at.desc(), CandidateAnalysisModel.id.desc())
+            .limit(1)
+        ),
     )
 
 

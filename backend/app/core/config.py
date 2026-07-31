@@ -96,6 +96,16 @@ class Settings(BaseSettings):
     brand_chunk_version: str = "brand-chunk-v1"
     brand_embedding_input_version: str = "brand-embedding-input-v1"
     brand_retrieval_version: str = "brand-hybrid-rrf-v1"
+    copy_pipeline_version: str = "copy-pipeline-v7"
+    copy_generator_prompt_version: str = "moments-generator-v7"
+    copy_draft_schema_version: str = "moments-draft-schema-v1"
+    copy_auditor_prompt_version: str = "moments-auditor-v7"
+    copy_audit_schema_version: str = "moments-audit-schema-v1"
+    copy_rule_version: str = "moments-rules-v2"
+    copy_preview_policy_version: str = "preview-v1"
+    copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
+    copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
+    copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
@@ -212,6 +222,13 @@ class Settings(BaseSettings):
             self.brand_chunk_version,
             self.brand_embedding_input_version,
             self.brand_retrieval_version,
+            self.copy_pipeline_version,
+            self.copy_generator_prompt_version,
+            self.copy_draft_schema_version,
+            self.copy_auditor_prompt_version,
+            self.copy_audit_schema_version,
+            self.copy_rule_version,
+            self.copy_preview_policy_version,
         }
         if any(not value.strip() or len(value) > 80 for value in version_values):
             raise ValueError(

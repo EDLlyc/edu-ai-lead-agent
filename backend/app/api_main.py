@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from app.api.v1.routes import (
     acquisition_runs,
     brand_knowledge,
     candidate_analyses,
+    copy_generation,
     events,
     evidence_candidates,
     governance_runs,
@@ -43,7 +45,7 @@ class HealthResponse(BaseModel):
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     embedding_client: httpx.AsyncClient | None = None
     _app.state.brand_original_store = MinioBrandOriginalStore(settings)
     _app.state.brand_embedding_model = None
@@ -87,10 +89,13 @@ app.include_router(candidate_analyses.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(topic_selection_runs.router, prefix="/api/v1")
 app.include_router(brand_knowledge.router, prefix="/api/v1")
+app.include_router(copy_generation.router, prefix="/api/v1")
 
 
 @app.middleware("http")
-async def request_context(request: Request, call_next):
+async def request_context(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     request.state.request_id = request_id
     response = await call_next(request)

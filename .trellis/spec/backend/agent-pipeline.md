@@ -5,9 +5,11 @@
 This guide translates the workflow in [`main.tex`](../../../main.tex) and the generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. Three
 capabilities now exist: authoritative-source acquisition, versioned factual governance and
-auditable event organization, deterministic daily Top 1/`no_topic` selection, and private
-versioned brand retrieval. Generation and material-package delivery remain prospective. Automated
-publishing is prohibited.
+auditable event organization, deterministic daily Top 1/`no_topic` selection, private versioned
+brand retrieval, and preview evidence-bound copy generation/audit. Material-package delivery
+remains prospective. Automated publishing is prohibited. The copy path is functional and has one
+controlled live structured draft/audit with manually reviewed bindings, but remains a preview
+product policy pending broader labeled calibration and internal copy review.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -274,6 +276,113 @@ class AuditVerdict(BaseModel):
 The auditor is not a retrieval tool and cannot add evidence from model memory. It cannot override
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
 configured maximum; exhaustion produces a terminal, reviewable run state.
+
+## Scenario: Preview copy policy and bounded Zhipu structured output
+
+### 1. Scope / Trigger
+
+This contract applies when a locked daily topic is converted into the single parent-facing
+Moments draft, including manual API enqueue with a profile that differs from the server default.
+It also applies to every Zhipu generator, auditor, and schema-correction request.
+
+### 2. Signatures
+
+- Manual enqueue: `POST /api/v1/copy-generation-runs` with `business_date` and
+  `scoring_profile`.
+- Version selection: `build_copy_version_bundle(settings, scoring_profile=<effective profile>)`.
+- Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
+  enqueued and restored by every later claim/retry.
+- Preview profiles: `preview` and `preview-v1`; durable rule version: `preview-v1`.
+- Strict profiles use `COPY_RULE_VERSION`, currently `moments-rules-v2`.
+- Zhipu structured payload includes `thinking={"type":"disabled"}` and
+  `response_format={"type":"json_object"}` for initial and correction requests.
+
+### 3. Contracts
+
+- The API request profile, not only `CONTENT_SCORING_PROFILE`, determines the enqueued run's
+  version fingerprint and durable rule version. Scheduler and worker defaults may continue to use
+  the configured profile.
+- A generator or auditor result is accepted only when both its `provider` and `model` exactly match
+  the claimed run's durable `CopyVersionBundle`. Perform this check before deterministic policy,
+  audit-policy transformation, or persistence. A worker restart/configuration change must never
+  execute a historical fingerprint under a newly configured model identity.
+- Preview deterministic policy converts only `unverified_superlative` and
+  `incomplete_sentence` to warnings. Deterministic evidence/binding, factual, privacy, injection,
+  anxiety, publishing, image, and prohibited-marketing findings remain errors.
+- Preview LLM audit may convert brand tone/fit, fluency, ordinary promotional language, and the
+  typed `exaggeration` / `marketing_exaggeration` quality codes to warnings.
+  `unsupported_implication` and every factual or safety issue remain blocking errors.
+- The persisted audit verdict is the policy-adjusted verdict. A warning-only preview audit is
+  accepted without consuming the single product repair; any remaining error retains the normal
+  repair/review-required behavior.
+- GLM-5.2 enables deep thinking by default. Structured copy/audit is a constrained transformation,
+  so deep thinking is disabled to reserve the bounded completion budget for JSON. Do not compensate
+  for reasoning-token exhaustion by increasing limits without a reviewed version change.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Preview draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
+| Preview audit returns brand tone, fluency, or ordinary marketing exaggeration | Persist warning; accept when no error remains |
+| Audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
+| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
+| Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
+| Manual API requests `preview` while server default is strict | Persist preview rule version/fingerprint |
+| Generator/auditor returns a different provider or model than the claimed bundle | Fail closed with non-retryable `provider_identity_mismatch`; do not persist the mismatched draft/audit |
+| Zhipu initial or correction request omits `thinking.type=disabled` | Contract failure; do not run controlled live acceptance |
+| Provider content is invalid JSON/schema | `invalid_provider_output`; preview policy cannot downgrade it |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a preview audit flags only brand fit and marketing exaggeration; both become warnings and
+  the evidence-bound draft is accepted without repair.
+- Base: strict mode receives the same issues and preserves the auditor's error severities.
+- Bad: classify `unsupported_implication` as marketing style, derive a manual run's rule version
+  only from server settings, accept a result from the worker's newly configured provider/model,
+  or allow GLM reasoning tokens to consume the structured-output budget.
+
+### 6. Tests Required
+
+- Domain/unit tests assert preview deterministic warning codes, strict preservation, warning-only
+  acceptance without repair, and unchanged hard-risk severities.
+- Version-bundle tests cover configured and explicit manual-profile overrides in both directions.
+- Provider-identity tests cover generator and auditor provider drift plus generator and auditor
+  model drift. They assert `provider_identity_mismatch` and that the mismatched draft/audit is not
+  persisted.
+- Provider contract tests inspect every generated request body, including correction requests, and
+  assert `thinking == {"type": "disabled"}` plus strict JSON response format.
+- Existing provider-envelope, schema, redaction, replay, and PostgreSQL safe-metadata tests remain
+  mandatory; no automated test may make a live model request.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+bundle = build_copy_version_bundle(settings)  # ignores the manual request profile
+provider_payload = {"model": model, "messages": messages, "max_tokens": 2048}
+result = await generator.generate(request)  # result identity is persisted without comparison
+```
+
+#### Correct
+
+```python
+bundle = build_copy_version_bundle(settings, scoring_profile=payload.scoring_profile)
+provider_payload = {
+    "model": model,
+    "messages": messages,
+    "thinking": {"type": "disabled"},
+    "response_format": {"type": "json_object"},
+    "max_tokens": 2048,
+}
+result = await generator.generate(request)
+ensure_provider_identity(
+    provider=result.provider,
+    model=result.model,
+    version_bundle=claimed.version_bundle,
+)
+```
 
 ## Job state and idempotency
 

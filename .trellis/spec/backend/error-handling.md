@@ -39,6 +39,35 @@ class TransientProviderError(AppError):
 Provider adapters translate SDK/network exceptions into these typed failures and retain the
 original exception as the cause. Application code must not branch on provider error strings.
 
+Durable model workflows also validate returned provider identity at the application boundary.
+When a generator/auditor result's `provider` or `model` differs from the claimed run bundle, raise
+the non-retryable `ProviderIdentityMismatchError` with code `provider_identity_mismatch` before
+validation, policy transformation, or persistence. This is a deployment/configuration mismatch,
+not transient provider unavailability: retrying the same claimed run against the current adapter
+would repeat or conceal the version drift.
+
+Structured-output adapters project a terminal Pydantic `ValidationError` into a bounded,
+application-owned diagnostic before crossing the provider boundary. The diagnostic contains only
+normalized `loc` segments and the stable Pydantic `type`: at most 12 issues, at most eight location
+segments per issue, with bounded token lengths. It must never contain `msg`, `input`, raw model
+content, prompts, response bodies, or exception text. The same safe projection is used for a
+bounded schema-correction prompt, structured worker logging, and durable attempt `safe_metadata`;
+the external API continues to expose only the generic `invalid_provider_output` code.
+
+This is a cross-layer contract, not an adapter-only convenience. The typed provider error carries
+the diagnostic through application orchestration, and the repository serializes only the
+allowlisted `loc` / `type` projection. Focused contract, worker, PostgreSQL, and API regressions
+must prove nested locations remain useful, issue counts are capped, and raw values or exception
+causes do not leak at any boundary.
+
+Before Pydantic validation, a structured-copy adapter may normalize only one bounded top-level JSON
+object. Accepted envelopes are: a pure object, one `json` code fence containing only that object,
+or bounded non-JSON prose around one uniquely balanced object. The scanner must handle escaped
+quotes, backslashes, and braces inside JSON strings. Reject array roots, multiple objects, a second
+JSON structure/value, unclosed or malformed JSON, ambiguous/multiple fences, non-standard JSON
+constants, and over-limit envelopes. Parse only the extracted object; never deserialize surrounding
+prose. Envelope compatibility does not relax Pydantic fields, claims, bindings, enums, or limits.
+
 Expected outcomes such as `no_topic` are domain/run results, not exceptions. A hard veto can be a
 typed control failure inside a stage, but it must be persisted as a structured veto result rather
 than presented as an unhandled system error.
@@ -72,7 +101,7 @@ in structured logs linked by `request_id`, not in the response.
   unavailability, lease loss before side effects).
 - Use bounded exponential backoff with jitter and a configured maximum attempt count.
 - Do not blindly retry schema failures, missing evidence, policy vetoes, prompt-injection findings,
-  invalid credentials, or unsupported content.
+  invalid credentials, unsupported content, or durable provider/model identity mismatches.
 - Before retrying an external side effect, inspect the persisted request fingerprint and provider
   request ID/result state.
 - On exhaustion, store the terminal issue code, safe message, attempt history, and last stage;

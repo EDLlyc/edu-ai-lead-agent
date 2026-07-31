@@ -3,7 +3,7 @@
   "name": "copy-generation-audit",
   "title": "Evidence-bound copy generation and audit",
   "description": "Implement structured Moments copy with factual evidence and brand bindings, deterministic validation, typed brand/risk audit, and one bounded repair.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "backend",
   "package": null,
