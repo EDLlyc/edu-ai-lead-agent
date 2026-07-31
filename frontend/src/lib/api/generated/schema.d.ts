@@ -382,6 +382,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/material-packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Material Packages */
+        get: operations["list_material_packages_api_v1_material_packages_get"];
+        put?: never;
+        /** Generate Material Package */
+        post: operations["generate_material_package_api_v1_material_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/material-packages/{package_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Material Package */
+        get: operations["read_material_package_api_v1_material_packages__package_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/material-packages/{package_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Material Package Image */
+        get: operations["download_material_package_image_api_v1_material_packages__package_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/material-packages/{package_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Material Package Route */
+        post: operations["review_material_package_route_api_v1_material_packages__package_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -1950,6 +2019,158 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** ImageArtifactResponse */
+        ImageArtifactResponse: {
+            /** Byte Size */
+            byte_size: number | null;
+            /** Download Url */
+            download_url: string | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Height */
+            height: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Media Type */
+            media_type: string | null;
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+            /** Sha256 */
+            sha256: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "review_required";
+            /** Width */
+            width: number | null;
+        };
+        /** MaterialPackageCreateRequest */
+        MaterialPackageCreateRequest: {
+            /**
+             * Copy Generation Run Id
+             * Format: uuid
+             */
+            copy_generation_run_id: string;
+            /**
+             * Reviewer
+             * @default internal
+             */
+            reviewer: string;
+        };
+        /** MaterialPackageListResponse */
+        MaterialPackageListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["MaterialPackageSummaryResponse"][];
+        };
+        /** MaterialPackageResponse */
+        MaterialPackageResponse: {
+            /** Audit */
+            audit: {
+                [key: string]: unknown;
+            };
+            /** Business Date */
+            business_date: string;
+            /** Copy */
+            copy: {
+                [key: string]: unknown;
+            };
+            /**
+             * Copy Generation Run Id
+             * Format: uuid
+             */
+            copy_generation_run_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail Url */
+            detail_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            image: components["schemas"]["ImageArtifactResponse"];
+            /** Package Version */
+            package_version: number;
+            /** Review Note */
+            review_note: string | null;
+            /**
+             * Review Status
+             * @enum {string}
+             */
+            review_status: "pending" | "approved" | "rejected";
+            /** Review Url */
+            review_url: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Sources */
+            sources: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+            /** Topic */
+            topic: {
+                [key: string]: unknown;
+            };
+        };
+        /** MaterialPackageSummaryResponse */
+        MaterialPackageSummaryResponse: {
+            /** Business Date */
+            business_date: string;
+            /**
+             * Copy Generation Run Id
+             * Format: uuid
+             */
+            copy_generation_run_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail Url */
+            detail_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Review Status
+             * @enum {string}
+             */
+            review_status: "pending" | "approved" | "rejected";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+        };
+        /** MaterialReviewRequest */
+        MaterialReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Note */
+            note?: string | null;
+            /** Reviewer */
+            reviewer: string;
+        };
         /** ObservationResponse */
         ObservationResponse: {
             /** Error Code */
@@ -2920,6 +3141,167 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GovernanceJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_material_packages_api_v1_material_packages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialPackageListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_material_package_api_v1_material_packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialPackageCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialPackageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_material_package_api_v1_material_packages__package_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialPackageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_material_package_image_api_v1_material_packages__package_id__image_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_material_package_route_api_v1_material_packages__package_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialPackageResponse"];
                 };
             };
             /** @description Validation Error */

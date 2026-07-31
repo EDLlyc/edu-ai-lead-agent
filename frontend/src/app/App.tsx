@@ -1,4 +1,5 @@
 import { BrandKnowledgePanel } from "@/features/brand/BrandKnowledgePanel";
+import { MaterialPackagePanel } from "@/features/material/MaterialPackagePanel";
 
 import styles from "./App.module.css";
 
@@ -54,6 +55,7 @@ export function App() {
         </section>
 
         <BrandKnowledgePanel />
+        <MaterialPackagePanel />
 
         <section className={styles.safetyRail} aria-labelledby="safety-title">
           <div>
