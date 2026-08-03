@@ -202,3 +202,24 @@ Completed the final content-production MVP child task: one-image generation thro
 ### Next Steps
 
 - Run parent task 07-30-content-production-mvp integration gate and archive it
+
+
+## Session 9: Full project runtime verification
+
+**Date**: 2026-08-03
+**Task**: Full project runtime verification
+**Branch**: `main`
+
+### Summary
+
+Verified the full local MVP stack: backend and frontend quality gates, PostgreSQL/pgvector and MinIO migrations, 39 integration tests, Compose API startup, acquisition worker execution, and /healthz. Found one stale scripts/doctor.sh migration-head assertion expecting 20260730_0007 while current head is 20260731_0009; no product code was changed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7a04fc0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
