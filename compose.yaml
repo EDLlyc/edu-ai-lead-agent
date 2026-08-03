@@ -165,12 +165,21 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    volumes:
+      - ./private/brand-materials:/app/private/brand-materials:ro
     depends_on:
       backend-migrate:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
+      IMAGE_ENABLED: ${IMAGE_ENABLED:-false}
+      IMAGE_PROVIDER_MODE: ${IMAGE_PROVIDER_MODE:-disabled}
+      TOAPIS_BASE_URL: ${TOAPIS_BASE_URL:-https://toapis.com}
+      TOAPIS_API_KEY: ${TOAPIS_API_KEY:-}
+      IMAGE_MODEL: ${IMAGE_MODEL:-gpt-image-2}
+      IMAGE_PROMPT_VERSION: ${IMAGE_PROMPT_VERSION:-image-prompt-v1}
+      IMAGE_PIPELINE_VERSION: ${IMAGE_PIPELINE_VERSION:-image-pipeline-v1}
     command: ["python", "-m", "uvicorn", "app.api_main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
