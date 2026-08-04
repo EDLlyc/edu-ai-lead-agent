@@ -19,6 +19,7 @@ from pydantic import SecretStr
 from app.application.ports.image_generation import (
     ImageGenerationRequest,
     ImageGenerationResult,
+    ImageReference,
 )
 from app.core.errors import (
     ImageOutputValidationError,
@@ -62,8 +63,42 @@ _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MO
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
+def _request_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
+    """Return the new ordered references while retaining the legacy one-image contract."""
+
+    if request.references and request.reference_image is not None:
+        raise ImageOutputValidationError()
+    if request.references:
+        return request.references
+    if request.reference_image is None:
+        return ()
+    return (
+        ImageReference(
+            role="legacy",
+            asset_id="legacy-reference",
+            filename=request.reference_filename or "reference.png",
+            sha256=image_checksum(request.reference_image),
+            image_bytes=request.reference_image,
+        ),
+    )
+
+
+def _provider_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
+    """Apply only an explicitly persisted provider capability fallback."""
+
+    references = _request_references(request)
+    if request.reference_mode == "single_fallback" and len(references) > 1:
+        return references[:1]
+    return references
+
+
 def _generation_payload(
-    *, model: str, prompt: str, fingerprint: str, upload_url: str | None
+    *,
+    model: str,
+    prompt: str,
+    fingerprint: str,
+    upload_url: str | None = None,
+    upload_urls: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -72,15 +107,16 @@ def _generation_payload(
         "size": IMAGE_SIZE,
         "client_business_id": fingerprint,
     }
+    urls = upload_urls or ((upload_url,) if upload_url is not None else ())
     if model == _GPT_IMAGE_MODEL:
         payload.update({"resolution": IMAGE_RESOLUTION, "response_format": "url"})
-        if upload_url is not None:
-            payload["reference_images"] = [upload_url]
+        if urls:
+            payload["reference_images"] = list(urls)
         return payload
     if model == _FLUX_IMAGE_MODEL:
         payload["metadata"] = {"resolution": "1K"}
-        if upload_url is not None:
-            payload["image_urls"] = [upload_url]
+        if urls:
+            payload["image_urls"] = list(urls)
         return payload
     if model == _GEMINI_IMAGE_MODEL:
         payload["metadata"] = {
@@ -88,8 +124,8 @@ def _generation_payload(
             "thinkingConfig": {"thinkingLevel": "HIGH"},
             "imageOutputOptions": {"mimeType": "image/png"},
         }
-        if upload_url is not None:
-            payload["image_urls"] = [upload_url]
+        if urls:
+            payload["image_urls"] = list(urls)
         return payload
     raise ValueError("unsupported ToAPIs image model profile")
 
@@ -175,8 +211,11 @@ class ToApisImageGenerator:
                 prompt = validate_image_prompt(request.prompt)
                 upload_id: str | None = None
                 upload_url: str | None = None
-                if request.reference_image is not None:
-                    upload_id, upload_url = await self._upload_reference(request.reference_image)
+                references = _provider_references(request)
+                if len(references) > 1:
+                    raise ImageProviderRejectedError()
+                if references:
+                    upload_id, upload_url = await self._upload_reference(references[0].image_bytes)
                 payload = _generation_payload(
                     model=self._model,
                     prompt=prompt,
@@ -374,6 +413,7 @@ class OpenAICompatibleImageGenerator:
         max_download_bytes: int = 20 * 1024 * 1024,
         max_request_bytes: int = 8 * 1024 * 1024,
         max_provider_response_bytes: int = 32 * 1024 * 1024,
+        max_reference_images: int = 3,
         allowed_output_hosts: frozenset[str] | None = None,
         allow_public_output_urls: bool = False,
         resolver: Resolver = system_resolver,
@@ -407,6 +447,8 @@ class OpenAICompatibleImageGenerator:
             or max_download_bytes < 1024
             or max_request_bytes < 1024
             or max_provider_response_bytes < 1024
+            or max_reference_images < 1
+            or max_reference_images > 4
         ):
             raise ValueError("Comfly image bounds are invalid")
         normalized_model = model.strip()
@@ -442,6 +484,7 @@ class OpenAICompatibleImageGenerator:
         self._max_download_bytes = max_download_bytes
         self._max_request_bytes = max_request_bytes
         self._max_provider_response_bytes = max_provider_response_bytes
+        self._max_reference_images = max_reference_images
         self._allowed_output_hosts = output_hosts
         self._allow_public_output_urls = allow_public_output_urls
         self._resolver = resolver
@@ -497,8 +540,11 @@ class OpenAICompatibleImageGenerator:
             "size": IMAGE_SIZE,
             "aspect_ratio": IMAGE_SIZE,
         }
-        if request.reference_image is not None:
-            payload["image"] = [self._reference_data_url(request.reference_image)]
+        references = _request_references(request)
+        if len(references) > self._max_reference_images:
+            raise ImageOutputValidationError()
+        if references:
+            payload["image"] = [self._reference_data_url(reference) for reference in references]
         try:
             serialized_size = len(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -509,7 +555,8 @@ class OpenAICompatibleImageGenerator:
             raise ImageOutputValidationError()
         return payload
 
-    def _reference_data_url(self, body: bytes) -> str:
+    def _reference_data_url(self, reference: ImageReference) -> str:
+        body = reference.image_bytes
         if (
             len(body) > self._max_download_bytes
             or len(body) < 24

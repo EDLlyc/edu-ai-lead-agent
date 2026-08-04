@@ -8,7 +8,7 @@ acquisition and factual-governance schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260803_0014`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260804_0015`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -155,8 +155,8 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260803_0014` (allows failed brand derivations to be retried after brand-document OCR metadata,
-  source request pacing, and freshness policy
+  `20260804_0015` (adds immutable ordered visual-reference rows and image visual-brief metadata
+  after brand-document OCR metadata, source request pacing, and freshness policy
   metadata, and immutable
   same-day topic revisions).
   Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract described here.

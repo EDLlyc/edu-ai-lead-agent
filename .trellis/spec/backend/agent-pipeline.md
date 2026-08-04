@@ -428,9 +428,16 @@ deterministic validation as if it were a network timeout.
 - Active local provider origin: `https://ai.comfly.org`; the model remains configurable and is
   currently `gpt-image-2`. The old `toapis` adapter remains an explicit rollback mode.
 - Comfly generate: `POST /v1/images/generations` with `model`, a validated bounded `prompt`,
-  `size=1:1`, `aspect_ratio=1:1`, and an optional bounded `image=[data:image/png;base64,...]`
-  containing the approved local reference. Private MinIO URLs and provider upload URLs are never
-  sent.
+  `size=1:1`, `aspect_ratio=1:1`, and an optional ordered `image=[data:image/png;base64,...]`
+  tuple containing approved local references. Each reference carries a role, asset ID, filename,
+  checksum, and bytes in the provider-neutral request; private MinIO URLs and provider upload URLs
+  are never sent. The default aggregate reference budget is 3 MiB (`IMAGE_REFERENCE_BUDGET_BYTES`),
+  which keeps the encoded request within the provider's practical payload envelope while retaining
+  real Sai Xiansheng/Xiaosai identity assets.
+- The accepted topic/copy produces a bounded `VisualBrief`; the deterministic selector persists its
+  catalog/selector versions, ordered reference roles/checksums, selection reasons, and an explicit
+  `reference_mode` (`single_reference`, `budgeted_multi_reference`, or `single_fallback`). The raw
+  Moments copy is never used as the image text layer.
 - Response: accept exactly one synchronous `data[].url` or `data[].b64_json`. If the gateway returns
   a safe task identifier and a pending status, poll `GET /v1/images/tasks/{task_id}` after the
   configured initial delay and interval, bounded by the provider window.
@@ -457,9 +464,10 @@ deterministic validation as if it were a network timeout.
   `comfly_api_key`, `comfly_output_hosts`, `image_model`, `image_prompt_version`,
   `image_pipeline_version`, `image_max_attempts` (default 3, 1-6), `image_poll_initial_seconds`,
   `image_poll_interval_seconds`, `image_provider_timeout_seconds` (default 120s),
-  `image_provider_window_seconds` (default 180s, 1-180),
-  `image_max_download_bytes` (1 KiB-50 MiB), `image_max_request_bytes`, and
-  `image_max_provider_response_bytes`.
+  `image_provider_window_seconds` (default 180s, 1-180), `image_max_download_bytes`
+  (1 KiB-50 MiB), `image_max_request_bytes`, `image_max_provider_response_bytes`,
+  `image_max_reference_images` (default 3), `image_reference_budget_bytes` (default 3 MiB),
+  `image_asset_manifest`, `image_selector_version`, and `image_selector_enabled`.
 - `image_enabled=True` with `image_provider_mode="disabled"` raises at startup; `toapis` mode
   requires a non-empty `TOAPIS_API_KEY` and pinned HTTPS `toapis_base_url`; `comfly` mode requires
   a non-empty `COMFLY_API_KEY` and an HTTPS `comfly_base_url` without credentials, query, or
@@ -479,12 +487,13 @@ deterministic validation as if it were a network timeout.
 | Synchronous response has multiple images, malformed JSON, or unknown task status | Reject the provider result; never choose an arbitrary image |
 | 429/503 during polling | Honor `Retry-After`, retry within the configured provider window (180s by default) |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
+| Selected references exceed count/byte bounds | Reject before the paid provider call; preserve the explicit fallback mode if a bounded single reference remains |
 | Active provider key missing or URL is not a valid HTTPS origin | Startup fails closed |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: one accepted prompt produces one 1024x1024 PNG in MinIO, one artifact row, controlled
-  download.
+- Good: one accepted content brief selects approved IP references within 3 MiB, produces one
+  1024x1024 PNG in MinIO, one artifact row, and a controlled download.
 - Base: `fake` provider returns a deterministic 1024x1024 PNG without network, for offline tests.
 - Bad: persist the transient upload/generated URL, store raw provider response, or accept a
   non-1024 image.
@@ -494,6 +503,12 @@ deterministic validation as if it were a network timeout.
 - [`test_image_generation.py`](../../../backend/tests/unit/test_image_generation.py) asserts fake
   determinism (same fingerprint -> same bytes, 1024x1024 PNG), payload shape, fingerprint
   stability, and error classification for malformed provider responses.
+- [`test_visual_assets.py`](../../../backend/tests/unit/test_visual_assets.py),
+  [`test_visual_brief.py`](../../../backend/tests/unit/test_visual_brief.py), and
+  [`test_material_package.py`](../../../backend/tests/unit/test_material_package.py) assert
+  deterministic topic selection, bounded reference metadata, prompt/text-layer isolation, and
+  explicit provider fallback. The live content-driven smoke must be inspected under
+  `output/imagegen/` when a paid acceptance run is performed.
 - [`image_live_smoke.py`](../../../backend/app/image_live_smoke.py) runs one bounded call through the
   configured live provider with a locally injected secret; it prints only provider/model/size/
   bytes/output on success. A timeout, authentication, quota, or malformed-output result is a safe
@@ -511,8 +526,10 @@ artifact = ImageArtifact(provider_task_url=result_url)  # persist expiring URL
 #### Correct
 
 ```python
-payload = {"model": "gpt-image-2", "prompt": prompt, "size": "1:1", "aspect_ratio": "1:1",
-           "image": [bounded_reference_data_url]}
+payload = {
+    "model": "gpt-image-2", "prompt": prompt, "size": "1:1", "aspect_ratio": "1:1",
+    "image": [bounded_identity_data_url, bounded_action_data_url],
+}
 image_bytes = await _download(result_url)  # configured HTTPS host only, no redirect
 artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
                          width=1024, height=1024)  # no URL persisted
@@ -545,8 +562,9 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 ### 3. Contracts
 
 - The image request fingerprint includes run, accepted draft, prompt, provider/model, prompt and
-  pipeline versions, and reference-image SHA-256. Both image and package tables enforce unique
-  fingerprints; a replay returns the durable reservation without a second successful row.
+  pipeline versions, the ordered reference SHA-256 tuple, visual brief fingerprint, catalog version,
+  and selector version. Both image and package tables enforce unique fingerprints; a replay returns
+  the durable reservation without a second successful row.
 - The package snapshot stores selected topic/explanation, copy and claims, source/evidence
   bindings, brand bindings, validation/audit results, and package/copy/image version metadata.
 - A successful image row stores provider/model, dimensions, media type, byte size, SHA-256, safe
@@ -586,7 +604,8 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   enqueue-only behavior, accepted-draft gating, provider rejection, lease-safe persistence, and
   safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260803_0014`, worker columns, package snapshots, constraints, and unique indexes; MinIO
+  `20260804_0015`, worker columns, package snapshots, ordered image-reference constraints, and
+  unique indexes; MinIO
   integration asserts content-addressed immutable storage.
 - Frontend mapper/component tests assert response mapping, queued/failed states, copy/download
   feedback, provenance/audit display, polling termination, and no publishing action.

@@ -119,6 +119,35 @@ const materialPackage: MaterialPackageViewModel = {
     sha256: "abc",
     errorCode: null,
     downloadUrl: "https://example.com/image.png",
+    referenceMode: "budgeted_multi_reference",
+    visualBrief: {
+      version: "visual-brief-v1",
+      category: "robotics",
+      learningGoal: "理解具身智能如何通过感知、尝试和反馈逐步调整动作。",
+      scene: "赛先生和小赛在明亮的机器人实验室观察动作调整。",
+      mainAction: "观察机器人尝试动作并根据反馈调整。",
+      characters: ["xiao-sai", "sai-xiansheng"],
+      assetTags: ["robotics", "ai", "experiment"],
+      referenceRoles: ["identity_reference", "action_reference"],
+      renderTextMode: "editorial_keywords_and_brand_values",
+      textLayer: {
+        title: "具身智能",
+        learningLine: "在真实体验中学习，在不断调整中成长",
+        keywords: ["尝试", "调整", "进步"],
+        brandValues: ["守护好奇心 · 锤炼思考力 · 培养创造力"],
+      },
+    },
+    references: [
+      {
+        role: "identity_reference",
+        roleLabel: "身份素材",
+        assetId: "asset-1",
+        filename: "小赛和赛先生讨论.png",
+        sha256: "a".repeat(64),
+        selectionReason: "robotics topic match",
+        fallback: false,
+      },
+    ],
   },
   review: {
     status: "pending",
@@ -183,6 +212,10 @@ describe("MaterialPackagePanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "文案" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "图片" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "视觉 brief" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("小赛和赛先生讨论.png")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "来源与证据" }),
     ).toBeInTheDocument();

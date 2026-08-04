@@ -2476,6 +2476,12 @@ class ImageArtifactModel(Base):
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
     pipeline_version: Mapped[str] = mapped_column(String(80), nullable=False)
     reference_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference_mode: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default=text("'legacy_single'")
+    )
+    visual_brief_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     provider_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     provider_upload_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -2516,6 +2522,17 @@ class ImageArtifactModel(Base):
         ),
         CheckConstraint("attempt_count >= 0", name="ck_image_artifacts_attempt_count"),
         CheckConstraint(
+            "reference_mode IN ("
+            "'legacy_single', 'single_reference', 'single_fallback', "
+            "'budgeted_multi_reference', 'multi_reference'"
+            ")",
+            name="ck_image_artifacts_reference_mode",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(visual_brief_snapshot) = 'object'",
+            name="ck_image_artifacts_visual_brief_snapshot_object",
+        ),
+        CheckConstraint(
             "jsonb_typeof(storage_metadata) = 'object'",
             name="ck_image_artifacts_storage_metadata_object",
         ),
@@ -2535,6 +2552,45 @@ class ImageArtifactModel(Base):
             "lease_expires_at",
         ),
         Index("ix_image_artifacts_status_created", "status", "created_at"),
+    )
+
+
+class ImageArtifactReferenceModel(Base):
+    __tablename__ = "image_artifact_references"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    image_artifact_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id",
+            name="fk_image_artifact_references_artifact_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    asset_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    reference_role: Mapped[str] = mapped_column(String(40), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    asset_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    catalog_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    selector_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    selection_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    fallback_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_image_artifact_references_ordinal"),
+        CheckConstraint("asset_id <> ''", name="ck_image_artifact_references_asset_id"),
+        CheckConstraint("reference_role <> ''", name="ck_image_artifact_references_role"),
+        UniqueConstraint(
+            "image_artifact_id", "ordinal", name="uq_image_artifact_references_artifact_ordinal"
+        ),
+        Index("ix_image_artifact_references_asset_id", "asset_id"),
     )
 
 

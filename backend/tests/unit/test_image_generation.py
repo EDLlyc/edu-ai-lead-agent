@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from app.application.ports.image_generation import ImageGenerationRequest
+from app.application.ports.image_generation import ImageGenerationRequest, ImageReference
 from app.core.config import Settings
 from app.core.errors import (
     ImageOutputValidationError,
@@ -93,6 +93,74 @@ async def test_toapis_generation_uploads_polls_and_downloads_without_persisting_
     assert generation_payload["reference_images"] == ["https://files.toapis.com/u/1"]
     assert "metadata" not in generation_payload
     assert "image_urls" not in generation_payload
+
+
+@pytest.mark.asyncio
+async def test_toapis_single_reference_fallback_is_explicit_and_keeps_ordered_first_asset() -> None:
+    image = _solid_png("toapis-fallback", "result")
+    uploaded: list[bytes] = []
+    generation_payload: dict[str, object] | None = None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal generation_payload
+        if request.url.path == "/v1/uploads/images":
+            uploaded.append(request.content)
+            return httpx.Response(
+                200, json={"id": "upload-fallback", "url": "https://files.toapis.com/u/1"}
+            )
+        if request.url.path == "/v1/images/generations":
+            generation_payload = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "task_id": "fallback-task",
+                    "status": "completed",
+                    "result": {"data": [{"url": "https://files.toapis.com/i/1"}]},
+                },
+            )
+        if request.url.path == "/v1/images/generations/fallback-task":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "completed",
+                    "result": {"data": [{"url": "https://files.toapis.com/i/1"}]},
+                },
+            )
+        if request.url.host == "files.toapis.com":
+            return httpx.Response(200, headers={"content-type": "image/png"}, content=image)
+        return httpx.Response(404)
+
+    first = _solid_png("first-reference", "approved")
+    second = _solid_png("second-reference", "approved")
+    request = ImageGenerationRequest(
+        uuid4(),
+        uuid4(),
+        "parent-facing science illustration",
+        "fallback-fingerprint",
+        references=(
+            ImageReference("identity_reference", "asset-first", "first.png", "a" * 64, first),
+            ImageReference("action_reference", "asset-second", "second.png", "b" * 64, second),
+        ),
+        reference_mode="single_fallback",
+    )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        generator = ToApisImageGenerator(
+            client=client,
+            base_url="https://toapis.com",
+            api_key=SecretStr("test-key"),
+            initial_poll_seconds=0,
+            poll_interval_seconds=0,
+            sleep=lambda _seconds: __import__("asyncio").sleep(0),
+        )
+        result = await generator.generate(request)
+
+    assert result.image_bytes == image
+    assert len(uploaded) == 1
+    assert first in uploaded[0]
+    assert second not in uploaded[0]
+    assert generation_payload is not None
+    assert generation_payload["reference_images"] == ["https://files.toapis.com/u/1"]
 
 
 def test_provider_authentication_error_message_is_provider_neutral() -> None:
@@ -327,6 +395,46 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert isinstance(image_values, list) and len(image_values) == 1
     assert isinstance(image_values[0], str) and image_values[0].startswith("data:image/png;base64,")
     assert base64.b64decode(image_values[0].split(",", 1)[1]) == reference
+
+
+@pytest.mark.asyncio
+async def test_comfly_sends_ordered_multi_reference_images() -> None:
+    image = _solid_png("comfly", "multi-reference")
+    seen_payload: dict[str, object] | None = None
+    first = _solid_png("multi-first", "approved")
+    second = _solid_png("multi-second", "approved")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_payload
+        if request.url.path == "/v1/images/generations":
+            seen_payload = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={"data": [{"url": "https://images.comfly.org/multi.png"}]},
+            )
+        if request.url.host == "images.comfly.org":
+            return httpx.Response(200, headers={"content-type": "image/png"}, content=image)
+        return httpx.Response(404)
+
+    request = ImageGenerationRequest(
+        uuid4(),
+        uuid4(),
+        "parent-facing science illustration",
+        "multi-fingerprint",
+        references=(
+            ImageReference("identity_reference", "asset-first", "first.png", "a" * 64, first),
+            ImageReference("action_reference", "asset-second", "second.png", "b" * 64, second),
+        ),
+        reference_mode="multi_reference",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client).generate(request)
+
+    assert result.image_bytes == image
+    assert seen_payload is not None
+    encoded = seen_payload["image"]
+    assert isinstance(encoded, list)
+    assert [base64.b64decode(value.split(",", 1)[1]) for value in encoded] == [first, second]
 
 
 @pytest.mark.asyncio
@@ -807,6 +915,10 @@ def test_settings_rejects_a_comfly_base_url_with_an_api_path() -> None:
 
 def test_settings_disable_public_comfly_output_urls_by_default() -> None:
     assert Settings(_env_file=None).comfly_allow_public_output_urls is False
+
+
+def test_settings_use_a_provider_friendly_reference_budget_by_default() -> None:
+    assert Settings(_env_file=None).image_reference_budget_bytes == 3 * 1024 * 1024
 
 
 def test_image_provider_defaults_use_bounded_comfly_timeouts_and_retries() -> None:

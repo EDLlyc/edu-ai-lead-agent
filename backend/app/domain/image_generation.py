@@ -11,6 +11,8 @@ IMAGE_RESOLUTION = "1k"
 IMAGE_WIDTH = 1024
 IMAGE_HEIGHT = 1024
 IMAGE_PROMPT_VERSION = "image-prompt-v1"
+IMAGE_PIPELINE_VERSION = "image-pipeline-v1"
+IMAGE_REFERENCE_BUDGET_BYTES = 3 * 1024 * 1024
 _PROMPT_LIMIT = 2_000
 _UNSAFE_PROMPT = re.compile(
     r"(?:未成年人真人正脸|儿童真实正脸|裸露儿童|血腥|武器伤害|学生身份证|水印|二维码|仿制|重绘logo|重新绘制标志)",
@@ -35,16 +37,22 @@ def image_request_fingerprint(
     provider: str = "toapis",
     model: str = IMAGE_MODEL,
     prompt_version: str = IMAGE_PROMPT_VERSION,
-    pipeline_version: str = "image-pipeline-v1",
+    pipeline_version: str = IMAGE_PIPELINE_VERSION,
     reference_sha256: str | None = None,
+    reference_sha256s: tuple[str, ...] = (),
+    visual_brief_fingerprint: str = "no-visual-brief",
+    catalog_version: str = "no-catalog",
+    selector_version: str = "no-selector",
 ) -> str:
     """Derive the durable business id for one accepted image request.
 
     Provider/model and input-version identity are part of the key.  Otherwise changing a
     provider configuration could silently reuse an artifact produced under a different contract.
-    The reference digest is included because the approved character asset is an input to the
-    image request even though its transient upload URL is never persisted.
+    Ordered reference digests and visual-selection versions are included because the approved
+    character assets are inputs to the image request even though their transient upload URLs are
+    never persisted.
     """
+    digests = reference_sha256s or ((reference_sha256,) if reference_sha256 else ())
     return stable_key(
         "image",
         run_id,
@@ -53,7 +61,10 @@ def image_request_fingerprint(
         model,
         prompt_version,
         pipeline_version,
-        reference_sha256 or "no-reference",
+        "|".join(digests) or "no-reference",
+        visual_brief_fingerprint,
+        catalog_version,
+        selector_version,
         validate_image_prompt(prompt),
     )
 

@@ -17,6 +17,7 @@ from app.application.ports.image_generation import (
     ImageGenerationRequest,
     ImageGenerationResult,
     ImageGenerator,
+    ImageReference,
 )
 from app.core.config import Settings
 from app.core.errors import (
@@ -27,7 +28,25 @@ from app.core.errors import (
     NotFoundError,
     ProviderIdentityMismatchError,
 )
-from app.domain.image_generation import image_checksum, image_request_fingerprint
+from app.domain.image_generation import (
+    IMAGE_REFERENCE_BUDGET_BYTES,
+    image_checksum,
+    image_request_fingerprint,
+)
+from app.domain.visual_assets import AssetSelectionRequest, SelectedVisualAsset, VisualAssetRole
+from app.domain.visual_brief import (
+    AcceptedVisualContext,
+    VisualBrief,
+    VisualReferenceDescriptor,
+    VisualReferenceRole,
+    build_visual_brief,
+    build_visual_prompt_bundle,
+)
+from app.infrastructure.brand.visual_catalog import (
+    load_visual_catalog,
+    read_selected_reference,
+    select_visual_assets,
+)
 from app.infrastructure.db.models import (
     BrandChunkModel,
     BrandDocumentModel,
@@ -43,6 +62,7 @@ from app.infrastructure.db.models import (
     DailyTopicSelectionModel,
     EventClusterVersionModel,
     ImageArtifactModel,
+    ImageArtifactReferenceModel,
     MaterialPackageModel,
     MaterialReviewModel,
     TopicScoreModel,
@@ -77,6 +97,29 @@ class AcceptedMaterialInput:
     validation_snapshot: dict[str, Any]
     audit_snapshot: dict[str, Any]
     version_snapshot: dict[str, Any]
+    visual_brief: VisualBrief | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReservedVisualReference:
+    role: str
+    asset_id: str
+    filename: str
+    sha256: str
+    selection_reason: str
+    fallback: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedImageInput:
+    prompt: str
+    references: tuple[ImageReference, ...]
+    reserved_references: tuple[ReservedVisualReference, ...]
+    reference_mode: str
+    visual_brief_snapshot: dict[str, Any]
+    visual_brief_fingerprint: str
+    catalog_version: str
+    selector_version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +136,11 @@ class ClaimedMaterialPackage:
     lease_token: UUID
     attempt_number: int
     eligible: bool = True
+    references: tuple[ReservedVisualReference, ...] = ()
+    reference_mode: str = "legacy_single"
+    visual_brief_snapshot: dict[str, Any] | None = None
+    catalog_version: str = "no-catalog"
+    selector_version: str = "no-selector"
 
 
 async def enqueue_material_package(
@@ -104,19 +152,40 @@ async def enqueue_material_package(
     image_pipeline_version: str = "image-pipeline-v1",
     image_provider: str = "fake",
     image_model: str = "gpt-image-2",
+    image_asset_manifest: str | None = None,
+    image_selector_version: str = "visual-asset-selector-v1",
+    image_selector_enabled: bool = True,
+    image_max_reference_images: int = 3,
+    image_reference_budget_bytes: int = IMAGE_REFERENCE_BUDGET_BYTES,
 ) -> MaterialPackageResult:
     accepted = await _load_accepted_input(session_factory, run_id)
-    reference_body = await _read_reference_asset(reference_asset)
-    reference_sha256 = image_checksum(reference_body) if reference_body is not None else None
+    prepared = await asyncio.to_thread(
+        _prepare_image_input,
+        accepted,
+        reference_asset=reference_asset,
+        image_asset_manifest=image_asset_manifest,
+        image_provider=image_provider,
+        image_prompt_version=image_prompt_version,
+        image_pipeline_version=image_pipeline_version,
+        image_selector_version=image_selector_version,
+        image_selector_enabled=image_selector_enabled,
+        image_max_reference_images=image_max_reference_images,
+        image_reference_budget_bytes=image_reference_budget_bytes,
+    )
+    reference_sha256 = prepared.references[0].sha256 if prepared.references else None
     fingerprint = image_request_fingerprint(
         run_id=accepted.run.id,
         draft_version_id=accepted.draft.id,
-        prompt=accepted.prompt,
+        prompt=prepared.prompt,
         provider=image_provider,
         model=image_model,
         prompt_version=image_prompt_version,
         pipeline_version=image_pipeline_version,
         reference_sha256=reference_sha256,
+        reference_sha256s=tuple(reference.sha256 for reference in prepared.references),
+        visual_brief_fingerprint=prepared.visual_brief_fingerprint,
+        catalog_version=prepared.catalog_version,
+        selector_version=prepared.selector_version,
     )
 
     # Reserve both rows before crossing the provider boundary.  The unique fingerprint is the
@@ -160,6 +229,8 @@ async def enqueue_material_package(
                 prompt_version=image_prompt_version,
                 pipeline_version=image_pipeline_version,
                 reference_sha256=reference_sha256,
+                reference_mode=prepared.reference_mode,
+                visual_brief_snapshot=prepared.visual_brief_snapshot,
                 status="queued",
                 available_at=datetime.now(UTC),
                 attempt_count=0,
@@ -186,11 +257,42 @@ async def enqueue_material_package(
                         "model": image_model,
                         "prompt_version": image_prompt_version,
                         "pipeline_version": image_pipeline_version,
+                        "reference_mode": prepared.reference_mode,
+                        "visual_brief": prepared.visual_brief_snapshot,
+                        "references": [
+                            {
+                                "role": reference.role,
+                                "asset_id": reference.asset_id,
+                                "filename": reference.filename,
+                                "sha256": reference.sha256,
+                                "selection_reason": reference.selection_reason,
+                                "fallback": reference.fallback,
+                            }
+                            for reference in prepared.reserved_references
+                        ],
+                        "catalog_version": prepared.catalog_version,
+                        "selector_version": prepared.selector_version,
                     },
                 },
                 review_status="pending",
             )
-            session.add_all((image, package))
+            reference_rows = tuple(
+                ImageArtifactReferenceModel(
+                    id=uuid4(),
+                    image_artifact_id=image_id,
+                    asset_id=reference.asset_id,
+                    reference_role=reference.role,
+                    ordinal=ordinal,
+                    asset_sha256=reference.sha256,
+                    filename=reference.filename,
+                    catalog_version=prepared.catalog_version,
+                    selector_version=prepared.selector_version,
+                    selection_reason=reference.selection_reason,
+                    fallback_used=reference.fallback,
+                )
+                for ordinal, reference in enumerate(prepared.reserved_references)
+            )
+            session.add_all((image, package, *reference_rows))
             await session.commit()
         except IntegrityError as error:
             await session.rollback()
@@ -267,6 +369,194 @@ async def _read_reference_asset(reference_asset: str | None) -> bytes | None:
     return body
 
 
+def _prepare_image_input(
+    accepted: AcceptedMaterialInput,
+    *,
+    reference_asset: str | None,
+    image_asset_manifest: str | None,
+    image_provider: str,
+    image_prompt_version: str,
+    image_pipeline_version: str,
+    image_selector_version: str,
+    image_selector_enabled: bool,
+    image_max_reference_images: int,
+    image_reference_budget_bytes: int,
+) -> PreparedImageInput:
+    brief = accepted.visual_brief
+    if not image_selector_enabled or image_asset_manifest is None or brief is None:
+        reference_body = _read_reference_asset_sync(reference_asset)
+        references: tuple[ImageReference, ...] = ()
+        if reference_body is not None:
+            references = (
+                ImageReference(
+                    role="legacy",
+                    asset_id="legacy-reference",
+                    filename="reference.png",
+                    sha256=image_checksum(reference_body),
+                    image_bytes=reference_body,
+                    selection_reason="legacy configured reference",
+                ),
+            )
+        return PreparedImageInput(
+            prompt=accepted.prompt,
+            references=references,
+            reserved_references=tuple(
+                ReservedVisualReference(
+                    role=reference.role,
+                    asset_id=reference.asset_id,
+                    filename=reference.filename,
+                    sha256=reference.sha256,
+                    selection_reason=reference.selection_reason,
+                    fallback=False,
+                )
+                for reference in references
+            ),
+            reference_mode="legacy_single",
+            visual_brief_snapshot={},
+            visual_brief_fingerprint="no-visual-brief",
+            catalog_version="no-catalog",
+            selector_version="no-selector",
+        )
+
+    try:
+        loaded = load_visual_catalog(image_asset_manifest)
+        selection_request = AssetSelectionRequest(
+            category=brief.category.value,
+            topic=brief.text_layer.title,
+            asset_tags=brief.asset_tags,
+            characters=brief.characters,
+            main_action=brief.main_action,
+            poses=brief.asset_tags,
+            reference_roles=tuple(VisualAssetRole(role.value) for role in brief.reference_roles),
+            max_references=image_max_reference_images,
+            max_reference_bytes=image_reference_budget_bytes,
+        )
+        selection = select_visual_assets(
+            loaded,
+            selection_request,
+            selector_version=image_selector_version,
+            max_references=image_max_reference_images,
+            max_reference_bytes=image_reference_budget_bytes,
+        )
+        references = tuple(
+            read_selected_reference(loaded, selected) for selected in selection.selected_assets
+        )
+        descriptors = tuple(
+            VisualReferenceDescriptor(
+                asset_id=reference.asset_id,
+                role=VisualReferenceRole(reference.role),
+                filename=reference.filename,
+                checksum=reference.sha256,
+            )
+            for reference in references
+        )
+        prompt_bundle = build_visual_prompt_bundle(
+            brief,
+            descriptors,
+            prompt_version=image_prompt_version,
+            pipeline_version=image_pipeline_version,
+        )
+    except (OSError, ValueError) as error:
+        raise ConflictError("approved visual asset selection is invalid") from error
+
+    provider_single_reference = image_provider == "toapis" and len(references) > 1
+    reserved_references = tuple(
+        ReservedVisualReference(
+            role=selected.role.value,
+            asset_id=selected.asset_id,
+            filename=selected.filename,
+            sha256=selected.asset.checksum,
+            selection_reason=selected.reason,
+            fallback=selected.fallback or provider_single_reference,
+        )
+        for selected in selection.selected_assets
+    )
+    # ToAPIs currently accepts one uploaded reference. Keep every selected asset in the immutable
+    # package snapshot, but make the provider limitation explicit for the worker and UI.
+    reference_mode = (
+        "single_fallback" if provider_single_reference else selection.reference_mode.value
+    )
+    return PreparedImageInput(
+        prompt=prompt_bundle.prompt,
+        references=references,
+        reserved_references=reserved_references,
+        reference_mode=reference_mode,
+        visual_brief_snapshot=brief.as_metadata(),
+        visual_brief_fingerprint=brief.fingerprint,
+        catalog_version=selection.catalog_version,
+        selector_version=selection.selector_version,
+    )
+
+
+def _read_reference_asset_sync(reference_asset: str | None) -> bytes | None:
+    if reference_asset is None:
+        return None
+    path = Path(reference_asset)
+    if not path.is_file() or path.is_symlink():
+        raise ConflictError("approved image reference is unavailable")
+    body = path.read_bytes()
+    if not body:
+        raise ConflictError("approved image reference is empty")
+    return body
+
+
+def _reserved_references_from_rows(
+    rows: tuple[ImageArtifactReferenceModel, ...],
+) -> tuple[ReservedVisualReference, ...]:
+    return tuple(
+        ReservedVisualReference(
+            role=row.reference_role,
+            asset_id=row.asset_id,
+            filename=row.filename,
+            sha256=row.asset_sha256,
+            selection_reason=row.selection_reason,
+            fallback=row.fallback_used,
+        )
+        for row in sorted(rows, key=lambda item: item.ordinal)
+    )
+
+
+def _claim_prompt(
+    *,
+    package: MaterialPackageModel,
+    draft: CopyDraftVersionModel,
+    image: ImageArtifactModel,
+    references: tuple[ReservedVisualReference, ...],
+) -> tuple[str, dict[str, Any] | None]:
+    if image.reference_mode == "legacy_single":
+        return draft.image_prompt, None
+    topic_snapshot = package.topic_snapshot
+    title = topic_snapshot.get("title")
+    summary = topic_snapshot.get("summary")
+    version_value = image.visual_brief_snapshot.get("version")
+    visual_version = version_value if isinstance(version_value, str) else "visual-brief-v1"
+    brief = build_visual_brief(
+        AcceptedVisualContext(
+            topic_title=title if isinstance(title, str) and title else "科学探索",
+            topic_summary=summary if isinstance(summary, str) else None,
+            copywriting=draft.copywriting,
+            image_prompt=draft.image_prompt,
+        ),
+        version=visual_version,
+    )
+    descriptors = tuple(
+        VisualReferenceDescriptor(
+            asset_id=reference.asset_id,
+            role=VisualReferenceRole(reference.role),
+            filename=reference.filename,
+            checksum=reference.sha256,
+        )
+        for reference in references
+    )
+    prompt = build_visual_prompt_bundle(
+        brief,
+        descriptors,
+        prompt_version=image.prompt_version,
+        pipeline_version=image.pipeline_version,
+    ).prompt
+    return prompt, brief.as_metadata()
+
+
 class MaterialPackageExecutor:
     """Claim queued image reservations and assemble their package outside API requests."""
 
@@ -299,8 +589,14 @@ class MaterialPackageExecutor:
         self._lease_events[claimed.image_id] = lease_lost
         try:
             self._ensure_lease(lease_lost)
-            reference_body = await _read_reference_asset(self._reference_asset)
-            if (claimed.reference_sha256 is None and reference_body is not None) or (
+            references = await self._read_claimed_references(claimed)
+            reference_body = (
+                await _read_reference_asset(self._reference_asset) if not references else None
+            )
+            if references:
+                if claimed.reference_sha256 != references[0].sha256:
+                    raise ConflictError("approved visual reference changed after reservation")
+            elif (claimed.reference_sha256 is None and reference_body is not None) or (
                 claimed.reference_sha256 is not None
                 and (
                     reference_body is None
@@ -317,6 +613,8 @@ class MaterialPackageExecutor:
                     request_fingerprint=claimed.request_fingerprint,
                     reference_image=reference_body,
                     reference_filename="reference.png",
+                    references=references,
+                    reference_mode=claimed.reference_mode,
                 )
             )
             if (
@@ -377,6 +675,37 @@ class MaterialPackageExecutor:
             stop.set()
             await asyncio.gather(heartbeat, return_exceptions=True)
         return True
+
+    async def _read_claimed_references(
+        self, claimed: ClaimedMaterialPackage
+    ) -> tuple[ImageReference, ...]:
+        if not claimed.references:
+            return ()
+        try:
+            loaded = await asyncio.to_thread(
+                load_visual_catalog, self._settings.image_asset_manifest
+            )
+            references: list[ImageReference] = []
+            for reserved in claimed.references:
+                asset = loaded.catalog.asset_by_id.get(reserved.asset_id)
+                if asset is None or asset.filename != reserved.filename:
+                    raise ConflictError("approved visual reference is no longer in the catalog")
+                selected = SelectedVisualAsset(
+                    asset=asset,
+                    role=VisualAssetRole(reserved.role),
+                    score=0,
+                    reason=reserved.selection_reason,
+                    fallback=reserved.fallback,
+                )
+                reference = await asyncio.to_thread(read_selected_reference, loaded, selected)
+                if reference.sha256 != reserved.sha256:
+                    raise ConflictError("approved visual reference checksum changed")
+                references.append(reference)
+            return tuple(references)
+        except (OSError, ValueError) as error:
+            if isinstance(error, ConflictError):
+                raise
+            raise ConflictError("approved visual references are unavailable") from error
 
     async def _claim(self, worker_id: str) -> ClaimedMaterialPackage | None:
         now = datetime.now(UTC)
@@ -467,6 +796,18 @@ class MaterialPackageExecutor:
             )
             if package is None:
                 return None
+            reserved_references: tuple[ReservedVisualReference, ...] = ()
+            if getattr(image, "reference_mode", "legacy_single") != "legacy_single":
+                reference_rows = tuple(
+                    (
+                        await session.scalars(
+                            select(ImageArtifactReferenceModel)
+                            .where(ImageArtifactReferenceModel.image_artifact_id == image.id)
+                            .order_by(ImageArtifactReferenceModel.ordinal)
+                        )
+                    ).all()
+                )
+                reserved_references = _reserved_references_from_rows(reference_rows)
             run = await session.get(CopyGenerationRunModel, image.run_id)
             draft = await session.get(CopyDraftVersionModel, image.draft_version_id)
             if (
@@ -496,6 +837,50 @@ class MaterialPackageExecutor:
                     attempt_number=image.attempt_count,
                     eligible=False,
                 )
+            try:
+                claim_prompt, claim_brief_snapshot = _claim_prompt(
+                    package=package,
+                    draft=draft,
+                    image=image,
+                    references=reserved_references,
+                )
+            except (OSError, ValueError):
+                image.status = "review_required"
+                image.error_code = "visual_input_invalid"
+                _clear_image_lease(image)
+                package.status = "failed"
+                await session.commit()
+                return ClaimedMaterialPackage(
+                    package_id=package.id,
+                    image_id=image.id,
+                    run_id=image.run_id,
+                    draft_version_id=image.draft_version_id,
+                    request_fingerprint=image.request_fingerprint,
+                    provider=image.provider,
+                    model=image.model,
+                    prompt="",
+                    reference_sha256=image.reference_sha256,
+                    lease_token=uuid4(),
+                    attempt_number=image.attempt_count,
+                    eligible=False,
+                    references=reserved_references,
+                    reference_mode=getattr(image, "reference_mode", "legacy_single"),
+                    visual_brief_snapshot=getattr(image, "visual_brief_snapshot", None),
+                    catalog_version=(
+                        package.version_snapshot.get("image", {}).get(
+                            "catalog_version", "no-catalog"
+                        )
+                        if isinstance(package.version_snapshot.get("image", {}), dict)
+                        else "no-catalog"
+                    ),
+                    selector_version=(
+                        package.version_snapshot.get("image", {}).get(
+                            "selector_version", "no-selector"
+                        )
+                        if isinstance(package.version_snapshot.get("image", {}), dict)
+                        else "no-selector"
+                    ),
+                )
             lease_token = uuid4()
             image.status = "running"
             image.attempt_count += 1
@@ -514,10 +899,23 @@ class MaterialPackageExecutor:
                 request_fingerprint=image.request_fingerprint,
                 provider=image.provider,
                 model=image.model,
-                prompt=draft.image_prompt,
+                prompt=claim_prompt,
                 reference_sha256=image.reference_sha256,
                 lease_token=lease_token,
                 attempt_number=image.attempt_count,
+                references=reserved_references,
+                reference_mode=getattr(image, "reference_mode", "legacy_single"),
+                visual_brief_snapshot=claim_brief_snapshot,
+                catalog_version=(
+                    package.version_snapshot.get("image", {}).get("catalog_version", "no-catalog")
+                    if isinstance(package.version_snapshot.get("image", {}), dict)
+                    else "no-catalog"
+                ),
+                selector_version=(
+                    package.version_snapshot.get("image", {}).get("selector_version", "no-selector")
+                    if isinstance(package.version_snapshot.get("image", {}), dict)
+                    else "no-selector"
+                ),
             )
 
     async def _persist_success(
@@ -955,6 +1353,18 @@ async def _load_accepted_input(
                 "rule_version": audit_snapshot["rule_version"],
             },
         }
+        visual_brief = build_visual_brief(
+            AcceptedVisualContext(
+                topic_title=(
+                    event_version.representative_title
+                    if event_version is not None and event_version.representative_title
+                    else "科学探索"
+                ),
+                topic_summary=(summary_value if isinstance(summary_value, str) else None),
+                copywriting=draft.copywriting,
+                image_prompt=draft.image_prompt,
+            )
+        )
         return AcceptedMaterialInput(
             run=run,
             draft=draft,
@@ -966,6 +1376,7 @@ async def _load_accepted_input(
             validation_snapshot=validation_snapshot,
             audit_snapshot=audit_snapshot,
             version_snapshot=version_snapshot,
+            visual_brief=visual_brief,
         )
 
 

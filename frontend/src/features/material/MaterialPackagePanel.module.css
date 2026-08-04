@@ -376,6 +376,45 @@
   background: #081216;
 }
 
+.visualIntent {
+  margin-block-start: var(--space-5);
+  border-block-start: 1px solid var(--border-subtle);
+  padding-block-start: var(--space-4);
+}
+
+.visualIntentHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.visualIntent h5 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.visualIntent h5:not(:first-child) {
+  margin-block-start: var(--space-5);
+}
+
+.visualReferenceList {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.visualReferenceList li {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
 .download,
 .evidenceHeader a {
   color: var(--signal-cyan);

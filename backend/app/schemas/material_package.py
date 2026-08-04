@@ -28,6 +28,35 @@ class ImageStorageMetadataResponse(BaseModel):
     content_addressed: bool
 
 
+class VisualTextLayerResponse(BaseModel):
+    title: str
+    learning_line: str
+    keywords: list[str]
+    brand_values: list[str]
+
+
+class VisualBriefResponse(BaseModel):
+    version: str
+    category: str
+    learning_goal: str
+    scene: str
+    main_action: str
+    characters: list[str]
+    asset_tags: list[str]
+    reference_roles: list[str]
+    render_text_mode: str
+    text_layer: VisualTextLayerResponse
+
+
+class VisualReferenceResponse(BaseModel):
+    role: Literal["identity_reference", "action_reference", "style_reference", "legacy"]
+    asset_id: str
+    filename: str
+    sha256: str
+    selection_reason: str
+    fallback: bool
+
+
 class ImageArtifactResponse(BaseModel):
     id: UUID
     status: Literal["queued", "running", "succeeded", "failed", "review_required"]
@@ -42,6 +71,15 @@ class ImageArtifactResponse(BaseModel):
     storage_metadata: ImageStorageMetadataResponse
     error_code: str | None
     download_url: str | None
+    reference_mode: Literal[
+        "legacy_single",
+        "single_reference",
+        "single_fallback",
+        "budgeted_multi_reference",
+        "multi_reference",
+    ] = "legacy_single"
+    visual_brief: VisualBriefResponse | None = None
+    references: list[VisualReferenceResponse] = Field(default_factory=list)
 
 
 class MaterialPackageSummaryResponse(BaseModel):

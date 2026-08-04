@@ -8,6 +8,7 @@ import hashlib
 import json
 import struct
 import zlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,175 @@ _MAX_ASSET_BYTES = 25 * 1024 * 1024
 _MAX_ASSET_DIMENSION = 8_192
 _MAX_ASSET_PIXELS = 32_000_000
 _MAX_DISCOVERED_FILES = 10_000
+_MANIFEST_SCHEMA_VERSION = "brand-visual-assets-v2"
+_CATALOG_VERSION = "brand-visual-catalog-v1"
+_METADATA_FILENAME = "visual-assets.metadata.json"
+
+_IDENTITY_ROLE = "identity_reference"
+_ACTION_ROLE = "action_reference"
+_STYLE_ROLE = "style_reference"
+
+# These labels are deliberately small and human-readable. The manifest is a private catalog, so
+# the filename rules are only a safe default; a colocated metadata override can narrow or extend
+# them after a human review without ever exposing the image bytes to text retrieval.
+_KNOWN_METADATA: dict[str, dict[str, Any]] = {
+    "天文-赛先生.png": {
+        "topics": ["astronomy", "space", "science"],
+        "poses": ["explore", "astronaut"],
+        "scene_tags": ["space"],
+        "priority": 82,
+    },
+    "小赛举个例子.png": {
+        "topics": ["science", "education", "experiment"],
+        "poses": ["teach", "point"],
+        "scene_tags": ["classroom"],
+        "priority": 68,
+    },
+    "小赛向上指.png": {
+        "topics": ["science", "education"],
+        "poses": ["point", "teach"],
+        "scene_tags": ["classroom"],
+        "priority": 66,
+    },
+    "小赛和赛先生在时光机里看书.png": {
+        "topics": ["reading", "science", "education"],
+        "poses": ["read", "explore"],
+        "scene_tags": ["reading", "editorial"],
+        "priority": 88,
+    },
+    "小赛和赛先生思考.png": {
+        "topics": ["reading", "thinking", "science", "education"],
+        "poses": ["think", "discuss"],
+        "scene_tags": ["reading", "editorial"],
+        "priority": 100,
+    },
+    "小赛和赛先生时光穿越书.png": {
+        "topics": ["reading", "science", "education"],
+        "poses": ["read", "explore"],
+        "scene_tags": ["reading", "editorial"],
+        "priority": 86,
+    },
+    "小赛和赛先生讨论.png": {
+        "topics": ["robotics", "ai", "experiment", "science"],
+        "poses": ["discuss", "observe"],
+        "scene_tags": ["robotics_lab", "experiment"],
+        "priority": 96,
+    },
+    "小赛开课欢迎.png": {
+        "topics": ["science", "education"],
+        "poses": ["welcome", "teach"],
+        "scene_tags": ["classroom"],
+        "priority": 64,
+    },
+    "小赛探测.png": {
+        "topics": ["robotics", "ai", "experiment", "science"],
+        "poses": ["observe", "explore", "discover"],
+        "scene_tags": ["robotics_lab", "experiment"],
+        "priority": 92,
+    },
+    "小赛疑惑.png": {
+        "topics": ["science", "experiment", "thinking"],
+        "poses": ["question", "think"],
+        "scene_tags": ["experiment"],
+        "priority": 58,
+    },
+    "小赛疑问.png": {
+        "topics": ["science", "experiment", "thinking"],
+        "poses": ["question", "think"],
+        "scene_tags": ["experiment"],
+        "priority": 56,
+    },
+    "小赛看书.png": {
+        "topics": ["reading", "science", "education"],
+        "poses": ["read", "think"],
+        "scene_tags": ["reading"],
+        "priority": 78,
+    },
+    "小赛讨论（朝右）.png": {
+        "topics": ["robotics", "ai", "science", "education"],
+        "poses": ["discuss", "observe"],
+        "scene_tags": ["robotics_lab", "classroom"],
+        "priority": 84,
+    },
+    "小赛赛先生时光机.png": {
+        "topics": ["reading", "science", "education"],
+        "poses": ["read", "explore"],
+        "scene_tags": ["reading", "editorial"],
+        "priority": 84,
+    },
+    "赛先生-专业团队.png": {
+        "topics": ["science", "education", "brand"],
+        "poses": ["teach", "welcome"],
+        "scene_tags": ["classroom", "editorial"],
+        "priority": 62,
+    },
+    "赛先生-伸手指.png": {
+        "topics": ["science", "education", "experiment"],
+        "poses": ["point", "teach"],
+        "scene_tags": ["classroom", "experiment"],
+        "priority": 70,
+    },
+    "赛先生-宇航员1.png": {
+        "topics": ["astronomy", "space", "science"],
+        "poses": ["astronaut", "explore"],
+        "scene_tags": ["space"],
+        "priority": 86,
+    },
+    "赛先生-宇航员2.PNG": {
+        "topics": ["astronomy", "space", "science"],
+        "poses": ["astronaut", "explore"],
+        "scene_tags": ["space"],
+        "priority": 80,
+    },
+    "赛先生-宇航员地球仪.png": {
+        "topics": ["astronomy", "space", "science"],
+        "poses": ["astronaut", "explore"],
+        "scene_tags": ["space"],
+        "priority": 90,
+    },
+    "赛先生-探险.png": {
+        "topics": ["science", "astronomy", "space", "experiment"],
+        "poses": ["explore", "discover"],
+        "scene_tags": ["space", "experiment"],
+        "priority": 76,
+    },
+    "赛先生-显微镜.png": {
+        "topics": ["robotics", "ai", "experiment", "science"],
+        "poses": ["observe", "microscope"],
+        "scene_tags": ["robotics_lab", "experiment"],
+        "priority": 91,
+    },
+    "赛先生小赛-双向奔赴.png": {
+        "topics": ["science", "education", "teamwork"],
+        "poses": ["discuss", "explore"],
+        "scene_tags": ["teamwork", "editorial"],
+        "priority": 74,
+    },
+    "赛先生小赛-携手奔跑.png": {
+        "topics": ["science", "education", "teamwork"],
+        "poses": ["run", "explore"],
+        "scene_tags": ["teamwork"],
+        "priority": 72,
+    },
+    "赛先生小赛-空间站.png": {
+        "topics": ["astronomy", "space", "science"],
+        "poses": ["astronaut", "explore"],
+        "scene_tags": ["space_station", "space"],
+        "priority": 98,
+    },
+    "赛先生开课欢迎.png": {
+        "topics": ["science", "education"],
+        "poses": ["welcome", "teach"],
+        "scene_tags": ["classroom"],
+        "priority": 63,
+    },
+    "赛先生讨论（朝左）.png": {
+        "topics": ["robotics", "ai", "science", "education"],
+        "poses": ["discuss", "observe"],
+        "scene_tags": ["robotics_lab", "classroom"],
+        "priority": 82,
+    },
+}
 
 
 def _sha256(path: Path) -> str:
@@ -83,8 +253,113 @@ def _character_tags(filename: str) -> list[str]:
     return tags
 
 
+def _tag_list(value: object, *, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise TypeError(f"visual asset {field_name} must be a list")
+    tags: list[str] = []
+    for raw_tag in value:
+        tag = str(raw_tag).strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    if len(tags) > 20 or any(len(tag) > 40 for tag in tags):
+        raise ValueError(f"visual asset {field_name} is too large")
+    return tags
+
+
+def _metadata_overrides(materials_root: Path) -> dict[str, dict[str, Any]]:
+    path = materials_root / _METADATA_FILENAME
+    if not path.exists():
+        return {}
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("visual asset metadata must be a regular private file")
+    try:
+        raw: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("visual asset metadata is not valid JSON") from error
+    if not isinstance(raw, Mapping):
+        raise TypeError("visual asset metadata must be an object")
+    entries = raw.get("assets", raw)
+    if not isinstance(entries, Mapping):
+        raise TypeError("visual asset metadata assets must be an object")
+    overrides: dict[str, dict[str, Any]] = {}
+    for raw_path, raw_metadata in entries.items():
+        if not isinstance(raw_path, str) or not isinstance(raw_metadata, Mapping):
+            raise TypeError("visual asset metadata entries are invalid")
+        relative = Path(raw_path)
+        if relative.is_absolute() or ".." in relative.parts or "\\" in raw_path:
+            raise ValueError("visual asset metadata path must remain relative")
+        overrides[relative.as_posix()] = dict(raw_metadata)
+    return overrides
+
+
+def _asset_metadata(
+    *,
+    category: str,
+    filename: str,
+    relative_path: str,
+    characters: list[str],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    if category == "image-example":
+        metadata: dict[str, Any] = {
+            "roles": [_STYLE_ROLE],
+            "topics": ["science", "education"],
+            "poses": [],
+            "scene_tags": ["editorial"],
+            "priority": 0,
+            "approved": False,
+        }
+    elif "logo_and_ip/" in relative_path:
+        metadata = {
+            "roles": [_IDENTITY_ROLE],
+            "topics": ["science", "education", "brand"],
+            "poses": [],
+            "scene_tags": ["brand"],
+            "priority": 110 if filename in {"小赛.png", "赛先生.png"} else 96,
+            "approved": True,
+        }
+    else:
+        metadata = {
+            "roles": [_IDENTITY_ROLE, _ACTION_ROLE],
+            "topics": ["science", "education"],
+            "poses": [],
+            "scene_tags": ["editorial"],
+            "priority": 50,
+            "approved": True,
+        }
+    metadata.update(_KNOWN_METADATA.get(filename, {}))
+    metadata.update(overrides)
+    metadata["roles"] = _tag_list(metadata.get("roles"), field_name="roles")
+    metadata["topics"] = _tag_list(metadata.get("topics"), field_name="topics")
+    metadata["poses"] = _tag_list(metadata.get("poses"), field_name="poses")
+    metadata["scene_tags"] = _tag_list(
+        metadata.get("scene_tags"), field_name="scene_tags"
+    )
+    priority = metadata.get("priority", 0)
+    if (
+        isinstance(priority, bool)
+        or not isinstance(priority, int)
+        or not 0 <= priority <= 1_000
+    ):
+        raise ValueError("visual asset priority must be an integer in [0, 1000]")
+    approved = metadata.get("approved", False)
+    if not isinstance(approved, bool):
+        raise TypeError("visual asset approval must be boolean")
+    note = metadata.get("manual_review_note")
+    if note is not None and (not isinstance(note, str) or len(note) > 240):
+        raise ValueError("visual asset review note is invalid")
+    metadata["priority"] = priority
+    metadata["approved"] = approved
+    metadata["manual_review_note"] = note
+    metadata["characters"] = characters
+    return metadata
+
+
 def build_manifest(materials_root: Path) -> dict[str, Any]:
     materials_root = materials_root.resolve(strict=True)
+    overrides = _metadata_overrides(materials_root)
     asset_roots = (
         ("image-example", materials_root / "03-image-examples"),
         ("visual-asset", materials_root / "05-visual-assets"),
@@ -123,19 +398,32 @@ def build_manifest(materials_root: Path) -> dict[str, Any]:
             if metadata is None:
                 skipped_unsupported += 1
                 continue
+            digest = _sha256(path)
+            relative_path_string = relative_path.as_posix()
+            labels = _asset_metadata(
+                category=category,
+                filename=path.name,
+                relative_path=relative_path_string,
+                characters=_character_tags(path.name),
+                overrides=overrides.get(relative_path_string, {}),
+            )
             assets.append(
                 {
-                    "asset_id": _sha256(path),
-                    "relative_path": relative_path.as_posix(),
+                    "asset_id": digest,
+                    "sha256": digest,
+                    "checksum": digest,
+                    "relative_path": relative_path_string,
                     "category": category,
                     "filename": path.name,
                     "byte_size": byte_size,
-                    "characters": _character_tags(path.name),
+                    "catalog_schema_version": _MANIFEST_SCHEMA_VERSION,
+                    **labels,
                     **metadata,
                 }
             )
     return {
-        "schema_version": "brand-visual-assets-v1",
+        "schema_version": _MANIFEST_SCHEMA_VERSION,
+        "catalog_version": _CATALOG_VERSION,
         "private": True,
         "text_rag_eligible": False,
         "asset_count": len(assets),

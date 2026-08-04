@@ -3969,6 +3969,25 @@
             "title": "Provider",
             "type": "string"
           },
+          "reference_mode": {
+            "default": "legacy_single",
+            "enum": [
+              "legacy_single",
+              "single_reference",
+              "single_fallback",
+              "budgeted_multi_reference",
+              "multi_reference"
+            ],
+            "title": "Reference Mode",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/VisualReferenceResponse"
+            },
+            "title": "References",
+            "type": "array"
+          },
           "request_fingerprint": {
             "title": "Request Fingerprint",
             "type": "string"
@@ -3997,6 +4016,16 @@
           },
           "storage_metadata": {
             "$ref": "#/components/schemas/ImageStorageMetadataResponse"
+          },
+          "visual_brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualBriefResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "width": {
             "anyOf": [
@@ -5137,6 +5166,150 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VisualBriefResponse": {
+        "properties": {
+          "asset_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Tags",
+            "type": "array"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "characters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Characters",
+            "type": "array"
+          },
+          "learning_goal": {
+            "title": "Learning Goal",
+            "type": "string"
+          },
+          "main_action": {
+            "title": "Main Action",
+            "type": "string"
+          },
+          "reference_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Roles",
+            "type": "array"
+          },
+          "render_text_mode": {
+            "title": "Render Text Mode",
+            "type": "string"
+          },
+          "scene": {
+            "title": "Scene",
+            "type": "string"
+          },
+          "text_layer": {
+            "$ref": "#/components/schemas/VisualTextLayerResponse"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "category",
+          "learning_goal",
+          "scene",
+          "main_action",
+          "characters",
+          "asset_tags",
+          "reference_roles",
+          "render_text_mode",
+          "text_layer"
+        ],
+        "title": "VisualBriefResponse",
+        "type": "object"
+      },
+      "VisualReferenceResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "fallback": {
+            "title": "Fallback",
+            "type": "boolean"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "identity_reference",
+              "action_reference",
+              "style_reference",
+              "legacy"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "selection_reason": {
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "asset_id",
+          "filename",
+          "sha256",
+          "selection_reason",
+          "fallback"
+        ],
+        "title": "VisualReferenceResponse",
+        "type": "object"
+      },
+      "VisualTextLayerResponse": {
+        "properties": {
+          "brand_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Brand Values",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "learning_line": {
+            "title": "Learning Line",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "learning_line",
+          "keywords",
+          "brand_values"
+        ],
+        "title": "VisualTextLayerResponse",
         "type": "object"
       }
     }

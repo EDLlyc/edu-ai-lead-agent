@@ -47,6 +47,8 @@ def test_manifest_indexes_png_and_skips_sidecars_symlinks_and_invalid_files(
 
     assert manifest["private"] is True
     assert manifest["text_rag_eligible"] is False
+    assert manifest["schema_version"] == "brand-visual-assets-v2"
+    assert manifest["catalog_version"] == "brand-visual-catalog-v1"
     assert manifest["asset_count"] == 1
     assert manifest["skipped_sidecar_count"] == 1
     assert manifest["skipped_unsupported_count"] == 2
@@ -56,6 +58,10 @@ def test_manifest_indexes_png_and_skips_sidecars_symlinks_and_invalid_files(
     assert indexed["height"] == 3
     assert indexed["has_alpha"] is True
     assert indexed["characters"] == ["xiao-sai", "sai-xiansheng"]
+    assert indexed["checksum"] == indexed["asset_id"]
+    assert indexed["roles"] == ["identity_reference", "action_reference"]
+    assert indexed["approved"] is True
+    assert indexed["catalog_schema_version"] == "brand-visual-assets-v2"
 
 
 def test_manifest_rejects_oversized_dimensions(tmp_path: Path) -> None:

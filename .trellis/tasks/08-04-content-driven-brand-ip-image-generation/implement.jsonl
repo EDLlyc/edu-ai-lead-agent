@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/08-04-content-driven-brand-ip-image-generation/research/current-image-and-asset-contract.md","reason":"Use the repository-backed image, manifest, Comfly, and target-visual constraints discovered during planning."}
+{"file":".trellis/tasks/archive/2026-08/08-04-switch-image-provider/research/comfly-openai-image.md","reason":"Preserve the confirmed Comfly endpoint, bounded image-array contract, incomplete response-schema caution, and no-secret/no-private-URL rules."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Preserve accepted-draft gating, worker-only provider calls, durable stage boundaries, manual-use package behavior, and no automatic publishing."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Follow SQLAlchemy/Alembic, immutable version, UUID, constraint, transaction-boundary, and PostgreSQL persistence rules for reference records."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply the backend testing, lint, type, migration, security, and regression quality gates."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Expose the new visual brief/reference projection through generated OpenAPI types and typed frontend mappers."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Keep the material-package visual metadata section accessible, compact, and consistent with the existing internal review UI."}

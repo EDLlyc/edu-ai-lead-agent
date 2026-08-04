@@ -6,6 +6,18 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
+class ImageReference:
+    """An ordered, private image input selected by the application layer."""
+
+    role: str
+    asset_id: str
+    filename: str
+    sha256: str
+    image_bytes: bytes
+    selection_reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ImageGenerationRequest:
     run_id: UUID
     draft_version_id: UUID
@@ -13,6 +25,8 @@ class ImageGenerationRequest:
     request_fingerprint: str
     reference_image: bytes | None = None
     reference_filename: str | None = None
+    references: tuple[ImageReference, ...] = ()
+    reference_mode: str = "legacy_single"
 
 
 @dataclass(frozen=True, slots=True)

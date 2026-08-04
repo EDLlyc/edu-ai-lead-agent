@@ -107,6 +107,34 @@ const response = {
     },
     download_url:
       "/api/v1/material-packages/00000000-0000-4000-8000-000000000001/image",
+    reference_mode: "budgeted_multi_reference",
+    visual_brief: {
+      version: "visual-brief-v1",
+      category: "robotics",
+      learning_goal: "理解具身智能如何通过感知、尝试和反馈逐步调整动作。",
+      scene: "赛先生和小赛在明亮的机器人实验室观察动作调整。",
+      main_action: "观察机器人尝试动作并根据反馈调整。",
+      characters: ["xiao-sai", "sai-xiansheng"],
+      asset_tags: ["robotics", "ai", "experiment"],
+      reference_roles: ["identity_reference", "action_reference"],
+      render_text_mode: "editorial_keywords_and_brand_values",
+      text_layer: {
+        title: "具身智能",
+        learning_line: "在真实体验中学习，在不断调整中成长",
+        keywords: ["尝试", "调整", "进步"],
+        brand_values: ["守护好奇心 · 锤炼思考力 · 培养创造力"],
+      },
+    },
+    references: [
+      {
+        role: "identity_reference",
+        asset_id: "asset-1",
+        filename: "小赛和赛先生讨论.png",
+        sha256: "a".repeat(64),
+        selection_reason: "robotics topic match",
+        fallback: false,
+      },
+    ],
   },
   versions: {
     copy: { version: 2 },
@@ -153,6 +181,10 @@ describe("mapMaterialPackage", () => {
     });
     expect(materialPackage.image.downloadUrl).toContain(
       "/api/v1/material-packages/00000000-0000-4000-8000-000000000001/image",
+    );
+    expect(materialPackage.image.visualBrief?.category).toBe("robotics");
+    expect(materialPackage.image.references[0]?.filename).toBe(
+      "小赛和赛先生讨论.png",
     );
   });
 });

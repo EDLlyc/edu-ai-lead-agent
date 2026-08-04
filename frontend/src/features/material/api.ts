@@ -9,6 +9,8 @@ export type MaterialPackageStatus = MaterialPackageResponse["status"];
 export type MaterialPackageReviewStatus =
   MaterialPackageResponse["review_status"];
 export type ImageArtifactStatus = MaterialPackageResponse["image"]["status"];
+export type ImageReferenceMode =
+  MaterialPackageResponse["image"]["reference_mode"];
 export type MaterialPackageListResponse =
   components["schemas"]["MaterialPackageListResponse"];
 export type MaterialPackageSummaryResponse =
@@ -123,6 +125,38 @@ export type ImageViewModel = Readonly<{
   sha256: string | null;
   errorCode: string | null;
   downloadUrl: string | null;
+  referenceMode: ImageReferenceMode;
+  visualBrief: VisualBriefViewModel | null;
+  references: readonly VisualReferenceViewModel[];
+}>;
+
+export type VisualBriefViewModel = Readonly<{
+  version: string;
+  category: string;
+  learningGoal: string;
+  scene: string;
+  mainAction: string;
+  characters: readonly string[];
+  assetTags: readonly string[];
+  referenceRoles: readonly string[];
+  renderTextMode: string;
+  textLayer: Readonly<{
+    title: string;
+    learningLine: string;
+    keywords: readonly string[];
+    brandValues: readonly string[];
+  }>;
+}>;
+
+export type VisualReferenceViewModel = Readonly<{
+  role:
+    "identity_reference" | "action_reference" | "style_reference" | "legacy";
+  roleLabel: string;
+  assetId: string;
+  filename: string;
+  sha256: string;
+  selectionReason: string;
+  fallback: boolean;
 }>;
 
 export type ReviewViewModel = Readonly<{
@@ -622,6 +656,49 @@ function parseImage(image: MaterialPackageResponse["image"]): ImageViewModel {
       image.download_url === null
         ? null
         : resolveApiResourceUrl(image.download_url),
+    referenceMode: image.reference_mode,
+    visualBrief: parseVisualBrief(image.visual_brief),
+    references: (image.references ?? []).map((reference) => ({
+      role: reference.role,
+      roleLabel: visualReferenceRoleLabels[reference.role],
+      assetId: reference.asset_id,
+      filename: reference.filename,
+      sha256: reference.sha256,
+      selectionReason: reference.selection_reason,
+      fallback: reference.fallback,
+    })),
+  };
+}
+
+const visualReferenceRoleLabels: Readonly<
+  Record<VisualReferenceViewModel["role"], string>
+> = {
+  identity_reference: "身份素材",
+  action_reference: "动作素材",
+  style_reference: "风格素材",
+  legacy: "兼容素材",
+};
+
+function parseVisualBrief(
+  brief: MaterialPackageResponse["image"]["visual_brief"],
+): VisualBriefViewModel | null {
+  if (brief === null || brief === undefined) return null;
+  return {
+    version: brief.version,
+    category: brief.category,
+    learningGoal: brief.learning_goal,
+    scene: brief.scene,
+    mainAction: brief.main_action,
+    characters: brief.characters,
+    assetTags: brief.asset_tags,
+    referenceRoles: brief.reference_roles,
+    renderTextMode: brief.render_text_mode,
+    textLayer: {
+      title: brief.text_layer.title,
+      learningLine: brief.text_layer.learning_line,
+      keywords: brief.text_layer.keywords,
+      brandValues: brief.text_layer.brand_values,
+    },
   };
 }
 

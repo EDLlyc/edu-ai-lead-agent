@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
+
 
 class Settings(BaseSettings):
     """Validated local configuration with safe development defaults."""
@@ -141,6 +143,13 @@ class Settings(BaseSettings):
     image_max_provider_response_bytes: int = Field(
         default=32 * 1024 * 1024, ge=16 * 1024, le=50 * 1024 * 1024
     )
+    image_max_reference_images: int = Field(default=3, ge=1, le=4)
+    image_reference_budget_bytes: int = Field(
+        default=IMAGE_REFERENCE_BUDGET_BYTES, ge=256 * 1024, le=20 * 1024 * 1024
+    )
+    image_asset_manifest: str = "private/brand-materials/visual-assets.manifest.json"
+    image_selector_version: str = "brand-visual-selector-v1"
+    image_selector_enabled: bool = True
     image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"

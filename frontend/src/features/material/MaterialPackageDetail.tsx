@@ -329,7 +329,74 @@ function ImageSection({
         />
         <MetadataItem label="媒体类型" value={image.mediaType ?? "未提供"} />
       </dl>
+      <VisualIntent image={image} />
     </section>
+  );
+}
+
+function VisualIntent({ image }: Readonly<{ image: ImageViewModel }>) {
+  if (image.visualBrief === null && image.references.length === 0) return null;
+  return (
+    <div className={styles.visualIntent}>
+      <div className={styles.visualIntentHeader}>
+        <h5>视觉 brief</h5>
+        <span className={styles.evidenceMeta}>
+          {formatReferenceMode(image.referenceMode)}
+        </span>
+      </div>
+      {image.visualBrief ? (
+        <>
+          <dl className={styles.metadataGrid}>
+            <MetadataItem label="视觉主题" value={image.visualBrief.category} />
+            <MetadataItem
+              label="学习目标"
+              value={image.visualBrief.learningGoal}
+            />
+            <MetadataItem label="场景" value={image.visualBrief.scene} />
+            <MetadataItem
+              label="主要动作"
+              value={image.visualBrief.mainAction}
+            />
+            <MetadataItem
+              label="文字模式"
+              value={formatRenderTextMode(image.visualBrief.renderTextMode)}
+            />
+          </dl>
+          <p className={styles.evidenceMeta}>
+            图片文字层：{image.visualBrief.textLayer.title} ·{" "}
+            {image.visualBrief.textLayer.learningLine || "无学习提示"}
+          </p>
+          <p className={styles.evidenceMeta}>
+            关键词：{image.visualBrief.textLayer.keywords.join("、") || "无"}
+            {image.visualBrief.textLayer.brandValues.length > 0
+              ? " · 品牌理念：" +
+                image.visualBrief.textLayer.brandValues.join("、")
+              : ""}
+          </p>
+        </>
+      ) : null}
+      {image.references.length > 0 ? (
+        <>
+          <h5>使用的品牌素材</h5>
+          <ul className={styles.visualReferenceList}>
+            {image.references.map((reference) => (
+              <li key={reference.role + "-" + reference.assetId}>
+                <div className={styles.evidenceHeader}>
+                  <strong>{reference.filename}</strong>
+                  <span className={styles.statusBadge}>
+                    {reference.roleLabel}
+                  </span>
+                </div>
+                <p className={styles.evidenceMeta}>
+                  {reference.selectionReason}
+                  {reference.fallback ? " · 已记录回退" : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -601,6 +668,22 @@ function formatScore(score: number | null): string {
 
 function formatDimensions(width: number | null, height: number | null): string {
   return width !== null && height !== null ? `${width} × ${height}` : "未提供";
+}
+
+function formatReferenceMode(mode: ImageViewModel["referenceMode"]): string {
+  return {
+    legacy_single: "兼容单图",
+    single_reference: "单个品牌素材",
+    single_fallback: "供应商单图回退",
+    budgeted_multi_reference: "预算内多图",
+    multi_reference: "多图参考",
+  }[mode];
+}
+
+function formatRenderTextMode(mode: string): string {
+  return mode === "editorial_keywords_and_brand_values"
+    ? "短标题、关键词和品牌理念"
+    : mode;
 }
 
 function qualityStatusLabel(passed: boolean | null): string {

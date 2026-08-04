@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/08-04-content-driven-brand-ip-image-generation/design.md","reason":"Review implementation against the accepted data flow, visual-text policy, selection determinism, provider fallback, persistence, and rollback boundaries."}
+{"file":".trellis/tasks/08-04-content-driven-brand-ip-image-generation/research/current-image-and-asset-contract.md","reason":"Check that code and tests still match current repository evidence, private asset handling, Comfly uncertainty, and the approved target image."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migration/model/repository changes for immutable references, foreign keys, constraints, transaction scope, and safe JSONB projections."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Review focused and full verification coverage, provider-boundary safety, secret redaction, and regression gates."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review generated-contract drift, accessible status/error rendering, and frontend regression coverage for visual metadata."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check that frontend data flows through generated API contracts and shared mappers rather than local untyped casts."}

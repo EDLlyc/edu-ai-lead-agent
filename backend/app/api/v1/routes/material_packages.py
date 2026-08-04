@@ -4,6 +4,7 @@ from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from app.application.services.material_package import (
     review_material_package,
 )
 from app.core.errors import ConflictError, NotFoundError
+from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 from app.schemas.material_package import (
@@ -24,6 +26,8 @@ from app.schemas.material_package import (
     MaterialPackageResponse,
     MaterialPackageSummaryResponse,
     MaterialReviewRequest,
+    VisualBriefResponse,
+    VisualReferenceResponse,
 )
 
 router = APIRouter(tags=["material-packages"])
@@ -54,6 +58,15 @@ async def generate_material_package(
         image_pipeline_version=settings.image_pipeline_version,
         image_provider=settings.image_provider_mode,
         image_model=settings.image_model,
+        image_asset_manifest=getattr(settings, "image_asset_manifest", None),
+        image_selector_version=getattr(
+            settings, "image_selector_version", "visual-asset-selector-v1"
+        ),
+        image_selector_enabled=getattr(settings, "image_selector_enabled", False),
+        image_max_reference_images=getattr(settings, "image_max_reference_images", 3),
+        image_reference_budget_bytes=getattr(
+            settings, "image_reference_budget_bytes", IMAGE_REFERENCE_BUDGET_BYTES
+        ),
     )
     response.headers["Location"] = f"/api/v1/material-packages/{result.package.id}"
     return _detail_response(result.package, result.image)
@@ -206,6 +219,13 @@ def _detail_response(
     package: MaterialPackageModel, image: ImageArtifactModel
 ) -> MaterialPackageResponse:
     summary = _summary_response(package)
+    image_snapshot = package.version_snapshot.get("image", {})
+    safe_image_snapshot = image_snapshot if isinstance(image_snapshot, dict) else {}
+    visual_brief = safe_image_snapshot.get("visual_brief", {})
+    references = safe_image_snapshot.get("references", [])
+    reference_mode = safe_image_snapshot.get(
+        "reference_mode", getattr(image, "reference_mode", "legacy_single")
+    )
     return MaterialPackageResponse(
         **summary.model_dump(),
         package_version=package.package_version,
@@ -244,9 +264,35 @@ def _detail_response(
                 if image.status == "succeeded"
                 else None
             ),
+            reference_mode=cast(Any, reference_mode),
+            visual_brief=_safe_visual_brief(visual_brief),
+            references=_safe_visual_references(references),
         ),
         review_note=package.review_note,
         reviewed_at=package.reviewed_at,
         review_url=f"/api/v1/material-packages/{package.id}/review",
         download_url=f"/api/v1/material-packages/{package.id}/download",
     )
+
+
+def _safe_visual_brief(value: object) -> VisualBriefResponse | None:
+    if not isinstance(value, dict) or not value:
+        return None
+    try:
+        return VisualBriefResponse.model_validate(value)
+    except ValidationError:
+        return None
+
+
+def _safe_visual_references(value: object) -> list[VisualReferenceResponse]:
+    if not isinstance(value, list):
+        return []
+    safe_values: list[VisualReferenceResponse] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        try:
+            safe_values.append(VisualReferenceResponse.model_validate(item))
+        except ValidationError:
+            continue
+    return safe_values

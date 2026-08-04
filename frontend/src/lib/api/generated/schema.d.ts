@@ -2080,6 +2080,14 @@ export interface components {
             model: string;
             /** Provider */
             provider: string;
+            /**
+             * Reference Mode
+             * @default legacy_single
+             * @enum {string}
+             */
+            reference_mode: "legacy_single" | "single_reference" | "single_fallback" | "budgeted_multi_reference" | "multi_reference";
+            /** References */
+            references?: components["schemas"]["VisualReferenceResponse"][];
             /** Request Fingerprint */
             request_fingerprint: string;
             /** Sha256 */
@@ -2090,6 +2098,7 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "review_required";
             storage_metadata: components["schemas"]["ImageStorageMetadataResponse"];
+            visual_brief?: components["schemas"]["VisualBriefResponse"] | null;
             /** Width */
             width: number | null;
         };
@@ -2571,6 +2580,57 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VisualBriefResponse */
+        VisualBriefResponse: {
+            /** Asset Tags */
+            asset_tags: string[];
+            /** Category */
+            category: string;
+            /** Characters */
+            characters: string[];
+            /** Learning Goal */
+            learning_goal: string;
+            /** Main Action */
+            main_action: string;
+            /** Reference Roles */
+            reference_roles: string[];
+            /** Render Text Mode */
+            render_text_mode: string;
+            /** Scene */
+            scene: string;
+            text_layer: components["schemas"]["VisualTextLayerResponse"];
+            /** Version */
+            version: string;
+        };
+        /** VisualReferenceResponse */
+        VisualReferenceResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Fallback */
+            fallback: boolean;
+            /** Filename */
+            filename: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identity_reference" | "action_reference" | "style_reference" | "legacy";
+            /** Selection Reason */
+            selection_reason: string;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** VisualTextLayerResponse */
+        VisualTextLayerResponse: {
+            /** Brand Values */
+            brand_values: string[];
+            /** Keywords */
+            keywords: string[];
+            /** Learning Line */
+            learning_line: string;
+            /** Title */
+            title: string;
         };
     };
     responses: never;

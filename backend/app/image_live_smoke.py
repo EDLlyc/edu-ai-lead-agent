@@ -9,10 +9,23 @@ from uuid import uuid4
 import httpx
 
 from app.application.ports.image_generation import ImageGenerationRequest
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.domain.image_generation import image_checksum, image_request_fingerprint
+from app.domain.visual_assets import AssetSelectionRequest, VisualAssetRole
+from app.domain.visual_brief import (
+    AcceptedVisualContext,
+    VisualReferenceDescriptor,
+    VisualReferenceRole,
+    build_visual_brief,
+    build_visual_prompt_bundle,
+)
 from app.infrastructure.ai.factory import create_image_generator
+from app.infrastructure.brand.visual_catalog import (
+    load_visual_catalog,
+    read_selected_reference,
+    select_visual_assets,
+)
 
 _DEFAULT_PROMPT = (
     "Use the supplied Sai Xiansheng and Xiaosai character artwork as the exact visual identity "
@@ -81,12 +94,13 @@ def _prompt_for_profile(profile: str) -> str:
 
 
 async def run(
-    reference: Path,
+    reference: Path | None,
     output: Path | None,
     model_override: str | None = None,
     business_run_id: str = "live-smoke-2026-07-31",
     prompt_profile: str = "default",
     discover_output_host: bool = False,
+    content_driven: bool = False,
 ) -> None:
     settings = get_settings()
     if settings.image_provider_mode in {"disabled", "fake"}:
@@ -95,22 +109,39 @@ async def run(
         raise ValueError("an output path is required unless discovering an output hostname")
     if output is not None and not discover_output_host and output.exists():
         raise FileExistsError(f"refusing to overwrite existing output: {output}")
-    reference_body = reference.read_bytes()
     runtime_settings = (
         settings.model_copy(update={"image_model": model_override}) if model_override else settings
     )
     model = runtime_settings.image_model
-    prompt = _prompt_for_profile(prompt_profile)
-    fingerprint = image_request_fingerprint(
-        run_id=business_run_id,
-        draft_version_id="embodied-ai-robot-self-correction",
-        prompt=prompt,
-        provider=runtime_settings.image_provider_mode,
-        model=model,
-        prompt_version=runtime_settings.image_prompt_version,
-        pipeline_version=runtime_settings.image_pipeline_version,
-        reference_sha256=image_checksum(reference_body),
-    )
+    if content_driven:
+        request = _content_driven_request(
+            runtime_settings,
+            model=model,
+            business_run_id=business_run_id,
+        )
+    else:
+        if reference is None:
+            raise ValueError("a reference path is required unless content-driven mode is enabled")
+        reference_body = reference.read_bytes()
+        prompt = _prompt_for_profile(prompt_profile)
+        fingerprint = image_request_fingerprint(
+            run_id=business_run_id,
+            draft_version_id="embodied-ai-robot-self-correction",
+            prompt=prompt,
+            provider=runtime_settings.image_provider_mode,
+            model=model,
+            prompt_version=runtime_settings.image_prompt_version,
+            pipeline_version=runtime_settings.image_pipeline_version,
+            reference_sha256=image_checksum(reference_body),
+        )
+        request = ImageGenerationRequest(
+            run_id=uuid4(),
+            draft_version_id=uuid4(),
+            prompt=prompt,
+            request_fingerprint=fingerprint,
+            reference_image=reference_body,
+            reference_filename=reference.name,
+        )
     observed_output_host: str | None = None
 
     def observe_output_host(hostname: str) -> bool:
@@ -125,16 +156,7 @@ async def run(
             output_host_observer=observe_output_host if discover_output_host else None,
         )
         try:
-            result = await generator.generate(
-                ImageGenerationRequest(
-                    run_id=uuid4(),
-                    draft_version_id=uuid4(),
-                    prompt=prompt,
-                    request_fingerprint=fingerprint,
-                    reference_image=reference_body,
-                    reference_filename=reference.name,
-                )
-            )
+            result = await generator.generate(request)
         except AppError:
             if discover_output_host and observed_output_host is not None:
                 print(f"image_smoke_output_host={observed_output_host}")
@@ -156,11 +178,92 @@ async def run(
     )
 
 
+def _content_driven_request(
+    settings: Settings,
+    *,
+    model: str,
+    business_run_id: str,
+) -> ImageGenerationRequest:
+    """Build the same bounded robotics visual input used by the material worker."""
+    context = AcceptedVisualContext(
+        topic_title="机器人如何学会调整动作",
+        topic_summary="从感知、尝试和反馈中理解具身智能。",
+        copywriting="家长可以用一次机器人动作调整，理解为什么科学学习需要反复尝试。",
+    )
+    brief = build_visual_brief(context)
+    image_asset_manifest = settings.image_asset_manifest
+    selector_version = settings.image_selector_version
+    max_references = settings.image_max_reference_images
+    reference_budget = settings.image_reference_budget_bytes
+    loaded = load_visual_catalog(image_asset_manifest)
+    selection = select_visual_assets(
+        loaded,
+        AssetSelectionRequest(
+            category=brief.category.value,
+            topic=brief.text_layer.title,
+            asset_tags=brief.asset_tags,
+            characters=brief.characters,
+            main_action=brief.main_action,
+            poses=brief.asset_tags,
+            reference_roles=tuple(VisualAssetRole(role.value) for role in brief.reference_roles),
+            max_references=max_references,
+            max_reference_bytes=reference_budget,
+        ),
+        selector_version=selector_version,
+        max_references=max_references,
+        max_reference_bytes=reference_budget,
+    )
+    references = tuple(
+        read_selected_reference(loaded, selected) for selected in selection.selected_assets
+    )
+    descriptors = tuple(
+        VisualReferenceDescriptor(
+            asset_id=reference.asset_id,
+            role=VisualReferenceRole(reference.role),
+            filename=reference.filename,
+            checksum=reference.sha256,
+        )
+        for reference in references
+    )
+    prompt_bundle = build_visual_prompt_bundle(
+        brief,
+        descriptors,
+        prompt_version=settings.image_prompt_version,
+        pipeline_version=settings.image_pipeline_version,
+    )
+    provider = settings.image_provider_mode
+    reference_mode = selection.reference_mode.value
+    if provider == "toapis" and len(references) > 1:
+        reference_mode = "single_fallback"
+    fingerprint = image_request_fingerprint(
+        run_id=business_run_id,
+        draft_version_id="embodied-ai-robot-self-correction",
+        prompt=prompt_bundle.prompt,
+        provider=provider,
+        model=model,
+        prompt_version=settings.image_prompt_version,
+        pipeline_version=settings.image_pipeline_version,
+        reference_sha256=references[0].sha256 if references else None,
+        reference_sha256s=tuple(reference.sha256 for reference in references),
+        visual_brief_fingerprint=brief.fingerprint,
+        catalog_version=selection.catalog_version,
+        selector_version=selection.selector_version,
+    )
+    return ImageGenerationRequest(
+        run_id=uuid4(),
+        draft_version_id=uuid4(),
+        prompt=prompt_bundle.prompt,
+        request_fingerprint=fingerprint,
+        references=references,
+        reference_mode=reference_mode,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run one bounded configured image-provider acceptance call"
     )
-    parser.add_argument("--reference", type=Path, required=True)
+    parser.add_argument("--reference", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--model", type=str)
     parser.add_argument("--business-run-id", default="live-smoke-2026-07-31")
@@ -170,6 +273,11 @@ def main() -> None:
         default="default",
     )
     parser.add_argument("--discover-output-host", action="store_true")
+    parser.add_argument(
+        "--content-driven",
+        action="store_true",
+        help="select approved IP references and assemble the content-driven robotics prompt",
+    )
     args = parser.parse_args()
     if args.output is None and not args.discover_output_host:
         parser.error("--output is required unless --discover-output-host is used")
@@ -182,6 +290,7 @@ def main() -> None:
                 args.business_run_id,
                 args.prompt_profile,
                 args.discover_output_host,
+                args.content_driven,
             )
         )
     except AppError as error:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,10 +15,13 @@ from app.application.services.material_package import (
     ClaimedMaterialPackage,
     MaterialPackageExecutor,
     MaterialPackageResult,
+    _prepare_image_input,
     enqueue_material_package,
 )
 from app.core.config import Settings
 from app.core.errors import ConflictError, ImageProviderRejectedError
+from app.domain.visual_brief import AcceptedVisualContext, build_visual_brief
+from app.infrastructure.ai.image_generation import _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
 from app.schemas.material_package import (
@@ -476,3 +481,97 @@ async def test_material_worker_provider_rejection_is_review_required_and_never_a
             "review_required": True,
         }
     ]
+
+
+def test_content_driven_image_input_persists_ordered_real_reference_metadata(
+    tmp_path: Path,
+) -> None:
+    materials_root = tmp_path / "materials"
+    asset_root = materials_root / "05-visual-assets"
+    asset_root.mkdir(parents=True)
+    entries: list[dict[str, object]] = []
+    for filename, roles, priority in (
+        ("robotics-identity.png", ["identity_reference", "action_reference"], 90),
+        ("robotics-style.png", ["style_reference"], 10),
+    ):
+        body = _solid_png(filename, "approved")
+        path = asset_root / filename
+        path.write_bytes(body)
+        digest = hashlib.sha256(body).hexdigest()
+        entries.append(
+            {
+                "asset_id": digest,
+                "sha256": digest,
+                "checksum": digest,
+                "relative_path": f"05-visual-assets/{filename}",
+                "category": "visual-asset",
+                "filename": filename,
+                "byte_size": len(body),
+                "media_type": "image/png",
+                "width": 1024,
+                "height": 1024,
+                "has_alpha": False,
+                "characters": ["xiao-sai", "sai-xiansheng"] if "identity" in filename else [],
+                "roles": roles,
+                "topics": ["robotics", "ai", "science"],
+                "poses": ["observe"],
+                "scene_tags": ["robotics_lab"],
+                "priority": priority,
+                "approved": True,
+            }
+        )
+    manifest = materials_root / "visual-assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "brand-visual-assets-v2",
+                "catalog_version": "brand-visual-catalog-test-v1",
+                "private": True,
+                "text_rag_eligible": False,
+                "asset_count": len(entries),
+                "assets": entries,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    accepted = AcceptedMaterialInput(
+        run=SimpleNamespace(id=uuid4()),  # type: ignore[arg-type]
+        draft=SimpleNamespace(id=uuid4()),  # type: ignore[arg-type]
+        prompt="legacy prompt",
+        topic_snapshot={"title": "机器人如何学会调整动作", "summary": "从尝试中学习"},
+        copy_snapshot={"copywriting": "家长能看懂的正文"},
+        source_snapshot=[],
+        brand_snapshot=[],
+        validation_snapshot={},
+        audit_snapshot={},
+        version_snapshot={},
+        visual_brief=build_visual_brief(
+            AcceptedVisualContext(
+                topic_title="机器人如何学会调整动作",
+                topic_summary="从尝试中学习",
+                copywriting="家长能看懂的正文",
+            )
+        ),
+    )
+
+    prepared = _prepare_image_input(
+        accepted,
+        reference_asset=None,
+        image_asset_manifest=str(manifest),
+        image_provider="comfly",
+        image_prompt_version="image-prompt-test-v1",
+        image_pipeline_version="image-pipeline-test-v1",
+        image_selector_version="visual-asset-selector-test-v1",
+        image_selector_enabled=True,
+        image_max_reference_images=3,
+        image_reference_budget_bytes=1_000_000,
+    )
+
+    assert prepared.reference_mode == "budgeted_multi_reference"
+    assert [reference.filename for reference in prepared.references] == [
+        "robotics-identity.png",
+        "robotics-style.png",
+    ]
+    assert prepared.visual_brief_snapshot["category"] == "robotics"
+    assert "家长能看懂的正文" not in prepared.prompt
