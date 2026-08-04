@@ -134,8 +134,8 @@ class Settings(BaseSettings):
     image_max_attempts: int = Field(default=3, ge=1, le=6)
     image_poll_initial_seconds: float = Field(default=5.0, ge=0.1, le=30)
     image_poll_interval_seconds: float = Field(default=7.0, ge=0.1, le=30)
-    image_provider_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
-    image_provider_window_seconds: float = Field(default=120.0, gt=1, le=180)
+    image_provider_timeout_seconds: float = Field(default=120.0, gt=0, le=120)
+    image_provider_window_seconds: float = Field(default=180.0, gt=1, le=180)
     image_max_download_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
     image_max_request_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=50 * 1024 * 1024)
     image_max_provider_response_bytes: int = Field(

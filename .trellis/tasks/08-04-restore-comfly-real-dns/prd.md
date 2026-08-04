@@ -41,17 +41,17 @@ weakening the Fake-IP or SSRF protections.
 
 ## Acceptance Criteria
 
-- [ ] A Comfly API and returned temporary CDN hostname resolve to real globally routable addresses
+- [x] A Comfly API and returned temporary CDN hostname resolve to real globally routable addresses
       from the content worker, not `198.18.0.0/15`.
-- [ ] The hostname-only diagnostic never exposes a signed URL or provider response and has focused
+- [x] The hostname-only diagnostic never exposes a signed URL or provider response and has focused
       regression coverage for URL, base64, malformed, and rejected output representations.
-- [ ] The downloader continues to reject a fixture using Fake-IP or another non-global address
+- [x] The downloader continues to reject a fixture using Fake-IP or another non-global address
       before any outbound image request.
-- [ ] All affected Docker services are healthy after configuration changes.
-- [ ] One real image smoke attempt either creates exactly one validated 1024x1024 image artifact
+- [x] All affected Docker services are healthy after configuration changes.
+- [x] One real image smoke attempt either creates exactly one validated 1024x1024 image artifact
       in the existing pipeline or produces a typed external-provider failure unrelated to the
       local DNS policy.
-- [ ] The change is documented with an explicit rollback path and does not commit credentials,
+- [x] The change is documented with an explicit rollback path and does not commit credentials,
       signed URLs, or host-specific secrets.
 
 ## Out of Scope

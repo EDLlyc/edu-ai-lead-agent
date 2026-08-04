@@ -455,8 +455,9 @@ deterministic validation as if it were a network timeout.
 - Config (`Settings`): `image_enabled` (default false, fail-closed), `image_provider_mode`
   (`disabled`/`fake`/`toapis`/`comfly`), `toapis_base_url`, `toapis_api_key`, `comfly_base_url`,
   `comfly_api_key`, `comfly_output_hosts`, `image_model`, `image_prompt_version`,
-  `image_pipeline_version`, `image_max_attempts` (1-6), `image_poll_initial_seconds`,
-  `image_poll_interval_seconds`, `image_provider_window_seconds` (1-180),
+  `image_pipeline_version`, `image_max_attempts` (default 3, 1-6), `image_poll_initial_seconds`,
+  `image_poll_interval_seconds`, `image_provider_timeout_seconds` (default 120s),
+  `image_provider_window_seconds` (default 180s, 1-180),
   `image_max_download_bytes` (1 KiB-50 MiB), `image_max_request_bytes`, and
   `image_max_provider_response_bytes`.
 - `image_enabled=True` with `image_provider_mode="disabled"` raises at startup; `toapis` mode
@@ -476,7 +477,7 @@ deterministic validation as if it were a network timeout.
 | 401/403 or an explicit invalid-token response | Raise non-retryable provider authentication error; do not retry |
 | 429 or bounded transient 5xx | Retry within the configured attempt/window bounds; stop with a typed rate-limit/unavailable error |
 | Synchronous response has multiple images, malformed JSON, or unknown task status | Reject the provider result; never choose an arbitrary image |
-| 429/503 during polling | Honor `Retry-After`, retry within the 120s window |
+| 429/503 during polling | Honor `Retry-After`, retry within the configured provider window (180s by default) |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
 | Active provider key missing or URL is not a valid HTTPS origin | Startup fails closed |
 

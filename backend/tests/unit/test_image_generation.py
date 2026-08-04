@@ -807,3 +807,11 @@ def test_settings_rejects_a_comfly_base_url_with_an_api_path() -> None:
 
 def test_settings_disable_public_comfly_output_urls_by_default() -> None:
     assert Settings(_env_file=None).comfly_allow_public_output_urls is False
+
+
+def test_image_provider_defaults_use_bounded_comfly_timeouts_and_retries() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.image_provider_timeout_seconds == 120.0
+    assert settings.image_provider_window_seconds == 180.0
+    assert settings.image_max_attempts == 3
