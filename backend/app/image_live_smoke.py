@@ -7,12 +7,12 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from pydantic import SecretStr
 
 from app.application.ports.image_generation import ImageGenerationRequest
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.domain.image_generation import image_checksum, image_request_fingerprint
-from app.infrastructure.ai.image_generation import ToApisImageGenerator
+from app.infrastructure.ai.factory import create_image_generator
 
 _DEFAULT_PROMPT = (
     "Use the supplied Sai Xiansheng and Xiaosai character artwork as the exact visual identity "
@@ -88,36 +88,28 @@ async def run(
     prompt_profile: str = "default",
 ) -> None:
     settings = get_settings()
-    if settings.toapis_api_key is None:
-        raise RuntimeError("TOAPIS_API_KEY is not configured")
+    if settings.image_provider_mode in {"disabled", "fake"}:
+        raise RuntimeError("a live image provider must be configured for smoke testing")
     if output.exists():
         raise FileExistsError(f"refusing to overwrite existing output: {output}")
     reference_body = reference.read_bytes()
-    model = model_override or settings.image_model
+    runtime_settings = (
+        settings.model_copy(update={"image_model": model_override}) if model_override else settings
+    )
+    model = runtime_settings.image_model
     prompt = _prompt_for_profile(prompt_profile)
     fingerprint = image_request_fingerprint(
         run_id=business_run_id,
         draft_version_id="embodied-ai-robot-self-correction",
         prompt=prompt,
-        provider="toapis",
+        provider=runtime_settings.image_provider_mode,
         model=model,
-        prompt_version=settings.image_prompt_version,
-        pipeline_version=settings.image_pipeline_version,
+        prompt_version=runtime_settings.image_prompt_version,
+        pipeline_version=runtime_settings.image_pipeline_version,
         reference_sha256=image_checksum(reference_body),
     )
     async with httpx.AsyncClient(follow_redirects=False) as client:
-        generator = ToApisImageGenerator(
-            client=client,
-            base_url=settings.toapis_base_url,
-            api_key=SecretStr(settings.toapis_api_key.get_secret_value()),
-            model=model,
-            max_attempts=settings.image_max_attempts,
-            initial_poll_seconds=settings.image_poll_initial_seconds,
-            poll_interval_seconds=settings.image_poll_interval_seconds,
-            provider_window_seconds=settings.image_provider_window_seconds,
-            timeout_seconds=settings.image_provider_timeout_seconds,
-            max_download_bytes=settings.image_max_download_bytes,
-        )
+        generator = create_image_generator(runtime_settings, client=client)
         result = await generator.generate(
             ImageGenerationRequest(
                 run_id=uuid4(),
@@ -140,7 +132,9 @@ async def run(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run one bounded ToAPIs image acceptance call")
+    parser = argparse.ArgumentParser(
+        description="Run one bounded configured image-provider acceptance call"
+    )
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", type=str)
@@ -151,15 +145,19 @@ def main() -> None:
         default="default",
     )
     args = parser.parse_args()
-    asyncio.run(
-        run(
-            args.reference,
-            args.output,
-            args.model,
-            args.business_run_id,
-            args.prompt_profile,
+    try:
+        asyncio.run(
+            run(
+                args.reference,
+                args.output,
+                args.model,
+                args.business_run_id,
+                args.prompt_profile,
+            )
         )
-    )
+    except AppError as error:
+        print(f"image_smoke_failed code={error.code} retryable={error.retryable}")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

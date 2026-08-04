@@ -22,6 +22,7 @@ from app.infrastructure.ai.fake import (
 )
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
+    OpenAICompatibleImageGenerator,
     ToApisImageGenerator,
 )
 from app.infrastructure.ai.zhipu import (
@@ -92,12 +93,30 @@ def create_image_generator(
         raise RuntimeError("image provider is disabled")
     if settings.image_provider_mode == "fake":
         return DeterministicFakeImageGenerator(model=settings.image_model)
-    if client is None or settings.toapis_api_key is None:
-        raise RuntimeError("ToAPIs image provider requires an owned client and API key")
-    return ToApisImageGenerator(
+    if settings.image_provider_mode == "toapis":
+        if client is None or settings.toapis_api_key is None:
+            raise RuntimeError("ToAPIs image provider requires an owned client and API key")
+        return ToApisImageGenerator(
+            client=client,
+            base_url=settings.toapis_base_url,
+            api_key=SecretStr(settings.toapis_api_key.get_secret_value()),
+            model=settings.image_model,
+            max_attempts=settings.image_max_attempts,
+            initial_poll_seconds=settings.image_poll_initial_seconds,
+            poll_interval_seconds=settings.image_poll_interval_seconds,
+            provider_window_seconds=settings.image_provider_window_seconds,
+            timeout_seconds=settings.image_provider_timeout_seconds,
+            max_download_bytes=settings.image_max_download_bytes,
+        )
+    if client is None or settings.comfly_api_key is None:
+        raise RuntimeError("Comfly image provider requires an owned client and API key")
+    configured_hosts = frozenset(
+        host.strip().lower() for host in settings.comfly_output_hosts.split(",") if host.strip()
+    )
+    return OpenAICompatibleImageGenerator(
         client=client,
-        base_url=settings.toapis_base_url,
-        api_key=SecretStr(settings.toapis_api_key.get_secret_value()),
+        base_url=settings.comfly_base_url,
+        api_key=SecretStr(settings.comfly_api_key.get_secret_value()),
         model=settings.image_model,
         max_attempts=settings.image_max_attempts,
         initial_poll_seconds=settings.image_poll_initial_seconds,
@@ -105,6 +124,9 @@ def create_image_generator(
         provider_window_seconds=settings.image_provider_window_seconds,
         timeout_seconds=settings.image_provider_timeout_seconds,
         max_download_bytes=settings.image_max_download_bytes,
+        max_request_bytes=settings.image_max_request_bytes,
+        max_provider_response_bytes=settings.image_max_provider_response_bytes,
+        allowed_output_hosts=configured_hosts or None,
     )
 
 

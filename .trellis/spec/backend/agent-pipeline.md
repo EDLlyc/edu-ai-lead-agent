@@ -415,7 +415,7 @@ Retry only classified transient faults with bounded exponential backoff and jitt
 veto, missing evidence, invalid structured output without a bounded repair policy, or failed
 deterministic validation as if it were a network timeout.
 
-## Scenario: One-image generation through the ToAPIs gpt-image-2 contract
+## Scenario: One-image generation through a configured image-provider contract
 
 ### 1. Scope / Trigger
 
@@ -425,16 +425,18 @@ deterministic validation as if it were a network timeout.
 
 ### 2. Signatures
 
-- Provider origin: `https://toapis.com`; pinned model `gpt-image-2`.
-- Upload: `POST /v1/uploads/images` (one approved local PNG reference; the returned public URL is
-  transient and never persisted).
-- Generate: `POST /v1/images/generations` with `model=gpt-image-2`, `n=1`, `size=1:1`,
-  `resolution=1k`, `response_format=url`, `client_business_id=<request fingerprint>`, and
-  `reference_images=[<upload_url>]`.
-- Poll: `GET /v1/images/generations/{task_id}` after an initial 5s, then every 5-10s with jitter,
-  honoring `Retry-After` on 429/503, bounded by a 120s provider window.
-- Download: the completed task's `result.data[].url` is downloaded immediately (URLs expire after
-  24h); only `https://files.toapis.com` is accepted, no redirects.
+- Active local provider origin: `https://ai.comfly.org`; the model remains configurable and is
+  currently `gpt-image-2`. The old `toapis` adapter remains an explicit rollback mode.
+- Comfly generate: `POST /v1/images/generations` with `model`, a validated bounded `prompt`,
+  `size=1:1`, `aspect_ratio=1:1`, and an optional bounded `image=[data:image/png;base64,...]`
+  containing the approved local reference. Private MinIO URLs and provider upload URLs are never
+  sent.
+- Response: accept exactly one synchronous `data[].url` or `data[].b64_json`. If the gateway returns
+  a safe task identifier and a pending status, poll `GET /v1/images/tasks/{task_id}` after the
+  configured initial delay and interval, bounded by the provider window.
+- Download: URL results require HTTPS, no redirects, a configured trusted hostname, an allowlisted
+  media type, bounded bytes, and exactly 1024x1024 dimensions. `COMFLY_OUTPUT_HOSTS` may explicitly
+  add trusted CDN hosts; blank means the API host only.
 - Storage: sanitized content-addressed MinIO key, private access, with sha256 checksum.
 - DB artifact: `image_artifacts` row with provider/model/prompt version, dimensions, safe provider
   ID, object identity, attempts, status, and request fingerprint.
@@ -443,20 +445,24 @@ deterministic validation as if it were a network timeout.
 
 - One accepted prompt/profile fingerprint maps to at most one successful artifact. Provider calls
   occur outside transactions; persistence re-checks the fingerprint/provider state before retry.
-- `TOAPIS_API_KEY` is the only credential. The upload URL, generated URL, raw provider response,
-  prompt body, and bearer token are transient — they must not enter logs, APIs, or durable job
-  metadata. Persist only safe task/upload IDs, model/version identity, checksums, attempts,
-  dimensions, status, and typed error codes.
+- `COMFLY_API_KEY` is the active credential; `TOAPIS_API_KEY` is retained only for rollback. Any
+  generated URL, raw provider response, prompt body, reference contents, and bearer token are
+  transient — they must not enter logs, APIs, or durable job metadata. Persist only safe task IDs,
+  provider/model/version identity, checksums, attempts, dimensions, status, and typed error codes.
 - Validate prompt/rules before the call and returned content type/size/dimensions after the call:
   allowlisted raster content type, bounded bytes (`image_max_download_bytes`, default 20 MiB), and
   exactly 1024x1024 before private MinIO storage.
 - Config (`Settings`): `image_enabled` (default false, fail-closed), `image_provider_mode`
-  (`disabled`/`fake`/`toapis`), `toapis_base_url`, `toapis_api_key`, `image_model`,
-  `image_prompt_version`, `image_pipeline_version`, `image_max_attempts` (1-6),
-  `image_poll_initial_seconds`, `image_poll_interval_seconds`, `image_provider_window_seconds`
-  (1-180), `image_max_download_bytes` (1 KiB-50 MiB).
+  (`disabled`/`fake`/`toapis`/`comfly`), `toapis_base_url`, `toapis_api_key`, `comfly_base_url`,
+  `comfly_api_key`, `comfly_output_hosts`, `image_model`, `image_prompt_version`,
+  `image_pipeline_version`, `image_max_attempts` (1-6), `image_poll_initial_seconds`,
+  `image_poll_interval_seconds`, `image_provider_window_seconds` (1-180),
+  `image_max_download_bytes` (1 KiB-50 MiB), `image_max_request_bytes`, and
+  `image_max_provider_response_bytes`.
 - `image_enabled=True` with `image_provider_mode="disabled"` raises at startup; `toapis` mode
-  requires a non-empty `TOAPIS_API_KEY` and an HTTPS `toapis_base_url`.
+  requires a non-empty `TOAPIS_API_KEY` and pinned HTTPS `toapis_base_url`; `comfly` mode requires
+  a non-empty `COMFLY_API_KEY` and an HTTPS `comfly_base_url` without credentials, query, or
+  fragment.
 
 ### 4. Validation & Error Matrix
 
@@ -466,10 +472,13 @@ deterministic validation as if it were a network timeout.
 | Unsafe prompt or provider output | Typed `review_required`/`failed` state before package readiness |
 | Provider returns non-HTTPS URL, redirect, or wrong host | Reject download, fail the attempt |
 | Returned content type not allowlisted / size or dimensions wrong | Reject, do not store |
-| ToAPIs JSON has top-level code `quota_not_enough` or `insufficient_quota` | Raise non-retryable `ImageProviderQuotaError`; persist only the typed error code, never the response body |
+| Comfly/ToAPIs JSON signals quota or balance exhaustion | Raise non-retryable `ImageProviderQuotaError`; persist only the typed error code, never the response body |
+| 401/403 or an explicit invalid-token response | Raise non-retryable provider authentication error; do not retry |
+| 429 or bounded transient 5xx | Retry within the configured attempt/window bounds; stop with a typed rate-limit/unavailable error |
+| Synchronous response has multiple images, malformed JSON, or unknown task status | Reject the provider result; never choose an arbitrary image |
 | 429/503 during polling | Honor `Retry-After`, retry within the 120s window |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
-| `TOAPIS_API_KEY` missing in `toapis` mode | Startup fails closed |
+| Active provider key missing or URL is not a valid HTTPS origin | Startup fails closed |
 
 ### 5. Good / Base / Bad Cases
 
@@ -484,25 +493,26 @@ deterministic validation as if it were a network timeout.
 - [`test_image_generation.py`](../../../backend/tests/unit/test_image_generation.py) asserts fake
   determinism (same fingerprint -> same bytes, 1024x1024 PNG), payload shape, fingerprint
   stability, and error classification for malformed provider responses.
-- [`image_live_smoke.py`](../../../backend/app/image_live_smoke.py) runs one bounded ToAPIs
-  upload/generate/poll/download acceptance call with `TOAPIS_API_KEY` injected locally as a secret;
-  it prints only provider/model/size/bytes/output, never the key, prompt body, or raw response.
+- [`image_live_smoke.py`](../../../backend/app/image_live_smoke.py) runs one bounded call through the
+  configured live provider with a locally injected secret; it prints only provider/model/size/
+  bytes/output on success. A timeout, authentication, quota, or malformed-output result is a safe
+  typed diagnostic and is never presented as a generated image.
 
 ### 7. Wrong vs Correct
 
 #### Wrong
 
 ```python
-payload = {"model": "gpt-image-2", "prompt": prompt, "reference_images": [persisted_upload_url]}
+payload = {"model": "gpt-image-2", "prompt": prompt, "image": ["https://private-minio/...png"]}
 artifact = ImageArtifact(provider_task_url=result_url)  # persist expiring URL
 ```
 
 #### Correct
 
 ```python
-payload = {"model": "gpt-image-2", "prompt": prompt, "client_business_id": fingerprint,
-           "reference_images": [transient_upload_url], "response_format": "url"}
-image_bytes = await _download(result_url)  # https://files.toapis.com only, no redirect
+payload = {"model": "gpt-image-2", "prompt": prompt, "size": "1:1", "aspect_ratio": "1:1",
+           "image": [bounded_reference_data_url]}
+image_bytes = await _download(result_url)  # configured HTTPS host only, no redirect
 artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
                          width=1024, height=1024)  # no URL persisted
 ```

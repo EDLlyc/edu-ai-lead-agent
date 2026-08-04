@@ -121,9 +121,12 @@ class Settings(BaseSettings):
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
 
     image_enabled: bool = False
-    image_provider_mode: Literal["disabled", "fake", "toapis"] = "disabled"
+    image_provider_mode: Literal["disabled", "fake", "toapis", "comfly"] = "disabled"
     toapis_base_url: str = "https://toapis.com"
     toapis_api_key: SecretStr | None = None
+    comfly_base_url: str = "https://ai.comfly.org"
+    comfly_api_key: SecretStr | None = None
+    comfly_output_hosts: str = ""
     image_model: str = "gpt-image-2"
     image_prompt_version: str = "image-prompt-v1"
     image_pipeline_version: str = "image-pipeline-v1"
@@ -133,6 +136,10 @@ class Settings(BaseSettings):
     image_provider_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     image_provider_window_seconds: float = Field(default=120.0, gt=1, le=180)
     image_max_download_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
+    image_max_request_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=50 * 1024 * 1024)
+    image_max_provider_response_bytes: int = Field(
+        default=32 * 1024 * 1024, ge=16 * 1024, le=50 * 1024 * 1024
+    )
     image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
@@ -252,6 +259,43 @@ class Settings(BaseSettings):
                 or parsed_toapis.fragment
             ):
                 raise ValueError("ToAPIs base URL must be exactly https://toapis.com")
+        if self.image_provider_mode == "comfly":
+            key = self.comfly_api_key.get_secret_value().strip() if self.comfly_api_key else ""
+            if not key:
+                raise ValueError("Comfly image mode requires COMFLY_API_KEY")
+            base_url = self.comfly_base_url.strip()
+            parsed_comfly = urlsplit(base_url)
+            try:
+                port = parsed_comfly.port
+            except ValueError as exc:
+                raise ValueError("Comfly base URL must be a valid HTTPS origin") from exc
+            if (
+                parsed_comfly.scheme != "https"
+                or not parsed_comfly.hostname
+                or port not in {None, 443}
+                or parsed_comfly.path not in {"", "/"}
+                or parsed_comfly.username is not None
+                or parsed_comfly.password is not None
+                or parsed_comfly.query
+                or parsed_comfly.fragment
+                or any(character.isspace() for character in base_url)
+            ):
+                raise ValueError("Comfly base URL must be an HTTPS origin without credentials")
+            for host in self.comfly_output_hosts.split(","):
+                normalized_host = host.strip().lower()
+                if not normalized_host:
+                    continue
+                if (
+                    len(normalized_host) > 253
+                    or any(
+                        character not in "abcdefghijklmnopqrstuvwxyz0123456789.-"
+                        for character in normalized_host
+                    )
+                    or normalized_host.startswith(".")
+                    or normalized_host.endswith(".")
+                    or ".." in normalized_host
+                ):
+                    raise ValueError("Comfly output hosts must be bare DNS hostnames")
         if not self.image_model.strip() or any(ch.isspace() for ch in self.image_model):
             raise ValueError("image model identifier must be non-blank and contain no whitespace")
         if not self.brand_ocr_model.strip() or any(

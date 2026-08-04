@@ -84,7 +84,7 @@ async def run_content_worker() -> None:
             checkpointer=copy_saver,
         )
         if settings.image_enabled and settings.image_provider_mode != "disabled":
-            if settings.image_provider_mode == "toapis":
+            if settings.image_provider_mode in {"toapis", "comfly"}:
                 image_client = httpx.AsyncClient(follow_redirects=False)
             material_executor = MaterialPackageExecutor(
                 session_factory=session_factory,

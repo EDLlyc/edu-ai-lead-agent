@@ -1,0 +1,10 @@
+{"file":".trellis/tasks/08-04-switch-image-provider/research/comfly-openai-image.md","reason":"Use the documented Comfly OpenAI-compatible request contract, the confirmed API origin, and the incomplete response-schema finding without logging credentials."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Preserve accepted-draft gating, provider/model identity, image validation, private material-package storage, and no-auto-publish boundaries while adding Comfly."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Apply typed retryable/non-retryable provider errors, redaction, bounded external calls, and review-required terminal behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Follow provider secret handling, live-smoke boundaries, test gates, and staged credential scanning."}
+{"file":"backend/app/infrastructure/ai/image_generation.py","reason":"Extend the existing ImageGenerator boundary with an OpenAI-compatible adapter and reuse safe raster/URL/error helpers."}
+{"file":"backend/app/core/config.py","reason":"Add validated Comfly mode/base URL/key settings while retaining fake and ToAPIs rollback modes."}
+{"file":"backend/app/infrastructure/ai/factory.py","reason":"Select the Comfly adapter without leaking provider-specific types into application code."}
+{"file":"backend/app/api_main.py","reason":"Own and close the image HTTP client for the new provider mode."}
+{"file":"backend/app/content_worker_main.py","reason":"Wire Comfly into the durable material-package worker without changing lease or provider identity rules."}
+{"file":"backend/tests/unit/test_image_generation.py","reason":"Add deterministic contract coverage for Comfly payloads, response envelopes, retries, reference encoding, and redaction."}

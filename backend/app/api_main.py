@@ -66,7 +66,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             create_embedding_model(settings, client=embedding_client)
         )
     if settings.image_enabled and settings.image_provider_mode != "disabled":
-        if settings.image_provider_mode == "toapis":
+        if settings.image_provider_mode in {"toapis", "comfly"}:
             image_client = httpx.AsyncClient(follow_redirects=False)
         _app.state.image_generator = create_image_generator(settings, client=image_client)
     try:

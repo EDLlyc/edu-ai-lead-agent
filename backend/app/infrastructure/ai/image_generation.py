@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import re
 import struct
@@ -326,6 +328,500 @@ class ToApisImageGenerator:
         if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
             raise ImageOutputValidationError()
         return body, content_type, width, height
+
+
+class OpenAICompatibleImageGenerator:
+    """Bounded adapter for the Comfly OpenAI-compatible image contract."""
+
+    _PENDING_STATUSES = frozenset({"queued", "pending", "in_progress", "processing"})
+    _COMPLETE_STATUSES = frozenset({"completed", "complete", "succeeded", "success"})
+    _FAILED_STATUSES = frozenset({"failed", "error", "cancelled", "canceled"})
+    _AUTH_CODES = frozenset(
+        {"invalid_api_key", "invalid_token", "unauthorized", "authentication_error"}
+    )
+    _QUOTA_CODES = frozenset(
+        {
+            "quota_not_enough",
+            "insufficient_quota",
+            "insufficient_balance",
+            "balance_not_enough",
+            "billing_hard_limit_reached",
+        }
+    )
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        base_url: str,
+        api_key: SecretStr,
+        model: str = IMAGE_MODEL,
+        max_attempts: int = 3,
+        initial_poll_seconds: float = 5.0,
+        poll_interval_seconds: float = 7.0,
+        provider_window_seconds: float = 120.0,
+        timeout_seconds: float = 30.0,
+        max_download_bytes: int = 20 * 1024 * 1024,
+        max_request_bytes: int = 8 * 1024 * 1024,
+        max_provider_response_bytes: int = 32 * 1024 * 1024,
+        allowed_output_hosts: frozenset[str] | None = None,
+        sleep: _Sleep = asyncio.sleep,
+    ) -> None:
+        normalized_base_url = base_url.strip().rstrip("/")
+        parsed = urlsplit(normalized_base_url)
+        key = api_key.get_secret_value().strip()
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("Comfly base URL must be a valid HTTPS origin") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or port not in {None, 443}
+            or parsed.path not in {"", "/"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or any(character.isspace() for character in normalized_base_url)
+        ):
+            raise ValueError("Comfly base URL must be an HTTPS origin without credentials")
+        if not key or any(character in key for character in "\r\n"):
+            raise ValueError("Comfly API key must be non-blank and contain no line breaks")
+        if (
+            max_attempts < 1
+            or provider_window_seconds <= 0
+            or max_download_bytes < 1024
+            or max_request_bytes < 1024
+            or max_provider_response_bytes < 1024
+        ):
+            raise ValueError("Comfly image bounds are invalid")
+        normalized_model = model.strip()
+        if (
+            not normalized_model
+            or len(normalized_model) > 120
+            or any(character.isspace() for character in normalized_model)
+        ):
+            raise ValueError("Comfly image model identifier is invalid")
+        output_hosts = frozenset(
+            host.strip().lower().rstrip(".")
+            for host in (allowed_output_hosts or frozenset({parsed.hostname.lower()}))
+            if host.strip()
+        )
+        if not output_hosts or any(
+            len(host) > 253
+            or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789.-" for character in host)
+            or host.startswith(".")
+            or host.endswith(".")
+            or ".." in host
+            for host in output_hosts
+        ):
+            raise ValueError("Comfly output hosts must be bare DNS hostnames")
+        self._client = client
+        self._base_url = normalized_base_url
+        self._api_key = SecretStr(key)
+        self._model = normalized_model
+        self._max_attempts = max_attempts
+        self._initial_poll_seconds = initial_poll_seconds
+        self._poll_interval_seconds = poll_interval_seconds
+        self._provider_window_seconds = provider_window_seconds
+        self._timeout = httpx.Timeout(timeout_seconds)
+        self._max_download_bytes = max_download_bytes
+        self._max_request_bytes = max_request_bytes
+        self._max_provider_response_bytes = max_provider_response_bytes
+        self._allowed_output_hosts = output_hosts
+        self._sleep = sleep
+
+    async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        task_id: str | None = None
+        try:
+            async with asyncio.timeout(self._provider_window_seconds):
+                try:
+                    prompt = validate_image_prompt(request.prompt)
+                except ValueError:
+                    raise ImageOutputValidationError() from None
+                payload = self._payload(prompt, request)
+                created = await self._request_json(
+                    "POST",
+                    "/v1/images/generations",
+                    payload,
+                    idempotency_key=request.request_fingerprint,
+                )
+                representation = _extract_compatible_image(created)
+                if representation is None:
+                    task_id = _safe_id(_first_value(created, "task_id", "id"))
+                    if task_id is None:
+                        raise ImageProviderRejectedError()
+                    completed = await self._poll(task_id)
+                    representation = _extract_compatible_image(completed)
+                    if representation is None:
+                        raise ImageProviderRejectedError()
+                body, media_type, width, height = await self._normalize_image(representation)
+        except TimeoutError:
+            raise ImageProviderTimeoutError() from None
+        except ImageProviderTimeoutError:
+            raise
+        return ImageGenerationResult(
+            provider="comfly",
+            model=self._model,
+            request_fingerprint=request.request_fingerprint,
+            provider_task_id=task_id,
+            provider_upload_id=None,
+            image_bytes=body,
+            media_type=media_type,
+            width=width,
+            height=height,
+            attempts=1,
+        )
+
+    def _payload(self, prompt: str, request: ImageGenerationRequest) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "prompt": prompt,
+            "size": IMAGE_SIZE,
+            "aspect_ratio": IMAGE_SIZE,
+        }
+        if request.reference_image is not None:
+            payload["image"] = [self._reference_data_url(request.reference_image)]
+        try:
+            serialized_size = len(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            )
+        except (TypeError, UnicodeError):
+            raise ImageOutputValidationError() from None
+        if serialized_size > self._max_request_bytes:
+            raise ImageOutputValidationError()
+        return payload
+
+    def _reference_data_url(self, body: bytes) -> str:
+        if (
+            len(body) > self._max_download_bytes
+            or len(body) < 24
+            or body[:8] != b"\x89PNG\r\n\x1a\n"
+            or body[12:16] != b"IHDR"
+        ):
+            raise ImageOutputValidationError()
+        width, height = _image_dimensions(body, "image/png")
+        if width <= 0 or height <= 0:
+            raise ImageOutputValidationError()
+        encoded = base64.b64encode(body).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+
+    async def _poll(self, task_id: str) -> dict[str, Any]:
+        started = time.monotonic()
+        await self._sleep(self._initial_poll_seconds)
+        while time.monotonic() - started <= self._provider_window_seconds:
+            payload = await self._request_json("GET", f"/v1/images/tasks/{task_id}")
+            if _extract_compatible_image(payload) is not None:
+                return payload
+            status = _compatible_status(payload)
+            if status in self._COMPLETE_STATUSES or status in self._FAILED_STATUSES:
+                raise ImageProviderRejectedError()
+            if status not in self._PENDING_STATUSES:
+                raise ImageProviderRejectedError()
+            remaining = self._provider_window_seconds - (time.monotonic() - started)
+            await self._sleep(min(self._poll_interval_seconds, max(0.1, remaining)))
+        raise ImageProviderTimeoutError()
+
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        _status_code, body, too_large, _retry_after_seconds = await self._request(
+            method,
+            path,
+            idempotency_key=idempotency_key,
+            json=payload if payload is not None else None,
+        )
+        if too_large:
+            raise ImageProviderRejectedError()
+        try:
+            value = json.loads(body)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            raise ImageProviderRejectedError() from None
+        if not isinstance(value, dict):
+            raise ImageProviderRejectedError()
+        _raise_for_compatible_payload(value)
+        return value
+
+    async def _request(
+        self, method: str, path: str, *, idempotency_key: str | None = None, **kwargs: Any
+    ) -> tuple[int, bytes, bool, float | None]:
+        headers = {"Authorization": f"Bearer {self._api_key.get_secret_value()}"}
+        if idempotency_key is not None:
+            if _SAFE_PROVIDER_ID.fullmatch(idempotency_key) is None:
+                raise ImageProviderRejectedError()
+            headers["Idempotency-Key"] = idempotency_key
+        for attempt in range(self._max_attempts):
+            try:
+                async with self._client.stream(
+                    method,
+                    f"{self._base_url}{path}",
+                    headers=headers,
+                    timeout=self._timeout,
+                    follow_redirects=False,
+                    **kwargs,
+                ) as response:
+                    body, too_large = await _read_bounded_response(
+                        response, self._max_provider_response_bytes
+                    )
+                    status_code = response.status_code
+                    retry_after_seconds = _retry_after(response)
+            except httpx.TimeoutException:
+                if attempt + 1 >= self._max_attempts:
+                    raise ImageProviderTimeoutError() from None
+                await self._sleep(min(2.0**attempt, 8.0))
+                continue
+            except httpx.HTTPError:
+                if attempt + 1 >= self._max_attempts:
+                    raise ProviderUnavailableError() from None
+                await self._sleep(min(2.0**attempt, 8.0))
+                continue
+            if not too_large:
+                _raise_for_compatible_status(status_code, body)
+            if status_code in {401, 403}:
+                raise ProviderAuthenticationError()
+            if status_code == 429:
+                if attempt + 1 >= self._max_attempts:
+                    raise ProviderRateLimitError()
+                await self._sleep(retry_after_seconds or min(2.0**attempt, 8.0))
+                continue
+            if status_code >= 500:
+                if attempt + 1 >= self._max_attempts:
+                    raise ProviderUnavailableError()
+                await self._sleep(retry_after_seconds or min(2.0**attempt, 8.0))
+                continue
+            if 300 <= status_code < 400:
+                raise ImageProviderRejectedError()
+            if too_large:
+                raise ImageProviderRejectedError()
+            if status_code >= 400:
+                raise ImageProviderRejectedError()
+            return status_code, body, False, retry_after_seconds
+        raise ProviderUnavailableError()
+
+    async def _normalize_image(
+        self, representation: tuple[str, str]
+    ) -> tuple[bytes, str, int, int]:
+        kind, value = representation
+        if kind == "url":
+            return await self._download_image(value)
+        try:
+            if len(value) > 4 * ((self._max_download_bytes + 2) // 3) + 4:
+                raise ImageOutputValidationError()
+            body = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError, TypeError):
+            raise ImageOutputValidationError() from None
+        if not body or len(body) > self._max_download_bytes:
+            raise ImageOutputValidationError()
+        media_type = _detect_image_media_type(body)
+        width, height = _image_dimensions(body, media_type)
+        if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
+            raise ImageOutputValidationError()
+        return body, media_type, width, height
+
+    async def _download_image(self, url: str) -> tuple[bytes, str, int, int]:
+        parsed = urlsplit(url)
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ImageOutputValidationError() from None
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname is None
+            or parsed.hostname.lower() not in self._allowed_output_hosts
+            or port not in {None, 443}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+            or any(character.isspace() for character in url)
+        ):
+            raise ImageOutputValidationError()
+        for attempt in range(self._max_attempts):
+            try:
+                async with self._client.stream(
+                    "GET", url, timeout=self._timeout, follow_redirects=False
+                ) as response:
+                    if response.is_redirect or response.status_code >= 400:
+                        if response.status_code == 429 and attempt + 1 < self._max_attempts:
+                            await self._sleep(_retry_after(response) or min(2.0**attempt, 8.0))
+                            continue
+                        if response.status_code >= 500 and attempt + 1 < self._max_attempts:
+                            await self._sleep(_retry_after(response) or min(2.0**attempt, 8.0))
+                            continue
+                        if response.status_code == 429:
+                            raise ProviderRateLimitError()
+                        if response.status_code >= 500:
+                            raise ProviderUnavailableError()
+                        raise ImageOutputValidationError()
+                    content_length = response.headers.get("content-length")
+                    if content_length is not None:
+                        try:
+                            if int(content_length) > self._max_download_bytes:
+                                raise ImageOutputValidationError()
+                        except ValueError:
+                            raise ImageOutputValidationError() from None
+                    content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    if content_type not in _ALLOWED_MEDIA_TYPES:
+                        raise ImageOutputValidationError()
+                    body, too_large = await _read_bounded_response(
+                        response, self._max_download_bytes
+                    )
+                    if too_large:
+                        raise ImageOutputValidationError()
+            except httpx.TimeoutException:
+                if attempt + 1 >= self._max_attempts:
+                    raise ImageProviderTimeoutError() from None
+                await self._sleep(min(2.0**attempt, 8.0))
+                continue
+            except httpx.HTTPError:
+                if attempt + 1 >= self._max_attempts:
+                    raise ProviderUnavailableError() from None
+                await self._sleep(min(2.0**attempt, 8.0))
+                continue
+            detected_type = _detect_image_media_type(body)
+            if detected_type != content_type:
+                raise ImageOutputValidationError()
+            width, height = _image_dimensions(body, detected_type)
+            if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
+                raise ImageOutputValidationError()
+            return body, detected_type, width, height
+        raise ProviderUnavailableError()
+
+
+async def _read_bounded_response(response: httpx.Response, limit: int) -> tuple[bytes, bool]:
+    content_length = response.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) < 0 or int(content_length) > limit:
+                return b"", True
+        except ValueError:
+            return b"", True
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in response.aiter_bytes(64 * 1024):
+        total += len(chunk)
+        if total > limit:
+            return b"", True
+        chunks.append(chunk)
+    return b"".join(chunks), False
+
+
+def _extract_compatible_image(payload: dict[str, Any]) -> tuple[str, str] | None:
+    """Extract one recognized image representation without retaining provider metadata."""
+    containers: list[dict[str, Any]] = [payload]
+    result = payload.get("result")
+    if isinstance(result, dict):
+        containers.append(result)
+    representations: list[tuple[str, str]] = []
+    for container in containers:
+        if "data" in container:
+            data = container["data"]
+            if isinstance(data, list):
+                if len(data) != 1 or not isinstance(data[0], dict):
+                    raise ImageProviderRejectedError()
+                entry = data[0]
+            elif isinstance(data, dict):
+                entry = data
+            else:
+                raise ImageProviderRejectedError()
+            if not ("url" in entry or "b64_json" in entry):
+                if _is_compatible_task_container(entry, payload):
+                    continue
+                raise ImageProviderRejectedError()
+            representations.append(_extract_compatible_image_entry(entry))
+            continue
+        if "url" in container or "b64_json" in container:
+            representations.append(_extract_compatible_image_entry(container))
+    if len(representations) > 1:
+        raise ImageProviderRejectedError()
+    return representations[0] if representations else None
+
+
+def _extract_compatible_image_entry(entry: dict[str, Any]) -> tuple[str, str]:
+    url = entry.get("url")
+    b64_json = entry.get("b64_json")
+    if (url is None) == (b64_json is None):
+        raise ImageProviderRejectedError()
+    if url is not None:
+        if not isinstance(url, str) or not url:
+            raise ImageProviderRejectedError()
+        return "url", url
+    if not isinstance(b64_json, str) or not b64_json:
+        raise ImageProviderRejectedError()
+    return "b64_json", b64_json
+
+
+def _compatible_status(payload: dict[str, Any]) -> str | None:
+    containers: list[dict[str, Any]] = [payload]
+    result = payload.get("result")
+    if isinstance(result, dict):
+        containers.append(result)
+    data = payload.get("data")
+    if isinstance(data, dict):
+        containers.append(data)
+    elif isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict):
+        containers.append(data[0])
+    for container in containers:
+        status = container.get("status")
+        if isinstance(status, str):
+            return status.strip().lower()
+    return None
+
+
+def _is_compatible_task_container(container: dict[str, Any], outer: dict[str, Any]) -> bool:
+    if _compatible_status(container) is None:
+        return False
+    return (
+        _safe_id(_first_value(container, "task_id", "id")) is not None
+        or _safe_id(_first_value(outer, "task_id", "id")) is not None
+    )
+
+
+def _provider_error_code(body: bytes) -> str | None:
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    values: list[Any] = [payload]
+    error = payload.get("error")
+    if isinstance(error, dict):
+        values.append(error)
+    for value in values:
+        for key in ("code", "error_code", "type"):
+            candidate = value.get(key)
+            if isinstance(candidate, str):
+                return candidate.strip().lower()
+    return None
+
+
+def _raise_for_compatible_status(status_code: int, body: bytes) -> None:
+    code = _provider_error_code(body)
+    if code in OpenAICompatibleImageGenerator._QUOTA_CODES:
+        raise ImageProviderQuotaError()
+    if code in OpenAICompatibleImageGenerator._AUTH_CODES or status_code in {401, 403}:
+        raise ProviderAuthenticationError()
+
+
+def _raise_for_compatible_payload(payload: dict[str, Any]) -> None:
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    _raise_for_compatible_status(200, body)
+
+
+def _detect_image_media_type(body: bytes) -> str:
+    if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if body.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "image/webp"
+    raise ImageOutputValidationError()
 
 
 def _first_value(payload: dict[str, Any], *keys: str) -> Any:

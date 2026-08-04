@@ -1,0 +1,7 @@
+{"file":"backend/tests/unit/test_image_generation.py","reason":"Verify direct URL/base64 and async task normalization, model/reference rejection, auth/quota/rate-limit handling, output bounds, and no raw provider-body leakage."}
+{"file":"backend/tests/unit/test_material_package.py","reason":"Verify provider/model-aware idempotency, accepted-draft gating, worker ownership, and unchanged private package projections."}
+{"file":"backend/app/core/config.py","reason":"Check HTTPS/base URL, key, mode, model, and fail-closed settings invariants."}
+{"file":"backend/app/infrastructure/ai/image_generation.py","reason":"Review SSRF/redirect host policy, request/response byte bounds, retry classification, and safe identifier parsing."}
+{"file":"compose.yaml","reason":"Check API/content-worker environment parity, secret placeholders, and no private key/material mounts added accidentally."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify the provider switch is documented without weakening manual-use, idempotency, validation, or no-publishing contracts."}
+{"file":".trellis/tasks/08-04-switch-image-provider/design.md","reason":"Review implementation against the approved data flow, compatibility/rollback plan, deferred old-artifact behavior, and live verification gate."}
