@@ -265,3 +265,24 @@ Added the Comfly OpenAI-compatible image provider at https://ai.comfly.org with 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: Complete controlled Comfly output download policy
+
+**Date**: 2026-08-04
+**Task**: Complete controlled Comfly output download policy
+**Branch**: `main`
+
+### Summary
+
+Added opt-in Comfly public CDN output downloads with HTTPS, DNS-publicity, SSRF, size, media, signature, and dimension checks. Updated Compose, settings, factory, tests, and backend quality guidance. Rebuilt all services; health, backend 350 tests, frontend 15 tests, Compose, doctor, Ruff, and mypy passed. Real Comfly generation remained external-provider/DNS blocked: slow upstream response and local Fake-IP resolution; no unvalidated image was stored.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4963b9a` | (see git log) |
+
+### Status
+
+[OK] **Completed**

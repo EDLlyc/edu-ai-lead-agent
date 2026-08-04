@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-08-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~267 | Active |
+| `journal-1.md` | ~288 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-08-04 | Complete controlled Comfly output download policy | `4963b9a` | `main` |
 | 11 | 2026-08-04 | Switch image generation to Comfly | `6c27d4c` | `main` |
 | 10 | 2026-08-04 | Complete content pipeline hardening and image API diagnosis | `34f932b` | `main` |
 | 9 | 2026-08-03 | Full project runtime verification | `7a04fc0` | `main` |
