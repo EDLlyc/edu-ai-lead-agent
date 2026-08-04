@@ -244,3 +244,24 @@ Completed and verified OCR brand ingestion, freshness and pacing controls, paren
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: Switch image generation to Comfly
+
+**Date**: 2026-08-04
+**Task**: Switch image generation to Comfly
+**Branch**: `main`
+
+### Summary
+
+Added the Comfly OpenAI-compatible image provider at https://ai.comfly.org with validated config, bounded URL/base64/task handling, safe retries and redaction, API/worker lifecycle wiring, smoke tooling, tests, Compose parity, and backend spec updates. Backend 344 tests, Ruff, mypy, frontend checks, doctor, Compose, and credential scans passed. /v1/models returned HTTP 200 with gpt-image-2. Live image smoke failed closed because the provider CDN hostname is not yet explicitly configured in COMFLY_OUTPUT_HOSTS; no fake or persisted image was created. Pushed main at 6c27d4c.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6c27d4c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
