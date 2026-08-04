@@ -286,3 +286,25 @@ Added opt-in Comfly public CDN output downloads with HTTPS, DNS-publicity, SSRF,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: Complete Comfly end-to-end image pipeline
+
+**Date**: 2026-08-04
+**Task**: Complete Comfly end-to-end image pipeline
+**Branch**: `main`
+
+### Summary
+
+Restored real DNS for Comfly API and exact CDN host webstatic.aiproxy.vip through the active Clash Verge profile, added hostname-only discovery and strict validation, and verified a real material-package run from API enqueue through content-worker, MinIO, database persistence, API download, and idempotent replay. Kept Fake-IP/SSRF protections and manual-use status. Extended default provider timeout/window to 120/180 seconds; all 355 backend tests and frontend/doctor checks passed. A later image rebuild hit a PyPI xxhash download timeout while the existing healthy container remained running.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0faad97` | (see git log) |
+| `01eecb6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
