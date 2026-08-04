@@ -223,3 +223,24 @@ Verified the full local MVP stack: backend and frontend quality gates, PostgreSQ
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: Complete content pipeline hardening and image API diagnosis
+
+**Date**: 2026-08-04
+**Task**: Complete content pipeline hardening and image API diagnosis
+**Branch**: `main`
+
+### Summary
+
+Completed and verified OCR brand ingestion, freshness and pacing controls, parent-facing copy/audit updates, idempotent material-package delivery, and image quota error handling. Rebuilt content-worker successfully. ToAPIs image generation was tested in the real worker and returned quota_not_enough (HTTP 403), so no image was fabricated or persisted as success. GitHub push remains pending due to a local TLS handshake failure.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34f932b` | (see git log) |
+
+### Status
+
+[OK] **Completed**

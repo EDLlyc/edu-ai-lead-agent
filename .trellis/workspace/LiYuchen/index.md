@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-08-03
+- **Total Sessions**: 10
+- **Last Active**: 2026-08-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~225 | Active |
+| `journal-1.md` | ~246 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-08-04 | Complete content pipeline hardening and image API diagnosis | `34f932b` | `main` |
 | 9 | 2026-08-03 | Full project runtime verification | `7a04fc0` | `main` |
 | 8 | 2026-07-31 | Image generation and material package UI | `4f31610`, `7f3a9eb`, `c4835d1`, `b0a4aab`, `ea08db8` | `main` |
 | 7 | 2026-07-30 | Brand knowledge RAG MVP | `e495a1c` | `main` |
