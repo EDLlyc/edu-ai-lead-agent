@@ -9,7 +9,7 @@ from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.domain.entities import SourceProfile
 from app.infrastructure.ingestion.fetcher import SafeHttpFetcher
-from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
+from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS, TERMS_REVIEWED_AT
 
 
 def source_profiles() -> list[SourceProfile]:
@@ -30,6 +30,8 @@ def source_profiles() -> list[SourceProfile]:
             language=seed.language,
             timezone=seed.timezone,
             rate_limit_seconds=seed.rate_limit_seconds,
+            robots_status=seed.robots_status,
+            terms_reviewed_at=TERMS_REVIEWED_AT,
         )
         for seed in SOURCE_SEEDS
     ]

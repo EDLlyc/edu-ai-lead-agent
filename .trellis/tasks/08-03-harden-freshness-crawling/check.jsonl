@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the required focused, integration, Compose, Doctor, and final backend quality gates for cross-layer worker and migration changes."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify stale/unknown-date filtering, robots/policy rejection, Retry-After, provider review, and terminal/retry state classification."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify safe structured telemetry for freshness, crawl policy, retry, and supersession without source bodies, cookies, credentials, or raw provider output."}
+{"file":"backend/tests/contract/test_safe_fetcher.py","reason":"Verify redirects, response bounds, retryable status handling, and the compliant no-stealth HTTP boundary."}
+{"file":"backend/tests/integration/test_title_relevance_ingestion.py","reason":"Extend real repository/worker coverage for filtered fresh/stale/unknown publication candidates and audit observations."}
+{"file":"backend/tests/integration/test_topic_selection_repositories.py","reason":"Verify readiness cutoff, revision/supersession, immutable history, current selection, and idempotent recovery under PostgreSQL constraints."}

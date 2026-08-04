@@ -26,6 +26,7 @@ def topic_selection_run_response(run: TopicSelectionRunModel) -> TopicSelectionR
         timezone=run.timezone,
         scoring_version=(config_version if isinstance(config_version, str) else "unknown"),
         scoring_profile=run.scoring_profile,
+        revision=run.revision,
         config_fingerprint=run.config_fingerprint,
         config=run.config_snapshot,
         status=run.status,
@@ -38,6 +39,9 @@ def topic_selection_run_response(run: TopicSelectionRunModel) -> TopicSelectionR
         created_at=run.created_at,
         started_at=run.started_at,
         completed_at=run.completed_at,
+        superseded_at=run.superseded_at,
+        superseded_by_run_id=run.superseded_by_run_id,
+        is_current=run.superseded_at is None,
         status_url=f"/api/v1/topic-selection-runs/{run.id}",
         scores_url=f"/api/v1/topic-selection-runs/{run.id}/scores",
     )

@@ -17,6 +17,7 @@ from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, TopicScoringConfig
 from app.infrastructure.db.models import (
+    AcquisitionRunModel,
     ArticleOccurrenceModel,
     DailyTopicSelectionModel,
     EventAssignmentDecisionModel,
@@ -25,6 +26,8 @@ from app.infrastructure.db.models import (
     EventMembershipModel,
     EvidenceBindingModel,
     EvidenceCandidateModel,
+    GovernanceJobModel,
+    GovernanceRunModel,
     NormalizedArticleModel,
     TopicScoreModel,
     TopicScoringConfigModel,
@@ -48,6 +51,9 @@ _NEGATIVE_INCIDENT_TERMS = ("伤亡", "诈骗", "自杀", "暴力", "事故", "�
 _PRIVACY_SAFETY_TERMS = ("隐私泄露", "个人信息泄露", "未成年人数据", "人脸泄露")
 _PROHIBITED_MARKETING_TERMS = ("保过", "包会", "稳赚", "零风险", "百分百提升")
 _SOURCE_TRUST_WEIGHTS = {"A": 1.0, "B": 0.75, "C": 0.0}
+_TERMINAL_ACQUISITION_STATUSES = ("succeeded", "partially_succeeded")
+_TERMINAL_GOVERNANCE_RUN_STATUSES = ("succeeded", "partially_succeeded")
+_NON_TERMINAL_GOVERNANCE_JOB_STATUSES = ("queued", "running", "retry_scheduled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +142,34 @@ async def enqueue_topic_selection_run(
             raise ConflictError("topic scoring config version is immutable")
         config_id = stored_config.id
 
+    current = await session.scalar(
+        select(TopicSelectionRunModel)
+        .where(
+            TopicSelectionRunModel.business_date == business_date,
+            TopicSelectionRunModel.timezone == timezone.strip(),
+            TopicSelectionRunModel.scoring_profile == config.profile,
+            TopicSelectionRunModel.superseded_at.is_(None),
+        )
+        .order_by(TopicSelectionRunModel.revision.desc())
+        .with_for_update()
+    )
+    if current is not None:
+        can_recover = (
+            current.status == "succeeded"
+            and current.selected_event_id is None
+            and current.no_topic_code in {"no_candidates", "all_vetoed"}
+            and governed_event_cutoff > current.governed_event_cutoff
+        )
+        if not can_recover:
+            if current.config_fingerprint != fingerprint or current.config_snapshot != snapshot:
+                await session.rollback()
+                raise ConflictError(
+                    "a different scoring config already owns this date and scoring profile"
+                )
+            await session.commit()
+            return current, False
+
+    revision = current.revision + 1 if current is not None else 1
     run_id = uuid4()
     inserted_run_id = await session.scalar(
         insert(TopicSelectionRunModel)
@@ -145,22 +179,25 @@ async def enqueue_topic_selection_run(
             business_date=business_date,
             timezone=timezone.strip(),
             scoring_profile=config.profile,
+            revision=revision,
             config_id=config_id,
             config_fingerprint=fingerprint,
             config_snapshot=snapshot,
             governed_event_cutoff=governed_event_cutoff,
             status="queued",
         )
-        .on_conflict_do_nothing(constraint="uq_topic_selection_runs_business_key")
+        .on_conflict_do_nothing(constraint="uq_topic_selection_runs_business_revision")
         .returning(TopicSelectionRunModel.id)
     )
     if inserted_run_id is None:
         existing = await session.scalar(
-            select(TopicSelectionRunModel).where(
+            select(TopicSelectionRunModel)
+            .where(
                 TopicSelectionRunModel.business_date == business_date,
                 TopicSelectionRunModel.timezone == timezone.strip(),
                 TopicSelectionRunModel.scoring_profile == config.profile,
             )
+            .order_by(TopicSelectionRunModel.revision.desc())
         )
         if existing is None:
             raise RuntimeError("topic selection run conflict could not be resolved")
@@ -171,6 +208,20 @@ async def enqueue_topic_selection_run(
             )
         await session.commit()
         return existing, False
+
+    if current is not None:
+        now = datetime.now(UTC)
+        current.superseded_at = now
+        current.superseded_by_run_id = run_id
+        old_selection = await session.scalar(
+            select(DailyTopicSelectionModel).where(
+                DailyTopicSelectionModel.run_id == current.id,
+                DailyTopicSelectionModel.superseded_at.is_(None),
+            )
+        )
+        if old_selection is not None:
+            old_selection.superseded_at = now
+            old_selection.superseded_by_run_id = run_id
 
     session.add(
         TopicSelectionJobModel(
@@ -615,6 +666,7 @@ async def persist_topic_selection_decision(
             DailyTopicSelectionModel.business_date == run.business_date,
             DailyTopicSelectionModel.timezone == run.timezone,
             DailyTopicSelectionModel.scoring_profile == run.scoring_profile,
+            DailyTopicSelectionModel.superseded_at.is_(None),
         )
     )
     if existing_selection is not None and existing_selection.run_id != run.id:
@@ -659,6 +711,7 @@ async def persist_topic_selection_decision(
             business_date=run.business_date,
             timezone=run.timezone,
             scoring_profile=run.scoring_profile,
+            revision=run.revision,
             run_id=run.id,
             config_id=run.config_id,
             config_fingerprint=run.config_fingerprint,
@@ -667,7 +720,14 @@ async def persist_topic_selection_decision(
             selected_event_version_id=decision.selected_event_version_id,
             no_topic_code=(decision.no_topic_code.value if decision.no_topic_code else None),
         )
-        .on_conflict_do_nothing(constraint="uq_daily_topic_selections_business_key")
+        .on_conflict_do_nothing(
+            index_elements=[
+                DailyTopicSelectionModel.business_date,
+                DailyTopicSelectionModel.timezone,
+                DailyTopicSelectionModel.scoring_profile,
+            ],
+            index_where=DailyTopicSelectionModel.superseded_at.is_(None),
+        )
         .returning(DailyTopicSelectionModel.id)
     )
     if inserted_selection_id is None and existing_selection is None:
@@ -676,6 +736,7 @@ async def persist_topic_selection_decision(
                 DailyTopicSelectionModel.business_date == run.business_date,
                 DailyTopicSelectionModel.timezone == run.timezone,
                 DailyTopicSelectionModel.scoring_profile == run.scoring_profile,
+                DailyTopicSelectionModel.superseded_at.is_(None),
             )
         )
     if existing_selection is not None and (
@@ -787,6 +848,52 @@ async def get_topic_selection_run(session: AsyncSession, run_id: UUID) -> TopicS
     return run
 
 
+async def get_governed_event_cutoff(
+    session: AsyncSession,
+    *,
+    business_date: date,
+    timezone: str,
+    now: datetime,
+) -> datetime | None:
+    """Return a fresh immutable cutoff only after acquisition and governance are terminal."""
+    if now.tzinfo is None:
+        raise ValueError("governance readiness time must be timezone-aware")
+    acquisition = await session.scalar(
+        select(AcquisitionRunModel)
+        .where(
+            AcquisitionRunModel.business_date == business_date,
+            AcquisitionRunModel.timezone == timezone,
+            AcquisitionRunModel.status.in_(_TERMINAL_ACQUISITION_STATUSES),
+        )
+        .order_by(AcquisitionRunModel.completed_at.desc(), AcquisitionRunModel.id.desc())
+        .limit(1)
+    )
+    if acquisition is None:
+        return None
+    governance = await session.scalar(
+        select(GovernanceRunModel)
+        .where(
+            GovernanceRunModel.acquisition_run_id == acquisition.id,
+            GovernanceRunModel.status.in_(_TERMINAL_GOVERNANCE_RUN_STATUSES),
+        )
+        .order_by(GovernanceRunModel.completed_at.desc(), GovernanceRunModel.id.desc())
+        .limit(1)
+    )
+    if governance is None:
+        return None
+    pending_job = await session.scalar(
+        select(GovernanceJobModel.id)
+        .where(
+            GovernanceJobModel.run_id == governance.id,
+            GovernanceJobModel.status.in_(_NON_TERMINAL_GOVERNANCE_JOB_STATUSES),
+        )
+        .limit(1)
+    )
+    if pending_job is not None:
+        return None
+    return now.astimezone(UTC)
+
+
 async def list_topic_score_rows(
     session: AsyncSession, run_id: UUID
 ) -> tuple[TopicScoreProjection, ...]:
@@ -846,6 +953,7 @@ async def get_daily_topic_result(
                 DailyTopicSelectionModel.business_date == business_date,
                 DailyTopicSelectionModel.timezone == timezone,
                 DailyTopicSelectionModel.scoring_profile == scoring_profile,
+                DailyTopicSelectionModel.superseded_at.is_(None),
             )
         )
     ).one_or_none()
@@ -866,6 +974,17 @@ async def get_daily_topic_result(
 class PostgresTopicSelectionRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def governed_event_cutoff(
+        self, *, business_date: date, timezone: str, now: datetime
+    ) -> datetime | None:
+        async with self._session_factory() as session:
+            return await get_governed_event_cutoff(
+                session,
+                business_date=business_date,
+                timezone=timezone,
+                now=now,
+            )
 
     async def enqueue(
         self,

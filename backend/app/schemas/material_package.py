@@ -22,16 +22,24 @@ class MaterialReviewRequest(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class ImageStorageMetadataResponse(BaseModel):
+    access: Literal["private"]
+    immutable: bool
+    content_addressed: bool
+
+
 class ImageArtifactResponse(BaseModel):
     id: UUID
     status: Literal["queued", "running", "succeeded", "failed", "review_required"]
     provider: str
     model: str
+    request_fingerprint: str
     width: int | None
     height: int | None
     media_type: str | None
     byte_size: int | None
     sha256: str | None
+    storage_metadata: ImageStorageMetadataResponse
     error_code: str | None
     download_url: str | None
 
@@ -53,11 +61,19 @@ class MaterialPackageResponse(MaterialPackageSummaryResponse):
     topic: dict[str, object]
     copy_: dict[str, object] = Field(alias="copy")
     sources: list[dict[str, object]]
+    brand_bindings: list[dict[str, object]]
+    validation: dict[str, object]
     audit: dict[str, object]
+    versions: dict[str, object]
     image: ImageArtifactResponse
     review_note: str | None
     reviewed_at: datetime | None
     review_url: str
+    download_url: str
+
+
+class MaterialPackageDownloadResponse(MaterialPackageResponse):
+    download_kind: Literal["material_package_json"] = "material_package_json"
 
 
 class MaterialPackageListResponse(BaseModel):

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 import httpx
 from pydantic import SecretStr
 
+from app.application.ports.brand_knowledge import BrandDocumentOcrModel
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
 from app.application.ports.image_generation import ImageGenerator
@@ -23,7 +24,11 @@ from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
     ToApisImageGenerator,
 )
-from app.infrastructure.ai.zhipu import ZhipuEmbeddingModel, ZhipuFactualAnalysisModel
+from app.infrastructure.ai.zhipu import (
+    ZhipuBrandDocumentOcrModel,
+    ZhipuEmbeddingModel,
+    ZhipuFactualAnalysisModel,
+)
 
 
 def create_embedding_model(
@@ -52,6 +57,31 @@ def create_embedding_model(
         concurrency=settings.ai_provider_concurrency,
         max_attempts=settings.ai_max_attempts,
         max_input_characters=settings.ai_max_input_characters,
+    )
+
+
+def create_brand_ocr_model(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> BrandDocumentOcrModel:
+    if settings.ai_provider_mode != "zhipu":
+        raise RuntimeError("brand OCR is available only in AI_PROVIDER_MODE=zhipu")
+    if settings.ai_platform_base_url is None or settings.ai_platform_api_key is None:
+        raise RuntimeError("validated Zhipu OCR settings are unavailable")
+    if client is None:
+        raise RuntimeError("Zhipu OCR requires an owned HTTP client")
+    return ZhipuBrandDocumentOcrModel(
+        client=client,
+        base_url=settings.ai_platform_base_url,
+        api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
+        model=settings.brand_ocr_model,
+        connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+        read_timeout_seconds=settings.brand_ocr_timeout_seconds,
+        total_timeout_seconds=settings.brand_ocr_timeout_seconds,
+        concurrency=settings.ai_provider_concurrency,
+        max_attempts=settings.ai_max_attempts,
+        max_request_bytes=settings.brand_ocr_max_request_bytes,
+        max_response_bytes=settings.brand_ocr_max_response_bytes,
+        max_pages=settings.brand_ocr_max_pages,
     )
 
 

@@ -10,7 +10,13 @@ from typing import Literal, cast
 from uuid import UUID
 
 from app.domain.value_objects import stable_key
-from app.schemas.copy_generation import AuditVerdict, CopyIssue, MaterialDraft
+from app.schemas.copy_generation import (
+    AuditVerdict,
+    CopyIssue,
+    MaterialDraft,
+    extract_trailing_hashtags,
+    has_non_trailing_hashtags,
+)
 
 
 class CopyRunStatus(StrEnum):
@@ -265,14 +271,24 @@ _DANGLING_DEPENDENT_CLAUSE = re.compile(
 )
 _SUPPORT_TEXT = re.compile(r"[\W_]+", re.UNICODE)
 _NUMBER_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
-_PREVIEW_PROFILES = frozenset({"preview", "preview-v1"})
-_PREVIEW_RULE_VERSIONS = frozenset({"preview-v1"})
-_PREVIEW_DETERMINISTIC_WARNING_CODES = frozenset(
-    {
-        "unverified_superlative",
-        "incomplete_sentence",
-    }
-)
+_PREVIEW_PROFILES = frozenset({"preview", "preview-v1", "preview-v2"})
+_PREVIEW_RULE_VERSIONS = frozenset({"preview-v1", "preview-v2"})
+_PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
+    "preview-v1": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+        }
+    ),
+    "preview-v2": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+        }
+    ),
+}
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
         "brand_fit",
@@ -286,6 +302,7 @@ _PREVIEW_AUDIT_WARNING_CODES = frozenset(
         "promotional_language",
     }
 )
+_REQUIRED_HASHTAG = "#赛先生科学"
 
 
 def validate_material_draft(
@@ -311,6 +328,35 @@ def validate_material_draft(
     if not 8 <= len(draft.image_prompt) <= 500:
         issues.append(
             _issue("image_prompt_length", "图片提示词应为8到500个字符", field="image_prompt")
+        )
+    hashtags = extract_trailing_hashtags(draft.copywriting)
+    if has_non_trailing_hashtags(draft.copywriting):
+        issues.append(
+            _issue(
+                "hashtag_placement",
+                "朋友圈正文标签只能出现在末行",
+                field="copywriting",
+            )
+        )
+    if not hashtags:
+        issues.append(
+            _issue(
+                "hashtag_format",
+                "朋友圈正文末尾必须单独一行放置2到3个规范标签",
+                field="copywriting",
+            )
+        )
+    elif len(hashtags) not in {2, 3}:
+        issues.append(
+            _issue("hashtag_count", "朋友圈正文末尾必须有2到3个标签", field="copywriting")
+        )
+    elif hashtags[0] != _REQUIRED_HASHTAG:
+        issues.append(
+            _issue(
+                "required_hashtag",
+                "朋友圈正文标签首位必须固定为#赛先生科学",
+                field="copywriting",
+            )
         )
 
     all_output = "\n".join(
@@ -460,13 +506,15 @@ def validate_material_draft(
             )
         )
     deduplicated = _deduplicate_issues(issues)
-    if _uses_preview_copy_policy(
+    preview_rule_version = _preview_copy_rule_version(
         scoring_profile=topic.scoring_profile,
         rule_version=rule_version,
-    ):
+    )
+    if preview_rule_version is not None:
+        warning_codes = _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION[preview_rule_version]
         deduplicated = [
             issue.model_copy(update={"severity": "warning"})
-            if issue.code in _PREVIEW_DETERMINISTIC_WARNING_CODES
+            if issue.code in warning_codes
             else issue
             for issue in deduplicated
         ]
@@ -509,11 +557,30 @@ def _uses_preview_copy_policy(
     scoring_profile: str | None,
     rule_version: str | None,
 ) -> bool:
+    return (
+        _preview_copy_rule_version(
+            scoring_profile=scoring_profile,
+            rule_version=rule_version,
+        )
+        is not None
+    )
+
+
+def _preview_copy_rule_version(
+    *,
+    scoring_profile: str | None,
+    rule_version: str | None,
+) -> str | None:
     if rule_version is not None:
-        return is_preview_copy_rule_version(rule_version)
-    if scoring_profile is None:
-        raise ValueError("copy policy requires a rule version or scoring profile")
-    return is_preview_copy_profile(scoring_profile)
+        candidate = rule_version.strip().casefold()
+    else:
+        if scoring_profile is None:
+            raise ValueError("copy policy requires a rule version or scoring profile")
+        profile = scoring_profile.strip().casefold()
+        candidate = "preview-v1" if profile == "preview-v1" else "preview-v2"
+        if profile not in _PREVIEW_PROFILES:
+            return None
+    return candidate if candidate in _PREVIEW_RULE_VERSIONS else None
 
 
 def _issue(

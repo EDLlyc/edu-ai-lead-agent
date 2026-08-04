@@ -37,10 +37,10 @@ def _candidate(
 def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> None:
     metadata = CONFIG.as_metadata()
 
-    assert metadata["version"] == "scoring-v1-preview.1"
+    assert metadata["version"] == "scoring-v1-preview.2"
     assert metadata["veto_rule_version"] == "topic-veto-v1"
     assert sum(CONFIG.positive_weights.values()) == pytest.approx(1.0)
-    assert metadata["freshness_window_days"] == 14.0
+    assert metadata["freshness_window_days"] == 10.0
     assert metadata["tie_break_order"] == [
         "eligible",
         "total",
@@ -93,12 +93,12 @@ def test_seven_day_repeat_is_vetoed_but_boundary_is_allowed() -> None:
 
 def test_event_older_than_freshness_window_is_transparently_vetoed() -> None:
     stale = score_topic_candidate(
-        _candidate(event_time=NOW - timedelta(days=14, seconds=1)),
+        _candidate(event_time=NOW - timedelta(days=10, seconds=1)),
         as_of=NOW,
         config=CONFIG,
     )
     boundary = score_topic_candidate(
-        _candidate(event_time=NOW - timedelta(days=14)),
+        _candidate(event_time=NOW - timedelta(days=10)),
         as_of=NOW,
         config=CONFIG,
     )
@@ -116,7 +116,7 @@ def test_below_threshold_candidates_produce_no_topic_without_a_veto() -> None:
                 ai_relevance=0.2,
                 parent_relevance=0.1,
                 communication_potential=0.1,
-                event_time=NOW - timedelta(days=14),
+                event_time=NOW - timedelta(days=10),
             ),
         ),
         as_of=NOW,
@@ -159,7 +159,7 @@ def test_score_preserves_raw_normalized_weight_penalty_and_explanation_fields() 
     )
     assert score.raw_features["source_diversity"] == 3.0
     assert score.normalized_features["source_diversity"] == 0.75
-    assert metadata["scoring_version"] == "scoring-v1-preview.1"
+    assert metadata["scoring_version"] == "scoring-v1-preview.2"
     assert metadata["veto_codes"] == []
 
 

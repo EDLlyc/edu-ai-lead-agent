@@ -84,6 +84,7 @@ def _valid_draft(request: DraftGenerationRequest) -> MaterialDraft:
         copywriting=(
             f"今天和家长分享一条人工智能与机器人动态：{fact}{brand_text}"
             "我们可以陪孩子从可靠信息出发，观察技术如何发展，并通过提问建立自己的理解。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息和开放问题陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论哪一个机器人问题？",

@@ -20,6 +20,10 @@ class ClaimedTopicSelectionJob:
 
 
 class TopicSelectionRepository(Protocol):
+    async def governed_event_cutoff(
+        self, *, business_date: date, timezone: str, now: datetime
+    ) -> datetime | None: ...
+
     async def enqueue(
         self,
         *,

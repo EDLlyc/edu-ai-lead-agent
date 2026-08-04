@@ -8,7 +8,7 @@ acquisition and factual-governance schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260730_0007`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260803_0014`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -34,7 +34,8 @@ names. Generation artifacts, claims for final copy, and material packages are fu
 and must not be created speculatively. The detailed governance table, uniqueness,
 checkpoint, vector, and event-version contracts are in
 [`governance-event-organization.md`](./governance-event-organization.md). The
-config/run/job/score/daily-lock schema and event/version composite constraints are in
+config/run/job/score/daily-lock schema, immutable same-day revisions, and event/version composite
+constraints are in
 [`topic-selection.md`](./topic-selection.md). Brand document/version/job/chunk/vector constraints
 are in [`brand-knowledge-rag.md`](./brand-knowledge-rag.md).
 
@@ -77,6 +78,11 @@ list endpoints. Avoid per-row queries and bound batch sizes for embeddings and b
   equivalent tested claim mechanism.
 - Use a unique idempotency key and upsert/conflict handling for scheduled runs and stage artifacts;
   do not implement check-then-insert races in Python.
+
+Acquisition source leases also own a durable `next_request_at` pacing watermark. Every list or
+detail request reserves a slot in a short transaction before sleeping, and releasing the lease
+expires ownership without deleting that watermark. This keeps the configured inter-request limit
+effective across retries, worker restarts, and separate jobs for the same source.
 
 Retries must not duplicate external side effects. Persist the request fingerprint, provider
 request ID when available, prompt/model version, attempt number, and artifact status.
@@ -149,7 +155,10 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260731_0009` (adds generated image artifacts and internal material packages).
+  `20260803_0014` (allows failed brand derivations to be retried after brand-document OCR metadata,
+  source request pacing, and freshness policy
+  metadata, and immutable
+  same-day topic revisions).
   Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract described here.
 - Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
 - Candidate contract: `evidence_candidates.relevance_rule_version VARCHAR(40) NULL`.

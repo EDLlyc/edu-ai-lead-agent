@@ -23,9 +23,10 @@ def test_settings_require_scan_limits_to_cover_accepted_item_limits() -> None:
 
 def test_production_settings_reject_placeholder_credentials() -> None:
     with pytest.raises(ValidationError, match="production credentials"):
-        Settings(app_env="production")
+        Settings(_env_file=None, app_env="production")
 
     settings = Settings(
+        _env_file=None,
         app_env="production",
         database_url=SecretStr("postgresql+asyncpg://service:strong-password@db:5432/service"),
         minio_endpoint="https://minio.internal",
@@ -34,6 +35,13 @@ def test_production_settings_reject_placeholder_credentials() -> None:
         minio_secret_key=SecretStr("production-secret-value"),
     )
     assert str(settings.minio_secret_key) == "**********"
+
+
+def test_brand_ocr_model_is_a_bounded_identifier() -> None:
+    with pytest.raises(ValidationError, match="brand OCR model identifier"):
+        Settings(_env_file=None, brand_ocr_model="glm ocr")
+    with pytest.raises(ValidationError, match="brand OCR model identifier"):
+        Settings(_env_file=None, brand_ocr_model=" ")
 
 
 def test_state_transitions_are_explicit() -> None:

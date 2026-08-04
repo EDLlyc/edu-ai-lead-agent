@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -12,7 +12,7 @@ from app.application.ports.topic_selection import (
     TopicSelectionRepository,
 )
 from app.core.config import Settings
-from app.core.errors import TopicSelectionLeaseLostError
+from app.core.errors import ConflictError, TopicSelectionLeaseLostError
 from app.domain.topic_selection import TopicScoringConfig, select_daily_topic
 from app.domain.value_objects import due_business_date
 
@@ -23,6 +23,7 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
     return TopicScoringConfig(
         version=settings.content_scoring_version,
         profile=settings.content_scoring_profile,
+        freshness_window_days=float(settings.content_freshness_window_days),
     )
 
 
@@ -36,11 +37,18 @@ async def enqueue_manual_topic_selection(
     if now.tzinfo is None:
         raise ValueError("topic selection enqueue time must be timezone-aware")
     resolved_date = business_date or now.astimezone(ZoneInfo(settings.business_timezone)).date()
+    governed_event_cutoff = await repository.governed_event_cutoff(
+        business_date=resolved_date,
+        timezone=settings.business_timezone,
+        now=now,
+    )
+    if governed_event_cutoff is None:
+        raise ConflictError("governance is not ready for topic selection")
     return await repository.enqueue(
         business_date=resolved_date,
         timezone=settings.business_timezone,
         config=build_topic_scoring_config(settings),
-        governed_event_cutoff=now.astimezone(UTC),
+        governed_event_cutoff=governed_event_cutoff,
         trigger="manual",
     )
 
@@ -60,11 +68,18 @@ async def reconcile_daily_topic_selection(
     )
     if business_date is None:
         return None
+    governed_event_cutoff = await repository.governed_event_cutoff(
+        business_date=business_date,
+        timezone=settings.business_timezone,
+        now=now,
+    )
+    if governed_event_cutoff is None:
+        return None
     return await repository.enqueue(
         business_date=business_date,
         timezone=settings.business_timezone,
         config=build_topic_scoring_config(settings),
-        governed_event_cutoff=now.astimezone(UTC),
+        governed_event_cutoff=governed_event_cutoff,
         trigger="scheduled",
     )
 

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Check OCR ingestion remains private, versioned, activation-gated, and separate from factual evidence retrieval."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check schema changes, provider call placement, idempotency, vector metadata, and Alembic migration safety."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check retry classification, safe provider diagnostics, lease recovery, and API-safe failure mapping."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check structured OCR logs for redaction and bounded metadata only."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the full backend quality and integration gate after implementation."}
+{"file":".trellis/tasks/08-03-brand-document-ocr/research/zhipu-glm-ocr.md","reason":"Verify the adapter uses the documented endpoint, model, input limits, and response fields."}

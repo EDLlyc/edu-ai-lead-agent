@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
 
 import httpx
@@ -9,6 +10,7 @@ import httpx
 from app.core.config import Settings
 from app.core.errors import (
     PermanentFetchError,
+    PolicyRejectedError,
     ResponseLimitError,
     TransientFetchError,
     UnsupportedContentError,
@@ -57,6 +59,16 @@ class SafeHttpFetcher:
         etag: str | None = None,
         last_modified: str | None = None,
     ) -> FetchedResponse:
+        _enforce_recorded_crawl_policy(profile)
+        if profile.robots_status == "manual_review":
+            # Keep this visible to operators without adding a second request or hiding policy state.
+            import structlog
+
+            structlog.get_logger().info(
+                "source_manual_review_policy",
+                source_id=str(profile.source_id),
+                source_slug=profile.slug,
+            )
         headers = {
             "User-Agent": self._settings.acquisition_user_agent,
             "Accept": "application/json, text/html;q=0.9, application/xml;q=0.8, text/plain;q=0.5",
@@ -116,7 +128,20 @@ class SafeHttpFetcher:
                 if response.status_code == 304:
                     return self._build_response(requested_url, current_url, response, b"")
                 if response.status_code == 429 or response.status_code >= 500:
-                    raise TransientFetchError(f"http_{response.status_code}")
+                    retry_after = (
+                        _bounded_retry_after(
+                            response.headers.get("retry-after"),
+                            maximum_seconds=float(
+                                self._settings.acquisition_max_retry_after_seconds
+                            ),
+                        )
+                        if response.status_code == 429
+                        else None
+                    )
+                    raise TransientFetchError(
+                        f"http_{response.status_code}",
+                        retry_after_seconds=retry_after,
+                    )
                 if response.status_code >= 400:
                     raise PermanentFetchError(f"http_{response.status_code}")
                 declared_type = _media_type(response.headers.get("content-type"))
@@ -172,3 +197,36 @@ def _looks_like_supported_text(body: bytes) -> bool:
     except UnicodeDecodeError:
         return False
     return bool(body)
+
+
+def _enforce_recorded_crawl_policy(profile: SourceProfile) -> None:
+    status = profile.robots_status.strip().casefold()
+    if status in {"disallowed", "blocked", "robots_disallowed", "terms_disallowed"}:
+        raise PolicyRejectedError(
+            "source_policy_disallowed", "source crawl policy disallows access"
+        )
+    if status == "manual_review" and profile.terms_reviewed_at is None:
+        raise PolicyRejectedError(
+            "source_policy_unreviewed", "source manual-review policy is missing a review record"
+        )
+    if status not in {"allowed", "allowed_with_path_exclusions", "manual_review"}:
+        raise PolicyRejectedError("source_policy_unknown", "source crawl policy is not recognized")
+
+
+def _bounded_retry_after(value: str | None, *, maximum_seconds: float = 300.0) -> float | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    try:
+        delay = float(normalized)
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(normalized)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        delay = (parsed.astimezone(UTC) - datetime.now(UTC)).total_seconds()
+    if delay < 0:
+        return 0.0
+    return min(delay, maximum_seconds)

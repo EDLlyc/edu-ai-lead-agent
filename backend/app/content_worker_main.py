@@ -18,6 +18,7 @@ from app.application.services.copy_generation import (
     CopyGenerationExecutor,
     build_copy_version_bundle,
 )
+from app.application.services.material_package import MaterialPackageExecutor
 from app.application.services.topic_selection import TopicSelectionExecutor
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
@@ -27,7 +28,11 @@ from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftGenerator,
     create_zhipu_copy_models,
 )
-from app.infrastructure.ai.factory import create_embedding_model
+from app.infrastructure.ai.factory import (
+    create_brand_ocr_model,
+    create_embedding_model,
+    create_image_generator,
+)
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
 from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
@@ -35,6 +40,7 @@ from app.infrastructure.db.governance_checkpointer import PostgresGovernanceChec
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
+from app.infrastructure.storage.minio_image_store import MinioImageStore
 
 logger = structlog.get_logger()
 
@@ -53,8 +59,10 @@ async def run_content_worker() -> None:
 
     engine = create_engine(settings)
     embedding_client: httpx.AsyncClient | None = None
+    image_client: httpx.AsyncClient | None = None
     exit_stack = AsyncExitStack()
     workers: list[asyncio.Task[None]] = []
+    material_executor: MaterialPackageExecutor | None = None
     stop_task: asyncio.Task[bool] | None = None
     try:
         await exit_stack.__aenter__()
@@ -75,12 +83,27 @@ async def run_content_worker() -> None:
             settings=settings,
             checkpointer=copy_saver,
         )
+        if settings.image_enabled and settings.image_provider_mode != "disabled":
+            if settings.image_provider_mode == "toapis":
+                image_client = httpx.AsyncClient(follow_redirects=False)
+            material_executor = MaterialPackageExecutor(
+                session_factory=session_factory,
+                image_generator=create_image_generator(settings, client=image_client),
+                image_store=MinioImageStore(settings),
+                settings=settings,
+                reference_asset=settings.image_reference_asset,
+            )
         if settings.ai_provider_mode != "disabled":
             if settings.ai_provider_mode == "zhipu":
                 embedding_client = httpx.AsyncClient(follow_redirects=False)
             brand_repository = PostgresBrandKnowledgeRepository(session_factory)
             brand_embeddings = GovernanceEmbeddingBrandAdapter(
                 create_embedding_model(settings, client=embedding_client)
+            )
+            brand_ocr = (
+                create_brand_ocr_model(settings, client=embedding_client)
+                if settings.ai_provider_mode == "zhipu"
+                else None
             )
             brand_executor = BrandIngestionExecutor(
                 repository=brand_repository,
@@ -92,8 +115,10 @@ async def run_content_worker() -> None:
                     chunk_characters=settings.brand_chunk_characters,
                     overlap_characters=settings.brand_chunk_overlap_characters,
                     chunk_version=settings.brand_chunk_version,
+                    sparse_text_threshold=settings.brand_ocr_sparse_text_threshold,
                 ),
                 embeddings=brand_embeddings,
+                ocr=brand_ocr,
                 settings=settings,
             )
             generator: MaterialDraftGenerator
@@ -148,6 +173,7 @@ async def run_content_worker() -> None:
                     executor=executor,
                     brand_executor=brand_executor,
                     copy_executor=copy_executor,
+                    material_executor=material_executor,
                     copy_repository=copy_repository,
                     settings=settings,
                     poll_seconds=settings.content_poll_seconds,
@@ -171,6 +197,8 @@ async def run_content_worker() -> None:
             await asyncio.gather(*workers, return_exceptions=True)
         if embedding_client is not None:
             await embedding_client.aclose()
+        if image_client is not None:
+            await image_client.aclose()
         await exit_stack.aclose()
         await engine.dispose()
         logger.info("content_worker_stopped")
@@ -183,6 +211,7 @@ async def _worker_loop(
     executor: TopicSelectionExecutor,
     brand_executor: BrandIngestionExecutor | None,
     copy_executor: CopyGenerationExecutor,
+    material_executor: MaterialPackageExecutor | None,
     copy_repository: PostgresCopyGenerationRepository,
     settings: Settings,
     poll_seconds: float,
@@ -193,10 +222,13 @@ async def _worker_loop(
             timezone=settings.business_timezone,
             scoring_profile=settings.content_scoring_profile,
             version_bundle=build_copy_version_bundle(settings),
+            max_attempts=settings.content_max_attempts,
         )
         work = [executor.execute_next, copy_executor.execute_next]
         if brand_executor is not None:
             work.insert(1, brand_executor.execute_next)
+        if material_executor is not None:
+            work.append(material_executor.execute_next)
         worked = False
         for offset in range(len(work)):
             candidate = work[(cursor + offset) % len(work)]

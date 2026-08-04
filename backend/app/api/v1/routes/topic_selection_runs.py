@@ -116,6 +116,7 @@ async def read_daily_topic(
         timezone=projection.selection.timezone,
         scoring_version=(config_version if isinstance(config_version, str) else "unknown"),
         scoring_profile=projection.selection.scoring_profile,
+        revision=projection.selection.revision,
         decision=topic_decision_kind(projection.selection.decision_kind),
         run_id=projection.run.id,
         selected_event_id=projection.selection.selected_event_id,

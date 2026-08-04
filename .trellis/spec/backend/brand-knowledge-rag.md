@@ -13,7 +13,7 @@ user or public search role.
 
 ### 2. Signatures
 
-- Migration head: `20260730_0007`.
+- Feature migration: `20260730_0007`; current repository head: `20260803_0014`.
 - Upload: `POST /api/v1/brand-documents` as multipart PDF, DOCX, UTF-8 TXT, or Markdown -> HTTP 202.
 - Query: `GET /api/v1/brand-documents`, `GET /api/v1/brand-documents/{document_id}`, and
   `GET /api/v1/brand-ingestion-jobs/{job_id}`.
@@ -58,7 +58,9 @@ user or public search role.
 Environment keys are `BRAND_UPLOAD_MAX_BYTES`, `BRAND_PARSE_MAX_PAGES`,
 `BRAND_PARSE_MAX_CHARACTERS`, `BRAND_PARSE_MAX_CHUNKS`, `BRAND_CHUNK_CHARACTERS`,
 `BRAND_CHUNK_OVERLAP_CHARACTERS`, `BRAND_PARSER_VERSION`, `BRAND_CHUNK_VERSION`,
-`BRAND_EMBEDDING_INPUT_VERSION`, and `BRAND_RETRIEVAL_VERSION`.
+`BRAND_EMBEDDING_INPUT_VERSION`, `BRAND_RETRIEVAL_VERSION`, `BRAND_OCR_MODEL`,
+`BRAND_OCR_SPARSE_TEXT_THRESHOLD`, `BRAND_OCR_MAX_REQUEST_BYTES`,
+`BRAND_OCR_MAX_RESPONSE_BYTES`, `BRAND_OCR_TIMEOUT_SECONDS`, and `BRAND_OCR_MAX_PAGES`.
 
 The default upload maximum is the hard-bounded 25 MiB so the initial supplied slide decks fit.
 Slide-deck PDFs with partial but representative text layers are accepted without OCR for the MVP;
@@ -69,6 +71,22 @@ signatures/chunks, and unsupported files. Each accepted asset is at most 25 MiB,
 either axis, and 32 million pixels total; discovery stops with an error after 10,000 entries. The
 private manifest output must remain inside the resolved materials root and must not be a symbolic
 link.
+
+### 3.1 Structure-aware chunks and retrieval diversity
+
+The active chunk contract is `brand-chunk-v2-structure-aware`. After text normalization, the parser
+uses the configured maximum chunk size and overlap while preferring, in order, paragraph breaks,
+Markdown block boundaries, sentence endings, and line breaks. It falls back to the hard character
+limit when no boundary is available. Chunk IDs, ordinals, hashes, and offsets remain deterministic,
+and every chunk must satisfy `parsed.text[char_start:char_end] == chunk.text`.
+
+The active retrieval contract is `brand-hybrid-rrf-v2-diverse`. PostgreSQL full-text and pgvector
+each produce bounded candidates, which are fused with the documented weighted RRF scores. A
+deterministic post-fusion selector then keeps rank order while preferring different documents,
+skipping adjacent chunks from the same version, and removing identical text. It first caps the
+number of chunks per document; it relaxes adjacency and duplicate-text constraints, then the
+document cap, only when the available corpus cannot fill `limit`. This improves context coverage
+without changing the evidence-ineligible brand-context boundary.
 
 ### 4. Validation & Error Matrix
 
@@ -101,14 +119,15 @@ link.
 ### 6. Tests Required
 
 - [`test_brand_knowledge.py`](../../../backend/tests/unit/test_brand_knowledge.py) asserts file
-  validation, DOCX rejection, deterministic chunks, exact offsets, metadata fingerprint semantics,
-  character limits, and filename sanitization.
+  validation, DOCX rejection, deterministic structure-aware chunks, sentence fallback, exact
+  offsets, retrieval diversity/fallback behavior, metadata fingerprint semantics, character limits,
+  and filename sanitization.
 - [`test_brand_knowledge_rag.py`](../../../backend/tests/integration/test_brand_knowledge_rag.py)
   uses real PostgreSQL/pgvector and MinIO to assert upload/replay, metadata/provider version splits,
   worker processing, activation, generation-context retrieval, wrong-audience exclusion, and
   deactivation.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260730_0007`, the six brand tables, non-null metadata fingerprint, and non-null provider.
+  `20260803_0014`, the six brand tables, non-null metadata fingerprint, and non-null provider.
 - [`test_brand_asset_manifest.py`](../../../backend/tests/unit/test_brand_asset_manifest.py)
   asserts valid PNG metadata, character tags, sidecar/symlink/invalid-file exclusion, dimension
   limits, and private output-path enforcement.

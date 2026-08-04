@@ -28,7 +28,8 @@ class IntegrationContext:
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def integration_context() -> AsyncIterator[IntegrationContext]:
-    base_settings = Settings()
+    # Integration fixtures must not inherit provider or worker toggles from the developer's .env.
+    base_settings = Settings(_env_file=None)
     base_url = make_url(base_settings.database_url.get_secret_value())
     database_name = f"edu_ai_test_{uuid4().hex}"
     admin_url = base_url.set(drivername="postgresql", database="postgres")
@@ -44,6 +45,7 @@ async def integration_context() -> AsyncIterator[IntegrationContext]:
         config = Config("backend/alembic.ini")
         await asyncio.to_thread(command.upgrade, config, "head")
         settings = Settings(
+            _env_file=None,
             database_url=SecretStr(test_url),
             minio_bucket=f"edu-ai-test-{uuid4().hex}",
             acquisition_first_run_item_limit=1,

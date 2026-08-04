@@ -44,6 +44,85 @@ _VECTOR_WEIGHT = 0.55
 
 
 @dataclass(frozen=True, slots=True)
+class _RankedBrandHit:
+    hit: BrandRetrievalHit
+    ordinal: int
+
+
+def _select_diverse_brand_hits(
+    candidates: Sequence[_RankedBrandHit], *, limit: int
+) -> tuple[BrandRetrievalHit, ...]:
+    """Keep RRF order while using available candidates from different brand sections."""
+    if limit < 1:
+        return ()
+    ordered = sorted(
+        candidates,
+        key=lambda candidate: (
+            -candidate.hit.fused_score,
+            -candidate.hit.vector_score,
+            -candidate.hit.full_text_score,
+            str(candidate.hit.chunk_id),
+        ),
+    )
+    document_cap = max(1, min(2, (limit + 1) // 2))
+    selected: list[_RankedBrandHit] = []
+    selected_ids: set[UUID] = set()
+
+    def add_candidates(
+        *,
+        max_per_document: int | None,
+        avoid_adjacent: bool,
+        avoid_duplicate_text: bool,
+    ) -> None:
+        document_counts: dict[UUID, int] = {}
+        for candidate in selected:
+            document_counts[candidate.hit.document_id] = (
+                document_counts.get(candidate.hit.document_id, 0) + 1
+            )
+        for candidate in ordered:
+            if len(selected) >= limit:
+                return
+            hit = candidate.hit
+            if hit.chunk_id in selected_ids:
+                continue
+            if (
+                max_per_document is not None
+                and document_counts.get(hit.document_id, 0) >= max_per_document
+            ):
+                continue
+            if avoid_duplicate_text and any(existing.hit.text == hit.text for existing in selected):
+                continue
+            if avoid_adjacent and any(
+                existing.hit.document_id == hit.document_id
+                and existing.hit.version_id == hit.version_id
+                and abs(existing.ordinal - candidate.ordinal) <= 1
+                for existing in selected
+            ):
+                continue
+            selected.append(candidate)
+            selected_ids.add(hit.chunk_id)
+            document_counts[hit.document_id] = document_counts.get(hit.document_id, 0) + 1
+
+    # The first pass is intentionally conservative. Later passes are deterministic fallbacks
+    # for a corpus with one document, one section, or repeated OCR output.
+    add_candidates(
+        max_per_document=document_cap,
+        avoid_adjacent=True,
+        avoid_duplicate_text=True,
+    )
+    add_candidates(
+        max_per_document=document_cap,
+        avoid_adjacent=False,
+        avoid_duplicate_text=True,
+    )
+    add_candidates(max_per_document=None, avoid_adjacent=False, avoid_duplicate_text=False)
+
+    rank_by_chunk_id = {candidate.hit.chunk_id: rank for rank, candidate in enumerate(ordered)}
+    selected.sort(key=lambda candidate: rank_by_chunk_id[candidate.hit.chunk_id])
+    return tuple(candidate.hit for candidate in selected)
+
+
+@dataclass(frozen=True, slots=True)
 class BrandDocumentProjection:
     document: BrandDocumentModel
     versions: tuple[BrandDocumentVersionModel, ...]
@@ -332,6 +411,7 @@ async def _find_existing_derivation(
                     BrandDocumentVersionModel.embedding_input_version == embedding_input_version,
                     BrandDocumentVersionModel.embedding_provider == embedding_provider,
                     BrandDocumentVersionModel.embedding_model == embedding_model,
+                    BrandIngestionJobModel.status != BrandIngestionJobStatus.FAILED.value,
                 )
             )
         )
@@ -554,6 +634,15 @@ async def _persist_ingestion(
         raise ValueError("one brand version must use one embedding provider and model")
     version.embedding_provider = next(iter(provider_names))
     version.status = BrandVersionStatus.READY.value
+    version.extraction_method = parsed.extraction_method
+    version.ocr_provider = parsed.ocr_provider
+    version.ocr_model = parsed.ocr_model
+    version.ocr_request_fingerprint = parsed.ocr_request_fingerprint
+    version.ocr_provider_request_id = parsed.ocr_provider_request_id
+    version.ocr_page_count = parsed.ocr_page_count
+    version.ocr_prompt_tokens = parsed.ocr_prompt_tokens
+    version.ocr_completion_tokens = parsed.ocr_completion_tokens
+    version.ocr_latency_ms = parsed.ocr_latency_ms
     version.page_count = parsed.page_count
     version.character_count = len(parsed.text)
     version.chunk_count = len(embeddings)
@@ -580,11 +669,27 @@ async def _persist_ingestion(
         "page_count": parsed.page_count,
         "character_count": len(parsed.text),
         "chunk_count": len(embeddings),
+        "extraction_method": parsed.extraction_method,
         "embedding_provider": version.embedding_provider,
         "embedding_model": version.embedding_model,
     }
+    _add_ocr_safe_metadata(attempt.safe_metadata, parsed)
     await session.commit()
     return True
+
+
+def _add_ocr_safe_metadata(metadata: dict[str, object], parsed: ParsedBrandDocument) -> None:
+    fields = {
+        "ocr_provider": parsed.ocr_provider,
+        "ocr_model": parsed.ocr_model,
+        "ocr_request_fingerprint": parsed.ocr_request_fingerprint,
+        "ocr_provider_request_id": parsed.ocr_provider_request_id,
+        "ocr_page_count": parsed.ocr_page_count,
+        "ocr_prompt_tokens": parsed.ocr_prompt_tokens,
+        "ocr_completion_tokens": parsed.ocr_completion_tokens,
+        "ocr_latency_ms": parsed.ocr_latency_ms,
+    }
+    metadata.update({key: value for key, value in fields.items() if value is not None})
 
 
 async def _fail_ingestion(
@@ -891,39 +996,34 @@ async def retrieve_brand_context(
         data_by_chunk[chunk.id] = (chunk, document, version)
         vector_score[chunk.id] = max(-1.0, min(1.0, 1.0 - float(raw_distance)))
         vector_rank[chunk.id] = rank
-    hits: list[BrandRetrievalHit] = []
+    ranked_hits: list[_RankedBrandHit] = []
     for chunk_id, (chunk, document, version) in data_by_chunk.items():
         fused = 0.0
         if chunk_id in fts_rank:
             fused += _FULL_TEXT_WEIGHT / (_RRF_K + fts_rank[chunk_id])
         if chunk_id in vector_rank:
             fused += _VECTOR_WEIGHT / (_RRF_K + vector_rank[chunk_id])
-        hits.append(
-            BrandRetrievalHit(
-                chunk_id=chunk.id,
-                document_id=document.id,
-                version_id=version.id,
-                document_title=document.title,
-                document_kind=BrandDocumentKind(document.document_kind),
-                audience=BrandAudience(document.audience),
-                text=chunk.text,
-                tone_tags=_string_tuple(version.tone_tags),
-                safety_tags=_string_tuple(version.safety_tags),
-                visual_tags=_string_tuple(version.visual_tags),
-                full_text_score=fts_score.get(chunk_id, 0.0),
-                vector_score=vector_score.get(chunk_id, 0.0),
-                fused_score=fused,
+        ranked_hits.append(
+            _RankedBrandHit(
+                ordinal=chunk.ordinal,
+                hit=BrandRetrievalHit(
+                    chunk_id=chunk.id,
+                    document_id=document.id,
+                    version_id=version.id,
+                    document_title=document.title,
+                    document_kind=BrandDocumentKind(document.document_kind),
+                    audience=BrandAudience(document.audience),
+                    text=chunk.text,
+                    tone_tags=_string_tuple(version.tone_tags),
+                    safety_tags=_string_tuple(version.safety_tags),
+                    visual_tags=_string_tuple(version.visual_tags),
+                    full_text_score=fts_score.get(chunk_id, 0.0),
+                    vector_score=vector_score.get(chunk_id, 0.0),
+                    fused_score=fused,
+                ),
             )
         )
-    hits.sort(
-        key=lambda hit: (
-            -hit.fused_score,
-            -hit.vector_score,
-            -hit.full_text_score,
-            str(hit.chunk_id),
-        )
-    )
-    return tuple(hits[:limit])
+    return _select_diverse_brand_hits(ranked_hits, limit=limit)
 
 
 def _string_tuple(values: object) -> tuple[str, ...]:

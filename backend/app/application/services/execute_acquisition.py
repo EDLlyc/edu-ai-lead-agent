@@ -27,6 +27,7 @@ from app.core.errors import (
 )
 from app.domain.entities import DiscoveredItem
 from app.domain.enums import JobStatus, ObservationOutcome
+from app.domain.freshness import FreshnessDecision, evaluate_publication_freshness
 from app.domain.title_relevance import (
     TITLE_RELEVANCE_RULE_VERSION,
     TitleRelevanceResult,
@@ -47,6 +48,7 @@ class AcquisitionExecutor:
         *,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[], float] = random.random,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._repository = repository
         self._fetcher = fetcher
@@ -54,6 +56,7 @@ class AcquisitionExecutor:
         self._settings = settings
         self._sleep = sleep
         self._jitter = jitter
+        self._clock = clock
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -68,6 +71,7 @@ class AcquisitionExecutor:
         unchanged_count = 0
         duplicate_count = 0
         filtered_count = 0
+        freshness_filtered_count = 0
         scanned_count = 0
         relevant_count = 0
         deferred_relevant_count = 0
@@ -88,6 +92,7 @@ class AcquisitionExecutor:
                 raise TransientFetchError("source_busy", "source already has an active fetch")
             self._ensure_lease(lease_lost)
             cursor = await self._repository.cursor(claimed.profile.source_version_id)
+            await self._wait_for_source_request(claimed, lease_lost)
             list_response = await self._fetcher.fetch(
                 claimed.profile.entry_url,
                 claimed.profile,
@@ -131,6 +136,7 @@ class AcquisitionExecutor:
                 scanned_count = len(scanned_items)
                 accepted_items: list[tuple[DiscoveredItem, TitleRelevanceResult | None]]
                 accepted_items = []
+                freshness_evaluated_at = self._clock()
                 if claimed.profile.relevance_rule_version is None:
                     relevant_count = scanned_count
                     deferred_relevant_count = max(0, relevant_count - accepted_limit)
@@ -147,18 +153,57 @@ class AcquisitionExecutor:
                         if relevance.is_relevant
                     ]
                     relevant_count = len(relevant_items)
-                    filtered_count = scanned_count - relevant_count
-                    accepted_items.extend(relevant_items[:accepted_limit])
-                    deferred_relevant_count = relevant_count - len(accepted_items)
+                    title_filtered_count = scanned_count - relevant_count
+                    fresh_relevant_items: list[tuple[DiscoveredItem, TitleRelevanceResult]] = []
+                    for item, relevance in relevant_items:
+                        freshness = evaluate_publication_freshness(
+                            item.published_at,
+                            evaluated_at=freshness_evaluated_at,
+                            max_age_days=self._settings.acquisition_freshness_window_days,
+                        )
+                        if freshness.status == "stale":
+                            freshness_filtered_count += 1
+                            filtered_count += 1
+                            await self._repository.observe(
+                                claimed=claimed,
+                                source_item_id=item.source_item_id,
+                                outcome=ObservationOutcome.STALE,
+                                metadata=_freshness_metadata(freshness),
+                            )
+                            continue
+                        fresh_relevant_items.append((item, relevance))
+                    filtered_count += title_filtered_count
+                    accepted_items.extend(fresh_relevant_items[:accepted_limit])
+                    deferred_relevant_count = len(fresh_relevant_items) - len(accepted_items)
                     if relevant_count == 0:
                         job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
 
-                for item, relevance in accepted_items:
-                    # The list request is also a source request, so the first
-                    # detail fetch must respect the same inter-request rate.
-                    if claimed.profile.rate_limit_seconds > 0:
-                        await self._sleep(claimed.profile.rate_limit_seconds)
-                    self._ensure_lease(lease_lost)
+                # Discovery dates are authoritative enough to skip stale detail requests. An
+                # unknown date is retained for the bounded detail fetch so the connector can try
+                # to resolve it; unknown remains excluded if the detail page also has no date.
+                prechecked_items: list[tuple[DiscoveredItem, TitleRelevanceResult | None]] = []
+                for item, relevance_value in accepted_items:
+                    freshness = evaluate_publication_freshness(
+                        item.published_at,
+                        evaluated_at=freshness_evaluated_at,
+                        max_age_days=self._settings.acquisition_freshness_window_days,
+                    )
+                    if freshness.status == "stale":
+                        if claimed.profile.relevance_rule_version is None:
+                            freshness_filtered_count += 1
+                            filtered_count += 1
+                            await self._repository.observe(
+                                claimed=claimed,
+                                source_item_id=item.source_item_id,
+                                outcome=ObservationOutcome.STALE,
+                                metadata=_freshness_metadata(freshness),
+                            )
+                        continue
+                    prechecked_items.append((item, relevance_value))
+                accepted_items = prechecked_items
+
+                for item, relevance_value in accepted_items:
+                    await self._wait_for_source_request(claimed, lease_lost)
                     detail_response = await self._fetcher.fetch(item.url, claimed.profile)
                     self._ensure_lease(lease_lost)
                     byte_count += len(detail_response.body)
@@ -175,11 +220,16 @@ class AcquisitionExecutor:
                         stored=stored_detail,
                     )
                     document = connector.extract(detail_response, item, claimed.profile)
+                    freshness = evaluate_publication_freshness(
+                        document.published_at,
+                        evaluated_at=freshness_evaluated_at,
+                        max_age_days=self._settings.acquisition_freshness_window_days,
+                    )
                     relevance_metadata: dict[str, object] = {}
-                    if relevance is not None:
+                    if relevance_value is not None:
                         relevance_metadata = {
-                            "relevance_rule_version": relevance.rule_version,
-                            "matched_title_terms": list(relevance.matched_terms),
+                            "relevance_rule_version": relevance_value.rule_version,
+                            "matched_title_terms": list(relevance_value.matched_terms),
                         }
                         document = replace(
                             document,
@@ -188,6 +238,22 @@ class AcquisitionExecutor:
                                 **relevance_metadata,
                             },
                         )
+                    if freshness.status != "fresh":
+                        freshness_filtered_count += 1
+                        filtered_count += 1
+                        await self._repository.observe(
+                            claimed=claimed,
+                            source_item_id=item.source_item_id,
+                            outcome=(
+                                ObservationOutcome.STALE
+                                if freshness.status == "stale"
+                                else ObservationOutcome.FRESHNESS_UNKNOWN
+                            ),
+                            snapshot_id=snapshot_id,
+                            http_status=detail_response.status_code,
+                            metadata={**relevance_metadata, **_freshness_metadata(freshness)},
+                        )
+                        continue
                     persisted = await self._repository.save_candidate(
                         claimed=claimed,
                         profile=claimed.profile,
@@ -220,6 +286,15 @@ class AcquisitionExecutor:
                         "deferred_relevant_count": deferred_relevant_count,
                         "relevance_rule_version": claimed.profile.relevance_rule_version,
                     }
+                    if freshness_filtered_count:
+                        filter_metadata.update(
+                            {
+                                "freshness_filtered_count": freshness_filtered_count,
+                                "freshness_window_days": (
+                                    self._settings.acquisition_freshness_window_days
+                                ),
+                            }
+                        )
                     if relevant_count == 0:
                         await self._repository.observe(
                             claimed=claimed,
@@ -309,8 +384,14 @@ class AcquisitionExecutor:
             retry_at = None
             status = JobStatus.FAILED
             if should_retry:
-                delay = min(300.0, 2 ** (claimed.attempt_number - 1) + self._jitter())
-                retry_at = datetime.now(UTC) + timedelta(seconds=delay)
+                delay = (
+                    error.retry_after_seconds if isinstance(error, TransientFetchError) else None
+                )
+                if delay is None:
+                    delay = min(300.0, 2 ** (claimed.attempt_number - 1) + self._jitter())
+                else:
+                    delay = min(self._settings.acquisition_max_retry_after_seconds, delay)
+                retry_at = self._clock() + timedelta(seconds=delay)
                 status = JobStatus.RETRY_SCHEDULED
             completed = await self._repository.complete_job(
                 claimed=claimed,
@@ -393,6 +474,17 @@ class AcquisitionExecutor:
         if lease_lost.is_set():
             raise LeaseLostError()
 
+    async def _wait_for_source_request(
+        self, claimed: ClaimedJob, lease_lost: asyncio.Event
+    ) -> None:
+        delay = await self._repository.reserve_source_request_slot(
+            claimed=claimed,
+            minimum_interval_seconds=claimed.profile.rate_limit_seconds,
+        )
+        if delay > 0:
+            await self._sleep(delay)
+        self._ensure_lease(lease_lost)
+
     async def _heartbeat_loop(
         self, claimed: ClaimedJob, stop: asyncio.Event, lease_lost: asyncio.Event
     ) -> None:
@@ -436,3 +528,13 @@ def _outcome_for_error(error: AppError) -> ObservationOutcome:
     if isinstance(error, PermanentFetchError):
         return ObservationOutcome.PERMANENT_FETCH_FAILURE
     return ObservationOutcome.PERMANENT_FETCH_FAILURE
+
+
+def _freshness_metadata(decision: FreshnessDecision) -> dict[str, object]:
+    # Keep the persisted audit projection small and content-free.
+    return {
+        "freshness_rule_version": decision.rule_version,
+        "freshness_reason": decision.reason_code,
+        "cutoff_at": decision.cutoff_at.isoformat(),
+        "published_at": decision.published_at.isoformat() if decision.published_at else None,
+    }

@@ -18,6 +18,49 @@ from app.domain.brand_knowledge import (
     ParsedBrandDocument,
     ValidatedBrandUpload,
 )
+from app.domain.value_objects import is_sha256_hex
+
+
+@dataclass(frozen=True, slots=True)
+class BrandDocumentOcrRequest:
+    version_id: UUID
+    input_hash: str
+    media_type: str
+    page_count: int
+    original_bytes: bytes
+
+    def __post_init__(self) -> None:
+        if not is_sha256_hex(self.input_hash):
+            raise ValueError("OCR input hash must be a SHA-256 digest")
+        if self.media_type != "application/pdf":
+            raise ValueError("brand OCR accepts PDF input only")
+        if self.page_count < 1 or not self.original_bytes:
+            raise ValueError("brand OCR input metadata is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class BrandDocumentOcrResult:
+    markdown: str
+    provider: str
+    model: str
+    request_fingerprint: str
+    provider_request_id: str | None
+    page_count: int
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.markdown.strip() or not self.provider.strip() or not self.model.strip():
+            raise ValueError("brand OCR result identity and text must not be blank")
+        if not self.request_fingerprint.strip() or self.page_count < 1:
+            raise ValueError("brand OCR result metadata is invalid")
+        if min(self.prompt_tokens, self.completion_tokens, self.latency_ms) < 0:
+            raise ValueError("brand OCR usage counters must not be negative")
+
+    @property
+    def text(self) -> str:
+        return self.markdown
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +91,10 @@ class BrandDocumentParser(Protocol):
     def chunk(
         self, *, version_id: UUID, document: ParsedBrandDocument
     ) -> tuple[BrandChunk, ...]: ...
+
+
+class BrandDocumentOcrModel(Protocol):
+    async def parse_document(self, request: BrandDocumentOcrRequest) -> BrandDocumentOcrResult: ...
 
 
 class BrandEmbeddingModel(Protocol):

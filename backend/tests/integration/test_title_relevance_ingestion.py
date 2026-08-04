@@ -171,7 +171,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
     assert job.outcome == "succeeded"
     assert job.filtered_count == 1
     assert fetcher.requested_urls == [entry_url, records[1]["URL"]]
-    assert sleep_calls == [SOURCE_SEEDS[0].rate_limit_seconds]
+    assert sleep_calls == pytest.approx([SOURCE_SEEDS[0].rate_limit_seconds], abs=0.2)
 
     async with integration_context.session_factory() as session:
         cursor = await session.get(SourceCursorModel, SOURCE_SEEDS[0].source_version_id)

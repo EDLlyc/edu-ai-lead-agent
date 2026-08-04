@@ -23,6 +23,15 @@ class BrandVersionResponse(BaseModel):
     tone_tags: list[str]
     safety_tags: list[str]
     visual_tags: list[str]
+    extraction_method: str | None
+    ocr_provider: str | None
+    ocr_model: str | None
+    ocr_request_fingerprint: str | None
+    ocr_provider_request_id: str | None
+    ocr_page_count: int | None
+    ocr_prompt_tokens: int | None
+    ocr_completion_tokens: int | None
+    ocr_latency_ms: int | None
     parser_version: str
     chunk_version: str
     embedding_input_version: str

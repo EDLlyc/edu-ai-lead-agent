@@ -120,6 +120,73 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
+async def test_provisional_no_topic_can_be_superseded_once(
+    integration_context: IntegrationContext,
+) -> None:
+    suffix = uuid4().hex[:12]
+    config = TopicScoringConfig(
+        version=f"scoring-v1-preview-recovery-{suffix}",
+        profile=f"preview-recovery-{suffix}",
+    )
+    business_date = date(2098, 8, 2)
+    old_cutoff = datetime(2026, 8, 3, 1, 0, tzinfo=UTC)
+    new_cutoff = datetime(2026, 8, 3, 2, 0, tzinfo=UTC)
+    async with integration_context.session_factory() as session:
+        first, created = await enqueue_topic_selection_run(
+            session,
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=old_cutoff,
+            trigger="scheduled",
+        )
+        assert created is True
+        claimed = await claim_topic_selection_job(
+            session,
+            run_id=first.id,
+            worker_id="topic-recovery-worker",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed is not None
+        decision = select_daily_topic((), as_of=old_cutoff, config=config)
+        assert await persist_topic_selection_decision(
+            session,
+            claimed=claimed,
+            config=config,
+            decision=decision,
+        )
+        assert await complete_topic_selection_job(session, claimed=claimed)
+
+        second, recovery_created = await enqueue_topic_selection_run(
+            session,
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=new_cutoff,
+            trigger="scheduled",
+        )
+        replay, replay_created = await enqueue_topic_selection_run(
+            session,
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=new_cutoff,
+            trigger="scheduled",
+        )
+        old = await get_topic_selection_run(session, first.id)
+
+    assert recovery_created is True
+    assert second.id != first.id
+    assert second.revision == first.revision + 1
+    assert replay_created is False
+    assert replay.id == second.id
+    assert old.superseded_at is not None
+    assert old.superseded_by_run_id == second.id
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
 async def test_expired_topic_job_stops_after_the_configured_attempt_limit(
     integration_context: IntegrationContext,
 ) -> None:

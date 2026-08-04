@@ -10,7 +10,7 @@ produces at most one locked topic for a business date and scoring profile. It do
 re-summarize, retrieve brand knowledge, call a model for the numeric score, generate copy/images,
 or publish content.
 
-The implemented preview is `scoring-v1-preview.1`. It is safe for the functional MVP and internal
+The implemented preview is `scoring-v1-preview.2`. It is safe for the functional MVP and internal
 demonstration, but its numeric weights and threshold remain subject to a later labeled calibration
 task before a production scoring profile is activated.
 
@@ -31,17 +31,21 @@ task before a production scoring profile is activated.
 
 ### 3. Contracts
 
-- One run owns `(business_date, timezone, scoring_profile)`. Re-enqueueing the same immutable
-  config returns the existing run; a different config for that key raises a conflict.
+- A current run owns `(business_date, timezone, scoring_profile)` while historical revisions retain
+  the same date/profile. Re-enqueueing the same immutable config returns the current run; a
+  provisional `no_topic`/`all_vetoed` run may be superseded once by a later governed cutoff.
+- Both scheduled and manual enqueue require a terminal acquisition run and terminal governance run
+  with no queued, running, or retry-scheduled governance jobs. An unready request returns a typed
+  HTTP 409 and creates no topic-selection run.
 - A scoring config is immutable by `(profile, version)` and stores its canonical JSON snapshot and
   SHA-256 fingerprint. Historical responses read the run snapshot, not current process settings.
-- `scoring-v1-preview.1` normalizes source trust/diversity, AI relevance, parent relevance,
+- `scoring-v1-preview.2` normalizes source trust/diversity, AI relevance, parent relevance,
   freshness, and communication potential; theme repetition, controversy, and marketing risk are
   explicit penalties. Positive weights sum to one.
 - Hard vetoes are independent of the numeric total: unresolved governance, ineligible evidence,
   Tier-C-only evidence, unverified information, unsuitable negative incidents, privacy/legal/safety
   uncertainty, prohibited marketing claims, a selection inside the seven-day business-date
-  window, and an event older than the configured 14-day freshness window.
+  window, and an event older than the configured 10-day freshness window.
 - Stable ordering is eligible group, total, source trust, event time, then UUID. Every considered
   event receives a persisted rank even when vetoed or below threshold.
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database

@@ -6,10 +6,10 @@ This guide translates the workflow in [`main.tex`](../../../main.tex) and the ge
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf) into a testable implementation contract. Three
 capabilities now exist: authoritative-source acquisition, versioned factual governance and
 auditable event organization, deterministic daily Top 1/`no_topic` selection, private versioned
-brand retrieval, and preview evidence-bound copy generation/audit. Material-package delivery
-remains prospective. Automated publishing is prohibited. The copy path is functional and has one
-controlled live structured draft/audit with manually reviewed bindings, but remains a preview
-product policy pending broader labeled calibration and internal copy review.
+brand retrieval, preview evidence-bound copy generation/audit, and versioned material-package
+delivery. Automated publishing is prohibited. The copy path is functional and has one controlled
+live structured draft/audit with manually reviewed bindings, while remaining a preview product
+policy pending broader labeled calibration and internal copy review.
 
 The term “Agent” does not imply one autonomous prompt. The pipeline is an orchestrated sequence of
 typed, observable stages with deterministic gates around model calls.
@@ -196,7 +196,7 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.1` keeps numeric ranges, weights, penalties, the threshold,
+The implemented `scoring-v1-preview.2` keeps numeric ranges, weights, penalties, the threshold,
 veto version, and tie-break order in an immutable persisted configuration. It has controlled tests
 and a real-event demonstration, but remains a preview profile until a later labeled calibration
 and explicit product approval create a new production configuration.
@@ -255,11 +255,15 @@ Brand chunks can support tone or brand statements, not external facts.
 Deterministic validation runs first and returns typed issue codes with field/claim locations. It
 checks schema, required fields, evidence coverage, source tiers, source URLs, banned phrases,
 lengths, date consistency, repeated-topic state, privacy/policy rules, image restrictions, and the
-manual-publishing boundary.
+manual-publishing boundary. The parent-facing copy must use plain Chinese, explain why learning
+science/innovation/AI/robotics is useful without grade or career promises, explain why the learning
+experience belongs at Sai Xiansheng using supplied brand context, and end with a separate line of
+two or three hashtags whose first tag is always `#赛先生科学`.
 
-Only a deterministically valid draft proceeds to LLM audit. The auditor judges unsupported
-implication, exaggeration, anxiety-inducing language, parent usefulness, brand fit, and image-prompt
-risk against the supplied artifacts. It returns a typed verdict such as:
+Only a deterministically valid draft proceeds to LLM audit. The auditor judges parent readability,
+learning value, the concrete Sai Xiansheng reason, unsupported implication, exaggeration,
+anxiety-inducing language, brand fit, hashtag quality, and image-prompt risk against the supplied
+artifacts. It returns a typed verdict such as:
 
 ```python
 class AuditIssue(BaseModel):
@@ -292,8 +296,11 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Version selection: `build_copy_version_bundle(settings, scoring_profile=<effective profile>)`.
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
-- Preview profiles: `preview` and `preview-v1`; durable rule version: `preview-v1`.
-- Strict profiles use `COPY_RULE_VERSION`, currently `moments-rules-v2`.
+- Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current durable rule version is
+  `preview-v2`. `preview-v1` remains available for historical behavior.
+- Strict profiles use `COPY_RULE_VERSION`, currently `moments-rules-v3-parent-language`.
+- Current copy versions: generator `moments-generator-v8-parent-language`, auditor
+  `moments-auditor-v8-parent-language`, and pipeline `copy-pipeline-v8-parent-language`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -306,9 +313,11 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   the claimed run's durable `CopyVersionBundle`. Perform this check before deterministic policy,
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
-- Preview deterministic policy converts only `unverified_superlative` and
-  `incomplete_sentence` to warnings. Deterministic evidence/binding, factual, privacy, injection,
-  anxiety, publishing, image, and prohibited-marketing findings remain errors.
+- Preview-v1 deterministic policy converts only `unverified_superlative` and `incomplete_sentence`
+  to warnings. Preview-v2 retains those two historical warnings and additionally converts only
+  `claim_not_in_copy` and `source_note_unlinked` to warnings. Deterministic evidence/binding,
+  factual, privacy, injection, anxiety, publishing, image, prohibited-marketing, and hashtag
+  findings remain errors under both preview versions.
 - Preview LLM audit may convert brand tone/fit, fluency, ordinary promotional language, and the
   typed `exaggeration` / `marketing_exaggeration` quality codes to warnings.
   `unsupported_implication` and every factual or safety issue remain blocking errors.
@@ -323,7 +332,8 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 
 | Condition | Required result |
 |---|---|
-| Preview draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
+| Preview-v1 draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
+| Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Preview audit returns brand tone, fluency, or ordinary marketing exaggeration | Persist warning; accept when no error remains |
 | Audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
 | Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
@@ -456,6 +466,7 @@ deterministic validation as if it were a network timeout.
 | Unsafe prompt or provider output | Typed `review_required`/`failed` state before package readiness |
 | Provider returns non-HTTPS URL, redirect, or wrong host | Reject download, fail the attempt |
 | Returned content type not allowlisted / size or dimensions wrong | Reject, do not store |
+| ToAPIs JSON has top-level code `quota_not_enough` or `insufficient_quota` | Raise non-retryable `ImageProviderQuotaError`; persist only the typed error code, never the response body |
 | 429/503 during polling | Honor `Retry-After`, retry within the 120s window |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
 | `TOAPIS_API_KEY` missing in `toapis` mode | Startup fails closed |
@@ -496,11 +507,104 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
                          width=1024, height=1024)  # no URL persisted
 ```
 
+## Scenario: Versioned material package reservation and manual reuse
+
+### 1. Scope / Trigger
+
+- Trigger: an accepted copy-generation run is requested as a one-image material package.
+- This cross-layer contract covers API reservation, content-worker execution, private MinIO
+  storage, package snapshots, frontend polling, and manual reuse.
+- `no_topic`, failed, review-required, or otherwise unaccepted copy runs never call the image
+  provider and never become a ready package.
+
+### 2. Signatures
+
+- `POST /api/v1/material-packages` with `{copy_generation_run_id, reviewer}` returns HTTP 202 and
+  a queued package. The handler calls `enqueue_material_package`; it does not call an image
+  provider.
+- `GET /api/v1/material-packages` and `GET /api/v1/material-packages/{package_id}` expose status,
+  topic, copy, sources, brand bindings, validation, audit, image metadata, and version snapshots.
+- `GET /api/v1/material-packages/{package_id}/download` returns an attachment-friendly JSON
+  package with `download_kind="material_package_json"`; it never exposes MinIO bucket/object keys.
+- `GET /api/v1/material-packages/{package_id}/image` streams only a succeeded image through a
+  relative API URL. `POST .../{package_id}/review` records an internal approval/rejection.
+- `MaterialPackageExecutor.execute_next(worker_id)` claims one reservation using a lease and
+  writes one `ImageArtifactModel` plus one `MaterialPackageModel` result.
+
+### 3. Contracts
+
+- The image request fingerprint includes run, accepted draft, prompt, provider/model, prompt and
+  pipeline versions, and reference-image SHA-256. Both image and package tables enforce unique
+  fingerprints; a replay returns the durable reservation without a second successful row.
+- The package snapshot stores selected topic/explanation, copy and claims, source/evidence
+  bindings, brand bindings, validation/audit results, and package/copy/image version metadata.
+- A successful image row stores provider/model, dimensions, media type, byte size, SHA-256, safe
+  provider IDs, and `{access:"private", immutable:true, content_addressed:true}`. MinIO remains
+  private; object keys and signed URLs do not cross the API boundary.
+- `content-worker` must receive image provider settings and a read-only brand reference mount.
+  `IMAGE_ENABLED=true` with a disabled provider fails closed at settings validation.
+- The frontend `features/material` feature polls only queued/running packages and provides copy,
+  image download, JSON package download, evidence/audit display, and internal review controls.
+  It provides no social publishing operation.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Run is missing, not accepted, or its draft failed validation/audit | Conflict; no reservation/provider call |
+| Same fingerprint is submitted again | Return the existing durable package/image reservation |
+| API reservation succeeds | Return queued status; provider call remains in content worker |
+| Provider identity/output/dimensions/storage validation fails | Retry only classified transient errors; otherwise image `review_required` or `failed`, package not ready |
+| Worker lease expires | Another worker may reclaim; stale worker cannot persist success |
+| Image succeeds | Store one private content-addressed object, mark package `awaiting_manual_use`, expose relative download URLs |
+| JSON package is downloaded | Include safe snapshots and metadata; omit bucket, object key, signed URL, credentials, and raw provider response |
+| Review is rejected | Mark package rejected; never interpret rejection as an automatic publish action |
+
+### 5. Good / Base / Bad Cases
+
+- Good: an accepted draft creates one queued reservation, the worker writes one 1024x1024 private
+  object and package snapshot, and an internal user copies/downloads it after review.
+- Base: a fake image provider produces deterministic bytes offline; replaying the same request
+  returns the same queued/succeeded artifact.
+- Bad: generate in the API handler, create a package for `review_required`, persist an expiring
+  provider URL, expose MinIO internals, or add a “publish now” control.
+
+### 6. Tests Required
+
+- [`test_material_package.py`](../../../backend/tests/unit/test_material_package.py) asserts
+  enqueue-only behavior, accepted-draft gating, provider rejection, lease-safe persistence, and
+  safe JSON projections.
+- [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
+  `20260803_0014`, worker columns, package snapshots, constraints, and unique indexes; MinIO
+  integration asserts content-addressed immutable storage.
+- Frontend mapper/component tests assert response mapping, queued/failed states, copy/download
+  feedback, provenance/audit display, polling termination, and no publishing action.
+- A controlled PostgreSQL/MinIO worker integration should assert concurrent same-fingerprint
+  reservations and reclaim after lease expiry; live provider calls remain opt-in only.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+image = await image_generator.generate(request)  # inside POST /material-packages
+return MaterialPackageResponse(image=save_public_url(image.url))
+```
+
+#### Correct
+
+```python
+reservation = await enqueue_material_package(session_factory=factory, run_id=run_id)
+# content-worker later claims the durable reservation and calls the provider
+await material_executor.execute_next(worker_id)
+```
+
 ## Material package boundary
 
 The accepted package contains the selected topic, generated date, copy, parent takeaway,
 interaction prompt, image artifact, human-readable source links, machine-readable claim bindings,
-and validation/audit metadata. The API may expose copy and download operations or URLs.
+and validation/audit metadata. The API exposes copy, image, and JSON package download operations
+through controlled relative URLs.
 
 There is no automatic social-publishing stage. Do not add social credentials, publishing SDKs,
 scheduled posts, or a “publish now” API. Sales staff remain responsible for reviewing and manually

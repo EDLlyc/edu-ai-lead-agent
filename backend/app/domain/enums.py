@@ -42,3 +42,5 @@ class ObservationOutcome(StrEnum):
     PARSE_FAILURE = "parse_failure"
     FILTERED = "filtered"
     NO_RELEVANT_ITEMS = "no_relevant_items"
+    STALE = "stale"
+    FRESHNESS_UNKNOWN = "freshness_unknown"

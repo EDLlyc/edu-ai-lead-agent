@@ -280,6 +280,7 @@ class SourceFetchLeaseModel(Base):
     lease_owner: Mapped[str] = mapped_column(String(200), nullable=False)
     lease_token: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_request_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1342,6 +1343,7 @@ class TopicSelectionRunModel(Base):
     business_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str] = mapped_column(String(80), nullable=False)
     scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     config_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
@@ -1374,6 +1376,16 @@ class TopicSelectionRunModel(Base):
         nullable=True,
     )
     no_topic_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_topic_selection_runs_superseded_by_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     total_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     eligible_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(
@@ -1398,6 +1410,7 @@ class TopicSelectionRunModel(Base):
         ),
         CheckConstraint("total_scores >= 0", name="ck_topic_selection_runs_total_scores"),
         CheckConstraint("eligible_scores >= 0", name="ck_topic_selection_runs_eligible_scores"),
+        CheckConstraint("revision >= 1", name="ck_topic_selection_runs_revision"),
         CheckConstraint(
             "(selected_event_id IS NULL) = (selected_event_version_id IS NULL)",
             name="ck_topic_selection_runs_selected_pair",
@@ -1412,7 +1425,8 @@ class TopicSelectionRunModel(Base):
             "business_date",
             "timezone",
             "scoring_profile",
-            name="uq_topic_selection_runs_business_key",
+            "revision",
+            name="uq_topic_selection_runs_business_revision",
         ),
         ForeignKeyConstraint(
             ["selected_event_version_id", "selected_event_id"],
@@ -1530,6 +1544,7 @@ class DailyTopicSelectionModel(Base):
     business_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str] = mapped_column(String(80), nullable=False)
     scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     run_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
@@ -1569,6 +1584,16 @@ class DailyTopicSelectionModel(Base):
         nullable=True,
     )
     no_topic_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_by_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_daily_topic_selections_superseded_by_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -1590,12 +1615,6 @@ class DailyTopicSelectionModel(Base):
             "AND selected_event_version_id IS NULL AND no_topic_code IS NOT NULL)",
             name="ck_daily_topic_selections_decision",
         ),
-        UniqueConstraint(
-            "business_date",
-            "timezone",
-            "scoring_profile",
-            name="uq_daily_topic_selections_business_key",
-        ),
         UniqueConstraint("run_id", name="uq_daily_topic_selections_run_id"),
         ForeignKeyConstraint(
             ["selected_event_version_id", "selected_event_id"],
@@ -1604,6 +1623,14 @@ class DailyTopicSelectionModel(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_daily_topic_selections_selected_event", "selected_event_id", "business_date"),
+        Index(
+            "uq_daily_topic_selections_current_business_key",
+            "business_date",
+            "timezone",
+            "scoring_profile",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
     )
 
 
@@ -1685,6 +1712,15 @@ class BrandDocumentVersionModel(Base):
     tone_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     safety_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     visual_tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    extraction_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ocr_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    ocr_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    ocr_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ocr_provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ocr_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ocr_prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ocr_completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ocr_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     character_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -1699,6 +1735,32 @@ class BrandDocumentVersionModel(Base):
     __table_args__ = (
         CheckConstraint("version >= 1", name="ck_brand_document_versions_version"),
         CheckConstraint("byte_size > 0", name="ck_brand_document_versions_byte_size"),
+        CheckConstraint(
+            "extraction_method IS NULL OR extraction_method IN ('local', 'ocr')",
+            name="ck_brand_document_versions_extraction_method",
+        ),
+        CheckConstraint(
+            "ocr_page_count IS NULL OR ocr_page_count BETWEEN 1 AND 100",
+            name="ck_brand_document_versions_ocr_page_count",
+        ),
+        CheckConstraint(
+            "ocr_prompt_tokens IS NULL OR ocr_prompt_tokens BETWEEN 0 AND 10000000",
+            name="ck_brand_document_versions_ocr_prompt_tokens",
+        ),
+        CheckConstraint(
+            "ocr_completion_tokens IS NULL OR ocr_completion_tokens BETWEEN 0 AND 10000000",
+            name="ck_brand_document_versions_ocr_completion_tokens",
+        ),
+        CheckConstraint(
+            "ocr_latency_ms IS NULL OR ocr_latency_ms BETWEEN 0 AND 3600000",
+            name="ck_brand_document_versions_ocr_latency_ms",
+        ),
+        CheckConstraint(
+            "extraction_method IS NULL OR extraction_method = 'local' OR "
+            "(ocr_provider IS NOT NULL AND ocr_model IS NOT NULL AND "
+            "ocr_request_fingerprint IS NOT NULL AND ocr_page_count IS NOT NULL)",
+            name="ck_brand_document_versions_ocr_metadata",
+        ),
         CheckConstraint(
             "embedding_dimensions = 2048", name="ck_brand_document_versions_dimensions"
         ),
@@ -1721,7 +1783,8 @@ class BrandDocumentVersionModel(Base):
             "document_id", "version", name="uq_brand_document_versions_document_version"
         ),
         UniqueConstraint("id", "document_id", name="uq_brand_document_versions_id_document"),
-        UniqueConstraint(
+        Index(
+            "uq_brand_document_versions_derivation",
             "document_id",
             "sha256",
             "metadata_fingerprint",
@@ -1730,7 +1793,8 @@ class BrandDocumentVersionModel(Base):
             "embedding_input_version",
             "embedding_provider",
             "embedding_model",
-            name="uq_brand_document_versions_derivation",
+            unique=True,
+            postgresql_where=text("status <> 'failed'"),
         ),
         Index(
             "uq_brand_document_versions_one_active",
@@ -1739,6 +1803,12 @@ class BrandDocumentVersionModel(Base):
             postgresql_where=text("active = true"),
         ),
         Index("ix_brand_document_versions_status", "status", "created_at"),
+        Index(
+            "ix_brand_document_versions_extraction",
+            "extraction_method",
+            "ocr_provider",
+            "ocr_model",
+        ),
     )
 
 
@@ -2409,7 +2479,16 @@ class ImageArtifactModel(Base):
     provider_task_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     provider_upload_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     media_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -2417,6 +2496,13 @@ class ImageArtifactModel(Base):
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     bucket: Mapped[str | None] = mapped_column(String(120), nullable=True)
     object_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    storage_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text(
+            '\'{"access": "private", "immutable": true, "content_addressed": true}\'::jsonb'
+        ),
+    )
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -2430,6 +2516,10 @@ class ImageArtifactModel(Base):
         ),
         CheckConstraint("attempt_count >= 0", name="ck_image_artifacts_attempt_count"),
         CheckConstraint(
+            "jsonb_typeof(storage_metadata) = 'object'",
+            name="ck_image_artifacts_storage_metadata_object",
+        ),
+        CheckConstraint(
             "(status = 'succeeded' AND media_type IS NOT NULL AND width = 1024 AND height = 1024 "
             "AND byte_size IS NOT NULL AND sha256 IS NOT NULL AND bucket IS NOT NULL "
             "AND object_key IS NOT NULL) "
@@ -2438,6 +2528,12 @@ class ImageArtifactModel(Base):
         ),
         UniqueConstraint("request_fingerprint", name="uq_image_artifacts_request_fingerprint"),
         UniqueConstraint("run_id", "draft_version_id", name="uq_image_artifacts_run_draft"),
+        Index(
+            "ix_image_artifacts_claim",
+            "status",
+            "available_at",
+            "lease_expires_at",
+        ),
         Index("ix_image_artifacts_status_created", "status", "created_at"),
     )
 
@@ -2475,7 +2571,22 @@ class MaterialPackageModel(Base):
     topic_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     copy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     source_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    brand_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    validation_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
     audit_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    version_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
     review_status: Mapped[str] = mapped_column(
         String(30), nullable=False, server_default=text("'pending'")
     )
@@ -2496,6 +2607,18 @@ class MaterialPackageModel(Base):
             name="ck_material_packages_review_status",
         ),
         CheckConstraint("package_version >= 1", name="ck_material_packages_version"),
+        CheckConstraint(
+            "jsonb_typeof(brand_snapshot) = 'array'",
+            name="ck_material_packages_brand_snapshot_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(validation_snapshot) = 'object'",
+            name="ck_material_packages_validation_snapshot_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(version_snapshot) = 'object'",
+            name="ck_material_packages_version_snapshot_object",
+        ),
         UniqueConstraint("run_id", "package_version", name="uq_material_packages_run_version"),
         UniqueConstraint("request_fingerprint", name="uq_material_packages_request_fingerprint"),
         Index("ix_material_packages_status_created", "status", "created_at"),

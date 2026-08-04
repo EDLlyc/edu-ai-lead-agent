@@ -80,6 +80,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         timezone: str,
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
+        max_attempts: int = 3,
     ) -> UUID:
         async with self._session_factory() as session:
             selection = await session.scalar(
@@ -87,6 +88,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                     DailyTopicSelectionModel.business_date == business_date,
                     DailyTopicSelectionModel.timezone == timezone,
                     DailyTopicSelectionModel.scoring_profile == scoring_profile,
+                    DailyTopicSelectionModel.superseded_at.is_(None),
                 )
             )
             if selection is None:
@@ -95,6 +97,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                 session,
                 selection=selection,
                 version_bundle=version_bundle,
+                max_attempts=max_attempts,
             )
 
     async def reconcile_ready_topics(
@@ -104,6 +107,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
         limit: int = 20,
+        max_attempts: int = 3,
     ) -> int:
         async with self._session_factory() as session:
             selections = tuple(
@@ -122,6 +126,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                         .where(
                             DailyTopicSelectionModel.timezone == timezone,
                             DailyTopicSelectionModel.scoring_profile == scoring_profile,
+                            DailyTopicSelectionModel.superseded_at.is_(None),
                             CopyGenerationRunModel.id.is_(None),
                         )
                         .order_by(DailyTopicSelectionModel.business_date)
@@ -137,6 +142,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                         session,
                         selection=selection,
                         version_bundle=version_bundle,
+                        max_attempts=max_attempts,
                     )
                     created += 1
                 except ConflictError:
@@ -575,6 +581,19 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             run = await session.get(CopyGenerationRunModel, claimed.run_id)
             if run is None:
                 raise RuntimeError("copy generation run is missing")
+            if status == CopyRunStatus.ACCEPTED.value:
+                if active_draft_version_id is None:
+                    raise ConflictError("accepted copy run requires an active draft")
+                accepted_draft = await session.get(CopyDraftVersionModel, active_draft_version_id)
+                if (
+                    accepted_draft is None
+                    or accepted_draft.run_id != run.id
+                    or not accepted_draft.validation_passed
+                    or accepted_draft.audit_accepted is not True
+                ):
+                    raise ConflictError(
+                        "copy run can be accepted only after validation and audit pass"
+                    )
             now = datetime.now(UTC)
             run.status = status
             run.active_draft_version_id = active_draft_version_id
@@ -694,6 +713,7 @@ async def _enqueue_selection(
     *,
     selection: DailyTopicSelectionModel,
     version_bundle: CopyVersionBundle,
+    max_attempts: int = 3,
 ) -> UUID:
     selection_id = selection.id
     selection_run_id = selection.run_id
@@ -711,6 +731,36 @@ async def _enqueue_selection(
         )
     )
     if existing is not None:
+        if (
+            existing.status == CopyRunStatus.REVIEW_REQUIRED.value
+            and existing.error_code == "missing_brand_context"
+            and existing.active_draft_version_id is None
+        ):
+            job = await session.scalar(
+                select(CopyGenerationJobModel)
+                .where(CopyGenerationJobModel.run_id == existing.id)
+                .with_for_update()
+            )
+            if job is not None and job.attempt_count < max_attempts:
+                now = datetime.now(UTC)
+                existing.status = CopyRunStatus.QUEUED.value
+                existing.error_code = None
+                existing.started_at = None
+                existing.completed_at = None
+                job.status = CopyJobStatus.QUEUED.value
+                job.available_at = now
+                job.error_code = None
+                job.started_at = None
+                job.completed_at = None
+                _clear_lease(job)
+                await _upsert_checkpoint(
+                    session,
+                    run_id=existing.id,
+                    stage="queued",
+                    draft_version_id=None,
+                    issue_codes=(),
+                )
+                await session.commit()
         return existing.id
     run_id = uuid4()
     try:

@@ -8,9 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_session
-from app.application.ports.image_generation import ImageGenerator
 from app.application.services.material_package import (
-    create_material_package,
+    enqueue_material_package,
     review_material_package,
 )
 from app.core.errors import ConflictError, NotFoundError
@@ -18,7 +17,9 @@ from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageMode
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 from app.schemas.material_package import (
     ImageArtifactResponse,
+    ImageStorageMetadataResponse,
     MaterialPackageCreateRequest,
+    MaterialPackageDownloadResponse,
     MaterialPackageListResponse,
     MaterialPackageResponse,
     MaterialPackageSummaryResponse,
@@ -39,13 +40,14 @@ async def generate_material_package(
     response: Response,
 ) -> MaterialPackageResponse:
     settings = request.app.state.settings
-    image_generator: ImageGenerator | None = request.app.state.image_generator
-    if not settings.content_enabled or not settings.image_enabled or image_generator is None:
+    if (
+        not settings.content_enabled
+        or not settings.image_enabled
+        or settings.image_provider_mode == "disabled"
+    ):
         raise ConflictError("image generation is disabled or not configured")
-    result = await create_material_package(
+    result = await enqueue_material_package(
         session_factory=request.app.state.session_factory,
-        image_generator=image_generator,
-        image_store=request.app.state.image_store,
         run_id=payload.copy_generation_run_id,
         reference_asset=settings.image_reference_asset,
         image_prompt_version=settings.image_prompt_version,
@@ -107,6 +109,34 @@ async def review_material_package_route(
     if image is None:
         raise NotFoundError("image artifact")
     return _detail_response(package, image)
+
+
+@router.get(
+    "/material-packages/{package_id}/download",
+    response_model=MaterialPackageDownloadResponse,
+)
+async def download_material_package(
+    package_id: UUID,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MaterialPackageDownloadResponse:
+    """Return a safe, attachment-friendly JSON package without object-store internals."""
+
+    package = await session.get(MaterialPackageModel, package_id)
+    if package is None:
+        raise NotFoundError("material package")
+    image = await session.get(ImageArtifactModel, package.image_artifact_id)
+    if image is None:
+        raise NotFoundError("image artifact")
+    response.headers.update(
+        {
+            "Content-Disposition": f'attachment; filename="sai-xiansheng-{package.id}.json"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+    )
+    detail = _detail_response(package, image)
+    return MaterialPackageDownloadResponse(**detail.model_dump())
 
 
 @router.get("/material-packages/{package_id}/image")
@@ -182,17 +212,32 @@ def _detail_response(
         topic=package.topic_snapshot,
         copy=package.copy_snapshot,
         sources=package.source_snapshot,
+        brand_bindings=package.brand_snapshot,
+        validation=package.validation_snapshot,
         audit=package.audit_snapshot,
+        versions=package.version_snapshot,
         image=ImageArtifactResponse(
             id=image.id,
             status=cast(Any, image.status),
             provider=image.provider,
             model=image.model,
+            request_fingerprint=image.request_fingerprint,
             width=image.width,
             height=image.height,
             media_type=image.media_type,
             byte_size=image.byte_size,
             sha256=image.sha256,
+            storage_metadata=ImageStorageMetadataResponse(
+                access="private",
+                immutable=bool(
+                    isinstance(image.storage_metadata, dict)
+                    and image.storage_metadata.get("immutable") is True
+                ),
+                content_addressed=bool(
+                    isinstance(image.storage_metadata, dict)
+                    and image.storage_metadata.get("content_addressed") is True
+                ),
+            ),
             error_code=image.error_code,
             download_url=(
                 f"/api/v1/material-packages/{package.id}/image"
@@ -203,4 +248,5 @@ def _detail_response(
         review_note=package.review_note,
         reviewed_at=package.reviewed_at,
         review_url=f"/api/v1/material-packages/{package.id}/review",
+        download_url=f"/api/v1/material-packages/{package.id}/download",
     )

@@ -11,13 +11,16 @@ from app.core.errors import BrandUploadRejectedError
 from app.domain.brand_knowledge import (
     BrandAudience,
     BrandDocumentKind,
+    BrandRetrievalHit,
     BrandUploadMetadata,
     ParsedBrandDocument,
     sanitize_brand_filename,
     validated_brand_upload,
 )
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
+from app.infrastructure.db.brand_knowledge import _RankedBrandHit, _select_diverse_brand_hits
 from app.schemas.brand_knowledge import BrandContextResponse, BrandRetrievalRequest
+from pypdf import PdfWriter
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "brand" / "parent-tone-v1.md"
 
@@ -55,6 +58,37 @@ def test_markdown_validation_parse_and_chunk_are_deterministic() -> None:
     assert "品牌材料只能指导表达方式" in parsed.text
 
 
+def test_sparse_pdf_returns_typed_ocr_handoff() -> None:
+    buffer = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_blank_page(width=612, height=792)
+    writer.write(buffer)
+
+    parsed = _parser().parse(body=buffer.getvalue(), media_type="application/pdf")
+
+    assert parsed.text == ""
+    assert parsed.page_count == 2
+    assert parsed.extraction_method == "local"
+    assert parsed.requires_ocr is True
+    assert parsed.ocr_required is True
+
+
+def test_text_bearing_pdf_keeps_local_fast_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    parser = _parser()
+    monkeypatch.setattr(
+        parser,
+        "_parse_pdf",
+        lambda _: ParsedBrandDocument(text="可检索的品牌定位内容。", page_count=1),
+    )
+
+    parsed = parser.parse(body=b"ignored", media_type="application/pdf")
+
+    assert parsed.text == "可检索的品牌定位内容。"
+    assert parsed.extraction_method == "local"
+    assert parsed.requires_ocr is False
+
+
 def test_chunk_offsets_match_trimmed_text_exactly() -> None:
     parser = _parser()
     parsed = ParsedBrandDocument(
@@ -67,6 +101,110 @@ def test_chunk_offsets_match_trimmed_text_exactly() -> None:
     assert chunks
     assert all(parsed.text[chunk.char_start : chunk.char_end] == chunk.text for chunk in chunks)
     assert all(chunk.text == chunk.text.strip() for chunk in chunks)
+
+
+def test_chunk_prefers_markdown_paragraph_and_sentence_boundaries() -> None:
+    parser = BoundedBrandDocumentParser(
+        max_pages=20,
+        max_characters=20_000,
+        max_chunks=50,
+        chunk_characters=48,
+        overlap_characters=8,
+        chunk_version="brand-chunk-v2-structure-aware",
+    )
+    parsed = ParsedBrandDocument(
+        text=(
+            "## 品牌定位\n\n"
+            "第一段用于验证结构边界。第二句继续说明表达原则。\n\n"
+            "第二段不应被第一片段提前吞入。第三句保持完整。"
+        ),
+        page_count=None,
+    )
+
+    chunks = parser.chunk(version_id=uuid4(), document=parsed)
+
+    assert chunks
+    assert len(chunks[0].text) <= 48
+    assert chunks[0].text.endswith("。")
+    assert "第二段" not in chunks[0].text
+    assert all(parsed.text[chunk.char_start : chunk.char_end] == chunk.text for chunk in chunks)
+
+
+def test_chunk_uses_sentence_boundary_when_no_block_boundary_fits() -> None:
+    parser = BoundedBrandDocumentParser(
+        max_pages=20,
+        max_characters=20_000,
+        max_chunks=50,
+        chunk_characters=25,
+        overlap_characters=8,
+        chunk_version="brand-chunk-v2-structure-aware",
+    )
+    parsed = ParsedBrandDocument(
+        text="第一句保持完整。第二句也保持完整。第三句继续说明。第四句用于超过上限。",
+        page_count=None,
+    )
+
+    chunks = parser.chunk(version_id=uuid4(), document=parsed)
+
+    assert len(chunks) >= 2
+    assert chunks[0].text.endswith("。")
+    assert all(len(chunk.text) <= 25 for chunk in chunks)
+    assert all(parsed.text[chunk.char_start : chunk.char_end] == chunk.text for chunk in chunks)
+
+
+def _ranked_brand_hit(document_id, version_id, ordinal: int, score: float) -> _RankedBrandHit:
+    return _RankedBrandHit(
+        hit=BrandRetrievalHit(
+            chunk_id=uuid4(),
+            document_id=document_id,
+            version_id=version_id,
+            document_title="品牌资料",
+            document_kind=BrandDocumentKind.TONE,
+            audience=BrandAudience.PARENTS,
+            text=f"品牌原则 {document_id} {ordinal}",
+            tone_tags=(),
+            safety_tags=(),
+            visual_tags=(),
+            full_text_score=score,
+            vector_score=score,
+            fused_score=score,
+        ),
+        ordinal=ordinal,
+    )
+
+
+def test_retrieval_diversity_skips_adjacent_chunks_and_preserves_rrf_order() -> None:
+    document_a, document_b, document_c = uuid4(), uuid4(), uuid4()
+    version_a, version_b, version_c = uuid4(), uuid4(), uuid4()
+    candidates = [
+        _ranked_brand_hit(document_a, version_a, 0, 0.90),
+        _ranked_brand_hit(document_a, version_a, 1, 0.89),
+        _ranked_brand_hit(document_a, version_a, 2, 0.88),
+        _ranked_brand_hit(document_b, version_b, 0, 0.87),
+        _ranked_brand_hit(document_c, version_c, 0, 0.86),
+    ]
+
+    selected = _select_diverse_brand_hits(candidates, limit=4)
+
+    assert [hit.fused_score for hit in selected] == [0.90, 0.88, 0.87, 0.86]
+    assert [hit.document_id for hit in selected] == [document_a, document_a, document_b, document_c]
+    assert len({hit.document_id for hit in selected}) == 3
+    ordinal_by_chunk_id = {candidate.hit.chunk_id: candidate.ordinal for candidate in candidates}
+    assert [ordinal_by_chunk_id[hit.chunk_id] for hit in selected] == [0, 2, 0, 0]
+
+
+def test_retrieval_diversity_falls_back_when_only_one_document_is_available() -> None:
+    document_id, version_id = uuid4(), uuid4()
+    candidates = [
+        _ranked_brand_hit(document_id, version_id, 0, 0.90),
+        _ranked_brand_hit(document_id, version_id, 1, 0.89),
+        _ranked_brand_hit(document_id, version_id, 2, 0.88),
+    ]
+
+    selected = _select_diverse_brand_hits(candidates, limit=3)
+
+    assert [hit.fused_score for hit in selected] == [0.90, 0.89, 0.88]
+    assert len(selected) == 3
 
 
 def test_brand_metadata_fingerprint_tracks_semantic_version_metadata() -> None:

@@ -417,6 +417,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/material-packages/{package_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Material Package
+         * @description Return a safe, attachment-friendly JSON package without object-store internals.
+         */
+        get: operations["download_material_package_api_v1_material_packages__package_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/material-packages/{package_id}/image": {
         parameters: {
             query?: never;
@@ -910,6 +930,8 @@ export interface components {
             embedding_provider: string | null;
             /** Error Code */
             error_code: string | null;
+            /** Extraction Method */
+            extraction_method: string | null;
             /**
              * Id
              * Format: uuid
@@ -921,6 +943,22 @@ export interface components {
             ingestion_job_status: string | null;
             /** Media Type */
             media_type: string;
+            /** Ocr Completion Tokens */
+            ocr_completion_tokens: number | null;
+            /** Ocr Latency Ms */
+            ocr_latency_ms: number | null;
+            /** Ocr Model */
+            ocr_model: string | null;
+            /** Ocr Page Count */
+            ocr_page_count: number | null;
+            /** Ocr Prompt Tokens */
+            ocr_prompt_tokens: number | null;
+            /** Ocr Provider */
+            ocr_provider: string | null;
+            /** Ocr Provider Request Id */
+            ocr_provider_request_id: string | null;
+            /** Ocr Request Fingerprint */
+            ocr_request_fingerprint: string | null;
             /** Page Count */
             page_count: number | null;
             /** Parser Version */
@@ -1326,6 +1364,8 @@ export interface components {
             decision: "selected" | "no_topic";
             /** No Topic Code */
             no_topic_code: string | null;
+            /** Revision */
+            revision: number;
             /**
              * Run Id
              * Format: uuid
@@ -2040,6 +2080,8 @@ export interface components {
             model: string;
             /** Provider */
             provider: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
             /** Sha256 */
             sha256: string | null;
             /**
@@ -2047,8 +2089,21 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "succeeded" | "failed" | "review_required";
+            storage_metadata: components["schemas"]["ImageStorageMetadataResponse"];
             /** Width */
             width: number | null;
+        };
+        /** ImageStorageMetadataResponse */
+        ImageStorageMetadataResponse: {
+            /**
+             * Access
+             * @constant
+             */
+            access: "private";
+            /** Content Addressed */
+            content_addressed: boolean;
+            /** Immutable */
+            immutable: boolean;
         };
         /** MaterialPackageCreateRequest */
         MaterialPackageCreateRequest: {
@@ -2063,19 +2118,16 @@ export interface components {
              */
             reviewer: string;
         };
-        /** MaterialPackageListResponse */
-        MaterialPackageListResponse: {
-            /** Count */
-            count: number;
-            /** Items */
-            items: components["schemas"]["MaterialPackageSummaryResponse"][];
-        };
-        /** MaterialPackageResponse */
-        MaterialPackageResponse: {
+        /** MaterialPackageDownloadResponse */
+        MaterialPackageDownloadResponse: {
             /** Audit */
             audit: {
                 [key: string]: unknown;
             };
+            /** Brand Bindings */
+            brand_bindings: {
+                [key: string]: unknown;
+            }[];
             /** Business Date */
             business_date: string;
             /** Copy */
@@ -2094,6 +2146,14 @@ export interface components {
             created_at: string;
             /** Detail Url */
             detail_url: string;
+            /**
+             * Download Kind
+             * @default material_package_json
+             * @constant
+             */
+            download_kind: "material_package_json";
+            /** Download Url */
+            download_url: string;
             /**
              * Id
              * Format: uuid
@@ -2124,6 +2184,92 @@ export interface components {
             status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
             /** Topic */
             topic: {
+                [key: string]: unknown;
+            };
+            /** Validation */
+            validation: {
+                [key: string]: unknown;
+            };
+            /** Versions */
+            versions: {
+                [key: string]: unknown;
+            };
+        };
+        /** MaterialPackageListResponse */
+        MaterialPackageListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["MaterialPackageSummaryResponse"][];
+        };
+        /** MaterialPackageResponse */
+        MaterialPackageResponse: {
+            /** Audit */
+            audit: {
+                [key: string]: unknown;
+            };
+            /** Brand Bindings */
+            brand_bindings: {
+                [key: string]: unknown;
+            }[];
+            /** Business Date */
+            business_date: string;
+            /** Copy */
+            copy: {
+                [key: string]: unknown;
+            };
+            /**
+             * Copy Generation Run Id
+             * Format: uuid
+             */
+            copy_generation_run_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail Url */
+            detail_url: string;
+            /** Download Url */
+            download_url: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            image: components["schemas"]["ImageArtifactResponse"];
+            /** Package Version */
+            package_version: number;
+            /** Review Note */
+            review_note: string | null;
+            /**
+             * Review Status
+             * @enum {string}
+             */
+            review_status: "pending" | "approved" | "rejected";
+            /** Review Url */
+            review_url: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Sources */
+            sources: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+            /** Topic */
+            topic: {
+                [key: string]: unknown;
+            };
+            /** Validation */
+            validation: {
+                [key: string]: unknown;
+            };
+            /** Versions */
+            versions: {
                 [key: string]: unknown;
             };
         };
@@ -2382,8 +2528,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Current */
+            is_current: boolean;
             /** No Topic Code */
             no_topic_code: string | null;
+            /** Revision */
+            revision: number;
             /** Scores Url */
             scores_url: string;
             /** Scoring Profile */
@@ -2400,6 +2550,10 @@ export interface components {
             status: string;
             /** Status Url */
             status_url: string;
+            /** Superseded At */
+            superseded_at: string | null;
+            /** Superseded By Run Id */
+            superseded_by_run_id: string | null;
             /** Timezone */
             timezone: string;
             /** Trigger */
@@ -3236,6 +3390,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaterialPackageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_material_package_api_v1_material_packages__package_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialPackageDownloadResponse"];
                 };
             };
             /** @description Validation Error */

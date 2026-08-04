@@ -6,7 +6,11 @@ from uuid import UUID, uuid4
 import pytest
 from app.api_main import app
 from app.domain.topic_selection import select_daily_topic
-from app.infrastructure.db.models import TopicSelectionRunModel
+from app.infrastructure.db.models import (
+    AcquisitionRunModel,
+    GovernanceRunModel,
+    TopicSelectionRunModel,
+)
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import update
@@ -33,6 +37,43 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
     business_date = date(2098, 8, 1)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        not_ready = await client.post(
+            "/api/v1/topic-selection-runs",
+            json={"business_date": business_date.isoformat()},
+        )
+        assert not_ready.status_code == 409
+        assert not_ready.json()["error"]["code"] == "conflict"
+
+    ready_at = datetime.now(UTC)
+    acquisition_run_id = uuid4()
+    async with integration_context.session_factory() as session:
+        session.add(
+            AcquisitionRunModel(
+                id=acquisition_run_id,
+                trigger="manual",
+                business_date=business_date,
+                timezone="Asia/Shanghai",
+                acquisition_version="acquisition-test",
+                manual_idempotency_key=f"topic-api-acquisition-{uuid4().hex}",
+                status="succeeded",
+                completed_at=ready_at,
+            )
+        )
+        session.add(
+            GovernanceRunModel(
+                id=uuid4(),
+                trigger="acquisition",
+                acquisition_run_id=acquisition_run_id,
+                timezone="Asia/Shanghai",
+                profile_fingerprint=uuid4().hex + uuid4().hex,
+                version_bundle={},
+                status="succeeded",
+                completed_at=ready_at,
+            )
+        )
+        await session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         created = await client.post(
             "/api/v1/topic-selection-runs",
             json={"business_date": business_date.isoformat()},
@@ -40,7 +81,7 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         assert created.status_code == 202
         run_id = UUID(created.json()["id"])
         assert created.json()["status"] == "queued"
-        assert created.json()["scoring_version"] == "scoring-v1-preview.1"
+        assert created.json()["scoring_version"] == "scoring-v1-preview.2"
         assert created.headers["location"] == f"/api/v1/topic-selection-runs/{run_id}"
 
     async with integration_context.session_factory() as session:
@@ -91,4 +132,6 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
     assert daily.json()["no_topic_code"] == "no_candidates"
     assert daily.json()["selected_score"] is None
     assert replay.status_code == 202
-    assert replay.json()["id"] == str(run_id)
+    assert replay.json()["id"] != str(run_id)
+    assert replay.json()["revision"] == 2
+    assert replay.json()["is_current"] is True

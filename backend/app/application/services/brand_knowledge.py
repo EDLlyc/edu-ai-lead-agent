@@ -7,6 +7,8 @@ from uuid import UUID
 import structlog
 
 from app.application.ports.brand_knowledge import (
+    BrandDocumentOcrModel,
+    BrandDocumentOcrRequest,
     BrandDocumentParser,
     BrandEmbeddingModel,
     BrandEmbeddingRequest,
@@ -14,13 +16,22 @@ from app.application.ports.brand_knowledge import (
     BrandOriginalStore,
 )
 from app.core.config import Settings
-from app.core.errors import AppError, BrandIngestionLeaseLostError
+from app.core.errors import (
+    AppError,
+    BrandIngestionLeaseLostError,
+    BrandOcrIdentityMismatchError,
+    BrandOcrInputLimitError,
+    BrandOcrInvalidOutputError,
+    BrandOcrUnavailableError,
+)
 from app.domain.brand_knowledge import (
     BrandAudience,
     BrandChunkEmbedding,
     BrandDocumentKind,
     BrandRetrievalHit,
     ClaimedBrandIngestionJob,
+    ParsedBrandDocument,
+    normalize_brand_text,
 )
 from app.domain.value_objects import sha256_bytes, stable_key
 
@@ -35,12 +46,14 @@ class BrandIngestionExecutor:
         originals: BrandOriginalStore,
         parser: BrandDocumentParser,
         embeddings: BrandEmbeddingModel,
+        ocr: BrandDocumentOcrModel | None = None,
         settings: Settings,
     ) -> None:
         self._repository = repository
         self._originals = originals
         self._parser = parser
         self._embeddings = embeddings
+        self._ocr = ocr
         self._settings = settings
 
     async def execute_next(self, worker_id: str) -> bool:
@@ -68,6 +81,46 @@ class BrandIngestionExecutor:
                 body=body,
                 media_type=claimed.media_type,
             )
+            if parsed.requires_ocr:
+                if self._ocr is None:
+                    raise BrandOcrUnavailableError()
+                if (
+                    parsed.page_count is None
+                    or parsed.page_count > self._settings.brand_ocr_max_pages
+                ):
+                    raise BrandOcrInputLimitError()
+                ocr_result = await self._ocr.parse_document(
+                    BrandDocumentOcrRequest(
+                        version_id=claimed.version_id,
+                        input_hash=claimed.sha256,
+                        media_type=claimed.media_type,
+                        page_count=parsed.page_count,
+                        original_bytes=body,
+                    )
+                )
+                if (
+                    ocr_result.provider != "zhipu"
+                    or ocr_result.model != self._settings.brand_ocr_model
+                ):
+                    raise BrandOcrIdentityMismatchError()
+                ocr_text = normalize_brand_text(ocr_result.markdown)
+                if not ocr_text:
+                    raise BrandOcrInvalidOutputError()
+                if len(ocr_text) > self._settings.brand_parse_max_characters:
+                    raise BrandOcrInvalidOutputError()
+                parsed = ParsedBrandDocument(
+                    text=ocr_text,
+                    page_count=ocr_result.page_count,
+                    extraction_method="ocr",
+                    ocr_provider=ocr_result.provider,
+                    ocr_model=ocr_result.model,
+                    ocr_request_fingerprint=ocr_result.request_fingerprint,
+                    ocr_provider_request_id=ocr_result.provider_request_id,
+                    ocr_page_count=ocr_result.page_count,
+                    ocr_prompt_tokens=ocr_result.prompt_tokens,
+                    ocr_completion_tokens=ocr_result.completion_tokens,
+                    ocr_latency_ms=ocr_result.latency_ms,
+                )
             chunks = self._parser.chunk(version_id=claimed.version_id, document=parsed)
             artifacts: list[BrandChunkEmbedding] = []
             for chunk in chunks:
@@ -109,6 +162,15 @@ class BrandIngestionExecutor:
                 page_count=parsed.page_count,
                 character_count=len(parsed.text),
                 chunk_count=len(artifacts),
+                extraction_method=parsed.extraction_method,
+                ocr_provider=parsed.ocr_provider,
+                ocr_model=parsed.ocr_model,
+                ocr_request_fingerprint=parsed.ocr_request_fingerprint,
+                ocr_provider_request_id=parsed.ocr_provider_request_id,
+                ocr_page_count=parsed.ocr_page_count,
+                ocr_prompt_tokens=parsed.ocr_prompt_tokens,
+                ocr_completion_tokens=parsed.ocr_completion_tokens,
+                ocr_latency_ms=parsed.ocr_latency_ms,
                 embedding_provider=artifacts[0].provider,
                 embedding_model=artifacts[0].model,
             )

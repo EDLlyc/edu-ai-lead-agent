@@ -112,6 +112,7 @@ class CopyGenerationRepository(Protocol):
         timezone: str,
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
+        max_attempts: int = 3,
     ) -> UUID: ...
 
     async def reconcile_ready_topics(
@@ -121,6 +122,7 @@ class CopyGenerationRepository(Protocol):
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
         limit: int = 20,
+        max_attempts: int = 3,
     ) -> int: ...
 
     async def claim(

@@ -3,16 +3,19 @@
 ## Status and source of truth
 
 These documents are the implementation contract for the internal SPA. The repository now contains
-an accessible brand-knowledge workspace in
+an accessible brand-knowledge workspace and an internal material-package review workspace in
 [`frontend/src/app/App.tsx`](../../../frontend/src/app/App.tsx) with generated API consumption,
 multipart upload, status polling, activation/deactivation, and internal generation-context
-diagnostics. The contracts
+diagnostics. The material workspace supports queued image generation, evidence and brand-binding
+inspection, validation/audit display, copying text, image download, and safe JSON package download.
+The contracts
 are aligned with the editable
 [`main.tex`](../../../main.tex) source and generated
 [`技术报告-v0.3.pdf`](../../../技术报告-v0.3.pdf), version 0.3. The bootstrap decision record at
 `.trellis/tasks/archive/2026-07/00-bootstrap-guidelines/research/technical-report-decisions.md`
 preserves the version 0.2 starting decisions as historical context; version 0.3 and these specs
-control where the old report differs. Rules for material packages remain the next product target.
+control where the old report differs. Material packages are implemented as a manual-use workflow;
+automated social publishing remains prohibited.
 
 React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types are implemented.
 
@@ -33,6 +36,9 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
 - The primary interface is an accessible internal material-package review and reuse experience.
 - Show source links and generation/audit status rather than hiding provenance.
 - Support copying text and downloading images with keyboard-accessible feedback.
+- Show queued/running/failed/review-required package and image states without implying readiness.
+- Show topic explanation, source/evidence bindings, brand bindings, validation, audit issues, and
+  package version snapshots through the typed material mapper.
 - Keep server state in the server-state client and ephemeral interaction state local.
 - Generate API types from FastAPI OpenAPI; do not hand-maintain duplicate wire interfaces.
 - Do not expose automated social publishing, social credentials, or misleading “publish” actions.

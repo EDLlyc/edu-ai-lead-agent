@@ -865,6 +865,17 @@
             ],
             "title": "Error Code"
           },
+          "extraction_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Method"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -896,6 +907,94 @@
           "media_type": {
             "title": "Media Type",
             "type": "string"
+          },
+          "ocr_completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Completion Tokens"
+          },
+          "ocr_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Latency Ms"
+          },
+          "ocr_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Model"
+          },
+          "ocr_page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Page Count"
+          },
+          "ocr_prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Prompt Tokens"
+          },
+          "ocr_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Provider"
+          },
+          "ocr_provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Provider Request Id"
+          },
+          "ocr_request_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Request Fingerprint"
           },
           "page_count": {
             "anyOf": [
@@ -984,6 +1083,15 @@
           "tone_tags",
           "safety_tags",
           "visual_tags",
+          "extraction_method",
+          "ocr_provider",
+          "ocr_model",
+          "ocr_request_fingerprint",
+          "ocr_provider_request_id",
+          "ocr_page_count",
+          "ocr_prompt_tokens",
+          "ocr_completion_tokens",
+          "ocr_latency_ms",
           "parser_version",
           "chunk_version",
           "embedding_input_version",
@@ -2113,6 +2221,10 @@
             ],
             "title": "No Topic Code"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "run_id": {
             "format": "uuid",
             "title": "Run Id",
@@ -2170,6 +2282,7 @@
           "timezone",
           "scoring_version",
           "scoring_profile",
+          "revision",
           "decision",
           "run_id",
           "selected_event_id",
@@ -3856,6 +3969,10 @@
             "title": "Provider",
             "type": "string"
           },
+          "request_fingerprint": {
+            "title": "Request Fingerprint",
+            "type": "string"
+          },
           "sha256": {
             "anyOf": [
               {
@@ -3878,6 +3995,9 @@
             "title": "Status",
             "type": "string"
           },
+          "storage_metadata": {
+            "$ref": "#/components/schemas/ImageStorageMetadataResponse"
+          },
           "width": {
             "anyOf": [
               {
@@ -3895,15 +4015,41 @@
           "status",
           "provider",
           "model",
+          "request_fingerprint",
           "width",
           "height",
           "media_type",
           "byte_size",
           "sha256",
+          "storage_metadata",
           "error_code",
           "download_url"
         ],
         "title": "ImageArtifactResponse",
+        "type": "object"
+      },
+      "ImageStorageMetadataResponse": {
+        "properties": {
+          "access": {
+            "const": "private",
+            "title": "Access",
+            "type": "string"
+          },
+          "content_addressed": {
+            "title": "Content Addressed",
+            "type": "boolean"
+          },
+          "immutable": {
+            "title": "Immutable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "access",
+          "immutable",
+          "content_addressed"
+        ],
+        "title": "ImageStorageMetadataResponse",
         "type": "object"
       },
       "MaterialPackageCreateRequest": {
@@ -3928,33 +4074,20 @@
         "title": "MaterialPackageCreateRequest",
         "type": "object"
       },
-      "MaterialPackageListResponse": {
-        "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/MaterialPackageSummaryResponse"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items",
-          "count"
-        ],
-        "title": "MaterialPackageListResponse",
-        "type": "object"
-      },
-      "MaterialPackageResponse": {
+      "MaterialPackageDownloadResponse": {
         "properties": {
           "audit": {
             "additionalProperties": true,
             "title": "Audit",
             "type": "object"
+          },
+          "brand_bindings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Brand Bindings",
+            "type": "array"
           },
           "business_date": {
             "title": "Business Date",
@@ -3977,6 +4110,16 @@
           },
           "detail_url": {
             "title": "Detail Url",
+            "type": "string"
+          },
+          "download_kind": {
+            "const": "material_package_json",
+            "default": "material_package_json",
+            "title": "Download Kind",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
             "type": "string"
           },
           "id": {
@@ -4051,6 +4194,16 @@
             "additionalProperties": true,
             "title": "Topic",
             "type": "object"
+          },
+          "validation": {
+            "additionalProperties": true,
+            "title": "Validation",
+            "type": "object"
+          },
+          "versions": {
+            "additionalProperties": true,
+            "title": "Versions",
+            "type": "object"
           }
         },
         "required": [
@@ -4065,11 +4218,187 @@
           "topic",
           "copy",
           "sources",
+          "brand_bindings",
+          "validation",
           "audit",
+          "versions",
           "image",
           "review_note",
           "reviewed_at",
-          "review_url"
+          "review_url",
+          "download_url"
+        ],
+        "title": "MaterialPackageDownloadResponse",
+        "type": "object"
+      },
+      "MaterialPackageListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialPackageSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "MaterialPackageListResponse",
+        "type": "object"
+      },
+      "MaterialPackageResponse": {
+        "properties": {
+          "audit": {
+            "additionalProperties": true,
+            "title": "Audit",
+            "type": "object"
+          },
+          "brand_bindings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Brand Bindings",
+            "type": "array"
+          },
+          "business_date": {
+            "title": "Business Date",
+            "type": "string"
+          },
+          "copy": {
+            "additionalProperties": true,
+            "title": "Copy",
+            "type": "object"
+          },
+          "copy_generation_run_id": {
+            "format": "uuid",
+            "title": "Copy Generation Run Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail_url": {
+            "title": "Detail Url",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ImageArtifactResponse"
+          },
+          "package_version": {
+            "title": "Package Version",
+            "type": "integer"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Review Status",
+            "type": "string"
+          },
+          "review_url": {
+            "title": "Review Url",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "sources": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "ready",
+              "awaiting_manual_use",
+              "completed",
+              "rejected",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "additionalProperties": true,
+            "title": "Topic",
+            "type": "object"
+          },
+          "validation": {
+            "additionalProperties": true,
+            "title": "Validation",
+            "type": "object"
+          },
+          "versions": {
+            "additionalProperties": true,
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "copy_generation_run_id",
+          "status",
+          "review_status",
+          "business_date",
+          "created_at",
+          "detail_url",
+          "package_version",
+          "topic",
+          "copy",
+          "sources",
+          "brand_bindings",
+          "validation",
+          "audit",
+          "versions",
+          "image",
+          "review_note",
+          "reviewed_at",
+          "review_url",
+          "download_url"
         ],
         "title": "MaterialPackageResponse",
         "type": "object"
@@ -4633,6 +4962,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
           "no_topic_code": {
             "anyOf": [
               {
@@ -4643,6 +4976,10 @@
               }
             ],
             "title": "No Topic Code"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
           },
           "scores_url": {
             "title": "Scores Url",
@@ -4700,6 +5037,30 @@
             "title": "Status Url",
             "type": "string"
           },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "superseded_by_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Run Id"
+          },
           "timezone": {
             "title": "Timezone",
             "type": "string"
@@ -4716,6 +5077,7 @@
           "timezone",
           "scoring_version",
           "scoring_profile",
+          "revision",
           "config_fingerprint",
           "config",
           "status",
@@ -4728,6 +5090,9 @@
           "created_at",
           "started_at",
           "completed_at",
+          "superseded_at",
+          "superseded_by_run_id",
+          "is_current",
           "status_url",
           "scores_url"
         ],
@@ -6043,6 +6408,50 @@
           }
         },
         "summary": "Read Material Package",
+        "tags": [
+          "material-packages"
+        ]
+      }
+    },
+    "/api/v1/material-packages/{package_id}/download": {
+      "get": {
+        "description": "Return a safe, attachment-friendly JSON package without object-store internals.",
+        "operationId": "download_material_package_api_v1_material_packages__package_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPackageDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Material Package",
         "tags": [
           "material-packages"
         ]

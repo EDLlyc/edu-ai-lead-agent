@@ -424,6 +424,9 @@ async def test_valid_topic_generates_audits_and_accepts_one_draft() -> None:
 
 def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profile() -> None:
     preview = build_copy_version_bundle(Settings(content_scoring_profile="preview"))
+    historical_preview = build_copy_version_bundle(
+        Settings(copy_preview_policy_version="preview-v1")
+    )
     strict = build_copy_version_bundle(Settings(content_scoring_profile="strict"))
     manual_strict = build_copy_version_bundle(
         Settings(content_scoring_profile="preview"),
@@ -434,10 +437,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v1"
-    assert strict.rule_version == "moments-rules-v2"
-    assert manual_strict.rule_version == "moments-rules-v2"
-    assert manual_preview.rule_version == "preview-v1"
+    assert preview.rule_version == "preview-v2"
+    assert historical_preview.rule_version == "preview-v1"
+    assert preview.fingerprint != historical_preview.fingerprint
+    assert strict.rule_version == "moments-rules-v3-parent-language"
+    assert manual_strict.rule_version == "moments-rules-v3-parent-language"
+    assert manual_preview.rule_version == "preview-v2"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -632,10 +637,56 @@ async def test_fake_generator_uses_a_complete_evidence_sentence_when_bounding_te
     fact = result.draft.claims[0].text
     assert fact.endswith("。")
     assert "进入标注环节后。" not in fact
+    assert result.draft.copywriting.splitlines()[-1] == "#赛先生科学 #人工智能启蒙 #科学思维"
     assert "incomplete_sentence" not in {
         issue.code
         for issue in validate_material_draft(result.draft, topic=topic, brand_context=_brand())
     }
+    assert not any(
+        issue.severity == "error"
+        for issue in validate_material_draft(result.draft, topic=topic, brand_context=_brand())
+    )
+
+
+@pytest.mark.asyncio
+async def test_copy_requires_fixed_hashtag_line_and_brand_staple() -> None:
+    topic = _topic()
+    result = await CountingGenerator().generate(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=_brand(),
+            version_bundle=build_copy_version_bundle(Settings()),
+            draft_version=1,
+            max_output_tokens=2048,
+        )
+    )
+    body = result.draft.copywriting.rsplit("\n\n", 1)[0]
+
+    missing_staple = result.draft.model_copy(
+        update={"copywriting": f"{body}\n\n#人工智能启蒙 #科学思维"}
+    )
+    missing_staple_codes = {
+        issue.code
+        for issue in validate_material_draft(missing_staple, topic=topic, brand_context=_brand())
+    }
+    assert "required_hashtag" in missing_staple_codes
+
+    too_few = result.draft.model_copy(update={"copywriting": f"{body}\n\n#赛先生科学"})
+    too_few_codes = {
+        issue.code
+        for issue in validate_material_draft(too_few, topic=topic, brand_context=_brand())
+    }
+    assert "hashtag_count" in too_few_codes
+
+    misplaced = result.draft.model_copy(
+        update={"copywriting": (f"{body}\n\n#提前标签\n\n#赛先生科学 #人工智能启蒙 #科学思维")}
+    )
+    misplaced_codes = {
+        issue.code
+        for issue in validate_material_draft(misplaced, topic=topic, brand_context=_brand())
+    }
+    assert "hashtag_placement" in misplaced_codes
 
 
 def test_prompt_data_cannot_close_its_delimited_section() -> None:
@@ -657,6 +708,9 @@ def test_prompt_data_cannot_close_its_delimited_section() -> None:
 
     assert prompt.count("</EVIDENCE>") == 1
     assert "\\u003c/EVIDENCE\\u003e" in prompt
+    assert "家长也能看懂" in prompt
+    assert "为什么在赛先生学习" in prompt
+    assert "#赛先生科学" in prompt
 
 
 @pytest.mark.asyncio
@@ -895,6 +949,7 @@ def test_deterministic_gate_rejects_critical_copy_and_image_risks(
         copywriting=(
             f"今天和家长分享一条科技教育动态：{fact}"
             "我们可以和孩子一起理解技术、提出问题，并用真实信息减少不必要的焦虑。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论这个话题吗？",
@@ -927,6 +982,7 @@ def test_preview_rule_marks_superlative_and_dangling_clause_as_warnings() -> Non
         copywriting=(
             f"今天和家长分享行业首个机器人学习项目：{fact}进入标注环节后。"
             "我们可以和孩子一起理解技术、提出问题，并从可靠信息出发形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论这个话题吗？",
@@ -963,6 +1019,7 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
         copywriting=(
             f"今天和家长分享行业首个机器人学习项目：{fact}进入标注环节后。"
             "我们可以和孩子一起理解技术、提出问题，并从可靠信息出发形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论这个话题吗？",
@@ -990,6 +1047,56 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
     assert issue_by_code["incomplete_sentence"].severity == "error"
 
 
+@pytest.mark.parametrize(
+    ("rule_version", "expected_target_severity", "expected_legacy_severity"),
+    [
+        ("preview-v2", "warning", "warning"),
+        ("preview-v1", "error", "warning"),
+        ("moments-rules-v3-parent-language", "error", "error"),
+    ],
+)
+def test_preview_policy_versions_scope_deterministic_warning_codes(
+    rule_version: str,
+    expected_target_severity: str,
+    expected_legacy_severity: str,
+) -> None:
+    topic = _topic()
+    evidence = topic.evidence[0]
+    fact = evidence.exact_quote
+    draft = MaterialDraft(
+        copywriting=(
+            f"今天和家长分享行业首个机器人学习项目：{fact}进入标注环节后。"
+            "我们可以和孩子一起理解技术、提出问题，并从可靠信息出发形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
+        ),
+        parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
+        interaction="你会和孩子讨论这个话题吗？",
+        source_note="信息来源：未绑定来源。",
+        image_prompt="蓝色科技教育插画，家长和孩子共同观察机器人，不出现真人正脸。",
+        claims=(
+            DraftClaim(
+                id="fact-1",
+                text=f"{fact}补充说明",
+                kind="external_fact",
+                evidence_ids=(EVIDENCE_ID,),
+            ),
+        ),
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version=rule_version,
+    )
+    issue_by_code = {issue.code: issue for issue in issues}
+
+    assert issue_by_code["claim_not_in_copy"].severity == expected_target_severity
+    assert issue_by_code["source_note_unlinked"].severity == expected_target_severity
+    assert issue_by_code["unverified_superlative"].severity == expected_legacy_severity
+    assert issue_by_code["incomplete_sentence"].severity == expected_legacy_severity
+
+
 def test_external_fact_requires_minimum_text_support_from_bound_evidence() -> None:
     topic = _topic()
     unsupported_fact = "某公司已经让机器人全面替代教师并在全国完成部署。"
@@ -997,6 +1104,7 @@ def test_external_fact_requires_minimum_text_support_from_bound_evidence() -> No
         copywriting=(
             f"今天和家长分享一条科技教育动态：{unsupported_fact}"
             "我们可以陪孩子从可靠信息出发，理解技术边界并形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论这个话题吗？",
@@ -1012,9 +1120,15 @@ def test_external_fact_requires_minimum_text_support_from_bound_evidence() -> No
         ),
     )
 
-    issues = validate_material_draft(draft, topic=topic, brand_context=_brand())
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="preview-v2",
+    )
 
-    assert "evidence_text_mismatch" in {issue.code for issue in issues}
+    issue_by_code = {issue.code: issue for issue in issues}
+    assert issue_by_code["evidence_text_mismatch"].severity == "error"
 
 
 def test_numeric_fact_outside_claims_is_rejected() -> None:
@@ -1024,6 +1138,7 @@ def test_numeric_fact_outside_claims_is_rejected() -> None:
         copywriting=(
             f"今天和家长分享一条科技教育动态：{fact}该项目已经覆盖20个城市。"
             "我们可以陪孩子从可靠信息出发，理解技术边界并形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
         ),
         parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
         interaction="你会和孩子讨论这个话题吗？",

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Preserve immutable scoring configuration, cutoff, current decision, veto, and idempotency contracts while adding bounded same-day revisions."}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Use terminal governance runs, review-required boundaries, immutable event versions, and safe provider/lease behavior as the readiness input."}
+{"file":".trellis/tasks/archive/2026-07/07-28-authoritative-source-ingestion/design.md","reason":"Reuse the existing approved-source registry, safe HTTP boundary, incremental cursors, snapshots, rate limits, and no-bypass contract."}
+{"file":"backend/app/application/services/execute_acquisition.py","reason":"Implement the ten-day freshness gate, filtered observations, and bounded detail behavior at the acquisition application boundary."}
+{"file":"backend/app/infrastructure/ingestion/fetcher.py","reason":"Harden the existing compliant fetch boundary with policy enforcement and bounded Retry-After handling without adding stealth behavior."}
+{"file":"backend/app/content_scheduler_main.py","reason":"Replace eager topic enqueue with readiness-aware polling and current-revision reconciliation."}

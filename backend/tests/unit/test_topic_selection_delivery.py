@@ -11,6 +11,7 @@ from app.application.services.topic_selection import (
     reconcile_daily_topic_selection,
 )
 from app.core.config import Settings
+from app.core.errors import ConflictError
 from app.domain.topic_selection import (
     DailyTopicDecision,
     TopicCandidate,
@@ -40,6 +41,15 @@ class FakeTopicSelectionRepository:
         self.persisted: DailyTopicDecision | None = None
         self.completed = False
         self.failed_code: str | None = None
+        self.readiness_cutoff: datetime | None = NOW
+
+    async def governed_event_cutoff(
+        self, *, business_date: date, timezone: str, now: datetime
+    ) -> datetime | None:
+        assert business_date
+        assert timezone
+        assert now.tzinfo is not None
+        return self.readiness_cutoff
 
     async def enqueue(
         self,
@@ -133,7 +143,23 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.1"
+    assert config.version == "scoring-v1-preview.2"
+
+
+@pytest.mark.asyncio
+async def test_manual_enqueue_rejects_when_governance_is_not_ready() -> None:
+    repository = FakeTopicSelectionRepository()
+    repository.readiness_cutoff = None
+
+    with pytest.raises(ConflictError, match="governance is not ready"):
+        await enqueue_manual_topic_selection(
+            repository,
+            Settings(),
+            business_date=date(2026, 7, 30),
+            now=NOW,
+        )
+
+    assert repository.enqueued is None
 
 
 @pytest.mark.asyncio

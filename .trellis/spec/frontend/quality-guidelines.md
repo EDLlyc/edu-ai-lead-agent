@@ -3,8 +3,8 @@
 ## Contract status
 
 These are the implemented gates for the React + TypeScript + Vite frontend. Local package scripts,
-generated-contract checks, brand-workspace component/accessibility tests, and production build are
-active. CI jobs and the material-package end-to-end flow remain follow-ups.
+generated-contract checks, brand-workspace and material-package mapper/component tests, and
+production build are active. A controlled full browser flow remains a follow-up.
 
 ## Required gates
 
@@ -20,8 +20,11 @@ are acceptable only if the same behaviors are enforced and the change is documen
 The current brand-workspace regression suite is
 [`frontend/src/app/App.test.tsx`](../../../frontend/src/app/App.test.tsx). It asserts the
 brand/evidence boundary, durable upload-job feedback, absence of publishing controls, and no
-automatically detectable accessibility violations. Material-package tests listed below remain
-required when that feature is implemented.
+automatically detectable accessibility violations. The material-package regression suite is
+[`frontend/src/features/material/MaterialPackagePanel.test.tsx`](../../../frontend/src/features/material/MaterialPackagePanel.test.tsx)
+and [`api.test.ts`](../../../frontend/src/features/material/api.test.ts); it asserts typed mapping,
+queued/failed states, copy/download actions, evidence and audit display, and absence of publishing
+controls.
 
 CI must run, in a deterministic order where dependencies require it:
 
@@ -54,8 +57,9 @@ when the API contract permits them.
 ### End-to-end critical flow
 
 Maintain one reliable flow that opens a ready material package, verifies topic/copy/image/source
-provenance, copies the text, downloads the image, and confirms that no automatic publishing action
-exists. Add a no-topic or terminal-failure flow so a bad day is not rendered as a blank success.
+provenance, copies the text, downloads the image and JSON package, and confirms that no automatic
+publishing action exists. Add a no-topic or terminal-failure flow so a bad day is not rendered as a
+blank success.
 
 ## Accessibility review
 

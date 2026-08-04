@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 import zipfile
 from io import BytesIO
 from uuid import UUID, uuid5
@@ -11,10 +10,17 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from app.core.errors import BrandUploadRejectedError
-from app.domain.brand_knowledge import BrandChunk, ParsedBrandDocument
+from app.domain.brand_knowledge import BrandChunk, ParsedBrandDocument, normalize_brand_text
 from app.domain.value_objects import sha256_bytes, stable_key
 
-_BREAK_PATTERN = re.compile("[。\uff01\uff1f\uff1b!?;\\n]")
+_PARAGRAPH_BREAK_PATTERN = re.compile(r"\n[ \t]*\n(?:[ \t]*\n)*")
+_MARKDOWN_BLOCK_BREAK_PATTERN = re.compile(
+    r"\n(?=(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+[.)][ \t]+|>[ \t]+))"
+)
+_SENTENCE_BREAK_PATTERN = re.compile(
+    r"[\u3002\uff01\uff1f\uff1b!?;](?:[\"'\u201d\u2019\u300c\u300d\u300e\u300f\uff08\uff09()\uff3b\uff3d\u3010\u3011\u300a\u300b\u3008\u3009]*)"
+)
+_LINE_BREAK_PATTERN = re.compile(r"\n")
 _DOCX_MAX_FILES = 2_000
 _DOCX_MAX_EXPANDED_BYTES = 40 * 1024 * 1024
 _DOCX_MAX_COMPRESSION_RATIO = 100
@@ -30,6 +36,7 @@ class BoundedBrandDocumentParser:
         chunk_characters: int,
         overlap_characters: int,
         chunk_version: str,
+        sparse_text_threshold: int = 40,
     ) -> None:
         self._max_pages = max_pages
         self._max_characters = max_characters
@@ -37,6 +44,9 @@ class BoundedBrandDocumentParser:
         self._chunk_characters = chunk_characters
         self._overlap_characters = overlap_characters
         self._chunk_version = chunk_version
+        self._sparse_text_threshold = sparse_text_threshold
+        if sparse_text_threshold < 1:
+            raise ValueError("sparse text threshold must be positive")
 
     def parse(self, *, body: bytes, media_type: str) -> ParsedBrandDocument:
         if media_type == "application/pdf":
@@ -46,7 +56,12 @@ class BoundedBrandDocumentParser:
         ):
             parsed = self._parse_docx(body)
         elif media_type in {"text/plain", "text/markdown"}:
-            parsed = ParsedBrandDocument(text=self._decode_text(body), page_count=None)
+            decoded = self._decode_text(body)
+            if not decoded.strip():
+                raise BrandUploadRejectedError(
+                    "brand_text_empty", "brand document contains no usable text"
+                )
+            parsed = ParsedBrandDocument(text=decoded, page_count=None)
         else:
             raise BrandUploadRejectedError(
                 "unsupported_brand_file", "brand file type is unsupported"
@@ -56,11 +71,24 @@ class BoundedBrandDocumentParser:
             raise BrandUploadRejectedError(
                 "brand_text_too_large", "parsed brand text exceeded the configured limit"
             )
-        if not normalized:
+        if not normalized and not parsed.requires_ocr:
             raise BrandUploadRejectedError(
                 "brand_text_empty", "brand document contains no usable text"
             )
-        return ParsedBrandDocument(text=normalized, page_count=parsed.page_count)
+        return ParsedBrandDocument(
+            text=normalized or "",
+            page_count=parsed.page_count,
+            extraction_method=parsed.extraction_method,
+            requires_ocr=parsed.requires_ocr,
+            ocr_provider=parsed.ocr_provider,
+            ocr_model=parsed.ocr_model,
+            ocr_request_fingerprint=parsed.ocr_request_fingerprint,
+            ocr_provider_request_id=parsed.ocr_provider_request_id,
+            ocr_page_count=parsed.ocr_page_count,
+            ocr_prompt_tokens=parsed.ocr_prompt_tokens,
+            ocr_completion_tokens=parsed.ocr_completion_tokens,
+            ocr_latency_ms=parsed.ocr_latency_ms,
+        )
 
     def chunk(self, *, version_id: UUID, document: ParsedBrandDocument) -> tuple[BrandChunk, ...]:
         chunks: list[BrandChunk] = []
@@ -68,14 +96,7 @@ class BoundedBrandDocumentParser:
         start = 0
         while start < len(text):
             hard_end = min(start + self._chunk_characters, len(text))
-            end = hard_end
-            if hard_end < len(text):
-                lower_bound = start + int(self._chunk_characters * 0.6)
-                candidates = [
-                    match.end() for match in _BREAK_PATTERN.finditer(text, lower_bound, hard_end)
-                ]
-                if candidates:
-                    end = candidates[-1]
+            end = self._find_chunk_end(text=text, start=start, hard_end=hard_end)
             raw_chunk = text[start:end]
             leading_whitespace = len(raw_chunk) - len(raw_chunk.lstrip())
             trailing_whitespace = len(raw_chunk) - len(raw_chunk.rstrip())
@@ -113,6 +134,26 @@ class BoundedBrandDocumentParser:
             )
         return tuple(chunks)
 
+    def _find_chunk_end(self, *, text: str, start: int, hard_end: int) -> int:
+        if hard_end >= len(text):
+            return hard_end
+        lower_bound = min(
+            hard_end,
+            start + max(1, int(self._chunk_characters * 0.6)),
+        )
+        # Prefer block boundaries because OCR and Markdown commonly use short lines for one
+        # logical paragraph. Sentence and line boundaries remain deterministic fallbacks.
+        for pattern in (
+            _PARAGRAPH_BREAK_PATTERN,
+            _MARKDOWN_BLOCK_BREAK_PATTERN,
+            _SENTENCE_BREAK_PATTERN,
+            _LINE_BREAK_PATTERN,
+        ):
+            candidates = [match.end() for match in pattern.finditer(text, lower_bound, hard_end)]
+            if candidates:
+                return candidates[-1]
+        return hard_end
+
     def _parse_pdf(self, body: bytes) -> ParsedBrandDocument:
         try:
             reader = PdfReader(BytesIO(body), strict=True)
@@ -143,7 +184,14 @@ class BoundedBrandDocumentParser:
             raise BrandUploadRejectedError(
                 "malformed_brand_pdf", "brand PDF could not be parsed"
             ) from None
-        return ParsedBrandDocument(text="\n\n".join(parts), page_count=len(reader.pages))
+        page_count = len(reader.pages)
+        extracted_text = "\n\n".join(parts)
+        requires_ocr = len(extracted_text.strip()) < page_count * self._sparse_text_threshold
+        return ParsedBrandDocument(
+            text=extracted_text or "",
+            page_count=page_count,
+            requires_ocr=requires_ocr,
+        )
 
     def _parse_docx(self, body: bytes) -> ParsedBrandDocument:
         self._inspect_docx_archive(body)
@@ -159,6 +207,10 @@ class BoundedBrandDocumentParser:
                 row_text = "\t".join(cell.text.strip() for cell in row.cells if cell.text.strip())
                 if row_text:
                     parts.append(row_text)
+        if not parts:
+            raise BrandUploadRejectedError(
+                "brand_text_empty", "brand document contains no usable text"
+            )
         return ParsedBrandDocument(text="\n\n".join(parts), page_count=None)
 
     @staticmethod
@@ -213,18 +265,3 @@ class BoundedBrandDocumentParser:
             raise BrandUploadRejectedError(
                 "invalid_brand_encoding", "brand text must be UTF-8"
             ) from None
-
-
-def normalize_brand_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value).replace("\r\n", "\n").replace("\r", "\n")
-    normalized = normalized.replace("\u200b", "").replace("\ufeff", "")
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in normalized.split("\n")]
-    output: list[str] = []
-    previous_blank = False
-    for line in lines:
-        blank = not line
-        if blank and previous_blank:
-            continue
-        output.append(line)
-        previous_blank = blank
-    return "\n".join(output).strip()

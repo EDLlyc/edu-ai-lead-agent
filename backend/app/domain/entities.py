@@ -26,6 +26,8 @@ class SourceProfile:
     language: str = "zh-CN"
     timezone: str = "Asia/Shanghai"
     rate_limit_seconds: float = 2.0
+    robots_status: str = "allowed"
+    terms_reviewed_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

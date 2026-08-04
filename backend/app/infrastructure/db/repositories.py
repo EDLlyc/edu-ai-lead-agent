@@ -264,6 +264,8 @@ async def claim_job(
             language=version.language,
             timezone=version.timezone,
             rate_limit_seconds=version.rate_limit_seconds,
+            robots_status=version.robots_status,
+            terms_reviewed_at=version.terms_reviewed_at,
         ),
     )
 
@@ -379,12 +381,41 @@ async def acquire_source_fetch_lease(
     return lease is not None and lease.lease_token == lease_token
 
 
+async def reserve_source_request_slot(
+    session: AsyncSession,
+    *,
+    claimed: ClaimedJob,
+    minimum_interval_seconds: float,
+) -> float:
+    """Reserve the next source request without holding a database transaction open."""
+    now = _utcnow()
+    lease = await session.scalar(
+        select(SourceFetchLeaseModel)
+        .where(
+            SourceFetchLeaseModel.source_id == claimed.profile.source_id,
+            SourceFetchLeaseModel.lease_token == claimed.lease_token,
+            SourceFetchLeaseModel.expires_at >= now,
+        )
+        .with_for_update()
+    )
+    if lease is None:
+        await session.rollback()
+        raise LeaseLostError()
+    scheduled_at = max(now, lease.next_request_at or now)
+    lease.next_request_at = scheduled_at + timedelta(seconds=max(0.0, minimum_interval_seconds))
+    lease.updated_at = now
+    await session.commit()
+    return max(0.0, (scheduled_at - now).total_seconds())
+
+
 async def release_source_fetch_lease(
     session: AsyncSession, *, source_id: UUID, lease_token: UUID
 ) -> None:
     lease = await session.get(SourceFetchLeaseModel, source_id)
     if lease is not None and lease.lease_token == lease_token:
-        await session.delete(lease)
+        # Keep the pacing watermark after ownership is released.
+        lease.expires_at = _utcnow()
+        lease.updated_at = _utcnow()
         await session.commit()
 
 
@@ -936,6 +967,16 @@ class PostgresAcquisitionRepository:
                 owner=owner,
                 lease_token=claimed.lease_token,
                 lease_seconds=lease_seconds,
+            )
+
+    async def reserve_source_request_slot(
+        self, *, claimed: ClaimedJob, minimum_interval_seconds: float
+    ) -> float:
+        async with self._factory() as session:
+            return await reserve_source_request_slot(
+                session,
+                claimed=claimed,
+                minimum_interval_seconds=minimum_interval_seconds,
             )
 
     async def release_source_lease(self, claimed: ClaimedJob) -> None:

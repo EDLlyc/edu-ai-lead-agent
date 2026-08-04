@@ -19,6 +19,7 @@ from app.application.ports.image_generation import (
 )
 from app.core.errors import (
     ImageOutputValidationError,
+    ImageProviderQuotaError,
     ImageProviderRejectedError,
     ImageProviderTimeoutError,
     ProviderAuthenticationError,
@@ -42,6 +43,7 @@ _MAX_JSON_BYTES = 256 * 1024
 _TOAPIS_HOST = "toapis.com"
 _TOAPIS_FILES_HOST = "files.toapis.com"
 _SAFE_PROVIDER_ID = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
+_TOAPIS_QUOTA_CODES = frozenset({"quota_not_enough", "insufficient_quota"})
 _GPT_IMAGE_MODEL = "gpt-image-2"
 _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
@@ -250,6 +252,8 @@ class ToApisImageGenerator:
                     raise ProviderUnavailableError() from exc
                 await self._sleep(min(2.0**attempt, 8.0))
                 continue
+            if len(response.content) <= _MAX_JSON_BYTES:
+                _raise_for_quota_response(response)
             if response.status_code in {401, 403}:
                 raise ProviderAuthenticationError()
             if response.status_code == 429:
@@ -273,10 +277,12 @@ class ToApisImageGenerator:
     def _json(response: httpx.Response) -> dict[str, Any]:
         try:
             value = response.json()
-        except (json.JSONDecodeError, ValueError, TypeError) as exc:
-            raise ImageProviderRejectedError() from exc
+        except (json.JSONDecodeError, ValueError, TypeError):
+            raise ImageProviderRejectedError() from None
         if not isinstance(value, dict):
             raise ImageProviderRejectedError()
+        if value.get("code") in _TOAPIS_QUOTA_CODES:
+            raise ImageProviderQuotaError()
         return value
 
     async def _download_image(self, url: str) -> tuple[bytes, str, int, int]:
@@ -380,6 +386,15 @@ def _retry_after(response: httpx.Response) -> float | None:
     except ValueError:
         return None
     return max(0.0, min(value, 30.0))
+
+
+def _raise_for_quota_response(response: httpx.Response) -> None:
+    try:
+        payload = response.json()
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return
+    if isinstance(payload, dict) and payload.get("code") in _TOAPIS_QUOTA_CODES:
+        raise ImageProviderQuotaError()
 
 
 def _image_dimensions(body: bytes, media_type: str) -> tuple[int, int]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import math
 import re
@@ -13,6 +14,11 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
+from app.application.ports.brand_knowledge import (
+    BrandDocumentOcrModel,
+    BrandDocumentOcrRequest,
+    BrandDocumentOcrResult,
+)
 from app.application.ports.governance import (
     EmbeddingRequest,
     EmbeddingResult,
@@ -21,6 +27,14 @@ from app.application.ports.governance import (
 )
 from app.application.services.governance_analysis import build_factual_analysis_prompt
 from app.core.errors import (
+    BrandOcrAuthenticationError,
+    BrandOcrIdentityMismatchError,
+    BrandOcrInputLimitError,
+    BrandOcrInvalidOutputError,
+    BrandOcrRateLimitError,
+    BrandOcrRejectedError,
+    BrandOcrTimeoutError,
+    BrandOcrUnavailableError,
     InvalidProviderOutputError,
     ProviderAuthenticationError,
     ProviderDimensionMismatchError,
@@ -31,7 +45,7 @@ from app.core.errors import (
     ProviderUnavailableError,
 )
 from app.domain.governance_enums import AnalysisValidationCode
-from app.domain.value_objects import stable_key
+from app.domain.value_objects import sha256_bytes, stable_key
 from app.schemas.governance_analysis import FactualAnalysisOutput
 
 _Sleep = Callable[[float], Awaitable[None]]
@@ -84,6 +98,176 @@ class _EmbeddingResponse(_ProviderModel):
     model: str | None = None
     data: tuple[_EmbeddingData, ...] = Field(min_length=1, max_length=1)
     usage: _EmbeddingUsage = Field(default_factory=_EmbeddingUsage)
+
+
+class _OcrUsage(_ProviderModel):
+    prompt_tokens: int = Field(default=0, ge=0, le=10_000_000)
+    completion_tokens: int = Field(default=0, ge=0, le=10_000_000)
+    total_tokens: int = Field(default=0, ge=0, le=20_000_000)
+
+
+class _OcrResponse(_ProviderModel):
+    id: str = Field(min_length=1, max_length=200)
+    model: str = Field(min_length=1, max_length=120)
+    md_results: str = Field(min_length=1)
+    data_info: dict[str, Any]
+    usage: _OcrUsage
+
+
+class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
+    """Bounded adapter for Zhipu's private PDF layout-parsing endpoint."""
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        base_url: str,
+        api_key: SecretStr,
+        model: str,
+        connect_timeout_seconds: float,
+        read_timeout_seconds: float,
+        total_timeout_seconds: float,
+        concurrency: int,
+        max_attempts: int,
+        max_request_bytes: int,
+        max_response_bytes: int,
+        max_pages: int,
+        sleep: _Sleep = asyncio.sleep,
+    ) -> None:
+        if concurrency < 1 or max_attempts < 1:
+            raise ValueError("OCR concurrency and attempts must be positive")
+        if max_request_bytes < 1 or max_response_bytes < 1 or max_pages < 1:
+            raise ValueError("OCR byte and page limits must be positive")
+        parsed_base_url = urlsplit(base_url.strip())
+        if (
+            parsed_base_url.scheme != "https"
+            or not parsed_base_url.hostname
+            or parsed_base_url.username is not None
+            or parsed_base_url.password is not None
+            or parsed_base_url.query
+            or parsed_base_url.fragment
+        ):
+            raise ValueError("provider base URL must be an HTTPS origin/path without credentials")
+        api_key_value = api_key.get_secret_value().strip()
+        if not api_key_value or any(character in api_key_value for character in "\r\n"):
+            raise ValueError("provider API key must not be blank or contain line breaks")
+        if (
+            not model.strip()
+            or any(character.isspace() for character in model.strip())
+            or len(model.strip()) > 120
+        ):
+            raise ValueError("OCR model must be a bounded identifier without whitespace")
+        if (
+            connect_timeout_seconds <= 0
+            or read_timeout_seconds <= 0
+            or total_timeout_seconds <= 0
+            or total_timeout_seconds < read_timeout_seconds
+        ):
+            raise ValueError("OCR timeouts must be positive and total must cover read")
+        self._client = client
+        self._url = f"{base_url.strip().rstrip('/')}/layout_parsing"
+        self._api_key = SecretStr(api_key_value)
+        self._model = model.strip()
+        self._max_request_bytes = max_request_bytes
+        self._max_response_bytes = max_response_bytes
+        self._max_pages = max_pages
+        self._timeout = httpx.Timeout(
+            connect=connect_timeout_seconds,
+            read=read_timeout_seconds,
+            # OCR sends a bounded, but much larger, Base64 PDF body than the
+            # JSON-only model calls. Give the upload its bounded OCR window.
+            write=read_timeout_seconds,
+            pool=connect_timeout_seconds,
+        )
+        self._total_timeout_seconds = total_timeout_seconds
+        self._semaphore = asyncio.Semaphore(concurrency)
+        self._max_attempts = max_attempts
+        self._sleep = sleep
+
+    async def parse_document(self, request: BrandDocumentOcrRequest) -> BrandDocumentOcrResult:
+        if request.page_count > self._max_pages:
+            raise BrandOcrInputLimitError()
+        if sha256_bytes(request.original_bytes) != request.input_hash:
+            raise BrandOcrInputLimitError()
+        encoded = base64.b64encode(request.original_bytes).decode("ascii")
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "file": f"data:application/pdf;base64,{encoded}",
+            "return_crop_images": False,
+            "need_layout_visualization": False,
+        }
+        if len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > (
+            self._max_request_bytes
+        ):
+            raise BrandOcrInputLimitError()
+        request_fingerprint = stable_key(
+            request.version_id,
+            request.input_hash,
+            request.media_type,
+            "zhipu",
+            self._model,
+        )
+        started = perf_counter_ns()
+        try:
+            response = await _post_json_with_retries(
+                client=self._client,
+                url=self._url,
+                api_key=self._api_key,
+                http_timeout=self._timeout,
+                total_timeout_seconds=self._total_timeout_seconds,
+                semaphore=self._semaphore,
+                max_attempts=self._max_attempts,
+                sleep=self._sleep,
+                payload=payload,
+                max_response_bytes=self._max_response_bytes,
+            )
+        except ProviderAuthenticationError:
+            raise BrandOcrAuthenticationError() from None
+        except ProviderRateLimitError:
+            raise BrandOcrRateLimitError() from None
+        except ProviderTimeoutError:
+            raise BrandOcrTimeoutError() from None
+        except ProviderUnavailableError:
+            raise BrandOcrUnavailableError() from None
+        except ProviderRejectedError:
+            raise BrandOcrRejectedError() from None
+        except InvalidProviderOutputError:
+            raise BrandOcrInvalidOutputError() from None
+        try:
+            parsed = _OcrResponse.model_validate(response.json())
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+            raise BrandOcrInvalidOutputError() from None
+        if parsed.model != self._model:
+            raise BrandOcrIdentityMismatchError()
+        markdown = _normalize_ocr_markdown(parsed.md_results)
+        if not markdown:
+            raise BrandOcrInvalidOutputError()
+        page_count = _ocr_page_count(parsed.data_info, request.page_count)
+        if page_count < 1 or page_count > self._max_pages:
+            raise BrandOcrInvalidOutputError()
+        return BrandDocumentOcrResult(
+            markdown=markdown,
+            provider="zhipu",
+            model=parsed.model,
+            request_fingerprint=request_fingerprint,
+            provider_request_id=_safe_provider_request_id(parsed.id),
+            page_count=page_count,
+            prompt_tokens=parsed.usage.prompt_tokens,
+            completion_tokens=parsed.usage.completion_tokens,
+            latency_ms=max(0, (perf_counter_ns() - started) // 1_000_000),
+        )
+
+
+def _normalize_ocr_markdown(value: str) -> str:
+    return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _ocr_page_count(data_info: dict[str, Any], fallback: int) -> int:
+    for key in ("page_count", "num_pages", "pages"):
+        value = data_info.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return fallback
 
 
 class ZhipuFactualAnalysisModel:

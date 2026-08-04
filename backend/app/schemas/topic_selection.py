@@ -18,6 +18,7 @@ class TopicSelectionRunResponse(BaseModel):
     timezone: str
     scoring_version: str
     scoring_profile: str
+    revision: int
     config_fingerprint: str
     config: dict[str, Any]
     status: str
@@ -30,6 +31,9 @@ class TopicSelectionRunResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    superseded_at: datetime | None
+    superseded_by_run_id: UUID | None
+    is_current: bool
     status_url: str
     scores_url: str
 
@@ -67,6 +71,7 @@ class DailyTopicResponse(BaseModel):
     timezone: str
     scoring_version: str
     scoring_profile: str
+    revision: int
     decision: Literal["selected", "no_topic"]
     run_id: UUID
     selected_event_id: UUID | None

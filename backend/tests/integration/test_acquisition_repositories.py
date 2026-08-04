@@ -25,6 +25,7 @@ from app.infrastructure.db.repositories import (
     persist_candidate,
     persist_snapshot,
     release_source_fetch_lease,
+    reserve_source_request_slot,
     seed_sources,
 )
 from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
@@ -251,6 +252,39 @@ async def test_heartbeat_renews_job_and_source_fetch_lease_together(
             source_id=claimed.profile.source_id,
             lease_token=claimed.lease_token,
         )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_source_request_pacing_survives_lease_release(
+    integration_context: IntegrationContext,
+) -> None:
+    claimed = (await _claim_sources(integration_context, [0]))[0]
+    async with integration_context.session_factory() as session:
+        first_delay = await reserve_source_request_slot(
+            session,
+            claimed=claimed,
+            minimum_interval_seconds=claimed.profile.rate_limit_seconds,
+        )
+    async with integration_context.session_factory() as session:
+        second_delay = await reserve_source_request_slot(
+            session,
+            claimed=claimed,
+            minimum_interval_seconds=claimed.profile.rate_limit_seconds,
+        )
+    assert first_delay < 0.2
+    assert second_delay >= claimed.profile.rate_limit_seconds - 0.2
+
+    async with integration_context.session_factory() as session:
+        await release_source_fetch_lease(
+            session,
+            source_id=claimed.profile.source_id,
+            lease_token=claimed.lease_token,
+        )
+        lease = await session.get(SourceFetchLeaseModel, claimed.profile.source_id)
+    assert lease is not None
+    assert lease.next_request_at is not None
+    assert lease.expires_at <= datetime.now(UTC)
 
 
 @pytest.mark.integration

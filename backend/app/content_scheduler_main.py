@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
 from app.application.services.copy_generation import build_copy_version_bundle
 from app.application.services.topic_selection import reconcile_daily_topic_selection
@@ -47,6 +48,7 @@ async def run_content_scheduler() -> None:
             timezone=settings.business_timezone,
             scoring_profile=settings.content_scoring_profile,
             version_bundle=build_copy_version_bundle(settings),
+            max_attempts=settings.content_max_attempts,
         )
         if created:
             logger.info("copy_generation_runs_reconciled", created_count=created)
@@ -60,6 +62,14 @@ async def run_content_scheduler() -> None:
             timezone=settings.business_timezone,
         ),
         id="daily-topic-selection",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        reconcile,
+        IntervalTrigger(seconds=settings.content_poll_seconds),
+        id="content-readiness-reconcile",
         max_instances=1,
         coalesce=True,
         replace_existing=True,

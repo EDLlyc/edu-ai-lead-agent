@@ -50,6 +50,7 @@ async def create_copy_generation_run(
             settings,
             scoring_profile=payload.scoring_profile,
         ),
+        max_attempts=settings.content_max_attempts,
     )
     projected = _run_response(await get_copy_generation_run(session, run_id))
     response.headers["Location"] = projected.status_url

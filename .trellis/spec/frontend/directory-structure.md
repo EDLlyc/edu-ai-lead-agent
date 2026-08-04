@@ -2,9 +2,10 @@
 
 ## Contract status
 
-The React + TypeScript + Vite application now has a real internal brand-knowledge feature under
+The React + TypeScript + Vite application now has real internal brand-knowledge and material-package
+features under
 [`frontend/src/features/brand`](../../../frontend/src/features/brand), alongside the app/provider,
-generated-client, style, and test paths. Material-package directories remain the next target.
+generated-client, style, and test paths. The material feature owns the review and reuse workflow.
 
 Implemented shell paths:
 
@@ -13,6 +14,18 @@ Implemented shell paths:
 - [`src/app/App.tsx`](../../../frontend/src/app/App.tsx) composes the brand workspace shell.
 - [`src/features/brand/BrandKnowledgePanel.tsx`](../../../frontend/src/features/brand/BrandKnowledgePanel.tsx)
   owns upload, version status/actions, and internal generation-context diagnostic presentation.
+- [`src/features/material/MaterialPackagePanel.tsx`](../../../frontend/src/features/material/MaterialPackagePanel.tsx)
+  owns package-list loading, enqueue/review actions, polling handoff, copy feedback, and safe
+  package download.
+- [`src/features/material/MaterialPackageDetail.tsx`](../../../frontend/src/features/material/MaterialPackageDetail.tsx)
+  owns topic explanation, copy, image, source/evidence, brand-binding, validation/audit, and
+  manual-review presentation.
+- [`src/features/material/api.ts`](../../../frontend/src/features/material/api.ts) and
+  [`hooks.ts`](../../../frontend/src/features/material/hooks.ts) own generated transport mapping,
+  polling, and server-state mutations.
+- [`src/features/material/MaterialPackagePanel.test.tsx`](../../../frontend/src/features/material/MaterialPackagePanel.test.tsx)
+  and [`api.test.ts`](../../../frontend/src/features/material/api.test.ts) cover the material
+  package's user-observable states and mapping boundary.
 - [`src/features/brand/api.ts`](../../../frontend/src/features/brand/api.ts) and
   [`hooks.ts`](../../../frontend/src/features/brand/hooks.ts) own generated transport and server
   state.
@@ -41,12 +54,13 @@ frontend/
     ├── components/
     │   └── ui/
     ├── features/
-    │   ├── material-packages/
-    │   │   ├── api/
-    │   │   ├── components/
-    │   │   ├── hooks/
-    │   │   ├── pages/
-    │   │   └── tests/
+    │   ├── material/
+    │   │   ├── MaterialPackagePanel.tsx
+    │   │   ├── MaterialPackageDetail.tsx
+    │   │   ├── MaterialPackagePanel.module.css
+    │   │   ├── api.ts
+    │   │   ├── hooks.ts
+    │   │   └── *.test.ts(x)
     │   └── pipeline-runs/
     │       ├── api/
     │       ├── components/
@@ -80,9 +94,9 @@ A feature owns its pages, domain-specific components, query/mutation hooks, key 
 mapping. Import another feature through its explicit public exports when needed; do not reach into
 unrelated internal directories.
 
-The first vertical slice should center on `material-packages`: load a package, display selected
-topic and provenance, copy text, download the image, and show validation/audit state. A separate
-`pipeline-runs` feature maps generated API states such as `queued`, `running`, `no_topic`,
+The material vertical slice loads a package, displays selected topic and provenance, copies text,
+downloads the image or JSON package, and shows validation/audit state. A separate `pipeline-runs`
+feature maps generated API states such as `queued`, `running`, `no_topic`,
 `awaiting_manual_use`, and `failed` into presentation states without coupling polling logic to
 presentation components.
 

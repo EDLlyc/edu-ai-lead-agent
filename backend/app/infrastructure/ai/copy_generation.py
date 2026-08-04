@@ -167,6 +167,7 @@ class DeterministicFakeMaterialDraftGenerator:
             f"{brand_statement}{opinion}"
             "面对快速变化的人工智能，我们可以从真实信息出发，陪孩子观察、提问和讨论，"
             "让科技成为理解世界的新工具，而不是新的焦虑来源。"
+            "\n\n#赛先生科学 #人工智能启蒙 #科学思维"
         )
         draft = MaterialDraft(
             copywriting=copywriting,

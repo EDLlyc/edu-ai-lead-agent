@@ -42,8 +42,15 @@ class FetchError(AppError):
 
 
 class TransientFetchError(FetchError):
-    def __init__(self, code: str, message: str = "source request temporarily failed") -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str = "source request temporarily failed",
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
         super().__init__(code, message, 503, True)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class LeaseLostError(TransientFetchError):
@@ -108,7 +115,7 @@ class ProviderAuthenticationError(ProviderError):
     def __init__(self) -> None:
         super().__init__(
             "provider_authentication_failed",
-            "factual-analysis provider credentials were rejected",
+            "provider credentials were rejected",
             503,
         )
 
@@ -179,6 +186,15 @@ class ImageProviderRejectedError(ProviderError):
     def __init__(self) -> None:
         super().__init__(
             "image_provider_rejected", "image provider rejected the image request", 422
+        )
+
+
+class ImageProviderQuotaError(ProviderError):
+    def __init__(self) -> None:
+        super().__init__(
+            "image_provider_quota_exhausted",
+            "image provider quota is exhausted",
+            429,
         )
 
 
@@ -272,6 +288,80 @@ class InvalidProviderOutputError(ProviderError):
         self.issue_codes = issue_codes or ("invalid_schema",)
         self.validation_issues = normalize_provider_validation_issues(
             (issue.loc, issue.type) for issue in validation_issues
+        )
+
+
+class BrandOcrError(ProviderError):
+    """Provider boundary failure for the private brand OCR capability."""
+
+
+class BrandOcrInputLimitError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_input_limit",
+            "brand OCR input exceeded the configured limit",
+            422,
+        )
+
+
+class BrandOcrAuthenticationError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_authentication_failed",
+            "brand OCR provider credentials were rejected",
+            503,
+        )
+
+
+class BrandOcrRejectedError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_request_rejected",
+            "brand OCR provider rejected the bounded request",
+            422,
+        )
+
+
+class BrandOcrRateLimitError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_rate_limited",
+            "brand OCR provider rate limit was exhausted",
+            429,
+            True,
+        )
+
+
+class BrandOcrTimeoutError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__("brand_ocr_timeout", "brand OCR provider timed out", 503, True)
+
+
+class BrandOcrUnavailableError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_unavailable",
+            "brand OCR provider is temporarily unavailable",
+            503,
+            True,
+        )
+
+
+class BrandOcrInvalidOutputError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_invalid_output",
+            "brand OCR provider returned invalid output",
+            422,
+        )
+
+
+class BrandOcrIdentityMismatchError(BrandOcrError):
+    def __init__(self) -> None:
+        super().__init__(
+            "brand_ocr_identity_mismatch",
+            "brand OCR result does not match the configured provider identity",
+            422,
         )
 
 

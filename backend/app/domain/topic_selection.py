@@ -30,12 +30,12 @@ class NoTopicCode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TopicScoringConfig:
-    version: str = "scoring-v1-preview.1"
+    version: str = "scoring-v1-preview.2"
     profile: str = "preview"
     veto_rule_version: str = "topic-veto-v1"
     threshold: float = 0.62
     recent_selection_window_days: int = 7
-    freshness_window_days: float = 14.0
+    freshness_window_days: float = 10.0
     source_diversity_cap: int = 4
     source_trust_weight: float = 0.20
     source_diversity_weight: float = 0.10

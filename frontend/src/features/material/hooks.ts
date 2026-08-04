@@ -5,6 +5,8 @@ import {
   getMaterialPackage,
   listMaterialPackages,
   reviewMaterialPackage,
+  type ImageArtifactStatus,
+  type MaterialPackageResponse,
 } from "./api";
 
 export const materialPackageKeys = {
@@ -16,25 +18,35 @@ export const materialPackageKeys = {
 export function useMaterialPackages() {
   return useQuery({
     queryKey: materialPackageKeys.list(),
-    queryFn: listMaterialPackages,
+    queryFn: ({ signal }) => listMaterialPackages(signal),
   });
 }
 
 export function useMaterialPackage(id: string | null) {
   return useQuery({
     queryKey: materialPackageKeys.detail(id ?? ""),
-    queryFn: () => getMaterialPackage(id ?? ""),
+    queryFn: ({ signal }) => getMaterialPackage(id ?? "", signal),
     enabled: id !== null && id.length > 0,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      const imageStatus = query.state.data?.image.status;
-      return status === "queued" ||
-        status === "ready" ||
-        imageStatus === "running"
-        ? 2_500
-        : false;
-    },
+    refetchInterval: (query) =>
+      shouldPollMaterialPackage(query.state.data) ? 2_500 : false,
   });
+}
+
+export function shouldPollMaterialPackage(
+  materialPackage:
+    | Readonly<{
+        status: MaterialPackageResponse["status"];
+        image: Readonly<{ status: ImageArtifactStatus }>;
+      }>
+    | undefined,
+): boolean {
+  if (materialPackage === undefined || materialPackage.status !== "queued") {
+    return false;
+  }
+  return (
+    materialPackage.image.status === "queued" ||
+    materialPackage.image.status === "running"
+  );
 }
 
 export function useGenerateMaterialPackage() {

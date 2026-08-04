@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Preserve the existing private brand upload, parser, versioning, embedding, activation, retrieval, and no-evidence-mixing contracts while adding OCR metadata."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Apply the PostgreSQL/Alembic immutable-version, short-transaction, external-provider, idempotency, vector metadata, and migration rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Map OCR provider timeouts/rate limits/schema failures to typed retryable or terminal outcomes without leaking raw payloads."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify OCR telemetry contains only bounded provider metadata and never raw PDF/OCR content or secrets."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the required backend typing, lint, migration, contract, and integration quality gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The change crosses parser, provider port, worker, persistence, settings, API status, and deployment boundaries."}
+{"file":".trellis/tasks/08-03-brand-document-ocr/research/zhipu-glm-ocr.md","reason":"Record the official GLM-OCR API contract and the selected local-PDF Base64 integration boundary."}

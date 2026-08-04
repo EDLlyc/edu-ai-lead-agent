@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     acquisition_read_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     acquisition_total_timeout_seconds: float = Field(default=45.0, gt=0, le=180)
     acquisition_max_redirects: int = Field(default=3, ge=0, le=10)
+    acquisition_max_retry_after_seconds: int = Field(default=300, ge=0, le=3600)
     acquisition_user_agent: str = (
         "EduAILeadAgent/0.1 (+https://github.com/EDLlyc/edu-ai-lead-agent)"
     )
@@ -45,7 +46,8 @@ class Settings(BaseSettings):
     acquisition_daily_item_limit: int = Field(default=10, ge=1, le=50)
     acquisition_first_run_scan_limit: int = Field(default=100, ge=1, le=500)
     acquisition_daily_scan_limit: int = Field(default=50, ge=1, le=200)
-    acquisition_version: str = "acquisition-v1"
+    acquisition_freshness_window_days: int = Field(default=10, ge=1, le=365)
+    acquisition_version: str = "acquisition-v3-freshness-pacing"
 
     governance_enabled: bool = False
     governance_scheduler_enabled: bool = False
@@ -80,7 +82,8 @@ class Settings(BaseSettings):
     content_lease_seconds: int = Field(default=120, ge=30, le=3600)
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
-    content_scoring_version: str = "scoring-v1-preview.1"
+    content_freshness_window_days: int = Field(default=10, ge=1, le=365)
+    content_scoring_version: str = "scoring-v1-preview.2"
     content_scoring_profile: str = "preview"
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
@@ -92,17 +95,27 @@ class Settings(BaseSettings):
     brand_parse_max_chunks: int = Field(default=600, ge=1, le=2_000)
     brand_chunk_characters: int = Field(default=900, ge=300, le=3_000)
     brand_chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
-    brand_parser_version: str = "brand-parser-v1"
-    brand_chunk_version: str = "brand-chunk-v1"
+    brand_parser_version: str = "brand-parser-v2-glm-ocr"
+    brand_chunk_version: str = "brand-chunk-v2-structure-aware"
     brand_embedding_input_version: str = "brand-embedding-input-v1"
-    brand_retrieval_version: str = "brand-hybrid-rrf-v1"
-    copy_pipeline_version: str = "copy-pipeline-v7"
-    copy_generator_prompt_version: str = "moments-generator-v7"
+    brand_retrieval_version: str = "brand-hybrid-rrf-v2-diverse"
+    brand_ocr_model: str = Field(default="glm-ocr", min_length=1, max_length=120)
+    brand_ocr_sparse_text_threshold: int = Field(default=40, ge=1, le=10_000)
+    brand_ocr_max_request_bytes: int = Field(
+        default=40 * 1024 * 1024, ge=64 * 1024, le=64 * 1024 * 1024
+    )
+    brand_ocr_max_response_bytes: int = Field(
+        default=10 * 1024 * 1024, ge=64 * 1024, le=50 * 1024 * 1024
+    )
+    brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
+    brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
+    copy_pipeline_version: str = "copy-pipeline-v8-parent-language"
+    copy_generator_prompt_version: str = "moments-generator-v8-parent-language"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
-    copy_auditor_prompt_version: str = "moments-auditor-v7"
+    copy_auditor_prompt_version: str = "moments-auditor-v8-parent-language"
     copy_audit_schema_version: str = "moments-audit-schema-v1"
-    copy_rule_version: str = "moments-rules-v2"
-    copy_preview_policy_version: str = "preview-v1"
+    copy_rule_version: str = "moments-rules-v3-parent-language"
+    copy_preview_policy_version: str = "preview-v2"
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
@@ -177,6 +190,8 @@ class Settings(BaseSettings):
             raise ValueError("first-run scan limit must cover the accepted item limit")
         if self.acquisition_daily_scan_limit < self.acquisition_daily_item_limit:
             raise ValueError("daily scan limit must cover the accepted item limit")
+        if self.content_freshness_window_days < 1:
+            raise ValueError("content freshness window must be positive")
         if self.ai_total_timeout_seconds < self.ai_read_timeout_seconds:
             raise ValueError("AI total timeout must cover the read timeout")
         if self.ai_max_tokens_per_run < self.ai_max_output_tokens:
@@ -239,6 +254,12 @@ class Settings(BaseSettings):
                 raise ValueError("ToAPIs base URL must be exactly https://toapis.com")
         if not self.image_model.strip() or any(ch.isspace() for ch in self.image_model):
             raise ValueError("image model identifier must be non-blank and contain no whitespace")
+        if not self.brand_ocr_model.strip() or any(
+            character.isspace() for character in self.brand_ocr_model
+        ):
+            raise ValueError(
+                "brand OCR model identifier must be non-blank and contain no whitespace"
+            )
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")
         version_values = {
@@ -253,6 +274,7 @@ class Settings(BaseSettings):
             self.governance_event_assignment_version,
             self.content_scoring_version,
             self.content_scoring_profile,
+            self.acquisition_version,
             self.brand_parser_version,
             self.brand_chunk_version,
             self.brand_embedding_input_version,

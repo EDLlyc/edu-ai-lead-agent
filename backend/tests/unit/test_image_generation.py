@@ -7,6 +7,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from app.application.ports.image_generation import ImageGenerationRequest
+from app.core.errors import ImageProviderQuotaError, ProviderAuthenticationError
 from app.image_live_smoke import _prompt_for_profile
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
@@ -84,6 +85,57 @@ async def test_toapis_generation_uploads_polls_and_downloads_without_persisting_
     assert generation_payload["reference_images"] == ["https://files.toapis.com/u/1"]
     assert "metadata" not in generation_payload
     assert "image_urls" not in generation_payload
+
+
+def test_provider_authentication_error_message_is_provider_neutral() -> None:
+    error = ProviderAuthenticationError()
+
+    assert str(error) == "provider credentials were rejected"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "provider_code"),
+    [(200, "quota_not_enough"), (400, "insufficient_quota")],
+)
+async def test_toapis_quota_codes_are_non_retryable_and_redact_provider_body(
+    status_code: int, provider_code: str
+) -> None:
+    raw_marker = "PRIVATE-TOAPIS-QUOTA-RESPONSE"
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(
+            status_code,
+            request=request,
+            json={"code": provider_code, "message": raw_marker, "details": {"raw": raw_marker}},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        generator = ToApisImageGenerator(
+            client=client,
+            base_url="https://toapis.com",
+            api_key=SecretStr("test-key"),
+            max_attempts=3,
+            initial_poll_seconds=0,
+            poll_interval_seconds=0,
+            sleep=lambda _seconds: __import__("asyncio").sleep(0),
+        )
+        with pytest.raises(ImageProviderQuotaError) as raised:
+            await generator.generate(
+                ImageGenerationRequest(
+                    uuid4(), uuid4(), "parent-facing science illustration", "fingerprint"
+                )
+            )
+
+    assert attempts == 1
+    assert raised.value.code == "image_provider_quota_exhausted"
+    assert raised.value.retryable is False
+    assert raw_marker not in str(raised.value)
+    assert raw_marker not in repr(raised.value)
+    assert raw_marker not in repr(vars(raised.value))
 
 
 def test_flux_2_pro_payload_uses_only_flux_profile_fields() -> None:

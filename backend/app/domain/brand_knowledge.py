@@ -133,12 +133,38 @@ class BrandUploadMetadata:
 class ParsedBrandDocument:
     text: str
     page_count: int | None
+    extraction_method: str = "local"
+    requires_ocr: bool = False
+    ocr_provider: str | None = None
+    ocr_model: str | None = None
+    ocr_request_fingerprint: str | None = None
+    ocr_provider_request_id: str | None = None
+    ocr_page_count: int | None = None
+    ocr_prompt_tokens: int | None = None
+    ocr_completion_tokens: int | None = None
+    ocr_latency_ms: int | None = None
 
     def __post_init__(self) -> None:
-        if not self.text.strip():
+        if not self.text.strip() and not self.requires_ocr:
             raise ValueError("parsed brand document must contain text")
         if self.page_count is not None and self.page_count < 1:
             raise ValueError("parsed page count must be positive")
+        if self.extraction_method not in {"local", "ocr"}:
+            raise ValueError("brand extraction method is invalid")
+        if self.requires_ocr and self.extraction_method != "local":
+            raise ValueError("OCR-needed brand documents must use local extraction metadata")
+        if self.extraction_method == "ocr" and not self.text.strip():
+            raise ValueError("OCR brand document must contain text")
+        if self.ocr_page_count is not None and self.ocr_page_count < 1:
+            raise ValueError("OCR page count must be positive")
+        for value in (self.ocr_prompt_tokens, self.ocr_completion_tokens, self.ocr_latency_ms):
+            if value is not None and value < 0:
+                raise ValueError("OCR usage counters must not be negative")
+
+    @property
+    def ocr_required(self) -> bool:
+        """Compatibility alias for callers that describe the decision as an OCR requirement."""
+        return self.requires_ocr
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,3 +278,18 @@ def validated_brand_upload(
         body=body,
         sha256=sha256_bytes(body),
     )
+
+
+def normalize_brand_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace("\u200b", "").replace("\ufeff", "")
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in normalized.split("\n")]
+    output: list[str] = []
+    previous_blank = False
+    for line in lines:
+        blank = not line
+        if blank and previous_blank:
+            continue
+        output.append(line)
+        previous_blank = blank
+    return "\n".join(output).strip()

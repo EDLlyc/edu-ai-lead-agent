@@ -1,10 +1,34 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_HASHTAG_TOKEN = re.compile(r"^#[A-Za-z0-9_\u3400-\u9fff]{2,24}$")
+
+
+def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
+    """Read a bounded hashtag line from the end of a copy without changing the copy."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ()
+    tokens = tuple(lines[-1].split())
+    if not 1 <= len(tokens) <= 3 or any(
+        _HASHTAG_TOKEN.fullmatch(token) is None for token in tokens
+    ):
+        return ()
+    return tokens
+
+
+def has_non_trailing_hashtags(text: str) -> bool:
+    """Return whether a hashtag-like token appears before the final non-empty line."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return any(
+        token.startswith("#") and len(token) > 1 for line in lines[:-1] for token in line.split()
+    )
 
 
 class _StrictModel(BaseModel):
