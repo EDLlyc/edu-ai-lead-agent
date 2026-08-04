@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     comfly_base_url: str = "https://ai.comfly.org"
     comfly_api_key: SecretStr | None = None
     comfly_output_hosts: str = ""
+    comfly_allow_public_output_urls: bool = False
     image_model: str = "gpt-image-2"
     image_prompt_version: str = "image-prompt-v1"
     image_pipeline_version: str = "image-pipeline-v1"

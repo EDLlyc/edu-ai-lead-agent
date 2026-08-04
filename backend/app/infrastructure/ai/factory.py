@@ -127,6 +127,7 @@ def create_image_generator(
         max_request_bytes=settings.image_max_request_bytes,
         max_provider_response_bytes=settings.image_max_provider_response_bytes,
         allowed_output_hosts=configured_hosts or None,
+        allow_public_output_urls=settings.comfly_allow_public_output_urls,
     )
 
 

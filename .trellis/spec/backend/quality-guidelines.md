@@ -349,6 +349,75 @@ artifact, expose the package, and exercise the frontend copy/download/source-lin
   policy before any model call.
 - Do not add social-platform publishing credentials, endpoints, or background actions.
 
+## Scenario: Provider-returned image output URLs
+
+### 1. Scope / Trigger
+
+This contract applies when the Comfly/OpenAI-compatible image adapter receives a temporary or
+signed image URL instead of inline base64 image data.
+
+### 2. Signatures
+
+- OpenAICompatibleImageGenerator._download_image(url: str) returns validated
+  (bytes, media_type, width, height) or a typed image/provider failure.
+- COMFLY_OUTPUT_HOSTS is a comma-separated set of exact bare DNS hostnames.
+- COMFLY_ALLOW_PUBLIC_OUTPUT_URLS is a boolean opt-in, defaulting to false.
+
+### 3. Contracts
+
+- HTTPS, default/443 port, no userinfo, fragment, or whitespace are required. Query parameters
+  remain allowed because provider-signed URLs may carry expiry/signature fields.
+- An exact configured output host skips DNS preflight but still undergoes status, size, media-type,
+  image-signature, and 1024x1024 dimension validation.
+- An unlisted host is eligible only when COMFLY_ALLOW_PUBLIC_OUTPUT_URLS=true; its literal IP
+  or every A/AAAA DNS answer must be globally routable.
+- Redirects are never followed. The new flag does not authorize arbitrary HTTP, private addresses,
+  or unvalidated bytes.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Unknown host and public-output flag is false | ImageOutputValidationError; no download |
+| Unknown host resolves to private, reserved, Fake-IP, loopback, link-local, or metadata address | ImageOutputValidationError; no download |
+| DNS fails or returns no/invalid addresses | ImageOutputValidationError; no download |
+| Redirect, non-image type, mismatched signature, oversized body, or non-1024x1024 image | typed validation failure; no storage result |
+| Provider timeout/rate limit/5xx | existing bounded typed retry behavior |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the explicit flag is enabled, a signed HTTPS CDN URL resolves to only global addresses,
+  and the bounded image checks pass.
+- Base: the flag is absent/false and only explicitly configured output hosts are accepted.
+- Bad: setting COMFLY_OUTPUT_HOSTS=*, following a redirect, trusting 198.18.0.0/15, or
+  storing the response before signature and dimension checks.
+
+### 6. Tests Required
+
+- Unit coverage must prove exact-host downloads do not call DNS, disabled unknown hosts are rejected,
+  enabled public hosts preserve signed query strings, and non-global DNS answers are rejected before
+  the CDN request.
+- The backend gate must include focused image tests, Ruff, strict mypy, full pytest, Compose
+  rendering, and doctor.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+~~~
+COMFLY_OUTPUT_HOSTS=*
+~~~
+
+#### Correct
+
+~~~
+COMFLY_OUTPUT_HOSTS=
+COMFLY_ALLOW_PUBLIC_OUTPUT_URLS=true
+~~~
+
+The correct form is an explicit provider opt-in backed by HTTPS, public-address, response-size,
+media-type, signature, and dimension checks.
+
 ## Review checklist
 
 - Is the change in the correct API/application/domain/infrastructure layer?

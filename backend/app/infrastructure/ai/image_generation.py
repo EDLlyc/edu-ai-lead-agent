@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import ipaddress
 import json
 import re
 import struct
@@ -24,9 +25,16 @@ from app.core.errors import (
     ImageProviderQuotaError,
     ImageProviderRejectedError,
     ImageProviderTimeoutError,
+    PolicyRejectedError,
     ProviderAuthenticationError,
     ProviderRateLimitError,
     ProviderUnavailableError,
+)
+from app.core.security import (
+    METADATA_ADDRESSES,
+    Resolver,
+    system_resolver,
+    validate_public_resolution,
 )
 from app.domain.image_generation import (
     IMAGE_HEIGHT,
@@ -365,6 +373,8 @@ class OpenAICompatibleImageGenerator:
         max_request_bytes: int = 8 * 1024 * 1024,
         max_provider_response_bytes: int = 32 * 1024 * 1024,
         allowed_output_hosts: frozenset[str] | None = None,
+        allow_public_output_urls: bool = False,
+        resolver: Resolver = system_resolver,
         sleep: _Sleep = asyncio.sleep,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
@@ -430,6 +440,8 @@ class OpenAICompatibleImageGenerator:
         self._max_request_bytes = max_request_bytes
         self._max_provider_response_bytes = max_provider_response_bytes
         self._allowed_output_hosts = output_hosts
+        self._allow_public_output_urls = allow_public_output_urls
+        self._resolver = resolver
         self._sleep = sleep
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
@@ -625,22 +637,36 @@ class OpenAICompatibleImageGenerator:
         return body, media_type, width, height
 
     async def _download_image(self, url: str) -> tuple[bytes, str, int, int]:
-        parsed = urlsplit(url)
         try:
+            parsed = urlsplit(url)
+            hostname = parsed.hostname
             port = parsed.port
         except ValueError:
             raise ImageOutputValidationError() from None
         if (
             parsed.scheme != "https"
-            or parsed.hostname is None
-            or parsed.hostname.lower() not in self._allowed_output_hosts
+            or hostname is None
             or port not in {None, 443}
             or parsed.username is not None
             or parsed.password is not None
-            or parsed.fragment
+            or "#" in url
             or any(character.isspace() for character in url)
         ):
             raise ImageOutputValidationError()
+        normalized_host = hostname.lower()
+        if normalized_host not in self._allowed_output_hosts:
+            if not self._allow_public_output_urls:
+                raise ImageOutputValidationError()
+            try:
+                address = ipaddress.ip_address(normalized_host)
+            except ValueError:
+                try:
+                    await validate_public_resolution(normalized_host, self._resolver)
+                except PolicyRejectedError:
+                    raise ImageOutputValidationError() from None
+            else:
+                if address in METADATA_ADDRESSES or not address.is_global:
+                    raise ImageOutputValidationError()
         for attempt in range(self._max_attempts):
             try:
                 async with self._client.stream(
