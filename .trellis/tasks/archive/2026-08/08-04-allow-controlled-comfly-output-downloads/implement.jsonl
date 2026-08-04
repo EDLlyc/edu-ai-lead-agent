@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines backend typing, injected external adapters, environment/Compose contracts, security review, and tiered validation gates for this downloader change."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed provider/output failures, bounded retries, redaction, and the no-partial-success behavior required by the image adapter."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Defines provider-call observability and prohibits API keys, signed URLs, raw provider payloads, and sensitive content in logs."}
