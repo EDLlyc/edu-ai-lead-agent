@@ -418,6 +418,81 @@ COMFLY_ALLOW_PUBLIC_OUTPUT_URLS=true
 The correct form is an explicit provider opt-in backed by HTTPS, public-address, response-size,
 media-type, signature, and dimension checks.
 
+## Scenario: Safe Comfly output-host discovery before Fake-IP remediation
+
+### 1. Scope / Trigger
+
+Use this local-only operational path when Comfly returns a temporary signed output URL from an
+unknown CDN and the current DNS resolver returns Fake-IP addresses. The operator needs the CDN
+hostname for a precise upstream `fake-ip-filter` entry, but may never print or persist the signed
+URL itself.
+
+### 2. Signatures
+
+- `OpenAICompatibleImageGenerator(..., output_host_observer: Callable[[str], bool] | None)`.
+- `python -m app.image_live_smoke --reference <path> --discover-output-host`.
+- The observer receives a normalized ASCII bare hostname. Returning `False` stops before DNS
+  preflight or a CDN download.
+
+### 3. Contracts
+
+- The observer is unset in normal API and content-worker paths.
+- The smoke-only callback runs only after HTTPS, port, userinfo, fragment, whitespace, and
+  hostname checks; it receives no URL path, query string, provider body, prompt, or credential.
+- Discovery prints `image_smoke_output_host=<hostname>` and writes no image file or artifact.
+- Base64 output has no host and reports `image_smoke_output_host=none` without a CDN request.
+- The resulting exact hostname may be added to the upstream Clash/Mihomo `dns.fake-ip-filter`;
+  do not add a wildcard host or relax public-address validation.
+- On Clash Verge Rev, inspect `profiles.yaml` and edit the current profile's merge template; an
+  edit to `dns_config.yaml` alone may not affect the generated `clash-verge.yaml` when DNS settings
+  integration is disabled. Verify the generated config and resolver result from the worker after a
+  privileged service reload.
+- A paid live discovery or image smoke must set `IMAGE_MAX_ATTEMPTS=1` explicitly when the goal is
+  one provider request; the adapter's normal bounded retry setting can otherwise issue multiple
+  attempts for one command.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Valid signed URL and observer returns `False` | Hostname-only result; no DNS lookup or CDN request |
+| Base64 response | `none`; no observer call or CDN request |
+| Malformed or unsafe hostname | Typed image validation failure; nothing printed |
+| Fake-IP/private DNS after normal observer continuation | Typed image validation failure before download |
+| Provider timeout | Typed retryable timeout; do not repeat a paid discovery blindly |
+
+### 5. Good / Base / Bad Cases
+
+- Good: discover an exact CDN hostname, add that one hostname to upstream `fake-ip-filter`, reload
+  the proxy, then run one idempotent image smoke.
+- Base: a base64 response needs no DNS remediation and exits without an artifact in discovery mode.
+- Bad: logging the temporary URL, query string, provider payload, or a broad `*.comfly.org`/
+  arbitrary-host filter.
+
+### 6. Tests Required
+
+- `test_image_generation.py` proves a URL observer sees only the hostname and stops before the
+  download path.
+- It proves base64 and malformed URL cases do not call the observer.
+- It proves a non-global DNS response remains rejected even after the observer sees its hostname.
+- The backend quality gate covers formatting, lint, strict mypy, and the full suite.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+~~~python
+print(signed_output_url)
+~~~
+
+#### Correct
+
+~~~python
+print(f"image_smoke_output_host={hostname}")
+~~~
+
+The correct form exposes only the minimum hostname needed for an operator DNS rule.
+
 ## Review checklist
 
 - Is the change in the correct API/application/domain/infrastructure layer?

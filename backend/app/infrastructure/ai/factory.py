@@ -23,6 +23,7 @@ from app.infrastructure.ai.fake import (
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
     OpenAICompatibleImageGenerator,
+    OutputHostObserver,
     ToApisImageGenerator,
 )
 from app.infrastructure.ai.zhipu import (
@@ -87,8 +88,13 @@ def create_brand_ocr_model(
 
 
 def create_image_generator(
-    settings: Settings, *, client: httpx.AsyncClient | None = None
+    settings: Settings,
+    *,
+    client: httpx.AsyncClient | None = None,
+    output_host_observer: OutputHostObserver | None = None,
 ) -> ImageGenerator:
+    if output_host_observer is not None and settings.image_provider_mode != "comfly":
+        raise RuntimeError("output hostname discovery is available only for the Comfly provider")
     if settings.image_provider_mode == "disabled":
         raise RuntimeError("image provider is disabled")
     if settings.image_provider_mode == "fake":
@@ -128,6 +134,7 @@ def create_image_generator(
         max_provider_response_bytes=settings.image_max_provider_response_bytes,
         allowed_output_hosts=configured_hosts or None,
         allow_public_output_urls=settings.comfly_allow_public_output_urls,
+        output_host_observer=output_host_observer,
     )
 
 

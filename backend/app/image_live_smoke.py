@@ -82,15 +82,18 @@ def _prompt_for_profile(profile: str) -> str:
 
 async def run(
     reference: Path,
-    output: Path,
+    output: Path | None,
     model_override: str | None = None,
     business_run_id: str = "live-smoke-2026-07-31",
     prompt_profile: str = "default",
+    discover_output_host: bool = False,
 ) -> None:
     settings = get_settings()
     if settings.image_provider_mode in {"disabled", "fake"}:
         raise RuntimeError("a live image provider must be configured for smoke testing")
-    if output.exists():
+    if not discover_output_host and output is None:
+        raise ValueError("an output path is required unless discovering an output hostname")
+    if output is not None and not discover_output_host and output.exists():
         raise FileExistsError(f"refusing to overwrite existing output: {output}")
     reference_body = reference.read_bytes()
     runtime_settings = (
@@ -108,18 +111,40 @@ async def run(
         pipeline_version=runtime_settings.image_pipeline_version,
         reference_sha256=image_checksum(reference_body),
     )
+    observed_output_host: str | None = None
+
+    def observe_output_host(hostname: str) -> bool:
+        nonlocal observed_output_host
+        observed_output_host = hostname
+        return not discover_output_host
+
     async with httpx.AsyncClient(follow_redirects=False) as client:
-        generator = create_image_generator(runtime_settings, client=client)
-        result = await generator.generate(
-            ImageGenerationRequest(
-                run_id=uuid4(),
-                draft_version_id=uuid4(),
-                prompt=prompt,
-                request_fingerprint=fingerprint,
-                reference_image=reference_body,
-                reference_filename=reference.name,
-            )
+        generator = create_image_generator(
+            runtime_settings,
+            client=client,
+            output_host_observer=observe_output_host if discover_output_host else None,
         )
+        try:
+            result = await generator.generate(
+                ImageGenerationRequest(
+                    run_id=uuid4(),
+                    draft_version_id=uuid4(),
+                    prompt=prompt,
+                    request_fingerprint=fingerprint,
+                    reference_image=reference_body,
+                    reference_filename=reference.name,
+                )
+            )
+        except AppError:
+            if discover_output_host and observed_output_host is not None:
+                print(f"image_smoke_output_host={observed_output_host}")
+                return
+            raise
+    if discover_output_host:
+        print(f"image_smoke_output_host={observed_output_host or 'none'}")
+        return
+    if output is None:
+        raise RuntimeError("image smoke output path is unavailable")
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.suffix.lower() == ".png" and result.media_type != "image/png":
         raise RuntimeError("provider returned a non-PNG image for a PNG output path")
@@ -136,7 +161,7 @@ def main() -> None:
         description="Run one bounded configured image-provider acceptance call"
     )
     parser.add_argument("--reference", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--model", type=str)
     parser.add_argument("--business-run-id", default="live-smoke-2026-07-31")
     parser.add_argument(
@@ -144,7 +169,10 @@ def main() -> None:
         choices=("default", "zh", "zh_minimal", "zh_brand_v2"),
         default="default",
     )
+    parser.add_argument("--discover-output-host", action="store_true")
     args = parser.parse_args()
+    if args.output is None and not args.discover_output_host:
+        parser.error("--output is required unless --discover-output-host is used")
     try:
         asyncio.run(
             run(
@@ -153,6 +181,7 @@ def main() -> None:
                 args.model,
                 args.business_run_id,
                 args.prompt_profile,
+                args.discover_output_host,
             )
         )
     except AppError as error:

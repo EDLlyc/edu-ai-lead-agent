@@ -47,6 +47,7 @@ from app.domain.image_generation import (
 )
 
 _Sleep = Callable[[float], Awaitable[None]]
+OutputHostObserver = Callable[[str], bool]
 _ALLOWED_MEDIA_TYPES = {"image/png", "image/jpeg", "image/webp"}
 _MAX_PROVIDER_ID = 200
 _MAX_JSON_BYTES = 256 * 1024
@@ -58,6 +59,7 @@ _GPT_IMAGE_MODEL = "gpt-image-2"
 _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
+_SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def _generation_payload(
@@ -375,6 +377,7 @@ class OpenAICompatibleImageGenerator:
         allowed_output_hosts: frozenset[str] | None = None,
         allow_public_output_urls: bool = False,
         resolver: Resolver = system_resolver,
+        output_host_observer: OutputHostObserver | None = None,
         sleep: _Sleep = asyncio.sleep,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
@@ -442,6 +445,7 @@ class OpenAICompatibleImageGenerator:
         self._allowed_output_hosts = output_hosts
         self._allow_public_output_urls = allow_public_output_urls
         self._resolver = resolver
+        self._output_host_observer = output_host_observer
         self._sleep = sleep
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
@@ -654,6 +658,13 @@ class OpenAICompatibleImageGenerator:
         ):
             raise ImageOutputValidationError()
         normalized_host = hostname.lower()
+        if self._output_host_observer is not None:
+            observed_host = _normalize_output_hostname(hostname)
+            if observed_host is None:
+                raise ImageOutputValidationError()
+            if not self._output_host_observer(observed_host):
+                # The local live-smoke can stop here after safely learning only the hostname.
+                raise ImageOutputValidationError()
         if normalized_host not in self._allowed_output_hosts:
             if not self._allow_public_output_urls:
                 raise ImageOutputValidationError()
@@ -717,6 +728,23 @@ class OpenAICompatibleImageGenerator:
                 raise ImageOutputValidationError()
             return body, detected_type, width, height
         raise ProviderUnavailableError()
+
+
+def _normalize_output_hostname(hostname: str) -> str | None:
+    """Return one valid ASCII DNS name for the smoke-only observer."""
+    if not hostname or hostname.endswith(".."):
+        return None
+    candidate = hostname[:-1] if hostname.endswith(".") else hostname
+    try:
+        normalized = candidate.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    if len(normalized) > 253:
+        return None
+    labels = normalized.split(".")
+    if not labels or any(_SAFE_OUTPUT_HOST_LABEL.fullmatch(label) is None for label in labels):
+        return None
+    return normalized
 
 
 async def _read_bounded_response(response: httpx.Response, limit: int) -> tuple[bytes, bool]:

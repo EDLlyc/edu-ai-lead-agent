@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"The Comfly output URL contract requires real globally routable DNS answers and explicitly rejects 198.18.0.0/15 Fake-IP addresses."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"The image pipeline contract defines the provider output URL, validation, MinIO persistence, idempotency, and bounded live-smoke behavior."}

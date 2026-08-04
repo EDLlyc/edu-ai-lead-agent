@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Quality verification must prove Fake-IP remains rejected, Compose services remain healthy, and no secrets or signed URLs are exposed."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"The live smoke must report only safe provider status and hostname metadata, never API keys or signed URLs."}
