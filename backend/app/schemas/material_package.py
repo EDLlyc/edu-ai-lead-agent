@@ -57,6 +57,29 @@ class VisualReferenceResponse(BaseModel):
     fallback: bool
 
 
+class ImageValidationResponse(BaseModel):
+    version: str
+    configured: bool
+    passed: bool | None
+    issue_codes: list[str]
+    provider: str | None
+    model: str | None
+    media_type: str | None = None
+    width: int | None = None
+    height: int | None = None
+    byte_size: int | None = None
+
+
+class ImageAuditResponse(BaseModel):
+    version: str
+    configured: bool
+    status: Literal["accepted", "rejected", "not_configured", "unknown"]
+    passed: bool | None
+    issue_codes: list[str]
+    provider: str | None
+    model: str | None
+
+
 class ImageArtifactResponse(BaseModel):
     id: UUID
     status: Literal["queued", "running", "succeeded", "failed", "review_required"]
@@ -80,6 +103,9 @@ class ImageArtifactResponse(BaseModel):
     ] = "legacy_single"
     visual_brief: VisualBriefResponse | None = None
     references: list[VisualReferenceResponse] = Field(default_factory=list)
+    repair_count: int = 0
+    validation: ImageValidationResponse
+    audit: ImageAuditResponse
 
 
 class MaterialPackageSummaryResponse(BaseModel):

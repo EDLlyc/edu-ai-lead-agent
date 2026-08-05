@@ -90,7 +90,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260804_0015" ]] \
+[[ "$migration_revision" == "20260804_0017" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -146,8 +146,8 @@ source_count="$(
   docker compose exec -T postgres sh -c \
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM sources WHERE active_version_id IS NOT NULL;"'
 )"
-[[ "$source_count" == "8" ]] || fail "Source registry is not ready; run 'make seed-sources'"
-pass "Eight approved source profiles are active"
+[[ "$source_count" == "9" ]] || fail "Source registry is not ready; run 'make seed-sources'"
+pass "Nine approved source profiles are active"
 
 minio_address="$(docker compose port minio 9000)"
 [[ -n "$minio_address" ]] || fail "Unable to resolve the MinIO host port"

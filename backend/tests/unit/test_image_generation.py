@@ -918,7 +918,7 @@ def test_settings_disable_public_comfly_output_urls_by_default() -> None:
 
 
 def test_settings_use_a_provider_friendly_reference_budget_by_default() -> None:
-    assert Settings(_env_file=None).image_reference_budget_bytes == 3 * 1024 * 1024
+    assert Settings(_env_file=None).image_reference_budget_bytes == 6 * 1024 * 1024
 
 
 def test_image_provider_defaults_use_bounded_comfly_timeouts_and_retries() -> None:

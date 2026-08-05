@@ -120,6 +120,28 @@ const materialPackage: MaterialPackageViewModel = {
     errorCode: null,
     downloadUrl: "https://example.com/image.png",
     referenceMode: "budgeted_multi_reference",
+    repairCount: 1,
+    validation: {
+      version: "image-validation-v1",
+      configured: true,
+      passed: true,
+      issueCodes: [],
+      provider: "deterministic",
+      model: null,
+      mediaType: "image/png",
+      width: 1024,
+      height: 1024,
+      byteSize: 12,
+    },
+    audit: {
+      version: "image-audit-v1",
+      configured: true,
+      status: "accepted",
+      passed: true,
+      issueCodes: [],
+      provider: "fake",
+      model: "fake-audit",
+    },
     visualBrief: {
       version: "visual-brief-v1",
       category: "robotics",
@@ -231,6 +253,10 @@ describe("MaterialPackagePanel", () => {
     expect(screen.getByText("观察是提出问题的入口。")).toBeInTheDocument();
     expect(screen.getByText("brand-chunk-1")).toBeInTheDocument();
     expect(screen.getByText("可保持句子简洁。")).toBeInTheDocument();
+    expect(screen.getByText("图片质量状态")).toBeInTheDocument();
+    expect(screen.getByText("确定性验证通过")).toBeInTheDocument();
+    expect(screen.getByText("视觉审计通过")).toBeInTheDocument();
+    expect(screen.getByText("已自动修复 1 次")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "下载素材包" }),
     ).toBeInTheDocument();

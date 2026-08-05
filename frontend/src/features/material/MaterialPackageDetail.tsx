@@ -329,8 +329,46 @@ function ImageSection({
         />
         <MetadataItem label="媒体类型" value={image.mediaType ?? "未提供"} />
       </dl>
+      <ImageQualitySummary image={image} />
       <VisualIntent image={image} />
     </section>
+  );
+}
+
+function ImageQualitySummary({ image }: Readonly<{ image: ImageViewModel }>) {
+  return (
+    <div className={styles.imageQuality} aria-labelledby="image-quality-title">
+      <div className={styles.visualIntentHeader}>
+        <h5 id="image-quality-title">图片质量状态</h5>
+        <span className={styles.evidenceMeta}>
+          {image.repairCount === 0
+            ? "未触发自动修复"
+            : `已自动修复 ${image.repairCount} 次`}
+        </span>
+      </div>
+      <dl className={styles.metadataGrid}>
+        <MetadataItem
+          label="确定性验证"
+          value={imageValidationStatusLabel(image.validation.passed)}
+        />
+        <MetadataItem
+          label="视觉审计"
+          value={imageAuditStatusLabel(image.audit)}
+        />
+        <MetadataItem label="验证版本" value={image.validation.version} />
+        <MetadataItem label="审计版本" value={image.audit.version} />
+      </dl>
+      {image.validation.issueCodes.length > 0 ? (
+        <p className={styles.evidenceMeta}>
+          验证问题：{image.validation.issueCodes.join("、")}
+        </p>
+      ) : null}
+      {image.audit.issueCodes.length > 0 ? (
+        <p className={styles.evidenceMeta}>
+          审计问题：{image.audit.issueCodes.join("、")}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -684,6 +722,21 @@ function formatRenderTextMode(mode: string): string {
   return mode === "editorial_keywords_and_brand_values"
     ? "短标题、关键词和品牌理念"
     : mode;
+}
+
+function imageValidationStatusLabel(passed: boolean | null): string {
+  return passed === true
+    ? "确定性验证通过"
+    : passed === false
+      ? "确定性验证失败"
+      : "确定性验证未完成";
+}
+
+function imageAuditStatusLabel(audit: ImageViewModel["audit"]): string {
+  if (audit.status === "accepted") return "视觉审计通过";
+  if (audit.status === "rejected") return "视觉审计未通过";
+  if (audit.status === "not_configured") return "视觉审计未配置";
+  return "视觉审计未完成";
 }
 
 function qualityStatusLabel(passed: boolean | null): string {

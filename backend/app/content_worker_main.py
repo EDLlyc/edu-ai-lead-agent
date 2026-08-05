@@ -32,6 +32,8 @@ from app.infrastructure.ai.factory import (
     create_brand_ocr_model,
     create_embedding_model,
     create_image_generator,
+    create_image_quality_auditor,
+    create_image_text_recognizer,
 )
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
@@ -83,19 +85,31 @@ async def run_content_worker() -> None:
             settings=settings,
             checkpointer=copy_saver,
         )
+        if settings.ai_provider_mode == "zhipu":
+            embedding_client = httpx.AsyncClient(follow_redirects=False)
         if settings.image_enabled and settings.image_provider_mode != "disabled":
             if settings.image_provider_mode in {"toapis", "comfly"}:
                 image_client = httpx.AsyncClient(follow_redirects=False)
+            image_text_recognizer = (
+                create_image_text_recognizer(settings, client=embedding_client)
+                if settings.image_ocr_enabled
+                else None
+            )
+            image_quality_auditor = (
+                create_image_quality_auditor(settings, client=embedding_client)
+                if settings.image_quality_audit_enabled
+                else None
+            )
             material_executor = MaterialPackageExecutor(
                 session_factory=session_factory,
                 image_generator=create_image_generator(settings, client=image_client),
                 image_store=MinioImageStore(settings),
                 settings=settings,
                 reference_asset=settings.image_reference_asset,
+                image_text_recognizer=image_text_recognizer,
+                image_quality_auditor=image_quality_auditor,
             )
         if settings.ai_provider_mode != "disabled":
-            if settings.ai_provider_mode == "zhipu":
-                embedding_client = httpx.AsyncClient(follow_redirects=False)
             brand_repository = PostgresBrandKnowledgeRepository(session_factory)
             brand_embeddings = GovernanceEmbeddingBrandAdapter(
                 create_embedding_model(settings, client=embedding_client)

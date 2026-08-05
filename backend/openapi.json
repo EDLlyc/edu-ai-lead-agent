@@ -2109,7 +2109,7 @@
                   "format": "uuid",
                   "type": "string"
                 },
-                "maxItems": 8,
+                "maxItems": 9,
                 "type": "array"
               },
               {
@@ -3901,6 +3901,9 @@
       },
       "ImageArtifactResponse": {
         "properties": {
+          "audit": {
+            "$ref": "#/components/schemas/ImageAuditResponse"
+          },
           "byte_size": {
             "anyOf": [
               {
@@ -3988,6 +3991,11 @@
             "title": "References",
             "type": "array"
           },
+          "repair_count": {
+            "default": 0,
+            "title": "Repair Count",
+            "type": "integer"
+          },
           "request_fingerprint": {
             "title": "Request Fingerprint",
             "type": "string"
@@ -4016,6 +4024,9 @@
           },
           "storage_metadata": {
             "$ref": "#/components/schemas/ImageStorageMetadataResponse"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ImageValidationResponse"
           },
           "visual_brief": {
             "anyOf": [
@@ -4052,9 +4063,84 @@
           "sha256",
           "storage_metadata",
           "error_code",
-          "download_url"
+          "download_url",
+          "validation",
+          "audit"
         ],
         "title": "ImageArtifactResponse",
+        "type": "object"
+      },
+      "ImageAuditResponse": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "issue_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issue Codes",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "not_configured",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "configured",
+          "status",
+          "passed",
+          "issue_codes",
+          "provider",
+          "model"
+        ],
+        "title": "ImageAuditResponse",
         "type": "object"
       },
       "ImageStorageMetadataResponse": {
@@ -4079,6 +4165,112 @@
           "content_addressed"
         ],
         "title": "ImageStorageMetadataResponse",
+        "type": "object"
+      },
+      "ImageValidationResponse": {
+        "properties": {
+          "byte_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Size"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "issue_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issue Codes",
+            "type": "array"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "version",
+          "configured",
+          "passed",
+          "issue_codes",
+          "provider",
+          "model"
+        ],
+        "title": "ImageValidationResponse",
         "type": "object"
       },
       "MaterialPackageCreateRequest": {
@@ -4664,6 +4856,10 @@
       },
       "SourceResponse": {
         "properties": {
+          "allow_http_fallback": {
+            "title": "Allow Http Fallback",
+            "type": "boolean"
+          },
           "cadence": {
             "title": "Cadence",
             "type": "string"
@@ -4751,6 +4947,17 @@
             "title": "Timezone",
             "type": "string"
           },
+          "topic_priority_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Priority Policy"
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -4770,6 +4977,8 @@
           "connector_version",
           "parser_version",
           "relevance_rule_version",
+          "allow_http_fallback",
+          "topic_priority_policy",
           "cadence",
           "timezone",
           "latest_success_at",
@@ -4830,6 +5039,11 @@
             "format": "uuid",
             "title": "Event Version Id",
             "type": "string"
+          },
+          "explanation": {
+            "additionalProperties": true,
+            "title": "Explanation",
+            "type": "object"
           },
           "id": {
             "format": "uuid",
@@ -4935,6 +5149,7 @@
           "passes_threshold",
           "eligible",
           "veto_codes",
+          "explanation",
           "rank"
         ],
         "title": "TopicScoreResponse",

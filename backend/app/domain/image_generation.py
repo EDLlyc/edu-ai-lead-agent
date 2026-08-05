@@ -12,7 +12,9 @@ IMAGE_WIDTH = 1024
 IMAGE_HEIGHT = 1024
 IMAGE_PROMPT_VERSION = "image-prompt-v1"
 IMAGE_PIPELINE_VERSION = "image-pipeline-v1"
-IMAGE_REFERENCE_BUDGET_BYTES = 3 * 1024 * 1024
+# Keep enough room for the combined IP identity/action/style references.  This is a bounded
+# transport budget, not a provider spend limit; the request-size cap remains independently enforced.
+IMAGE_REFERENCE_BUDGET_BYTES = 6 * 1024 * 1024
 _PROMPT_LIMIT = 2_000
 _UNSAFE_PROMPT = re.compile(
     r"(?:未成年人真人正脸|儿童真实正脸|裸露儿童|血腥|武器伤害|学生身份证|水印|二维码|仿制|重绘logo|重新绘制标志)",

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import TypeVar
 
 import httpx
 from pydantic import SecretStr
@@ -10,6 +11,7 @@ from app.application.ports.brand_knowledge import BrandDocumentOcrModel
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
 from app.application.ports.image_generation import ImageGenerator
+from app.application.ports.image_validation import ImageQualityAuditor, ImageTextRecognizer
 from app.core.config import Settings
 from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
@@ -26,11 +28,17 @@ from app.infrastructure.ai.image_generation import (
     OutputHostObserver,
     ToApisImageGenerator,
 )
+from app.infrastructure.ai.image_validation import (
+    OpenAICompatibleImageQualityAuditor,
+    OpenAICompatibleImageTextRecognizer,
+)
 from app.infrastructure.ai.zhipu import (
     ZhipuBrandDocumentOcrModel,
     ZhipuEmbeddingModel,
     ZhipuFactualAnalysisModel,
 )
+
+_ImageValidationProvider = TypeVar("_ImageValidationProvider")
 
 
 def create_embedding_model(
@@ -84,6 +92,65 @@ def create_brand_ocr_model(
         max_request_bytes=settings.brand_ocr_max_request_bytes,
         max_response_bytes=settings.brand_ocr_max_response_bytes,
         max_pages=settings.brand_ocr_max_pages,
+    )
+
+
+def create_image_text_recognizer(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> ImageTextRecognizer | None:
+    """Create the optional worker-only image OCR adapter when its capability is usable."""
+
+    if not settings.image_ocr_enabled:
+        return None
+    return _create_image_validation_provider(
+        settings,
+        client=client,
+        provider_class=OpenAICompatibleImageTextRecognizer,
+    )
+
+
+def create_image_quality_auditor(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> ImageQualityAuditor | None:
+    """Create the optional worker-only image quality adapter when its capability is usable."""
+
+    if not settings.image_quality_audit_enabled:
+        return None
+    return _create_image_validation_provider(
+        settings,
+        client=client,
+        provider_class=OpenAICompatibleImageQualityAuditor,
+    )
+
+
+def _create_image_validation_provider(
+    settings: Settings,
+    *,
+    client: httpx.AsyncClient | None,
+    provider_class: Callable[..., _ImageValidationProvider],
+) -> _ImageValidationProvider | None:
+    """Resolve an OpenAI-compatible validation adapter without creating API-side clients."""
+
+    if settings.image_provider_mode == "fake" or settings.ai_provider_mode != "zhipu":
+        return None
+    base_url = (settings.ai_platform_base_url or "").strip()
+    api_key = settings.ai_platform_api_key
+    api_key_value = api_key.get_secret_value().strip() if api_key is not None else ""
+    if client is None or not base_url or not api_key_value:
+        return None
+
+    return provider_class(
+        client=client,
+        base_url=base_url,
+        api_key=SecretStr(api_key_value),
+        model=settings.ai_chat_model,
+        connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+        read_timeout_seconds=settings.ai_read_timeout_seconds,
+        total_timeout_seconds=settings.ai_total_timeout_seconds,
+        concurrency=settings.ai_provider_concurrency,
+        max_attempts=settings.ai_max_attempts,
+        max_request_bytes=settings.image_max_request_bytes,
+        max_response_bytes=settings.image_max_provider_response_bytes,
     )
 
 

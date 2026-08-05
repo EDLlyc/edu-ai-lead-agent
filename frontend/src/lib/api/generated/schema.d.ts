@@ -2061,6 +2061,7 @@ export interface components {
         };
         /** ImageArtifactResponse */
         ImageArtifactResponse: {
+            audit: components["schemas"]["ImageAuditResponse"];
             /** Byte Size */
             byte_size: number | null;
             /** Download Url */
@@ -2088,6 +2089,11 @@ export interface components {
             reference_mode: "legacy_single" | "single_reference" | "single_fallback" | "budgeted_multi_reference" | "multi_reference";
             /** References */
             references?: components["schemas"]["VisualReferenceResponse"][];
+            /**
+             * Repair Count
+             * @default 0
+             */
+            repair_count: number;
             /** Request Fingerprint */
             request_fingerprint: string;
             /** Sha256 */
@@ -2098,9 +2104,30 @@ export interface components {
              */
             status: "queued" | "running" | "succeeded" | "failed" | "review_required";
             storage_metadata: components["schemas"]["ImageStorageMetadataResponse"];
+            validation: components["schemas"]["ImageValidationResponse"];
             visual_brief?: components["schemas"]["VisualBriefResponse"] | null;
             /** Width */
             width: number | null;
+        };
+        /** ImageAuditResponse */
+        ImageAuditResponse: {
+            /** Configured */
+            configured: boolean;
+            /** Issue Codes */
+            issue_codes: string[];
+            /** Model */
+            model: string | null;
+            /** Passed */
+            passed: boolean | null;
+            /** Provider */
+            provider: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected" | "not_configured" | "unknown";
+            /** Version */
+            version: string;
         };
         /** ImageStorageMetadataResponse */
         ImageStorageMetadataResponse: {
@@ -2113,6 +2140,29 @@ export interface components {
             content_addressed: boolean;
             /** Immutable */
             immutable: boolean;
+        };
+        /** ImageValidationResponse */
+        ImageValidationResponse: {
+            /** Byte Size */
+            byte_size?: number | null;
+            /** Configured */
+            configured: boolean;
+            /** Height */
+            height?: number | null;
+            /** Issue Codes */
+            issue_codes: string[];
+            /** Media Type */
+            media_type?: string | null;
+            /** Model */
+            model: string | null;
+            /** Passed */
+            passed: boolean | null;
+            /** Provider */
+            provider: string | null;
+            /** Version */
+            version: string;
+            /** Width */
+            width?: number | null;
         };
         /** MaterialPackageCreateRequest */
         MaterialPackageCreateRequest: {
@@ -2391,6 +2441,8 @@ export interface components {
         };
         /** SourceResponse */
         SourceResponse: {
+            /** Allow Http Fallback */
+            allow_http_fallback: boolean;
             /** Cadence */
             cadence: string;
             /** Connector Key */
@@ -2426,6 +2478,8 @@ export interface components {
             tier: string;
             /** Timezone */
             timezone: string;
+            /** Topic Priority Policy */
+            topic_priority_policy: string | null;
             /** Version */
             version: number;
         };
@@ -2454,6 +2508,10 @@ export interface components {
              * Format: uuid
              */
             event_version_id: string;
+            /** Explanation */
+            explanation: {
+                [key: string]: unknown;
+            };
             /**
              * Id
              * Format: uuid

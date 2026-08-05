@@ -219,7 +219,9 @@ class ToApisImageGenerator:
                 payload = _generation_payload(
                     model=self._model,
                     prompt=prompt,
-                    fingerprint=request.request_fingerprint,
+                    fingerprint=(
+                        request.provider_request_fingerprint or request.request_fingerprint
+                    ),
                     upload_url=upload_url,
                 )
                 created = await self._post_json("/v1/images/generations", payload)
@@ -504,7 +506,9 @@ class OpenAICompatibleImageGenerator:
                     "POST",
                     "/v1/images/generations",
                     payload,
-                    idempotency_key=request.request_fingerprint,
+                    idempotency_key=(
+                        request.provider_request_fingerprint or request.request_fingerprint
+                    ),
                 )
                 representation = _extract_compatible_image(created)
                 if representation is None:

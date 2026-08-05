@@ -108,6 +108,28 @@ const response = {
     download_url:
       "/api/v1/material-packages/00000000-0000-4000-8000-000000000001/image",
     reference_mode: "budgeted_multi_reference",
+    repair_count: 1,
+    validation: {
+      version: "image-validation-v1",
+      configured: true,
+      passed: true,
+      issue_codes: [],
+      provider: "deterministic",
+      model: null,
+      media_type: "image/png",
+      width: 1024,
+      height: 1024,
+      byte_size: 12,
+    },
+    audit: {
+      version: "image-audit-v1",
+      configured: true,
+      status: "accepted",
+      passed: true,
+      issue_codes: [],
+      provider: "fake",
+      model: "fake-audit",
+    },
     visual_brief: {
       version: "visual-brief-v1",
       category: "robotics",
@@ -183,6 +205,9 @@ describe("mapMaterialPackage", () => {
       "/api/v1/material-packages/00000000-0000-4000-8000-000000000001/image",
     );
     expect(materialPackage.image.visualBrief?.category).toBe("robotics");
+    expect(materialPackage.image.repairCount).toBe(1);
+    expect(materialPackage.image.validation.passed).toBe(true);
+    expect(materialPackage.image.audit.status).toBe("accepted");
     expect(materialPackage.image.references[0]?.filename).toBe(
       "小赛和赛先生讨论.png",
     );

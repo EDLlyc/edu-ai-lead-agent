@@ -27,6 +27,7 @@ class ImageGenerationRequest:
     reference_filename: str | None = None
     references: tuple[ImageReference, ...] = ()
     reference_mode: str = "legacy_single"
+    provider_request_fingerprint: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

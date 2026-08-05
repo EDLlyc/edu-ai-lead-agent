@@ -382,6 +382,12 @@
   padding-block-start: var(--space-4);
 }
 
+.imageQuality {
+  margin-block-start: var(--space-5);
+  border-block-start: 1px solid var(--border-subtle);
+  padding-block-start: var(--space-4);
+}
+
 .visualIntentHeader {
   display: flex;
   align-items: baseline;

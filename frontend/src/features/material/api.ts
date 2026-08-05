@@ -112,6 +112,29 @@ export type AuditViewModel = Readonly<{
   issues: readonly MaterialIssueViewModel[];
 }>;
 
+export type ImageValidationViewModel = Readonly<{
+  version: string;
+  configured: boolean;
+  passed: boolean | null;
+  issueCodes: readonly string[];
+  provider: string | null;
+  model: string | null;
+  mediaType: string | null;
+  width: number | null;
+  height: number | null;
+  byteSize: number | null;
+}>;
+
+export type ImageAuditViewModel = Readonly<{
+  version: string;
+  configured: boolean;
+  status: "accepted" | "rejected" | "not_configured" | "unknown";
+  passed: boolean | null;
+  issueCodes: readonly string[];
+  provider: string | null;
+  model: string | null;
+}>;
+
 export type ImageViewModel = Readonly<{
   id: string;
   status: ImageArtifactStatus;
@@ -126,6 +149,9 @@ export type ImageViewModel = Readonly<{
   errorCode: string | null;
   downloadUrl: string | null;
   referenceMode: ImageReferenceMode;
+  repairCount: number;
+  validation: ImageValidationViewModel;
+  audit: ImageAuditViewModel;
   visualBrief: VisualBriefViewModel | null;
   references: readonly VisualReferenceViewModel[];
 }>;
@@ -657,6 +683,28 @@ function parseImage(image: MaterialPackageResponse["image"]): ImageViewModel {
         ? null
         : resolveApiResourceUrl(image.download_url),
     referenceMode: image.reference_mode,
+    repairCount: image.repair_count,
+    validation: {
+      version: image.validation.version,
+      configured: image.validation.configured,
+      passed: image.validation.passed,
+      issueCodes: image.validation.issue_codes,
+      provider: image.validation.provider,
+      model: image.validation.model,
+      mediaType: image.validation.media_type ?? null,
+      width: image.validation.width ?? null,
+      height: image.validation.height ?? null,
+      byteSize: image.validation.byte_size ?? null,
+    },
+    audit: {
+      version: image.audit.version,
+      configured: image.audit.configured,
+      status: image.audit.status,
+      passed: image.audit.passed,
+      issueCodes: image.audit.issue_codes,
+      provider: image.audit.provider,
+      model: image.audit.model,
+    },
     visualBrief: parseVisualBrief(image.visual_brief),
     references: (image.references ?? []).map((reference) => ({
       role: reference.role,

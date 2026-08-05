@@ -10,6 +10,12 @@ from uuid import uuid4
 import pytest
 from app.api.v1.routes import material_packages as material_package_routes
 from app.application.ports.image_generation import ImageGenerationRequest, ImageGenerationResult
+from app.application.ports.image_validation import (
+    ImageQualityAuditRequest,
+    ImageQualityAuditResult,
+    ImageTextRecognitionRequest,
+    ImageTextRecognitionResult,
+)
 from app.application.services.material_package import (
     AcceptedMaterialInput,
     ClaimedMaterialPackage,
@@ -20,7 +26,7 @@ from app.application.services.material_package import (
 )
 from app.core.config import Settings
 from app.core.errors import ConflictError, ImageProviderRejectedError
-from app.domain.visual_brief import AcceptedVisualContext, build_visual_brief
+from app.domain.visual_brief import AcceptedVisualContext, VisualBrief, build_visual_brief
 from app.infrastructure.ai.image_generation import _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
@@ -306,7 +312,12 @@ def test_material_package_image_projection_exposes_only_relative_download_url() 
     assert "generated-images/" not in encoded
 
 
-def _claimed_material_package(*, eligible: bool = True) -> ClaimedMaterialPackage:
+def _claimed_material_package(
+    *,
+    eligible: bool = True,
+    repair_count: int = 0,
+    visual_brief: VisualBrief | None = None,
+) -> ClaimedMaterialPackage:
     return ClaimedMaterialPackage(
         package_id=uuid4(),
         image_id=uuid4(),
@@ -320,6 +331,8 @@ def _claimed_material_package(*, eligible: bool = True) -> ClaimedMaterialPackag
         lease_token=uuid4(),
         attempt_number=1,
         eligible=eligible,
+        repair_count=repair_count,
+        visual_brief=visual_brief,
     )
 
 
@@ -335,7 +348,7 @@ class _RecordingImageGenerator:
             request_fingerprint=request.request_fingerprint,
             provider_task_id=None,
             provider_upload_id=None,
-            image_bytes=b"generated-image",
+            image_bytes=_solid_png("material-package-worker", "generated-image"),
             media_type="image/png",
             width=1024,
             height=1024,
@@ -368,6 +381,93 @@ class _RecordingImageStore:
             byte_size=len(body),
             sha256="a" * 64,
         )
+
+
+class _QualityAttemptSession:
+    def __init__(self, image: SimpleNamespace, package: SimpleNamespace) -> None:
+        self.image = image
+        self.package = package
+        self.commits = 0
+
+    async def __aenter__(self) -> _QualityAttemptSession:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def scalar(self, _statement: object) -> SimpleNamespace:
+        return self.image
+
+    async def get(self, _model: object, _entity_id: object) -> SimpleNamespace:
+        return self.package
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+class _RecordingImageTextRecognizer:
+    def __init__(self, recognized_lines: tuple[str, ...] | None = None) -> None:
+        self._recognized_lines = recognized_lines
+        self.requests: list[ImageTextRecognitionRequest] = []
+
+    async def recognize(self, request: ImageTextRecognitionRequest) -> ImageTextRecognitionResult:
+        self.requests.append(request)
+        return ImageTextRecognitionResult(
+            recognized_lines=self._recognized_lines or request.expected_text,
+            provider="fake-ocr",
+            model="ocr-v1",
+            request_fingerprint=request.request_fingerprint,
+        )
+
+
+class _RecordingImageQualityAuditor:
+    def __init__(self) -> None:
+        self.requests: list[ImageQualityAuditRequest] = []
+
+    async def audit(self, request: ImageQualityAuditRequest) -> ImageQualityAuditResult:
+        self.requests.append(request)
+        return ImageQualityAuditResult(
+            accepted=True,
+            provider="fake-auditor",
+            model="quality-v1",
+            request_fingerprint=request.request_fingerprint,
+        )
+
+
+def _quality_visual_brief() -> VisualBrief:
+    return build_visual_brief(
+        AcceptedVisualContext(
+            topic_title="机器人如何学会调整动作",
+            topic_summary="从尝试中学习",
+            copywriting="家长能看懂的正文",
+        )
+    )
+
+
+def _quality_attempt_state(
+    claimed: ClaimedMaterialPackage,
+) -> tuple[SimpleNamespace, SimpleNamespace, _QualityAttemptSession]:
+    now = datetime.now(UTC)
+    image = SimpleNamespace(
+        id=claimed.image_id,
+        status="running",
+        repair_count=claimed.repair_count,
+        validation_snapshot={},
+        audit_snapshot={},
+        error_code=None,
+        completed_at=None,
+        available_at=now,
+        lease_owner="material-worker",
+        lease_token=claimed.lease_token,
+        lease_expires_at=now,
+        heartbeat_at=now,
+    )
+    package = SimpleNamespace(
+        id=claimed.package_id,
+        status="queued",
+        version_snapshot={},
+    )
+    return image, package, _QualityAttemptSession(image, package)
 
 
 @pytest.mark.asyncio
@@ -418,7 +518,11 @@ async def test_material_worker_persists_one_success_with_private_storage_descrip
         value: ClaimedMaterialPackage,
         result: ImageGenerationResult,
         descriptor: ImageObjectDescriptor,
+        *,
+        validation_snapshot: dict[str, object] | None = None,
+        audit_snapshot: dict[str, object] | None = None,
     ) -> bool:
+        del validation_snapshot, audit_snapshot
         assert value == claimed
         persisted.append((result, descriptor))
         return True
@@ -459,7 +563,10 @@ async def test_material_worker_provider_rejection_is_review_required_and_never_a
         error_code: str,
         retryable: bool,
         review_required: bool,
+        validation_snapshot: dict[str, object] | None = None,
+        audit_snapshot: dict[str, object] | None = None,
     ) -> None:
+        del validation_snapshot, audit_snapshot
         assert value == claimed
         finished.append(
             {
@@ -481,6 +588,177 @@ async def test_material_worker_provider_rejection_is_review_required_and_never_a
             "review_required": True,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_material_worker_ocr_missing_and_unexpected_text_queues_one_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = _claimed_material_package(
+        visual_brief=_quality_visual_brief(),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _RecordingImageGenerator()
+    recognizer = _RecordingImageTextRecognizer(("具身智能", "未经允许的文案"))
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_ocr_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+    )
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert len(recognizer.requests) == 1
+    assert store.calls == 0
+    assert image.status == "queued"
+    assert image.repair_count == 1
+    assert image.error_code == "image_text_validation_failed"
+    assert image.completed_at is None
+    assert package.status == "queued"
+    assert image.validation_snapshot["passed"] is False
+    assert image.validation_snapshot["issue_codes"] == [
+        "missing_visual_text",
+        "unexpected_visual_text",
+    ]
+    assert image.audit_snapshot["status"] == "not_configured"
+    assert package.version_snapshot["image"]["validation"] == image.validation_snapshot
+    assert package.version_snapshot["image"]["audit"] == image.audit_snapshot
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_material_worker_second_quality_failure_requires_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = _claimed_material_package(
+        repair_count=1,
+        visual_brief=_quality_visual_brief(),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _RecordingImageGenerator()
+    recognizer = _RecordingImageTextRecognizer(("具身智能", "未经允许的文案"))
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_ocr_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+    )
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert len(recognizer.requests) == 1
+    assert image.status == "review_required"
+    assert image.repair_count == 1
+    assert image.error_code == "image_text_validation_failed"
+    assert image.completed_at is not None
+    assert image.lease_token is None
+    assert package.status == "failed"
+    assert image.validation_snapshot["issue_codes"] == [
+        "missing_visual_text",
+        "unexpected_visual_text",
+    ]
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_material_worker_persists_configured_ocr_and_audit_snapshots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    brief = _quality_visual_brief()
+    claimed = _claimed_material_package(visual_brief=brief)
+    generator = _RecordingImageGenerator()
+    store = _RecordingImageStore()
+    recognizer = _RecordingImageTextRecognizer()
+    auditor = _RecordingImageQualityAuditor()
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_ocr_enabled=True, image_quality_audit_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+        image_quality_auditor=auditor,
+    )
+    persisted: list[dict[str, object]] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_persist(
+        value: ClaimedMaterialPackage,
+        result: ImageGenerationResult,
+        descriptor: ImageObjectDescriptor,
+        *,
+        validation_snapshot: dict[str, object] | None = None,
+        audit_snapshot: dict[str, object] | None = None,
+    ) -> bool:
+        assert value == claimed
+        persisted.append(
+            {
+                "result": result,
+                "descriptor": descriptor,
+                "validation": validation_snapshot,
+                "audit": audit_snapshot,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_persist_success", fake_persist)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert store.calls == 1
+    assert len(recognizer.requests) == 1
+    assert recognizer.requests[0].expected_text == (
+        brief.text_layer.title,
+        brief.text_layer.learning_line,
+        *brief.text_layer.keywords,
+        *brief.text_layer.brand_values,
+    )
+    assert len(auditor.requests) == 1
+    assert auditor.requests[0].visual_brief == brief
+    assert len(persisted) == 1
+
+    validation = persisted[0]["validation"]
+    assert isinstance(validation, dict)
+    assert validation["version"] == "image-validation-v1"
+    assert validation["configured"] is True
+    assert validation["passed"] is True
+    assert validation["issue_codes"] == []
+    assert validation["provider"] == "fake-ocr"
+    assert validation["model"] == "ocr-v1"
+
+    audit = persisted[0]["audit"]
+    assert isinstance(audit, dict)
+    assert audit == {
+        "version": "image-audit-v1",
+        "configured": True,
+        "status": "accepted",
+        "passed": True,
+        "issue_codes": [],
+        "provider": "fake-auditor",
+        "model": "quality-v1",
+    }
 
 
 def test_content_driven_image_input_persists_ordered_real_reference_metadata(

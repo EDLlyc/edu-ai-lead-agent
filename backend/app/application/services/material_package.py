@@ -19,6 +19,12 @@ from app.application.ports.image_generation import (
     ImageGenerator,
     ImageReference,
 )
+from app.application.ports.image_validation import (
+    ImageQualityAuditor,
+    ImageQualityAuditRequest,
+    ImageTextRecognitionRequest,
+    ImageTextRecognizer,
+)
 from app.core.config import Settings
 from app.core.errors import (
     AppError,
@@ -32,6 +38,12 @@ from app.domain.image_generation import (
     IMAGE_REFERENCE_BUDGET_BYTES,
     image_checksum,
     image_request_fingerprint,
+)
+from app.domain.image_validation import (
+    build_image_repair_prompt,
+    image_repair_fingerprint,
+    validate_exact_visual_text,
+    validate_image_output,
 )
 from app.domain.visual_assets import AssetSelectionRequest, SelectedVisualAsset, VisualAssetRole
 from app.domain.visual_brief import (
@@ -141,6 +153,8 @@ class ClaimedMaterialPackage:
     visual_brief_snapshot: dict[str, Any] | None = None
     catalog_version: str = "no-catalog"
     selector_version: str = "no-selector"
+    repair_count: int = 0
+    visual_brief: VisualBrief | None = None
 
 
 async def enqueue_material_package(
@@ -234,6 +248,9 @@ async def enqueue_material_package(
                 status="queued",
                 available_at=datetime.now(UTC),
                 attempt_count=0,
+                repair_count=0,
+                validation_snapshot={},
+                audit_snapshot={},
                 storage_metadata=dict(_PRIVATE_STORAGE_METADATA),
             )
             package = MaterialPackageModel(
@@ -361,7 +378,7 @@ async def _read_reference_asset(reference_asset: str | None) -> bytes | None:
     if reference_asset is None:
         return None
     path = Path(reference_asset)
-    if not await asyncio.to_thread(path.is_file):
+    if await asyncio.to_thread(path.is_symlink) or not await asyncio.to_thread(path.is_file):
         raise ConflictError("approved image reference is unavailable")
     body = await asyncio.to_thread(path.read_bytes)
     if not body:
@@ -522,9 +539,18 @@ def _claim_prompt(
     draft: CopyDraftVersionModel,
     image: ImageArtifactModel,
     references: tuple[ReservedVisualReference, ...],
-) -> tuple[str, dict[str, Any] | None]:
+) -> tuple[str, dict[str, Any] | None, VisualBrief | None]:
     if image.reference_mode == "legacy_single":
-        return draft.image_prompt, None
+        prompt = draft.image_prompt
+        if getattr(image, "repair_count", 0) > 0:
+            prompt = build_image_repair_prompt(
+                prompt,
+                _image_issue_codes(
+                    getattr(image, "validation_snapshot", {}),
+                    getattr(image, "audit_snapshot", {}),
+                ),
+            )
+        return prompt, None, None
     topic_snapshot = package.topic_snapshot
     title = topic_snapshot.get("title")
     summary = topic_snapshot.get("summary")
@@ -554,7 +580,14 @@ def _claim_prompt(
         prompt_version=image.prompt_version,
         pipeline_version=image.pipeline_version,
     ).prompt
-    return prompt, brief.as_metadata()
+    if getattr(image, "repair_count", 0) > 0:
+        prompt = build_image_repair_prompt(
+            prompt,
+            _image_issue_codes(
+                getattr(image, "validation_snapshot", {}), getattr(image, "audit_snapshot", {})
+            ),
+        )
+    return prompt, brief.as_metadata(), brief
 
 
 class MaterialPackageExecutor:
@@ -568,12 +601,16 @@ class MaterialPackageExecutor:
         image_store: MinioImageStore,
         settings: Settings,
         reference_asset: str | None,
+        image_text_recognizer: ImageTextRecognizer | None = None,
+        image_quality_auditor: ImageQualityAuditor | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._image_generator = image_generator
         self._image_store = image_store
         self._settings = settings
         self._reference_asset = reference_asset
+        self._image_text_recognizer = image_text_recognizer
+        self._image_quality_auditor = image_quality_auditor
         self._lease_events: dict[UUID, asyncio.Event] = {}
 
     async def execute_next(self, worker_id: str) -> bool:
@@ -587,6 +624,8 @@ class MaterialPackageExecutor:
         stop = asyncio.Event()
         heartbeat = asyncio.create_task(self._heartbeat_loop(claimed, stop, lease_lost))
         self._lease_events[claimed.image_id] = lease_lost
+        validation_snapshot: dict[str, Any] = {}
+        audit_snapshot = _image_audit_not_run_snapshot()
         try:
             self._ensure_lease(lease_lost)
             references = await self._read_claimed_references(claimed)
@@ -605,6 +644,15 @@ class MaterialPackageExecutor:
             ):
                 raise ConflictError("approved image reference changed after reservation")
             self._ensure_lease(lease_lost)
+            provider_request_fingerprint = (
+                image_repair_fingerprint(
+                    claimed.request_fingerprint,
+                    claimed.repair_count,
+                    claimed.prompt,
+                )
+                if claimed.repair_count
+                else None
+            )
             result = await self._image_generator.generate(
                 ImageGenerationRequest(
                     run_id=claimed.run_id,
@@ -615,6 +663,7 @@ class MaterialPackageExecutor:
                     reference_filename="reference.png",
                     references=references,
                     reference_mode=claimed.reference_mode,
+                    provider_request_fingerprint=provider_request_fingerprint,
                 )
             )
             if (
@@ -623,18 +672,127 @@ class MaterialPackageExecutor:
                 or result.model != claimed.model
             ):
                 raise ProviderIdentityMismatchError()
-            if (
-                result.width != 1024
-                or result.height != 1024
-                or result.media_type not in {"image/png", "image/jpeg", "image/webp"}
-                or not result.image_bytes
-            ):
-                raise ImageOutputValidationError()
+            output_validation = validate_image_output(
+                image_bytes=result.image_bytes,
+                media_type=result.media_type,
+                reported_dimensions=(result.width, result.height)
+                if result.width is not None and result.height is not None
+                else None,
+                max_bytes=self._settings.image_max_download_bytes,
+            )
+            validation_snapshot = _image_validation_snapshot(output_validation, configured=True)
+            audit_snapshot = _image_audit_not_run_snapshot()
+            if not output_validation.passed:
+                await self._finish_quality_attempt(
+                    claimed,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=audit_snapshot,
+                    error_code="image_output_validation_failed",
+                )
+                return True
+            if self._settings.image_ocr_enabled:
+                if self._image_text_recognizer is None or claimed.visual_brief is None:
+                    await self._finish_quality_attempt(
+                        claimed,
+                        validation_snapshot={
+                            **validation_snapshot,
+                            "configured": True,
+                            "passed": False,
+                            "issue_codes": ["image_ocr_not_configured"],
+                        },
+                        audit_snapshot=audit_snapshot,
+                        error_code="image_ocr_not_configured",
+                    )
+                    return True
+                expected_text = _expected_visual_text(claimed.visual_brief)
+                ocr_result = await self._image_text_recognizer.recognize(
+                    ImageTextRecognitionRequest(
+                        request_fingerprint=claimed.request_fingerprint,
+                        image_bytes=result.image_bytes,
+                        expected_text=expected_text,
+                        media_type=result.media_type,
+                    )
+                )
+                if (
+                    ocr_result.request_fingerprint != claimed.request_fingerprint
+                    or not ocr_result.provider.strip()
+                    or not ocr_result.model.strip()
+                ):
+                    raise ProviderIdentityMismatchError()
+                text_validation = validate_exact_visual_text(
+                    ocr_result.recognized_lines, expected_text
+                )
+                validation_snapshot = _image_validation_snapshot(
+                    text_validation,
+                    configured=True,
+                    provider=ocr_result.provider,
+                    model=ocr_result.model,
+                )
+                validation_snapshot.update(
+                    {
+                        "media_type": output_validation.media_type,
+                        "width": output_validation.width,
+                        "height": output_validation.height,
+                        "byte_size": output_validation.byte_size,
+                    }
+                )
+                if not text_validation.passed:
+                    await self._finish_quality_attempt(
+                        claimed,
+                        validation_snapshot=validation_snapshot,
+                        audit_snapshot=audit_snapshot,
+                        error_code="image_text_validation_failed",
+                    )
+                    return True
+            if self._settings.image_quality_audit_enabled:
+                if self._image_quality_auditor is None or claimed.visual_brief is None:
+                    await self._finish_quality_attempt(
+                        claimed,
+                        validation_snapshot=validation_snapshot,
+                        audit_snapshot={
+                            **audit_snapshot,
+                            "configured": True,
+                            "passed": False,
+                            "issue_codes": ["image_quality_audit_not_configured"],
+                        },
+                        error_code="image_quality_audit_not_configured",
+                    )
+                    return True
+                audit_result = await self._image_quality_auditor.audit(
+                    ImageQualityAuditRequest(
+                        request_fingerprint=claimed.request_fingerprint,
+                        image_bytes=result.image_bytes,
+                        visual_brief=claimed.visual_brief,
+                        references=references,
+                        media_type=result.media_type,
+                    )
+                )
+                if (
+                    audit_result.request_fingerprint != claimed.request_fingerprint
+                    or not audit_result.provider.strip()
+                    or not audit_result.model.strip()
+                ):
+                    raise ProviderIdentityMismatchError()
+                audit_snapshot = _image_audit_snapshot(audit_result)
+                if not audit_result.accepted:
+                    await self._finish_quality_attempt(
+                        claimed,
+                        validation_snapshot=validation_snapshot,
+                        audit_snapshot=audit_snapshot,
+                        error_code="image_quality_audit_failed",
+                    )
+                    return True
             self._ensure_lease(lease_lost)
             descriptor = await self._image_store.put_immutable(
                 result.image_bytes, media_type=result.media_type
             )
-            if not await self._persist_success(claimed, result, descriptor):
+            if not await self._persist_success(
+                claimed,
+                result,
+                descriptor,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            ):
                 logger.warning(
                     "material_package_image_lease_lost",
                     package_id=str(claimed.package_id),
@@ -647,6 +805,8 @@ class MaterialPackageExecutor:
                 claimed,
                 error_code=error.code,
                 retryable=error.retryable,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
                 review_required=isinstance(
                     error,
                     (
@@ -661,6 +821,8 @@ class MaterialPackageExecutor:
                 claimed,
                 error_code="image_output_invalid",
                 retryable=False,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
                 review_required=True,
             )
         except Exception:
@@ -668,6 +830,8 @@ class MaterialPackageExecutor:
                 claimed,
                 error_code="image_provider_unavailable",
                 retryable=True,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
                 review_required=False,
             )
         finally:
@@ -722,7 +886,18 @@ class MaterialPackageExecutor:
                             MaterialPackageModel.status == "queued",
                             ImageArtifactModel.provider == self._settings.image_provider_mode,
                             ImageArtifactModel.model == self._settings.image_model,
-                            ImageArtifactModel.attempt_count >= self._settings.image_max_attempts,
+                            or_(
+                                and_(
+                                    ImageArtifactModel.repair_count == 0,
+                                    ImageArtifactModel.attempt_count
+                                    >= self._settings.image_max_attempts,
+                                ),
+                                and_(
+                                    ImageArtifactModel.repair_count == 1,
+                                    ImageArtifactModel.attempt_count
+                                    > self._settings.image_max_attempts,
+                                ),
+                            ),
                             or_(
                                 and_(
                                     ImageArtifactModel.status == "queued",
@@ -769,11 +944,27 @@ class MaterialPackageExecutor:
                         and_(
                             ImageArtifactModel.status == "queued",
                             ImageArtifactModel.available_at <= now,
-                            ImageArtifactModel.attempt_count < self._settings.image_max_attempts,
+                            or_(
+                                ImageArtifactModel.attempt_count
+                                < self._settings.image_max_attempts,
+                                and_(
+                                    ImageArtifactModel.repair_count == 1,
+                                    ImageArtifactModel.attempt_count
+                                    == self._settings.image_max_attempts,
+                                ),
+                            ),
                         ),
                         and_(
                             ImageArtifactModel.status == "running",
-                            ImageArtifactModel.attempt_count < self._settings.image_max_attempts,
+                            or_(
+                                ImageArtifactModel.attempt_count
+                                < self._settings.image_max_attempts,
+                                and_(
+                                    ImageArtifactModel.repair_count == 1,
+                                    ImageArtifactModel.attempt_count
+                                    == self._settings.image_max_attempts,
+                                ),
+                            ),
                             or_(
                                 ImageArtifactModel.lease_expires_at.is_(None),
                                 ImageArtifactModel.lease_expires_at <= now,
@@ -838,7 +1029,7 @@ class MaterialPackageExecutor:
                     eligible=False,
                 )
             try:
-                claim_prompt, claim_brief_snapshot = _claim_prompt(
+                claim_prompt, claim_brief_snapshot, claim_brief = _claim_prompt(
                     package=package,
                     draft=draft,
                     image=image,
@@ -906,6 +1097,8 @@ class MaterialPackageExecutor:
                 references=reserved_references,
                 reference_mode=getattr(image, "reference_mode", "legacy_single"),
                 visual_brief_snapshot=claim_brief_snapshot,
+                repair_count=getattr(image, "repair_count", 0),
+                visual_brief=claim_brief,
                 catalog_version=(
                     package.version_snapshot.get("image", {}).get("catalog_version", "no-catalog")
                     if isinstance(package.version_snapshot.get("image", {}), dict)
@@ -923,6 +1116,9 @@ class MaterialPackageExecutor:
         claimed: ClaimedMaterialPackage,
         result: ImageGenerationResult,
         descriptor: ImageObjectDescriptor,
+        *,
+        validation_snapshot: dict[str, Any],
+        audit_snapshot: dict[str, Any],
     ) -> bool:
         now = datetime.now(UTC)
         async with self._session_factory() as session:
@@ -950,6 +1146,15 @@ class MaterialPackageExecutor:
             image.sha256 = descriptor.sha256
             image.bucket = descriptor.bucket
             image.object_key = descriptor.object_key
+            image.validation_snapshot = validation_snapshot
+            image.audit_snapshot = audit_snapshot
+            image.repair_count = claimed.repair_count
+            _set_package_image_quality(
+                package,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+                repair_count=claimed.repair_count,
+            )
             image.storage_metadata = dict(_PRIVATE_STORAGE_METADATA)
             image.error_code = None
             image.completed_at = now
@@ -958,6 +1163,52 @@ class MaterialPackageExecutor:
             await session.commit()
             return True
 
+    async def _finish_quality_attempt(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        validation_snapshot: dict[str, Any],
+        audit_snapshot: dict[str, Any],
+        error_code: str,
+    ) -> None:
+        """Persist a visual-quality failure and schedule only one targeted repair."""
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            image = await session.scalar(
+                select(ImageArtifactModel)
+                .where(
+                    ImageArtifactModel.id == claimed.image_id,
+                    ImageArtifactModel.lease_token == claimed.lease_token,
+                    ImageArtifactModel.status == "running",
+                    ImageArtifactModel.lease_expires_at >= now,
+                )
+                .with_for_update()
+            )
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+            if image is None or package is None:
+                return
+            image.validation_snapshot = validation_snapshot
+            image.audit_snapshot = audit_snapshot
+            image.error_code = error_code
+            _set_package_image_quality(
+                package,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+                repair_count=image.repair_count,
+            )
+            _clear_image_lease(image)
+            if image.repair_count < 1:
+                image.repair_count += 1
+                image.status = "queued"
+                image.available_at = now
+                image.completed_at = None
+                package.status = "queued"
+            else:
+                image.status = "review_required"
+                image.completed_at = now
+                package.status = "failed"
+            await session.commit()
+
     async def _finish_attempt(
         self,
         claimed: ClaimedMaterialPackage,
@@ -965,6 +1216,8 @@ class MaterialPackageExecutor:
         error_code: str,
         retryable: bool,
         review_required: bool,
+        validation_snapshot: dict[str, Any] | None = None,
+        audit_snapshot: dict[str, Any] | None = None,
     ) -> None:
         now = datetime.now(UTC)
         retry = retryable and claimed.attempt_number < self._settings.image_max_attempts
@@ -988,6 +1241,16 @@ class MaterialPackageExecutor:
             if image is None or package is None:
                 return
             image.error_code = error_code
+            if validation_snapshot:
+                image.validation_snapshot = validation_snapshot
+            if audit_snapshot:
+                image.audit_snapshot = audit_snapshot
+            _set_package_image_quality(
+                package,
+                validation_snapshot=validation_snapshot or image.validation_snapshot,
+                audit_snapshot=audit_snapshot or image.audit_snapshot,
+                repair_count=image.repair_count,
+            )
             _clear_image_lease(image)
             if retry:
                 image.status = "queued"
@@ -1059,6 +1322,114 @@ def _clear_image_lease(image: ImageArtifactModel) -> None:
     image.lease_token = None
     image.lease_expires_at = None
     image.heartbeat_at = None
+
+
+def _expected_visual_text(brief: VisualBrief) -> tuple[str, ...]:
+    return tuple(
+        value
+        for value in (
+            brief.text_layer.title,
+            brief.text_layer.learning_line,
+            *brief.text_layer.keywords,
+            *brief.text_layer.brand_values,
+        )
+        if value
+    )
+
+
+def _image_validation_snapshot(
+    result: Any,
+    *,
+    configured: bool,
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "version": "image-validation-v1",
+        "configured": configured,
+        "passed": bool(getattr(result, "passed", False)),
+        "issue_codes": list(_safe_image_issue_codes(getattr(result, "issue_codes", ()))),
+        "provider": provider,
+        "model": model,
+        "media_type": getattr(result, "media_type", None),
+        "width": getattr(result, "width", None),
+        "height": getattr(result, "height", None),
+        "byte_size": getattr(result, "byte_size", None),
+    }
+
+
+def _image_audit_not_run_snapshot() -> dict[str, Any]:
+    return {
+        "version": "image-audit-v1",
+        "configured": False,
+        "status": "not_configured",
+        "passed": None,
+        "issue_codes": [],
+        "provider": None,
+        "model": None,
+    }
+
+
+def _image_audit_snapshot(result: Any) -> dict[str, Any]:
+    issue_codes = getattr(result, "issue_codes", ())
+    if not issue_codes:
+        issue_codes = tuple(
+            getattr(issue, "code", "audit_issue") for issue in getattr(result, "issues", ())
+        )
+    accepted = bool(getattr(result, "accepted", False))
+    return {
+        "version": "image-audit-v1",
+        "configured": True,
+        "status": "accepted" if accepted else "rejected",
+        "passed": accepted,
+        "issue_codes": list(_safe_image_issue_codes(issue_codes)),
+        "provider": getattr(result, "provider", None),
+        "model": getattr(result, "model", None),
+    }
+
+
+def _safe_image_issue_codes(values: object) -> tuple[str, ...]:
+    if not isinstance(values, (tuple, list)):
+        return ()
+    safe: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()
+        if 1 <= len(normalized) <= 80 and all(
+            character.isalnum() or character in "._-" for character in normalized
+        ):
+            safe.append(normalized)
+    return tuple(dict.fromkeys(safe))
+
+
+def _image_issue_codes(*snapshots: object) -> tuple[str, ...]:
+    values: list[str] = []
+    for snapshot in snapshots:
+        if not isinstance(snapshot, dict):
+            continue
+        values.extend(_safe_image_issue_codes(snapshot.get("issue_codes", [])))
+    return tuple(dict.fromkeys(values)) or ("image_quality_review",)
+
+
+def _set_package_image_quality(
+    package: MaterialPackageModel,
+    *,
+    validation_snapshot: object,
+    audit_snapshot: object,
+    repair_count: int,
+) -> None:
+    current = package.version_snapshot if isinstance(package.version_snapshot, dict) else {}
+    image_snapshot = current.get("image", {})
+    image_values = dict(image_snapshot) if isinstance(image_snapshot, dict) else {}
+    image_values.update(
+        {
+            "validation": validation_snapshot,
+            "audit": audit_snapshot,
+            "repair_count": max(0, min(repair_count, 1)),
+        }
+    )
+    package.version_snapshot = {**current, "image": image_values}
 
 
 async def review_material_package(

@@ -19,7 +19,9 @@ from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageMode
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 from app.schemas.material_package import (
     ImageArtifactResponse,
+    ImageAuditResponse,
     ImageStorageMetadataResponse,
+    ImageValidationResponse,
     MaterialPackageCreateRequest,
     MaterialPackageDownloadResponse,
     MaterialPackageListResponse,
@@ -267,6 +269,9 @@ def _detail_response(
             reference_mode=cast(Any, reference_mode),
             visual_brief=_safe_visual_brief(visual_brief),
             references=_safe_visual_references(references),
+            repair_count=max(0, min(int(getattr(image, "repair_count", 0)), 1)),
+            validation=_safe_image_validation(getattr(image, "validation_snapshot", {})),
+            audit=_safe_image_audit(getattr(image, "audit_snapshot", {})),
         ),
         review_note=package.review_note,
         reviewed_at=package.reviewed_at,
@@ -296,3 +301,53 @@ def _safe_visual_references(value: object) -> list[VisualReferenceResponse]:
         except ValidationError:
             continue
     return safe_values
+
+
+def _safe_image_validation(value: object) -> ImageValidationResponse:
+    fallback = {
+        "version": "image-validation-v1",
+        "configured": False,
+        "passed": None,
+        "issue_codes": [],
+        "provider": None,
+        "model": None,
+    }
+    if isinstance(value, dict):
+        fallback.update(value)
+    try:
+        return ImageValidationResponse.model_validate(fallback)
+    except ValidationError:
+        return ImageValidationResponse(
+            version="image-validation-v1",
+            configured=False,
+            passed=None,
+            issue_codes=[],
+            provider=None,
+            model=None,
+        )
+
+
+def _safe_image_audit(value: object) -> ImageAuditResponse:
+    fallback = {
+        "version": "image-audit-v1",
+        "configured": False,
+        "status": "not_configured",
+        "passed": None,
+        "issue_codes": [],
+        "provider": None,
+        "model": None,
+    }
+    if isinstance(value, dict):
+        fallback.update(value)
+    try:
+        return ImageAuditResponse.model_validate(fallback)
+    except ValidationError:
+        return ImageAuditResponse(
+            version="image-audit-v1",
+            configured=False,
+            status="not_configured",
+            passed=None,
+            issue_codes=[],
+            provider=None,
+            model=None,
+        )
