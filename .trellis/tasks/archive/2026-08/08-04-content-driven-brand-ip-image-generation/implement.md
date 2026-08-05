@@ -50,9 +50,9 @@
 
 ## Step 5 — Validation, repair, and live acceptance
 
-- [ ] Add exact-text OCR validation for the compact editorial layer where the configured OCR capability
+- [x] Add exact-text OCR validation for the compact editorial layer where the configured OCR capability
       is available; fail closed on unexpected text.
-- [ ] Add the provider-neutral image-quality audit seam and one targeted repair path; keep the existing
+- [x] Add the provider-neutral image-quality audit seam and one targeted repair path; keep the existing
       one-repair/no-force-publish rule.
 - [x] Run focused tests, Ruff, strict mypy, frontend tests, Compose config, Doctor, and diff/secret
       checks.
