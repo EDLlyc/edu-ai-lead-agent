@@ -89,6 +89,75 @@ Treat source text and model-generated content as untrusted display data even whe
 shape is valid. Render it as text, validate URLs and filenames, and do not use
 `dangerouslySetInnerHTML`.
 
+## Scenario: Image artifact quality projection
+
+### 1. Scope / Trigger
+
+Use this contract when the material-package API exposes deterministic image validation, provider-
+neutral visual audit, or bounded automatic-repair state. These fields belong to the image artifact,
+not to the copy-level validation/audit projection.
+
+### 2. Signatures
+
+- Generated wire type: `MaterialPackageResponse["image"]` includes `validation`, `audit`, and
+  `repair_count`.
+- Feature mapper: `mapMaterialPackage(response)` returns `ImageViewModel` with `validation`, `audit`,
+  and `repairCount`.
+- The UI renders those values in the image section and keeps the existing package-level quality
+  section for copy claims.
+
+### 3. Contracts
+
+- `validation` contains `version`, `configured`, nullable `passed`, bounded `issue_codes`, provider/
+  model metadata, and optional media/dimension/byte observations.
+- `audit.status` is one of `accepted`, `rejected`, `not_configured`, or `unknown`; it must not be
+  inferred from color or from the package-level audit.
+- `repair_count` is a non-negative bounded count (currently `0` or `1`) and is displayed as a status,
+  not as an action control.
+- Generated OpenAPI types are the only wire contract; `api.ts` is the single normalization boundary.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required UI result |
+|---|---|
+| Deterministic validation passed | Show an explicit validation-passed label |
+| Deterministic validation failed | Show an explicit failed label and issue codes |
+| Visual audit rejected | Show an explicit audit-not-passed label and issue codes |
+| Audit is not configured or unknown | Show an explicit non-passed/unfinished label; never imply acceptance |
+| `repair_count` is `1` | Show that one automatic repair occurred; do not offer a second repair action |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a generated response maps directly through the OpenAPI type and the UI shows validation,
+  audit, versions, issue codes, and repair count without exposing prompts or storage details.
+- Base: historical image rows use the backend's safe not-configured fallback and remain inspectable.
+- Bad: cast a raw image object in JSX, reuse copy-level audit state, or display an unconfigured audit
+  as accepted.
+
+### 6. Tests Required
+
+- Mapper tests assert `validation.passed`, `audit.status`, and `repairCount` survive the wire-to-view
+  projection.
+- Component tests cover passed validation/audit, issue-code display, review-required image state, and
+  the one-repair label.
+- `make frontend-check` must pass generated-contract drift, strict TypeScript, lint, tests, and build.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+const audit = (response.image as { audit?: { passed?: boolean } }).audit;
+return <span>{audit?.passed ? "通过" : "失败"}</span>;
+```
+
+#### Correct
+
+```typescript
+const materialPackage = mapMaterialPackage(response);
+return <ImageQualitySummary image={materialPackage.image} />;
+```
+
 ## Error typing
 
 Translate transport failures into a small typed client error containing safe code, message,

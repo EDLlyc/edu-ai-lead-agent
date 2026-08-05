@@ -13,7 +13,7 @@ user or public search role.
 
 ### 2. Signatures
 
-- Feature migration: `20260730_0007`; current repository head: `20260804_0015`.
+- Feature migration: `20260730_0007`; current repository head: `20260804_0017`.
 - Upload: `POST /api/v1/brand-documents` as multipart PDF, DOCX, UTF-8 TXT, or Markdown -> HTTP 202.
 - Query: `GET /api/v1/brand-documents`, `GET /api/v1/brand-documents/{document_id}`, and
   `GET /api/v1/brand-ingestion-jobs/{job_id}`.
@@ -127,7 +127,7 @@ without changing the evidence-ineligible brand-context boundary.
   worker processing, activation, generation-context retrieval, wrong-audience exclusion, and
   deactivation.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260804_0015`, the six brand tables, non-null metadata fingerprint, and non-null provider.
+  `20260804_0017`, the six brand tables, non-null metadata fingerprint, and non-null provider.
 - [`test_brand_asset_manifest.py`](../../../backend/tests/unit/test_brand_asset_manifest.py)
   asserts valid PNG metadata, character tags, sidecar/symlink/invalid-file exclusion, dimension
   limits, and private output-path enforcement.

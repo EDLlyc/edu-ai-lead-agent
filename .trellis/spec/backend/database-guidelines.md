@@ -8,7 +8,7 @@ acquisition and factual-governance schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260804_0015`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260804_0017`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -155,9 +155,9 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260804_0015` (adds immutable ordered visual-reference rows and image visual-brief metadata
-  after brand-document OCR metadata, source request pacing, and freshness policy
-  metadata, and immutable
+  `20260804_0017` (adds source-scoped HTTP fallback and topic-priority metadata after immutable
+  ordered visual-reference rows and image visual-brief metadata, brand-document OCR metadata,
+  source request pacing, freshness policy metadata, and immutable
   same-day topic revisions).
   Acquisition-specific downgrade tests still isolate the `0003 -> 0002` contract described here.
 - Source contract: `source_versions.relevance_rule_version VARCHAR(40) NULL`.
@@ -168,7 +168,8 @@ audit records and must not be rewritten in place.
 ### 3. Contracts
 
 - Legacy rows keep `relevance_rule_version=NULL`; seeding creates a new immutable active version
-  with `ai-title-v1` for each of the eight sources.
+  with `ai-title-v1` for each of the eight existing sources and `moe-science-v1` for the Ministry
+  source.
 - Retry-scheduled attempts do not persist or accumulate a filtered count. The terminal scan value
   becomes the job count; the run count is the sum of terminal job counts.
 - A downgrade from `0003` first repoints every active relevance-enabled source to its highest

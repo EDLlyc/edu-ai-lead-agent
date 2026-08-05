@@ -10,7 +10,7 @@ relations, LangGraph execution, event assignment, governance persistence, or the
 governance APIs.
 
 This capability starts from acquisition-owned PostgreSQL records. It does not fetch an article URL,
-change the eight approved source profiles or `ai-title-v1`, score/select a topic, retrieve brand
+change the nine approved source profiles or `ai-title-v1`, score/select a topic, retrieve brand
 knowledge, generate copy/images, expose a product UI, or publish content.
 
 The controlling implementation lives in:

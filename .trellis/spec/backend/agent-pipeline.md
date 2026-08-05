@@ -56,11 +56,11 @@ Normalize boilerplate, whitespace, timestamps, URLs, and source names. Deduplica
 SHA-256 first, then use SimHash/embedding similarity and event clustering. Retain links from
 duplicates to the canonical article/event so provenance is not lost.
 
-## Scenario: Eight-source AI evidence acquisition
+## Scenario: Nine-source AI evidence acquisition
 
 ### 1. Scope / Trigger
 
-This is the implemented boundary for the first stage. It applies to the eight approved government,
+This is the implemented boundary for the first stage. It applies to the nine approved government,
 education, research, company, and media profiles in
 [`source_profiles.py`](../../../backend/app/infrastructure/ingestion/source_profiles.py). It does
 not authorize arbitrary URLs, general web search, LangGraph execution, summarization, scoring, or
@@ -121,7 +121,7 @@ generation.
 
 - [`test_title_relevance.py`](../../../backend/tests/unit/test_title_relevance.py) covers positive,
   negative, Unicode, English-boundary, policy, and ambiguous-compound cases.
-- Connector contracts cover all eight source fixtures, ordering, article-path restrictions,
+- Connector contracts cover all nine source fixtures, ordering, article-path restrictions,
   duplicate anchor merging, parser drift, and source-specific selectors.
 - Real PostgreSQL/MinIO tests assert no unrelated detail fetch, zero-match success/cursor behavior,
   filtered counts across retries, immutable snapshots, provenance, and no-refetch downstream use.
@@ -196,7 +196,7 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.2` keeps numeric ranges, weights, penalties, the threshold,
+The implemented `scoring-v1-preview.3-moe-priority` keeps numeric ranges, weights, penalties, the threshold,
 veto version, and tie-break order in an immutable persisted configuration. It has controlled tests
 and a real-event demonstration, but remains a preview profile until a later labeled calibration
 and explicit product approval create a new production configuration.
@@ -604,7 +604,7 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   enqueue-only behavior, accepted-draft gating, provider rejection, lease-safe persistence, and
   safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260804_0015`, worker columns, package snapshots, ordered image-reference constraints, and
+  `20260804_0017`, worker columns, package snapshots, ordered image-reference constraints, and
   unique indexes; MinIO
   integration asserts content-addressed immutable storage.
 - Frontend mapper/component tests assert response mapping, queued/failed states, copy/download

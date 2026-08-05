@@ -10,7 +10,7 @@ produces at most one locked topic for a business date and scoring profile. It do
 re-summarize, retrieve brand knowledge, call a model for the numeric score, generate copy/images,
 or publish content.
 
-The implemented preview is `scoring-v1-preview.2`. It is safe for the functional MVP and internal
+The implemented preview is `scoring-v1-preview.3-moe-priority`. It is safe for the functional MVP and internal
 demonstration, but its numeric weights and threshold remain subject to a later labeled calibration
 task before a production scoring profile is activated.
 
@@ -39,9 +39,11 @@ task before a production scoring profile is activated.
   HTTP 409 and creates no topic-selection run.
 - A scoring config is immutable by `(profile, version)` and stores its canonical JSON snapshot and
   SHA-256 fingerprint. Historical responses read the run snapshot, not current process settings.
-- `scoring-v1-preview.2` normalizes source trust/diversity, AI relevance, parent relevance,
+- `scoring-v1-preview.3-moe-priority` normalizes source trust/diversity, AI relevance, parent relevance,
   freshness, and communication potential; theme repetition, controversy, and marketing risk are
-  explicit penalties. Positive weights sum to one.
+  explicit penalties. Positive weights sum to one. After veto and threshold checks,
+  `source-priority-v1` places an eligible `moe-science-top1-v1` event before ordinary eligible
+  events and persists the applied rule and reason in the score explanation.
 - Hard vetoes are independent of the numeric total: unresolved governance, ineligible evidence,
   Tier-C-only evidence, unverified information, unsuitable negative incidents, privacy/legal/safety
   uncertainty, prohibited marketing claims, a selection inside the seven-day business-date

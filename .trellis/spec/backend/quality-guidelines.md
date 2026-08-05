@@ -140,8 +140,8 @@ environment that can synthesize DNS answers.
 
 ### 2. Signatures
 
-- Entry smoke: `make source-smoke` calls `python -m app.live_smoke` and checks all eight profiles.
-- Full live acceptance: enqueue one run for the eight active source versions, start a worker with
+- Entry smoke: `make source-smoke` calls `python -m app.live_smoke` and checks all nine profiles.
+- Full live acceptance: enqueue one run for the nine active source versions, start a worker with
   `ACQUISITION_FIRST_RUN_ITEM_LIMIT=1` and `ACQUISITION_DAILY_ITEM_LIMIT=1`, then query the run,
   jobs, and evidence-candidate APIs.
 - SSRF policy failure: `PolicyRejectedError(code="non_public_address")`.
@@ -169,7 +169,7 @@ environment that can synthesize DNS answers.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: eight public DNS answers, eight HTTP successes, eight terminal-success jobs, and article
+- Good: nine public DNS answers, nine HTTP successes, nine terminal-success jobs, and article
   candidates with meaningful titles, canonical URLs, body text, snapshots, and provenance.
 - Base: deterministic fixture/contract tests pass while live smoke is skipped in CI.
 - Bad: allowing `198.18.0.0/15`, disabling SSRF checks, stopping after the first source, or treating
@@ -177,12 +177,12 @@ environment that can synthesize DNS answers.
 
 ### 6. Tests Required
 
-- Connector fixtures cover all eight sources and regress index-page discovery, duplicate blank/text
+- Connector fixtures cover all nine sources and regress index-page discovery, duplicate blank/text
   anchors, navigation headings, parser drift, and timezone conversion.
 - `test_live_smoke.py` proves one typed failure does not prevent later profiles from being checked.
 - PostgreSQL integration proves a new parser/source version can store corrected metadata for the
   same source item without disabling cross-source exact-duplicate handling.
-- An operator live check records all eight entry statuses; a one-item full run asserts `8/8`
+- An operator live check records all nine entry statuses; a one-item full run asserts `9/9`
   successful jobs and inspects the resulting titles/URLs before acceptance.
 
 ### 7. Wrong vs Correct
@@ -208,6 +208,7 @@ dns:
     - '+.gmw.cn'
     - '+.stdaily.com'
     - '+.chinanews.com.cn'
+    - '+.moe.gov.cn'
 ```
 
 ## Scenario: Tiered validation without repeated full-suite runs

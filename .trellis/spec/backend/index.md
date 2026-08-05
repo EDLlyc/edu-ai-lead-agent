@@ -3,7 +3,7 @@
 ## Status and source of truth
 
 These documents are the implementation contract for the backend. Four production-shaped
-capabilities now exist: governed acquisition from eight authoritative sources; versioned
+capabilities now exist: governed acquisition from nine authoritative sources; versioned
 normalization, evidence-bound factual analysis, duplicate relations, and event organization;
 deterministic daily Top 1/`no_topic` selection; and private versioned brand-document ingestion with
 separated hybrid retrieval. PostgreSQL owns durable run/job and derived-artifact
