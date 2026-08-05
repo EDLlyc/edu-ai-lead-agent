@@ -28,6 +28,12 @@ from app.core.errors import (
 from app.domain.entities import DiscoveredItem
 from app.domain.enums import JobStatus, ObservationOutcome
 from app.domain.freshness import FreshnessDecision, evaluate_publication_freshness
+from app.domain.science_relevance import (
+    SCIENCE_CONTENT_CHARACTER_LIMIT,
+    SCIENCE_RELEVANCE_RULE_VERSION,
+    ScienceRelevanceResult,
+    evaluate_moe_science_relevance,
+)
 from app.domain.title_relevance import (
     TITLE_RELEVANCE_RULE_VERSION,
     TitleRelevanceResult,
@@ -134,22 +140,22 @@ class AcquisitionExecutor:
                 )
                 scanned_items = connector.discover(list_response, claimed.profile, limit=scan_limit)
                 scanned_count = len(scanned_items)
-                accepted_items: list[tuple[DiscoveredItem, TitleRelevanceResult | None]]
+                accepted_items: list[
+                    tuple[DiscoveredItem, TitleRelevanceResult | ScienceRelevanceResult | None]
+                ]
                 accepted_items = []
                 freshness_evaluated_at = self._clock()
                 if claimed.profile.relevance_rule_version is None:
                     relevant_count = scanned_count
                     deferred_relevant_count = max(0, relevant_count - accepted_limit)
                     accepted_items.extend((item, None) for item in scanned_items[:accepted_limit])
-                else:
-                    if claimed.profile.relevance_rule_version != TITLE_RELEVANCE_RULE_VERSION:
-                        raise ParseError("title relevance rule version is not installed")
-                    evaluated_items = [
+                elif claimed.profile.relevance_rule_version == TITLE_RELEVANCE_RULE_VERSION:
+                    title_evaluated_items = [
                         (item, evaluate_title_relevance(item.title)) for item in scanned_items
                     ]
                     relevant_items = [
                         (item, relevance)
-                        for item, relevance in evaluated_items
+                        for item, relevance in title_evaluated_items
                         if relevance.is_relevant
                     ]
                     relevant_count = len(relevant_items)
@@ -177,11 +183,40 @@ class AcquisitionExecutor:
                     deferred_relevant_count = len(fresh_relevant_items) - len(accepted_items)
                     if relevant_count == 0:
                         job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
+                elif claimed.profile.relevance_rule_version == SCIENCE_RELEVANCE_RULE_VERSION:
+                    science_evaluated_items: list[tuple[DiscoveredItem, ScienceRelevanceResult]] = [
+                        (item, evaluate_moe_science_relevance(item.title, None))
+                        for item in scanned_items
+                    ]
+                    title_matches = [
+                        (item, relevance)
+                        for item, relevance in science_evaluated_items
+                        if relevance.matched_title_terms
+                    ]
+                    title_neutral = [
+                        (item, relevance)
+                        for item, relevance in science_evaluated_items
+                        if not relevance.matched_title_terms
+                    ]
+                    ordered_items = [*title_matches, *title_neutral]
+                    accepted_items.extend(ordered_items[:accepted_limit])
+                    accepted_title_match_count = sum(
+                        bool(relevance.matched_title_terms)
+                        for _, relevance in accepted_items
+                        if isinstance(relevance, ScienceRelevanceResult)
+                    )
+                    deferred_relevant_count = max(
+                        0, len(title_matches) - accepted_title_match_count
+                    )
+                else:
+                    raise ParseError("relevance rule version is not installed")
 
                 # Discovery dates are authoritative enough to skip stale detail requests. An
                 # unknown date is retained for the bounded detail fetch so the connector can try
                 # to resolve it; unknown remains excluded if the detail page also has no date.
-                prechecked_items: list[tuple[DiscoveredItem, TitleRelevanceResult | None]] = []
+                prechecked_items: list[
+                    tuple[DiscoveredItem, TitleRelevanceResult | ScienceRelevanceResult | None]
+                ] = []
                 for item, relevance_value in accepted_items:
                     freshness = evaluate_publication_freshness(
                         item.published_at,
@@ -189,14 +224,23 @@ class AcquisitionExecutor:
                         max_age_days=self._settings.acquisition_freshness_window_days,
                     )
                     if freshness.status == "stale":
-                        if claimed.profile.relevance_rule_version is None:
+                        if claimed.profile.relevance_rule_version in {
+                            None,
+                            SCIENCE_RELEVANCE_RULE_VERSION,
+                        }:
                             freshness_filtered_count += 1
                             filtered_count += 1
+                            metadata = _freshness_metadata(freshness)
+                            if isinstance(relevance_value, ScienceRelevanceResult):
+                                metadata = {
+                                    **_science_relevance_metadata(relevance_value),
+                                    **metadata,
+                                }
                             await self._repository.observe(
                                 claimed=claimed,
                                 source_item_id=item.source_item_id,
                                 outcome=ObservationOutcome.STALE,
-                                metadata=_freshness_metadata(freshness),
+                                metadata=metadata,
                             )
                         continue
                     prechecked_items.append((item, relevance_value))
@@ -226,11 +270,20 @@ class AcquisitionExecutor:
                         max_age_days=self._settings.acquisition_freshness_window_days,
                     )
                     relevance_metadata: dict[str, object] = {}
-                    if relevance_value is not None:
+                    science_relevance: ScienceRelevanceResult | None = None
+                    if claimed.profile.relevance_rule_version == SCIENCE_RELEVANCE_RULE_VERSION:
+                        science_relevance = evaluate_moe_science_relevance(
+                            document.title, document.clean_text
+                        )
+                        relevance_metadata = _science_relevance_metadata(science_relevance)
+                    elif isinstance(relevance_value, TitleRelevanceResult):
                         relevance_metadata = {
                             "relevance_rule_version": relevance_value.rule_version,
                             "matched_title_terms": list(relevance_value.matched_terms),
                         }
+                    elif isinstance(relevance_value, ScienceRelevanceResult):
+                        relevance_metadata = _science_relevance_metadata(relevance_value)
+                    if relevance_metadata:
                         document = replace(
                             document,
                             extraction_metadata={
@@ -254,6 +307,19 @@ class AcquisitionExecutor:
                             metadata={**relevance_metadata, **_freshness_metadata(freshness)},
                         )
                         continue
+                    if science_relevance is not None and not science_relevance.is_relevant:
+                        filtered_count += 1
+                        await self._repository.observe(
+                            claimed=claimed,
+                            source_item_id=item.source_item_id,
+                            outcome=ObservationOutcome.FILTERED,
+                            snapshot_id=snapshot_id,
+                            http_status=detail_response.status_code,
+                            metadata=relevance_metadata,
+                        )
+                        continue
+                    if science_relevance is not None:
+                        relevant_count += 1
                     persisted = await self._repository.save_candidate(
                         claimed=claimed,
                         profile=claimed.profile,
@@ -286,6 +352,23 @@ class AcquisitionExecutor:
                         "deferred_relevant_count": deferred_relevant_count,
                         "relevance_rule_version": claimed.profile.relevance_rule_version,
                     }
+                    if claimed.profile.relevance_rule_version == SCIENCE_RELEVANCE_RULE_VERSION:
+                        filter_metadata.update(
+                            {
+                                "title_match_count": sum(
+                                    isinstance(relevance, ScienceRelevanceResult)
+                                    and bool(relevance.matched_title_terms)
+                                    for _, relevance in accepted_items
+                                ),
+                                "detail_probe_limit": accepted_limit,
+                                "deferred_detail_count": max(
+                                    0, len(scanned_items) - accepted_limit
+                                ),
+                                "content_character_limit": SCIENCE_CONTENT_CHARACTER_LIMIT,
+                            }
+                        )
+                        if relevant_count == 0:
+                            job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
                     if freshness_filtered_count:
                         filter_metadata.update(
                             {
@@ -537,4 +620,15 @@ def _freshness_metadata(decision: FreshnessDecision) -> dict[str, object]:
         "freshness_reason": decision.reason_code,
         "cutoff_at": decision.cutoff_at.isoformat(),
         "published_at": decision.published_at.isoformat() if decision.published_at else None,
+    }
+
+
+def _science_relevance_metadata(result: ScienceRelevanceResult) -> dict[str, object]:
+    return {
+        "relevance_rule_version": result.rule_version,
+        "matched_title_terms": list(result.matched_title_terms),
+        "matched_content_terms": list(result.matched_content_terms),
+        "matched_terms": list(result.matched_terms),
+        "content_characters_considered": result.content_characters_considered,
+        "content_truncated": result.content_truncated,
     }

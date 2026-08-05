@@ -27,13 +27,16 @@ def _profile(connector_key: str) -> SourceProfile:
         allowed_path_prefixes=seed.allowed_path_prefixes,
         connector_version=seed.connector_version,
         parser_version=seed.parser_version,
+        relevance_rule_version=seed.relevance_rule_version,
+        allow_http_fallback=seed.allow_http_fallback,
+        topic_priority_policy=seed.topic_priority_policy,
         language=seed.language,
         rate_limit_seconds=seed.rate_limit_seconds,
     )
 
 
 @pytest.mark.parametrize("connector_key", [seed.connector_key for seed in SOURCE_SEEDS])
-def test_all_eight_connectors_discover_and_extract_fixture(connector_key: str) -> None:
+def test_all_nine_connectors_discover_and_extract_fixture(connector_key: str) -> None:
     profile = _profile(connector_key)
     directory = FIXTURE_ROOT / connector_key
     list_path = directory / ("list.json" if connector_key == "gov_cn_policy_v1" else "list.html")
@@ -95,6 +98,26 @@ def test_parser_drift_is_a_typed_failure() -> None:
     )
     with pytest.raises(ParseError):
         connector.extract(drifted, item, profile)
+
+
+def test_moe_connector_uses_fixed_section_and_article_path() -> None:
+    profile = _profile("moe_news_v1")
+    connector = get_connector(profile.connector_key)
+    list_response = FetchedResponse(
+        requested_url=profile.entry_url,
+        final_url=profile.entry_url,
+        status_code=200,
+        media_type="text/html",
+        body=(FIXTURE_ROOT / "moe_news_v1" / "list.html").read_bytes(),
+        sha256="list",
+        fetched_at=datetime.now(UTC),
+    )
+
+    items = connector.discover(list_response, profile, limit=2)
+
+    assert len(items) == 2
+    assert items[0].url.endswith("/202608/t20260804_1446039.html")
+    assert items[0].published_at == datetime(2026, 8, 3, 16, tzinfo=UTC)
 
 
 def test_off_domain_and_prompt_like_links_are_not_discovered() -> None:

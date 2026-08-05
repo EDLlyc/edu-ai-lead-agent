@@ -29,6 +29,8 @@ class SourceSeed:
     connector_version: str = "1.0.0"
     parser_version: str = "1.0.0"
     relevance_rule_version: str | None = TITLE_RELEVANCE_RULE_VERSION
+    allow_http_fallback: bool = False
+    topic_priority_policy: str | None = None
 
     @property
     def source_id(self) -> UUID:
@@ -147,6 +149,23 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
         ("/",),
         "allowed_with_path_exclusions",
         3.0,
+    ),
+    SourceSeed(
+        "moe-science-news",
+        "教育部科学新闻",
+        "government",
+        SourceTier.A,
+        "moe_news_v1",
+        "https://www.moe.gov.cn/jyb_xwfb/",
+        ("www.moe.gov.cn",),
+        ("/jyb_xwfb/",),
+        "manual_review",
+        2.0,
+        connector_version="1.0.0",
+        parser_version="1.0.0",
+        relevance_rule_version="moe-science-v1",
+        allow_http_fallback=True,
+        topic_priority_policy="moe-science-top1-v1",
     ),
 )
 

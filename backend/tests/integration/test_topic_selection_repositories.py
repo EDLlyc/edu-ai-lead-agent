@@ -53,6 +53,7 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
         assert replay_created is False
         assert replay.id == run.id
         assert replay.config_snapshot == config.as_metadata()
+        assert replay.config_snapshot["selection_priority_rule_version"] == "source-priority-v1"
         run_id = run.id
 
         different_config = TopicScoringConfig(

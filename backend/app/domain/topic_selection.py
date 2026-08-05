@@ -9,6 +9,10 @@ from types import MappingProxyType
 from typing import Self
 from uuid import UUID
 
+DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.3-moe-priority"
+DEFAULT_SELECTION_PRIORITY_RULE_VERSION = "source-priority-v1"
+MOE_SCIENCE_TOP1_PRIORITY_POLICY = "moe-science-top1-v1"
+
 
 class TopicVetoCode(StrEnum):
     UNRESOLVED_GOVERNANCE = "unresolved_governance"
@@ -30,9 +34,10 @@ class NoTopicCode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TopicScoringConfig:
-    version: str = "scoring-v1-preview.2"
+    version: str = DEFAULT_TOPIC_SCORING_VERSION
     profile: str = "preview"
     veto_rule_version: str = "topic-veto-v1"
+    selection_priority_rule_version: str | None = DEFAULT_SELECTION_PRIORITY_RULE_VERSION
     threshold: float = 0.62
     recent_selection_window_days: int = 7
     freshness_window_days: float = 10.0
@@ -61,6 +66,11 @@ class TopicScoringConfig:
             raise ValueError("topic scoring profile must be non-blank and bounded")
         if not self.veto_rule_version.strip() or len(self.veto_rule_version) > 80:
             raise ValueError("topic veto rule version must be non-blank and bounded")
+        if self.selection_priority_rule_version is not None and (
+            not self.selection_priority_rule_version.strip()
+            or len(self.selection_priority_rule_version) > 80
+        ):
+            raise ValueError("topic selection priority rule version must be non-blank and bounded")
         if not -1 <= self.threshold <= 1 or not math.isfinite(self.threshold):
             raise ValueError("topic scoring threshold must be finite and in [-1, 1]")
         if self.recent_selection_window_days < 1:
@@ -115,7 +125,7 @@ class TopicScoringConfig:
         )
 
     def as_metadata(self) -> dict[str, object]:
-        return {
+        metadata: dict[str, object] = {
             "version": self.version,
             "profile": self.profile,
             "veto_rule_version": self.veto_rule_version,
@@ -127,6 +137,9 @@ class TopicScoringConfig:
             "penalty_weights": dict(self.penalty_weights),
             "tie_break_order": list(self.tie_break_order),
         }
+        if self.selection_priority_rule_version is not None:
+            metadata["selection_priority_rule_version"] = self.selection_priority_rule_version
+        return metadata
 
     @classmethod
     def from_metadata(cls, metadata: Mapping[str, object]) -> Self:
@@ -141,6 +154,9 @@ class TopicScoringConfig:
             version=_metadata_str(metadata, "version"),
             profile=_metadata_str(metadata, "profile"),
             veto_rule_version=_metadata_str(metadata, "veto_rule_version"),
+            selection_priority_rule_version=_metadata_optional_str(
+                metadata, "selection_priority_rule_version"
+            ),
             threshold=_metadata_float(metadata, "threshold"),
             recent_selection_window_days=_metadata_int(metadata, "recent_selection_window_days"),
             freshness_window_days=_metadata_float(metadata, "freshness_window_days"),
@@ -170,6 +186,7 @@ class TopicCandidate:
     ai_relevance: float
     parent_relevance: float
     communication_potential: float
+    topic_priority_policy: str | None = None
     theme_repetition: float = 0.0
     controversy_risk: float = 0.0
     marketing_risk: float = 0.0
@@ -185,6 +202,10 @@ class TopicCandidate:
     def __post_init__(self) -> None:
         if self.event_time.tzinfo is None:
             raise ValueError("topic event time must be timezone-aware")
+        if self.topic_priority_policy is not None and (
+            not self.topic_priority_policy.strip() or len(self.topic_priority_policy) > 80
+        ):
+            raise ValueError("topic priority policy must be non-blank and bounded")
         if self.days_since_last_selection is not None and self.days_since_last_selection < 1:
             raise ValueError("days since last selection must be positive")
         if self.source_diversity < 0:
@@ -219,6 +240,10 @@ class TopicScore:
     passes_threshold: bool
     eligible: bool
     veto_codes: tuple[TopicVetoCode, ...]
+    selection_priority_rule_version: str | None = None
+    topic_priority_policy: str | None = None
+    priority_applied: bool = False
+    priority_reason: str = "not_eligible"
     rank: int | None = None
 
     def __post_init__(self) -> None:
@@ -262,6 +287,10 @@ class TopicScore:
             "passes_threshold": self.passes_threshold,
             "eligible": self.eligible,
             "veto_codes": [code.value for code in self.veto_codes],
+            "selection_priority_rule_version": self.selection_priority_rule_version,
+            "topic_priority_policy": self.topic_priority_policy,
+            "priority_applied": self.priority_applied,
+            "priority_reason": self.priority_reason,
             "rank": self.rank,
         }
 
@@ -323,6 +352,12 @@ def score_topic_candidate(
     total = round(sum(positive_components.values()) - sum(penalty_components.values()), 8)
     veto_codes = _veto_codes(candidate, as_of=as_of, config=config)
     passes_threshold = total >= config.threshold
+    priority_applied, priority_reason = _priority_state(
+        candidate,
+        veto_codes=veto_codes,
+        passes_threshold=passes_threshold,
+        config=config,
+    )
     return TopicScore(
         event_id=candidate.event_id,
         event_version_id=candidate.event_version_id,
@@ -339,6 +374,10 @@ def score_topic_candidate(
         passes_threshold=passes_threshold,
         eligible=not veto_codes and passes_threshold,
         veto_codes=veto_codes,
+        selection_priority_rule_version=config.selection_priority_rule_version,
+        topic_priority_policy=candidate.topic_priority_policy,
+        priority_applied=priority_applied,
+        priority_reason=priority_reason,
     )
 
 
@@ -419,12 +458,14 @@ def _veto_codes(
 def _score_sort_key(
     score: TopicScore, candidate: TopicCandidate
 ) -> tuple[int, float, float, float, int]:
-    if score.eligible:
+    if score.priority_applied:
         eligibility_group = 0
-    elif not score.veto_codes:
+    elif score.eligible:
         eligibility_group = 1
-    else:
+    elif not score.veto_codes:
         eligibility_group = 2
+    else:
+        eligibility_group = 3
     return (
         eligibility_group,
         -score.total,
@@ -432,6 +473,26 @@ def _score_sort_key(
         -candidate.event_time.timestamp(),
         candidate.event_id.int,
     )
+
+
+def _priority_state(
+    candidate: TopicCandidate,
+    *,
+    veto_codes: tuple[TopicVetoCode, ...],
+    passes_threshold: bool,
+    config: TopicScoringConfig,
+) -> tuple[bool, str]:
+    if config.selection_priority_rule_version is None:
+        return False, "selection_priority_rule_unavailable"
+    if candidate.topic_priority_policy is None:
+        return False, "no_topic_priority_policy"
+    if candidate.topic_priority_policy != MOE_SCIENCE_TOP1_PRIORITY_POLICY:
+        return False, "unsupported_topic_priority_policy"
+    if veto_codes:
+        return False, "hard_veto"
+    if not passes_threshold:
+        return False, "below_threshold"
+    return True, "eligible_official_ministry_science_source"
 
 
 def _metadata_mapping(metadata: Mapping[str, object], key: str) -> Mapping[str, object]:
@@ -443,6 +504,15 @@ def _metadata_mapping(metadata: Mapping[str, object], key: str) -> Mapping[str, 
 
 def _metadata_str(metadata: Mapping[str, object], key: str) -> str:
     value = metadata.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"topic scoring {key} metadata is invalid")
+    return value
+
+
+def _metadata_optional_str(metadata: Mapping[str, object], key: str) -> str | None:
+    value = metadata.get(key)
+    if value is None:
+        return None
     if not isinstance(value, str):
         raise ValueError(f"topic scoring {key} metadata is invalid")
     return value

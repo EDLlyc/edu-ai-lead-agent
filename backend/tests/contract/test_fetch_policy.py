@@ -10,7 +10,12 @@ from app.domain.enums import SourceTier
 from app.infrastructure.ingestion.fetcher import SafeHttpFetcher
 
 
-def _profile(*, robots_status: str = "allowed", terms_reviewed: bool = True) -> SourceProfile:
+def _profile(
+    *,
+    robots_status: str = "allowed",
+    terms_reviewed: bool = True,
+    allow_http_fallback: bool = False,
+) -> SourceProfile:
     return SourceProfile(
         source_id=uuid4(),
         source_version_id=uuid4(),
@@ -27,6 +32,7 @@ def _profile(*, robots_status: str = "allowed", terms_reviewed: bool = True) -> 
         rate_limit_seconds=0,
         robots_status=robots_status,
         terms_reviewed_at=datetime(2026, 8, 1, tzinfo=UTC) if terms_reviewed else None,
+        allow_http_fallback=allow_http_fallback,
     )
 
 
@@ -95,3 +101,48 @@ async def test_manual_review_without_terms_record_is_terminal() -> None:
         )
 
     assert captured.value.code == "source_policy_unreviewed"
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_is_denied_by_default_before_transport() -> None:
+    called = False
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(200, content=b"<html>unexpected</html>")
+
+    fetcher = SafeHttpFetcher(
+        Settings(),
+        resolver=_resolver,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(PolicyRejectedError) as captured:
+        await fetcher.fetch("http://source.example/articles", _profile())
+
+    assert captured.value.code == "https_required"
+    assert called is False
+
+
+@pytest.mark.asyncio
+async def test_http_fallback_is_source_scoped_and_keeps_public_dns_validation() -> None:
+    fetcher = SafeHttpFetcher(
+        Settings(),
+        resolver=_resolver,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                headers={"Content-Type": "text/html"},
+                content=f"<html><body>{request.url}</body></html>".encode(),
+            )
+        ),
+    )
+
+    response = await fetcher.fetch(
+        "http://source.example/articles",
+        _profile(allow_http_fallback=True),
+    )
+
+    assert response.status_code == 200
+    assert response.final_url == "http://source.example/articles"

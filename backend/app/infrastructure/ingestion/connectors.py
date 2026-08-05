@@ -70,6 +70,7 @@ def _approved_discovered_url(value: str, profile: SourceProfile) -> str | None:
             value,
             allowed_hosts=profile.allowed_hosts,
             allowed_path_prefixes=profile.allowed_path_prefixes,
+            allow_http_fallback=profile.allow_http_fallback,
         )
     except PolicyRejectedError:
         return None
@@ -161,6 +162,7 @@ class HtmlConnector:
         published_at_from_url: Callable[[str, str], datetime | None] | None = None,
         sort_discovered_by_published_at: bool = False,
         prefer_detail_published_at: bool = False,
+        use_trafilatura_fallback: bool = True,
     ) -> None:
         self._link_filter = link_filter
         self._content_selectors = content_selectors
@@ -168,6 +170,7 @@ class HtmlConnector:
         self._published_at_from_url = published_at_from_url
         self._sort_discovered_by_published_at = sort_discovered_by_published_at
         self._prefer_detail_published_at = prefer_detail_published_at
+        self._use_trafilatura_fallback = use_trafilatura_fallback
 
     def _discovery_anchors(self, soup: BeautifulSoup) -> Iterable[Tag]:
         if not self._discovery_selectors:
@@ -250,7 +253,7 @@ class HtmlConnector:
                     selected_text = text
                     selected_selector = selector
                     break
-        if selected_text is None:
+        if selected_text is None and self._use_trafilatura_fallback:
             selected_text = trafilatura.extract(
                 html,
                 include_comments=False,
@@ -284,8 +287,9 @@ class HtmlConnector:
         canonical = item.url
         if isinstance(canonical_node, Tag) and canonical_node.get("href"):
             candidate = _canonical_url(urljoin(response.final_url, str(canonical_node.get("href"))))
-            if urlsplit(candidate).hostname in profile.allowed_hosts:
-                canonical = candidate
+            approved = _approved_discovered_url(candidate, profile)
+            if approved is not None:
+                canonical = approved
         return ExtractedDocument(
             source_item_id=item.source_item_id,
             original_url=item.url,
@@ -309,6 +313,7 @@ def _path_matches(pattern: str) -> Callable[[str], bool]:
 
 
 STDAILY_DATED_ARTICLE_PATH = r"^/web/(?:[^/]+/)?20\d{2}-\d{2}/\d{2}/content_\d+\.html$"
+MOE_DATED_ARTICLE_PATH = r"^/jyb_xwfb/(?:[^/]+/)+20\d{4}/t20\d{6}_\d+\.html$"
 
 
 def _stdaily_published_at_from_url(url: str, timezone: str) -> datetime | None:
@@ -316,6 +321,14 @@ def _stdaily_published_at_from_url(url: str, timezone: str) -> datetime | None:
     if match is None:
         return None
     return _parse_datetime(f"{match.group(1)}-{match.group(2)}", timezone)
+
+
+def _moe_published_at_from_url(url: str, timezone: str) -> datetime | None:
+    match = re.search(r"/t(20\d{6})_\d+\.html$", urlsplit(url).path)
+    if match is None:
+        return None
+    value = match.group(1)
+    return _parse_datetime(f"{value[:4]}-{value[4:6]}-{value[6:]}", timezone)
 
 
 CONNECTORS: dict[str, SourceConnector] = {
@@ -345,6 +358,14 @@ CONNECTORS: dict[str, SourceConnector] = {
     ),
     "chinanews_education_v1": HtmlConnector(
         _path_matches(r"\.shtml$"), (".left_zw", ".content", "article", "main")
+    ),
+    "moe_news_v1": HtmlConnector(
+        _path_matches(MOE_DATED_ARTICLE_PATH),
+        (".TRS_Editor",),
+        discovery_selectors=("#one_con1",),
+        published_at_from_url=_moe_published_at_from_url,
+        prefer_detail_published_at=True,
+        use_trafilatura_fallback=False,
     ),
 }
 

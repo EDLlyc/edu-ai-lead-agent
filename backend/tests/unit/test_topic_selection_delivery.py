@@ -42,6 +42,7 @@ class FakeTopicSelectionRepository:
         self.completed = False
         self.failed_code: str | None = None
         self.readiness_cutoff: datetime | None = NOW
+        self.enqueue_conflict = False
 
     async def governed_event_cutoff(
         self, *, business_date: date, timezone: str, now: datetime
@@ -60,6 +61,8 @@ class FakeTopicSelectionRepository:
         governed_event_cutoff: datetime,
         trigger: str = "manual",
     ) -> UUID:
+        if self.enqueue_conflict:
+            raise ConflictError("a different scoring config already owns this date")
         self.enqueued = {
             "business_date": business_date,
             "timezone": timezone,
@@ -143,7 +146,8 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.2"
+    assert config.version == "scoring-v1-preview.3-moe-priority"
+    assert config.selection_priority_rule_version == "source-priority-v1"
 
 
 @pytest.mark.asyncio
@@ -182,6 +186,21 @@ async def test_scheduler_only_enqueues_inside_the_configured_catchup_window() ->
     assert due == RUN_ID
     assert repository.enqueued is not None
     assert repository.enqueued["trigger"] == "scheduled"
+
+
+@pytest.mark.asyncio
+async def test_scheduler_skips_a_locked_current_run_without_raising() -> None:
+    repository = FakeTopicSelectionRepository()
+    repository.enqueue_conflict = True
+
+    run_id = await reconcile_daily_topic_selection(
+        repository,
+        Settings(content_schedule_hour=7, content_schedule_minute=30),
+        now=datetime(2026, 7, 30, 0, 0, tzinfo=UTC),
+    )
+
+    assert run_id is None
+    assert repository.enqueued is None
 
 
 @pytest.mark.asyncio

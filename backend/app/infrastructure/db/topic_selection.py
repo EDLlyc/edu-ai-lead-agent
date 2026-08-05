@@ -8,14 +8,19 @@ from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.core.errors import ConflictError, NotFoundError
-from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, TopicScoringConfig
+from app.domain.topic_selection import (
+    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    DailyTopicDecision,
+    TopicCandidate,
+    TopicScoringConfig,
+)
 from app.infrastructure.db.models import (
     AcquisitionRunModel,
     ArticleOccurrenceModel,
@@ -29,6 +34,7 @@ from app.infrastructure.db.models import (
     GovernanceJobModel,
     GovernanceRunModel,
     NormalizedArticleModel,
+    SourceVersionModel,
     TopicScoreModel,
     TopicScoringConfigModel,
     TopicSelectionJobModel,
@@ -414,6 +420,10 @@ async def load_topic_candidates(
     event_ids = tuple(versions)
     event_version_ids = tuple(version.id for version in versions.values())
 
+    source_priority_policy = getattr(SourceVersionModel, "topic_priority_policy", None)
+    priority_policy_column = (
+        source_priority_policy if source_priority_policy is not None else literal(None)
+    ).label("topic_priority_policy")
     occurrence_rows = tuple(
         (
             await session.execute(
@@ -421,6 +431,7 @@ async def load_topic_candidates(
                     EventMembershipModel.event_id,
                     ArticleOccurrenceModel.source_id,
                     ArticleOccurrenceModel.trust_tier,
+                    priority_policy_column,
                 )
                 .join(
                     EventClusterVersionModel,
@@ -437,6 +448,10 @@ async def load_topic_candidates(
                     ArticleOccurrenceModel,
                     ArticleOccurrenceModel.candidate_id == NormalizedArticleModel.candidate_id,
                 )
+                .join(
+                    SourceVersionModel,
+                    SourceVersionModel.id == ArticleOccurrenceModel.source_version_id,
+                )
                 .where(
                     EventMembershipModel.event_id.in_(event_ids),
                     EventMembershipModel.created_at <= EventClusterVersionModel.created_at,
@@ -451,8 +466,11 @@ async def load_topic_candidates(
         ).tuples()
     )
     trust_by_event: dict[UUID, dict[UUID, set[str]]] = {event_id: {} for event_id in event_ids}
-    for event_id, source_id, trust_tier in occurrence_rows:
+    priority_policies_by_event: dict[UUID, set[str]] = {event_id: set() for event_id in event_ids}
+    for event_id, source_id, trust_tier, topic_priority_policy in occurrence_rows:
         trust_by_event[event_id].setdefault(source_id, set()).add(trust_tier)
+        if isinstance(topic_priority_policy, str) and topic_priority_policy.strip():
+            priority_policies_by_event[event_id].add(topic_priority_policy.strip())
 
     analysis_ids: dict[UUID, UUID] = {}
     for event_id, version in versions.items():
@@ -531,6 +549,14 @@ async def load_topic_candidates(
         )
         tiers = trust_by_event[version.event_id]
         source_trust, tier_c_only, has_eligible_source_tier = source_trust_projection(tiers)
+        priority_policies = priority_policies_by_event[version.event_id]
+        topic_priority_policy = (
+            MOE_SCIENCE_TOP1_PRIORITY_POLICY
+            if MOE_SCIENCE_TOP1_PRIORITY_POLICY in priority_policies
+            else min(priority_policies)
+            if priority_policies
+            else None
+        )
         categories = tuple(
             category for category in version.category_projection if isinstance(category, str)
         )
@@ -574,6 +600,7 @@ async def load_topic_candidates(
                 ai_relevance=1.0 if categories else 0.0,
                 parent_relevance=parent_relevance,
                 communication_potential=communication_potential,
+                topic_priority_policy=topic_priority_policy,
                 theme_repetition=theme_repetition,
                 controversy_risk=min(controversy_hits * 0.25, 1.0),
                 marketing_risk=min(marketing_hits * 0.5, 1.0),
@@ -699,6 +726,10 @@ async def persist_topic_selection_decision(
                     "scoring_version": score.scoring_version,
                     "scoring_profile": score.scoring_profile,
                     "veto_codes": [code.value for code in score.veto_codes],
+                    "selection_priority_rule_version": score.selection_priority_rule_version,
+                    "topic_priority_policy": score.topic_priority_policy,
+                    "priority_applied": score.priority_applied,
+                    "priority_reason": score.priority_reason,
                 },
             )
             .on_conflict_do_nothing(constraint="uq_topic_scores_run_event")

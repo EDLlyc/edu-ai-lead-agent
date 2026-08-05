@@ -14,6 +14,25 @@ def test_normalizes_approved_https_url() -> None:
     )
 
 
+def test_http_fallback_requires_an_explicit_source_policy() -> None:
+    with pytest.raises(PolicyRejectedError, match="HTTPS"):
+        validate_allowlist(
+            "http://www.moe.gov.cn/jyb_xwfb/",
+            allowed_hosts=("www.moe.gov.cn",),
+            allowed_path_prefixes=("/jyb_xwfb/",),
+        )
+
+    assert (
+        validate_allowlist(
+            "http://www.moe.gov.cn/jyb_xwfb/",
+            allowed_hosts=("www.moe.gov.cn",),
+            allowed_path_prefixes=("/jyb_xwfb/",),
+            allow_http_fallback=True,
+        )
+        == "http://www.moe.gov.cn/jyb_xwfb/"
+    )
+
+
 @pytest.mark.parametrize(
     "url",
     [

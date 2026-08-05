@@ -97,6 +97,10 @@ class SourceVersionModel(Base):
     connector_version: Mapped[str] = mapped_column(String(40), nullable=False)
     parser_version: Mapped[str] = mapped_column(String(40), nullable=False)
     relevance_rule_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    allow_http_fallback: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    topic_priority_policy: Mapped[str | None] = mapped_column(String(80), nullable=True)
     config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -2489,6 +2493,13 @@ class ImageArtifactModel(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    repair_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    validation_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    audit_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
     lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(
@@ -2522,6 +2533,9 @@ class ImageArtifactModel(Base):
         ),
         CheckConstraint("attempt_count >= 0", name="ck_image_artifacts_attempt_count"),
         CheckConstraint(
+            "repair_count >= 0 AND repair_count <= 1", name="ck_image_artifacts_repair_count"
+        ),
+        CheckConstraint(
             "reference_mode IN ("
             "'legacy_single', 'single_reference', 'single_fallback', "
             "'budgeted_multi_reference', 'multi_reference'"
@@ -2531,6 +2545,14 @@ class ImageArtifactModel(Base):
         CheckConstraint(
             "jsonb_typeof(visual_brief_snapshot) = 'object'",
             name="ck_image_artifacts_visual_brief_snapshot_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(validation_snapshot) = 'object'",
+            name="ck_image_artifacts_validation_snapshot_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(audit_snapshot) = 'object'",
+            name="ck_image_artifacts_audit_snapshot_object",
         ),
         CheckConstraint(
             "jsonb_typeof(storage_metadata) = 'object'",

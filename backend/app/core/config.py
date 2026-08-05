@@ -85,8 +85,9 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.2"
+    content_scoring_version: str = "scoring-v1-preview.3-moe-priority"
     content_scoring_profile: str = "preview"
+    content_selection_priority_rule_version: str = "source-priority-v1"
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
         ge=64 * 1024,
@@ -139,7 +140,9 @@ class Settings(BaseSettings):
     image_provider_timeout_seconds: float = Field(default=120.0, gt=0, le=120)
     image_provider_window_seconds: float = Field(default=180.0, gt=1, le=180)
     image_max_download_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
-    image_max_request_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=50 * 1024 * 1024)
+    image_max_request_bytes: int = Field(
+        default=16 * 1024 * 1024, ge=64 * 1024, le=50 * 1024 * 1024
+    )
     image_max_provider_response_bytes: int = Field(
         default=32 * 1024 * 1024, ge=16 * 1024, le=50 * 1024 * 1024
     )
@@ -151,6 +154,8 @@ class Settings(BaseSettings):
     image_selector_version: str = "brand-visual-selector-v1"
     image_selector_enabled: bool = True
     image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
+    image_ocr_enabled: bool = False
+    image_quality_audit_enabled: bool = False
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
@@ -328,6 +333,7 @@ class Settings(BaseSettings):
             self.governance_event_assignment_version,
             self.content_scoring_version,
             self.content_scoring_profile,
+            self.content_selection_priority_rule_version,
             self.acquisition_version,
             self.brand_parser_version,
             self.brand_chunk_version,

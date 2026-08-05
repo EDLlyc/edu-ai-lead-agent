@@ -57,9 +57,10 @@ async def system_resolver(host: str) -> list[str]:
     return await asyncio.to_thread(resolve)
 
 
-def normalize_https_url(value: str) -> str:
+def normalize_https_url(value: str, *, allow_http_fallback: bool = False) -> str:
     parts = urlsplit(value)
-    if parts.scheme.lower() != "https":
+    scheme = parts.scheme.lower()
+    if scheme != "https" and not (allow_http_fallback and scheme == "http"):
         raise PolicyRejectedError("https_required", "only HTTPS source URLs are allowed")
     if parts.username is not None or parts.password is not None:
         raise PolicyRejectedError("userinfo_rejected", "URL user information is not allowed")
@@ -71,8 +72,9 @@ def normalize_https_url(value: str) -> str:
         port = parts.port
     except ValueError as error:
         raise PolicyRejectedError("invalid_port", "source URL contains an invalid port") from error
-    if port not in (None, 443):
-        raise PolicyRejectedError("port_rejected", "only the default HTTPS port is allowed")
+    default_port = 443 if scheme == "https" else 80
+    if port not in (None, default_port):
+        raise PolicyRejectedError("port_rejected", "only the default source port is allowed")
     host = parts.hostname.rstrip(".").encode("idna").decode("ascii").lower()
     if host == "localhost" or "." not in host:
         raise PolicyRejectedError("ambiguous_host", "ambiguous hostnames are not allowed")
@@ -85,14 +87,18 @@ def normalize_https_url(value: str) -> str:
     path = parts.path or "/"
     _decoded_path_for_policy(path)
     netloc = host
-    normalized = SplitResult("https", netloc, path, parts.query, "")
+    normalized = SplitResult(scheme, netloc, path, parts.query, "")
     return urlunsplit(normalized)
 
 
 def validate_allowlist(
-    value: str, *, allowed_hosts: tuple[str, ...], allowed_path_prefixes: tuple[str, ...]
+    value: str,
+    *,
+    allowed_hosts: tuple[str, ...],
+    allowed_path_prefixes: tuple[str, ...],
+    allow_http_fallback: bool = False,
 ) -> str:
-    normalized = normalize_https_url(value)
+    normalized = normalize_https_url(value, allow_http_fallback=allow_http_fallback)
     parts = urlsplit(normalized)
     allowed = {host.rstrip(".").encode("idna").decode("ascii").lower() for host in allowed_hosts}
     if parts.hostname not in allowed:

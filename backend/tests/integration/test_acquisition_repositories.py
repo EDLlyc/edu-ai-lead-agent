@@ -85,7 +85,7 @@ async def _claim_sources(context: IntegrationContext, source_indexes: list[int])
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_source_seed_is_idempotent_and_exposes_eight_active_versions(
+async def test_source_seed_is_idempotent_and_exposes_nine_active_versions(
     integration_context: IntegrationContext,
 ) -> None:
     async with integration_context.session_factory() as session:
@@ -93,11 +93,14 @@ async def test_source_seed_is_idempotent_and_exposes_eight_active_versions(
         second = await seed_sources(session)
         source_count = await session.scalar(select(func.count()).select_from(SourceModel))
         versions = list((await session.scalars(select(SourceVersionModel))).all())
-    assert first in {0, 8}
+    assert first in {0, 9}
     assert second == 0
-    assert source_count == 8
-    assert len(versions) == 8
-    assert {version.relevance_rule_version for version in versions} == {"ai-title-v1"}
+    assert source_count == 9
+    assert len(versions) == 9
+    assert {version.relevance_rule_version for version in versions} == {
+        "ai-title-v1",
+        "moe-science-v1",
+    }
 
 
 @pytest.mark.integration

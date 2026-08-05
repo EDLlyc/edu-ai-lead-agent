@@ -20,6 +20,8 @@ class SourceResponse(BaseModel):
     connector_version: str
     parser_version: str
     relevance_rule_version: str | None
+    allow_http_fallback: bool
+    topic_priority_policy: str | None
     cadence: str
     timezone: str
     latest_success_at: datetime | None
@@ -32,7 +34,7 @@ class SourceListResponse(BaseModel):
 
 
 class CreateAcquisitionRunRequest(BaseModel):
-    source_ids: list[UUID] | None = Field(default=None, max_length=8)
+    source_ids: list[UUID] | None = Field(default=None, max_length=9)
 
 
 class AcquisitionRunResponse(BaseModel):

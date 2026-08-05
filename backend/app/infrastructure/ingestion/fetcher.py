@@ -107,6 +107,7 @@ class SafeHttpFetcher:
                 current_url,
                 allowed_hosts=profile.allowed_hosts,
                 allowed_path_prefixes=profile.allowed_path_prefixes,
+                allow_http_fallback=profile.allow_http_fallback,
             )
             host = urlsplit(current_url).hostname
             assert host is not None

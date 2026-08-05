@@ -38,7 +38,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260804_0015"
+    assert revision == "20260804_0017"
     assert {
         "sources",
         "source_versions",
@@ -77,6 +77,9 @@ async def test_clean_database_is_at_alembic_head(
         "material_reviews",
     }.issubset(tables)
     assert columns["source_versions"]["relevance_rule_version"]["nullable"] is True
+    assert columns["source_versions"]["allow_http_fallback"]["nullable"] is False
+    assert str(columns["source_versions"]["allow_http_fallback"]["default"]) == "false"
+    assert columns["source_versions"]["topic_priority_policy"]["nullable"] is True
     assert columns["evidence_candidates"]["relevance_rule_version"]["nullable"] is True
     for table in ("acquisition_runs", "acquisition_jobs"):
         assert columns[table]["filtered_count"]["nullable"] is False
@@ -98,6 +101,9 @@ async def test_clean_database_is_at_alembic_head(
     assert columns["image_artifacts"]["pipeline_version"]["nullable"] is False
     assert columns["image_artifacts"]["available_at"]["nullable"] is False
     assert columns["image_artifacts"]["storage_metadata"]["nullable"] is False
+    assert columns["image_artifacts"]["repair_count"]["nullable"] is False
+    assert columns["image_artifacts"]["validation_snapshot"]["nullable"] is False
+    assert columns["image_artifacts"]["audit_snapshot"]["nullable"] is False
     for column_name in (
         "lease_owner",
         "lease_token",

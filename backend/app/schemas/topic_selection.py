@@ -58,6 +58,7 @@ class TopicScoreResponse(BaseModel):
     passes_threshold: bool
     eligible: bool
     veto_codes: list[str]
+    explanation: dict[str, Any]
     rank: int
 
 

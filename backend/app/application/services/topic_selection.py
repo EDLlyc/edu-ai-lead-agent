@@ -23,6 +23,7 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
     return TopicScoringConfig(
         version=settings.content_scoring_version,
         profile=settings.content_scoring_profile,
+        selection_priority_rule_version=settings.content_selection_priority_rule_version,
         freshness_window_days=float(settings.content_freshness_window_days),
     )
 
@@ -75,13 +76,25 @@ async def reconcile_daily_topic_selection(
     )
     if governed_event_cutoff is None:
         return None
-    return await repository.enqueue(
-        business_date=business_date,
-        timezone=settings.business_timezone,
-        config=build_topic_scoring_config(settings),
-        governed_event_cutoff=governed_event_cutoff,
-        trigger="scheduled",
-    )
+    try:
+        return await repository.enqueue(
+            business_date=business_date,
+            timezone=settings.business_timezone,
+            config=build_topic_scoring_config(settings),
+            governed_event_cutoff=governed_event_cutoff,
+            trigger="scheduled",
+        )
+    except ConflictError:
+        # A locked selected run must remain immutable; the scheduler can still reconcile
+        # downstream copy jobs for that current run instead of exiting its process.
+        logger.info(
+            "topic_selection_reconcile_skipped",
+            business_date=business_date.isoformat(),
+            timezone=settings.business_timezone,
+            scoring_profile=settings.content_scoring_profile,
+            reason="current_daily_run_locked",
+        )
+        return None
 
 
 class TopicSelectionExecutor:

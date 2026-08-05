@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from app.domain.topic_selection import (
+    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     NoTopicCode,
     TopicCandidate,
     TopicScoringConfig,
@@ -37,8 +38,9 @@ def _candidate(
 def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> None:
     metadata = CONFIG.as_metadata()
 
-    assert metadata["version"] == "scoring-v1-preview.2"
+    assert metadata["version"] == "scoring-v1-preview.3-moe-priority"
     assert metadata["veto_rule_version"] == "topic-veto-v1"
+    assert metadata["selection_priority_rule_version"] == "source-priority-v1"
     assert sum(CONFIG.positive_weights.values()) == pytest.approx(1.0)
     assert metadata["freshness_window_days"] == 10.0
     assert metadata["tie_break_order"] == [
@@ -72,6 +74,61 @@ def test_hard_veto_cannot_be_outweighed_by_a_high_numeric_score() -> None:
     assert decision.scores[0].passes_threshold is True
     assert decision.scores[0].eligible is False
     assert decision.scores[0].veto_codes == (TopicVetoCode.TIER_C_ONLY,)
+
+
+def test_eligible_ministry_priority_beats_a_higher_scoring_ordinary_candidate() -> None:
+    ordinary = _candidate()
+    ministry = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        source_trust=0.8,
+        source_diversity=2,
+        ai_relevance=0.6,
+        parent_relevance=0.6,
+        communication_potential=0.6,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    )
+
+    decision = select_daily_topic((ordinary, ministry), as_of=NOW, config=CONFIG)
+
+    assert decision.selected_event_id == ministry.event_id
+    assert decision.scores[0].event_id == ministry.event_id
+    assert decision.scores[0].priority_applied is True
+    assert decision.scores[0].priority_reason == "eligible_official_ministry_science_source"
+    assert decision.scores[0].total < decision.scores[1].total
+
+
+def test_priority_does_not_rescue_a_vetoed_ministry_candidate() -> None:
+    ordinary = _candidate()
+    ministry = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        tier_c_only=True,
+    )
+
+    decision = select_daily_topic((ministry, ordinary), as_of=NOW, config=CONFIG)
+    ministry_score = next(score for score in decision.scores if score.event_id == ministry.event_id)
+
+    assert decision.selected_event_id == ordinary.event_id
+    assert ministry_score.priority_applied is False
+    assert ministry_score.priority_reason == "hard_veto"
+
+
+def test_priority_does_not_rescue_a_below_threshold_ministry_candidate() -> None:
+    ministry = _candidate(
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        source_trust=0.1,
+        source_diversity=1,
+        ai_relevance=0.2,
+        parent_relevance=0.1,
+        communication_potential=0.1,
+        event_time=NOW - timedelta(days=10),
+    )
+
+    decision = select_daily_topic((ministry,), as_of=NOW, config=CONFIG)
+
+    assert decision.no_topic_code is NoTopicCode.BELOW_THRESHOLD
+    assert decision.scores[0].priority_applied is False
+    assert decision.scores[0].priority_reason == "below_threshold"
 
 
 def test_seven_day_repeat_is_vetoed_but_boundary_is_allowed() -> None:
@@ -159,8 +216,10 @@ def test_score_preserves_raw_normalized_weight_penalty_and_explanation_fields() 
     )
     assert score.raw_features["source_diversity"] == 3.0
     assert score.normalized_features["source_diversity"] == 0.75
-    assert metadata["scoring_version"] == "scoring-v1-preview.2"
+    assert metadata["scoring_version"] == "scoring-v1-preview.3-moe-priority"
     assert metadata["veto_codes"] == []
+    assert metadata["selection_priority_rule_version"] == "source-priority-v1"
+    assert metadata["priority_applied"] is False
 
 
 def test_empty_candidate_pool_produces_explicit_no_candidates_result() -> None:
@@ -168,6 +227,16 @@ def test_empty_candidate_pool_produces_explicit_no_candidates_result() -> None:
 
     assert decision.no_topic_code is NoTopicCode.NO_CANDIDATES
     assert decision.scores == ()
+
+
+def test_legacy_config_metadata_remains_byte_for_byte_compatible() -> None:
+    legacy_metadata = CONFIG.as_metadata()
+    legacy_metadata.pop("selection_priority_rule_version")
+
+    legacy_config = TopicScoringConfig.from_metadata(legacy_metadata)
+
+    assert legacy_config.selection_priority_rule_version is None
+    assert legacy_config.as_metadata() == legacy_metadata
 
 
 def test_source_trust_projection_never_promotes_unknown_or_tier_c_sources() -> None:

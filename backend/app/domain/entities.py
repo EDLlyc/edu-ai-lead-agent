@@ -23,6 +23,8 @@ class SourceProfile:
     connector_version: str
     parser_version: str
     relevance_rule_version: str | None = None
+    allow_http_fallback: bool = False
+    topic_priority_policy: str | None = None
     language: str = "zh-CN"
     timezone: str = "Asia/Shanghai"
     rate_limit_seconds: float = 2.0

@@ -75,5 +75,6 @@ def topic_score_response(row: TopicScoreProjection) -> TopicScoreResponse:
         passes_threshold=score.passes_threshold,
         eligible=score.eligible,
         veto_codes=[str(code) for code in score.veto_codes],
+        explanation=dict(score.explanation),
         rank=score.rank,
     )

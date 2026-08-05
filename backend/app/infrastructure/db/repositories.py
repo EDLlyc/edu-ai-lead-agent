@@ -90,6 +90,8 @@ async def seed_sources(session: AsyncSession) -> int:
                 connector_version=seed.connector_version,
                 parser_version=seed.parser_version,
                 relevance_rule_version=seed.relevance_rule_version,
+                allow_http_fallback=seed.allow_http_fallback,
+                topic_priority_policy=seed.topic_priority_policy,
                 config_fingerprint=seed.config_fingerprint,
             )
             session.add(version)
@@ -261,6 +263,8 @@ async def claim_job(
             connector_version=version.connector_version,
             parser_version=version.parser_version,
             relevance_rule_version=version.relevance_rule_version,
+            allow_http_fallback=version.allow_http_fallback,
+            topic_priority_policy=version.topic_priority_policy,
             language=version.language,
             timezone=version.timezone,
             rate_limit_seconds=version.rate_limit_seconds,
@@ -786,6 +790,8 @@ async def list_sources(session: AsyncSession) -> list[dict[str, Any]]:
             "connector_version": version.connector_version,
             "parser_version": version.parser_version,
             "relevance_rule_version": version.relevance_rule_version,
+            "allow_http_fallback": version.allow_http_fallback,
+            "topic_priority_policy": version.topic_priority_policy,
             "cadence": version.cadence,
             "timezone": version.timezone,
             "latest_success_at": latest_success,
