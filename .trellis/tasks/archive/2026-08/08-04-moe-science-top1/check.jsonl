@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify acquisition remains bounded, live checks stay opt-in, Fake-IP/SSRF protections remain active, and full-scope tests cover the change."}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Verify priority is applied only after existing eligibility/veto gates, is deterministic and explainable, and preserves immutable revision/idempotency behavior."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Verify implementation and API changes remain in the correct backend layers without introducing a duplicate pipeline."}
+{"file":".trellis/tasks/08-04-moe-science-top1/research/moe-source.md","reason":"Verify live assumptions against fixtures and ensure any live failure is reported as a typed safe failure rather than a policy relaxation."}

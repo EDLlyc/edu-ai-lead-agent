@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend safety and quality contract: bounded live source verification, public DNS/Fake-IP rejection, untrusted source handling, and test pyramid."}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Executable topic selection contract: hard vetoes, immutable configs, ranking, same-day revisions, APIs, leases, and required tests."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Layer ownership contract for source connectors, domain selection, database repositories, and API projection boundaries."}
+{"file":".trellis/tasks/08-04-moe-science-top1/research/moe-source.md","reason":"Live, source-scoped research for Ministry entry redirect, HTML selectors, article URL shape, and current science article evidence."}
