@@ -146,8 +146,8 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.3-moe-priority"
-    assert config.selection_priority_rule_version == "source-priority-v1"
+    assert config.version == "scoring-v1-preview.4-science-policy-priority"
+    assert config.selection_priority_rule_version == "science-policy-priority-v2"
 
 
 @pytest.mark.asyncio

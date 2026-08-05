@@ -9,9 +9,15 @@ from types import MappingProxyType
 from typing import Self
 from uuid import UUID
 
-DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.3-moe-priority"
-DEFAULT_SELECTION_PRIORITY_RULE_VERSION = "source-priority-v1"
+from app.domain.science_policy_priority import (
+    SCIENCE_POLICY_PRIORITY_RULE_VERSION,
+    evaluate_science_policy_priority,
+)
+
+DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.4-science-policy-priority"
+DEFAULT_SELECTION_PRIORITY_RULE_VERSION = SCIENCE_POLICY_PRIORITY_RULE_VERSION
 MOE_SCIENCE_TOP1_PRIORITY_POLICY = "moe-science-top1-v1"
+SOURCE_PRIORITY_RULE_VERSION = "source-priority-v1"
 
 
 class TopicVetoCode(StrEnum):
@@ -187,6 +193,8 @@ class TopicCandidate:
     parent_relevance: float
     communication_potential: float
     topic_priority_policy: str | None = None
+    priority_title: str = ""
+    priority_summary: str = ""
     theme_repetition: float = 0.0
     controversy_risk: float = 0.0
     marketing_risk: float = 0.0
@@ -484,6 +492,11 @@ def _priority_state(
 ) -> tuple[bool, str]:
     if config.selection_priority_rule_version is None:
         return False, "selection_priority_rule_unavailable"
+    if config.selection_priority_rule_version not in {
+        SOURCE_PRIORITY_RULE_VERSION,
+        SCIENCE_POLICY_PRIORITY_RULE_VERSION,
+    }:
+        return False, "unsupported_selection_priority_rule"
     if candidate.topic_priority_policy is None:
         return False, "no_topic_priority_policy"
     if candidate.topic_priority_policy != MOE_SCIENCE_TOP1_PRIORITY_POLICY:
@@ -492,7 +505,14 @@ def _priority_state(
         return False, "hard_veto"
     if not passes_threshold:
         return False, "below_threshold"
-    return True, "eligible_official_ministry_science_source"
+    if config.selection_priority_rule_version == SOURCE_PRIORITY_RULE_VERSION:
+        return True, "eligible_official_ministry_science_source"
+
+    science_policy = evaluate_science_policy_priority(
+        candidate.priority_title,
+        candidate.priority_summary,
+    )
+    return science_policy.is_eligible, science_policy.reason_code
 
 
 def _metadata_mapping(metadata: Mapping[str, object], key: str) -> Mapping[str, object]:

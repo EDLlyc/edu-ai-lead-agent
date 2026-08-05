@@ -35,6 +35,10 @@ class SourceListResponse(BaseModel):
 
 class CreateAcquisitionRunRequest(BaseModel):
     source_ids: list[UUID] | None = Field(default=None, max_length=9)
+    business_date: date | None = Field(
+        default=None,
+        description="Optional isolated business date used by local preview runs.",
+    )
 
 
 class AcquisitionRunResponse(BaseModel):

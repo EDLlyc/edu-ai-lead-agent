@@ -601,6 +601,8 @@ async def load_topic_candidates(
                 parent_relevance=parent_relevance,
                 communication_potential=communication_potential,
                 topic_priority_policy=topic_priority_policy,
+                priority_title=version.representative_title,
+                priority_summary=summary,
                 theme_repetition=theme_repetition,
                 controversy_risk=min(controversy_hits * 0.25, 1.0),
                 marketing_risk=min(marketing_hits * 0.5, 1.0),

@@ -238,6 +238,10 @@ async def _worker_loop(
             version_bundle=build_copy_version_bundle(settings),
             max_attempts=settings.content_max_attempts,
         )
+        if material_executor is not None:
+            created = await material_executor.reconcile_ready_packages()
+            if created:
+                logger.info("material_packages_reconciled", created_count=created)
         work = [executor.execute_next, copy_executor.execute_next]
         if brand_executor is not None:
             work.insert(1, brand_executor.execute_next)

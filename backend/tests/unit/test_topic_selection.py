@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    SOURCE_PRIORITY_RULE_VERSION,
     NoTopicCode,
     TopicCandidate,
     TopicScoringConfig,
@@ -38,9 +39,9 @@ def _candidate(
 def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> None:
     metadata = CONFIG.as_metadata()
 
-    assert metadata["version"] == "scoring-v1-preview.3-moe-priority"
+    assert metadata["version"] == "scoring-v1-preview.4-science-policy-priority"
     assert metadata["veto_rule_version"] == "topic-veto-v1"
-    assert metadata["selection_priority_rule_version"] == "source-priority-v1"
+    assert metadata["selection_priority_rule_version"] == "science-policy-priority-v2"
     assert sum(CONFIG.positive_weights.values()) == pytest.approx(1.0)
     assert metadata["freshness_window_days"] == 10.0
     assert metadata["tie_break_order"] == [
@@ -86,6 +87,8 @@ def test_eligible_ministry_priority_beats_a_higher_scoring_ordinary_candidate() 
         parent_relevance=0.6,
         communication_potential=0.6,
         topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育部印发中小学人工智能教育行动方案",
+        priority_summary="推动学校人工智能课程实施。",
     )
 
     decision = select_daily_topic((ordinary, ministry), as_of=NOW, config=CONFIG)
@@ -93,8 +96,64 @@ def test_eligible_ministry_priority_beats_a_higher_scoring_ordinary_candidate() 
     assert decision.selected_event_id == ministry.event_id
     assert decision.scores[0].event_id == ministry.event_id
     assert decision.scores[0].priority_applied is True
-    assert decision.scores[0].priority_reason == "eligible_official_ministry_science_source"
+    assert decision.scores[0].priority_reason == "science_policy"
     assert decision.scores[0].total < decision.scores[1].total
+
+
+@pytest.mark.parametrize(
+    ("priority_title", "priority_summary", "reason_code"),
+    (
+        ("教育部发布中小学科学教育教材通知", "教材编写工作安排。", "science_policy_excluded_item"),
+        ("教育部发布教育督导通知", "部署年度教育督导工作。", "science_policy_topic_missing"),
+    ),
+)
+def test_textbook_or_non_science_ministry_news_remains_an_ordinary_candidate(
+    priority_title: str,
+    priority_summary: str,
+    reason_code: str,
+) -> None:
+    ordinary = _candidate()
+    ministry = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        source_trust=0.8,
+        source_diversity=2,
+        ai_relevance=0.6,
+        parent_relevance=0.6,
+        communication_potential=0.6,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title=priority_title,
+        priority_summary=priority_summary,
+    )
+
+    decision = select_daily_topic((ordinary, ministry), as_of=NOW, config=CONFIG)
+    ministry_score = next(score for score in decision.scores if score.event_id == ministry.event_id)
+
+    assert decision.selected_event_id == ordinary.event_id
+    assert ministry_score.priority_applied is False
+    assert ministry_score.priority_reason == reason_code
+    assert ministry_score.eligible is True
+
+
+def test_historical_source_priority_snapshot_remains_source_only() -> None:
+    legacy_config = TopicScoringConfig(
+        version="scoring-v1-preview.3-moe-priority",
+        selection_priority_rule_version=SOURCE_PRIORITY_RULE_VERSION,
+    )
+    ordinary = _candidate()
+    ministry = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        source_trust=0.8,
+        source_diversity=2,
+        ai_relevance=0.6,
+        parent_relevance=0.6,
+        communication_potential=0.6,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    )
+
+    decision = select_daily_topic((ordinary, ministry), as_of=NOW, config=legacy_config)
+
+    assert decision.selected_event_id == ministry.event_id
+    assert decision.scores[0].priority_reason == "eligible_official_ministry_science_source"
 
 
 def test_priority_does_not_rescue_a_vetoed_ministry_candidate() -> None:
@@ -102,6 +161,8 @@ def test_priority_does_not_rescue_a_vetoed_ministry_candidate() -> None:
     ministry = _candidate(
         event_id="22222222-2222-4222-8222-222222222222",
         topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育部印发中小学人工智能教育行动方案",
+        priority_summary="推动学校人工智能课程实施。",
         tier_c_only=True,
     )
 
@@ -122,6 +183,8 @@ def test_priority_does_not_rescue_a_below_threshold_ministry_candidate() -> None
         parent_relevance=0.1,
         communication_potential=0.1,
         event_time=NOW - timedelta(days=10),
+        priority_title="教育部印发中小学人工智能教育行动方案",
+        priority_summary="推动学校人工智能课程实施。",
     )
 
     decision = select_daily_topic((ministry,), as_of=NOW, config=CONFIG)
@@ -216,9 +279,9 @@ def test_score_preserves_raw_normalized_weight_penalty_and_explanation_fields() 
     )
     assert score.raw_features["source_diversity"] == 3.0
     assert score.normalized_features["source_diversity"] == 0.75
-    assert metadata["scoring_version"] == "scoring-v1-preview.3-moe-priority"
+    assert metadata["scoring_version"] == "scoring-v1-preview.4-science-policy-priority"
     assert metadata["veto_codes"] == []
-    assert metadata["selection_priority_rule_version"] == "source-priority-v1"
+    assert metadata["selection_priority_rule_version"] == "science-policy-priority-v2"
     assert metadata["priority_applied"] is False
 
 

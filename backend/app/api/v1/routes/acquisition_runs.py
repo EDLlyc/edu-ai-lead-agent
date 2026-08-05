@@ -65,6 +65,7 @@ async def create_acquisition_run(
         repository,
         settings,
         source_ids=payload.source_ids,
+        business_date=payload.business_date,
         idempotency_key=idempotency_key,
     )
     run = await get_run(session, run_id)

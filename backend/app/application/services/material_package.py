@@ -613,6 +613,64 @@ class MaterialPackageExecutor:
         self._image_quality_auditor = image_quality_auditor
         self._lease_events: dict[UUID, asyncio.Event] = {}
 
+    async def reconcile_ready_packages(self, *, limit: int = 20) -> int:
+        """Reserve images for accepted copy runs that have not reached the image stage yet."""
+        async with self._session_factory() as session:
+            runs = tuple(
+                (
+                    await session.scalars(
+                        select(CopyGenerationRunModel)
+                        .outerjoin(
+                            MaterialPackageModel,
+                            MaterialPackageModel.run_id == CopyGenerationRunModel.id,
+                        )
+                        .where(
+                            CopyGenerationRunModel.status == "accepted",
+                            CopyGenerationRunModel.active_draft_version_id.is_not(None),
+                            MaterialPackageModel.id.is_(None),
+                        )
+                        .order_by(CopyGenerationRunModel.created_at)
+                        .limit(limit)
+                    )
+                ).all()
+            )
+
+        created = 0
+        for run in runs:
+            try:
+                await enqueue_material_package(
+                    session_factory=self._session_factory,
+                    run_id=run.id,
+                    reference_asset=self._reference_asset,
+                    image_prompt_version=self._settings.image_prompt_version,
+                    image_pipeline_version=self._settings.image_pipeline_version,
+                    image_provider=self._settings.image_provider_mode,
+                    image_model=self._settings.image_model,
+                    image_asset_manifest=self._settings.image_asset_manifest,
+                    image_selector_version=self._settings.image_selector_version,
+                    image_selector_enabled=self._settings.image_selector_enabled,
+                    image_max_reference_images=self._settings.image_max_reference_images,
+                    image_reference_budget_bytes=self._settings.image_reference_budget_bytes,
+                )
+            except ConflictError as error:
+                # Another API request or worker may have won the same idempotency race.
+                logger.info(
+                    "material_package_reconcile_skipped",
+                    run_id=str(run.id),
+                    error_code=error.code,
+                )
+                continue
+            except AppError as error:
+                # Keep malformed local input visible without taking down the worker loop.
+                logger.warning(
+                    "material_package_reconcile_failed",
+                    run_id=str(run.id),
+                    error_code=error.code,
+                )
+                continue
+            created += 1
+        return created
+
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._claim(worker_id)
         if claimed is None:

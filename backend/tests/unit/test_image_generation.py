@@ -388,7 +388,7 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert seen_idempotency_key == "comfly-fingerprint"
     assert seen_payload is not None
     assert seen_payload["model"] == "gpt-image-2"
-    assert seen_payload["size"] == "1:1"
+    assert seen_payload["size"] == "1024x1024"
     assert seen_payload["aspect_ratio"] == "1:1"
     assert seen_payload["prompt"] == "parent-facing science illustration"
     image_values = seen_payload["image"]

@@ -15,11 +15,13 @@ async def enqueue_manual_run(
     *,
     source_ids: list[UUID] | None,
     idempotency_key: str | None,
+    business_date: date | None = None,
 ) -> tuple[UUID, bool]:
     return await repository.enqueue(
         trigger=RunTrigger.MANUAL,
         timezone=settings.business_timezone,
         acquisition_version=settings.acquisition_version,
+        business_date=business_date,
         manual_idempotency_key=idempotency_key,
         source_ids=source_ids,
     )

@@ -60,6 +60,7 @@ _GPT_IMAGE_MODEL = "gpt-image-2"
 _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
+_COMFLY_IMAGE_SIZE = "1024x1024"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
@@ -541,7 +542,9 @@ class OpenAICompatibleImageGenerator:
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
-            "size": IMAGE_SIZE,
+            # Comfly treats a ratio-only size as its 2K default.  Send the OpenAI
+            # raster-size value explicitly so the stored image contract remains 1024x1024.
+            "size": _COMFLY_IMAGE_SIZE,
             "aspect_ratio": IMAGE_SIZE,
         }
         references = _request_references(request)

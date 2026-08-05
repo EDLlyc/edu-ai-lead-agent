@@ -5,7 +5,12 @@ from uuid import uuid4
 
 import pytest
 from app.core.errors import ConflictError
-from app.domain.topic_selection import NoTopicCode, TopicScoringConfig, select_daily_topic
+from app.domain.topic_selection import (
+    SOURCE_PRIORITY_RULE_VERSION,
+    NoTopicCode,
+    TopicScoringConfig,
+    select_daily_topic,
+)
 from app.infrastructure.db.models import TopicSelectionJobModel
 from app.infrastructure.db.topic_selection import (
     claim_topic_selection_job,
@@ -31,6 +36,7 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
     config = TopicScoringConfig(
         version=f"scoring-v1-preview-{suffix}",
         profile=f"preview-{suffix}",
+        selection_priority_rule_version=SOURCE_PRIORITY_RULE_VERSION,
     )
     business_date = date(2098, 7, 30)
     cutoff = datetime(2000, 1, 1, tzinfo=UTC)

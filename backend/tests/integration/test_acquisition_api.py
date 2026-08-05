@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -34,17 +35,22 @@ async def test_internal_api_lists_sources_and_enqueues_without_fetching(
         created = await client.post(
             "/api/v1/acquisition-runs",
             headers={"Idempotency-Key": f"api-{uuid4()}"},
-            json={"source_ids": [str(SOURCE_SEEDS[0].source_id)]},
+            json={
+                "source_ids": [str(SOURCE_SEEDS[0].source_id)],
+                "business_date": "2031-01-02",
+            },
         )
         assert created.status_code == 202
         assert created.headers["location"] == created.json()["status_url"]
         assert created.json()["status"] == "queued"
         assert created.json()["filtered_count"] == 0
+        assert created.json()["business_date"] == date(2031, 1, 2).isoformat()
 
         run = await client.get(created.json()["status_url"])
         jobs = await client.get(f"{created.json()['status_url']}/jobs")
         assert run.status_code == 200
         assert jobs.status_code == 200
+        assert run.json()["business_date"] == date(2031, 1, 2).isoformat()
         assert jobs.json()["count"] == 1
         assert jobs.json()["items"][0]["filtered_count"] == 0
 

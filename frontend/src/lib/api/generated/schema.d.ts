@@ -1314,6 +1314,11 @@ export interface components {
         };
         /** CreateAcquisitionRunRequest */
         CreateAcquisitionRunRequest: {
+            /**
+             * Business Date
+             * @description Optional isolated business date used by local preview runs.
+             */
+            business_date?: string | null;
             /** Source Ids */
             source_ids?: string[] | null;
         };

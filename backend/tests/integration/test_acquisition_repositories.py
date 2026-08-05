@@ -154,12 +154,14 @@ async def test_manual_and_scheduled_run_uniqueness(
     integration_context: IntegrationContext,
 ) -> None:
     key = f"integration-{uuid4()}"
+    manual_business_date = date(2031, 1, 2)
     async with integration_context.session_factory() as session:
         manual_one, created_one = await create_run(
             session,
             trigger=RunTrigger.MANUAL,
             timezone="Asia/Shanghai",
             acquisition_version="acquisition-v1",
+            business_date=manual_business_date,
             manual_idempotency_key=key,
             source_ids=[SOURCE_SEEDS[0].source_id],
         )
@@ -175,6 +177,7 @@ async def test_manual_and_scheduled_run_uniqueness(
     assert created_one is True
     assert created_two is False
     assert manual_one.id == manual_two.id
+    assert manual_one.business_date == manual_business_date
 
     schedule_date = date(2031, 1, 1)
     async with integration_context.session_factory() as session:
@@ -198,6 +201,21 @@ async def test_manual_and_scheduled_run_uniqueness(
     assert scheduled_created is True
     assert duplicate_created is False
     assert scheduled_one.id == scheduled_two.id
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_scheduled_run_requires_business_date(
+    integration_context: IntegrationContext,
+) -> None:
+    async with integration_context.session_factory() as session:
+        with pytest.raises(ValueError, match="scheduled runs require a business date"):
+            await create_run(
+                session,
+                trigger=RunTrigger.SCHEDULED,
+                timezone="Asia/Shanghai",
+                acquisition_version="acquisition-v1",
+            )
 
 
 @pytest.mark.integration

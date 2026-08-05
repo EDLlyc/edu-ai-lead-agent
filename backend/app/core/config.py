@@ -85,9 +85,9 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.3-moe-priority"
+    content_scoring_version: str = "scoring-v1-preview.4-science-policy-priority"
     content_scoring_profile: str = "preview"
-    content_selection_priority_rule_version: str = "source-priority-v1"
+    content_selection_priority_rule_version: str = "science-policy-priority-v2"
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
         ge=64 * 1024,

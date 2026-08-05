@@ -113,8 +113,6 @@ async def create_run(
 ) -> tuple[AcquisitionRunModel, bool]:
     if trigger is RunTrigger.SCHEDULED and business_date is None:
         raise ValueError("scheduled runs require a business date")
-    if trigger is RunTrigger.MANUAL and business_date is not None:
-        raise ValueError("manual runs cannot set a business date")
 
     if trigger is RunTrigger.SCHEDULED:
         existing = await session.scalar(

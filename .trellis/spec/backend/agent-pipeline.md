@@ -196,7 +196,7 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.3-moe-priority` keeps numeric ranges, weights, penalties, the threshold,
+The implemented `scoring-v1-preview.4-science-policy-priority` keeps numeric ranges, weights, penalties, the threshold,
 veto version, and tie-break order in an immutable persisted configuration. It has controlled tests
 and a real-event demonstration, but remains a preview profile until a later labeled calibration
 and explicit product approval create a new production configuration.
@@ -428,7 +428,7 @@ deterministic validation as if it were a network timeout.
 - Active local provider origin: `https://ai.comfly.org`; the model remains configurable and is
   currently `gpt-image-2`. The old `toapis` adapter remains an explicit rollback mode.
 - Comfly generate: `POST /v1/images/generations` with `model`, a validated bounded `prompt`,
-  `size=1:1`, `aspect_ratio=1:1`, and an optional ordered `image=[data:image/png;base64,...]`
+  `size=1024x1024`, `aspect_ratio=1:1`, and an optional ordered `image=[data:image/png;base64,...]`
   tuple containing approved local references. Each reference carries a role, asset ID, filename,
   checksum, and bytes in the provider-neutral request; private MinIO URLs and provider upload URLs
   are never sent. The default aggregate reference budget is 3 MiB (`IMAGE_REFERENCE_BUDGET_BYTES`),
@@ -527,7 +527,7 @@ artifact = ImageArtifact(provider_task_url=result_url)  # persist expiring URL
 
 ```python
 payload = {
-    "model": "gpt-image-2", "prompt": prompt, "size": "1:1", "aspect_ratio": "1:1",
+    "model": "gpt-image-2", "prompt": prompt, "size": "1024x1024", "aspect_ratio": "1:1",
     "image": [bounded_identity_data_url, bounded_action_data_url],
 }
 image_bytes = await _download(result_url)  # configured HTTPS host only, no redirect
@@ -558,6 +558,11 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   relative API URL. `POST .../{package_id}/review` records an internal approval/rejection.
 - `MaterialPackageExecutor.execute_next(worker_id)` claims one reservation using a lease and
   writes one `ImageArtifactModel` plus one `MaterialPackageModel` result.
+- Before claiming image work, `content-worker` calls
+  `MaterialPackageExecutor.reconcile_ready_packages(limit=20)`. It scans accepted copy runs with
+  an active draft and no package, then creates the same idempotent queued reservation used by the
+  API. This closes the handoff if a worker restart or an earlier API path accepted copy without
+  creating the image reservation.
 
 ### 3. Contracts
 
@@ -575,6 +580,10 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 - The frontend `features/material` feature polls only queued/running packages and provides copy,
   image download, JSON package download, evidence/audit display, and internal review controls.
   It provides no social publishing operation.
+- Reconciliation is best-effort per run: a unique-fingerprint/unique-run conflict means another
+  API or worker already won the reservation race and is logged as a skip; malformed local input is
+  logged as a safe reconciliation failure without stopping the worker loop. The next poll can retry
+  runs that still have no package.
 
 ### 4. Validation & Error Matrix
 
@@ -583,6 +592,8 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 | Run is missing, not accepted, or its draft failed validation/audit | Conflict; no reservation/provider call |
 | Same fingerprint is submitted again | Return the existing durable package/image reservation |
 | API reservation succeeds | Return queued status; provider call remains in content worker |
+| Accepted copy has no package when a worker polls | Create one queued reservation before image claiming; do not call the provider twice |
+| API and worker reserve the same accepted copy concurrently | Keep the winner's single reservation; treat the losing unique-conflict as an idempotent skip |
 | Provider identity/output/dimensions/storage validation fails | Retry only classified transient errors; otherwise image `review_required` or `failed`, package not ready |
 | Worker lease expires | Another worker may reclaim; stale worker cannot persist success |
 | Image succeeds | Store one private content-addressed object, mark package `awaiting_manual_use`, expose relative download URLs |
@@ -593,16 +604,19 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 
 - Good: an accepted draft creates one queued reservation, the worker writes one 1024x1024 private
   object and package snapshot, and an internal user copies/downloads it after review.
+- Good: an accepted copy run survives a worker restart between copy completion and image enqueue;
+  reconciliation creates its missing reservation and the normal image worker completes it.
 - Base: a fake image provider produces deterministic bytes offline; replaying the same request
   returns the same queued/succeeded artifact.
-- Bad: generate in the API handler, create a package for `review_required`, persist an expiring
-  provider URL, expose MinIO internals, or add a “publish now” control.
+- Bad: assume the API is the only producer of reservations, generate in the API handler, create a
+  package for `review_required`, persist an expiring provider URL, expose MinIO internals, or add
+  a “publish now” control.
 
 ### 6. Tests Required
 
 - [`test_material_package.py`](../../../backend/tests/unit/test_material_package.py) asserts
-  enqueue-only behavior, accepted-draft gating, provider rejection, lease-safe persistence, and
-  safe JSON projections.
+  enqueue-only behavior, accepted-draft gating, accepted-run reconciliation, idempotency races,
+  provider rejection, lease-safe persistence, and safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
   `20260804_0017`, worker columns, package snapshots, ordered image-reference constraints, and
   unique indexes; MinIO
@@ -626,6 +640,14 @@ return MaterialPackageResponse(image=save_public_url(image.url))
 ```python
 reservation = await enqueue_material_package(session_factory=factory, run_id=run_id)
 # content-worker later claims the durable reservation and calls the provider
+await material_executor.execute_next(worker_id)
+```
+
+When the copy run is already accepted but the reservation is missing, the worker repairs the
+handoff before claiming:
+
+```python
+await material_executor.reconcile_ready_packages()
 await material_executor.execute_next(worker_id)
 ```
 

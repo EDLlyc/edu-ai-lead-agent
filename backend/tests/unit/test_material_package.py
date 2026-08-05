@@ -120,6 +120,20 @@ class _ClaimResult:
         return self._values
 
 
+class _ReadyPackageSession:
+    def __init__(self, runs: list[object]) -> None:
+        self._runs = runs
+
+    async def __aenter__(self) -> _ReadyPackageSession:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def scalars(self, _statement: object) -> _ClaimResult:
+        return _ClaimResult(self._runs)
+
+
 class _ClaimSession:
     def __init__(self, *, exhausted: list[object], scalar_results: list[object | None]) -> None:
         self._exhausted = exhausted
@@ -178,6 +192,60 @@ async def test_enqueue_rejects_a_different_request_for_the_same_accepted_draft(
             image_model="gpt-image-2",
         )
     assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_ready_packages_reserves_an_image_for_an_accepted_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid4()
+    package, image = _package_and_image()
+    calls: list[dict[str, object]] = []
+
+    async def fake_enqueue(**kwargs: object) -> MaterialPackageResult:
+        calls.append(kwargs)
+        return MaterialPackageResult(package=package, image=image)
+
+    monkeypatch.setattr(
+        "app.application.services.material_package.enqueue_material_package", fake_enqueue
+    )
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(  # type: ignore[arg-type]
+            _ReadyPackageSession([SimpleNamespace(id=run_id)])  # type: ignore[arg-type]
+        ),
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_enabled=True, image_provider_mode="fake"),
+        reference_asset="private/reference.png",
+    )
+
+    assert await executor.reconcile_ready_packages() == 1
+    assert calls[0]["run_id"] == run_id
+    assert calls[0]["image_provider"] == "fake"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_ready_packages_tolerates_an_idempotency_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def conflicting_enqueue(**_kwargs: object) -> MaterialPackageResult:
+        raise ConflictError("image reservation already exists")
+
+    monkeypatch.setattr(
+        "app.application.services.material_package.enqueue_material_package",
+        conflicting_enqueue,
+    )
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(  # type: ignore[arg-type]
+            _ReadyPackageSession([SimpleNamespace(id=uuid4())])  # type: ignore[arg-type]
+        ),
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_enabled=True, image_provider_mode="fake"),
+        reference_asset=None,
+    )
+
+    assert await executor.reconcile_ready_packages() == 0
 
 
 @pytest.mark.asyncio
