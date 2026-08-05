@@ -571,6 +571,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         active_draft_version_id: UUID | None,
         repair_count: int,
         error_code: str | None = None,
+        provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None,
     ) -> bool:
         if status not in {CopyRunStatus.ACCEPTED.value, CopyRunStatus.REVIEW_REQUIRED.value}:
             raise ValueError("copy finish status must be accepted or review_required")
@@ -604,6 +605,41 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             job.error_code = run.error_code
             job.completed_at = now
             _clear_lease(job)
+            if provider_validation_issues is not None:
+                session.add(
+                    CopyGenerationAttemptModel(
+                        id=uuid4(),
+                        job_id=job.id,
+                        # A failed repair produced no draft. The active draft is the earlier
+                        # review artifact and must not be attributed to this failed attempt.
+                        draft_version_id=None,
+                        capability="workflow",
+                        status="failed",
+                        provider=claimed.version_bundle.provider,
+                        model=claimed.version_bundle.model,
+                        request_fingerprint=stable_key(
+                            claimed.run_id,
+                            claimed.attempt_number,
+                            "review_required",
+                            run.error_code or "copy_generation_failed",
+                        ),
+                        provider_request_id=None,
+                        prompt_version=claimed.version_bundle.generator_prompt_version,
+                        schema_version=claimed.version_bundle.draft_schema_version,
+                        rule_version=claimed.version_bundle.rule_version,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        reasoning_tokens=0,
+                        latency_ms=0,
+                        error_code=run.error_code,
+                        safe_metadata={
+                            "provider_validation_issues": provider_validation_issues_metadata(
+                                provider_validation_issues
+                            )
+                        },
+                        completed_at=now,
+                    )
+                )
             await _upsert_checkpoint(
                 session,
                 run_id=run.id,

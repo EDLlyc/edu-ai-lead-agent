@@ -34,6 +34,8 @@ from app.core.errors import (
     CopyGenerationLeaseLostError,
     InvalidProviderOutputError,
     ProviderIdentityMismatchError,
+    ProviderRejectedError,
+    ProviderValidationIssue,
     provider_validation_issues_metadata,
 )
 from app.domain.brand_knowledge import BrandAudience, BrandDocumentKind
@@ -276,16 +278,32 @@ class CopyGenerationExecutor:
 
         repaired = _draft_by_version(drafts, 2)
         if repaired is None:
-            repaired = await self._generate_and_persist(
-                claimed=claimed,
-                topic=topic,
-                brand_context=brand_context,
-                draft_version=2,
-                repair_of=current.id,
-                repair_issues=repair_issues,
-                previous_draft=current.draft,
-                lease_lost=lease_lost,
-            )
+            try:
+                repaired = await self._generate_and_persist(
+                    claimed=claimed,
+                    topic=topic,
+                    brand_context=brand_context,
+                    draft_version=2,
+                    repair_of=current.id,
+                    repair_issues=repair_issues,
+                    previous_draft=current.draft,
+                    lease_lost=lease_lost,
+                )
+            except (InvalidProviderOutputError, ProviderRejectedError) as error:
+                # The initial draft is already durable and is the safest artifact for review.
+                # A non-transient provider failure on its one repair must not hide that draft
+                # behind the generic failed-workflow state.
+                validation_issues = (
+                    error.validation_issues if isinstance(error, InvalidProviderOutputError) else ()
+                )
+                await self._finish_reviewable(
+                    claimed,
+                    error_code=error.code,
+                    repair_count=1,
+                    draft_id=current.id,
+                    provider_validation_issues=validation_issues,
+                )
+                return
             if repaired is None:
                 raise CopyGenerationLeaseLostError()
         if not repaired.validation_passed:
@@ -428,6 +446,7 @@ class CopyGenerationExecutor:
         error_code: str,
         repair_count: int,
         draft_id: UUID | None = None,
+        provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None,
     ) -> None:
         if not await self._repository.finish(
             claimed=claimed,
@@ -435,6 +454,7 @@ class CopyGenerationExecutor:
             active_draft_version_id=draft_id,
             repair_count=repair_count,
             error_code=error_code,
+            provider_validation_issues=provider_validation_issues,
         ):
             raise CopyGenerationLeaseLostError()
         logger.warning(
@@ -443,6 +463,9 @@ class CopyGenerationExecutor:
             job_id=str(claimed.job_id),
             error_code=error_code,
             repair_count=repair_count,
+            provider_validation_issues=provider_validation_issues_metadata(
+                provider_validation_issues or ()
+            ),
         )
 
     async def _record_failure(self, claimed: ClaimedCopyGenerationJob, error: AppError) -> None:
@@ -523,7 +546,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         }
         for item in request.brand_context
     ]
-    repair = [issue.model_dump(mode="json") for issue in request.repair_issues]
+    repair = _bounded_repair_issue_payload(request.repair_issues)
     previous = request.previous_draft.model_dump(mode="json") if request.previous_draft else None
     return (
         "你是赛先生品牌的内部朋友圈文案生成节点。只输出符合给定JSON Schema的JSON。"
@@ -590,6 +613,7 @@ def build_auditor_prompt(request: DraftAuditRequest) -> str:
 def generator_request_fingerprint(
     request: DraftGenerationRequest, provider: str, model: str
 ) -> str:
+    previous = request.previous_draft.model_dump(mode="json") if request.previous_draft else None
     return stable_key(
         "copy-generator",
         request.run_id,
@@ -601,7 +625,8 @@ def generator_request_fingerprint(
         model,
         *(item.evidence_id for item in request.topic.evidence),
         *(item.chunk_id for item in request.brand_context),
-        *(issue.code for issue in request.repair_issues),
+        _prompt_json(_bounded_repair_issue_payload(request.repair_issues)),
+        _prompt_json(previous),
     )
 
 
@@ -639,3 +664,22 @@ def _prompt_json(value: object) -> str:
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
+
+
+_REPAIR_ISSUE_LIMIT = 12
+_REPAIR_ISSUE_MESSAGE_LIMIT = 240
+
+
+def _bounded_repair_issue_payload(issues: tuple[CopyIssue, ...]) -> list[dict[str, object]]:
+    """Keep repair guidance structured and bounded before it crosses the provider boundary."""
+
+    return [
+        {
+            "code": issue.code[:80],
+            "message": issue.message[:_REPAIR_ISSUE_MESSAGE_LIMIT],
+            "severity": issue.severity,
+            "field": issue.field[:80] if issue.field is not None else None,
+            "claim_id": issue.claim_id[:80] if issue.claim_id is not None else None,
+        }
+        for issue in issues[:_REPAIR_ISSUE_LIMIT]
+    ]

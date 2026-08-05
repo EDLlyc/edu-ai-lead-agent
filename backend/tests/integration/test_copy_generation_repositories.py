@@ -122,6 +122,64 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
             }
         ],
     }
+    review_cases = (
+        ("provider_request_rejected", (), []),
+        (
+            "invalid_provider_output",
+            (
+                ProviderValidationIssue(
+                    loc=("claims", 0, "evidence_ids", 0),
+                    type="uuid_parsing",
+                ),
+            ),
+            [
+                {
+                    "loc": ["claims", 0, "evidence_ids", 0],
+                    "type": "uuid_parsing",
+                }
+            ],
+        ),
+    )
+    for index, (error_code, validation_issues, expected_metadata) in enumerate(review_cases):
+        review_settings = settings.model_copy(
+            update={"copy_pipeline_version": f"copy-provider-review-{index}-{suffix}"}
+        )
+        review_run_id = await repository.enqueue_for_daily_topic(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=build_copy_version_bundle(review_settings),
+        )
+        review_claim = await repository.claim(
+            worker_id=f"copy-provider-review-worker-{index}",
+            lease_seconds=60,
+            max_attempts=1,
+        )
+        assert review_claim is not None
+        assert review_claim.run_id == review_run_id
+        assert await repository.finish(
+            claimed=review_claim,
+            status="review_required",
+            active_draft_version_id=None,
+            repair_count=1,
+            error_code=error_code,
+            provider_validation_issues=validation_issues,
+        )
+        async with integration_context.session_factory() as session:
+            review_attempt = await session.scalar(
+                select(CopyGenerationAttemptModel).where(
+                    CopyGenerationAttemptModel.job_id == review_claim.job_id
+                )
+            )
+            review_projection = await get_copy_generation_projection(session, review_run_id)
+        assert review_attempt is not None
+        assert review_attempt.draft_version_id is None
+        assert review_attempt.safe_metadata == {"provider_validation_issues": expected_metadata}
+        assert review_projection.run.status == "review_required"
+        assert review_projection.run.active_draft_version_id is None
+        assert review_projection.run.repair_count == 1
+        assert review_projection.run.error_code == error_code
+
     run_id = await repository.enqueue_for_daily_topic(
         business_date=business_date,
         timezone="Asia/Shanghai",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # ruff: noqa: RUF001
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
@@ -21,7 +22,11 @@ from app.application.services.copy_generation import (
 )
 from app.application.services.copy_generation_graph import copy_generation_graph_input
 from app.core.config import Settings
-from app.core.errors import InvalidProviderOutputError, ProviderValidationIssue
+from app.core.errors import (
+    InvalidProviderOutputError,
+    ProviderRejectedError,
+    ProviderValidationIssue,
+)
 from app.domain.copy_generation import (
     ActiveBrandContext,
     CopyVersionBundle,
@@ -136,8 +141,10 @@ class FakeCopyRepository:
         self.status: str | None = None
         self.error_code: str | None = None
         self.repair_count = 0
+        self.active_draft_version_id: UUID | None = None
         self.no_topic = False
         self.failed = False
+        self.finish_provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None
         self.provider_validation_issues: tuple[ProviderValidationIssue, ...] = ()
         self.persisted_draft_bundles: list[CopyVersionBundle] = []
         self.persisted_audit_bundles: list[CopyVersionBundle] = []
@@ -231,13 +238,16 @@ class FakeCopyRepository:
         claimed: ClaimedCopyGenerationJob,
         status: str,
         repair_count: int,
+        active_draft_version_id: UUID | None = None,
         error_code: str | None = None,
-        **_kwargs: object,
+        provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None,
     ) -> bool:
         assert claimed.run_id == RUN_ID
         self.status = status
         self.error_code = error_code
         self.repair_count = repair_count
+        self.active_draft_version_id = active_draft_version_id
+        self.finish_provider_validation_issues = provider_validation_issues
         return True
 
     async def fail_job(
@@ -354,6 +364,19 @@ class RepairingBindingGenerator(InvalidBindingGenerator):
         if self.calls == 0:
             return await super().generate(request)
         return await CountingGenerator.generate(self, request)
+
+
+class RepairFailureGenerator(InvalidBindingGenerator):
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self._repair_error = error
+
+    async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
+        if self.calls == 1:
+            self.calls += 1
+            self.requests.append(request)
+            raise self._repair_error
+        return await super().generate(request)
 
 
 class FailingProviderGenerator(CountingGenerator):
@@ -714,6 +737,51 @@ def test_prompt_data_cannot_close_its_delimited_section() -> None:
 
 
 @pytest.mark.asyncio
+async def test_repair_prompt_contains_bounded_issues_and_previous_draft() -> None:
+    topic = _topic()
+    initial = await DeterministicFakeMaterialDraftGenerator(model="fake-copy").generate(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=_brand(),
+            version_bundle=build_copy_version_bundle(Settings()),
+            draft_version=1,
+            max_output_tokens=2048,
+        )
+    )
+    issues = tuple(
+        CopyIssue(
+            code=f"repair_issue_{index}",
+            message=("PRIVATE-RAW-PROVIDER-CONTENT" if index == 12 else f"确定性失败原因 {index}"),
+            field="copywriting",
+        )
+        for index in range(13)
+    )
+    prompt = build_generator_prompt(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=_brand(),
+            version_bundle=build_copy_version_bundle(Settings()),
+            draft_version=2,
+            max_output_tokens=2048,
+            repair_issues=issues,
+            previous_draft=initial.draft,
+        )
+    )
+
+    assert '"code":"repair_issue_0"' in prompt
+    assert '"message":"确定性失败原因 0"' in prompt
+    assert '"code":"repair_issue_11"' in prompt
+    assert "repair_issue_12" not in prompt
+    assert "PRIVATE-RAW-PROVIDER-CONTENT" not in prompt
+    previous_json = json.dumps(
+        initial.draft.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")
+    )
+    assert previous_json in prompt
+
+
+@pytest.mark.asyncio
 async def test_no_topic_persists_terminal_result_without_calling_models() -> None:
     repository = FakeCopyRepository(_topic(no_topic=True))
     generator = CountingGenerator()
@@ -781,6 +849,71 @@ async def test_deterministic_failure_can_use_the_single_repair_before_audit() ->
     assert auditor.calls == 1
     assert repository.drafts[0].validation_passed is False
     assert repository.drafts[1].validation_passed is True
+
+
+@pytest.mark.parametrize(
+    ("provider_error", "expected_error_code", "expected_metadata"),
+    [
+        (ProviderRejectedError(), "provider_request_rejected", []),
+        (
+            InvalidProviderOutputError(
+                ("invalid_draft_schema",),
+                validation_issues=(
+                    ProviderValidationIssue(
+                        loc=("claims", 0, "evidence_ids", 0),
+                        type="uuid_parsing",
+                    ),
+                ),
+            ),
+            "invalid_provider_output",
+            [
+                {
+                    "loc": ["claims", 0, "evidence_ids", 0],
+                    "type": "uuid_parsing",
+                }
+            ],
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_repair_provider_failure_keeps_original_draft_for_review(
+    provider_error: Exception,
+    expected_error_code: str,
+    expected_metadata: list[dict[str, object]],
+) -> None:
+    repository = FakeCopyRepository(_topic())
+    generator = RepairFailureGenerator(provider_error)
+    auditor = CountingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    with capture_logs() as logs:
+        assert await executor.execute_next("copy-repair-provider-failure-worker") is True
+
+    assert repository.failed is False
+    assert repository.status == "review_required"
+    assert repository.error_code == expected_error_code
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert auditor.calls == 0
+    assert len(repository.drafts) == 1
+    assert repository.active_draft_version_id == repository.drafts[0].id
+    expected_validation_issues = (
+        provider_error.validation_issues
+        if isinstance(provider_error, InvalidProviderOutputError)
+        else ()
+    )
+    assert repository.finish_provider_validation_issues == expected_validation_issues
+    assert repository.drafts[0].validation_passed is False
+    assert "unknown_evidence_id" in {issue.code for issue in repository.drafts[0].validation_issues}
+    review_log = next(log for log in logs if log["event"] == "copy_generation_review_required")
+    assert review_log["provider_validation_issues"] == expected_metadata
+    assert "PRIVATE-RAW-PROVIDER-CONTENT" not in repr(logs)
 
 
 @pytest.mark.asyncio

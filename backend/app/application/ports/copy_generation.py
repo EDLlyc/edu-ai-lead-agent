@@ -169,6 +169,7 @@ class CopyGenerationRepository(Protocol):
         active_draft_version_id: UUID | None,
         repair_count: int,
         error_code: str | None = None,
+        provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None,
     ) -> bool: ...
 
     async def fail_job(
