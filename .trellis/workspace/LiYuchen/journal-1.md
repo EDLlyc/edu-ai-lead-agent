@@ -332,3 +332,24 @@ Grouped and committed Ministry science-news priority and ten-day freshness chang
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: Complete real content pipeline preview
+
+**Date**: 2026-08-05
+**Task**: Complete real content pipeline preview
+**Branch**: `main`
+
+### Summary
+
+Ran the real 2026-08-05 acquisition, governance, topic selection, Zhipu copy, Comfly branded image, and material-package flow. Added accepted-copy image reservation reconciliation, science-policy Top 1 priority rules, redacted preview manifest/frontend, and verified a 1024x1024 PNG in MinIO. Backend 435 tests and frontend 27 tests passed; Ruff, mypy, API contract, build, doctor, Compose, and diff checks passed. No publishing action was triggered.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43f1b4e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
