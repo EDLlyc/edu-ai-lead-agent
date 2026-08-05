@@ -308,3 +308,27 @@ Restored real DNS for Comfly API and exact CDN host webstatic.aiproxy.vip throug
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: Content pipeline cleanup
+
+**Date**: 2026-08-05
+**Task**: Content pipeline cleanup
+**Branch**: `main`
+
+### Summary
+
+Grouped and committed Ministry science-news priority and ten-day freshness changes, branded image validation/OCR/audit with one repair, copy-generation retry handling, runtime contracts, and the image/WeCom design docs. Backend and frontend quality gates passed; all active Trellis tasks were archived; services remain healthy.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c467cc1` | (see git log) |
+| `0fef06a` | (see git log) |
+| `4a00a5c` | (see git log) |
+| `8b287c8` | (see git log) |
+
+### Status
+
+[OK] **Completed**
