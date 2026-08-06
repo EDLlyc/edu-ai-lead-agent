@@ -1,0 +1,4 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The policy is read by API enqueue, dispatcher reconciliation, settings, and durable delivery state; use the guide to keep the cross-layer contract aligned."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Defines the existing Enterprise WeChat boundary, idempotency, leases, retries, and secret-handling rules that the direct mode must preserve."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed conflict, retryable, unknown, and terminal error behavior for eligibility and provider delivery."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines backend typing, test, configuration, and security gates required before restart."}

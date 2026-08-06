@@ -1,0 +1,4 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review the final change for consistent policy propagation across settings, API service, auto-reconciliation, and dispatcher behavior."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Check direct-mode behavior against the durable job, provider boundary, safe projection, and retry contract."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check that invalid packages are rejected locally and provider failures retain bounded retry/unknown semantics."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the required backend and Compose quality gates and security checks."}
