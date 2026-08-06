@@ -437,3 +437,25 @@ Implemented direct delivery eligibility for validated awaiting_manual_use packag
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: Add Enterprise WeChat group webhook delivery
+
+**Date**: 2026-08-06
+**Task**: Add Enterprise WeChat group webhook delivery
+**Branch**: `main`
+
+### Summary
+
+Implemented the official Enterprise WeChat group-webhook provider behind the durable delivery dispatcher. Added provider-aware settings and Compose wiring, Markdown and Base64/MD5 image delivery with bounded image preparation and process-local rate limiting, safe error classification, timeout unknown state, provider-isolated idempotency, and compatibility validation for the self-built-app route. Added contract/regression tests and updated the WeCom backend spec. Full backend/frontend/doctor/Compose gates passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f54802` | (see git log) |
+| `76ef225` | (see git log) |
+
+### Status
+
+[OK] **Completed**
