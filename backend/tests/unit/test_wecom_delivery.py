@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from app.application.services.wecom_delivery import (
     WeComDeliveryExecutor,
+    _delivery_fingerprint_namespace,
     _validate_wecom_image_body,
     build_wecom_text,
     enqueue_wecom_delivery,
@@ -133,6 +134,19 @@ def test_build_wecom_text_contains_title_and_test_marker() -> None:
 def test_build_wecom_text_rejects_utf8_overflow() -> None:
     with pytest.raises(ConflictError, match="exceeds WeCom text limit"):
         build_wecom_text(_package(copywriting="正文" * 100), mode="formal", max_bytes=20)
+
+
+def test_group_delivery_fingerprint_namespace_is_distinct_from_legacy_route() -> None:
+    legacy = _settings(require_review=False)
+    group = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        wecom_enabled=True,
+        wecom_delivery_provider="group_webhook",
+        wecom_group_webhook_key=SecretStr("group-webhook-secret"),
+    )
+
+    assert _delivery_fingerprint_namespace(legacy) == "wecom-delivery-v1"
+    assert _delivery_fingerprint_namespace(group) == "wecom-delivery-group-v1"
 
 
 @pytest.mark.asyncio

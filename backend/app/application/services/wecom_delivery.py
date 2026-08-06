@@ -96,7 +96,7 @@ async def enqueue_wecom_delivery(
 
     content_fingerprint = package.request_fingerprint
     request_fingerprint = stable_key(
-        "wecom-delivery-v1",
+        _delivery_fingerprint_namespace(settings),
         package.id,
         recipient_id,
         mode,
@@ -645,6 +645,14 @@ def wecom_text_limit(settings: Settings) -> int:
     if settings.wecom_delivery_provider == "group_webhook":
         return settings.wecom_group_max_text_bytes
     return settings.wecom_max_text_bytes
+
+
+def _delivery_fingerprint_namespace(settings: Settings) -> str:
+    """Keep legacy self-built fingerprints while isolating the new provider route."""
+
+    if settings.wecom_delivery_provider == "group_webhook":
+        return "wecom-delivery-group-v1"
+    return "wecom-delivery-v1"
 
 
 def _delivery_package_statuses(settings: Settings) -> tuple[str, ...]:

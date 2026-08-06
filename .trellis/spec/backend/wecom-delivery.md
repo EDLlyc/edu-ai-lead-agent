@@ -114,7 +114,8 @@ the group adapter sends a bounded Base64/MD5 payload. Temporary media IDs are di
 self-built-app call.
 
 The text payload contains the topic title and complete copywriting. Test mode adds a visible test
-marker. Both message types enable the official duplicate-check fields. The stable application
+marker. The self-built-app message types enable the official duplicate-check fields; the group
+webhook payloads use only their documented Markdown and Base64/MD5 fields. The stable application
 fingerprint is persisted for job/attempt identity; the provider request never receives secrets or
 an invented idempotency field.
 

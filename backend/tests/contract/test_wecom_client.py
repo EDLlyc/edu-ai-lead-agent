@@ -143,6 +143,30 @@ async def test_text_and_image_send_payloads_enable_duplicate_check() -> None:
     assert text_result.response_code == image_result.response_code == 0
 
 
+async def test_byte_oriented_self_built_send_validates_before_upload() -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_token_payload())
+
+    adapter, client = _adapter(httpx.MockTransport(handler), max_attempts=1)
+    async with client:
+        with pytest.raises(WeComProviderError) as raised:
+            await adapter.send_image_bytes(
+                "sales-user",
+                17,
+                IMAGE_BYTES,
+                "image/png",
+                "sale.png",
+                "invalid fingerprint",
+            )
+
+    assert raised.value.code == "wecom_invalid_input"
+    assert calls == 0
+
+
 async def test_invalid_token_is_refreshed_once_without_leaking_provider_body() -> None:
     token_requests = 0
     message_requests = 0
