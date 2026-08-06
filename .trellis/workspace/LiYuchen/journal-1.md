@@ -416,3 +416,24 @@ Ran one real isolated content pipeline through acquisition, governance, science-
 ### Status
 
 [OK] **Completed**
+
+
+## Session 19: Enable direct Enterprise WeChat delivery
+
+**Date**: 2026-08-06
+**Task**: Enable direct Enterprise WeChat delivery
+**Branch**: `main`
+
+### Summary
+
+Implemented direct delivery eligibility for validated awaiting_manual_use packages, preserved strict review mode, added quality veto and idempotency regressions, persisted safe provider response codes, suppressed HTTP auth URL logs, synchronized WeCom specs, and verified 465 backend tests. Real provider delivery reached the boundary but was rejected because the configured recipient is not an application-visible userid; no success was fabricated.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4329687` | (see git log) |
+
+### Status
+
+[OK] **Completed**
