@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend quality and side-effect ownership contract."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Delivery state, lease, idempotency, and security checks."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Provider error and retry verification contract."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Sensitive data and structured logging review."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required test, type, Compose, doctor, and diff checks."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer verification checklist."}
+{"file":".trellis/tasks/08-06-wecom-group-webhook-delivery/research/wecom-group-webhook-official.md","reason":"Independent verification of official API limits and payload semantics."}

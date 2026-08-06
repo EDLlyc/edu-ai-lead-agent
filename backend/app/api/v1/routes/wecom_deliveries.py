@@ -10,6 +10,7 @@ from app.api.dependencies import get_session
 from app.application.services.wecom_delivery import (
     enqueue_wecom_delivery,
     retry_wecom_delivery,
+    wecom_recipient_is_configured,
 )
 from app.core.errors import NotFoundError
 from app.infrastructure.db.models import WeComDeliveryJobModel
@@ -26,7 +27,7 @@ router = APIRouter(tags=["wecom-deliveries"])
 @router.get("/wecom/recipients", response_model=WeComRecipientListResponse)
 async def list_wecom_recipients(request: Request) -> WeComRecipientListResponse:
     settings = request.app.state.settings
-    if not settings.wecom_enabled or not settings.wecom_default_recipient_id:
+    if not wecom_recipient_is_configured(settings):
         return WeComRecipientListResponse(items=[], count=0)
     item = WeComRecipientResponse(
         id="default",

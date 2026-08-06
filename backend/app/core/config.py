@@ -91,9 +91,11 @@ class Settings(BaseSettings):
 
     wecom_enabled: bool = False
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com"
+    wecom_delivery_provider: Literal["self_built_app", "group_webhook"] = "self_built_app"
     wecom_corp_id: str = ""
     wecom_agent_id: int | None = Field(default=None, ge=1)
     wecom_corp_secret: SecretStr | None = None
+    wecom_group_webhook_key: SecretStr | None = None
     wecom_default_recipient_id: str = ""
     wecom_default_recipient_name: str = "销售"
     wecom_auto_delivery_enabled: bool = False
@@ -106,6 +108,8 @@ class Settings(BaseSettings):
     wecom_request_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     wecom_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=6, le=10 * 1024 * 1024)
     wecom_max_text_bytes: int = Field(default=2048, ge=1, le=2048)
+    wecom_group_max_image_bytes: int = Field(default=2 * 1024 * 1024, ge=6, le=2 * 1024 * 1024)
+    wecom_group_max_text_bytes: int = Field(default=4096, ge=1, le=4096)
 
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
@@ -247,17 +251,32 @@ class Settings(BaseSettings):
         ):
             raise ValueError("WeCom API base URL must be exactly https://qyapi.weixin.qq.com")
         if self.wecom_enabled:
-            if any(
-                not value.strip() or any(character.isspace() for character in value)
-                for value in (self.wecom_corp_id, self.wecom_default_recipient_id)
-            ):
-                raise ValueError("WeCom CorpID and default recipient must be non-blank identifiers")
-            if (
-                self.wecom_agent_id is None
-                or self.wecom_corp_secret is None
-                or not self.wecom_corp_secret.get_secret_value().strip()
-            ):
-                raise ValueError("enabled WeCom delivery requires AgentID and CorpSecret")
+            if self.wecom_delivery_provider == "self_built_app":
+                if any(
+                    not value.strip() or any(character.isspace() for character in value)
+                    for value in (self.wecom_corp_id, self.wecom_default_recipient_id)
+                ):
+                    raise ValueError(
+                        "self-built WeCom delivery requires CorpID and default recipient"
+                    )
+                if (
+                    self.wecom_agent_id is None
+                    or self.wecom_corp_secret is None
+                    or not self.wecom_corp_secret.get_secret_value().strip()
+                ):
+                    raise ValueError(
+                        "enabled self-built WeCom delivery requires AgentID and CorpSecret"
+                    )
+            else:
+                group_key = (
+                    self.wecom_group_webhook_key.get_secret_value()
+                    if self.wecom_group_webhook_key is not None
+                    else ""
+                )
+                if not group_key.strip() or any(
+                    character.isspace() or ord(character) < 32 for character in group_key
+                ):
+                    raise ValueError("enabled group-webhook delivery requires a valid webhook key")
         if self.wecom_auto_delivery_enabled and not self.wecom_enabled:
             raise ValueError("automatic WeCom delivery requires WeCom to be enabled")
         if not self.wecom_default_recipient_name.strip():

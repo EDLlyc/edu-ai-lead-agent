@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.wecom import (
     WECOM_MIN_IMAGE_BYTES,
-    WeComApiClient,
+    WeComDeliveryClient,
     WeComProviderError,
 )
 from app.core.config import Settings
@@ -203,7 +203,7 @@ class WeComDeliveryExecutor:
         self,
         *,
         session_factory: async_sessionmaker[AsyncSession],
-        client: WeComApiClient,
+        client: WeComDeliveryClient,
         image_store: MinioImageStore,
         settings: Settings,
     ) -> None:
@@ -290,14 +290,16 @@ class WeComDeliveryExecutor:
         if package is None:
             raise NotFoundError("material package")
         content = build_wecom_text(
-            package, mode=claimed.mode, max_bytes=self._settings.wecom_max_text_bytes
+            package,
+            mode=claimed.mode,
+            max_bytes=wecom_text_limit(self._settings),
         )
         self._ensure_lease(lease_lost)
         request_fingerprint = _child_request_fingerprint(claimed.job_id, "text")
         started = time.monotonic()
         result = await self._client.send_text(
-            recipient_id=self._settings.wecom_default_recipient_id,
-            agent_id=cast(int, self._settings.wecom_agent_id),
+            recipient_id=wecom_delivery_recipient_id(self._settings),
+            agent_id=self._settings.wecom_agent_id,
             content=content,
             request_fingerprint=request_fingerprint,
         )
@@ -333,19 +335,15 @@ class WeComDeliveryExecutor:
         self._ensure_lease(lease_lost)
         request_fingerprint = _child_request_fingerprint(claimed.job_id, "image")
         started = time.monotonic()
-        uploaded = await self._client.upload_image(
+        result = await self._client.send_image_bytes(
+            recipient_id=wecom_delivery_recipient_id(self._settings),
+            agent_id=self._settings.wecom_agent_id,
             image_bytes=body,
             media_type=media_type,
             filename=(
                 f"sai-xiansheng-{claimed.package_id}."
                 f"{'png' if media_type == 'image/png' else 'jpg'}"
             ),
-        )
-        self._ensure_lease(lease_lost)
-        result = await self._client.send_image(
-            recipient_id=self._settings.wecom_default_recipient_id,
-            agent_id=cast(int, self._settings.wecom_agent_id),
-            media_id=uploaded.media_id,
             request_fingerprint=request_fingerprint,
         )
         await self._record_child(
@@ -617,8 +615,36 @@ class WeComDeliveryExecutor:
 def _ensure_delivery_configured(settings: Settings) -> None:
     if not settings.wecom_enabled:
         raise ConflictError("WeCom delivery is disabled")
+    if settings.wecom_delivery_provider == "group_webhook":
+        if settings.wecom_group_webhook_key is None:
+            raise ConflictError("WeCom group webhook is not configured")
+        return
     if not settings.wecom_default_recipient_id:
         raise ConflictError("WeCom default recipient is not configured")
+
+
+def wecom_recipient_is_configured(settings: Settings) -> bool:
+    """Return whether the safe logical default recipient can be exposed by the API."""
+
+    if not settings.wecom_enabled:
+        return False
+    if settings.wecom_delivery_provider == "group_webhook":
+        return settings.wecom_group_webhook_key is not None
+    return bool(settings.wecom_default_recipient_id)
+
+
+def wecom_delivery_recipient_id(settings: Settings) -> str:
+    """Return the provider-facing recipient while keeping group mode logical-only."""
+
+    if settings.wecom_delivery_provider == "group_webhook":
+        return "default"
+    return settings.wecom_default_recipient_id
+
+
+def wecom_text_limit(settings: Settings) -> int:
+    if settings.wecom_delivery_provider == "group_webhook":
+        return settings.wecom_group_max_text_bytes
+    return settings.wecom_max_text_bytes
 
 
 def _delivery_package_statuses(settings: Settings) -> tuple[str, ...]:

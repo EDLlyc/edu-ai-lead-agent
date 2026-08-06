@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend ownership, side-effect, secret, and delivery boundaries."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Existing Enterprise WeChat job, lease, idempotency, and failure contract to preserve and extend."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed provider errors, retry classification, and safe API projection."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Credential and provider-body redaction requirements."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend, Compose, migration, and focused/final validation gates."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse the existing delivery adapter and avoid duplicated transport/payload validation."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Track settings, dispatcher, provider, service, persistence, and tests as one contract."}
+{"file":".trellis/tasks/08-06-wecom-group-webhook-delivery/research/wecom-group-webhook-official.md","reason":"Official webhook endpoint and message-size/image/frequency constraints."}

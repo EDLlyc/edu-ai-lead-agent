@@ -9,12 +9,14 @@ from uuid import uuid4
 import httpx
 import structlog
 
+from app.application.ports.wecom import WeComDeliveryClient
 from app.application.services.wecom_delivery import WeComDeliveryExecutor
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 from app.infrastructure.wecom.client import WeComHttpClient
+from app.infrastructure.wecom.group_webhook import WeComGroupWebhookClient
 
 logger = structlog.get_logger()
 
@@ -36,7 +38,11 @@ async def run_dispatcher() -> None:
     worker_tasks: list[asyncio.Task[None]] = []
     try:
         async with httpx.AsyncClient(follow_redirects=False) as http_client:
-            client = WeComHttpClient(settings=settings, client=http_client)
+            client: WeComDeliveryClient
+            if settings.wecom_delivery_provider == "group_webhook":
+                client = WeComGroupWebhookClient(settings=settings, client=http_client)
+            else:
+                client = WeComHttpClient(settings=settings, client=http_client)
             executor = WeComDeliveryExecutor(
                 session_factory=session_factory,
                 client=client,

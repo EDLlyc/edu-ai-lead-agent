@@ -155,12 +155,14 @@ class WeComApiClient:
     async def send_text(
         self,
         recipient_id: str,
-        agent_id: int,
+        agent_id: int | None,
         content: str,
         request_fingerprint: str,
     ) -> SendResult:
         try:
             _validate_recipient_id(recipient_id)
+            if agent_id is None:
+                raise ValueError("agent id is required")
             _validate_agent_id(agent_id)
             _validate_text(content, max_bytes=self._max_text_bytes)
             _validate_request_fingerprint(request_fingerprint)
@@ -183,6 +185,32 @@ class WeComApiClient:
             unknown_on_timeout=True,
         )
         return _send_result(response)
+
+    async def send_image_bytes(
+        self,
+        recipient_id: str,
+        agent_id: int | None,
+        image_bytes: bytes,
+        media_type: str,
+        filename: str,
+        request_fingerprint: str,
+    ) -> SendResult:
+        """Upload and send an image while satisfying the byte-oriented delivery port."""
+
+        if agent_id is None:
+            raise WeComInvalidInputError()
+        try:
+            _validate_image(image_bytes, media_type, max_bytes=self._max_image_bytes)
+            _validate_filename(filename)
+        except (TypeError, UnicodeError, ValueError):
+            raise WeComInvalidInputError() from None
+        uploaded = await self.upload_image(image_bytes, media_type, filename)
+        return await self.send_image(
+            recipient_id=recipient_id,
+            agent_id=agent_id,
+            media_id=uploaded.media_id,
+            request_fingerprint=request_fingerprint,
+        )
 
     async def send_image(
         self,

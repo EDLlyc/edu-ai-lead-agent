@@ -2,11 +2,12 @@
 
 ## Contract status
 
-This is the implemented contract for the one-recipient Enterprise WeChat self-built-application
-delivery boundary. It sends an eligible material package to the configured internal sales user.
-Eligibility is either `completed + approved` in review-required mode or a validated
-`awaiting_manual_use`/`completed` package in direct mode. It does not publish to a personal or
-enterprise WeChat Moments feed, expose a public recipient API, or regenerate content.
+This is the implemented contract for the Enterprise WeChat delivery boundary. It supports the
+existing self-built-application route for one configured internal sales user and the official group
+webhook route for one configured group. Eligibility is either `completed + approved` in
+review-required mode or a validated `awaiting_manual_use`/`completed` package in direct mode. It
+does not publish to a personal or enterprise WeChat Moments feed, expose a public recipient API, or
+regenerate content.
 
 ## 1. Scope / Trigger
 
@@ -68,6 +69,9 @@ WeComDeliveryExecutor.execute_next(worker_id) -> bool
 WeComApiClient.upload_image(bytes, media_type, filename) -> UploadedMedia
 WeComApiClient.send_text(recipient_id, agent_id, content, request_fingerprint) -> SendResult
 WeComApiClient.send_image(recipient_id, agent_id, media_id, request_fingerprint) -> SendResult
+WeComDeliveryClient.send_image_bytes(
+    recipient_id, agent_id, image_bytes, media_type, filename, request_fingerprint
+) -> SendResult
 ```
 
 ## 3. Contracts
@@ -78,9 +82,11 @@ WeComApiClient.send_image(recipient_id, agent_id, media_id, request_fingerprint)
 |---|---|
 | `WECOM_ENABLED` | `false` by default; enables configuration validation and delivery API use |
 | `WECOM_API_BASE_URL` | Exactly `https://qyapi.weixin.qq.com` |
+| `WECOM_DELIVERY_PROVIDER` | `self_built_app` (default) or `group_webhook` |
 | `WECOM_CORP_ID` | Server-side non-blank identifier when enabled |
 | `WECOM_AGENT_ID` | Positive application ID when enabled |
 | `WECOM_CORP_SECRET` | Server-side secret; never log or persist |
+| `WECOM_GROUP_WEBHOOK_KEY` | Secret webhook key required only for `group_webhook` |
 | `WECOM_DEFAULT_RECIPIENT_ID` | Raw configured userid; server-side only, never an API field |
 | `WECOM_DEFAULT_RECIPIENT_NAME` | Internal display label, default `销售` |
 | `WECOM_AUTO_DELIVERY_ENABLED` | Requires `WECOM_ENABLED`; default `false` |
@@ -89,7 +95,10 @@ WeComApiClient.send_image(recipient_id, agent_id, media_id, request_fingerprint)
 | `WECOM_REQUEST_TIMEOUT_SECONDS` | Bounded request timeout; send timeout is an unknown outcome |
 
 The `wecom` Compose profile is opt-in. With `WECOM_ENABLED=false`, the dispatcher logs one safe
-disabled event and does not create a database engine or an HTTP client.
+disabled event and does not create a database engine or an HTTP client. Group Markdown is bounded
+at 4096 UTF-8 bytes and group image bytes at 2 MiB. The group adapter uses the official
+`/cgi-bin/webhook/send?key=KEY` endpoint without redirects and enforces the documented 20 messages
+per minute process-local window.
 
 ### State and side effects
 
@@ -100,8 +109,9 @@ failure queues the same job with bounded backoff. Explicit operator retry may re
 
 Text is sent before image. A successful child state is persisted before the next child is called;
 lease recovery therefore skips a delivered child. Image delivery reads the private MinIO object,
-checks size, SHA-256, and PNG/JPEG signature, uploads temporary media, sends the image message, and
-discards the temporary media ID after the call.
+checks size, SHA-256, and PNG/JPEG signature. The self-built-app adapter uploads temporary media;
+the group adapter sends a bounded Base64/MD5 payload. Temporary media IDs are discarded after the
+self-built-app call.
 
 The text payload contains the topic title and complete copywriting. Test mode adds a visible test
 marker. Both message types enable the official duplicate-check fields. The stable application
@@ -115,9 +125,11 @@ validation to pass, and any configured image audit to be accepted before a job i
 
 ### Security boundary
 
-The adapter uses HTTPS, the official host allowlist, bounded response parsing, no redirects, and
-typed provider errors. Access tokens are cached only in the dispatcher process. Raw userid values
-are read only from settings and passed to the provider adapter; the API and database use `default`.
+The adapters use HTTPS, the official host allowlist, bounded response parsing, no redirects, and
+typed provider errors. Self-built-app access tokens are cached only in the dispatcher process. Raw
+userid values are read only from settings and passed to the self-built-app adapter; the API and
+database use `default`. Group webhook keys are bearer credentials and never appear in logs, errors,
+API responses, or durable delivery rows.
 
 ## 4. Validation & Error Matrix
 
@@ -211,3 +223,94 @@ query strings, secrets, raw provider bodies, or signed object URLs.
 self-built application's address-book visibility scope. A provider recipient/configuration error
 such as `60020` is terminal until the ID or visibility scope is corrected; it must not be treated
 as a successful send or retried indefinitely.
+
+## 8. Group Webhook Provider
+
+### 8.1 Scope / Trigger
+
+Apply this contract when `WECOM_DELIVERY_PROVIDER=group_webhook` or when changing the group-webhook
+adapter, its image preparation path, or its provider-specific settings.
+
+### 8.2 Signatures
+
+```text
+WeComGroupWebhookClient.send_text(
+    recipient_id: str,
+    agent_id: int | None,
+    content: str,
+    request_fingerprint: str,
+) -> SendResult
+
+WeComGroupWebhookClient.send_image_bytes(
+    recipient_id: str,
+    agent_id: int | None,
+    image_bytes: bytes,
+    media_type: str,
+    filename: str,
+    request_fingerprint: str,
+) -> SendResult
+
+prepare_group_webhook_image(bytes, media_type, max_bytes=2*1024*1024)
+    -> PreparedGroupImage(body, media_type)
+```
+
+### 8.3 Contracts
+
+- Copy uses `{"msgtype":"markdown","markdown":{"content":CONTENT}}`.
+- Image uses `{"msgtype":"image","image":{"base64":BASE64,"md5":MD5}}`; MD5 is calculated
+  over prepared raw bytes before Base64 encoding.
+- The logical API recipient remains `default`; no userid, AgentID, or CorpID is included in either
+  webhook payload.
+- JPG/PNG source bytes are verified against the immutable package descriptor. A source above 2 MiB
+  is deterministically compressed/downscaled in memory; the original MinIO object is unchanged.
+- The adapter enforces a process-local window of at most 20 actual message attempts per 60 seconds.
+  429/temporary responses are bounded-retryable; timeout or ambiguous transport results are
+  `delivery_unknown` and are not automatically resent.
+- `WECOM_GROUP_WEBHOOK_KEY` is a SecretStr deployment value. It must not appear in settings reprs,
+  logs, exceptions, API responses, job rows, or task artifacts.
+
+### 8.4 Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Group provider enabled without a key | Settings validation fails before dispatcher startup |
+| Markdown exceeds 4096 UTF-8 bytes | Stable invalid-input result; no provider request |
+| Image is unsupported, malformed, over safe raster bounds, or cannot fit 2 MiB | Stable invalid-input result; no provider request |
+| Provider returns non-zero webhook code | Safe provider rejection/rate-limit/temporary code; raw body omitted |
+| Webhook send times out or transport outcome is ambiguous | `delivery_unknown`; no automatic resend |
+| More than 20 messages are queued in one dispatcher process | Calls wait for the window instead of bursting |
+
+### 8.5 Good / Base / Bad Cases
+
+- Good: one Markdown message and one valid Base64/MD5 image message are sent in order to the fixed
+  webhook endpoint, with no self-built-app fields.
+- Base: blank/default configuration leaves WeCom disabled and does not require a group key.
+- Bad: placing the webhook key in a URL log, using `upload_media` for an image, silently truncating
+  Markdown, or retrying a timeout automatically.
+
+### 8.6 Tests Required
+
+- Contract tests assert fixed host/path, key query construction without representation leakage,
+  Markdown byte limits, image Base64/MD5, response classification, and timeout non-retry.
+- Image preparation tests assert immutable source bytes, safe raster bounds, deterministic fitting,
+  and JPG/PNG signatures.
+- Dispatcher/service tests assert provider selection, logical group recipient, text-before-image
+  ordering, bounded rate window, and compatibility with the self-built adapter.
+
+### 8.7 Wrong vs Correct
+
+#### Wrong
+
+```python
+await client.send_text(..., access_token=webhook_key)
+await client.send_image(..., media_id=uploaded_media_id)
+```
+
+The group webhook has no access-token message API and its image contract is inline Base64/MD5.
+
+#### Correct
+
+```python
+await group_client.send_text("default", None, markdown, text_fingerprint)
+await group_client.send_image_bytes("default", None, body, "image/png", filename, image_fingerprint)
+```

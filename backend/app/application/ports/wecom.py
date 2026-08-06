@@ -9,6 +9,9 @@ WECOM_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 WECOM_MIN_IMAGE_BYTES = 6
 WECOM_MAX_RESPONSE_BYTES = 64 * 1024
 WECOM_MAX_TEXT_BYTES = 2048
+WECOM_GROUP_MAX_TEXT_BYTES = 4096
+WECOM_GROUP_MAX_IMAGE_BYTES = 2 * 1024 * 1024
+WECOM_GROUP_MAX_MESSAGES_PER_MINUTE = 20
 WECOM_DUPLICATE_CHECK_INTERVAL_SECONDS = 1_800
 
 WECOM_TOKEN_INVALID = "wecom_token_invalid"
@@ -193,7 +196,7 @@ class WeComApiClient(Protocol):
     async def send_text(
         self,
         recipient_id: str,
-        agent_id: int,
+        agent_id: int | None,
         content: str,
         request_fingerprint: str,
     ) -> SendResult: ...
@@ -207,9 +210,34 @@ class WeComApiClient(Protocol):
     ) -> SendResult: ...
 
 
+class WeComDeliveryClient(Protocol):
+    """Provider-neutral operations used by the durable delivery executor."""
+
+    async def send_text(
+        self,
+        recipient_id: str,
+        agent_id: int | None,
+        content: str,
+        request_fingerprint: str,
+    ) -> SendResult: ...
+
+    async def send_image_bytes(
+        self,
+        recipient_id: str,
+        agent_id: int | None,
+        image_bytes: bytes,
+        media_type: str,
+        filename: str,
+        request_fingerprint: str,
+    ) -> SendResult: ...
+
+
 __all__ = [
     "WECOM_DELIVERY_UNKNOWN",
     "WECOM_DUPLICATE_CHECK_INTERVAL_SECONDS",
+    "WECOM_GROUP_MAX_IMAGE_BYTES",
+    "WECOM_GROUP_MAX_MESSAGES_PER_MINUTE",
+    "WECOM_GROUP_MAX_TEXT_BYTES",
     "WECOM_INVALID_INPUT",
     "WECOM_INVALID_RESPONSE",
     "WECOM_MAX_IMAGE_BYTES",
@@ -223,6 +251,7 @@ __all__ = [
     "SendResult",
     "UploadedMedia",
     "WeComApiClient",
+    "WeComDeliveryClient",
     "WeComInvalidInputError",
     "WeComInvalidResponseError",
     "WeComProviderError",
