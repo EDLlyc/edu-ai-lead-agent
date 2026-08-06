@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend non-negotiable boundaries: provider calls stay outside API/database transactions, durable state and no automated social publishing."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Defines API/application/domain/infrastructure ownership and independent scheduler/worker entrypoints."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Defines PostgreSQL/Alembic persistence, lease and idempotency requirements for durable jobs."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed provider failures, stable API errors, retryability and terminal states."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Defines structured logging and sensitive field redaction for third-party calls."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines migration, type-check, security and contract test gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Feature crosses API, database, worker, storage and external provider boundaries; use the cross-layer checklist."}
+{"file":".trellis/tasks/08-05-wecom-sales-delivery/research/wecom-official-api.md","reason":"Official Enterprise WeChat endpoint, token, media and message contracts researched for the adapter."}

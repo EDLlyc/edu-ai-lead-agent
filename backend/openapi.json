@@ -5539,6 +5539,228 @@
         ],
         "title": "VisualTextLayerResponse",
         "type": "object"
+      },
+      "WeComDeliveryCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "include_copy": {
+            "default": true,
+            "title": "Include Copy",
+            "type": "boolean"
+          },
+          "include_image": {
+            "default": true,
+            "title": "Include Image",
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "formal",
+            "enum": [
+              "test",
+              "formal"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "recipient_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Recipient Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient_id"
+        ],
+        "title": "WeComDeliveryCreateRequest",
+        "type": "object"
+      },
+      "WeComDeliveryResponse": {
+        "properties": {
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "image_status": {
+            "enum": [
+              "pending",
+              "running",
+              "delivered",
+              "failed",
+              "unknown",
+              "skipped"
+            ],
+            "title": "Image Status",
+            "type": "string"
+          },
+          "include_copy": {
+            "title": "Include Copy",
+            "type": "boolean"
+          },
+          "include_image": {
+            "title": "Include Image",
+            "type": "boolean"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "material_package_id": {
+            "format": "uuid",
+            "title": "Material Package Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "test",
+              "formal"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "package_version": {
+            "title": "Package Version",
+            "type": "integer"
+          },
+          "recipient_id": {
+            "title": "Recipient Id",
+            "type": "string"
+          },
+          "retry_url": {
+            "title": "Retry Url",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "partial",
+              "delivery_unknown",
+              "delivered",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text_status": {
+            "enum": [
+              "pending",
+              "running",
+              "delivered",
+              "failed",
+              "unknown",
+              "skipped"
+            ],
+            "title": "Text Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "material_package_id",
+          "recipient_id",
+          "mode",
+          "package_version",
+          "status",
+          "text_status",
+          "image_status",
+          "include_copy",
+          "include_image",
+          "attempt_count",
+          "last_error_code",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "retry_url"
+        ],
+        "title": "WeComDeliveryResponse",
+        "type": "object"
+      },
+      "WeComRecipientListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WeComRecipientResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "WeComRecipientListResponse",
+        "type": "object"
+      },
+      "WeComRecipientResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "enabled"
+        ],
+        "title": "WeComRecipientResponse",
+        "type": "object"
       }
     }
   },
@@ -6952,6 +7174,59 @@
         ]
       }
     },
+    "/api/v1/material-packages/{package_id}/wecom-deliveries": {
+      "post": {
+        "operationId": "create_wecom_delivery_api_v1_material_packages__package_id__wecom_deliveries_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeComDeliveryCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeComDeliveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Wecom Delivery",
+        "tags": [
+          "wecom-deliveries"
+        ]
+      }
+    },
     "/api/v1/sources": {
       "get": {
         "operationId": "get_sources_api_v1_sources_get",
@@ -7097,6 +7372,113 @@
         "summary": "Read Topic Selection Scores",
         "tags": [
           "topic-selection"
+        ]
+      }
+    },
+    "/api/v1/wecom-deliveries/{delivery_id}": {
+      "get": {
+        "operationId": "read_wecom_delivery_api_v1_wecom_deliveries__delivery_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeComDeliveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Wecom Delivery",
+        "tags": [
+          "wecom-deliveries"
+        ]
+      }
+    },
+    "/api/v1/wecom-deliveries/{delivery_id}/retry": {
+      "post": {
+        "operationId": "retry_wecom_delivery_route_api_v1_wecom_deliveries__delivery_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeComDeliveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Wecom Delivery Route",
+        "tags": [
+          "wecom-deliveries"
+        ]
+      }
+    },
+    "/api/v1/wecom/recipients": {
+      "get": {
+        "operationId": "list_wecom_recipients_api_v1_wecom_recipients_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeComRecipientListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Wecom Recipients",
+        "tags": [
+          "wecom-deliveries"
         ]
       }
     },

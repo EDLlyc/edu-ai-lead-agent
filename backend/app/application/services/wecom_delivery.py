@@ -1,0 +1,688 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import cast
+from uuid import UUID, uuid4
+
+import structlog
+from sqlalchemy import and_, or_, select, update
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.application.ports.wecom import (
+    WECOM_MIN_IMAGE_BYTES,
+    WeComApiClient,
+    WeComProviderError,
+)
+from app.core.config import Settings
+from app.core.errors import AppError, ConflictError, NotFoundError
+from app.domain.image_generation import image_checksum
+from app.domain.value_objects import stable_key
+from app.infrastructure.db.models import (
+    ImageArtifactModel,
+    MaterialPackageModel,
+    WeComDeliveryAttemptModel,
+    WeComDeliveryJobModel,
+)
+from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
+
+logger = structlog.get_logger()
+
+_DELIVERED = "delivered"
+_SKIPPED = "skipped"
+_PENDING = "pending"
+_RUNNING = "running"
+_FAILED = "failed"
+_UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedWeComDelivery:
+    job_id: UUID
+    package_id: UUID
+    lease_token: UUID
+    attempt_number: int
+    recipient_id: str
+    mode: str
+    include_copy: bool
+    include_image: bool
+
+
+async def enqueue_wecom_delivery(
+    *,
+    session: AsyncSession,
+    package_id: UUID,
+    recipient_id: str,
+    mode: str,
+    include_copy: bool,
+    include_image: bool,
+    settings: Settings,
+) -> WeComDeliveryJobModel:
+    _ensure_delivery_configured(settings)
+    if recipient_id != "default":
+        raise ConflictError("recipient is not configured")
+    if not include_copy and not include_image:
+        raise ConflictError("at least one message kind must be selected")
+    if mode not in {"test", "formal"}:
+        raise ConflictError("unsupported WeCom delivery mode")
+
+    package = await session.get(MaterialPackageModel, package_id)
+    if package is None:
+        raise NotFoundError("material package")
+    if package.status != "completed":
+        raise ConflictError("material package is not complete")
+    if (mode == "formal" or settings.wecom_require_review_before_send) and (
+        package.review_status != "approved"
+    ):
+        raise ConflictError("material package must be approved before WeCom delivery")
+    image = await session.get(ImageArtifactModel, package.image_artifact_id)
+    if image is None:
+        raise NotFoundError("image artifact")
+    if include_image and image.status != "succeeded":
+        raise ConflictError("material package image is not available")
+
+    content_fingerprint = package.request_fingerprint
+    request_fingerprint = stable_key(
+        "wecom-delivery-v1",
+        package.id,
+        recipient_id,
+        mode,
+        package.package_version,
+        content_fingerprint,
+        include_copy,
+        include_image,
+    )
+    existing = await session.scalar(
+        select(WeComDeliveryJobModel)
+        .where(WeComDeliveryJobModel.request_fingerprint == request_fingerprint)
+        .with_for_update()
+    )
+    if existing is not None:
+        return existing
+
+    job = WeComDeliveryJobModel(
+        id=uuid4(),
+        material_package_id=package.id,
+        recipient_id=recipient_id,
+        mode=mode,
+        package_version=package.package_version,
+        content_fingerprint=content_fingerprint,
+        request_fingerprint=request_fingerprint,
+        include_copy=include_copy,
+        include_image=include_image,
+        status="queued",
+        text_status=_PENDING if include_copy else _SKIPPED,
+        image_status=_PENDING if include_image else _SKIPPED,
+        attempt_count=0,
+        next_attempt_at=datetime.now(UTC),
+    )
+    session.add(job)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        existing = cast(
+            WeComDeliveryJobModel | None,
+            await session.scalar(
+                select(WeComDeliveryJobModel).where(
+                    WeComDeliveryJobModel.request_fingerprint == request_fingerprint
+                )
+            ),
+        )
+        if existing is None:
+            raise
+        return existing
+    await session.refresh(job)
+    return job
+
+
+async def retry_wecom_delivery(
+    *, session: AsyncSession, delivery_id: UUID, settings: Settings
+) -> WeComDeliveryJobModel:
+    _ensure_delivery_configured(settings)
+    job = await session.scalar(
+        select(WeComDeliveryJobModel)
+        .where(WeComDeliveryJobModel.id == delivery_id)
+        .with_for_update()
+    )
+    if job is None:
+        raise NotFoundError("WeCom delivery")
+    if job.status not in {"failed", "partial", "delivery_unknown"}:
+        raise ConflictError("only failed or unknown WeCom deliveries can be retried")
+
+    if job.include_copy and job.text_status != _DELIVERED:
+        job.text_status = _PENDING
+    if job.include_image and job.image_status != _DELIVERED:
+        job.image_status = _PENDING
+    job.status = "queued"
+    job.attempt_count = 0
+    job.next_attempt_at = datetime.now(UTC)
+    job.last_error_code = None
+    job.lease_owner = None
+    job.lease_token = None
+    job.lease_expires_at = None
+    job.heartbeat_at = None
+    job.completed_at = None
+    await session.commit()
+    await session.refresh(job)
+    return job
+
+
+def build_wecom_text(package: MaterialPackageModel, *, mode: str, max_bytes: int) -> str:
+    topic_snapshot = package.topic_snapshot if isinstance(package.topic_snapshot, dict) else {}
+    copy_snapshot = package.copy_snapshot if isinstance(package.copy_snapshot, dict) else {}
+    title = _safe_text(topic_snapshot.get("title")) or "赛先生科学"
+    copywriting = _safe_text(copy_snapshot.get("copywriting"))
+    if not copywriting:
+        raise ConflictError("material package copywriting is empty")
+    prefix = "【测试消息】\n" if mode == "test" else ""
+    content = f"{prefix}【{title}】\n\n{copywriting}"
+    encoded = content.encode("utf-8")
+    if len(encoded) > max_bytes:
+        raise ConflictError("material package copywriting exceeds WeCom text limit")
+    return content
+
+
+class WeComDeliveryExecutor:
+    """Claim durable WeCom jobs and perform provider calls outside DB transactions."""
+
+    def __init__(
+        self,
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+        client: WeComApiClient,
+        image_store: MinioImageStore,
+        settings: Settings,
+    ) -> None:
+        self._session_factory = session_factory
+        self._client = client
+        self._image_store = image_store
+        self._settings = settings
+
+    async def reconcile_auto_deliveries(self, *, limit: int = 20) -> int:
+        if not self._settings.wecom_auto_delivery_enabled:
+            return 0
+        async with self._session_factory() as session:
+            packages = tuple(
+                (
+                    await session.scalars(
+                        select(MaterialPackageModel)
+                        .where(
+                            MaterialPackageModel.status == "completed",
+                            MaterialPackageModel.review_status == "approved",
+                        )
+                        .order_by(MaterialPackageModel.created_at)
+                        .limit(limit)
+                    )
+                ).all()
+            )
+        created = 0
+        for package in packages:
+            async with self._session_factory() as session:
+                try:
+                    await enqueue_wecom_delivery(
+                        session=session,
+                        package_id=package.id,
+                        recipient_id="default",
+                        mode="formal",
+                        include_copy=True,
+                        include_image=True,
+                        settings=self._settings,
+                    )
+                except (ConflictError, NotFoundError) as error:
+                    logger.info(
+                        "wecom_auto_delivery_skipped",
+                        package_id=str(package.id),
+                        error_code=error.code,
+                    )
+                else:
+                    created += 1
+        return created
+
+    async def execute_next(self, worker_id: str) -> bool:
+        claimed = await self._claim(worker_id)
+        if claimed is None:
+            return False
+        stop = asyncio.Event()
+        lease_lost = asyncio.Event()
+        heartbeat = asyncio.create_task(self._heartbeat_loop(claimed, stop, lease_lost))
+        try:
+            self._ensure_lease(lease_lost)
+            if claimed.include_copy and not await self._is_delivered(claimed, "text"):
+                await self._deliver_text(claimed, lease_lost)
+            self._ensure_lease(lease_lost)
+            if claimed.include_image and not await self._is_delivered(claimed, "image"):
+                await self._deliver_image(claimed, lease_lost)
+            await self._finish_success(claimed)
+        except asyncio.CancelledError:
+            raise
+        except WeComProviderError as error:
+            await self._finish_provider_failure(claimed, error)
+        except AppError as error:
+            await self._finish_local_failure(claimed, error.code)
+        except Exception:
+            await self._finish_provider_failure(
+                claimed,
+                WeComProviderError("wecom_provider_unavailable", retryable=True),
+            )
+        finally:
+            stop.set()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+        return True
+
+    async def _deliver_text(self, claimed: ClaimedWeComDelivery, lease_lost: asyncio.Event) -> None:
+        async with self._session_factory() as session:
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+        if package is None:
+            raise NotFoundError("material package")
+        content = build_wecom_text(
+            package, mode=claimed.mode, max_bytes=self._settings.wecom_max_text_bytes
+        )
+        self._ensure_lease(lease_lost)
+        request_fingerprint = _child_request_fingerprint(claimed.job_id, "text")
+        started = time.monotonic()
+        result = await self._client.send_text(
+            recipient_id=self._settings.wecom_default_recipient_id,
+            agent_id=cast(int, self._settings.wecom_agent_id),
+            content=content,
+            request_fingerprint=request_fingerprint,
+        )
+        await self._record_child(
+            claimed,
+            message_kind="text",
+            result_state="succeeded",
+            safe_response_code=getattr(result, "safe_response_code", None),
+            provider_request_id=getattr(result, "provider_request_id", None),
+            latency_ms=_elapsed_ms(started),
+        )
+
+    async def _deliver_image(
+        self, claimed: ClaimedWeComDelivery, lease_lost: asyncio.Event
+    ) -> None:
+        async with self._session_factory() as session:
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+            if package is None:
+                raise NotFoundError("material package")
+            image = await session.get(ImageArtifactModel, package.image_artifact_id)
+        if image is None or image.status != "succeeded":
+            raise ConflictError("material package image is not available")
+        if any(
+            value is None
+            for value in (
+                image.bucket,
+                image.object_key,
+                image.media_type,
+                image.byte_size,
+                image.sha256,
+            )
+        ):
+            raise ConflictError("material package image metadata is incomplete")
+        media_type = cast(str, image.media_type)
+        if media_type not in {"image/png", "image/jpeg"}:
+            raise ConflictError("WeCom image upload supports only PNG or JPEG")
+        descriptor = ImageObjectDescriptor(
+            bucket=cast(str, image.bucket),
+            object_key=cast(str, image.object_key),
+            media_type=media_type,
+            byte_size=cast(int, image.byte_size),
+            sha256=cast(str, image.sha256),
+        )
+        body = await self._image_store.get_bytes(descriptor)
+        _validate_wecom_image_body(
+            body,
+            media_type=media_type,
+            expected_size=cast(int, image.byte_size),
+            expected_sha256=cast(str, image.sha256),
+            max_bytes=self._settings.wecom_max_image_bytes,
+        )
+        self._ensure_lease(lease_lost)
+        request_fingerprint = _child_request_fingerprint(claimed.job_id, "image")
+        started = time.monotonic()
+        uploaded = await self._client.upload_image(
+            image_bytes=body,
+            media_type=media_type,
+            filename=(
+                f"sai-xiansheng-{claimed.package_id}."
+                f"{'png' if media_type == 'image/png' else 'jpg'}"
+            ),
+        )
+        self._ensure_lease(lease_lost)
+        result = await self._client.send_image(
+            recipient_id=self._settings.wecom_default_recipient_id,
+            agent_id=cast(int, self._settings.wecom_agent_id),
+            media_id=uploaded.media_id,
+            request_fingerprint=request_fingerprint,
+        )
+        await self._record_child(
+            claimed,
+            message_kind="image",
+            result_state="succeeded",
+            safe_response_code=getattr(result, "safe_response_code", None),
+            provider_request_id=getattr(result, "provider_request_id", None),
+            latency_ms=_elapsed_ms(started),
+        )
+
+    async def _claim(self, worker_id: str) -> ClaimedWeComDelivery | None:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            job = await session.scalar(
+                select(WeComDeliveryJobModel)
+                .where(
+                    or_(
+                        and_(
+                            WeComDeliveryJobModel.status == "queued",
+                            WeComDeliveryJobModel.next_attempt_at <= now,
+                        ),
+                        and_(
+                            WeComDeliveryJobModel.status == "running",
+                            or_(
+                                WeComDeliveryJobModel.lease_expires_at.is_(None),
+                                WeComDeliveryJobModel.lease_expires_at <= now,
+                            ),
+                        ),
+                    )
+                )
+                .order_by(WeComDeliveryJobModel.created_at)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            if job is None:
+                return None
+            if job.attempt_count >= self._settings.wecom_max_attempts:
+                job.status = "failed"
+                job.last_error_code = "wecom_max_attempts_exhausted"
+                job.completed_at = now
+                _clear_lease(job)
+                await session.commit()
+                return None
+            lease_token = uuid4()
+            job.status = "running"
+            job.attempt_count += 1
+            job.lease_owner = worker_id
+            job.lease_token = lease_token
+            job.lease_expires_at = now + timedelta(seconds=self._settings.wecom_lease_seconds)
+            job.heartbeat_at = now
+            job.started_at = job.started_at or now
+            job.last_error_code = None
+            await session.commit()
+            return ClaimedWeComDelivery(
+                job_id=job.id,
+                package_id=job.material_package_id,
+                lease_token=lease_token,
+                attempt_number=job.attempt_count,
+                recipient_id=job.recipient_id,
+                mode=job.mode,
+                include_copy=job.include_copy,
+                include_image=job.include_image,
+            )
+
+    async def _record_child(
+        self,
+        claimed: ClaimedWeComDelivery,
+        *,
+        message_kind: str,
+        result_state: str,
+        safe_response_code: str | None,
+        provider_request_id: str | None,
+        latency_ms: int,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            job = await session.scalar(
+                select(WeComDeliveryJobModel)
+                .where(
+                    WeComDeliveryJobModel.id == claimed.job_id,
+                    WeComDeliveryJobModel.lease_token == claimed.lease_token,
+                    WeComDeliveryJobModel.status == "running",
+                    WeComDeliveryJobModel.lease_expires_at >= now,
+                )
+                .with_for_update()
+            )
+            if job is None:
+                raise ConflictError("WeCom delivery lease was lost")
+            request_fingerprint = _child_request_fingerprint(claimed.job_id, message_kind)
+            session.add(
+                WeComDeliveryAttemptModel(
+                    id=uuid4(),
+                    job_id=job.id,
+                    message_kind=message_kind,
+                    attempt_number=claimed.attempt_number,
+                    request_fingerprint=request_fingerprint,
+                    provider_request_id=_bounded(provider_request_id, 200),
+                    safe_response_code=_bounded(safe_response_code, 80),
+                    result_state=result_state,
+                    latency_ms=max(0, latency_ms),
+                )
+            )
+            if message_kind == "text":
+                job.text_status = _DELIVERED
+            else:
+                job.image_status = _DELIVERED
+            await session.commit()
+
+    async def _finish_success(self, claimed: ClaimedWeComDelivery) -> None:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            job = await session.scalar(
+                select(WeComDeliveryJobModel)
+                .where(
+                    WeComDeliveryJobModel.id == claimed.job_id,
+                    WeComDeliveryJobModel.lease_token == claimed.lease_token,
+                )
+                .with_for_update()
+            )
+            if job is None:
+                return
+            if job.text_status in {_DELIVERED, _SKIPPED} and job.image_status in {
+                _DELIVERED,
+                _SKIPPED,
+            }:
+                job.status = "delivered"
+                job.completed_at = now
+            else:
+                job.status = "partial"
+            _clear_lease(job)
+            await session.commit()
+
+    async def _finish_provider_failure(
+        self, claimed: ClaimedWeComDelivery, error: WeComProviderError
+    ) -> None:
+        await self._finish_failure(
+            claimed,
+            error_code=error.code,
+            retryable=bool(error.retryable),
+            unknown=bool(error.unknown),
+            provider_request_id=getattr(error, "provider_request_id", None),
+        )
+
+    async def _finish_local_failure(self, claimed: ClaimedWeComDelivery, error_code: str) -> None:
+        await self._finish_failure(claimed, error_code=error_code, retryable=False, unknown=False)
+
+    async def _finish_failure(
+        self,
+        claimed: ClaimedWeComDelivery,
+        *,
+        error_code: str,
+        retryable: bool,
+        unknown: bool,
+        provider_request_id: str | None = None,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            job = await session.scalar(
+                select(WeComDeliveryJobModel)
+                .where(
+                    WeComDeliveryJobModel.id == claimed.job_id,
+                    WeComDeliveryJobModel.lease_token == claimed.lease_token,
+                )
+                .with_for_update()
+            )
+            if job is None:
+                return
+            kind = _current_message_kind(job)
+            if kind is not None:
+                state = _UNKNOWN if unknown else _FAILED
+                request_fingerprint = _child_request_fingerprint(job.id, kind)
+                session.add(
+                    WeComDeliveryAttemptModel(
+                        id=uuid4(),
+                        job_id=job.id,
+                        message_kind=kind,
+                        attempt_number=claimed.attempt_number,
+                        request_fingerprint=request_fingerprint,
+                        provider_request_id=_bounded(provider_request_id, 200),
+                        safe_response_code=_bounded(error_code, 80),
+                        result_state="unknown" if unknown else "failed",
+                        latency_ms=0,
+                    )
+                )
+                if kind == "text":
+                    job.text_status = state
+                else:
+                    job.image_status = state
+            job.last_error_code = _bounded(error_code, 80)
+            can_retry = (
+                retryable and not unknown and job.attempt_count < self._settings.wecom_max_attempts
+            )
+            if unknown:
+                job.status = "delivery_unknown"
+                job.completed_at = now
+            elif can_retry:
+                job.status = "queued"
+                job.next_attempt_at = now + timedelta(
+                    seconds=min(30 * (2 ** max(0, job.attempt_count - 1)), 300)
+                )
+            else:
+                job.status = "partial" if _has_delivered_child(job) else "failed"
+                job.completed_at = now
+            _clear_lease(job)
+            await session.commit()
+
+    async def _is_delivered(self, claimed: ClaimedWeComDelivery, kind: str) -> bool:
+        async with self._session_factory() as session:
+            job = await session.get(WeComDeliveryJobModel, claimed.job_id)
+            if job is None:
+                return False
+            return (job.text_status if kind == "text" else job.image_status) == _DELIVERED
+
+    async def _heartbeat_loop(
+        self,
+        claimed: ClaimedWeComDelivery,
+        stop: asyncio.Event,
+        lease_lost: asyncio.Event,
+    ) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=self._settings.wecom_heartbeat_seconds)
+            except TimeoutError:
+                now = datetime.now(UTC)
+                try:
+                    async with self._session_factory() as session:
+                        result = cast(
+                            CursorResult[object],
+                            await session.execute(
+                                update(WeComDeliveryJobModel)
+                                .where(
+                                    WeComDeliveryJobModel.id == claimed.job_id,
+                                    WeComDeliveryJobModel.lease_token == claimed.lease_token,
+                                    WeComDeliveryJobModel.status == "running",
+                                    WeComDeliveryJobModel.lease_expires_at >= now,
+                                )
+                                .values(
+                                    heartbeat_at=now,
+                                    lease_expires_at=now
+                                    + timedelta(seconds=self._settings.wecom_lease_seconds),
+                                )
+                            ),
+                        )
+                        if not result.rowcount:
+                            await session.rollback()
+                            lease_lost.set()
+                            return
+                        await session.commit()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    logger.warning(
+                        "wecom_delivery_heartbeat_failed",
+                        delivery_id=str(claimed.job_id),
+                        exception_type=type(error).__name__,
+                    )
+                    lease_lost.set()
+                    return
+
+    @staticmethod
+    def _ensure_lease(lease_lost: asyncio.Event) -> None:
+        if lease_lost.is_set():
+            raise ConflictError("WeCom delivery lease was lost")
+
+
+def _ensure_delivery_configured(settings: Settings) -> None:
+    if not settings.wecom_enabled:
+        raise ConflictError("WeCom delivery is disabled")
+    if not settings.wecom_default_recipient_id:
+        raise ConflictError("WeCom default recipient is not configured")
+
+
+def _clear_lease(job: WeComDeliveryJobModel) -> None:
+    job.lease_owner = None
+    job.lease_token = None
+    job.lease_expires_at = None
+    job.heartbeat_at = None
+
+
+def _current_message_kind(job: WeComDeliveryJobModel) -> str | None:
+    if job.include_copy and job.text_status not in {_DELIVERED, _SKIPPED}:
+        return "text"
+    if job.include_image and job.image_status not in {_DELIVERED, _SKIPPED}:
+        return "image"
+    return None
+
+
+def _has_delivered_child(job: WeComDeliveryJobModel) -> bool:
+    return job.text_status == _DELIVERED or job.image_status == _DELIVERED
+
+
+def _safe_text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _bounded(value: str | None, limit: int) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized[:limit] if normalized else None
+
+
+def _elapsed_ms(started: float) -> int:
+    return int(max(0.0, time.monotonic() - started) * 1000)
+
+
+def _child_request_fingerprint(job_id: UUID, message_kind: str) -> str:
+    """Keep the provider request identity stable across bounded retry attempts."""
+
+    return stable_key("wecom-child-v1", job_id, message_kind)
+
+
+def _validate_wecom_image_body(
+    body: bytes,
+    *,
+    media_type: str,
+    expected_size: int,
+    expected_sha256: str,
+    max_bytes: int,
+) -> None:
+    if len(body) != expected_size or len(body) < WECOM_MIN_IMAGE_BYTES or len(body) > max_bytes:
+        raise ConflictError("material package image size does not match metadata")
+    if image_checksum(body) != expected_sha256:
+        raise ConflictError("material package image checksum does not match metadata")
+    signature = {
+        "image/png": b"\x89PNG\r\n\x1a\n",
+        "image/jpeg": b"\xff\xd8\xff",
+    }.get(media_type)
+    if signature is None or not body.startswith(signature):
+        raise ConflictError("material package image bytes do not match its media type")

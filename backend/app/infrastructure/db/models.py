@@ -2727,3 +2727,118 @@ class MaterialReviewModel(Base):
         ),
         UniqueConstraint("package_id", name="uq_material_reviews_package_id"),
     )
+
+
+class WeComDeliveryJobModel(Base):
+    __tablename__ = "wecom_delivery_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    material_package_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "material_packages.id",
+            name="fk_wecom_delivery_jobs_material_package_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    recipient_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    package_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    include_copy: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    include_image: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    text_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'pending'")
+    )
+    image_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'pending'")
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("mode IN ('test', 'formal')", name="ck_wecom_delivery_jobs_mode"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'partial', 'delivery_unknown', 'delivered', "
+            "'failed', 'cancelled')",
+            name="ck_wecom_delivery_jobs_status",
+        ),
+        CheckConstraint(
+            "text_status IN ('pending', 'running', 'delivered', 'failed', 'unknown', 'skipped')",
+            name="ck_wecom_delivery_jobs_text_status",
+        ),
+        CheckConstraint(
+            "image_status IN ('pending', 'running', 'delivered', 'failed', 'unknown', 'skipped')",
+            name="ck_wecom_delivery_jobs_image_status",
+        ),
+        CheckConstraint("package_version >= 1", name="ck_wecom_delivery_jobs_package_version"),
+        CheckConstraint("attempt_count >= 0", name="ck_wecom_delivery_jobs_attempt_count"),
+        CheckConstraint(
+            "include_copy OR include_image", name="ck_wecom_delivery_jobs_message_kind"
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_wecom_delivery_jobs_request"),
+        Index(
+            "ix_wecom_delivery_jobs_claim",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+        ),
+        Index("ix_wecom_delivery_jobs_package", "material_package_id"),
+    )
+
+
+class WeComDeliveryAttemptModel(Base):
+    __tablename__ = "wecom_delivery_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "wecom_delivery_jobs.id",
+            name="fk_wecom_delivery_attempts_job_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    message_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    safe_response_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    result_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "message_kind IN ('text', 'image')", name="ck_wecom_delivery_attempts_kind"
+        ),
+        CheckConstraint(
+            "result_state IN ('succeeded', 'failed', 'unknown')",
+            name="ck_wecom_delivery_attempts_result",
+        ),
+        CheckConstraint("attempt_number >= 1", name="ck_wecom_delivery_attempts_number"),
+        CheckConstraint("latency_ms >= 0", name="ck_wecom_delivery_attempts_latency"),
+        Index("ix_wecom_delivery_attempts_job", "job_id", "created_at"),
+    )

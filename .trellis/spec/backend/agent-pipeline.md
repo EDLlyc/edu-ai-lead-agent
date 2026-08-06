@@ -618,7 +618,7 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   enqueue-only behavior, accepted-draft gating, accepted-run reconciliation, idempotency races,
   provider rejection, lease-safe persistence, and safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260804_0017`, worker columns, package snapshots, ordered image-reference constraints, and
+  `20260805_0018`, worker columns, package snapshots, ordered image-reference constraints, and
   unique indexes; MinIO
   integration asserts content-addressed immutable storage.
 - Frontend mapper/component tests assert response mapping, queued/failed states, copy/download

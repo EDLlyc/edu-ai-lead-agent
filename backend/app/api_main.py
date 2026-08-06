@@ -22,6 +22,7 @@ from app.api.v1.routes import (
     material_packages,
     sources,
     topic_selection_runs,
+    wecom_deliveries,
 )
 from app.core.config import get_settings
 from app.core.errors import AppError
@@ -102,6 +103,7 @@ app.include_router(topic_selection_runs.router, prefix="/api/v1")
 app.include_router(brand_knowledge.router, prefix="/api/v1")
 app.include_router(copy_generation.router, prefix="/api/v1")
 app.include_router(material_packages.router, prefix="/api/v1")
+app.include_router(wecom_deliveries.router, prefix="/api/v1")
 
 
 @app.middleware("http")

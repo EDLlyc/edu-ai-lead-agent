@@ -3,12 +3,12 @@
 ## Persistence contract
 
 Use PostgreSQL with pgvector, SQLAlchemy 2 async mappings, `asyncpg`, and Alembic. The implemented
-acquisition and factual-governance schema is defined in
+acquisition, factual-governance, material-package, and Enterprise WeChat delivery schema is defined in
 [`models.py`](../../../backend/app/infrastructure/db/models.py), accessed through
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260804_0017`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260805_0018`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -29,9 +29,8 @@ Use distinct models, repositories, and foreign-key paths for:
 Both domains may have vector columns, but a brand chunk cannot satisfy a factual claim's evidence
 foreign key. Prefer database constraints over convention alone where possible.
 
-Implemented evidence, topic-selection, and brand-knowledge tables follow the exact model/migration
-names. Generation artifacts, claims for final copy, and material packages are future-slice entities
-and must not be created speculatively. The detailed governance table, uniqueness,
+Implemented evidence, topic-selection, brand-knowledge, material-package, and delivery tables follow
+the exact model/migration names. The detailed governance table, uniqueness,
 checkpoint, vector, and event-version contracts are in
 [`governance-event-organization.md`](./governance-event-organization.md). The
 config/run/job/score/daily-lock schema, immutable same-day revisions, and event/version composite
@@ -155,7 +154,8 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260804_0017` (adds source-scoped HTTP fallback and topic-priority metadata after immutable
+  `20260805_0018` (adds reviewed material-package delivery jobs and attempts after source-scoped
+  HTTP fallback and topic-priority metadata, immutable
   ordered visual-reference rows and image visual-brief metadata, brand-document OCR metadata,
   source request pacing, freshness policy metadata, and immutable
   same-day topic revisions).

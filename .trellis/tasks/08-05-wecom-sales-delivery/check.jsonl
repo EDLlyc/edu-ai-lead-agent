@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Quality review must enforce backend boundaries and the existing no-social-publishing contract."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migrations, foreign keys, constraints, durable job state and PostgreSQL integration behavior."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review typed error classification, unknown delivery handling and stable API projection."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review that credentials, tokens, user IDs, media IDs and provider bodies are never logged."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the required lint, mypy, unit/contract and migration checks."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review end-to-end data flow from material package through API, database, dispatcher, MinIO and Enterprise WeChat."}
+{"file":".trellis/tasks/08-05-wecom-sales-delivery/research/wecom-official-api.md","reason":"Verify implementation and tests match the official external API rather than an invented protocol."}

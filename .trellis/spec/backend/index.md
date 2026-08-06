@@ -2,11 +2,12 @@
 
 ## Status and source of truth
 
-These documents are the implementation contract for the backend. Four production-shaped
+These documents are the implementation contract for the backend. Five production-shaped
 capabilities now exist: governed acquisition from nine authoritative sources; versioned
 normalization, evidence-bound factual analysis, duplicate relations, and event organization;
-deterministic daily Top 1/`no_topic` selection; and private versioned brand-document ingestion with
-separated hybrid retrieval. PostgreSQL owns durable run/job and derived-artifact
+deterministic daily Top 1/`no_topic` selection; private versioned brand-document ingestion with
+separated hybrid retrieval; and reviewed material-package delivery to one internal Enterprise
+WeChat sales recipient. PostgreSQL owns durable run/job and derived-artifact
 state; MinIO keeps immutable acquisition snapshots; API, schedulers, and workers remain independent
 processes. The contracts remain aligned with the editable
 [`main.tex`](../../../main.tex) source and generated
@@ -27,6 +28,7 @@ tests.
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
 | [Brand Knowledge RAG](./brand-knowledge-rag.md) | Implemented private upload, immutable versions, parser safety, provider-scoped embeddings, retrieval, API, UI, and tests |
+| [WeCom Sales Delivery](./wecom-delivery.md) | Implemented reviewed material-package enqueueing, bounded Enterprise WeChat delivery, leases, idempotency, and safe provider error projection |
 | [Error Handling](./error-handling.md) | Typed failures, API responses, retries, and terminal states |
 | [Logging Guidelines](./logging-guidelines.md) | Structured observability, privacy, and audit fields |
 | [Quality Guidelines](./quality-guidelines.md) | Type, test, migration, security, and contract gates |
@@ -39,9 +41,13 @@ tests.
 - Bind every externally verifiable core claim to stored source evidence.
 - Preserve content-bearing candidates and source occurrences as separate governed concepts.
 - Keep provider calls outside API handlers and database transactions.
+- Keep Enterprise WeChat side effects in the independent dispatcher; the API only enqueues reviewed
+  material-package jobs and the dispatcher never publishes to a social platform.
 - Run deterministic validation before the LLM audit; the audit is not a fact source.
 - Persist idempotency keys, attempts, and stage transitions for every durable job.
 - Treat fetched text and model output as untrusted data, including prompt-injection content.
+- Never persist or expose Enterprise WeChat secrets, access tokens, raw user IDs, temporary media
+  IDs, provider response bodies, or private MinIO object locations.
 - Produce packages for manual copy/download only. Do not implement automated social publishing.
 
 **Documentation language:** English.

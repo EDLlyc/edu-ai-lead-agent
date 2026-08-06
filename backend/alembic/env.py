@@ -17,6 +17,27 @@ if config.config_file_name is not None:
 config.set_main_option("sqlalchemy.url", get_settings().database_url.get_secret_value())
 target_metadata = Base.metadata
 
+_EXTERNAL_CHECKPOINT_TABLES = frozenset(
+    {"checkpoint_migrations", "checkpoints", "checkpoint_blobs", "checkpoint_writes"}
+)
+
+
+def _include_object(
+    object_: object,
+    name: str,
+    type_: str,
+    reflected: bool,
+    compare_to: object | None,
+) -> bool:
+    """Keep LangGraph-managed checkpoint tables out of ORM schema diffs."""
+
+    if type_ == "table" and name in _EXTERNAL_CHECKPOINT_TABLES:
+        return False
+    table_name = getattr(getattr(object_, "table", None), "name", None)
+    if type_ == "index" and table_name in _EXTERNAL_CHECKPOINT_TABLES:
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -25,13 +46,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=_include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

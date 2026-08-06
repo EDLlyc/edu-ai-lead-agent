@@ -53,7 +53,8 @@ backend/
 │   ├── governance_scheduler_main.py
 │   ├── governance_worker_main.py
 │   ├── content_scheduler_main.py
-│   └── content_worker_main.py
+│   ├── content_worker_main.py
+│   └── wecom_dispatcher_main.py
 └── tests/
     ├── contract/
     ├── integration/
@@ -169,6 +170,21 @@ See [`topic-selection.md`](./topic-selection.md) for the executable cross-layer 
   starving the other.
 
 See [`brand-knowledge-rag.md`](./brand-knowledge-rag.md) for the executable cross-layer contract.
+
+## Enterprise WeChat delivery ownership
+
+- `api/v1/routes/wecom_deliveries.py` exposes the fixed internal `default` recipient, validates
+  package eligibility through the application service, and only creates or projects durable jobs.
+- `application/services/wecom_delivery.py` owns approval checks, stable fingerprints, leases,
+  child-message state, retry rules, and the text/image ordering contract.
+- `application/ports/wecom.py` is the provider-neutral boundary for token, media-upload, and
+  message-send results. It must not expose raw provider bodies or credentials.
+- `infrastructure/wecom/client.py` is the allowlisted HTTPS adapter for the official Enterprise
+  WeChat endpoints. It keeps tokens and temporary media IDs in process memory only.
+- `wecom_dispatcher_main.py` is an independent opt-in process. It claims jobs with leases and
+  performs provider calls outside database transactions. It must remain disabled by default.
+
+See [`wecom-delivery.md`](./wecom-delivery.md) for the executable API, database, and retry contract.
 
 ## Naming conventions
 

@@ -471,6 +471,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/material-packages/{package_id}/wecom-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Wecom Delivery */
+        post: operations["create_wecom_delivery_api_v1_material_packages__package_id__wecom_deliveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources": {
         parameters: {
             query?: never;
@@ -531,6 +548,57 @@ export interface paths {
         };
         /** Read Topic Selection Scores */
         get: operations["read_topic_selection_scores_api_v1_topic_selection_runs__run_id__scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wecom-deliveries/{delivery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Wecom Delivery */
+        get: operations["read_wecom_delivery_api_v1_wecom_deliveries__delivery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wecom-deliveries/{delivery_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Wecom Delivery Route */
+        post: operations["retry_wecom_delivery_route_api_v1_wecom_deliveries__delivery_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wecom/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Wecom Recipients */
+        get: operations["list_wecom_recipients_api_v1_wecom_recipients_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2695,6 +2763,99 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** WeComDeliveryCreateRequest */
+        WeComDeliveryCreateRequest: {
+            /**
+             * Include Copy
+             * @default true
+             */
+            include_copy: boolean;
+            /**
+             * Include Image
+             * @default true
+             */
+            include_image: boolean;
+            /**
+             * Mode
+             * @default formal
+             * @enum {string}
+             */
+            mode: "test" | "formal";
+            /** Recipient Id */
+            recipient_id: string;
+        };
+        /** WeComDeliveryResponse */
+        WeComDeliveryResponse: {
+            /** Attempt Count */
+            attempt_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Image Status
+             * @enum {string}
+             */
+            image_status: "pending" | "running" | "delivered" | "failed" | "unknown" | "skipped";
+            /** Include Copy */
+            include_copy: boolean;
+            /** Include Image */
+            include_image: boolean;
+            /** Last Error Code */
+            last_error_code: string | null;
+            /**
+             * Material Package Id
+             * Format: uuid
+             */
+            material_package_id: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "test" | "formal";
+            /** Package Version */
+            package_version: number;
+            /** Recipient Id */
+            recipient_id: string;
+            /** Retry Url */
+            retry_url: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "partial" | "delivery_unknown" | "delivered" | "failed" | "cancelled";
+            /**
+             * Text Status
+             * @enum {string}
+             */
+            text_status: "pending" | "running" | "delivered" | "failed" | "unknown" | "skipped";
+        };
+        /** WeComRecipientListResponse */
+        WeComRecipientListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["WeComRecipientResponse"][];
+        };
+        /** WeComRecipientResponse */
+        WeComRecipientResponse: {
+            /** Display Name */
+            display_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3623,6 +3784,41 @@ export interface operations {
             };
         };
     };
+    create_wecom_delivery_api_v1_material_packages__package_id__wecom_deliveries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeComDeliveryCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeComDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sources_api_v1_sources_get: {
         parameters: {
             query?: never;
@@ -3734,6 +3930,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_wecom_delivery_api_v1_wecom_deliveries__delivery_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeComDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_wecom_delivery_route_api_v1_wecom_deliveries__delivery_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeComDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_wecom_recipients_api_v1_wecom_recipients_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeComRecipientListResponse"];
                 };
             };
         };

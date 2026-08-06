@@ -88,6 +88,25 @@ class Settings(BaseSettings):
     content_scoring_version: str = "scoring-v1-preview.4-science-policy-priority"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str = "science-policy-priority-v2"
+
+    wecom_enabled: bool = False
+    wecom_api_base_url: str = "https://qyapi.weixin.qq.com"
+    wecom_corp_id: str = ""
+    wecom_agent_id: int | None = Field(default=None, ge=1)
+    wecom_corp_secret: SecretStr | None = None
+    wecom_default_recipient_id: str = ""
+    wecom_default_recipient_name: str = "销售"
+    wecom_auto_delivery_enabled: bool = False
+    wecom_require_review_before_send: bool = True
+    wecom_poll_seconds: float = Field(default=2.0, gt=0, le=300)
+    wecom_worker_concurrency: int = Field(default=1, ge=1, le=8)
+    wecom_lease_seconds: int = Field(default=120, ge=30, le=3600)
+    wecom_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
+    wecom_max_attempts: int = Field(default=3, ge=1, le=10)
+    wecom_request_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    wecom_max_image_bytes: int = Field(default=10 * 1024 * 1024, ge=6, le=10 * 1024 * 1024)
+    wecom_max_text_bytes: int = Field(default=2048, ge=1, le=2048)
+
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
         ge=64 * 1024,
@@ -181,6 +200,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        env_ignore_empty=True,
     )
 
     @model_validator(mode="after")
@@ -191,6 +211,8 @@ class Settings(BaseSettings):
             raise ValueError("governance heartbeat must be shorter than the lease")
         if self.content_heartbeat_seconds >= self.content_lease_seconds:
             raise ValueError("content heartbeat must be shorter than the lease")
+        if self.wecom_heartbeat_seconds >= self.wecom_lease_seconds:
+            raise ValueError("WeCom heartbeat must be shorter than the lease")
         if self.brand_chunk_overlap_characters >= self.brand_chunk_characters:
             raise ValueError("brand chunk overlap must be shorter than the chunk")
         if (
@@ -214,6 +236,34 @@ class Settings(BaseSettings):
             raise ValueError("daily scan limit must cover the accepted item limit")
         if self.content_freshness_window_days < 1:
             raise ValueError("content freshness window must be positive")
+        parsed_wecom_base_url = urlsplit(self.wecom_api_base_url.strip())
+        if (
+            parsed_wecom_base_url.scheme != "https"
+            or parsed_wecom_base_url.hostname != "qyapi.weixin.qq.com"
+            or parsed_wecom_base_url.port not in {None, 443}
+            or parsed_wecom_base_url.path not in {"", "/"}
+            or parsed_wecom_base_url.username is not None
+            or parsed_wecom_base_url.password is not None
+            or parsed_wecom_base_url.query
+            or parsed_wecom_base_url.fragment
+        ):
+            raise ValueError("WeCom API base URL must be exactly https://qyapi.weixin.qq.com")
+        if self.wecom_enabled:
+            if any(
+                not value.strip() or any(character.isspace() for character in value)
+                for value in (self.wecom_corp_id, self.wecom_default_recipient_id)
+            ):
+                raise ValueError("WeCom CorpID and default recipient must be non-blank identifiers")
+            if (
+                self.wecom_agent_id is None
+                or self.wecom_corp_secret is None
+                or not self.wecom_corp_secret.get_secret_value().strip()
+            ):
+                raise ValueError("enabled WeCom delivery requires AgentID and CorpSecret")
+        if self.wecom_auto_delivery_enabled and not self.wecom_enabled:
+            raise ValueError("automatic WeCom delivery requires WeCom to be enabled")
+        if not self.wecom_default_recipient_name.strip():
+            raise ValueError("WeCom default recipient name must be non-blank")
         if self.ai_total_timeout_seconds < self.ai_read_timeout_seconds:
             raise ValueError("AI total timeout must cover the read timeout")
         if self.ai_max_tokens_per_run < self.ai_max_output_tokens:
