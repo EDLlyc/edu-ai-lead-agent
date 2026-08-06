@@ -395,3 +395,24 @@ Accepted DNS-validated public Comfly output URLs, normalized generic CDN image h
 ### Status
 
 [OK] **Completed**
+
+
+## Session 18: Run and repair full automated pipeline acceptance
+
+**Date**: 2026-08-06
+**Task**: Run and repair full automated pipeline acceptance
+**Branch**: `main`
+
+### Summary
+
+Ran one real isolated content pipeline through acquisition, governance, science-policy Top 1 selection, Zhipu copy/audit, Comfly image generation, private MinIO package storage, and API verification. Confirmed 9/9 acquisition jobs, governance partial success with 17 usable and 4 review outcomes, accepted copy, awaiting-manual-use package, 1024x1024 PNG, and zero WeCom delivery jobs. Fixed preview manifest audit projection to map accepted/rejected booleans correctly, added regression coverage and backend spec guidance. Ruff, mypy, 458 backend tests, doctor, health, and diff checks passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b8adb94` | (see git log) |
+
+### Status
+
+[OK] **Completed**
