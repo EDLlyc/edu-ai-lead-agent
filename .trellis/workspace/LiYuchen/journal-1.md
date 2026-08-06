@@ -459,3 +459,24 @@ Implemented the official Enterprise WeChat group-webhook provider behind the dur
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: Make Moments copy limits advisory
+
+**Date**: 2026-08-06
+**Task**: Make Moments copy limits advisory
+**Branch**: `main`
+
+### Summary
+
+Updated Moments copy length and emoji checks to record warnings instead of blocking. Prompts explain the 300-500 Hanzi and 2-5 emoji targets and advisory behavior; audit normalization prevents length/emoji-only rejection or repair. Added boundary, sequence, prompt, and continuation tests; updated versions and backend spec. Targeted tests, Ruff, mypy, format check, and backend quality gate passed. Excluded unrelated .agents and reports changes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c455f28` | (see git log) |
+
+### Status
+
+[OK] **Completed**
