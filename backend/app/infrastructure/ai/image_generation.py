@@ -62,6 +62,7 @@ _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
 _COMFLY_IMAGE_SIZE = "1024x1024"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+_GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
 
 
 def _request_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
@@ -417,8 +418,6 @@ class OpenAICompatibleImageGenerator:
         max_request_bytes: int = 8 * 1024 * 1024,
         max_provider_response_bytes: int = 32 * 1024 * 1024,
         max_reference_images: int = 3,
-        allowed_output_hosts: frozenset[str] | None = None,
-        allow_public_output_urls: bool = False,
         resolver: Resolver = system_resolver,
         output_host_observer: OutputHostObserver | None = None,
         sleep: _Sleep = asyncio.sleep,
@@ -461,20 +460,6 @@ class OpenAICompatibleImageGenerator:
             or any(character.isspace() for character in normalized_model)
         ):
             raise ValueError("Comfly image model identifier is invalid")
-        output_hosts = frozenset(
-            host.strip().lower().rstrip(".")
-            for host in (allowed_output_hosts or frozenset({parsed.hostname.lower()}))
-            if host.strip()
-        )
-        if not output_hosts or any(
-            len(host) > 253
-            or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789.-" for character in host)
-            or host.startswith(".")
-            or host.endswith(".")
-            or ".." in host
-            for host in output_hosts
-        ):
-            raise ValueError("Comfly output hosts must be bare DNS hostnames")
         self._client = client
         self._base_url = normalized_base_url
         self._api_key = SecretStr(key)
@@ -488,8 +473,6 @@ class OpenAICompatibleImageGenerator:
         self._max_request_bytes = max_request_bytes
         self._max_provider_response_bytes = max_provider_response_bytes
         self._max_reference_images = max_reference_images
-        self._allowed_output_hosts = output_hosts
-        self._allow_public_output_urls = allow_public_output_urls
         self._resolver = resolver
         self._output_host_observer = output_host_observer
         self._sleep = sleep
@@ -685,13 +668,13 @@ class OpenAICompatibleImageGenerator:
                 raise ImageOutputValidationError()
             body = base64.b64decode(value, validate=True)
         except (binascii.Error, ValueError, TypeError):
-            raise ImageOutputValidationError() from None
+            raise ImageOutputValidationError("image_output_representation_invalid") from None
         if not body or len(body) > self._max_download_bytes:
-            raise ImageOutputValidationError()
+            raise ImageOutputValidationError("image_download_too_large")
         media_type = _detect_image_media_type(body)
         width, height = _image_dimensions(body, media_type)
         if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
-            raise ImageOutputValidationError()
+            raise ImageOutputValidationError("image_dimensions_invalid")
         return body, media_type, width, height
 
     async def _download_image(self, url: str) -> tuple[bytes, str, int, int]:
@@ -700,7 +683,7 @@ class OpenAICompatibleImageGenerator:
             hostname = parsed.hostname
             port = parsed.port
         except ValueError:
-            raise ImageOutputValidationError() from None
+            raise ImageOutputValidationError("image_download_url_invalid") from None
         if (
             parsed.scheme != "https"
             or hostname is None
@@ -710,28 +693,24 @@ class OpenAICompatibleImageGenerator:
             or "#" in url
             or any(character.isspace() for character in url)
         ):
-            raise ImageOutputValidationError()
-        normalized_host = hostname.lower()
+            raise ImageOutputValidationError("image_download_url_invalid")
+        normalized_host = _normalize_output_hostname(hostname)
+        if normalized_host is None:
+            raise ImageOutputValidationError("image_download_url_invalid")
         if self._output_host_observer is not None:
-            observed_host = _normalize_output_hostname(hostname)
-            if observed_host is None:
-                raise ImageOutputValidationError()
-            if not self._output_host_observer(observed_host):
+            if not self._output_host_observer(normalized_host):
                 # The local live-smoke can stop here after safely learning only the hostname.
-                raise ImageOutputValidationError()
-        if normalized_host not in self._allowed_output_hosts:
-            if not self._allow_public_output_urls:
-                raise ImageOutputValidationError()
+                raise ImageOutputValidationError("image_download_url_invalid")
+        try:
+            address = ipaddress.ip_address(normalized_host)
+        except ValueError:
             try:
-                address = ipaddress.ip_address(normalized_host)
-            except ValueError:
-                try:
-                    await validate_public_resolution(normalized_host, self._resolver)
-                except PolicyRejectedError:
-                    raise ImageOutputValidationError() from None
-            else:
-                if address in METADATA_ADDRESSES or not address.is_global:
-                    raise ImageOutputValidationError()
+                await validate_public_resolution(normalized_host, self._resolver)
+            except PolicyRejectedError:
+                raise ImageOutputValidationError("image_download_address_invalid") from None
+        else:
+            if address in METADATA_ADDRESSES or not address.is_global:
+                raise ImageOutputValidationError("image_download_address_invalid")
         for attempt in range(self._max_attempts):
             try:
                 async with self._client.stream(
@@ -748,22 +727,27 @@ class OpenAICompatibleImageGenerator:
                             raise ProviderRateLimitError()
                         if response.status_code >= 500:
                             raise ProviderUnavailableError()
-                        raise ImageOutputValidationError()
+                        raise ImageOutputValidationError("image_download_url_invalid")
                     content_length = response.headers.get("content-length")
                     if content_length is not None:
                         try:
                             if int(content_length) > self._max_download_bytes:
-                                raise ImageOutputValidationError()
+                                raise ImageOutputValidationError("image_download_too_large")
                         except ValueError:
-                            raise ImageOutputValidationError() from None
+                            raise ImageOutputValidationError(
+                                "image_download_content_type_invalid"
+                            ) from None
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-                    if content_type not in _ALLOWED_MEDIA_TYPES:
-                        raise ImageOutputValidationError()
+                    if (
+                        content_type not in _ALLOWED_MEDIA_TYPES
+                        and content_type not in _GENERIC_DOWNLOAD_MEDIA_TYPES
+                    ):
+                        raise ImageOutputValidationError("image_download_content_type_invalid")
                     body, too_large = await _read_bounded_response(
                         response, self._max_download_bytes
                     )
                     if too_large:
-                        raise ImageOutputValidationError()
+                        raise ImageOutputValidationError("image_download_too_large")
             except httpx.TimeoutException:
                 if attempt + 1 >= self._max_attempts:
                     raise ImageProviderTimeoutError() from None
@@ -775,11 +759,11 @@ class OpenAICompatibleImageGenerator:
                 await self._sleep(min(2.0**attempt, 8.0))
                 continue
             detected_type = _detect_image_media_type(body)
-            if detected_type != content_type:
-                raise ImageOutputValidationError()
+            if content_type in _ALLOWED_MEDIA_TYPES and detected_type != content_type:
+                raise ImageOutputValidationError("image_raster_signature_invalid")
             width, height = _image_dimensions(body, detected_type)
             if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
-                raise ImageOutputValidationError()
+                raise ImageOutputValidationError("image_dimensions_invalid")
             return body, detected_type, width, height
         raise ProviderUnavailableError()
 
@@ -929,7 +913,7 @@ def _detect_image_media_type(body: bytes) -> str:
         return "image/jpeg"
     if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
         return "image/webp"
-    raise ImageOutputValidationError()
+    raise ImageOutputValidationError("image_raster_signature_invalid")
 
 
 def _first_value(payload: dict[str, Any], *keys: str) -> Any:
@@ -1004,18 +988,18 @@ def _raise_for_quota_response(response: httpx.Response) -> None:
 def _image_dimensions(body: bytes, media_type: str) -> tuple[int, int]:
     if media_type == "image/png":
         if len(body) < 24 or body[:8] != b"\x89PNG\r\n\x1a\n":
-            raise ImageOutputValidationError()
+            raise ImageOutputValidationError("image_raster_signature_invalid")
         return struct.unpack(">II", body[16:24])
     if media_type == "image/webp":
         if len(body) < 30 or body[:4] != b"RIFF" or body[8:12] != b"WEBP":
-            raise ImageOutputValidationError()
+            raise ImageOutputValidationError("image_raster_signature_invalid")
         if body[12:16] == b"VP8X":
             return 1 + int.from_bytes(body[24:27], "little"), 1 + int.from_bytes(
                 body[27:30], "little"
             )
     if media_type == "image/jpeg":
         return _jpeg_dimensions(body)
-    raise ImageOutputValidationError()
+    raise ImageOutputValidationError("image_raster_signature_invalid")
 
 
 def _jpeg_dimensions(body: bytes) -> tuple[int, int]:
@@ -1033,7 +1017,7 @@ def _jpeg_dimensions(body: bytes) -> tuple[int, int]:
                 body[index + 3 : index + 5], "big"
             )
         index += length
-    raise ImageOutputValidationError()
+    raise ImageOutputValidationError("image_raster_signature_invalid")
 
 
 def _solid_png(seed: str, prompt: str) -> bytes:

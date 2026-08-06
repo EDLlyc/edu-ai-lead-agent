@@ -23,9 +23,10 @@ from app.application.services.material_package import (
     MaterialPackageResult,
     _prepare_image_input,
     enqueue_material_package,
+    retry_material_package_image,
 )
 from app.core.config import Settings
-from app.core.errors import ConflictError, ImageProviderRejectedError
+from app.core.errors import ConflictError, ImageOutputValidationError, ImageProviderRejectedError
 from app.domain.visual_brief import AcceptedVisualContext, VisualBrief, build_visual_brief
 from app.infrastructure.ai.image_generation import _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
@@ -434,6 +435,16 @@ class _RejectingImageGenerator:
         raise ImageProviderRejectedError()
 
 
+class _InvalidOutputImageGenerator:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        del request
+        self.calls += 1
+        raise ImageOutputValidationError("image_download_content_type_invalid")
+
+
 class _RecordingImageStore:
     def __init__(self) -> None:
         self.calls = 0
@@ -468,6 +479,18 @@ class _QualityAttemptSession:
 
     async def get(self, _model: object, _entity_id: object) -> SimpleNamespace:
         return self.package
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+class _RetrySession:
+    def __init__(self, package: SimpleNamespace, image: SimpleNamespace) -> None:
+        self._results = [package, image]
+        self.commits = 0
+
+    async def scalar(self, _statement: object) -> SimpleNamespace | None:
+        return self._results.pop(0) if self._results else None
 
     async def commit(self) -> None:
         self.commits += 1
@@ -656,6 +679,110 @@ async def test_material_worker_provider_rejection_is_review_required_and_never_a
             "review_required": True,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_material_worker_persists_a_safe_adapter_output_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _InvalidOutputImageGenerator()
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+    claimed = _claimed_material_package()
+    finished: list[dict[str, object]] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_finish(
+        value: ClaimedMaterialPackage,
+        *,
+        error_code: str,
+        retryable: bool,
+        review_required: bool,
+        validation_snapshot: dict[str, object] | None = None,
+        audit_snapshot: dict[str, object] | None = None,
+    ) -> None:
+        del audit_snapshot
+        assert value == claimed
+        finished.append(
+            {
+                "error_code": error_code,
+                "retryable": retryable,
+                "review_required": review_required,
+                "validation_snapshot": validation_snapshot,
+            }
+        )
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_finish_attempt", fake_finish)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert finished == [
+        {
+            "error_code": "image_output_invalid",
+            "retryable": False,
+            "review_required": True,
+            "validation_snapshot": {
+                "version": "image-validation-v1",
+                "configured": True,
+                "passed": False,
+                "stage": "provider_output",
+                "issue_codes": ["image_download_content_type_invalid"],
+                "provider": "fake",
+                "model": "gpt-image-2",
+                "media_type": None,
+                "width": None,
+                "height": None,
+                "byte_size": None,
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retry_material_package_image_requeues_only_the_existing_terminal_image() -> None:
+    package_id = uuid4()
+    image_id = uuid4()
+    package = SimpleNamespace(id=package_id, image_artifact_id=image_id, status="failed")
+    image = SimpleNamespace(
+        id=image_id,
+        status="review_required",
+        attempt_count=1,
+        error_code="image_output_invalid",
+        available_at=datetime.now(UTC),
+        completed_at=datetime.now(UTC),
+        lease_owner="previous-worker",
+        lease_token=uuid4(),
+        lease_expires_at=datetime.now(UTC),
+        heartbeat_at=datetime.now(UTC),
+    )
+    session = _RetrySession(package, image)
+
+    result = await retry_material_package_image(
+        session=session,  # type: ignore[arg-type]
+        package_id=package_id,
+        max_attempts=3,
+    )
+
+    assert result.package is package
+    assert result.image is image
+    assert package.status == "queued"
+    assert image.status == "queued"
+    assert image.error_code is None
+    assert image.completed_at is None
+    assert image.lease_owner is None
+    assert image.lease_token is None
+    assert image.lease_expires_at is None
+    assert image.heartbeat_at is None
+    assert session.commits == 1
 
 
 @pytest.mark.asyncio

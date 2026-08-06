@@ -1,0 +1,4 @@
+{"file":"backend/app/infrastructure/ai/image_generation.py","reason":"Review SSRF, DNS, redirect, byte-bound, raster-signature, dimension, and media-type behavior."}
+{"file":"backend/app/application/services/material_package.py","reason":"Verify durable snapshots contain only safe codes and terminal/retry states remain correct."}
+{"file":"backend/tests/unit/test_image_generation.py","reason":"Require regressions for CDN header variance and unsafe output rejection."}
+{"file":".trellis/tasks/08-06-image-generation-reliability/design.md","reason":"Check the implementation against the approved security and rollout boundaries."}

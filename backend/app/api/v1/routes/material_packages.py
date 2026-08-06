@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_session
 from app.application.services.material_package import (
     enqueue_material_package,
+    retry_material_package_image,
     review_material_package,
 )
 from app.core.errors import ConflictError, NotFoundError
@@ -124,6 +125,33 @@ async def review_material_package_route(
     if image is None:
         raise NotFoundError("image artifact")
     return _detail_response(package, image)
+
+
+@router.post(
+    "/material-packages/{package_id}/image/retry",
+    response_model=MaterialPackageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_material_package_image_route(
+    package_id: UUID,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MaterialPackageResponse:
+    settings = request.app.state.settings
+    if (
+        not settings.content_enabled
+        or not settings.image_enabled
+        or settings.image_provider_mode == "disabled"
+    ):
+        raise ConflictError("image generation is disabled or not configured")
+    result = await retry_material_package_image(
+        session=session,
+        package_id=package_id,
+        max_attempts=settings.image_max_attempts,
+    )
+    response.headers["Location"] = f"/api/v1/material-packages/{result.package.id}"
+    return _detail_response(result.package, result.image)
 
 
 @router.get(

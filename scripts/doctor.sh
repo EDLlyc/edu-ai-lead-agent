@@ -75,6 +75,19 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
+docker compose --profile content config --format json | \
+  conda run --no-capture-output --name "$conda_env_name" python -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
+names = ("acquisition-api", "content-worker")
+values = [services[name].get("environment", {}).get("IMAGE_MAX_ATTEMPTS") for name in names]
+if any(value in (None, "") for value in values) or len(set(values)) != 1:
+    raise SystemExit("acquisition-api and content-worker must share IMAGE_MAX_ATTEMPTS")
+' >/dev/null || fail "Image retry attempt limit is not shared by API and content worker"
+pass "Image retry attempt limit is shared by API and content worker"
+
 require_healthy_service postgres
 require_healthy_service minio
 

@@ -7121,6 +7121,49 @@
         ]
       }
     },
+    "/api/v1/material-packages/{package_id}/image/retry": {
+      "post": {
+        "operationId": "retry_material_package_image_route_api_v1_material_packages__package_id__image_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "package_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Package Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Material Package Image Route",
+        "tags": [
+          "material-packages"
+        ]
+      }
+    },
     "/api/v1/material-packages/{package_id}/review": {
       "post": {
         "operationId": "review_material_package_route_api_v1_material_packages__package_id__review_post",

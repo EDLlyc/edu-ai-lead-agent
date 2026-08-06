@@ -148,8 +148,6 @@ class Settings(BaseSettings):
     toapis_api_key: SecretStr | None = None
     comfly_base_url: str = "https://ai.comfly.org"
     comfly_api_key: SecretStr | None = None
-    comfly_output_hosts: str = ""
-    comfly_allow_public_output_urls: bool = False
     image_model: str = "gpt-image-2"
     image_prompt_version: str = "image-prompt-v1"
     image_pipeline_version: str = "image-pipeline-v1"
@@ -346,21 +344,6 @@ class Settings(BaseSettings):
                 or any(character.isspace() for character in base_url)
             ):
                 raise ValueError("Comfly base URL must be an HTTPS origin without credentials")
-            for host in self.comfly_output_hosts.split(","):
-                normalized_host = host.strip().lower()
-                if not normalized_host:
-                    continue
-                if (
-                    len(normalized_host) > 253
-                    or any(
-                        character not in "abcdefghijklmnopqrstuvwxyz0123456789.-"
-                        for character in normalized_host
-                    )
-                    or normalized_host.startswith(".")
-                    or normalized_host.endswith(".")
-                    or ".." in normalized_host
-                ):
-                    raise ValueError("Comfly output hosts must be bare DNS hostnames")
         if not self.image_model.strip() or any(ch.isspace() for ch in self.image_model):
             raise ValueError("image model identifier must be non-blank and contain no whitespace")
         if not self.brand_ocr_model.strip() or any(

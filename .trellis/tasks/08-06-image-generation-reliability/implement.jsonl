@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Preserve the accepted-copy to private-image to material-package boundary and manual-delivery policy."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Keep bounded typed failures, retry classification, redaction, and review-required terminal behavior."}
+{"file":"backend/app/infrastructure/ai/image_generation.py","reason":"Implement safe Comfly output normalization and bounded validation diagnostics at the provider boundary."}
+{"file":"backend/app/application/services/material_package.py","reason":"Persist only safe image-attempt diagnostics and preserve package state transitions."}
+{"file":"backend/tests/unit/test_image_generation.py","reason":"Cover generic content types, raster validation, and no leakage from Comfly responses."}

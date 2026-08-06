@@ -374,6 +374,44 @@ async def create_material_package(
     )
 
 
+async def retry_material_package_image(
+    *,
+    session: AsyncSession,
+    package_id: UUID,
+    max_attempts: int,
+) -> MaterialPackageResult:
+    """Explicitly requeue one terminal image without changing its accepted copy version."""
+
+    if max_attempts < 1:
+        raise ValueError("image retry limit must be positive")
+    package = await session.scalar(
+        select(MaterialPackageModel).where(MaterialPackageModel.id == package_id).with_for_update()
+    )
+    if package is None:
+        raise NotFoundError("material package")
+    image = await session.scalar(
+        select(ImageArtifactModel)
+        .where(ImageArtifactModel.id == package.image_artifact_id)
+        .with_for_update()
+    )
+    if image is None:
+        raise ConflictError("material package image is unavailable")
+    if package.status != "failed" or image.status not in {"failed", "review_required"}:
+        raise ConflictError("material package image is not eligible for retry")
+    if image.attempt_count >= max_attempts:
+        raise ConflictError("material package image retry limit is exhausted")
+
+    now = datetime.now(UTC)
+    image.status = "queued"
+    image.error_code = None
+    image.available_at = now
+    image.completed_at = None
+    _clear_image_lease(image)
+    package.status = "queued"
+    await session.commit()
+    return MaterialPackageResult(package=package, image=image)
+
+
 async def _read_reference_asset(reference_asset: str | None) -> bytes | None:
     if reference_asset is None:
         return None
@@ -859,6 +897,12 @@ class MaterialPackageExecutor:
         except asyncio.CancelledError:
             raise
         except AppError as error:
+            if isinstance(error, ImageOutputValidationError) and not validation_snapshot:
+                validation_snapshot = _image_output_error_snapshot(
+                    error,
+                    provider=claimed.provider,
+                    model=claimed.model,
+                )
             await self._finish_attempt(
                 claimed,
                 error_code=error.code,
@@ -1413,6 +1457,29 @@ def _image_validation_snapshot(
         "width": getattr(result, "width", None),
         "height": getattr(result, "height", None),
         "byte_size": getattr(result, "byte_size", None),
+    }
+
+
+def _image_output_error_snapshot(
+    error: ImageOutputValidationError,
+    *,
+    provider: str,
+    model: str,
+) -> dict[str, Any]:
+    """Project one adapter validation reason without retaining provider-controlled data."""
+
+    return {
+        "version": "image-validation-v1",
+        "configured": True,
+        "passed": False,
+        "stage": "provider_output",
+        "issue_codes": [error.reason],
+        "provider": provider,
+        "model": model,
+        "media_type": None,
+        "width": None,
+        "height": None,
+        "byte_size": None,
     }
 
 

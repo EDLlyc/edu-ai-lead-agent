@@ -441,9 +441,11 @@ deterministic validation as if it were a network timeout.
 - Response: accept exactly one synchronous `data[].url` or `data[].b64_json`. If the gateway returns
   a safe task identifier and a pending status, poll `GET /v1/images/tasks/{task_id}` after the
   configured initial delay and interval, bounded by the provider window.
-- Download: URL results require HTTPS, no redirects, a configured trusted hostname, an allowlisted
-  media type, bounded bytes, and exactly 1024x1024 dimensions. `COMFLY_OUTPUT_HOSTS` may explicitly
-  add trusted CDN hosts; blank means the API host only.
+- Download: URL results require HTTPS, no redirects, bounded bytes, and exactly 1024x1024
+  dimensions. Every literal or DNS-resolved output address must be globally routable; private,
+  loopback, link-local, metadata, reserved, and Fake-IP addresses are rejected before the CDN
+  request. A generic or absent CDN media-type header is accepted only after PNG/JPEG/WebP signature
+  and dimensions verify; an explicit supported header must agree with the verified bytes.
 - Storage: sanitized content-addressed MinIO key, private access, with sha256 checksum.
 - DB artifact: `image_artifacts` row with provider/model/prompt version, dimensions, safe provider
   ID, object identity, attempts, status, and request fingerprint.
@@ -457,11 +459,12 @@ deterministic validation as if it were a network timeout.
   transient — they must not enter logs, APIs, or durable job metadata. Persist only safe task IDs,
   provider/model/version identity, checksums, attempts, dimensions, status, and typed error codes.
 - Validate prompt/rules before the call and returned content type/size/dimensions after the call:
-  allowlisted raster content type, bounded bytes (`image_max_download_bytes`, default 20 MiB), and
-  exactly 1024x1024 before private MinIO storage.
+  bounded bytes (`image_max_download_bytes`, default 20 MiB), a verified PNG/JPEG/WebP raster, and
+  exactly 1024x1024 before private MinIO storage. `application/octet-stream`,
+  `binary/octet-stream`, or absent CDN headers are advisory rather than sufficient proof.
 - Config (`Settings`): `image_enabled` (default false, fail-closed), `image_provider_mode`
   (`disabled`/`fake`/`toapis`/`comfly`), `toapis_base_url`, `toapis_api_key`, `comfly_base_url`,
-  `comfly_api_key`, `comfly_output_hosts`, `image_model`, `image_prompt_version`,
+  `comfly_api_key`, `image_model`, `image_prompt_version`,
   `image_pipeline_version`, `image_max_attempts` (default 3, 1-6), `image_poll_initial_seconds`,
   `image_poll_interval_seconds`, `image_provider_timeout_seconds` (default 120s),
   `image_provider_window_seconds` (default 180s, 1-180), `image_max_download_bytes`
@@ -479,8 +482,8 @@ deterministic validation as if it were a network timeout.
 |---|---|
 | Retry/replay/concurrency on same fingerprint | At most one successful image artifact |
 | Unsafe prompt or provider output | Typed `review_required`/`failed` state before package readiness |
-| Provider returns non-HTTPS URL, redirect, or wrong host | Reject download, fail the attempt |
-| Returned content type not allowlisted / size or dimensions wrong | Reject, do not store |
+| Provider returns non-HTTPS URL, redirect, or a non-public DNS/literal address | Reject download, fail the attempt |
+| Returned bytes are not PNG/JPEG/WebP, explicit media header disagrees, or size/dimensions are wrong | Reject, do not store |
 | Comfly/ToAPIs JSON signals quota or balance exhaustion | Raise non-retryable `ImageProviderQuotaError`; persist only the typed error code, never the response body |
 | 401/403 or an explicit invalid-token response | Raise non-retryable provider authentication error; do not retry |
 | 429 or bounded transient 5xx | Retry within the configured attempt/window bounds; stop with a typed rate-limit/unavailable error |
@@ -530,7 +533,7 @@ payload = {
     "model": "gpt-image-2", "prompt": prompt, "size": "1024x1024", "aspect_ratio": "1:1",
     "image": [bounded_identity_data_url, bounded_action_data_url],
 }
-image_bytes = await _download(result_url)  # configured HTTPS host only, no redirect
+image_bytes = await _download(result_url)  # public-address HTTPS only, no redirect
 artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
                          width=1024, height=1024)  # no URL persisted
 ```
@@ -556,6 +559,10 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   package with `download_kind="material_package_json"`; it never exposes MinIO bucket/object keys.
 - `GET /api/v1/material-packages/{package_id}/image` streams only a succeeded image through a
   relative API URL. `POST .../{package_id}/review` records an internal approval/rejection.
+- `POST /api/v1/material-packages/{package_id}/image/retry` returns HTTP 202 only for a failed
+  package whose existing image is `failed` or `review_required` and has attempts remaining. It
+  requeues that same image artifact and request fingerprint; it never regenerates the topic, copy,
+  sources, audit, or an Enterprise WeChat delivery.
 - `MaterialPackageExecutor.execute_next(worker_id)` claims one reservation using a lease and
   writes one `ImageArtifactModel` plus one `MaterialPackageModel` result.
 - Before claiming image work, `content-worker` calls
@@ -577,6 +584,10 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   private; object keys and signed URLs do not cross the API boundary.
 - `content-worker` must receive image provider settings and a read-only brand reference mount.
   `IMAGE_ENABLED=true` with a disabled provider fails closed at settings validation.
+- The API and `content-worker` must receive the same `IMAGE_MAX_ATTEMPTS` Compose value. The API
+  uses it to decide whether terminal image retry is admissible; the worker uses it to claim and
+  exhaust the same image artifact. Divergent values are a deployment defect that can turn an
+  accepted retry into an immediate `lease_expired` failure.
 - The frontend `features/material` feature polls only queued/running packages and provides copy,
   image download, JSON package download, evidence/audit display, and internal review controls.
   It provides no social publishing operation.
@@ -595,6 +606,8 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 | Accepted copy has no package when a worker polls | Create one queued reservation before image claiming; do not call the provider twice |
 | API and worker reserve the same accepted copy concurrently | Keep the winner's single reservation; treat the losing unique-conflict as an idempotent skip |
 | Provider identity/output/dimensions/storage validation fails | Retry only classified transient errors; otherwise image `review_required` or `failed`, package not ready |
+| Operator requests image retry on a non-terminal package or exhausted artifact | Conflict; do not create another artifact or provider identity |
+| Provider-output validation fails | Persist only a bounded issue code and stage in `validation_snapshot`; never store URL, headers, response body, prompt, or credential |
 | Worker lease expires | Another worker may reclaim; stale worker cannot persist success |
 | Image succeeds | Store one private content-addressed object, mark package `awaiting_manual_use`, expose relative download URLs |
 | JSON package is downloaded | Include safe snapshots and metadata; omit bucket, object key, signed URL, credentials, and raw provider response |
@@ -616,7 +629,8 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 
 - [`test_material_package.py`](../../../backend/tests/unit/test_material_package.py) asserts
   enqueue-only behavior, accepted-draft gating, accepted-run reconciliation, idempotency races,
-  provider rejection, lease-safe persistence, and safe JSON projections.
+  provider rejection, lease-safe persistence, safe output-validation diagnostics, terminal
+  image-only retry, and safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
   `20260805_0018`, worker columns, package snapshots, ordered image-reference constraints, and
   unique indexes; MinIO

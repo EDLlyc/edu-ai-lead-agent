@@ -183,9 +183,6 @@ def create_image_generator(
         )
     if client is None or settings.comfly_api_key is None:
         raise RuntimeError("Comfly image provider requires an owned client and API key")
-    configured_hosts = frozenset(
-        host.strip().lower() for host in settings.comfly_output_hosts.split(",") if host.strip()
-    )
     return OpenAICompatibleImageGenerator(
         client=client,
         base_url=settings.comfly_base_url,
@@ -200,8 +197,6 @@ def create_image_generator(
         max_request_bytes=settings.image_max_request_bytes,
         max_provider_response_bytes=settings.image_max_provider_response_bytes,
         max_reference_images=settings.image_max_reference_images,
-        allowed_output_hosts=configured_hosts or None,
-        allow_public_output_urls=settings.comfly_allow_public_output_urls,
         output_host_observer=output_host_observer,
     )
 

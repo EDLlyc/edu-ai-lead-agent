@@ -327,11 +327,14 @@ def _comfly_generator(
         "initial_poll_seconds": 0,
         "poll_interval_seconds": 0,
         "sleep": lambda _seconds: __import__("asyncio").sleep(0),
-        "allowed_output_hosts": frozenset({"ai.comfly.org", "images.comfly.org"}),
-        "allow_public_output_urls": False,
+        "resolver": _public_resolver,
     }
     options.update(overrides)
     return OpenAICompatibleImageGenerator(**options)  # type: ignore[arg-type]
+
+
+async def _public_resolver(_host: str) -> list[str]:
+    return ["93.184.216.34"]
 
 
 def _image_request(
@@ -371,11 +374,14 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
 
     reference = _solid_png("reference", "approved")
 
-    async def unexpected_resolver(_host: str) -> list[str]:
-        raise AssertionError("allowlisted Comfly output hosts must not require DNS resolution")
+    resolved_hosts: list[str] = []
+
+    async def resolver(host: str) -> list[str]:
+        resolved_hosts.append(host)
+        return ["93.184.216.34"]
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await _comfly_generator(client, resolver=unexpected_resolver).generate(
+        result = await _comfly_generator(client, resolver=resolver).generate(
             _image_request(reference)
         )
 
@@ -383,6 +389,7 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert result.provider_task_id is None
     assert result.provider_upload_id is None
     assert result.image_bytes == image
+    assert resolved_hosts == ["images.comfly.org"]
     assert (result.width, result.height, result.media_type) == (1024, 1024, "image/png")
     assert seen_auth == "Bearer test-key"
     assert seen_idempotency_key == "comfly-fingerprint"
@@ -539,7 +546,7 @@ async def test_comfly_output_host_observer_skips_base64_and_malformed_urls() -> 
 
 
 @pytest.mark.asyncio
-async def test_comfly_opt_in_downloads_public_unlisted_signed_cdn_url() -> None:
+async def test_comfly_downloads_public_signed_cdn_url_without_a_host_allowlist() -> None:
     image = _solid_png("comfly", "public-cdn")
     resolved_hosts: list[str] = []
     downloaded_urls: list[str] = []
@@ -558,17 +565,75 @@ async def test_comfly_opt_in_downloads_public_unlisted_signed_cdn_url() -> None:
         return httpx.Response(404)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await _comfly_generator(
-            client,
-            allowed_output_hosts=frozenset({"ai.comfly.org"}),
-            allow_public_output_urls=True,
-            resolver=resolver,
-        ).generate(_image_request())
+        result = await _comfly_generator(client, resolver=resolver).generate(_image_request())
 
     assert result.image_bytes == image
     assert (result.width, result.height, result.media_type) == (1024, 1024, "image/png")
     assert resolved_hosts == ["cdn.example"]
     assert downloaded_urls == [signed_url]
+
+
+@pytest.mark.asyncio
+async def test_comfly_accepts_generic_cdn_content_type_after_raster_verification() -> None:
+    image = _solid_png("comfly", "generic-content-type")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/images/generations":
+            return httpx.Response(
+                200,
+                json={"data": [{"url": "https://cdn.example/result.png"}]},
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/octet-stream"},
+            content=image,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client).generate(_image_request())
+
+    assert result.image_bytes == image
+    assert result.media_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_comfly_rejects_explicit_media_type_that_conflicts_with_verified_bytes() -> None:
+    image = _solid_png("comfly", "content-type-mismatch")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/images/generations":
+            return httpx.Response(
+                200,
+                json={"data": [{"url": "https://cdn.example/result.png"}]},
+            )
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.reason == "image_raster_signature_invalid"
+
+
+@pytest.mark.asyncio
+async def test_comfly_persists_a_safe_reason_for_invalid_raster_bytes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/images/generations":
+            return httpx.Response(
+                200,
+                json={"data": [{"url": "https://cdn.example/result.png"}]},
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/octet-stream"},
+            content=b"not-an-image",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.reason == "image_raster_signature_invalid"
 
 
 @pytest.mark.asyncio
@@ -722,11 +787,11 @@ async def test_comfly_quota_response_is_non_retryable_and_redacted() -> None:
 
 
 @pytest.mark.asyncio
-async def test_comfly_rejects_untrusted_image_url_and_oversized_provider_body() -> None:
+async def test_comfly_rejects_non_public_image_url_and_oversized_provider_body() -> None:
     seen_paths: list[str] = []
 
-    async def unexpected_resolver(_host: str) -> list[str]:
-        raise AssertionError("DNS resolution must stay disabled unless explicitly opted in")
+    async def private_resolver(_host: str) -> list[str]:
+        return ["127.0.0.1"]
 
     def untrusted_handler(request: httpx.Request) -> httpx.Response:
         seen_paths.append(request.url.path)
@@ -734,7 +799,7 @@ async def test_comfly_rejects_untrusted_image_url_and_oversized_provider_body() 
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(untrusted_handler)) as client:
         with pytest.raises(ImageOutputValidationError):
-            await _comfly_generator(client, resolver=unexpected_resolver).generate(_image_request())
+            await _comfly_generator(client, resolver=private_resolver).generate(_image_request())
 
     assert seen_paths == ["/v1/images/generations"]
 
@@ -750,7 +815,7 @@ async def test_comfly_rejects_untrusted_image_url_and_oversized_provider_body() 
 
 
 @pytest.mark.asyncio
-async def test_comfly_opt_in_rejects_non_global_dns_answers_before_download() -> None:
+async def test_comfly_rejects_non_global_dns_answers_before_download() -> None:
     seen_paths: list[str] = []
     observed_hosts: list[str] = []
 
@@ -774,8 +839,6 @@ async def test_comfly_opt_in_rejects_non_global_dns_answers_before_download() ->
         with pytest.raises(ImageOutputValidationError):
             await _comfly_generator(
                 client,
-                allowed_output_hosts=frozenset({"ai.comfly.org"}),
-                allow_public_output_urls=True,
                 resolver=private_resolver,
                 output_host_observer=lambda hostname: observed_hosts.append(hostname) or True,
             ).generate(_image_request())
@@ -818,12 +881,7 @@ async def test_comfly_maps_dns_resolution_failure_to_typed_output_error() -> Non
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(ImageOutputValidationError):
-            await _comfly_generator(
-                client,
-                allowed_output_hosts=frozenset({"ai.comfly.org"}),
-                allow_public_output_urls=True,
-                resolver=failing_resolver,
-            ).generate(_image_request())
+            await _comfly_generator(client, resolver=failing_resolver).generate(_image_request())
 
     assert seen_paths == ["/v1/images/generations"]
 
@@ -913,8 +971,11 @@ def test_settings_rejects_a_comfly_base_url_with_an_api_path() -> None:
         )
 
 
-def test_settings_disable_public_comfly_output_urls_by_default() -> None:
-    assert Settings(_env_file=None).comfly_allow_public_output_urls is False
+def test_settings_do_not_require_a_comfly_output_host_policy() -> None:
+    settings = Settings(_env_file=None)
+
+    assert not hasattr(settings, "comfly_output_hosts")
+    assert not hasattr(settings, "comfly_allow_public_output_urls")
 
 
 def test_settings_use_a_provider_friendly_reference_budget_by_default() -> None:

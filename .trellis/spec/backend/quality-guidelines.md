@@ -359,45 +359,55 @@ signed image URL instead of inline base64 image data.
 
 ### 2. Signatures
 
-- OpenAICompatibleImageGenerator._download_image(url: str) returns validated
-  (bytes, media_type, width, height) or a typed image/provider failure.
-- COMFLY_OUTPUT_HOSTS is a comma-separated set of exact bare DNS hostnames.
-- COMFLY_ALLOW_PUBLIC_OUTPUT_URLS is a boolean opt-in, defaulting to false.
+- `OpenAICompatibleImageGenerator._download_image(url: str)` returns validated
+  `(bytes, media_type, width, height)` or a typed image/provider failure.
+- `POST /api/v1/material-packages/{package_id}/image/retry` returns the same queued package/image
+  reservation or a 409 conflict.
 
 ### 3. Contracts
 
 - HTTPS, default/443 port, no userinfo, fragment, or whitespace are required. Query parameters
   remain allowed because provider-signed URLs may carry expiry/signature fields.
-- An exact configured output host skips DNS preflight but still undergoes status, size, media-type,
-  image-signature, and 1024x1024 dimension validation.
-- An unlisted host is eligible only when COMFLY_ALLOW_PUBLIC_OUTPUT_URLS=true; its literal IP
-  or every A/AAAA DNS answer must be globally routable.
-- Redirects are never followed. The new flag does not authorize arbitrary HTTP, private addresses,
-  or unvalidated bytes.
+- Every output hostname is DNS-validated. Its literal IP, or every A/AAAA answer, must be globally
+  routable before the download begins. No Comfly CDN host allowlist or public-URL flag exists.
+- Redirects are never followed. This does not authorize HTTP, private addresses, or unvalidated
+  bytes.
+- A missing or generic `application/octet-stream`/`binary/octet-stream` header is accepted only
+  when the bounded body independently proves to be a PNG/JPEG/WebP with 1024x1024 dimensions. An
+  explicit supported header that disagrees with the raster signature is rejected.
+- Terminal image retry locks the package and existing artifact, requires `package.status=failed`,
+  an image status of `failed` or `review_required`, and `attempt_count < IMAGE_MAX_ATTEMPTS`. It
+  clears only execution state and requeues that same request fingerprint.
+- The API and content worker must receive the identical `IMAGE_MAX_ATTEMPTS` value.
+  `make doctor` renders the content-profile Compose JSON and fails unless both service environments
+  expose one non-empty shared value before a live retry is accepted.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
 |---|---|
-| Unknown host and public-output flag is false | ImageOutputValidationError; no download |
 | Unknown host resolves to private, reserved, Fake-IP, loopback, link-local, or metadata address | ImageOutputValidationError; no download |
 | DNS fails or returns no/invalid addresses | ImageOutputValidationError; no download |
-| Redirect, non-image type, mismatched signature, oversized body, or non-1024x1024 image | typed validation failure; no storage result |
+| Redirect, invalid raster, explicit media/signature mismatch, oversized body, or non-1024x1024 image | typed validation failure; no storage result |
 | Provider timeout/rate limit/5xx | existing bounded typed retry behavior |
+| Image retry targets a running/succeeded package or exhausted artifact | HTTP 409; no new artifact and no provider call |
+| API and worker have different image-attempt limits | Deployment defect; do not run a live retry until Compose injects one shared value |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: the explicit flag is enabled, a signed HTTPS CDN URL resolves to only global addresses,
-  and the bounded image checks pass.
-- Base: the flag is absent/false and only explicitly configured output hosts are accepted.
-- Bad: setting COMFLY_OUTPUT_HOSTS=*, following a redirect, trusting 198.18.0.0/15, or
-  storing the response before signature and dimension checks.
+- Good: a signed HTTPS CDN URL resolves only to global addresses, has an octet-stream header, and
+  its bounded PNG bytes/dimensions verify before storage.
+- Base: an inline base64 PNG follows the same byte and dimension verification with no URL download.
+- Bad: skipping DNS for a familiar CDN, following a redirect, trusting 198.18.0.0/15, retrying by
+  creating a second artifact, or storing the response before signature and dimension checks.
 
 ### 6. Tests Required
 
-- Unit coverage must prove exact-host downloads do not call DNS, disabled unknown hosts are rejected,
-  enabled public hosts preserve signed query strings, and non-global DNS answers are rejected before
-  the CDN request.
+- Unit coverage must prove public signed URLs preserve query strings, generic CDN headers require
+  valid raster bytes, explicit header/signature mismatches fail, and non-global DNS answers are
+  rejected before the CDN request.
+- Material-package tests must prove a safe adapter issue code is persisted without provider output
+  and that retry requeues only the existing terminal image artifact.
 - The backend gate must include focused image tests, Ruff, strict mypy, full pytest, Compose
   rendering, and doctor.
 
@@ -405,28 +415,26 @@ signed image URL instead of inline base64 image data.
 
 #### Wrong
 
-~~~
-COMFLY_OUTPUT_HOSTS=*
+~~~python
+await client.get(provider_url, follow_redirects=True)
 ~~~
 
 #### Correct
 
-~~~
-COMFLY_OUTPUT_HOSTS=
-COMFLY_ALLOW_PUBLIC_OUTPUT_URLS=true
+~~~python
+await validate_public_resolution(hostname, resolver)
+image_bytes = await download_without_redirects(provider_url)
 ~~~
 
-The correct form is an explicit provider opt-in backed by HTTPS, public-address, response-size,
-media-type, signature, and dimension checks.
+The correct form validates every DNS answer and retains HTTPS, response-size, signature, and
+dimension checks without operational CDN allowlists.
 
 ## Scenario: Safe Comfly output-host discovery before Fake-IP remediation
 
 ### 1. Scope / Trigger
 
-Use this local-only operational path when Comfly returns a temporary signed output URL from an
-unknown CDN and the current DNS resolver returns Fake-IP addresses. The operator needs the CDN
-hostname for a precise upstream `fake-ip-filter` entry, but may never print or persist the signed
-URL itself.
+Use this local-only diagnostic when an operator needs to confirm which hostname a provider returned
+without exposing the temporary signed URL. It is not a configuration or allowlisting mechanism.
 
 ### 2. Signatures
 
@@ -442,12 +450,8 @@ URL itself.
   hostname checks; it receives no URL path, query string, provider body, prompt, or credential.
 - Discovery prints `image_smoke_output_host=<hostname>` and writes no image file or artifact.
 - Base64 output has no host and reports `image_smoke_output_host=none` without a CDN request.
-- The resulting exact hostname may be added to the upstream Clash/Mihomo `dns.fake-ip-filter`;
-  do not add a wildcard host or relax public-address validation.
-- On Clash Verge Rev, inspect `profiles.yaml` and edit the current profile's merge template; an
-  edit to `dns_config.yaml` alone may not affect the generated `clash-verge.yaml` when DNS settings
-  integration is disabled. Verify the generated config and resolver result from the worker after a
-  privileged service reload.
+- The observed hostname grants no download permission; a normal worker still DNS-validates every
+  returned address. Do not add a wildcard bypass or relax public-address validation.
 - A paid live discovery or image smoke must set `IMAGE_MAX_ATTEMPTS=1` explicitly when the goal is
   one provider request; the adapter's normal bounded retry setting can otherwise issue multiple
   attempts for one command.
@@ -464,11 +468,11 @@ URL itself.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: discover an exact CDN hostname, add that one hostname to upstream `fake-ip-filter`, reload
-  the proxy, then run one idempotent image smoke.
+- Good: discover a hostname for diagnosis, confirm DNS is public, then run one idempotent image
+  smoke through the normal worker policy.
 - Base: a base64 response needs no DNS remediation and exits without an artifact in discovery mode.
-- Bad: logging the temporary URL, query string, provider payload, or a broad `*.comfly.org`/
-  arbitrary-host filter.
+- Bad: logging the temporary URL, query string, provider payload, or turning the hostname into a
+  bypass rule.
 
 ### 6. Tests Required
 
@@ -492,7 +496,7 @@ print(signed_output_url)
 print(f"image_smoke_output_host={hostname}")
 ~~~
 
-The correct form exposes only the minimum hostname needed for an operator DNS rule.
+The correct form exposes only the minimum hostname needed to diagnose public DNS resolution.
 
 ## Review checklist
 

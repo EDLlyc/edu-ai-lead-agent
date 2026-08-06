@@ -206,8 +206,22 @@ class ImageProviderTimeoutError(ProviderError):
 
 
 class ImageOutputValidationError(ProviderError):
-    def __init__(self) -> None:
+    _SAFE_REASONS = frozenset(
+        {
+            "image_output_invalid",
+            "image_output_representation_invalid",
+            "image_download_url_invalid",
+            "image_download_address_invalid",
+            "image_download_content_type_invalid",
+            "image_download_too_large",
+            "image_raster_signature_invalid",
+            "image_dimensions_invalid",
+        }
+    )
+
+    def __init__(self, reason: str = "image_output_invalid") -> None:
         super().__init__("image_output_invalid", "generated image failed safety validation", 422)
+        self.reason = reason if reason in self._SAFE_REASONS else "image_output_invalid"
 
 
 @dataclass(frozen=True, slots=True)
