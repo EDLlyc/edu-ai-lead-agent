@@ -3,9 +3,10 @@
 ## Contract status
 
 This is the implemented contract for the one-recipient Enterprise WeChat self-built-application
-delivery boundary. It sends an already completed and approved material package to the configured
-internal sales user. It does not publish to a personal or enterprise WeChat Moments feed, expose a
-public recipient API, or regenerate content.
+delivery boundary. It sends an eligible material package to the configured internal sales user.
+Eligibility is either `completed + approved` in review-required mode or a validated
+`awaiting_manual_use`/`completed` package in direct mode. It does not publish to a personal or
+enterprise WeChat Moments feed, expose a public recipient API, or regenerate content.
 
 ## 1. Scope / Trigger
 
@@ -15,9 +16,8 @@ Apply this contract when changing any of the following:
 - the delivery API, dispatcher, Enterprise WeChat adapter, or MinIO image read path;
 - `WECOM_*` settings, Compose wiring, retry behavior, or sensitive-field logging.
 
-The side-effect boundary starts only after `material_packages.status=completed` and the package
-is eligible for delivery. The API writes a durable job; only `wecom_dispatcher_main.py` performs
-provider calls.
+The side-effect boundary starts only after the package is eligible for delivery. The API writes a
+durable job; only `wecom_dispatcher_main.py` performs provider calls.
 
 ## 2. Signatures
 
@@ -84,7 +84,7 @@ WeComApiClient.send_image(recipient_id, agent_id, media_id, request_fingerprint)
 | `WECOM_DEFAULT_RECIPIENT_ID` | Raw configured userid; server-side only, never an API field |
 | `WECOM_DEFAULT_RECIPIENT_NAME` | Internal display label, default `销售` |
 | `WECOM_AUTO_DELIVERY_ENABLED` | Requires `WECOM_ENABLED`; default `false` |
-| `WECOM_REQUIRE_REVIEW_BEFORE_SEND` | Defaults to `true`; formal delivery always requires approval |
+| `WECOM_REQUIRE_REVIEW_BEFORE_SEND` | Defaults to `true`; when `false`, direct mode accepts validated packages without a manual review decision |
 | `WECOM_MAX_ATTEMPTS` | Bounded from 1 to 10 |
 | `WECOM_REQUEST_TIMEOUT_SECONDS` | Bounded request timeout; send timeout is an unknown outcome |
 
@@ -108,6 +108,11 @@ marker. Both message types enable the official duplicate-check fields. The stabl
 fingerprint is persisted for job/attempt identity; the provider request never receives secrets or
 an invented idempotency field.
 
+In review-required mode, enqueueing and automatic reconciliation require `completed + approved`.
+In direct mode, they accept `awaiting_manual_use` or `completed` packages unless explicitly
+rejected. Direct mode still requires copy validation to pass, copy audit to be accepted, image
+validation to pass, and any configured image audit to be accepted before a job is created.
+
 ### Security boundary
 
 The adapter uses HTTPS, the official host allowlist, bounded response parsing, no redirects, and
@@ -120,8 +125,9 @@ are read only from settings and passed to the provider adapter; the API and data
 |---|---|
 | WeCom disabled or fixed recipient missing | API returns stable conflict; no job is created |
 | Unsupported recipient ID or mode | Stable conflict/validation result; no provider call |
-| Package missing or not completed | Not found/conflict; no job is created |
-| Formal package is not approved | Conflict; no job is created |
+| Package missing or not eligible for the configured delivery policy | Not found/conflict; no job is created |
+| Review-required package is not approved, or direct package is explicitly rejected | Conflict; no job is created |
+| Direct package copy validation/audit or configured image quality gate fails | Conflict; no job is created |
 | Image requested but artifact is not succeeded or metadata is invalid | Conflict; no provider call |
 | Duplicate package/version/recipient/mode request | Return the existing job ID; do not add a row |
 | Token invalid response | Invalidate process-local cache and refresh once; a second invalid result is terminal |
@@ -133,14 +139,15 @@ are read only from settings and passed to the provider adapter; the API and data
 
 ## 5. Good / Base / Bad Cases
 
-- Good: an approved completed package produces one stable formal job, the dispatcher sends text then
-  image, both child attempts are durable, and the job becomes `delivered`.
+- Good: an approved completed package in review-required mode, or a validated
+  `awaiting_manual_use` package in direct mode, produces one stable formal job; the dispatcher
+  sends text then image, both child attempts are durable, and the job becomes `delivered`.
 - Base: WeCom remains disabled in local Compose; API exposes no recipient and dispatcher remains
   idle without needing credentials.
 - Good: a text-success/image-timeout result is visible as `partial` or `delivery_unknown`, and an
   operator can explicitly retry only the unresolved child.
 - Bad: the API calls Enterprise WeChat or MinIO while creating the job, stores raw `userid` in a
-  job row, retries a timeout automatically, or sends an unapproved package.
+  job row, retries a timeout automatically, or bypasses direct-mode quality gates.
 - Bad: an image is uploaded without checking the immutable MinIO descriptor, or a provider body,
   token, media ID, secret, or signed URL is written to logs or response JSON.
 
@@ -149,8 +156,9 @@ are read only from settings and passed to the provider adapter; the API and data
 - Contract tests with `httpx.MockTransport` assert official token caching, one-time token refresh,
   bounded multipart upload, duplicate-check text/image payloads, response-code classification,
   malformed/oversized response rejection, and no sensitive value in representations/errors.
-- Service tests assert text composition, UTF-8 byte limits, formal approval, image descriptor
-  checksum/signature validation, and safe default settings.
+- Service tests assert text composition, UTF-8 byte limits, strict approval, direct-mode package
+  eligibility and quality vetoes, image descriptor checksum/signature validation, and safe default
+  settings.
 - PostgreSQL integration tests upgrade a clean database to `20260805_0018`, assert both delivery
   tables and constraints, and compare `Base.metadata` without SQLite.
 - Dispatcher/service tests must assert text-before-image ordering, persistence before the second
@@ -180,5 +188,26 @@ await enqueue_wecom_delivery(session=session, ...)
 # transaction, and persists each child result under its lease.
 ```
 
-The correct flow preserves approval, idempotency, auditability, and the distinction between a
-confirmed failure and an unknown provider outcome.
+The correct flow preserves the configured manual-review policy, idempotency, auditability, and the
+distinction between a confirmed failure and an unknown provider outcome.
+
+## Common Mistakes
+
+### Persisted JSON metadata must be compared by value
+
+JSONB values loaded from PostgreSQL are fresh Python objects. Validate required fields with value
+comparisons such as `==`/`!=` or explicit field checks; identity checks such as `is`/`is not` can
+reject valid persisted image metadata and incorrectly block delivery.
+
+### Provider HTTP logs must not contain authenticated URLs
+
+`httpx` and `httpcore` request logs can include the full token endpoint URL. Keep those loggers at
+`WARNING` or higher and emit only the adapter's redacted structured events. Never log access-token
+query strings, secrets, raw provider bodies, or signed object URLs.
+
+### Enterprise WeChat targets must be real application-visible user IDs
+
+`WECOM_DEFAULT_RECIPIENT_ID` is an internal `userid`, not a display name. The user must be in the
+self-built application's address-book visibility scope. A provider recipient/configuration error
+such as `60020` is terminal until the ID or visibility scope is corrected; it must not be treated
+as a successful send or retried indefinitely.

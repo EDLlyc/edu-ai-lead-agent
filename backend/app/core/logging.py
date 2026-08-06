@@ -47,6 +47,11 @@ def _redact_event(
 
 def configure_logging(*, json_output: bool) -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # httpx logs full request URLs at INFO, which would expose access tokens and secrets
+    # carried in query parameters. Provider request details are represented by our own
+    # structured, redacted events instead.
+    for logger_name in ("httpx", "httpcore"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
     renderer: structlog.types.Processor = (
         structlog.processors.JSONRenderer()
         if json_output

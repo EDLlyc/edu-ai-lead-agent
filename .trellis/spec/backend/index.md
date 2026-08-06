@@ -41,8 +41,9 @@ tests.
 - Bind every externally verifiable core claim to stored source evidence.
 - Preserve content-bearing candidates and source occurrences as separate governed concepts.
 - Keep provider calls outside API handlers and database transactions.
-- Keep Enterprise WeChat side effects in the independent dispatcher; the API only enqueues reviewed
-  material-package jobs and the dispatcher never publishes to a social platform.
+- Keep Enterprise WeChat side effects in the independent dispatcher; the API only enqueues
+  material-package jobs that satisfy the configured manual-review or direct-quality policy, and
+  the dispatcher never publishes to a social platform.
 - Run deterministic validation before the LLM audit; the audit is not a fact source.
 - Persist idempotency keys, attempts, and stage transitions for every durable job.
 - Treat fetched text and model output as untrusted data, including prompt-injection content.

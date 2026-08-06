@@ -20,7 +20,7 @@ from app.application.ports.wecom import (
 )
 from app.core.config import Settings
 from app.core.errors import AppError, ConflictError, NotFoundError
-from app.domain.image_generation import image_checksum
+from app.domain.image_generation import image_checksum, image_content_key
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
     ImageArtifactModel,
@@ -38,6 +38,8 @@ _PENDING = "pending"
 _RUNNING = "running"
 _FAILED = "failed"
 _UNKNOWN = "unknown"
+_REVIEW_REQUIRED_PACKAGE_STATUSES = ("completed",)
+_DIRECT_PACKAGE_STATUSES = ("awaiting_manual_use", "completed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,17 +75,24 @@ async def enqueue_wecom_delivery(
     package = await session.get(MaterialPackageModel, package_id)
     if package is None:
         raise NotFoundError("material package")
-    if package.status != "completed":
-        raise ConflictError("material package is not complete")
-    if (mode == "formal" or settings.wecom_require_review_before_send) and (
-        package.review_status != "approved"
-    ):
+    if package.status not in _delivery_package_statuses(settings):
+        raise ConflictError("material package is not ready for WeCom delivery")
+    if package.review_status == "rejected":
+        raise ConflictError("material package was rejected")
+    if settings.wecom_require_review_before_send and package.review_status != "approved":
         raise ConflictError("material package must be approved before WeCom delivery")
     image = await session.get(ImageArtifactModel, package.image_artifact_id)
     if image is None:
         raise NotFoundError("image artifact")
     if include_image and image.status != "succeeded":
         raise ConflictError("material package image is not available")
+    if not settings.wecom_require_review_before_send:
+        _ensure_direct_delivery_quality(
+            package=package,
+            image=image,
+            include_image=include_image,
+            settings=settings,
+        )
 
     content_fingerprint = package.request_fingerprint
     request_fingerprint = stable_key(
@@ -207,16 +216,17 @@ class WeComDeliveryExecutor:
         if not self._settings.wecom_auto_delivery_enabled:
             return 0
         async with self._session_factory() as session:
+            statement = select(MaterialPackageModel).where(
+                MaterialPackageModel.status.in_(_delivery_package_statuses(self._settings))
+            )
+            if self._settings.wecom_require_review_before_send:
+                statement = statement.where(MaterialPackageModel.review_status == "approved")
+            else:
+                statement = statement.where(MaterialPackageModel.review_status != "rejected")
             packages = tuple(
                 (
                     await session.scalars(
-                        select(MaterialPackageModel)
-                        .where(
-                            MaterialPackageModel.status == "completed",
-                            MaterialPackageModel.review_status == "approved",
-                        )
-                        .order_by(MaterialPackageModel.created_at)
-                        .limit(limit)
+                        statement.order_by(MaterialPackageModel.created_at).limit(limit)
                     )
                 ).all()
             )
@@ -310,33 +320,14 @@ class WeComDeliveryExecutor:
             image = await session.get(ImageArtifactModel, package.image_artifact_id)
         if image is None or image.status != "succeeded":
             raise ConflictError("material package image is not available")
-        if any(
-            value is None
-            for value in (
-                image.bucket,
-                image.object_key,
-                image.media_type,
-                image.byte_size,
-                image.sha256,
-            )
-        ):
-            raise ConflictError("material package image metadata is incomplete")
-        media_type = cast(str, image.media_type)
-        if media_type not in {"image/png", "image/jpeg"}:
-            raise ConflictError("WeCom image upload supports only PNG or JPEG")
-        descriptor = ImageObjectDescriptor(
-            bucket=cast(str, image.bucket),
-            object_key=cast(str, image.object_key),
-            media_type=media_type,
-            byte_size=cast(int, image.byte_size),
-            sha256=cast(str, image.sha256),
-        )
+        descriptor = _image_descriptor(image=image, settings=self._settings)
+        media_type = descriptor.media_type
         body = await self._image_store.get_bytes(descriptor)
         _validate_wecom_image_body(
             body,
             media_type=media_type,
-            expected_size=cast(int, image.byte_size),
-            expected_sha256=cast(str, image.sha256),
+            expected_size=descriptor.byte_size,
+            expected_sha256=descriptor.sha256,
             max_bytes=self._settings.wecom_max_image_bytes,
         )
         self._ensure_lease(lease_lost)
@@ -497,6 +488,7 @@ class WeComDeliveryExecutor:
             retryable=bool(error.retryable),
             unknown=bool(error.unknown),
             provider_request_id=getattr(error, "provider_request_id", None),
+            safe_response_code=_safe_provider_response_code(error),
         )
 
     async def _finish_local_failure(self, claimed: ClaimedWeComDelivery, error_code: str) -> None:
@@ -510,6 +502,7 @@ class WeComDeliveryExecutor:
         retryable: bool,
         unknown: bool,
         provider_request_id: str | None = None,
+        safe_response_code: str | None = None,
     ) -> None:
         now = datetime.now(UTC)
         async with self._session_factory() as session:
@@ -535,7 +528,7 @@ class WeComDeliveryExecutor:
                         attempt_number=claimed.attempt_number,
                         request_fingerprint=request_fingerprint,
                         provider_request_id=_bounded(provider_request_id, 200),
-                        safe_response_code=_bounded(error_code, 80),
+                        safe_response_code=_bounded(safe_response_code or error_code, 80),
                         result_state="unknown" if unknown else "failed",
                         latency_ms=0,
                     )
@@ -628,6 +621,101 @@ def _ensure_delivery_configured(settings: Settings) -> None:
         raise ConflictError("WeCom default recipient is not configured")
 
 
+def _delivery_package_statuses(settings: Settings) -> tuple[str, ...]:
+    if settings.wecom_require_review_before_send:
+        return _REVIEW_REQUIRED_PACKAGE_STATUSES
+    return _DIRECT_PACKAGE_STATUSES
+
+
+def _ensure_direct_delivery_quality(
+    *,
+    package: MaterialPackageModel,
+    image: ImageArtifactModel,
+    include_image: bool,
+    settings: Settings,
+) -> None:
+    copy_validation = getattr(package, "validation_snapshot", None)
+    if not isinstance(copy_validation, dict) or copy_validation.get("passed") is not True:
+        raise ConflictError("material package copy validation has not passed")
+    copy_audit = getattr(package, "audit_snapshot", None)
+    if not isinstance(copy_audit, dict) or copy_audit.get("accepted") is not True:
+        raise ConflictError("material package copy audit has not been accepted")
+    if not include_image:
+        return
+
+    image_validation = getattr(image, "validation_snapshot", None)
+    if (
+        not isinstance(image_validation, dict)
+        or image_validation.get("configured") is not True
+        or image_validation.get("passed") is not True
+    ):
+        raise ConflictError("material package image validation has not passed")
+    _image_descriptor(image=image, settings=settings)
+    image_audit = getattr(image, "audit_snapshot", None)
+    if not isinstance(image_audit, dict):
+        raise ConflictError("material package image audit is unavailable")
+    audit_configured = image_audit.get("configured")
+    if audit_configured not in {False, True}:
+        raise ConflictError("material package image audit is unavailable")
+    if audit_configured and image_audit.get("passed") is not True:
+        raise ConflictError("material package image audit has not been accepted")
+
+
+def _image_descriptor(*, image: ImageArtifactModel, settings: Settings) -> ImageObjectDescriptor:
+    values = {
+        "bucket": getattr(image, "bucket", None),
+        "object_key": getattr(image, "object_key", None),
+        "media_type": getattr(image, "media_type", None),
+        "byte_size": getattr(image, "byte_size", None),
+        "sha256": getattr(image, "sha256", None),
+    }
+    if (
+        any(
+            not isinstance(value, str) or not value.strip()
+            for field, value in values.items()
+            if field in {"bucket", "object_key", "media_type", "sha256"}
+        )
+        or values["byte_size"] is None
+    ):
+        raise ConflictError("material package image metadata is incomplete")
+
+    bucket = cast(str, values["bucket"])
+    object_key = cast(str, values["object_key"])
+    media_type = cast(str, values["media_type"])
+    byte_size = values["byte_size"]
+    sha256 = cast(str, values["sha256"])
+    if media_type not in {"image/png", "image/jpeg"}:
+        raise ConflictError("WeCom image upload supports only PNG or JPEG")
+    if (
+        isinstance(byte_size, bool)
+        or not isinstance(byte_size, int)
+        or byte_size < WECOM_MIN_IMAGE_BYTES
+        or byte_size > settings.wecom_max_image_bytes
+    ):
+        raise ConflictError("material package image metadata has an invalid size")
+    if len(sha256) != 64 or any(character not in "0123456789abcdef" for character in sha256):
+        raise ConflictError("material package image metadata has an invalid checksum")
+    if bucket != settings.minio_bucket or object_key != image_content_key(sha256, media_type):
+        raise ConflictError("material package image metadata is not private and content-addressed")
+    storage_metadata = getattr(image, "storage_metadata", None)
+    if not isinstance(storage_metadata, dict) or any(
+        storage_metadata.get(field) != expected
+        for field, expected in (
+            ("access", "private"),
+            ("immutable", True),
+            ("content_addressed", True),
+        )
+    ):
+        raise ConflictError("material package image storage metadata is invalid")
+    return ImageObjectDescriptor(
+        bucket=bucket,
+        object_key=object_key,
+        media_type=media_type,
+        byte_size=byte_size,
+        sha256=sha256,
+    )
+
+
 def _clear_lease(job: WeComDeliveryJobModel) -> None:
     job.lease_owner = None
     job.lease_token = None
@@ -656,6 +744,11 @@ def _bounded(value: str | None, limit: int) -> str | None:
         return None
     normalized = value.strip()
     return normalized[:limit] if normalized else None
+
+
+def _safe_provider_response_code(error: WeComProviderError) -> str:
+    response_code = error.safe_response_code
+    return str(response_code) if response_code is not None else error.code
 
 
 def _elapsed_ms(started: float) -> int:

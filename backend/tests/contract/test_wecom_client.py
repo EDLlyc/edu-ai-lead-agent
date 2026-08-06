@@ -197,6 +197,7 @@ async def test_provider_error_codes_are_safe_and_typed(
 
     error = raised.value
     assert error.code == expected_code
+    assert error.safe_response_code == payload["errcode"]
     assert "secret response body" not in str(error)
     assert "raw recipient body" not in str(error)
     if expected_code == WECOM_RATE_LIMITED:
