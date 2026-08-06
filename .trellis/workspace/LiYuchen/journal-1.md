@@ -374,3 +374,24 @@ Implemented and verified reviewed material-package delivery to one configured En
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: Harden image generation output handling
+
+**Date**: 2026-08-06
+**Task**: Harden image generation output handling
+**Branch**: `main`
+
+### Summary
+
+Accepted DNS-validated public Comfly output URLs, normalized generic CDN image headers, added image-only retry, fixed API/worker attempt-limit parity, and verified a live material image reached awaiting_manual_use without WeCom delivery.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c4b9392` | (see git log) |
+
+### Status
+
+[OK] **Completed**
