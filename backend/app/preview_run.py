@@ -231,13 +231,23 @@ def _safe_url(value: object) -> str | None:
 def _quality_snapshot(value: object, *, default_status: str = "unknown") -> dict[str, Any]:
     record = _first_dict(value)
     passed = record.get("passed")
+    accepted = record.get("accepted")
     status = record.get("status")
     if not isinstance(status, str):
-        status = "passed" if passed is True else "failed" if passed is False else default_status
+        if passed is True:
+            status = "passed"
+        elif passed is False:
+            status = "failed"
+        elif accepted is True:
+            status = "accepted"
+        elif accepted is False:
+            status = "rejected"
+        else:
+            status = default_status
     return {
         "status": status,
         "passed": passed if isinstance(passed, bool) else None,
-        "accepted": record.get("accepted") if isinstance(record.get("accepted"), bool) else None,
+        "accepted": accepted if isinstance(accepted, bool) else None,
         "version": _safe_text(
             record.get("version") or record.get("rule_version") or record.get("prompt_version"),
             limit=120,

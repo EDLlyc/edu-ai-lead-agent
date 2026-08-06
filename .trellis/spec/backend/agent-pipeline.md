@@ -281,6 +281,35 @@ The auditor is not a retrieval tool and cannot add evidence from model memory. I
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
 configured maximum; exhaustion produces a terminal, reviewable run state.
 
+## Preview quality projection
+
+The redacted preview manifest normalizes validation and audit records through one
+`_quality_snapshot(value, default_status)` projection in `backend/app/preview_run.py`. The source
+contracts use different verdict fields and must not be conflated:
+
+- deterministic validation uses boolean `passed`, which maps to `passed` or `failed`;
+- LLM audit uses boolean `accepted`, which maps to `accepted` or `rejected`;
+- an explicit string `status` always wins, including `not_configured`;
+- when neither verdict is present, retain the caller's pending/default status.
+
+The normalized payload preserves both `passed` and `accepted` as separate nullable fields. This
+keeps the top-level manifest and nested `copy.audit` display consistent with the persisted package
+without changing durable state or workflow transitions.
+
+### Validation & Error Matrix
+
+| Input record | Projected status |
+| --- | --- |
+| `{"passed": true}` | `passed` |
+| `{"passed": false}` | `failed` |
+| `{"accepted": true}` | `accepted` |
+| `{"accepted": false}` | `rejected` |
+| `{"accepted": true, "status": "not_configured"}` | `not_configured` |
+| `{}` with `default_status="pending"` | `pending` |
+
+Unit coverage must assert accepted/rejected audit projection at both manifest locations and confirm
+that explicit provider statuses are not overwritten.
+
 ## Scenario: Preview copy policy and bounded Zhipu structured output
 
 ### 1. Scope / Trigger

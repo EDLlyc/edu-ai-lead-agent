@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"Cross-check operational boundaries, privacy, durable state, and manual-only delivery constraints."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Focused test, security, and operational verification expectations."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify terminal outcomes and safe failure reporting are not misclassified as success."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify the acceptance run did not create a delivery side effect."}

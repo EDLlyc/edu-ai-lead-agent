@@ -12,6 +12,7 @@ from app.preview_run import (
     StageState,
     _extract_trailing_hashtags,
     _manifest,
+    _quality_snapshot,
     _safe_http_error,
     _validate_png,
 )
@@ -100,6 +101,47 @@ def test_preview_helpers_reject_bad_png_and_keep_hashtag_contract() -> None:
         assert getattr(error, "code", None) == "image_dimensions_invalid"
     else:
         raise AssertionError("non-1024 image should be rejected")
+
+
+def test_quality_snapshot_maps_audit_status_and_preserves_explicit_status() -> None:
+    assert _quality_snapshot({"accepted": True})["status"] == "accepted"
+    assert _quality_snapshot({"accepted": False})["status"] == "rejected"
+    assert _quality_snapshot({"accepted": True, "status": "not_configured"})["status"] == (
+        "not_configured"
+    )
+
+
+def test_manifest_projects_package_audit_status_at_top_level_and_in_copy() -> None:
+    state = PreviewState(
+        run_id="preview-audit-status",
+        business_date="2026-08-08",
+        output_dir=Path("output/preview/preview-audit-status"),
+        copy_detail={
+            "active_draft_version_id": "draft-1",
+            "drafts": [
+                {
+                    "id": "draft-1",
+                    "copywriting": "科学教育内容\n#赛先生科学 #做中学",
+                    "validation_passed": True,
+                    "audit_accepted": True,
+                    "issues": [],
+                }
+            ],
+        },
+        package={
+            "id": "package-1",
+            "status": "awaiting_manual_use",
+            "validation": {"passed": True},
+            "audit": {"accepted": True},
+        },
+    )
+
+    payload = _manifest(state)
+
+    assert payload["audit"]["status"] == "accepted"
+    assert payload["audit"]["accepted"] is True
+    assert payload["copy"]["audit"]["status"] == "accepted"
+    assert payload["copy"]["audit"]["accepted"] is True
 
 
 def test_safe_http_error_does_not_return_provider_payload() -> None:

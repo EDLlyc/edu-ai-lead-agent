@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend operational boundaries for durable stages, real-provider calls, private storage, and no automated social publishing."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Stage ownership, terminal-state semantics, and end-to-end content pipeline contracts."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed failure, retry, and safe error-projection requirements for reporting a real run."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Enterprise WeChat delivery isolation and confirmation that this acceptance must not enqueue delivery."}
