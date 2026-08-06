@@ -257,10 +257,13 @@ checks schema, required fields, evidence coverage, source tiers, source URLs, ba
 lengths, date consistency, repeated-topic state, privacy/policy rules, image restrictions, and the
 manual-publishing boundary. The parent-facing copy must use plain Chinese, explain why learning
 science/innovation/AI/robotics is useful without grade or career promises, explain why the learning
-experience belongs at Sai Xiansheng using supplied brand context, and end with a separate line of
-two or three hashtags whose first tag is always `#赛先生科学`.
+experience belongs at Sai Xiansheng using supplied brand context, target 300-500 CJK Chinese
+characters and 2-5 emoji in the body excluding the trailing hashtag line, and end with a separate
+line of two or three hashtags whose first tag is always `#赛先生科学`. Length and emoji targets are
+quality guidance, not delivery blockers.
 
-Only a deterministically valid draft proceeds to LLM audit. The auditor judges parent readability,
+Only a draft without deterministic errors proceeds to LLM audit; deterministic warnings proceed as
+well. The auditor judges parent readability,
 learning value, the concrete Sai Xiansheng reason, unsupported implication, exaggeration,
 anxiety-inducing language, brand fit, hashtag quality, and image-prompt risk against the supplied
 artifacts. It returns a typed verdict such as:
@@ -276,6 +279,40 @@ class AuditVerdict(BaseModel):
     accepted: bool
     issues: list[AuditIssue]
 ```
+
+The copy-counting helpers are the single source of truth for this contract:
+
+```python
+extract_copy_body(text: str) -> str
+count_hanzi(text: str) -> int
+count_emojis(text: str) -> int
+```
+
+`extract_copy_body` removes the final hashtag-candidate line before counting. `count_hanzi` counts
+only CJK Unified Ideographs; punctuation, whitespace, digits, Latin letters, and emoji do not count.
+`count_emojis` counts displayed emoji sequences, treating variation selectors, skin-tone modifiers,
+and zero-width-joiner components as part of the preceding emoji. The body targets 300-500 Hanzi and
+2-5 emoji inclusive. Counts outside either target use `copy_length` or `copy_emoji_count` with
+`warning` severity under every preview and strict policy; the count is retained in the material
+package for inspection.
+
+| Condition | Required result |
+| --- | --- |
+| Body has 299 or 501 Hanzi | `copy_length` warning; continue to audit and delivery when no hard issue exists |
+| Body has 300 or 500 Hanzi | Length check passes when other checks pass |
+| Body has 0, 1, or 6+ emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
+| Body has 2-5 emoji sequences | Emoji check passes when other checks pass |
+| Tags appear only on the final line | Tags are validated separately and excluded from the Hanzi count |
+
+Good: `正文...🔬🤖` followed by `#赛先生科学 #科学思维` with 300-500 Hanzi has no count warning.
+If a 299-Hanzi body is padded with punctuation, ASCII, emoji, or hashtag text, those characters are
+still excluded from the count and the draft retains its visible warning rather than concealing it.
+
+Tests must assert 300/500 boundaries, exclusion of punctuation/ASCII/emoji/trailing tags, common
+variation-selector and ZWJ sequences, prompt wording, and continuation through audit for a
+warning-only draft. Hard-error repair remains single-attempt and ends in `review_required` when it
+still fails. Do not implement a second repair loop or duplicate the counting logic in a provider
+adapter.
 
 The auditor is not a retrieval tool and cannot add evidence from model memory. It cannot override
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
@@ -326,10 +363,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current durable rule version is
-  `preview-v2`. `preview-v1` remains available for historical behavior.
-- Strict profiles use `COPY_RULE_VERSION`, currently `moments-rules-v3-parent-language`.
-- Current copy versions: generator `moments-generator-v8-parent-language`, auditor
-  `moments-auditor-v8-parent-language`, and pipeline `copy-pipeline-v8-parent-language`.
+  `preview-v4-length-emoji-advisory`. `preview-v1` and `preview-v2` remain available for historical
+  behavior.
+- Strict profiles use `COPY_RULE_VERSION`, currently
+  `moments-rules-v5-parent-language-length-emoji-advisory`.
+- Current copy versions: generator `moments-generator-v10-parent-language-length-emoji-advisory`,
+  auditor `moments-auditor-v10-parent-language-length-emoji-advisory`, and pipeline
+  `copy-pipeline-v10-parent-language-length-emoji-advisory`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -344,11 +384,14 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   execute a historical fingerprint under a newly configured model identity.
 - Preview-v1 deterministic policy converts only `unverified_superlative` and `incomplete_sentence`
   to warnings. Preview-v2 retains those two historical warnings and additionally converts only
-  `claim_not_in_copy` and `source_note_unlinked` to warnings. Deterministic evidence/binding,
+  `claim_not_in_copy` and `source_note_unlinked` to warnings. `copy_length` and
+  `copy_emoji_count` are advisory warnings under every rule version. Deterministic evidence/binding,
   factual, privacy, injection, anxiety, publishing, image, prohibited-marketing, and hashtag
-  findings remain errors under both preview versions.
+  findings remain errors under all preview versions.
 - Preview LLM audit may convert brand tone/fit, fluency, ordinary promotional language, and the
   typed `exaggeration` / `marketing_exaggeration` quality codes to warnings.
+  Length and emoji-count audit findings are warnings under every rule version and cannot alone
+  reject a draft or trigger a repair.
   `unsupported_implication` and every factual or safety issue remain blocking errors.
 - The persisted audit verdict is the policy-adjusted verdict. A warning-only preview audit is
   accepted without consuming the single product repair; any remaining error retains the normal

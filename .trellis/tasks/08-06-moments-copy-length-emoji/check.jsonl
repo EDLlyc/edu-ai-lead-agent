@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify the new length/emoji rules remain deterministic, evidence-bound, versioned, and compatible with the existing copy/audit flow."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify validation, test coverage, dependency discipline, and no regression of safety or delivery boundaries."}

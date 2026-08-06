@@ -17,6 +17,7 @@ from app.application.ports.copy_generation import (
 )
 from app.application.services.copy_generation import (
     CopyGenerationExecutor,
+    build_auditor_prompt,
     build_copy_version_bundle,
     build_generator_prompt,
 )
@@ -39,7 +40,13 @@ from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
     DeterministicFakeMaterialDraftGenerator,
 )
-from app.schemas.copy_generation import AuditVerdict, CopyIssue, DraftClaim, MaterialDraft
+from app.schemas.copy_generation import (
+    AuditVerdict,
+    CopyIssue,
+    DraftClaim,
+    MaterialDraft,
+    count_emojis,
+)
 from structlog.testing import capture_logs
 
 RUN_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -104,6 +111,52 @@ def _brand() -> tuple[ActiveBrandContext, ...]:
             document_kind="positioning",
             text="赛先生重视科学精神、好奇心、思考力和创造力。",
             tone_tags=("专业", "温暖", "克制"),
+        ),
+    )
+
+
+def _fixture_cjk_count(value: str) -> int:
+    return sum(
+        0x3400 <= ord(character) <= 0x4DBF or 0x4E00 <= ord(character) <= 0x9FFF
+        for character in value
+    )
+
+
+def _contract_draft(
+    *,
+    hanzi_count: int = 300,
+    emojis: tuple[str, ...] = ("😀", "👩‍🔬"),
+    decorations: str = "",
+) -> MaterialDraft:
+    topic = _topic()
+    brand = _brand()[0]
+    fact = topic.evidence[0].exact_quote
+    opinion = "这也提醒我们，和孩子一起理解技术、提出问题，比追逐概念更有价值。"
+    body_prefix = f"{fact}{brand.text}{opinion}{decorations}{''.join(emojis)}"
+    filler_count = hanzi_count - _fixture_cjk_count(body_prefix)
+    assert filler_count >= 0
+    body = f"{body_prefix}{'科' * filler_count}"
+    assert _fixture_cjk_count(body) == hanzi_count
+    return MaterialDraft(
+        copywriting=f"{body}\n\n#赛先生科学 #人工智能启蒙 #科学思维",
+        parent_takeaway="帮助家长用可靠信息和开放问题陪伴孩子理解人工智能。",
+        interaction="你最近和孩子讨论过哪一个人工智能或机器人话题？",
+        source_note=f"信息来源：{topic.evidence[0].source_name}（原文链接供内部审核核对）。",
+        image_prompt="友好的科学教育插画，家长与孩子共同观察机器人。",
+        claims=(
+            DraftClaim(
+                id="fact-1",
+                text=fact,
+                kind="external_fact",
+                evidence_ids=(EVIDENCE_ID,),
+            ),
+            DraftClaim(
+                id="brand-1",
+                text=brand.text,
+                kind="brand_statement",
+                brand_chunk_ids=(BRAND_CHUNK_ID,),
+            ),
+            DraftClaim(id="opinion-1", text=opinion, kind="opinion"),
         ),
     )
 
@@ -278,6 +331,29 @@ class CountingGenerator(DeterministicFakeMaterialDraftGenerator):
         return await super().generate(request)
 
 
+class ScriptedGenerator:
+    def __init__(self, drafts: tuple[MaterialDraft, ...]) -> None:
+        self._drafts = drafts
+        self.calls = 0
+        self.requests: list[DraftGenerationRequest] = []
+
+    async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
+        self.calls += 1
+        self.requests.append(request)
+        draft = self._drafts[min(self.calls - 1, len(self._drafts) - 1)]
+        return DraftGenerationResult(
+            draft=draft,
+            provider="fake",
+            model="fake-copy",
+            request_fingerprint=f"scripted-copy-{self.calls}",
+            provider_request_id=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            reasoning_tokens=0,
+            latency_ms=0,
+        )
+
+
 class CountingAuditor(DeterministicFakeMaterialDraftAuditor):
     def __init__(self, *, reject_all: bool = False) -> None:
         super().__init__(model="fake-copy")
@@ -310,6 +386,31 @@ class CountingAuditor(DeterministicFakeMaterialDraftAuditor):
             completion_tokens=0,
             reasoning_tokens=0,
             latency_ms=0,
+        )
+
+
+class AdvisoryRejectingAuditor(CountingAuditor):
+    async def audit(self, request: DraftAuditRequest) -> DraftAuditResult:
+        result = await super().audit(request)
+        return replace(
+            result,
+            verdict=AuditVerdict(
+                accepted=False,
+                issues=(
+                    CopyIssue(
+                        code="copy_length",
+                        message="正文长度超出目标范围",
+                        severity="error",
+                        field="copywriting",
+                    ),
+                    CopyIssue(
+                        code="copy_emoji_count",
+                        message="emoji数量超出目标范围",
+                        severity="error",
+                        field="copywriting",
+                    ),
+                ),
+            ),
         )
 
 
@@ -460,12 +561,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v2"
+    assert preview.rule_version == "preview-v4-length-emoji-advisory"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v3-parent-language"
-    assert manual_strict.rule_version == "moments-rules-v3-parent-language"
-    assert manual_preview.rule_version == "preview-v2"
+    assert strict.rule_version == "moments-rules-v5-parent-language-length-emoji-advisory"
+    assert manual_strict.rule_version == "moments-rules-v5-parent-language-length-emoji-advisory"
+    assert manual_preview.rule_version == "preview-v4-length-emoji-advisory"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -710,6 +811,170 @@ async def test_copy_requires_fixed_hashtag_line_and_brand_staple() -> None:
         for issue in validate_material_draft(misplaced, topic=topic, brand_context=_brand())
     }
     assert "hashtag_placement" in misplaced_codes
+
+
+@pytest.mark.parametrize(
+    ("hanzi_count", "has_warning"),
+    [(299, True), (300, False), (500, False), (501, True)],
+)
+def test_copy_body_hanzi_length_boundaries_are_inclusive(
+    hanzi_count: int, has_warning: bool
+) -> None:
+    topic = _topic()
+    draft = _contract_draft(hanzi_count=hanzi_count)
+
+    issues = validate_material_draft(draft, topic=topic, brand_context=_brand())
+    length_issues = tuple(issue for issue in issues if issue.code == "copy_length")
+
+    assert bool(length_issues) is has_warning
+    if has_warning:
+        assert all(issue.severity == "warning" for issue in length_issues)
+        assert all("300" in issue.message and "500" in issue.message for issue in length_issues)
+
+
+def test_copy_body_count_excludes_non_cjk_content_and_trailing_hashtags() -> None:
+    topic = _topic()
+    draft = _contract_draft(
+        hanzi_count=300,
+        decorations="，。！？\n 123 ABC",
+        emojis=("😀", "👩‍🔬"),
+    )
+
+    codes = {
+        issue.code for issue in validate_material_draft(draft, topic=topic, brand_context=_brand())
+    }
+
+    assert draft.copywriting.endswith("#赛先生科学 #人工智能启蒙 #科学思维")
+    assert "copy_length" not in codes
+    assert "copy_emoji_count" not in codes
+    assert "hashtag_format" not in codes
+    assert "hashtag_placement" not in codes
+
+
+@pytest.mark.parametrize(
+    ("emojis", "has_warning"),
+    [
+        ((), True),
+        (("😀",), True),
+        (("😀", "👩‍🔬"), False),
+        (("😀", "👩‍🔬", "❤️", "🚀", "🧪"), False),
+        (("😀", "👩‍🔬", "❤️", "🚀", "🧪", "🎓"), True),
+    ],
+)
+def test_copy_body_emoji_range_counts_display_sequences(
+    emojis: tuple[str, ...], has_warning: bool
+) -> None:
+    topic = _topic()
+    draft = _contract_draft(hanzi_count=300, emojis=emojis)
+
+    issues = validate_material_draft(draft, topic=topic, brand_context=_brand())
+    emoji_issues = tuple(issue for issue in issues if issue.code == "copy_emoji_count")
+
+    assert bool(emoji_issues) is has_warning
+    if has_warning:
+        assert all(issue.severity == "warning" for issue in emoji_issues)
+        assert all("2" in issue.message and "5" in issue.message for issue in emoji_issues)
+
+
+def test_emoji_counter_ignores_standalone_modifiers_and_groups_sequences() -> None:
+    assert count_emojis("🏻") == 0
+    assert count_emojis("👍🏻") == 1
+    assert count_emojis("👩‍🔬") == 1
+    assert count_emojis("🇨🇳🇺🇸") == 2
+
+
+def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
+    topic = _topic()
+    brand = _brand()
+    draft = _contract_draft()
+    bundle = build_copy_version_bundle(Settings())
+    generation_request = DraftGenerationRequest(
+        run_id=RUN_ID,
+        topic=topic,
+        brand_context=brand,
+        version_bundle=bundle,
+        draft_version=1,
+        max_output_tokens=2048,
+    )
+    audit_request = DraftAuditRequest(
+        run_id=RUN_ID,
+        draft_version_id=uuid4(),
+        topic=topic,
+        brand_context=brand,
+        draft=draft,
+        version_bundle=bundle,
+        max_output_tokens=1024,
+    )
+
+    prompts = (build_generator_prompt(generation_request), build_auditor_prompt(audit_request))
+    for prompt in prompts:
+        assert any(value in prompt for value in ("300到500", "300-500", "300～500"))
+        assert any(value in prompt for value in ("2到5", "2-5", "2～5"))
+        assert "中文字符" in prompt or "汉字" in prompt
+        assert "emoji" in prompt
+        assert "标点" in prompt
+        assert "数字" in prompt
+        assert "英文字母" in prompt or "英文" in prompt or "ASCII" in prompt
+        assert "标签" in prompt
+    assert "只是质量提示" in prompts[0]
+    assert "不得仅因此拒绝草稿或触发修复" in prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_copy_length_and_emoji_warnings_continue_to_audit_without_repair() -> None:
+    repository = FakeCopyRepository(_topic())
+    generator = ScriptedGenerator((_contract_draft(hanzi_count=299, emojis=("😀",)),))
+    auditor = CountingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("copy-length-emoji-warning-worker") is True
+
+    assert repository.status == "accepted"
+    assert repository.repair_count == 0
+    assert generator.calls == 1
+    assert auditor.calls == 1
+    assert repository.drafts[0].validation_passed is True
+    assert {issue.code for issue in repository.drafts[0].validation_issues} >= {
+        "copy_length",
+        "copy_emoji_count",
+    }
+    assert all(
+        issue.severity == "warning"
+        for issue in repository.drafts[0].validation_issues
+        if issue.code in {"copy_length", "copy_emoji_count"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_copy_length_and_emoji_audit_errors_are_advisory_without_repair() -> None:
+    repository = FakeCopyRepository(_topic())
+    generator = ScriptedGenerator((_contract_draft(hanzi_count=299, emojis=("😀",)),))
+    auditor = AdvisoryRejectingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("copy-length-emoji-audit-warning-worker") is True
+
+    assert repository.status == "accepted"
+    assert repository.error_code is None
+    assert repository.repair_count == 0
+    assert generator.calls == 1
+    assert auditor.calls == 1
+    assert repository.active_draft_version_id == repository.drafts[0].id
+    assert repository.drafts[0].audit is not None
+    assert repository.drafts[0].audit.accepted is True
+    assert all(issue.severity == "warning" for issue in repository.drafts[0].audit.issues)
 
 
 def test_prompt_data_cannot_close_its_delimited_section() -> None:
@@ -1109,26 +1374,15 @@ def test_deterministic_gate_rejects_critical_copy_and_image_risks(
 
 def test_preview_rule_marks_superlative_and_dangling_clause_as_warnings() -> None:
     topic = replace(_topic(), scoring_profile="strict")
-    evidence = topic.evidence[0]
-    fact = evidence.exact_quote
-    draft = MaterialDraft(
-        copywriting=(
-            f"今天和家长分享行业首个机器人学习项目：{fact}进入标注环节后。"
-            "我们可以和孩子一起理解技术、提出问题，并从可靠信息出发形成自己的判断。"
-            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
-        ),
-        parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
-        interaction="你会和孩子讨论这个话题吗？",
-        source_note="信息来源：科技日报。",
-        image_prompt="蓝色科技教育插画，家长和孩子共同观察机器人，不出现真人正脸。",
-        claims=(
-            DraftClaim(
-                id="fact-1",
-                text=fact,
-                kind="external_fact",
-                evidence_ids=(EVIDENCE_ID,),
-            ),
-        ),
+    base = _contract_draft()
+    body = base.copywriting.rsplit("\n\n", 1)[0]
+    draft = base.model_copy(
+        update={
+            "copywriting": (
+                f"行业首个机器人学习项目：{body}。进入标注环节后。"
+                "\n\n#赛先生科学 #人工智能启蒙 #科学思维"
+            )
+        }
     )
 
     issues = validate_material_draft(
@@ -1172,7 +1426,7 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
         draft,
         topic=topic,
         brand_context=_brand(),
-        rule_version="moments-rules-v2",
+        rule_version="moments-rules-v5-parent-language-length-emoji-advisory",
     )
 
     issue_by_code = {issue.code: issue for issue in issues}
@@ -1183,9 +1437,11 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
 @pytest.mark.parametrize(
     ("rule_version", "expected_target_severity", "expected_legacy_severity"),
     [
+        ("preview-v4-length-emoji-advisory", "warning", "warning"),
+        ("preview-v3-length-emoji", "warning", "warning"),
         ("preview-v2", "warning", "warning"),
         ("preview-v1", "error", "warning"),
-        ("moments-rules-v3-parent-language", "error", "error"),
+        ("moments-rules-v5-parent-language-length-emoji-advisory", "error", "error"),
     ],
 )
 def test_preview_policy_versions_scope_deterministic_warning_codes(

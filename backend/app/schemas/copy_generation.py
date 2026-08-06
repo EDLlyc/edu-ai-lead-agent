@@ -8,6 +8,26 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _HASHTAG_TOKEN = re.compile(r"^#[A-Za-z0-9_\u3400-\u9fff]{2,24}$")
+_CJK_RANGES = ((0x3400, 0x4DBF), (0x4E00, 0x9FFF))
+_EMOJI_RANGES = (
+    (0x00A9, 0x00A9),
+    (0x00AE, 0x00AE),
+    (0x203C, 0x203C),
+    (0x2049, 0x2049),
+    (0x2122, 0x2122),
+    (0x2139, 0x2139),
+    (0x2194, 0x21FF),
+    (0x2300, 0x23FF),
+    (0x25AA, 0x25FF),
+    (0x2600, 0x27BF),
+    (0x2934, 0x2935),
+    (0x2B00, 0x2BFF),
+    (0x1F000, 0x1FAFF),
+)
+_EMOJI_MODIFIER_RANGES = ((0x1F3FB, 0x1F3FF),)
+_REGIONAL_INDICATOR_RANGE = (0x1F1E6, 0x1F1FF)
+_EMOJI_VARIATION_SELECTORS = frozenset({0xFE0E, 0xFE0F})
+_ZERO_WIDTH_JOINER = 0x200D
 
 
 def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
@@ -29,6 +49,82 @@ def has_non_trailing_hashtags(text: str) -> bool:
     return any(
         token.startswith("#") and len(token) > 1 for line in lines[:-1] for token in line.split()
     )
+
+
+def extract_copy_body(text: str) -> str:
+    """Return the copy body while excluding a final hashtag candidate line."""
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and _is_hashtag_candidate_line(lines[-1]):
+        lines.pop()
+    return "\n".join(lines)
+
+
+def count_hanzi(text: str) -> int:
+    """Count CJK Unified Ideographs without counting punctuation or other symbols."""
+    return sum(
+        1 for character in text if any(start <= ord(character) <= end for start, end in _CJK_RANGES)
+    )
+
+
+def count_emojis(text: str) -> int:
+    """Count emoji display sequences, ignoring variation/modifier/joiner components."""
+    count = 0
+    index = 0
+    while index < len(text):
+        codepoint = ord(text[index])
+        if not _is_emoji_base(codepoint):
+            index += 1
+            continue
+
+        count += 1
+        index += 1
+        index = _consume_emoji_components(text, index)
+        if (
+            _is_regional_indicator(codepoint)
+            and index < len(text)
+            and _is_regional_indicator(ord(text[index]))
+        ):
+            index += 1
+        while (
+            index + 1 < len(text)
+            and ord(text[index]) == _ZERO_WIDTH_JOINER
+            and _is_emoji_base(ord(text[index + 1]))
+        ):
+            index += 2
+            index = _consume_emoji_components(text, index)
+    return count
+
+
+def _is_hashtag_candidate_line(line: str) -> bool:
+    tokens = line.strip().split()
+    return bool(tokens) and all(token.startswith("#") and len(token) > 1 for token in tokens)
+
+
+def _is_emoji_base(codepoint: int) -> bool:
+    return not _is_emoji_modifier(codepoint) and any(
+        start <= codepoint <= end for start, end in _EMOJI_RANGES
+    )
+
+
+def _is_emoji_modifier(codepoint: int) -> bool:
+    return any(start <= codepoint <= end for start, end in _EMOJI_MODIFIER_RANGES)
+
+
+def _is_regional_indicator(codepoint: int) -> bool:
+    start, end = _REGIONAL_INDICATOR_RANGE
+    return start <= codepoint <= end
+
+
+def _consume_emoji_components(text: str, index: int) -> int:
+    while index < len(text):
+        codepoint = ord(text[index])
+        if codepoint in _EMOJI_VARIATION_SELECTORS or _is_emoji_modifier(codepoint):
+            index += 1
+            continue
+        break
+    return index
 
 
 class _StrictModel(BaseModel):

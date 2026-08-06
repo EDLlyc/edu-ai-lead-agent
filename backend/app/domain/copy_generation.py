@@ -14,6 +14,9 @@ from app.schemas.copy_generation import (
     AuditVerdict,
     CopyIssue,
     MaterialDraft,
+    count_emojis,
+    count_hanzi,
+    extract_copy_body,
     extract_trailing_hashtags,
     has_non_trailing_hashtags,
 )
@@ -272,7 +275,14 @@ _DANGLING_DEPENDENT_CLAUSE = re.compile(
 _SUPPORT_TEXT = re.compile(r"[\W_]+", re.UNICODE)
 _NUMBER_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
 _PREVIEW_PROFILES = frozenset({"preview", "preview-v1", "preview-v2"})
-_PREVIEW_RULE_VERSIONS = frozenset({"preview-v1", "preview-v2"})
+_PREVIEW_RULE_VERSIONS = frozenset(
+    {
+        "preview-v1",
+        "preview-v2",
+        "preview-v3-length-emoji",
+        "preview-v4-length-emoji-advisory",
+    }
+)
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
         {
@@ -288,7 +298,24 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
             "source_note_unlinked",
         }
     ),
+    "preview-v3-length-emoji": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+        }
+    ),
+    "preview-v4-length-emoji-advisory": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+        }
+    ),
 }
+_COPY_ADVISORY_AUDIT_CODES = frozenset({"copy_length", "copy_emoji_count"})
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
         "brand_fit",
@@ -317,8 +344,27 @@ def validate_material_draft(
     issues: list[CopyIssue] = []
     evidence_by_id = {item.evidence_id: item for item in topic.evidence}
     brand_by_id = {item.chunk_id: item for item in brand_context}
-    if len(draft.copywriting) < 80 or len(draft.copywriting) > 800:
-        issues.append(_issue("copy_length", "朋友圈正文应为80到800个字符", field="copywriting"))
+    copy_body = extract_copy_body(draft.copywriting)
+    hanzi_count = count_hanzi(copy_body)
+    if not 300 <= hanzi_count <= 500:
+        issues.append(
+            _issue(
+                "copy_length",
+                f"朋友圈正文汉字数为{hanzi_count}，目标为300到500个（不含标签、标点、空格、数字、英文和emoji）",
+                field="copywriting",
+                severity="warning",
+            )
+        )
+    emoji_count = count_emojis(copy_body)
+    if not 2 <= emoji_count <= 5:
+        issues.append(
+            _issue(
+                "copy_emoji_count",
+                f"朋友圈正文emoji目标为2到5个，当前为{emoji_count}个",
+                field="copywriting",
+                severity="warning",
+            )
+        )
     if not 10 <= len(draft.parent_takeaway) <= 180:
         issues.append(
             _issue("parent_takeaway_length", "家长价值应为10到180个字符", field="parent_takeaway")
@@ -535,14 +581,17 @@ def apply_copy_audit_policy(
     scoring_profile: str | None = None,
     rule_version: str | None = None,
 ) -> AuditVerdict:
-    if not _uses_preview_copy_policy(
+    uses_preview = _uses_preview_copy_policy(
         scoring_profile=scoring_profile,
         rule_version=rule_version,
-    ):
+    )
+    has_advisory_issue = any(issue.code in _COPY_ADVISORY_AUDIT_CODES for issue in verdict.issues)
+    if not uses_preview and not has_advisory_issue:
         return verdict
     issues = tuple(
         issue.model_copy(update={"severity": "warning"})
-        if issue.code in _PREVIEW_AUDIT_WARNING_CODES
+        if issue.code in _COPY_ADVISORY_AUDIT_CODES
+        or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
         else issue
         for issue in verdict.issues
     )

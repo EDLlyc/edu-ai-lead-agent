@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Defines the parent-facing copy contract, deterministic validation before audit, bounded repair, version bundles, and delivery boundary."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed validation failures, one bounded regeneration attempt, retry boundaries, and reviewable terminal states."}
