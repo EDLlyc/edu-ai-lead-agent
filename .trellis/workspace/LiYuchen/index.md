@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-08-05
+- **Total Sessions**: 16
+- **Last Active**: 2026-08-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~355 | Active |
+| `journal-1.md` | ~376 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-08-06 | Add WeCom sales delivery | `0a8309c` | `main` |
 | 15 | 2026-08-05 | Complete real content pipeline preview | `43f1b4e` | `main` |
 | 14 | 2026-08-05 | Content pipeline cleanup | `c467cc1`, `0fef06a`, `4a00a5c`, `8b287c8` | `main` |
 | 13 | 2026-08-04 | Complete Comfly end-to-end image pipeline | `0faad97`, `01eecb6` | `main` |

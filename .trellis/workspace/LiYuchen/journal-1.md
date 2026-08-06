@@ -353,3 +353,24 @@ Ran the real 2026-08-05 acquisition, governance, topic selection, Zhipu copy, Co
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: Add WeCom sales delivery
+
+**Date**: 2026-08-06
+**Task**: Add WeCom sales delivery
+**Branch**: `main`
+
+### Summary
+
+Implemented and verified reviewed material-package delivery to one configured Enterprise WeChat sales recipient through an opt-in dispatcher, durable idempotent jobs, safe retries, API contracts, migration, Compose wiring, tests, and backend specifications.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a8309c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
