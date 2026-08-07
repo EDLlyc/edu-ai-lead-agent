@@ -135,15 +135,17 @@ class Settings(BaseSettings):
     )
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
-    copy_pipeline_version: str = "copy-pipeline-v10-parent-language-length-emoji-advisory"
+    copy_pipeline_version: str = "copy-pipeline-v11-parent-language-paragraph-emoji-advisory"
     copy_generator_prompt_version: str = (
-        "moments-generator-v10-parent-language-length-emoji-advisory"
+        "moments-generator-v11-parent-language-paragraph-emoji-advisory"
     )
     copy_draft_schema_version: str = "moments-draft-schema-v1"
-    copy_auditor_prompt_version: str = "moments-auditor-v10-parent-language-length-emoji-advisory"
+    copy_auditor_prompt_version: str = (
+        "moments-auditor-v11-parent-language-paragraph-emoji-advisory"
+    )
     copy_audit_schema_version: str = "moments-audit-schema-v1"
-    copy_rule_version: str = "moments-rules-v5-parent-language-length-emoji-advisory"
-    copy_preview_policy_version: str = "preview-v4-length-emoji-advisory"
+    copy_rule_version: str = "moments-rules-v6-parent-language-paragraph-emoji-advisory"
+    copy_preview_policy_version: str = "preview-v5-paragraph-emoji-advisory"
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)

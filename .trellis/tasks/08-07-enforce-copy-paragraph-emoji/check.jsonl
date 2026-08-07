@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Check that paragraph/emoji formatting remains versioned, warning-only, evidence-bound, and compatible with accepted material-package delivery."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check that one automatic format repair does not create an unbounded loop and that hard failures still reach the existing reviewable terminal state."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Check that warning-only accepted drafts remain eligible for existing idempotent Enterprise WeChat group-webhook delivery without transport changes."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check focused and full validation coverage, formatting, typing, and no-real-side-effect verification."}

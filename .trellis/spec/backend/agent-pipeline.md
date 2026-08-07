@@ -258,9 +258,10 @@ lengths, date consistency, repeated-topic state, privacy/policy rules, image res
 manual-publishing boundary. The parent-facing copy must use plain Chinese, explain why learning
 science/innovation/AI/robotics is useful without grade or career promises, explain why the learning
 experience belongs at Sai Xiansheng using supplied brand context, target 300-500 CJK Chinese
-characters and 2-5 emoji in the body excluding the trailing hashtag line, and end with a separate
-line of two or three hashtags whose first tag is always `#赛先生科学`. Length and emoji targets are
-quality guidance, not delivery blockers.
+characters and 2-5 emoji in the body excluding the trailing hashtag line. The body must contain at
+least three non-empty natural paragraphs separated by one newline, with no blank line between
+paragraphs, and end with a separate line of two or three hashtags whose first tag is always
+`#赛先生科学`. Length, paragraph, and emoji targets are quality guidance, not delivery blockers.
 
 Only a draft without deterministic errors proceeds to LLM audit; deterministic warnings proceed as
 well. The auditor judges parent readability,
@@ -284,17 +285,21 @@ The copy-counting helpers are the single source of truth for this contract:
 
 ```python
 extract_copy_body(text: str) -> str
+extract_copy_paragraphs(text: str) -> tuple[str, ...]
+has_copy_paragraph_format(text: str) -> bool
 count_hanzi(text: str) -> int
 count_emojis(text: str) -> int
 ```
 
 `extract_copy_body` removes the final hashtag-candidate line before counting. `count_hanzi` counts
 only CJK Unified Ideographs; punctuation, whitespace, digits, Latin letters, and emoji do not count.
-`count_emojis` counts displayed emoji sequences, treating variation selectors, skin-tone modifiers,
-and zero-width-joiner components as part of the preceding emoji. The body targets 300-500 Hanzi and
-2-5 emoji inclusive. Counts outside either target use `copy_length` or `copy_emoji_count` with
-`warning` severity under every preview and strict policy; the count is retained in the material
-package for inspection.
+`has_copy_paragraph_format` requires at least three non-empty body lines and therefore rejects both
+a single text block and blank lines between paragraphs. `count_emojis` counts displayed emoji
+sequences, treating variation selectors, skin-tone modifiers, and zero-width-joiner components as
+part of the preceding emoji. The body targets 300-500 Hanzi and 2-5 emoji inclusive. Counts outside
+either target use `copy_length` or `copy_emoji_count` with `warning` severity under every preview
+and strict policy; the paragraph check uses `copy_paragraph_format` with the same warning severity.
+The count and format issue are retained in the material package for inspection.
 
 | Condition | Required result |
 | --- | --- |
@@ -302,6 +307,7 @@ package for inspection.
 | Body has 300 or 500 Hanzi | Length check passes when other checks pass |
 | Body has 0, 1, or 6+ emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
 | Body has 2-5 emoji sequences | Emoji check passes when other checks pass |
+| Body has fewer than three paragraphs or contains a blank line | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
 | Tags appear only on the final line | Tags are validated separately and excluded from the Hanzi count |
 
 Good: `正文...🔬🤖` followed by `#赛先生科学 #科学思维` with 300-500 Hanzi has no count warning.
@@ -309,10 +315,12 @@ If a 299-Hanzi body is padded with punctuation, ASCII, emoji, or hashtag text, t
 still excluded from the count and the draft retains its visible warning rather than concealing it.
 
 Tests must assert 300/500 boundaries, exclusion of punctuation/ASCII/emoji/trailing tags, common
-variation-selector and ZWJ sequences, prompt wording, and continuation through audit for a
-warning-only draft. Hard-error repair remains single-attempt and ends in `review_required` when it
-still fails. Do not implement a second repair loop or duplicate the counting logic in a provider
-adapter.
+variation-selector and ZWJ sequences, paragraph/newline cases, prompt wording, and continuation
+through audit for a warning-only draft. `copy_length` remains advisory without consuming a repair;
+`copy_emoji_count` and `copy_paragraph_format` can trigger the existing single product repair.
+A repaired draft with only those warnings remains deliverable, while hard-error repair remains
+single-attempt and ends in `review_required` when it still fails. Do not implement a second repair
+loop or duplicate the counting logic in a provider adapter.
 
 The auditor is not a retrieval tool and cannot add evidence from model memory. It cannot override
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
@@ -363,13 +371,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current durable rule version is
-  `preview-v4-length-emoji-advisory`. `preview-v1` and `preview-v2` remain available for historical
-  behavior.
+  `preview-v5-paragraph-emoji-advisory`. Earlier preview rule versions remain available for
+  historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v5-parent-language-length-emoji-advisory`.
-- Current copy versions: generator `moments-generator-v10-parent-language-length-emoji-advisory`,
-  auditor `moments-auditor-v10-parent-language-length-emoji-advisory`, and pipeline
-  `copy-pipeline-v10-parent-language-length-emoji-advisory`.
+  `moments-rules-v6-parent-language-paragraph-emoji-advisory`.
+- Current copy versions: generator `moments-generator-v11-parent-language-paragraph-emoji-advisory`,
+  auditor `moments-auditor-v11-parent-language-paragraph-emoji-advisory`, and pipeline
+  `copy-pipeline-v11-parent-language-paragraph-emoji-advisory`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -390,11 +398,14 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   findings remain errors under all preview versions.
 - Preview LLM audit may convert brand tone/fit, fluency, ordinary promotional language, and the
   typed `exaggeration` / `marketing_exaggeration` quality codes to warnings.
-  Length and emoji-count audit findings are warnings under every rule version and cannot alone
-  reject a draft or trigger a repair.
+  Length, emoji-count, and paragraph-format audit findings are warnings under every rule version
+  and cannot alone reject a draft. Emoji-count and paragraph-format warnings may trigger the one
+  bounded product repair; length-only warnings never consume that repair.
   `unsupported_implication` and every factual or safety issue remain blocking errors.
-- The persisted audit verdict is the policy-adjusted verdict. A warning-only preview audit is
-  accepted without consuming the single product repair; any remaining error retains the normal
+- The persisted audit verdict is the policy-adjusted verdict. A warning-only preview audit without
+  paragraph/emoji format warnings is accepted without consuming the single product repair. A
+  paragraph/emoji format warning consumes at most that one repair; an imperfect repaired draft is
+  still accepted when no hard error remains. Any remaining hard error retains the normal
   repair/review-required behavior.
 - GLM-5.2 enables deep thinking by default. Structured copy/audit is a constrained transformation,
   so deep thinking is disabled to reserve the bounded completion budget for JSON. Do not compensate

@@ -46,6 +46,8 @@ from app.schemas.copy_generation import (
     DraftClaim,
     MaterialDraft,
     count_emojis,
+    extract_copy_body,
+    has_copy_paragraph_format,
 )
 from structlog.testing import capture_logs
 
@@ -135,10 +137,10 @@ def _contract_draft(
     body_prefix = f"{fact}{brand.text}{opinion}{decorations}{''.join(emojis)}"
     filler_count = hanzi_count - _fixture_cjk_count(body_prefix)
     assert filler_count >= 0
-    body = f"{body_prefix}{'科' * filler_count}"
+    body = f"{fact}{brand.text}\n{opinion}{decorations}{''.join(emojis)}\n{'科' * filler_count}"
     assert _fixture_cjk_count(body) == hanzi_count
     return MaterialDraft(
-        copywriting=f"{body}\n\n#赛先生科学 #人工智能启蒙 #科学思维",
+        copywriting=f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维",
         parent_takeaway="帮助家长用可靠信息和开放问题陪伴孩子理解人工智能。",
         interaction="你最近和孩子讨论过哪一个人工智能或机器人话题？",
         source_note=f"信息来源：{topic.evidence[0].source_name}（原文链接供内部审核核对）。",
@@ -159,6 +161,12 @@ def _contract_draft(
             DraftClaim(id="opinion-1", text=opinion, kind="opinion"),
         ),
     )
+
+
+def _copy_without_paragraph_breaks(draft: MaterialDraft) -> MaterialDraft:
+    body = extract_copy_body(draft.copywriting).replace("\n", "")
+    hashtags = draft.copywriting.splitlines()[-1]
+    return draft.model_copy(update={"copywriting": f"{body}\n{hashtags}"})
 
 
 class FakeBrandRetriever:
@@ -480,6 +488,20 @@ class RepairFailureGenerator(InvalidBindingGenerator):
         return await super().generate(request)
 
 
+class FormatRepairFailureGenerator(CountingGenerator):
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self._repair_error = error
+
+    async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
+        if self.calls == 0:
+            result = await super().generate(request)
+            return replace(result, draft=_copy_without_paragraph_breaks(result.draft))
+        self.calls += 1
+        self.requests.append(request)
+        raise self._repair_error
+
+
 class FailingProviderGenerator(CountingGenerator):
     async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
         self.calls += 1
@@ -561,12 +583,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v4-length-emoji-advisory"
+    assert preview.rule_version == "preview-v5-paragraph-emoji-advisory"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v5-parent-language-length-emoji-advisory"
-    assert manual_strict.rule_version == "moments-rules-v5-parent-language-length-emoji-advisory"
-    assert manual_preview.rule_version == "preview-v4-length-emoji-advisory"
+    assert strict.rule_version == "moments-rules-v6-parent-language-paragraph-emoji-advisory"
+    assert manual_strict.rule_version == "moments-rules-v6-parent-language-paragraph-emoji-advisory"
+    assert manual_preview.rule_version == "preview-v5-paragraph-emoji-advisory"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -785,10 +807,10 @@ async def test_copy_requires_fixed_hashtag_line_and_brand_staple() -> None:
             max_output_tokens=2048,
         )
     )
-    body = result.draft.copywriting.rsplit("\n\n", 1)[0]
+    body = result.draft.copywriting.rsplit("\n", 1)[0]
 
     missing_staple = result.draft.model_copy(
-        update={"copywriting": f"{body}\n\n#人工智能启蒙 #科学思维"}
+        update={"copywriting": f"{body}\n#人工智能启蒙 #科学思维"}
     )
     missing_staple_codes = {
         issue.code
@@ -796,7 +818,7 @@ async def test_copy_requires_fixed_hashtag_line_and_brand_staple() -> None:
     }
     assert "required_hashtag" in missing_staple_codes
 
-    too_few = result.draft.model_copy(update={"copywriting": f"{body}\n\n#赛先生科学"})
+    too_few = result.draft.model_copy(update={"copywriting": f"{body}\n#赛先生科学"})
     too_few_codes = {
         issue.code
         for issue in validate_material_draft(too_few, topic=topic, brand_context=_brand())
@@ -804,7 +826,7 @@ async def test_copy_requires_fixed_hashtag_line_and_brand_staple() -> None:
     assert "hashtag_count" in too_few_codes
 
     misplaced = result.draft.model_copy(
-        update={"copywriting": (f"{body}\n\n#提前标签\n\n#赛先生科学 #人工智能启蒙 #科学思维")}
+        update={"copywriting": (f"{body}\n#提前标签\n#赛先生科学 #人工智能启蒙 #科学思维")}
     )
     misplaced_codes = {
         issue.code
@@ -883,6 +905,32 @@ def test_emoji_counter_ignores_standalone_modifiers_and_groups_sequences() -> No
     assert count_emojis("🇨🇳🇺🇸") == 2
 
 
+@pytest.mark.parametrize(
+    ("copywriting", "is_valid"),
+    [
+        ("第一段\n第二段\n第三段\n#赛先生科学 #科学思维", True),
+        ("第一段\n\n第二段\n第三段\n#赛先生科学 #科学思维", False),
+        ("第一段\n第二段\n#赛先生科学 #科学思维", False),
+    ],
+)
+def test_copy_paragraph_format_requires_three_non_empty_single_newline_lines(
+    copywriting: str, is_valid: bool
+) -> None:
+    assert has_copy_paragraph_format(copywriting) is is_valid
+
+
+def test_copy_paragraph_format_is_always_a_warning_in_strict_validation() -> None:
+    topic = replace(_topic(), scoring_profile="strict")
+    draft = _copy_without_paragraph_breaks(_contract_draft())
+
+    issues = validate_material_draft(draft, topic=topic, brand_context=_brand())
+
+    paragraph_issues = tuple(issue for issue in issues if issue.code == "copy_paragraph_format")
+    assert len(paragraph_issues) == 1
+    assert paragraph_issues[0].severity == "warning"
+    assert not any(issue.severity == "error" for issue in paragraph_issues)
+
+
 def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
     topic = _topic()
     brand = _brand()
@@ -916,14 +964,20 @@ def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
         assert "数字" in prompt
         assert "英文字母" in prompt or "英文" in prompt or "ASCII" in prompt
         assert "标签" in prompt
-    assert "只是质量提示" in prompts[0]
-    assert "不得仅因此拒绝草稿或触发修复" in prompts[1]
+    for prompt in prompts:
+        assert "至少3个自然段" in prompt
+        assert "只换一行" in prompt
+        assert "空白行" in prompt
+        assert "2到5个自然emoji" in prompt
+        assert "一次有限修复" in prompt
+    assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[0]
+    assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[1]
 
 
 @pytest.mark.asyncio
-async def test_copy_length_and_emoji_warnings_continue_to_audit_without_repair() -> None:
+async def test_copy_length_warning_continues_to_audit_without_repair() -> None:
     repository = FakeCopyRepository(_topic())
-    generator = ScriptedGenerator((_contract_draft(hanzi_count=299, emojis=("😀",)),))
+    generator = ScriptedGenerator((_contract_draft(hanzi_count=299),))
     auditor = CountingAuditor()
     executor = CopyGenerationExecutor(
         repository=repository,
@@ -940,19 +994,19 @@ async def test_copy_length_and_emoji_warnings_continue_to_audit_without_repair()
     assert generator.calls == 1
     assert auditor.calls == 1
     assert repository.drafts[0].validation_passed is True
-    assert {issue.code for issue in repository.drafts[0].validation_issues} >= {
-        "copy_length",
-        "copy_emoji_count",
+    assert {issue.code for issue in repository.drafts[0].validation_issues} >= {"copy_length"}
+    assert "copy_emoji_count" not in {
+        issue.code for issue in repository.drafts[0].validation_issues
     }
     assert all(
         issue.severity == "warning"
         for issue in repository.drafts[0].validation_issues
-        if issue.code in {"copy_length", "copy_emoji_count"}
+        if issue.code == "copy_length"
     )
 
 
 @pytest.mark.asyncio
-async def test_copy_length_and_emoji_audit_errors_are_advisory_without_repair() -> None:
+async def test_copy_emoji_format_warning_triggers_one_repair() -> None:
     repository = FakeCopyRepository(_topic())
     generator = ScriptedGenerator((_contract_draft(hanzi_count=299, emojis=("😀",)),))
     auditor = AdvisoryRejectingAuditor()
@@ -964,17 +1018,70 @@ async def test_copy_length_and_emoji_audit_errors_are_advisory_without_repair() 
         settings=Settings(),
     )
 
-    assert await executor.execute_next("copy-length-emoji-audit-warning-worker") is True
+    assert await executor.execute_next("copy-format-warning-worker") is True
 
     assert repository.status == "accepted"
     assert repository.error_code is None
-    assert repository.repair_count == 0
-    assert generator.calls == 1
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert auditor.calls == 2
+    assert repository.active_draft_version_id == repository.drafts[1].id
+    assert repository.drafts[1].audit is not None
+    assert repository.drafts[1].audit.accepted is True
+    assert all(issue.severity == "warning" for issue in repository.drafts[1].audit.issues)
+
+
+@pytest.mark.asyncio
+async def test_copy_paragraph_warning_triggers_one_repair_and_accepts_imperfect_repair() -> None:
+    repository = FakeCopyRepository(_topic())
+    invalid = _copy_without_paragraph_breaks(_contract_draft())
+    generator = ScriptedGenerator((invalid, invalid))
+    auditor = CountingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("copy-paragraph-warning-worker") is True
+
+    assert repository.status == "accepted"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert auditor.calls == 2
+    assert [draft.version for draft in repository.drafts] == [1, 2]
+    assert repository.active_draft_version_id == repository.drafts[1].id
+    assert any(
+        issue.code == "copy_paragraph_format" for issue in repository.drafts[1].validation_issues
+    )
+
+
+@pytest.mark.asyncio
+async def test_advisory_only_format_repair_provider_failure_accepts_original_draft() -> None:
+    repository = FakeCopyRepository(_topic())
+    generator = FormatRepairFailureGenerator(ProviderRejectedError())
+    auditor = CountingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("copy-format-repair-provider-failure-worker") is True
+
+    assert repository.status == "accepted"
+    assert repository.error_code is None
+    assert repository.repair_count == 1
+    assert generator.calls == 2
     assert auditor.calls == 1
+    assert len(repository.drafts) == 1
     assert repository.active_draft_version_id == repository.drafts[0].id
     assert repository.drafts[0].audit is not None
     assert repository.drafts[0].audit.accepted is True
-    assert all(issue.severity == "warning" for issue in repository.drafts[0].audit.issues)
 
 
 def test_prompt_data_cannot_close_its_delimited_section() -> None:
@@ -1375,7 +1482,7 @@ def test_deterministic_gate_rejects_critical_copy_and_image_risks(
 def test_preview_rule_marks_superlative_and_dangling_clause_as_warnings() -> None:
     topic = replace(_topic(), scoring_profile="strict")
     base = _contract_draft()
-    body = base.copywriting.rsplit("\n\n", 1)[0]
+    body = base.copywriting.rsplit("\n", 1)[0]
     draft = base.model_copy(
         update={
             "copywriting": (
@@ -1426,7 +1533,7 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
         draft,
         topic=topic,
         brand_context=_brand(),
-        rule_version="moments-rules-v5-parent-language-length-emoji-advisory",
+        rule_version="moments-rules-v6-parent-language-paragraph-emoji-advisory",
     )
 
     issue_by_code = {issue.code: issue for issue in issues}
@@ -1437,11 +1544,12 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
 @pytest.mark.parametrize(
     ("rule_version", "expected_target_severity", "expected_legacy_severity"),
     [
+        ("preview-v5-paragraph-emoji-advisory", "warning", "warning"),
         ("preview-v4-length-emoji-advisory", "warning", "warning"),
         ("preview-v3-length-emoji", "warning", "warning"),
         ("preview-v2", "warning", "warning"),
         ("preview-v1", "error", "warning"),
-        ("moments-rules-v5-parent-language-length-emoji-advisory", "error", "error"),
+        ("moments-rules-v6-parent-language-paragraph-emoji-advisory", "error", "error"),
     ],
 )
 def test_preview_policy_versions_scope_deterministic_warning_codes(

@@ -18,6 +18,7 @@ from app.schemas.copy_generation import (
     count_hanzi,
     extract_copy_body,
     extract_trailing_hashtags,
+    has_copy_paragraph_format,
     has_non_trailing_hashtags,
 )
 
@@ -281,6 +282,7 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v2",
         "preview-v3-length-emoji",
         "preview-v4-length-emoji-advisory",
+        "preview-v5-paragraph-emoji-advisory",
     }
 )
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
@@ -314,8 +316,20 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
             "source_note_unlinked",
         }
     ),
+    "preview-v5-paragraph-emoji-advisory": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+        }
+    ),
 }
-_COPY_ADVISORY_AUDIT_CODES = frozenset({"copy_length", "copy_emoji_count"})
+# All three are warning-only audit signals; only the two visible format misses may consume the
+# single product repair. Length remains advisory without triggering another provider call.
+COPY_FORMAT_ADVISORY_CODES = frozenset({"copy_length", "copy_emoji_count", "copy_paragraph_format"})
+COPY_FORMAT_REPAIR_CODES = frozenset({"copy_emoji_count", "copy_paragraph_format"})
+_COPY_ADVISORY_AUDIT_CODES = COPY_FORMAT_ADVISORY_CODES
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
         "brand_fit",
@@ -361,6 +375,15 @@ def validate_material_draft(
             _issue(
                 "copy_emoji_count",
                 f"朋友圈正文emoji目标为2到5个，当前为{emoji_count}个",
+                field="copywriting",
+                severity="warning",
+            )
+        )
+    if not has_copy_paragraph_format(draft.copywriting):
+        issues.append(
+            _issue(
+                "copy_paragraph_format",
+                "朋友圈正文主体必须至少分成3个自然段，段间只换一行且不得有空白行",
                 field="copywriting",
                 severity="warning",
             )

@@ -61,6 +61,17 @@ def extract_copy_body(text: str) -> str:
     return "\n".join(lines)
 
 
+def extract_copy_paragraphs(text: str) -> tuple[str, ...]:
+    """Return body lines, retaining empty lines so format violations are visible."""
+    return tuple(extract_copy_body(text).splitlines())
+
+
+def has_copy_paragraph_format(text: str) -> bool:
+    """Require three non-empty body paragraphs separated by exactly one newline."""
+    paragraphs = extract_copy_paragraphs(text)
+    return len(paragraphs) >= 3 and all(paragraph.strip() for paragraph in paragraphs)
+
+
 def count_hanzi(text: str) -> int:
     """Count CJK Unified Ideographs without counting punctuation or other symbols."""
     return sum(

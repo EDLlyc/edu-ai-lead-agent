@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Defines the copy-generation stage, deterministic validation before audit, bounded repair, versioned bundles, and downstream material-package boundary."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines typed provider failures, retry boundaries, terminal review states, and the distinction between warning-only copy quality signals and blocking errors."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines backend test tiers, final quality gates, migration discipline, and side-effect-free verification requirements."}
