@@ -124,6 +124,14 @@ In direct mode, they accept `awaiting_manual_use` or `completed` packages unless
 rejected. Direct mode still requires copy validation to pass, copy audit to be accepted, image
 validation to pass, and any configured image audit to be accepted before a job is created.
 
+Automatic reconciliation is a candidate scan, not a broad package-status retry loop. It excludes
+any package that already has a durable delivery job, applies the persisted direct-mode quality and
+immutable-image predicates before the enqueue attempt, and retains the enqueue guard as the final
+race-safe authority. PostgreSQL candidate predicates compare JSONB fields by literal value (for
+example, JSON boolean containment) so malformed legacy snapshot values are excluded rather than
+raising a cast error. A typed conflict caused by a state race is logged once per package and
+bounded readiness state in the dispatcher process; a later readiness change may be evaluated again.
+
 ### Security boundary
 
 The adapters use HTTPS, the official host allowlist, bounded response parsing, no redirects, and
@@ -177,6 +185,8 @@ API responses, or durable delivery rows.
 - Dispatcher/service tests must assert text-before-image ordering, persistence before the second
   child, partial failure, bounded retry, unknown timeout terminal state, lease heartbeat, and
   idempotent enqueue.
+- Automatic-reconciliation tests assert the PostgreSQL candidate query's durable-job exclusion,
+  direct quality predicates, malformed/missing JSONB snapshots, and bounded race-skip logging.
 - Compose checks run `docker compose config --quiet` and build the `wecom-dispatcher` image without
   credentials. A real provider send is opt-in and must never be part of the default test suite.
 - `scripts/doctor.sh` and migration-head assertions must be updated whenever the Alembic head moves.

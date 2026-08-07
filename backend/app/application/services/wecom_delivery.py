@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql import Select
 
 from app.application.ports.wecom import (
     WECOM_MIN_IMAGE_BYTES,
@@ -40,6 +42,7 @@ _FAILED = "failed"
 _UNKNOWN = "unknown"
 _REVIEW_REQUIRED_PACKAGE_STATUSES = ("completed",)
 _DIRECT_PACKAGE_STATUSES = ("awaiting_manual_use", "completed")
+_AUTO_DELIVERY_SKIP_CACHE_SIZE = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,22 +214,16 @@ class WeComDeliveryExecutor:
         self._client = client
         self._image_store = image_store
         self._settings = settings
+        self._auto_delivery_skip_states: OrderedDict[str, tuple[str, ...]] = OrderedDict()
 
     async def reconcile_auto_deliveries(self, *, limit: int = 20) -> int:
         if not self._settings.wecom_auto_delivery_enabled:
             return 0
         async with self._session_factory() as session:
-            statement = select(MaterialPackageModel).where(
-                MaterialPackageModel.status.in_(_delivery_package_statuses(self._settings))
-            )
-            if self._settings.wecom_require_review_before_send:
-                statement = statement.where(MaterialPackageModel.review_status == "approved")
-            else:
-                statement = statement.where(MaterialPackageModel.review_status != "rejected")
             packages = tuple(
                 (
                     await session.scalars(
-                        statement.order_by(MaterialPackageModel.created_at).limit(limit)
+                        _auto_delivery_candidate_statement(settings=self._settings, limit=limit)
                     )
                 ).all()
             )
@@ -244,14 +241,29 @@ class WeComDeliveryExecutor:
                         settings=self._settings,
                     )
                 except (ConflictError, NotFoundError) as error:
-                    logger.info(
-                        "wecom_auto_delivery_skipped",
-                        package_id=str(package.id),
-                        error_code=error.code,
-                    )
+                    self._log_auto_delivery_skip(package, error)
                 else:
                     created += 1
         return created
+
+    def _log_auto_delivery_skip(
+        self, package: MaterialPackageModel, error: ConflictError | NotFoundError
+    ) -> None:
+        package_id = str(package.id)
+        readiness_state = _auto_delivery_readiness_state(package)
+        skip_state = (error.code, *readiness_state)
+        if self._auto_delivery_skip_states.get(package_id) == skip_state:
+            return
+        self._auto_delivery_skip_states[package_id] = skip_state
+        self._auto_delivery_skip_states.move_to_end(package_id)
+        if len(self._auto_delivery_skip_states) > _AUTO_DELIVERY_SKIP_CACHE_SIZE:
+            self._auto_delivery_skip_states.popitem(last=False)
+        logger.info(
+            "wecom_auto_delivery_skipped",
+            package_id=package_id,
+            error_code=error.code,
+            readiness_state=stable_key("wecom-auto-readiness-v1", *readiness_state),
+        )
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._claim(worker_id)
@@ -612,6 +624,116 @@ class WeComDeliveryExecutor:
             raise ConflictError("WeCom delivery lease was lost")
 
 
+def _auto_delivery_candidate_statement(
+    *, settings: Settings, limit: int
+) -> Select[tuple[MaterialPackageModel]]:
+    """Select only packages that can reach the enqueue guard on this poll.
+
+    The enqueue service remains the race-safe authority.  This query only keeps durable jobs and
+    deterministic direct-mode vetoes out of the two-second reconciliation loop.
+    """
+
+    statement = select(MaterialPackageModel).where(
+        MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
+        ~exists().where(WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id),
+    )
+    if settings.wecom_require_review_before_send:
+        return (
+            statement.where(MaterialPackageModel.review_status == "approved")
+            .order_by(MaterialPackageModel.created_at)
+            .limit(limit)
+        )
+
+    image_sha256 = ImageArtifactModel.sha256
+    expected_png_key = func.concat(
+        "generated-images/sha256/",
+        func.substr(image_sha256, 1, 2),
+        "/",
+        image_sha256,
+        ".png",
+    )
+    expected_jpeg_key = func.concat(
+        "generated-images/sha256/",
+        func.substr(image_sha256, 1, 2),
+        "/",
+        image_sha256,
+        ".jpg",
+    )
+    image_audit_ready = or_(
+        ImageArtifactModel.audit_snapshot.contains({"configured": False}),
+        and_(
+            ImageArtifactModel.audit_snapshot.contains({"configured": True}),
+            ImageArtifactModel.audit_snapshot.contains({"passed": True}),
+        ),
+    )
+    statement = statement.join(
+        ImageArtifactModel,
+        ImageArtifactModel.id == MaterialPackageModel.image_artifact_id,
+    ).where(
+        MaterialPackageModel.review_status != "rejected",
+        MaterialPackageModel.validation_snapshot.contains({"passed": True}),
+        MaterialPackageModel.audit_snapshot.contains({"accepted": True}),
+        ImageArtifactModel.status == "succeeded",
+        ImageArtifactModel.validation_snapshot.contains({"configured": True}),
+        ImageArtifactModel.validation_snapshot.contains({"passed": True}),
+        image_audit_ready,
+        ImageArtifactModel.bucket == settings.minio_bucket,
+        ImageArtifactModel.media_type.in_(
+            (
+                "image/png",
+                "image/jpeg",
+            )
+        ),
+        ImageArtifactModel.byte_size >= WECOM_MIN_IMAGE_BYTES,
+        ImageArtifactModel.byte_size <= settings.wecom_max_image_bytes,
+        image_sha256.op("~")(r"^[0-9a-f]{64}$"),
+        ImageArtifactModel.storage_metadata.contains(
+            {"access": "private", "immutable": True, "content_addressed": True}
+        ),
+        or_(
+            and_(
+                ImageArtifactModel.media_type == "image/png",
+                ImageArtifactModel.object_key == expected_png_key,
+            ),
+            and_(
+                ImageArtifactModel.media_type == "image/jpeg",
+                ImageArtifactModel.object_key == expected_jpeg_key,
+            ),
+        ),
+    )
+    return statement.order_by(MaterialPackageModel.created_at).limit(limit)
+
+
+def _auto_delivery_readiness_state(package: MaterialPackageModel) -> tuple[str, ...]:
+    """Return only bounded, non-content fields used to deduplicate race-skip logs."""
+
+    return (
+        _bounded_state_value(getattr(package, "status", None)),
+        _bounded_state_value(getattr(package, "review_status", None)),
+        _snapshot_state(getattr(package, "validation_snapshot", None), "passed"),
+        _snapshot_state(getattr(package, "audit_snapshot", None), "accepted"),
+        _bounded_state_value(getattr(package, "image_artifact_id", None)),
+    )
+
+
+def _snapshot_state(snapshot: object, field: str) -> str:
+    if not isinstance(snapshot, dict) or field not in snapshot:
+        return "missing"
+    value = snapshot[field]
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "other"
+
+
+def _bounded_state_value(value: object) -> str:
+    if value is None:
+        return "missing"
+    normalized = str(value).strip()
+    return normalized[:80] if normalized else "empty"
+
+
 def _ensure_delivery_configured(settings: Settings) -> None:
     if not settings.wecom_enabled:
         raise ConflictError("WeCom delivery is disabled")
@@ -689,7 +811,7 @@ def _ensure_direct_delivery_quality(
     if not isinstance(image_audit, dict):
         raise ConflictError("material package image audit is unavailable")
     audit_configured = image_audit.get("configured")
-    if audit_configured not in {False, True}:
+    if not isinstance(audit_configured, bool):
         raise ConflictError("material package image audit is unavailable")
     if audit_configured and image_audit.get("passed") is not True:
         raise ConflictError("material package image audit has not been accepted")
@@ -733,7 +855,8 @@ def _image_descriptor(*, image: ImageArtifactModel, settings: Settings) -> Image
         raise ConflictError("material package image metadata is not private and content-addressed")
     storage_metadata = getattr(image, "storage_metadata", None)
     if not isinstance(storage_metadata, dict) or any(
-        storage_metadata.get(field) != expected
+        not isinstance(storage_metadata.get(field), type(expected))
+        or storage_metadata.get(field) != expected
         for field, expected in (
             ("access", "private"),
             ("immutable", True),

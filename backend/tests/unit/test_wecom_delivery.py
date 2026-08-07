@@ -16,6 +16,7 @@ from app.core.errors import ConflictError
 from app.domain.image_generation import image_checksum, image_content_key
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from pydantic import SecretStr
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import Select
 
 
@@ -315,10 +316,117 @@ async def test_direct_auto_reconciliation_queries_pending_manual_use_packages(
     assert created == 1
     assert len(calls) == 1
     assert session.statement is not None
-    sql = str(session.statement.compile(compile_kwargs={"literal_binds": True}))
-    assert "awaiting_manual_use" in sql
-    assert "completed" in sql
-    assert "rejected" in sql
+    compiled = session.statement.compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    assert ["awaiting_manual_use", "completed"] in compiled.params.values()
+    assert "rejected" in compiled.params.values()
+    assert "NOT (EXISTS" in sql
+    assert "wecom_delivery_jobs.material_package_id" in sql
+    assert "image_artifacts.validation_snapshot" in sql
+    assert "image_artifacts.audit_snapshot" in sql
+    assert "generated-images/sha256/" in compiled.params.values()
+    assert "@>" in sql
+    assert "CAST(" not in sql
+    assert {"passed": True} in compiled.params.values()
+    assert {"accepted": True} in compiled.params.values()
+    assert {"access": "private", "immutable": True, "content_addressed": True} in (
+        compiled.params.values()
+    )
+
+
+@pytest.mark.asyncio
+async def test_direct_auto_reconciliation_skips_historical_incomplete_image_state() -> None:
+    historical_package, historical_image = _delivery_package()
+    historical_image.validation_snapshot = {}
+    historical_image.audit_snapshot = {}
+    session = _AutoDeliverySession([])
+    settings = _settings(require_review=False)
+    settings.wecom_auto_delivery_enabled = True
+    executor = WeComDeliveryExecutor(
+        session_factory=_AutoDeliverySessionFactory(session),  # type: ignore[arg-type]
+        client=object(),  # type: ignore[arg-type]
+        image_store=object(),  # type: ignore[arg-type]
+        settings=settings,
+    )
+
+    assert await executor.reconcile_auto_deliveries(limit=5) == 0
+    assert session.statement is not None
+    compiled = session.statement.compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    assert "image_artifacts.validation_snapshot @>" in sql
+    assert "image_artifacts.audit_snapshot @>" in sql
+    assert "CAST(" not in sql
+    assert str(historical_package.id) not in sql
+
+
+@pytest.mark.asyncio
+async def test_direct_mode_rejects_non_boolean_image_quality_metadata() -> None:
+    package, image = _delivery_package()
+    image.audit_snapshot = {"configured": 0, "passed": True}
+
+    with pytest.raises(ConflictError, match="image audit is unavailable"):
+        await enqueue_wecom_delivery(
+            session=_DeliverySession(package, image),  # type: ignore[arg-type]
+            package_id=package.id,
+            recipient_id="default",
+            mode="formal",
+            include_copy=True,
+            include_image=True,
+            settings=_settings(require_review=False),
+        )
+
+    image.audit_snapshot = {"configured": False, "passed": None}
+    image.storage_metadata = {"access": "private", "immutable": 1, "content_addressed": True}
+    with pytest.raises(ConflictError, match="storage metadata"):
+        await enqueue_wecom_delivery(
+            session=_DeliverySession(package, image),  # type: ignore[arg-type]
+            package_id=package.id,
+            recipient_id="default",
+            mode="formal",
+            include_copy=True,
+            include_image=True,
+            settings=_settings(require_review=False),
+        )
+
+
+@pytest.mark.asyncio
+async def test_auto_reconciliation_deduplicates_unchanged_race_conflict_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package, _image = _delivery_package()
+    session = _AutoDeliverySession([package])
+    settings = _settings(require_review=False)
+    settings.wecom_auto_delivery_enabled = True
+    log_events: list[dict[str, object]] = []
+
+    class _Logger:
+        def info(self, _event: str, **values: object) -> None:
+            log_events.append(values)
+
+    async def fake_enqueue(**_kwargs: object) -> object:
+        raise ConflictError("package changed after candidate query")
+
+    monkeypatch.setattr(
+        "app.application.services.wecom_delivery.enqueue_wecom_delivery", fake_enqueue
+    )
+    monkeypatch.setattr("app.application.services.wecom_delivery.logger", _Logger())
+    executor = WeComDeliveryExecutor(
+        session_factory=_AutoDeliverySessionFactory(session),  # type: ignore[arg-type]
+        client=object(),  # type: ignore[arg-type]
+        image_store=object(),  # type: ignore[arg-type]
+        settings=settings,
+    )
+
+    assert await executor.reconcile_auto_deliveries(limit=5) == 0
+    assert await executor.reconcile_auto_deliveries(limit=5) == 0
+    assert len(log_events) == 1
+    assert log_events[0]["package_id"] == str(package.id)
+    assert log_events[0]["error_code"] == "conflict"
+    assert isinstance(log_events[0]["readiness_state"], str)
+
+    package.validation_snapshot = {"passed": False}
+    assert await executor.reconcile_auto_deliveries(limit=5) == 0
+    assert len(log_events) == 2
 
 
 def test_image_body_validation_checks_metadata_and_signature() -> None:
