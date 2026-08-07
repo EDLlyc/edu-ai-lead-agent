@@ -558,3 +558,25 @@ Deployed the backend-only automation to the Ubuntu server at 124.222.207.221. Mi
 ### Status
 
 [OK] **Completed**
+
+
+## Session 25: Deploy copy-format release and verify brand image pipeline
+
+**Date**: 2026-08-07
+**Task**: Deploy copy-format release and verify brand image pipeline
+**Branch**: `main`
+
+### Summary
+
+Deployed the copy paragraph/emoji release to the Ubuntu backend services using dependency-reused patched images after the server build hit a PyPI asyncpg resolution failure. Fixed read-only brand-material bind-mount permissions, verified all 41 visual assets as the app user, and observed three successful 1024x1024 image packages in awaiting_manual_use. Kept the WeCom dispatcher stopped during verification to prevent real external sends; documented the permission requirement in the production migration runbook. Backend checks passed with 509 tests, doctor, Compose config, and diff checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ef750df` | (see git log) |
+| `a22c133` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 24
+- **Total Sessions**: 25
 - **Last Active**: 2026-08-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~560 | Active |
+| `journal-1.md` | ~582 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 25 | 2026-08-07 | Deploy copy-format release and verify brand image pipeline | `ef750df`, `a22c133` | `main` |
 | 24 | 2026-08-07 | Deploy production backend automation | `514d444`, `d397c35`, `389bc01`, `b587afb`, `cfa075a` | `main` |
 | 23 | 2026-08-07 | Recover image provider rejections | `9187764` | `main` |
 | 22 | 2026-08-07 | Validate automation and prepare production migration | `ccbb4b2`, `c6693c8`, `904ed27` | `main` |
