@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
+- **Total Sessions**: 23
 - **Last Active**: 2026-08-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~505 | Active |
+| `journal-1.md` | ~535 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-08-07 | Recover image provider rejections | `9187764` | `main` |
 | 22 | 2026-08-07 | Validate automation and prepare production migration | `ccbb4b2`, `c6693c8`, `904ed27` | `main` |
 | 21 | 2026-08-06 | Make Moments copy limits advisory | `c455f28` | `main` |
 | 20 | 2026-08-06 | Add Enterprise WeChat group webhook delivery | `8f54802`, `76ef225` | `main` |

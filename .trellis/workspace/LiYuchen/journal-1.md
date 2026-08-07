@@ -503,3 +503,33 @@ Bound automatic WeCom reconciliation, stabilized time-sensitive acquisition fixt
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: Recover image provider rejections
+
+**Date**: 2026-08-07
+**Task**: Recover image provider rejections
+**Branch**: `main`
+
+### Summary
+
+Added one bounded neutralized retry and topic-matched catalog-image fallback without weakening provider or storage safety controls.
+
+### Main Changes
+
+- Persisted independent provider rejection retry state and safe fallback provenance.
+- Projected recovery state through OpenAPI and the material package UI.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9187764` | (see git log) |
+
+### Testing
+
+- [OK] make backend-check; make frontend-check; migration integration tests; make doctor
+
+### Status
+
+[OK] **Completed**
