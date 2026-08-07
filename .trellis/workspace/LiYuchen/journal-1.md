@@ -480,3 +480,26 @@ Updated Moments copy length and emoji checks to record warnings instead of block
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: Validate automation and prepare production migration
+
+**Date**: 2026-08-07
+**Task**: Validate automation and prepare production migration
+**Branch**: `main`
+
+### Summary
+
+Bound automatic WeCom reconciliation, stabilized time-sensitive acquisition fixtures, verified the full automation run, and documented production migration prerequisites.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ccbb4b2` | (see git log) |
+| `c6693c8` | (see git log) |
+| `904ed27` | (see git log) |
+
+### Status
+
+[OK] **Completed**
