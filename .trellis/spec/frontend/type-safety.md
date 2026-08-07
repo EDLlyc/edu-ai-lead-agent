@@ -99,8 +99,8 @@ not to the copy-level validation/audit projection.
 
 ### 2. Signatures
 
-- Generated wire type: `MaterialPackageResponse["image"]` includes `validation`, `audit`, and
-  `repair_count`.
+- Generated wire type: `MaterialPackageResponse["image"]` includes `validation`, `audit`,
+  `repair_count`, and versioned `fallback` provenance.
 - Feature mapper: `mapMaterialPackage(response)` returns `ImageViewModel` with `validation`, `audit`,
   and `repairCount`.
 - The UI renders those values in the image section and keeps the existing package-level quality
@@ -110,10 +110,13 @@ not to the copy-level validation/audit projection.
 
 - `validation` contains `version`, `configured`, nullable `passed`, bounded `issue_codes`, provider/
   model metadata, and optional media/dimension/byte observations.
-- `audit.status` is one of `accepted`, `rejected`, `not_configured`, or `unknown`; it must not be
+- `audit.status` is one of `accepted`, `rejected`, `not_applicable`, `not_configured`, or `unknown`; it must not be
   inferred from color or from the package-level audit.
 - `repair_count` is a non-negative bounded count (currently `0` or `1`) and is displayed as a status,
   not as an action control.
+- `fallback` is mapped once to `ImageFallbackViewModel`. The UI displays neutralized retry or
+  catalog-source state, catalog basename, role, and selection reason, but never a private path,
+  object key, prompt, or provider URL.
 - Generated OpenAPI types are the only wire contract; `api.ts` is the single normalization boundary.
 
 ### 4. Validation & Error Matrix
@@ -125,6 +128,7 @@ not to the copy-level validation/audit projection.
 | Visual audit rejected | Show an explicit audit-not-passed label and issue codes |
 | Audit is not configured or unknown | Show an explicit non-passed/unfinished label; never imply acceptance |
 | `repair_count` is `1` | Show that one automatic repair occurred; do not offer a second repair action |
+| `fallback.state` is `brand_catalog` | Show that a topic-matched approved asset was used and that visual audit is not applicable |
 
 ### 5. Good / Base / Bad Cases
 
@@ -136,8 +140,8 @@ not to the copy-level validation/audit projection.
 
 ### 6. Tests Required
 
-- Mapper tests assert `validation.passed`, `audit.status`, and `repairCount` survive the wire-to-view
-  projection.
+- Mapper tests assert `validation.passed`, `audit.status`, `repairCount`, and safe fallback asset
+  metadata survive the wire-to-view projection.
 - Component tests cover passed validation/audit, issue-code display, review-required image state, and
   the one-repair label.
 - `make frontend-check` must pass generated-contract drift, strict TypeScript, lint, tests, and build.

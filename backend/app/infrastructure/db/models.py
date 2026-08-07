@@ -2494,6 +2494,9 @@ class ImageArtifactModel(Base):
     )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     repair_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    provider_rejection_retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
     validation_snapshot: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -2534,6 +2537,10 @@ class ImageArtifactModel(Base):
         CheckConstraint("attempt_count >= 0", name="ck_image_artifacts_attempt_count"),
         CheckConstraint(
             "repair_count >= 0 AND repair_count <= 1", name="ck_image_artifacts_repair_count"
+        ),
+        CheckConstraint(
+            "provider_rejection_retry_count >= 0 AND provider_rejection_retry_count <= 1",
+            name="ck_image_artifacts_provider_rejection_retry",
         ),
         CheckConstraint(
             "reference_mode IN ("

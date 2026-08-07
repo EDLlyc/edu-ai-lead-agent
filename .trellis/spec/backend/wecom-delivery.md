@@ -180,7 +180,7 @@ API responses, or durable delivery rows.
 - Service tests assert text composition, UTF-8 byte limits, strict approval, direct-mode package
   eligibility and quality vetoes, image descriptor checksum/signature validation, and safe default
   settings.
-- PostgreSQL integration tests upgrade a clean database to `20260805_0018`, assert both delivery
+- PostgreSQL integration tests upgrade a clean database to `20260807_0019`, assert both delivery
   tables and constraints, and compare `Base.metadata` without SQLite.
 - Dispatcher/service tests must assert text-before-image ordering, persistence before the second
   child, partial failure, bounded retry, unknown timeout terminal state, lease heartbeat, and

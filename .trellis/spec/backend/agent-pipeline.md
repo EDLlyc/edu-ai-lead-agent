@@ -678,6 +678,8 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
 | Accepted copy has no package when a worker polls | Create one queued reservation before image claiming; do not call the provider twice |
 | API and worker reserve the same accepted copy concurrently | Keep the winner's single reservation; treat the losing unique-conflict as an idempotent skip |
 | Provider identity/output/dimensions/storage validation fails | Retry only classified transient errors; otherwise image `review_required` or `failed`, package not ready |
+| First typed `image_provider_rejected` | Queue exactly one neutralized provider retry; preserve the original provider safety policy |
+| Neutralized retry is rejected or cannot pass image quality gates | Render the already-reserved, topic-matched catalog asset and validate/store it privately; do not issue a third provider request |
 | Operator requests image retry on a non-terminal package or exhausted artifact | Conflict; do not create another artifact or provider identity |
 | Provider-output validation fails | Persist only a bounded issue code and stage in `validation_snapshot`; never store URL, headers, response body, prompt, or credential |
 | Worker lease expires | Another worker may reclaim; stale worker cannot persist success |
@@ -704,7 +706,7 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
   provider rejection, lease-safe persistence, safe output-validation diagnostics, terminal
   image-only retry, and safe JSON projections.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260805_0018`, worker columns, package snapshots, ordered image-reference constraints, and
+  `20260807_0019`, worker columns, package snapshots, ordered image-reference constraints, and
   unique indexes; MinIO
   integration asserts content-addressed immutable storage.
 - Frontend mapper/component tests assert response mapping, queued/failed states, copy/download
@@ -727,6 +729,91 @@ return MaterialPackageResponse(image=save_public_url(image.url))
 reservation = await enqueue_material_package(session_factory=factory, run_id=run_id)
 # content-worker later claims the durable reservation and calls the provider
 await material_executor.execute_next(worker_id)
+```
+
+## Scenario: Bounded image-provider rejection recovery
+
+### 1. Scope / Trigger
+
+- Trigger: an accepted material package receives the typed non-retryable
+  `image_provider_rejected` response from its configured image provider.
+- This recovery applies only after an accepted copy and durable image reservation exist. It does
+  not weaken provider policy, output-download checks, private MinIO storage, or direct WeCom
+  quality predicates.
+
+### 2. Signatures
+
+- Alembic head `20260807_0019` adds `image_artifacts.provider_rejection_retry_count INTEGER NOT
+  NULL DEFAULT 0` with `0 <= value <= 1`.
+- `MaterialPackageExecutor.execute_next(worker_id)` owns the state transition and its claim budget
+  is `IMAGE_MAX_ATTEMPTS + repair_count + provider_rejection_retry_count`.
+- `MaterialPackageResponse.image.fallback` is the versioned safe projection with states
+  `not_used`, `neutralized_retry`, or `brand_catalog`.
+
+### 3. Contracts
+
+- First rejection sets the independent counter to `1`, persists `fallback.state=neutralized_retry`,
+  and schedules exactly one prompt built only from allowlisted `VisualBrief` values and reference
+  roles. It never includes raw title, summary, copy, prior prompt, private filename/path, URL, or
+  reference bytes.
+- A second rejection, failed raster/text/audit gate, or unavailable quality adapter during that
+  retry uses one pre-reserved catalog reference in role order: action, style, identity. The renderer
+  aspect-preserves that approved asset on a plain 1024x1024 canvas, validates it, and writes it
+  through the normal immutable MinIO store.
+- The fallback provenance stores only version, state, counter, typed initial error, requested
+  provider/model, catalog asset ID/basename/checksum/role/reason. It must not store provider
+  payloads, prompts, credentials, URLs, object keys, or image bytes. API and JSON-package
+  `versions.image.fallback` use the same safe projection.
+- Catalog output has deterministic raster validation. Generated-text OCR and generative visual
+  audit are `not_applicable`; direct WeCom treats them as unconfigured rather than accepted model
+  audit results. The requested provider/model identity remains unchanged on the image artifact;
+  provenance identifies the actual catalog source.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| First provider rejection | One warning event with IDs, provider/model, attempt, typed code, and `neutralized_retry`; durable queued retry |
+| Second rejection or retry quality failure with reserved asset | Private validated catalog fallback; package `awaiting_manual_use` |
+| No reserved/readable/valid catalog asset or MinIO write fails | Typed `brand_asset_fallback_*`, image `review_required`, package `failed` |
+| Replay, race, or expired lease | No duplicate provider call, fallback object, image artifact, or delivery job |
+| Unsafe/corrupt fallback snapshot | API omits unsafe asset data and never leaks it through `versions` |
+
+### 5. Good / Base / Bad Cases
+
+- Good: first rejection is followed by one neutralized request that succeeds with a validated
+  generated image.
+- Base: a second rejection produces a square private image from the current topic's approved action
+  reference and exposes its safe basename and selection reason to the internal UI.
+- Bad: retry the provider indefinitely, reuse a generated image from another topic, overwrite the
+  configured provider/model with `brand_catalog`, or expose a private object path in JSON.
+
+### 6. Tests Required
+
+- `test_image_fallback.py` asserts neutral prompt isolation, retry fingerprint separation, square
+  aspect-safe rendering, and invalid asset rejection.
+- `test_material_package.py` asserts one scheduled retry, second-rejection catalog persistence,
+  unchanged requested provider identity, `not_applicable` audit, safe API/JSON fallback projection,
+  and path/URL redaction.
+- `test_migrations.py`, `test_governance_migrations.py`, and
+  `test_governance_migration_downgrade.py` assert head `20260807_0019` and the new column.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+while provider_rejected:
+    await image_generator.generate(original_prompt)
+```
+
+#### Correct
+
+```python
+if provider_rejection_retry_count == 0:
+    queue_neutralized_retry()
+else:
+    await persist_validated_catalog_fallback()
 ```
 
 When the copy run is already accepted but the reservation is missing, the worker repairs the

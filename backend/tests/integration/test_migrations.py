@@ -38,7 +38,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260805_0018"
+    assert revision == "20260807_0019"
     assert {
         "sources",
         "source_versions",
@@ -102,6 +102,7 @@ async def test_clean_database_is_at_alembic_head(
     assert columns["image_artifacts"]["available_at"]["nullable"] is False
     assert columns["image_artifacts"]["storage_metadata"]["nullable"] is False
     assert columns["image_artifacts"]["repair_count"]["nullable"] is False
+    assert columns["image_artifacts"]["provider_rejection_retry_count"]["nullable"] is False
     assert columns["image_artifacts"]["validation_snapshot"]["nullable"] is False
     assert columns["image_artifacts"]["audit_snapshot"]["nullable"] is False
     for column_name in (

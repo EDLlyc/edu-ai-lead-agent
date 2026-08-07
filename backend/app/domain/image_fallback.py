@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from io import BytesIO
+
+from PIL import Image, UnidentifiedImageError
+
+from app.domain.image_generation import validate_image_prompt
+from app.domain.value_objects import stable_key
+from app.domain.visual_brief import VisualBrief, VisualReferenceDescriptor
+
+IMAGE_PROVIDER_REJECTION_PROMPT_VERSION = "image-provider-rejection-retry-v1"
+IMAGE_CATALOG_FALLBACK_RENDERER_VERSION = "brand-catalog-square-v1"
+_FALLBACK_CANVAS_SIZE = 1024
+_FALLBACK_SUBJECT_MAX_SIZE = 896
+_FALLBACK_BACKGROUND = (246, 250, 252, 255)
+
+
+def build_provider_rejection_retry_prompt(
+    brief: VisualBrief,
+    references: Sequence[VisualReferenceDescriptor],
+) -> str:
+    """Build a topic-preserving recovery prompt without source or copy text.
+
+    The visual brief is already deterministic and allowlisted. This intentionally does not reuse
+    the original provider prompt, raw topic title, summary, or parent-facing copy that may have
+    caused an upstream rejection.
+    """
+
+    ordered = tuple(references)
+    reference_lines = (
+        "No reference images are required."
+        if not ordered
+        else "Reference roles: "
+        + ", ".join(f"{index}:{reference.role.value}" for index, reference in enumerate(ordered, 1))
+        + "."
+    )
+    keywords = ", ".join(brief.text_layer.keywords) or "none"
+    brand_values = ", ".join(brief.text_layer.brand_values) or "none"
+    prompt = "\n".join(
+        (
+            f"Recovery prompt version: {IMAGE_PROVIDER_REJECTION_PROMPT_VERSION}",
+            "Create a square, parent-facing science education illustration.",
+            "Use only the supplied approved reference images for Sai Xiansheng and Xiaosai "
+            "visual identity.",
+            reference_lines,
+            f"Education category: {brief.category.value}.",
+            f"Learning goal: {brief.learning_goal}.",
+            f"Scene: {brief.scene}.",
+            f"Main action: {brief.main_action}.",
+            "Composition: clear focal subject, warm and trustworthy learning atmosphere, "
+            "polished 3D illustration.",
+            "Render no real children, product names, claims, logos, watermarks, QR codes, "
+            "URLs, or extra text.",
+            f"Optional editorial title: {brief.text_layer.title}.",
+            f"Optional learning line: {brief.text_layer.learning_line or 'none'}.",
+            f"Optional keywords: {keywords}.",
+            f"Optional brand value: {brand_values}.",
+        )
+    )
+    return validate_image_prompt(prompt)
+
+
+def provider_rejection_retry_fingerprint(base_fingerprint: str, prompt: str) -> str:
+    """Return a distinct provider idempotency key for the single recovery request."""
+
+    return stable_key(
+        "image-provider-rejection-retry",
+        base_fingerprint,
+        IMAGE_PROVIDER_REJECTION_PROMPT_VERSION,
+        validate_image_prompt(prompt),
+    )
+
+
+def render_catalog_fallback_image(image_bytes: bytes) -> bytes:
+    """Render one approved catalog PNG onto the fixed package canvas.
+
+    The source asset remains checksum-verified by the catalog before this call. This renderer only
+    normalizes its dimensions; it never synthesizes text, symbols, or additional subject matter.
+    """
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            source.load()
+            normalized = source.convert("RGBA")
+    except (OSError, UnidentifiedImageError) as error:
+        raise ValueError("approved catalog image cannot be decoded") from error
+
+    normalized.thumbnail(
+        (_FALLBACK_SUBJECT_MAX_SIZE, _FALLBACK_SUBJECT_MAX_SIZE), Image.Resampling.LANCZOS
+    )
+    canvas = Image.new("RGBA", (_FALLBACK_CANVAS_SIZE, _FALLBACK_CANVAS_SIZE), _FALLBACK_BACKGROUND)
+    offset = (
+        (_FALLBACK_CANVAS_SIZE - normalized.width) // 2,
+        (_FALLBACK_CANVAS_SIZE - normalized.height) // 2,
+    )
+    canvas.alpha_composite(normalized, dest=offset)
+    output = BytesIO()
+    canvas.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()

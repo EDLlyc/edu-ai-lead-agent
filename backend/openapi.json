@@ -3950,6 +3950,9 @@
             ],
             "title": "Error Code"
           },
+          "fallback": {
+            "$ref": "#/components/schemas/ImageFallbackResponse"
+          },
           "height": {
             "anyOf": [
               {
@@ -4077,6 +4080,7 @@
           "storage_metadata",
           "error_code",
           "download_url",
+          "fallback",
           "validation",
           "audit"
         ],
@@ -4133,6 +4137,7 @@
             "enum": [
               "accepted",
               "rejected",
+              "not_applicable",
               "not_configured",
               "unknown"
             ],
@@ -4154,6 +4159,128 @@
           "model"
         ],
         "title": "ImageAuditResponse",
+        "type": "object"
+      },
+      "ImageFallbackAssetResponse": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "fallback": {
+            "title": "Fallback",
+            "type": "boolean"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "identity_reference",
+              "action_reference",
+              "style_reference",
+              "legacy"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "selection_reason": {
+            "title": "Selection Reason",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "filename",
+          "sha256",
+          "role",
+          "selection_reason",
+          "fallback"
+        ],
+        "title": "ImageFallbackAssetResponse",
+        "type": "object"
+      },
+      "ImageFallbackResponse": {
+        "properties": {
+          "asset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageFallbackAssetResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "initial_error_code": {
+            "anyOf": [
+              {
+                "const": "image_provider_rejected",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Error Code"
+          },
+          "primary_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Model"
+          },
+          "primary_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Provider"
+          },
+          "provider_rejection_retry_count": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Provider Rejection Retry Count",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "not_used",
+              "neutralized_retry",
+              "brand_catalog"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "const": "image-fallback-v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "state",
+          "provider_rejection_retry_count",
+          "initial_error_code",
+          "primary_provider",
+          "primary_model"
+        ],
+        "title": "ImageFallbackResponse",
         "type": "object"
       },
       "ImageStorageMetadataResponse": {

@@ -21,6 +21,8 @@ from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, 
 from app.schemas.material_package import (
     ImageArtifactResponse,
     ImageAuditResponse,
+    ImageFallbackAssetResponse,
+    ImageFallbackResponse,
     ImageStorageMetadataResponse,
     ImageValidationResponse,
     MaterialPackageCreateRequest,
@@ -256,6 +258,10 @@ def _detail_response(
     reference_mode = safe_image_snapshot.get(
         "reference_mode", getattr(image, "reference_mode", "legacy_single")
     )
+    fallback = _safe_image_fallback(
+        safe_image_snapshot.get("fallback"),
+        provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
+    )
     return MaterialPackageResponse(
         **summary.model_dump(),
         package_version=package.package_version,
@@ -265,7 +271,7 @@ def _detail_response(
         brand_bindings=package.brand_snapshot,
         validation=package.validation_snapshot,
         audit=package.audit_snapshot,
-        versions=package.version_snapshot,
+        versions=_safe_package_versions(package.version_snapshot, fallback=fallback),
         image=ImageArtifactResponse(
             id=image.id,
             status=cast(Any, image.status),
@@ -298,6 +304,7 @@ def _detail_response(
             visual_brief=_safe_visual_brief(visual_brief),
             references=_safe_visual_references(references),
             repair_count=max(0, min(int(getattr(image, "repair_count", 0)), 1)),
+            fallback=fallback,
             validation=_safe_image_validation(getattr(image, "validation_snapshot", {})),
             audit=_safe_image_audit(getattr(image, "audit_snapshot", {})),
         ),
@@ -353,6 +360,111 @@ def _safe_image_validation(value: object) -> ImageValidationResponse:
             provider=None,
             model=None,
         )
+
+
+def _safe_image_fallback(
+    value: object, *, provider_rejection_retry_count: object
+) -> ImageFallbackResponse:
+    fallback: dict[str, object] = {
+        "version": "image-fallback-v1",
+        "state": "not_used",
+        "provider_rejection_retry_count": max(
+            0,
+            min(
+                provider_rejection_retry_count
+                if isinstance(provider_rejection_retry_count, int)
+                else 0,
+                1,
+            ),
+        ),
+        "initial_error_code": None,
+        "primary_provider": None,
+        "primary_model": None,
+        "asset": None,
+    }
+    if isinstance(value, dict):
+        state = value.get("state")
+        if state in {"not_used", "neutralized_retry", "brand_catalog"}:
+            fallback["state"] = state
+        if value.get("initial_error_code") == "image_provider_rejected":
+            fallback["initial_error_code"] = "image_provider_rejected"
+        for key in ("primary_provider", "primary_model"):
+            item = value.get(key)
+            if _safe_fallback_identifier(item, limit=120):
+                fallback[key] = item
+        asset = value.get("asset")
+        safe_asset = _safe_image_fallback_asset(asset)
+        if safe_asset is not None:
+            fallback["asset"] = safe_asset
+    try:
+        return ImageFallbackResponse.model_validate(fallback)
+    except ValidationError:
+        return ImageFallbackResponse(
+            version="image-fallback-v1",
+            state="not_used",
+            provider_rejection_retry_count=0,
+            initial_error_code=None,
+            primary_provider=None,
+            primary_model=None,
+        )
+
+
+def _safe_package_versions(value: object, *, fallback: ImageFallbackResponse) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    safe_versions = dict(value)
+    image = value.get("image")
+    if isinstance(image, dict):
+        safe_image = dict(image)
+        safe_image["fallback"] = fallback.model_dump(mode="json")
+        safe_versions["image"] = safe_image
+    return safe_versions
+
+
+def _safe_fallback_identifier(value: object, *, limit: int) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= limit
+        and all(character.isalnum() or character in "._-" for character in value)
+    )
+
+
+def _safe_image_fallback_asset(value: object) -> ImageFallbackAssetResponse | None:
+    if not isinstance(value, dict):
+        return None
+    filename = value.get("filename")
+    selection_reason = value.get("selection_reason")
+    role = value.get("role")
+    sha256 = value.get("sha256")
+    if (
+        not _safe_fallback_identifier(value.get("asset_id"), limit=128)
+        or not isinstance(filename, str)
+        or not 1 <= len(filename) <= 200
+        or "/" in filename
+        or "\\" in filename
+        or not isinstance(sha256, str)
+        or len(sha256) != 64
+        or any(character not in "0123456789abcdef" for character in sha256.lower())
+        or role not in {"identity_reference", "action_reference", "style_reference", "legacy"}
+        or not isinstance(selection_reason, str)
+        or not 1 <= len(selection_reason) <= 320
+        or "://" in selection_reason
+        or not isinstance(value.get("fallback"), bool)
+    ):
+        return None
+    try:
+        return ImageFallbackAssetResponse.model_validate(
+            {
+                "asset_id": value["asset_id"],
+                "filename": filename,
+                "sha256": sha256,
+                "role": role,
+                "selection_reason": selection_reason,
+                "fallback": value["fallback"],
+            }
+        )
+    except ValidationError:
+        return None
 
 
 def _safe_image_audit(value: object) -> ImageAuditResponse:

@@ -128,11 +128,23 @@ export type ImageValidationViewModel = Readonly<{
 export type ImageAuditViewModel = Readonly<{
   version: string;
   configured: boolean;
-  status: "accepted" | "rejected" | "not_configured" | "unknown";
+  status:
+    "accepted" | "rejected" | "not_applicable" | "not_configured" | "unknown";
   passed: boolean | null;
   issueCodes: readonly string[];
   provider: string | null;
   model: string | null;
+}>;
+
+export type ImageFallbackViewModel = Readonly<{
+  state: "not_used" | "neutralized_retry" | "brand_catalog";
+  providerRejectionRetryCount: number;
+  asset: Readonly<{
+    filename: string;
+    selectionReason: string;
+    role: VisualReferenceViewModel["role"];
+    roleLabel: string;
+  }> | null;
 }>;
 
 export type ImageViewModel = Readonly<{
@@ -150,6 +162,7 @@ export type ImageViewModel = Readonly<{
   downloadUrl: string | null;
   referenceMode: ImageReferenceMode;
   repairCount: number;
+  fallback: ImageFallbackViewModel;
   validation: ImageValidationViewModel;
   audit: ImageAuditViewModel;
   visualBrief: VisualBriefViewModel | null;
@@ -666,6 +679,7 @@ function parseAudit(record: UnknownRecord): AuditViewModel {
 }
 
 function parseImage(image: MaterialPackageResponse["image"]): ImageViewModel {
+  const fallbackAsset = image.fallback.asset ?? null;
   return {
     id: image.id,
     status: image.status,
@@ -684,6 +698,20 @@ function parseImage(image: MaterialPackageResponse["image"]): ImageViewModel {
         : resolveApiResourceUrl(image.download_url),
     referenceMode: image.reference_mode,
     repairCount: image.repair_count,
+    fallback: {
+      state: image.fallback.state,
+      providerRejectionRetryCount:
+        image.fallback.provider_rejection_retry_count,
+      asset:
+        fallbackAsset === null
+          ? null
+          : {
+              filename: fallbackAsset.filename,
+              selectionReason: fallbackAsset.selection_reason,
+              role: fallbackAsset.role,
+              roleLabel: visualReferenceRoleLabels[fallbackAsset.role],
+            },
+    },
     validation: {
       version: image.validation.version,
       configured: image.validation.configured,

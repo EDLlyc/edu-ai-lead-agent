@@ -329,9 +329,38 @@ function ImageSection({
         />
         <MetadataItem label="媒体类型" value={image.mediaType ?? "未提供"} />
       </dl>
+      <ImageRecoverySummary fallback={image.fallback} />
       <ImageQualitySummary image={image} />
       <VisualIntent image={image} />
     </section>
+  );
+}
+
+function ImageRecoverySummary({
+  fallback,
+}: Readonly<{ fallback: ImageViewModel["fallback"] }>) {
+  if (fallback.state === "not_used") return null;
+  const label =
+    fallback.state === "neutralized_retry"
+      ? "供应商拒绝后已使用中性化提示词重试"
+      : "供应商重试未完成，已使用匹配的品牌素材交付";
+  return (
+    <div className={styles.imageQuality} aria-labelledby="image-recovery-title">
+      <div className={styles.visualIntentHeader}>
+        <h5 id="image-recovery-title">图片恢复记录</h5>
+        <span className={styles.evidenceMeta}>{label}</span>
+      </div>
+      {fallback.asset ? (
+        <dl className={styles.metadataGrid}>
+          <MetadataItem label="兜底素材" value={fallback.asset.filename} />
+          <MetadataItem label="素材角色" value={fallback.asset.roleLabel} />
+          <MetadataItem
+            label="选择理由"
+            value={fallback.asset.selectionReason}
+          />
+        </dl>
+      ) : null}
+    </div>
   );
 }
 
@@ -735,6 +764,7 @@ function imageValidationStatusLabel(passed: boolean | null): string {
 function imageAuditStatusLabel(audit: ImageViewModel["audit"]): string {
   if (audit.status === "accepted") return "视觉审计通过";
   if (audit.status === "rejected") return "视觉审计未通过";
+  if (audit.status === "not_applicable") return "视觉审计不适用";
   if (audit.status === "not_configured") return "视觉审计未配置";
   return "视觉审计未完成";
 }

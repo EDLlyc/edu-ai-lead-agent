@@ -121,6 +121,16 @@ const materialPackage: MaterialPackageViewModel = {
     downloadUrl: "https://example.com/image.png",
     referenceMode: "budgeted_multi_reference",
     repairCount: 1,
+    fallback: {
+      state: "brand_catalog",
+      providerRejectionRetryCount: 1,
+      asset: {
+        filename: "小赛和赛先生讨论.png",
+        selectionReason: "robotics topic match",
+        role: "identity_reference",
+        roleLabel: "身份素材",
+      },
+    },
     validation: {
       version: "image-validation-v1",
       configured: true,
@@ -237,7 +247,7 @@ describe("MaterialPackagePanel", () => {
     expect(
       screen.getByRole("heading", { name: "视觉 brief" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("小赛和赛先生讨论.png")).toBeInTheDocument();
+    expect(screen.getAllByText("小赛和赛先生讨论.png")).toHaveLength(2);
     expect(
       screen.getByRole("heading", { name: "来源与证据" }),
     ).toBeInTheDocument();
@@ -254,6 +264,10 @@ describe("MaterialPackagePanel", () => {
     expect(screen.getByText("brand-chunk-1")).toBeInTheDocument();
     expect(screen.getByText("可保持句子简洁。")).toBeInTheDocument();
     expect(screen.getByText("图片质量状态")).toBeInTheDocument();
+    expect(screen.getByText("图片恢复记录")).toBeInTheDocument();
+    expect(
+      screen.getByText("供应商重试未完成，已使用匹配的品牌素材交付"),
+    ).toBeInTheDocument();
     expect(screen.getByText("确定性验证通过")).toBeInTheDocument();
     expect(screen.getByText("视觉审计通过")).toBeInTheDocument();
     expect(screen.getByText("已自动修复 1 次")).toBeInTheDocument();

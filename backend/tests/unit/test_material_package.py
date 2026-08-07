@@ -9,7 +9,11 @@ from uuid import uuid4
 
 import pytest
 from app.api.v1.routes import material_packages as material_package_routes
-from app.application.ports.image_generation import ImageGenerationRequest, ImageGenerationResult
+from app.application.ports.image_generation import (
+    ImageGenerationRequest,
+    ImageGenerationResult,
+    ImageReference,
+)
 from app.application.ports.image_validation import (
     ImageQualityAuditRequest,
     ImageQualityAuditResult,
@@ -21,6 +25,7 @@ from app.application.services.material_package import (
     ClaimedMaterialPackage,
     MaterialPackageExecutor,
     MaterialPackageResult,
+    ReservedVisualReference,
     _prepare_image_input,
     enqueue_material_package,
     retry_material_package_image,
@@ -381,10 +386,47 @@ def test_material_package_image_projection_exposes_only_relative_download_url() 
     assert "generated-images/" not in encoded
 
 
+def test_material_package_image_projection_defaults_and_redacts_fallback_provenance() -> None:
+    package, image = _package_and_image()
+    image.provider_rejection_retry_count = 1
+    package.version_snapshot["image"] = {
+        "fallback": {
+            "version": "image-fallback-v1",
+            "state": "brand_catalog",
+            "initial_error_code": "image_provider_rejected",
+            "primary_provider": "fake",
+            "primary_model": "gpt-image-2",
+            "asset": {
+                "asset_id": "asset-1",
+                "filename": "/private/brand/asset.png",
+                "sha256": "a" * 64,
+                "role": "action_reference",
+                "selection_reason": "https://private.example.test/object",
+                "fallback": False,
+            },
+        }
+    }
+
+    payload = material_package_routes._detail_response(package, image).model_dump(mode="json")
+
+    assert payload["image"]["fallback"] == {
+        "version": "image-fallback-v1",
+        "state": "brand_catalog",
+        "provider_rejection_retry_count": 1,
+        "initial_error_code": "image_provider_rejected",
+        "primary_provider": "fake",
+        "primary_model": "gpt-image-2",
+        "asset": None,
+    }
+    assert "private.example.test" not in json.dumps(payload)
+
+
 def _claimed_material_package(
     *,
     eligible: bool = True,
     repair_count: int = 0,
+    provider_rejection_retry_count: int = 0,
+    references: tuple[ReservedVisualReference, ...] = (),
     visual_brief: VisualBrief | None = None,
 ) -> ClaimedMaterialPackage:
     return ClaimedMaterialPackage(
@@ -400,7 +442,9 @@ def _claimed_material_package(
         lease_token=uuid4(),
         attempt_number=1,
         eligible=eligible,
+        references=references,
         repair_count=repair_count,
+        provider_rejection_retry_count=provider_rejection_retry_count,
         visual_brief=visual_brief,
     )
 
@@ -408,9 +452,11 @@ def _claimed_material_package(
 class _RecordingImageGenerator:
     def __init__(self) -> None:
         self.calls = 0
+        self.requests: list[ImageGenerationRequest] = []
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         self.calls += 1
+        self.requests.append(request)
         return ImageGenerationResult(
             provider="fake",
             model="gpt-image-2",
@@ -542,7 +588,10 @@ def _quality_attempt_state(
     image = SimpleNamespace(
         id=claimed.image_id,
         status="running",
+        provider=claimed.provider,
+        model=claimed.model,
         repair_count=claimed.repair_count,
+        provider_rejection_retry_count=claimed.provider_rejection_retry_count,
         validation_snapshot={},
         audit_snapshot={},
         error_code=None,
@@ -630,7 +679,7 @@ async def test_material_worker_persists_one_success_with_private_storage_descrip
 
 
 @pytest.mark.asyncio
-async def test_material_worker_provider_rejection_is_review_required_and_never_accepted(
+async def test_material_worker_provider_rejection_schedules_one_neutralized_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generator = _RejectingImageGenerator()
@@ -642,43 +691,147 @@ async def test_material_worker_provider_rejection_is_review_required_and_never_a
         reference_asset=None,
     )
     claimed = _claimed_material_package()
-    finished: list[dict[str, object]] = []
+    scheduled: list[ClaimedMaterialPackage] = []
+    events: list[tuple[str, dict[str, object]]] = []
 
     async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
         del worker_id
         return claimed
 
-    async def fake_finish(
-        value: ClaimedMaterialPackage,
-        *,
-        error_code: str,
-        retryable: bool,
-        review_required: bool,
-        validation_snapshot: dict[str, object] | None = None,
-        audit_snapshot: dict[str, object] | None = None,
-    ) -> None:
-        del validation_snapshot, audit_snapshot
-        assert value == claimed
-        finished.append(
-            {
-                "error_code": error_code,
-                "retryable": retryable,
-                "review_required": review_required,
-            }
-        )
+    async def fake_schedule(value: ClaimedMaterialPackage) -> bool:
+        scheduled.append(value)
+        return True
+
+    class _SafeLogger:
+        def warning(self, event: str, **values: object) -> None:
+            events.append((event, values))
 
     monkeypatch.setattr(executor, "_claim", fake_claim)
-    monkeypatch.setattr(executor, "_finish_attempt", fake_finish)
+    monkeypatch.setattr(executor, "_schedule_provider_rejection_retry", fake_schedule)
+    monkeypatch.setattr("app.application.services.material_package.logger", _SafeLogger())
 
     assert await executor.execute_next("material-worker") is True
     assert generator.calls == 1
-    assert finished == [
-        {
-            "error_code": "image_provider_rejected",
-            "retryable": False,
-            "review_required": True,
-        }
+    assert scheduled == [claimed]
+    assert events == [
+        (
+            "material_package_image_provider_rejected",
+            {
+                "package_id": str(claimed.package_id),
+                "image_id": str(claimed.image_id),
+                "provider": "fake",
+                "model": "gpt-image-2",
+                "attempt": 1,
+                "repair_count": 0,
+                "provider_rejection_retry_count": 1,
+                "next_action": "neutralized_retry",
+            },
+        )
     ]
+
+
+@pytest.mark.asyncio
+async def test_material_worker_second_provider_rejection_uses_catalog_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _RejectingImageGenerator()
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+    claimed = _claimed_material_package(provider_rejection_retry_count=1)
+    fallbacks: list[ClaimedMaterialPackage] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_fallback(
+        value: ClaimedMaterialPackage,
+        *,
+        references: tuple[ImageReference, ...],
+        validation_snapshot: dict[str, object],
+        audit_snapshot: dict[str, object],
+    ) -> None:
+        assert references == ()
+        assert validation_snapshot == {}
+        assert audit_snapshot["status"] == "not_configured"
+        fallbacks.append(value)
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_persist_catalog_fallback", fake_fallback)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert fallbacks == [claimed]
+
+
+@pytest.mark.asyncio
+async def test_catalog_fallback_stores_a_validated_private_brand_image() -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-robot-action",
+        filename="robot-action.png",
+        sha256="b" * 64,
+        selection_reason="robotics action match",
+        fallback=False,
+    )
+    claimed = _claimed_material_package(
+        provider_rejection_retry_count=1,
+        references=(reserved,),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=store,
+        settings=Settings(),
+        reference_asset=None,
+    )
+    reference = ImageReference(
+        role="action_reference",
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=_solid_png("catalog-fallback", "robot-action"),
+        selection_reason=reserved.selection_reason,
+    )
+
+    await executor._persist_catalog_fallback(
+        claimed,
+        references=(reference,),
+        validation_snapshot={},
+        audit_snapshot={"status": "not_configured"},
+    )
+
+    assert store.calls == 1
+    assert image.status == "succeeded"
+    assert image.provider == "fake"
+    assert image.model == "gpt-image-2"
+    assert image.width == 1024
+    assert image.height == 1024
+    assert image.audit_snapshot["status"] == "not_applicable"
+    assert package.status == "awaiting_manual_use"
+    assert package.version_snapshot["image"]["fallback"] == {
+        "version": "image-fallback-v1",
+        "state": "brand_catalog",
+        "provider_rejection_retry_count": 1,
+        "initial_error_code": "image_provider_rejected",
+        "primary_provider": "fake",
+        "primary_model": "gpt-image-2",
+        "asset": {
+            "asset_id": "asset-robot-action",
+            "filename": "robot-action.png",
+            "sha256": "b" * 64,
+            "role": "action_reference",
+            "selection_reason": "robotics action match",
+            "fallback": False,
+        },
+    }
 
 
 @pytest.mark.asyncio

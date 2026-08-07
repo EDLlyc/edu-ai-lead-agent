@@ -73,11 +73,30 @@ class ImageValidationResponse(BaseModel):
 class ImageAuditResponse(BaseModel):
     version: str
     configured: bool
-    status: Literal["accepted", "rejected", "not_configured", "unknown"]
+    status: Literal["accepted", "rejected", "not_applicable", "not_configured", "unknown"]
     passed: bool | None
     issue_codes: list[str]
     provider: str | None
     model: str | None
+
+
+class ImageFallbackAssetResponse(BaseModel):
+    asset_id: str
+    filename: str
+    sha256: str
+    role: Literal["identity_reference", "action_reference", "style_reference", "legacy"]
+    selection_reason: str
+    fallback: bool
+
+
+class ImageFallbackResponse(BaseModel):
+    version: Literal["image-fallback-v1"]
+    state: Literal["not_used", "neutralized_retry", "brand_catalog"]
+    provider_rejection_retry_count: int = Field(ge=0, le=1)
+    initial_error_code: Literal["image_provider_rejected"] | None
+    primary_provider: str | None
+    primary_model: str | None
+    asset: ImageFallbackAssetResponse | None = None
 
 
 class ImageArtifactResponse(BaseModel):
@@ -104,6 +123,7 @@ class ImageArtifactResponse(BaseModel):
     visual_brief: VisualBriefResponse | None = None
     references: list[VisualReferenceResponse] = Field(default_factory=list)
     repair_count: int = 0
+    fallback: ImageFallbackResponse
     validation: ImageValidationResponse
     audit: ImageAuditResponse
 

@@ -109,6 +109,22 @@ const response = {
       "/api/v1/material-packages/00000000-0000-4000-8000-000000000001/image",
     reference_mode: "budgeted_multi_reference",
     repair_count: 1,
+    fallback: {
+      version: "image-fallback-v1",
+      state: "brand_catalog",
+      provider_rejection_retry_count: 1,
+      initial_error_code: "image_provider_rejected",
+      primary_provider: "fake",
+      primary_model: "fake-image",
+      asset: {
+        asset_id: "asset-1",
+        filename: "小赛和赛先生讨论.png",
+        sha256: "a".repeat(64),
+        role: "identity_reference",
+        selection_reason: "robotics topic match",
+        fallback: false,
+      },
+    },
     validation: {
       version: "image-validation-v1",
       configured: true,
@@ -206,6 +222,11 @@ describe("mapMaterialPackage", () => {
     );
     expect(materialPackage.image.visualBrief?.category).toBe("robotics");
     expect(materialPackage.image.repairCount).toBe(1);
+    expect(materialPackage.image.fallback).toMatchObject({
+      state: "brand_catalog",
+      providerRejectionRetryCount: 1,
+      asset: { filename: "小赛和赛先生讨论.png" },
+    });
     expect(materialPackage.image.validation.passed).toBe(true);
     expect(materialPackage.image.audit.status).toBe("accepted");
     expect(materialPackage.image.references[0]?.filename).toBe(

@@ -2158,6 +2158,7 @@ export interface components {
             download_url: string | null;
             /** Error Code */
             error_code: string | null;
+            fallback: components["schemas"]["ImageFallbackResponse"];
             /** Height */
             height: number | null;
             /**
@@ -2215,9 +2216,49 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "accepted" | "rejected" | "not_configured" | "unknown";
+            status: "accepted" | "rejected" | "not_applicable" | "not_configured" | "unknown";
             /** Version */
             version: string;
+        };
+        /** ImageFallbackAssetResponse */
+        ImageFallbackAssetResponse: {
+            /** Asset Id */
+            asset_id: string;
+            /** Fallback */
+            fallback: boolean;
+            /** Filename */
+            filename: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identity_reference" | "action_reference" | "style_reference" | "legacy";
+            /** Selection Reason */
+            selection_reason: string;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** ImageFallbackResponse */
+        ImageFallbackResponse: {
+            asset?: components["schemas"]["ImageFallbackAssetResponse"] | null;
+            /** Initial Error Code */
+            initial_error_code: "image_provider_rejected" | null;
+            /** Primary Model */
+            primary_model: string | null;
+            /** Primary Provider */
+            primary_provider: string | null;
+            /** Provider Rejection Retry Count */
+            provider_rejection_retry_count: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "not_used" | "neutralized_retry" | "brand_catalog";
+            /**
+             * Version
+             * @constant
+             */
+            version: "image-fallback-v1";
         };
         /** ImageStorageMetadataResponse */
         ImageStorageMetadataResponse: {

@@ -34,6 +34,12 @@ from app.core.errors import (
     NotFoundError,
     ProviderIdentityMismatchError,
 )
+from app.domain.image_fallback import (
+    IMAGE_CATALOG_FALLBACK_RENDERER_VERSION,
+    build_provider_rejection_retry_prompt,
+    provider_rejection_retry_fingerprint,
+    render_catalog_fallback_image,
+)
 from app.domain.image_generation import (
     IMAGE_REFERENCE_BUDGET_BYTES,
     image_checksum,
@@ -154,6 +160,7 @@ class ClaimedMaterialPackage:
     catalog_version: str = "no-catalog"
     selector_version: str = "no-selector"
     repair_count: int = 0
+    provider_rejection_retry_count: int = 0
     visual_brief: VisualBrief | None = None
 
 
@@ -249,6 +256,7 @@ async def enqueue_material_package(
                 available_at=datetime.now(UTC),
                 attempt_count=0,
                 repair_count=0,
+                provider_rejection_retry_count=0,
                 validation_snapshot={},
                 audit_snapshot={},
                 storage_metadata=dict(_PRIVATE_STORAGE_METADATA),
@@ -289,6 +297,10 @@ async def enqueue_material_package(
                         ],
                         "catalog_version": prepared.catalog_version,
                         "selector_version": prepared.selector_version,
+                        "fallback": _image_fallback_snapshot(
+                            state="not_used",
+                            provider_rejection_retry_count=0,
+                        ),
                     },
                 },
                 review_status="pending",
@@ -578,7 +590,20 @@ def _claim_prompt(
     image: ImageArtifactModel,
     references: tuple[ReservedVisualReference, ...],
 ) -> tuple[str, dict[str, Any] | None, VisualBrief | None]:
+    provider_rejection_retry_count = getattr(image, "provider_rejection_retry_count", 0)
     if image.reference_mode == "legacy_single":
+        if provider_rejection_retry_count > 0:
+            legacy_title = package.topic_snapshot.get("title")
+            legacy_summary = package.topic_snapshot.get("summary")
+            brief = build_visual_brief(
+                AcceptedVisualContext(
+                    topic_title=legacy_title if isinstance(legacy_title, str) else "科学探索",
+                    topic_summary=legacy_summary if isinstance(legacy_summary, str) else None,
+                    copywriting=draft.copywriting,
+                    image_prompt=draft.image_prompt,
+                )
+            )
+            return build_provider_rejection_retry_prompt(brief, ()), brief.as_metadata(), brief
         prompt = draft.image_prompt
         if getattr(image, "repair_count", 0) > 0:
             prompt = build_image_repair_prompt(
@@ -618,7 +643,9 @@ def _claim_prompt(
         prompt_version=image.prompt_version,
         pipeline_version=image.pipeline_version,
     ).prompt
-    if getattr(image, "repair_count", 0) > 0:
+    if provider_rejection_retry_count > 0:
+        prompt = build_provider_rejection_retry_prompt(brief, descriptors)
+    elif getattr(image, "repair_count", 0) > 0:
         prompt = build_image_repair_prompt(
             prompt,
             _image_issue_codes(
@@ -722,6 +749,7 @@ class MaterialPackageExecutor:
         self._lease_events[claimed.image_id] = lease_lost
         validation_snapshot: dict[str, Any] = {}
         audit_snapshot = _image_audit_not_run_snapshot()
+        references: tuple[ImageReference, ...] = ()
         try:
             self._ensure_lease(lease_lost)
             references = await self._read_claimed_references(claimed)
@@ -740,15 +768,17 @@ class MaterialPackageExecutor:
             ):
                 raise ConflictError("approved image reference changed after reservation")
             self._ensure_lease(lease_lost)
-            provider_request_fingerprint = (
-                image_repair_fingerprint(
+            provider_request_fingerprint = None
+            if claimed.provider_rejection_retry_count:
+                provider_request_fingerprint = provider_rejection_retry_fingerprint(
+                    claimed.request_fingerprint, claimed.prompt
+                )
+            elif claimed.repair_count:
+                provider_request_fingerprint = image_repair_fingerprint(
                     claimed.request_fingerprint,
                     claimed.repair_count,
                     claimed.prompt,
                 )
-                if claimed.repair_count
-                else None
-            )
             result = await self._image_generator.generate(
                 ImageGenerationRequest(
                     run_id=claimed.run_id,
@@ -779,8 +809,9 @@ class MaterialPackageExecutor:
             validation_snapshot = _image_validation_snapshot(output_validation, configured=True)
             audit_snapshot = _image_audit_not_run_snapshot()
             if not output_validation.passed:
-                await self._finish_quality_attempt(
+                await self._finish_generated_quality_attempt(
                     claimed,
+                    references=references,
                     validation_snapshot=validation_snapshot,
                     audit_snapshot=audit_snapshot,
                     error_code="image_output_validation_failed",
@@ -788,8 +819,9 @@ class MaterialPackageExecutor:
                 return True
             if self._settings.image_ocr_enabled:
                 if self._image_text_recognizer is None or claimed.visual_brief is None:
-                    await self._finish_quality_attempt(
+                    await self._finish_generated_quality_attempt(
                         claimed,
+                        references=references,
                         validation_snapshot={
                             **validation_snapshot,
                             "configured": True,
@@ -833,8 +865,9 @@ class MaterialPackageExecutor:
                     }
                 )
                 if not text_validation.passed:
-                    await self._finish_quality_attempt(
+                    await self._finish_generated_quality_attempt(
                         claimed,
+                        references=references,
                         validation_snapshot=validation_snapshot,
                         audit_snapshot=audit_snapshot,
                         error_code="image_text_validation_failed",
@@ -842,8 +875,9 @@ class MaterialPackageExecutor:
                     return True
             if self._settings.image_quality_audit_enabled:
                 if self._image_quality_auditor is None or claimed.visual_brief is None:
-                    await self._finish_quality_attempt(
+                    await self._finish_generated_quality_attempt(
                         claimed,
+                        references=references,
                         validation_snapshot=validation_snapshot,
                         audit_snapshot={
                             **audit_snapshot,
@@ -871,8 +905,9 @@ class MaterialPackageExecutor:
                     raise ProviderIdentityMismatchError()
                 audit_snapshot = _image_audit_snapshot(audit_result)
                 if not audit_result.accepted:
-                    await self._finish_quality_attempt(
+                    await self._finish_generated_quality_attempt(
                         claimed,
+                        references=references,
                         validation_snapshot=validation_snapshot,
                         audit_snapshot=audit_snapshot,
                         error_code="image_quality_audit_failed",
@@ -896,6 +931,27 @@ class MaterialPackageExecutor:
                 )
         except asyncio.CancelledError:
             raise
+        except ImageProviderRejectedError:
+            if claimed.provider_rejection_retry_count == 0:
+                if await self._schedule_provider_rejection_retry(claimed):
+                    logger.warning(
+                        "material_package_image_provider_rejected",
+                        package_id=str(claimed.package_id),
+                        image_id=str(claimed.image_id),
+                        provider=claimed.provider,
+                        model=claimed.model,
+                        attempt=claimed.attempt_number,
+                        repair_count=claimed.repair_count,
+                        provider_rejection_retry_count=1,
+                        next_action="neutralized_retry",
+                    )
+            else:
+                await self._persist_catalog_fallback(
+                    claimed,
+                    references=references,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=audit_snapshot,
+                )
         except AppError as error:
             if isinstance(error, ImageOutputValidationError) and not validation_snapshot:
                 validation_snapshot = _image_output_error_snapshot(
@@ -913,7 +969,6 @@ class MaterialPackageExecutor:
                     error,
                     (
                         ImageOutputValidationError,
-                        ImageProviderRejectedError,
                         ProviderIdentityMismatchError,
                     ),
                 ),
@@ -975,6 +1030,11 @@ class MaterialPackageExecutor:
 
     async def _claim(self, worker_id: str) -> ClaimedMaterialPackage | None:
         now = datetime.now(UTC)
+        image_attempt_budget = (
+            self._settings.image_max_attempts
+            + ImageArtifactModel.repair_count
+            + ImageArtifactModel.provider_rejection_retry_count
+        )
         async with self._session_factory() as session:
             exhausted_images = tuple(
                 (
@@ -988,18 +1048,7 @@ class MaterialPackageExecutor:
                             MaterialPackageModel.status == "queued",
                             ImageArtifactModel.provider == self._settings.image_provider_mode,
                             ImageArtifactModel.model == self._settings.image_model,
-                            or_(
-                                and_(
-                                    ImageArtifactModel.repair_count == 0,
-                                    ImageArtifactModel.attempt_count
-                                    >= self._settings.image_max_attempts,
-                                ),
-                                and_(
-                                    ImageArtifactModel.repair_count == 1,
-                                    ImageArtifactModel.attempt_count
-                                    > self._settings.image_max_attempts,
-                                ),
-                            ),
+                            ImageArtifactModel.attempt_count >= image_attempt_budget,
                             or_(
                                 and_(
                                     ImageArtifactModel.status == "queued",
@@ -1046,27 +1095,11 @@ class MaterialPackageExecutor:
                         and_(
                             ImageArtifactModel.status == "queued",
                             ImageArtifactModel.available_at <= now,
-                            or_(
-                                ImageArtifactModel.attempt_count
-                                < self._settings.image_max_attempts,
-                                and_(
-                                    ImageArtifactModel.repair_count == 1,
-                                    ImageArtifactModel.attempt_count
-                                    == self._settings.image_max_attempts,
-                                ),
-                            ),
+                            ImageArtifactModel.attempt_count < image_attempt_budget,
                         ),
                         and_(
                             ImageArtifactModel.status == "running",
-                            or_(
-                                ImageArtifactModel.attempt_count
-                                < self._settings.image_max_attempts,
-                                and_(
-                                    ImageArtifactModel.repair_count == 1,
-                                    ImageArtifactModel.attempt_count
-                                    == self._settings.image_max_attempts,
-                                ),
-                            ),
+                            ImageArtifactModel.attempt_count < image_attempt_budget,
                             or_(
                                 ImageArtifactModel.lease_expires_at.is_(None),
                                 ImageArtifactModel.lease_expires_at <= now,
@@ -1200,6 +1233,7 @@ class MaterialPackageExecutor:
                 reference_mode=getattr(image, "reference_mode", "legacy_single"),
                 visual_brief_snapshot=claim_brief_snapshot,
                 repair_count=getattr(image, "repair_count", 0),
+                provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
                 visual_brief=claim_brief,
                 catalog_version=(
                     package.version_snapshot.get("image", {}).get("catalog_version", "no-catalog")
@@ -1212,6 +1246,248 @@ class MaterialPackageExecutor:
                     else "no-selector"
                 ),
             )
+
+    async def _schedule_provider_rejection_retry(self, claimed: ClaimedMaterialPackage) -> bool:
+        """Persist the one provider-rejection recovery transition."""
+
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            image = await session.scalar(
+                select(ImageArtifactModel)
+                .where(
+                    ImageArtifactModel.id == claimed.image_id,
+                    ImageArtifactModel.lease_token == claimed.lease_token,
+                    ImageArtifactModel.status == "running",
+                    ImageArtifactModel.lease_expires_at >= now,
+                )
+                .with_for_update()
+            )
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+            if image is None or package is None:
+                return False
+            if getattr(image, "provider_rejection_retry_count", 0) >= 1:
+                return False
+            image.provider_rejection_retry_count = 1
+            image.status = "queued"
+            image.available_at = now
+            image.error_code = "image_provider_rejected"
+            image.completed_at = None
+            _set_package_image_fallback(
+                package,
+                state="neutralized_retry",
+                provider_rejection_retry_count=1,
+                initial_error_code="image_provider_rejected",
+                primary_provider=claimed.provider,
+                primary_model=claimed.model,
+            )
+            _clear_image_lease(image)
+            package.status = "queued"
+            await session.commit()
+            return True
+
+    async def _persist_catalog_fallback(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        references: tuple[ImageReference, ...],
+        validation_snapshot: dict[str, Any],
+        audit_snapshot: dict[str, Any],
+    ) -> None:
+        selected = _select_catalog_fallback_reference(claimed.references, references)
+        if selected is None:
+            await self._finish_attempt(
+                claimed,
+                error_code="brand_asset_fallback_unavailable",
+                retryable=False,
+                review_required=True,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            )
+            logger.error(
+                "material_package_image_fallback_failed",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                error_code="brand_asset_fallback_unavailable",
+                action="review_required",
+            )
+            return
+
+        reserved, reference = selected
+        try:
+            fallback_body = await asyncio.to_thread(
+                render_catalog_fallback_image, reference.image_bytes
+            )
+            output_validation = validate_image_output(
+                fallback_body,
+                "image/png",
+                max_bytes=self._settings.image_max_download_bytes,
+            )
+            fallback_validation = _image_validation_snapshot(
+                output_validation,
+                configured=True,
+                provider="brand_catalog",
+                model=claimed.catalog_version,
+            )
+            fallback_validation["stage"] = "brand_catalog_fallback"
+            fallback_validation["renderer_version"] = IMAGE_CATALOG_FALLBACK_RENDERER_VERSION
+            if not output_validation.passed:
+                raise ValueError("brand catalog fallback failed raster validation")
+            descriptor = await self._image_store.put_immutable(
+                fallback_body, media_type="image/png"
+            )
+            fallback_audit = _image_audit_catalog_fallback_snapshot(claimed.catalog_version)
+            if await self._persist_catalog_fallback_success(
+                claimed,
+                descriptor,
+                validation_snapshot=fallback_validation,
+                audit_snapshot=fallback_audit,
+                asset=reserved,
+            ):
+                logger.info(
+                    "material_package_image_fallback_ready",
+                    package_id=str(claimed.package_id),
+                    image_id=str(claimed.image_id),
+                    fallback_state="brand_catalog",
+                    asset_id=reserved.asset_id,
+                    renderer_version=IMAGE_CATALOG_FALLBACK_RENDERER_VERSION,
+                    width=output_validation.width,
+                    height=output_validation.height,
+                    byte_size=output_validation.byte_size,
+                )
+        except AppError:
+            await self._finish_attempt(
+                claimed,
+                error_code="brand_asset_fallback_storage_failed",
+                retryable=False,
+                review_required=True,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            )
+            logger.error(
+                "material_package_image_fallback_failed",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                error_code="brand_asset_fallback_storage_failed",
+                action="review_required",
+            )
+        except (OSError, ValueError):
+            await self._finish_attempt(
+                claimed,
+                error_code="brand_asset_fallback_invalid",
+                retryable=False,
+                review_required=True,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            )
+            logger.error(
+                "material_package_image_fallback_failed",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                error_code="brand_asset_fallback_invalid",
+                action="review_required",
+            )
+        except Exception:
+            await self._finish_attempt(
+                claimed,
+                error_code="brand_asset_fallback_storage_failed",
+                retryable=False,
+                review_required=True,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            )
+            logger.error(
+                "material_package_image_fallback_failed",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                error_code="brand_asset_fallback_storage_failed",
+                action="review_required",
+            )
+
+    async def _persist_catalog_fallback_success(
+        self,
+        claimed: ClaimedMaterialPackage,
+        descriptor: ImageObjectDescriptor,
+        *,
+        validation_snapshot: dict[str, Any],
+        audit_snapshot: dict[str, Any],
+        asset: ReservedVisualReference,
+    ) -> bool:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            image = await session.scalar(
+                select(ImageArtifactModel)
+                .where(
+                    ImageArtifactModel.id == claimed.image_id,
+                    ImageArtifactModel.lease_token == claimed.lease_token,
+                    ImageArtifactModel.status == "running",
+                    ImageArtifactModel.lease_expires_at >= now,
+                )
+                .with_for_update()
+            )
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+            if image is None or package is None:
+                return False
+            image.status = "succeeded"
+            image.media_type = descriptor.media_type
+            image.width = 1024
+            image.height = 1024
+            image.byte_size = descriptor.byte_size
+            image.sha256 = descriptor.sha256
+            image.bucket = descriptor.bucket
+            image.object_key = descriptor.object_key
+            image.validation_snapshot = validation_snapshot
+            image.audit_snapshot = audit_snapshot
+            image.storage_metadata = dict(_PRIVATE_STORAGE_METADATA)
+            image.repair_count = claimed.repair_count
+            image.provider_rejection_retry_count = claimed.provider_rejection_retry_count
+            image.error_code = None
+            image.completed_at = now
+            _set_package_image_quality(
+                package,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+                repair_count=claimed.repair_count,
+                provider_rejection_retry_count=claimed.provider_rejection_retry_count,
+            )
+            _set_package_image_fallback(
+                package,
+                state="brand_catalog",
+                provider_rejection_retry_count=claimed.provider_rejection_retry_count,
+                initial_error_code="image_provider_rejected",
+                primary_provider=claimed.provider,
+                primary_model=claimed.model,
+                asset=asset,
+            )
+            _clear_image_lease(image)
+            package.status = "awaiting_manual_use"
+            await session.commit()
+            return True
+
+    async def _finish_generated_quality_attempt(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        references: tuple[ImageReference, ...],
+        validation_snapshot: dict[str, Any],
+        audit_snapshot: dict[str, Any],
+        error_code: str,
+    ) -> None:
+        """Avoid additional provider calls after the single neutralized recovery request."""
+
+        if claimed.provider_rejection_retry_count > 0:
+            await self._persist_catalog_fallback(
+                claimed,
+                references=references,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot=audit_snapshot,
+            )
+            return
+        await self._finish_quality_attempt(
+            claimed,
+            validation_snapshot=validation_snapshot,
+            audit_snapshot=audit_snapshot,
+            error_code=error_code,
+        )
 
     async def _persist_success(
         self,
@@ -1251,11 +1527,13 @@ class MaterialPackageExecutor:
             image.validation_snapshot = validation_snapshot
             image.audit_snapshot = audit_snapshot
             image.repair_count = claimed.repair_count
+            image.provider_rejection_retry_count = claimed.provider_rejection_retry_count
             _set_package_image_quality(
                 package,
                 validation_snapshot=validation_snapshot,
                 audit_snapshot=audit_snapshot,
                 repair_count=claimed.repair_count,
+                provider_rejection_retry_count=claimed.provider_rejection_retry_count,
             )
             image.storage_metadata = dict(_PRIVATE_STORAGE_METADATA)
             image.error_code = None
@@ -1297,6 +1575,7 @@ class MaterialPackageExecutor:
                 validation_snapshot=validation_snapshot,
                 audit_snapshot=audit_snapshot,
                 repair_count=image.repair_count,
+                provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
             )
             _clear_image_lease(image)
             if image.repair_count < 1:
@@ -1352,6 +1631,7 @@ class MaterialPackageExecutor:
                 validation_snapshot=validation_snapshot or image.validation_snapshot,
                 audit_snapshot=audit_snapshot or image.audit_snapshot,
                 repair_count=image.repair_count,
+                provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
             )
             _clear_image_lease(image)
             if retry:
@@ -1495,6 +1775,18 @@ def _image_audit_not_run_snapshot() -> dict[str, Any]:
     }
 
 
+def _image_audit_catalog_fallback_snapshot(catalog_version: str) -> dict[str, Any]:
+    return {
+        "version": "image-audit-v1",
+        "configured": False,
+        "status": "not_applicable",
+        "passed": None,
+        "issue_codes": [],
+        "provider": "brand_catalog",
+        "model": catalog_version,
+    }
+
+
 def _image_audit_snapshot(result: Any) -> dict[str, Any]:
     issue_codes = getattr(result, "issue_codes", ())
     if not issue_codes:
@@ -1537,12 +1829,93 @@ def _image_issue_codes(*snapshots: object) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values)) or ("image_quality_review",)
 
 
+def _select_catalog_fallback_reference(
+    reserved_references: tuple[ReservedVisualReference, ...],
+    references: tuple[ImageReference, ...],
+) -> tuple[ReservedVisualReference, ImageReference] | None:
+    references_by_asset = {reference.asset_id: reference for reference in references}
+    role_order = {
+        "action_reference": 0,
+        "style_reference": 1,
+        "identity_reference": 2,
+        "legacy": 3,
+    }
+    candidates = [
+        (reserved, references_by_asset[reserved.asset_id])
+        for reserved in reserved_references
+        if reserved.asset_id in references_by_asset
+    ]
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda item: (
+            role_order.get(item[0].role, len(role_order)),
+            item[0].asset_id,
+        ),
+    )
+
+
+def _image_fallback_snapshot(
+    *,
+    state: str,
+    provider_rejection_retry_count: int,
+    initial_error_code: str | None = None,
+    primary_provider: str | None = None,
+    primary_model: str | None = None,
+    asset: ReservedVisualReference | None = None,
+) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "version": "image-fallback-v1",
+        "state": state,
+        "provider_rejection_retry_count": max(0, min(provider_rejection_retry_count, 1)),
+        "initial_error_code": initial_error_code,
+        "primary_provider": primary_provider,
+        "primary_model": primary_model,
+    }
+    if asset is not None:
+        snapshot["asset"] = {
+            "asset_id": asset.asset_id,
+            "filename": asset.filename,
+            "sha256": asset.sha256,
+            "role": asset.role,
+            "selection_reason": asset.selection_reason,
+            "fallback": asset.fallback,
+        }
+    return snapshot
+
+
+def _set_package_image_fallback(
+    package: MaterialPackageModel,
+    *,
+    state: str,
+    provider_rejection_retry_count: int,
+    initial_error_code: str | None = None,
+    primary_provider: str | None = None,
+    primary_model: str | None = None,
+    asset: ReservedVisualReference | None = None,
+) -> None:
+    current = package.version_snapshot if isinstance(package.version_snapshot, dict) else {}
+    image_snapshot = current.get("image", {})
+    image_values = dict(image_snapshot) if isinstance(image_snapshot, dict) else {}
+    image_values["fallback"] = _image_fallback_snapshot(
+        state=state,
+        provider_rejection_retry_count=provider_rejection_retry_count,
+        initial_error_code=initial_error_code,
+        primary_provider=primary_provider,
+        primary_model=primary_model,
+        asset=asset,
+    )
+    package.version_snapshot = {**current, "image": image_values}
+
+
 def _set_package_image_quality(
     package: MaterialPackageModel,
     *,
     validation_snapshot: object,
     audit_snapshot: object,
     repair_count: int,
+    provider_rejection_retry_count: int = 0,
 ) -> None:
     current = package.version_snapshot if isinstance(package.version_snapshot, dict) else {}
     image_snapshot = current.get("image", {})
@@ -1552,6 +1925,7 @@ def _set_package_image_quality(
             "validation": validation_snapshot,
             "audit": audit_snapshot,
             "repair_count": max(0, min(repair_count, 1)),
+            "provider_rejection_retry_count": max(0, min(provider_rejection_retry_count, 1)),
         }
     )
     package.version_snapshot = {**current, "image": image_values}
