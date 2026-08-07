@@ -533,3 +533,28 @@ Added one bounded neutralized retry and topic-matched catalog-image fallback wit
 ### Status
 
 [OK] **Completed**
+
+
+## Session 24: Deploy production backend automation
+
+**Date**: 2026-08-07
+**Task**: Deploy production backend automation
+**Branch**: `main`
+
+### Summary
+
+Deployed the backend-only automation to the Ubuntu server at 124.222.207.221. Migrated PostgreSQL, MinIO, and 255 brand files; loaded release images; scoped automatic WeCom reconciliation to the current Asia/Shanghai business date; started acquisition, governance, content, and group-webhook delivery services; verified no duplicate delivery jobs; installed root-only seven-day local backups and safe deployment evidence. Full backend checks passed with 502 tests.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `514d444` | (see git log) |
+| `d397c35` | (see git log) |
+| `389bc01` | (see git log) |
+| `b587afb` | (see git log) |
+| `cfa075a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
