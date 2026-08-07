@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from app.application.services.wecom_delivery import (
     WeComDeliveryExecutor,
+    _auto_delivery_candidate_statement,
     _delivery_fingerprint_namespace,
     _validate_wecom_image_body,
     build_wecom_text,
@@ -309,6 +311,7 @@ async def test_direct_auto_reconciliation_queries_pending_manual_use_packages(
         client=object(),  # type: ignore[arg-type]
         image_store=object(),  # type: ignore[arg-type]
         settings=settings,
+        clock=lambda: datetime(2026, 8, 7, 16, 30, tzinfo=UTC),
     )
 
     created = await executor.reconcile_auto_deliveries(limit=5)
@@ -322,6 +325,8 @@ async def test_direct_auto_reconciliation_queries_pending_manual_use_packages(
     assert "rejected" in compiled.params.values()
     assert "NOT (EXISTS" in sql
     assert "wecom_delivery_jobs.material_package_id" in sql
+    assert "copy_generation_runs.business_date" in sql
+    assert date(2026, 8, 8) in compiled.params.values()
     assert "image_artifacts.validation_snapshot" in sql
     assert "image_artifacts.audit_snapshot" in sql
     assert "generated-images/sha256/" in compiled.params.values()
@@ -332,6 +337,20 @@ async def test_direct_auto_reconciliation_queries_pending_manual_use_packages(
     assert {"access": "private", "immutable": True, "content_addressed": True} in (
         compiled.params.values()
     )
+
+
+def test_auto_delivery_candidate_query_uses_typed_business_date() -> None:
+    settings = _settings(require_review=False)
+
+    statement = _auto_delivery_candidate_statement(
+        settings=settings,
+        business_date=date(2026, 8, 7),
+        limit=5,
+    )
+    compiled = statement.compile(dialect=postgresql.dialect())
+
+    assert "JOIN copy_generation_runs" in str(compiled)
+    assert date(2026, 8, 7) in compiled.params.values()
 
 
 @pytest.mark.asyncio

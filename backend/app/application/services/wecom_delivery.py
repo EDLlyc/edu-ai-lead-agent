@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy import and_, exists, func, or_, select, update
@@ -25,6 +27,7 @@ from app.core.errors import AppError, ConflictError, NotFoundError
 from app.domain.image_generation import image_checksum, image_content_key
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
+    CopyGenerationRunModel,
     ImageArtifactModel,
     MaterialPackageModel,
     WeComDeliveryAttemptModel,
@@ -209,21 +212,28 @@ class WeComDeliveryExecutor:
         client: WeComDeliveryClient,
         image_store: MinioImageStore,
         settings: Settings,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._session_factory = session_factory
         self._client = client
         self._image_store = image_store
         self._settings = settings
+        self._clock = clock
         self._auto_delivery_skip_states: OrderedDict[str, tuple[str, ...]] = OrderedDict()
 
     async def reconcile_auto_deliveries(self, *, limit: int = 20) -> int:
         if not self._settings.wecom_auto_delivery_enabled:
             return 0
+        business_date = self._clock().astimezone(ZoneInfo(self._settings.business_timezone)).date()
         async with self._session_factory() as session:
             packages = tuple(
                 (
                     await session.scalars(
-                        _auto_delivery_candidate_statement(settings=self._settings, limit=limit)
+                        _auto_delivery_candidate_statement(
+                            settings=self._settings,
+                            business_date=business_date,
+                            limit=limit,
+                        )
                     )
                 ).all()
             )
@@ -625,17 +635,26 @@ class WeComDeliveryExecutor:
 
 
 def _auto_delivery_candidate_statement(
-    *, settings: Settings, limit: int
+    *, settings: Settings, business_date: date, limit: int
 ) -> Select[tuple[MaterialPackageModel]]:
-    """Select only packages that can reach the enqueue guard on this poll.
+    """Select only today's packages that can reach the enqueue guard on this poll.
 
     The enqueue service remains the race-safe authority.  This query only keeps durable jobs and
-    deterministic direct-mode vetoes out of the two-second reconciliation loop.
+    deterministic direct-mode vetoes out of the two-second reconciliation loop.  The copy run's
+    typed business date prevents old valid packages from being re-sent after a deployment.
     """
 
-    statement = select(MaterialPackageModel).where(
-        MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
-        ~exists().where(WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id),
+    statement = (
+        select(MaterialPackageModel)
+        .join(
+            CopyGenerationRunModel,
+            CopyGenerationRunModel.id == MaterialPackageModel.run_id,
+        )
+        .where(
+            CopyGenerationRunModel.business_date == business_date,
+            MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
+            ~exists().where(WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id),
+        )
     )
     if settings.wecom_require_review_before_send:
         return (

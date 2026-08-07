@@ -125,12 +125,16 @@ rejected. Direct mode still requires copy validation to pass, copy audit to be a
 validation to pass, and any configured image audit to be accepted before a job is created.
 
 Automatic reconciliation is a candidate scan, not a broad package-status retry loop. It excludes
-any package that already has a durable delivery job, applies the persisted direct-mode quality and
-immutable-image predicates before the enqueue attempt, and retains the enqueue guard as the final
-race-safe authority. PostgreSQL candidate predicates compare JSONB fields by literal value (for
-example, JSON boolean containment) so malformed legacy snapshot values are excluded rather than
-raising a cast error. A typed conflict caused by a state race is logged once per package and
-bounded readiness state in the dispatcher process; a later readiness change may be evaluated again.
+any package that already has a durable delivery job, restricts the scan to the current business
+date, applies the persisted direct-mode quality and immutable-image predicates before the enqueue
+attempt, and retains the enqueue guard as the final race-safe authority. The current business date
+is computed from the dispatcher clock in `Settings.business_timezone`; the candidate query joins
+`material_packages.run_id` to the typed `copy_generation_runs.business_date` column. It must not
+use package creation time or a mutable topic snapshot to decide whether a package is today's
+package. PostgreSQL candidate predicates compare JSONB fields by literal value (for example, JSON
+boolean containment) so malformed legacy snapshot values are excluded rather than raising a cast
+error. A typed conflict caused by a state race is logged once per package and bounded readiness
+state in the dispatcher process; a later readiness change may be evaluated again.
 
 ### Security boundary
 
@@ -147,6 +151,7 @@ API responses, or durable delivery rows.
 | WeCom disabled or fixed recipient missing | API returns stable conflict; no job is created |
 | Unsupported recipient ID or mode | Stable conflict/validation result; no provider call |
 | Package missing or not eligible for the configured delivery policy | Not found/conflict; no job is created |
+| Eligible package belongs to another business date | Candidate scan excludes it; no job is created or sent automatically |
 | Review-required package is not approved, or direct package is explicitly rejected | Conflict; no job is created |
 | Direct package copy validation/audit or configured image quality gate fails | Conflict; no job is created |
 | Image requested but artifact is not succeeded or metadata is invalid | Conflict; no provider call |
@@ -163,6 +168,8 @@ API responses, or durable delivery rows.
 - Good: an approved completed package in review-required mode, or a validated
   `awaiting_manual_use` package in direct mode, produces one stable formal job; the dispatcher
   sends text then image, both child attempts are durable, and the job becomes `delivered`.
+- Good: after a deployment, a valid package from yesterday remains queryable for audit but is not
+  selected by today's automatic reconciliation.
 - Base: WeCom remains disabled in local Compose; API exposes no recipient and dispatcher remains
   idle without needing credentials.
 - Good: a text-success/image-timeout result is visible as `partial` or `delivery_unknown`, and an
@@ -186,7 +193,8 @@ API responses, or durable delivery rows.
   child, partial failure, bounded retry, unknown timeout terminal state, lease heartbeat, and
   idempotent enqueue.
 - Automatic-reconciliation tests assert the PostgreSQL candidate query's durable-job exclusion,
-  direct quality predicates, malformed/missing JSONB snapshots, and bounded race-skip logging.
+  current-business-date join, direct quality predicates, malformed/missing JSONB snapshots, and
+  bounded race-skip logging. Include a timezone-boundary test with a fixed UTC clock.
 - Compose checks run `docker compose config --quiet` and build the `wecom-dispatcher` image without
   credentials. A real provider send is opt-in and must never be part of the default test suite.
 - `scripts/doctor.sh` and migration-head assertions must be updated whenever the Alembic head moves.
@@ -234,6 +242,25 @@ query strings, secrets, raw provider bodies, or signed object URLs.
 self-built application's address-book visibility scope. A provider recipient/configuration error
 such as `60020` is terminal until the ID or visibility scope is corrected; it must not be treated
 as a successful send or retried indefinitely.
+
+### Automatic reconciliation must be date-scoped
+
+The dispatcher polls frequently, so a status-only candidate query can rediscover every historical
+package that has no delivery row. That is a duplicate-send risk after a migration or a fresh
+dispatcher start. Derive today's date with `Settings.business_timezone` and filter through the
+typed `CopyGenerationRunModel.business_date` relation before applying delivery quality predicates.
+
+```python
+business_date = clock().astimezone(ZoneInfo(settings.business_timezone)).date()
+statement = (
+    select(MaterialPackageModel)
+    .join(CopyGenerationRunModel, CopyGenerationRunModel.id == MaterialPackageModel.run_id)
+    .where(CopyGenerationRunModel.business_date == business_date)
+)
+```
+
+Do not substitute `MaterialPackageModel.created_at` or an unvalidated JSON snapshot field: those
+values describe storage history, not the business date assigned to the content run.
 
 ## 8. Group Webhook Provider
 
