@@ -26,11 +26,28 @@ platform.
    `/api` and `/healthz` to the loopback API port and serve the built frontend assets.
 3. Prepare a release directory containing the pinned repository commit, `compose.yaml`, backend and
    frontend lockfiles, `private/brand-materials/`, and the approved production configuration.
+   The brand directory is bind-mounted read-only into containers that run as the non-root `app`
+   user. Preserve the operator as the host owner, but make the directory and files readable by
+   that container user (for example, directories `0755` and files `0644`, with no write bit for
+   other users); a copied `0600` manifest will make visual-asset selection fail at runtime.
 4. Place production values in a permission-restricted deployment secret store or an untracked
    permission-600 `.env`. Start from the names in `.env.example`, but never copy its development
    credentials into production and never commit the production file.
 5. Confirm the database and MinIO backup destinations, retention period, restore operator, alert
    recipients, maintenance window, and rollback bundle before changing the host.
+
+After copying the private materials, verify the effective bind-mount access as the application
+user before starting content workers:
+
+```bash
+find private/brand-materials -type d -exec chmod 0755 {} +
+find private/brand-materials -type f -exec chmod 0644 {} +
+docker compose run --rm --no-deps --entrypoint python content-worker -c \
+  'from pathlib import Path; Path("private/brand-materials/visual-assets.manifest.json").read_text()'
+```
+
+The material files must remain non-writable to the container. Do not solve a read failure by
+making the bind mount writable or by running the application containers as root.
 
 ## Configuration and secret placement
 
