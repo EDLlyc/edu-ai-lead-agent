@@ -62,7 +62,7 @@ docker run --rm \
     -e "MC_BUCKET=${MINIO_BUCKET}" \
     -v "${minio_backup_dir}:/backup" \
     "${MINIO_IMAGE}" \
-    -c '/usr/bin/mc alias set local http://minio:9000 "$MC_ACCESS_KEY" "$MC_SECRET_KEY" >/dev/null && /usr/bin/mc mirror --preserve --quiet "local/$MC_BUCKET" /backup'
+    -c '/usr/bin/mc alias set local http://minio:9000 "$MC_ACCESS_KEY" "$MC_SECRET_KEY" >/dev/null && /usr/bin/mc mirror --preserve --quiet "local/$MC_BUCKET" /backup >/dev/null'
 (
     cd "${minio_backup_dir}"
     find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
