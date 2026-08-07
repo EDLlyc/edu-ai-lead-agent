@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend ownership, side-effect boundaries, and secret handling for the full pipeline."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Existing delivery eligibility, idempotency, lease, ordering, retry, and group-webhook contracts."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed conflict, retry, unknown-outcome, and safe error projection rules."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Structured observability and no-secret/no-raw-provider-content logging rules."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required backend, integration, migration, Compose, and final quality gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace settings, scheduler, service, persistence, provider, API, and deployment changes together."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing delivery eligibility and fingerprint helpers instead of duplicating policy logic."}

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend quality review and cross-stage contract."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Delivery state machine, automatic reconciliation, idempotency, and security review."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify deterministic conflicts are not retried as transient provider failures."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify bounded structured logs and secret-safe operational evidence."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run the project quality and real-service verification gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review settings-to-worker-to-storage-to-provider data flow."}
