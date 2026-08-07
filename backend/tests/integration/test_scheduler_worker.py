@@ -28,6 +28,11 @@ from sqlalchemy import func, select, update
 from .conftest import IntegrationContext
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources" / "gov_cn_policy_v1"
+FIXTURE_EVALUATED_AT = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
+
+
+def fixture_clock() -> datetime:
+    return FIXTURE_EVALUATED_AT
 
 
 class FixtureFetcher:
@@ -123,6 +128,8 @@ async def test_end_to_end_worker_persists_snapshot_candidate_and_repeat_observat
 ) -> None:
     await _cancel_nonterminal(integration_context)
     async with integration_context.session_factory() as session:
+        await seed_sources(session)
+    async with integration_context.session_factory() as session:
         baseline_candidate_count = await session.scalar(
             select(func.count()).select_from(EvidenceCandidateModel)
         )
@@ -138,6 +145,7 @@ async def test_end_to_end_worker_persists_snapshot_candidate_and_repeat_observat
         integration_context.settings,
         sleep=no_sleep,
         jitter=lambda: 0.0,
+        clock=fixture_clock,
     )
     run_one, created = await enqueue_manual_run(
         repository,
@@ -196,6 +204,7 @@ async def test_one_source_failure_yields_partial_success(
         integration_context.settings,
         sleep=no_sleep,
         jitter=lambda: 0.0,
+        clock=fixture_clock,
     )
     run_id, _ = await enqueue_manual_run(
         repository,

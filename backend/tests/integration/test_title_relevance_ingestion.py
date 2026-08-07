@@ -31,6 +31,12 @@ from sqlalchemy import select, update
 
 from .conftest import IntegrationContext
 
+FIXTURE_EVALUATED_AT = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
+
+
+def fixture_clock() -> datetime:
+    return FIXTURE_EVALUATED_AT
+
 
 class RelevanceFixtureFetcher:
     def __init__(self, records: list[dict[str, str]]) -> None:
@@ -123,6 +129,7 @@ async def _execute_government_run(
         context.settings,
         sleep=sleep,
         jitter=lambda: 0.0,
+        clock=fixture_clock,
     )
     assert await executor.execute_next("title-relevance-worker") is True
     async with context.session_factory() as session:
