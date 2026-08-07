@@ -1,0 +1,10 @@
+[Unit]
+Description=Edu AI local PostgreSQL, MinIO, and brand-material backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/edu-ai-lead-agent/scripts/edu-ai-backup.sh

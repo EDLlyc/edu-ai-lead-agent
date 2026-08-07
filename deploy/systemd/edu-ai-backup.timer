@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Edu AI local backup timer
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=edu-ai-backup.service
+
+[Install]
+WantedBy=timers.target
