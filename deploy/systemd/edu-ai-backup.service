@@ -7,4 +7,4 @@ After=docker.service
 Type=oneshot
 User=root
 Group=root
-ExecStart=/opt/edu-ai-lead-agent/scripts/edu-ai-backup.sh
+ExecStart=/usr/local/sbin/edu-ai-backup
