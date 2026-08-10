@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Preserve PostgreSQL/MinIO durable state, run Alembic before workers, and apply backup/rollback constraints."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Configure group-webhook delivery, automatic reconciliation, idempotency, retries, and unknown-outcome handling."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Keep deployment evidence and bounded runtime logs free of secrets, prompts, provider bodies, and private object paths."}
+{"file":"docs/operations/production-server-migration-runbook.md","reason":"Existing Compose startup order, brand-material permissions, backup, restore, and rollback procedures."}

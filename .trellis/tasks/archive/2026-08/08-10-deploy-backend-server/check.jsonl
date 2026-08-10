@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Release verification, test gates, and production quality checks."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Validate migration head, durable state, object/database consistency, and non-destructive rollback."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Validate dispatcher eligibility, ordering, idempotency, retries, and safe delivery state."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review safe logs and deployment evidence for secret or private-data leakage."}
+{"file":"docs/operations/production-environment-checklist.md","reason":"Complete host, configuration, profile startup, backup, monitoring, and rollback checks."}
