@@ -188,14 +188,12 @@ async def retry_wecom_delivery(
 
 
 def build_wecom_text(package: MaterialPackageModel, *, mode: str, max_bytes: int) -> str:
-    topic_snapshot = package.topic_snapshot if isinstance(package.topic_snapshot, dict) else {}
     copy_snapshot = package.copy_snapshot if isinstance(package.copy_snapshot, dict) else {}
-    title = _safe_text(topic_snapshot.get("title")) or "赛先生科学"
     copywriting = _safe_text(copy_snapshot.get("copywriting"))
     if not copywriting:
         raise ConflictError("material package copywriting is empty")
     prefix = "【测试消息】\n" if mode == "test" else ""
-    content = f"{prefix}【{title}】\n\n{copywriting}"
+    content = f"{prefix}{copywriting}"
     encoded = content.encode("utf-8")
     if len(encoded) > max_bytes:
         raise ConflictError("material package copywriting exceeds WeCom text limit")

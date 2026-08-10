@@ -128,10 +128,18 @@ class _AutoDeliverySessionFactory:
         return self.session
 
 
-def test_build_wecom_text_contains_title_and_test_marker() -> None:
+def test_build_wecom_text_omits_topic_title_in_formal_mode() -> None:
+    text = build_wecom_text(_package(), mode="formal", max_bytes=2048)
+
+    assert text == "家长能看懂的正文"
+    assert "机器人如何学会调整动作" not in text
+
+
+def test_build_wecom_text_adds_only_test_marker_in_test_mode() -> None:
     text = build_wecom_text(_package(), mode="test", max_bytes=2048)
 
-    assert text == "【测试消息】\n【机器人如何学会调整动作】\n\n家长能看懂的正文"
+    assert text == "【测试消息】\n家长能看懂的正文"
+    assert "机器人如何学会调整动作" not in text
 
 
 def test_build_wecom_text_keeps_evidence_bound_news_source_footer() -> None:
@@ -149,14 +157,19 @@ def test_build_wecom_text_keeps_evidence_bound_news_source_footer() -> None:
 
     text = build_wecom_text(_package(copywriting=copywriting), mode="formal", max_bytes=4096)
 
-    assert "新闻来源\uff1a科技日报" in text
-    assert "https://example.test/article" in text
-    assert text.endswith("#赛先生科学 #科学思维")
+    assert text == copywriting
 
 
 def test_build_wecom_text_rejects_utf8_overflow() -> None:
+    copywriting = "正文"
+    test_payload = f"【测试消息】\n{copywriting}"
+
     with pytest.raises(ConflictError, match="exceeds WeCom text limit"):
-        build_wecom_text(_package(copywriting="正文" * 100), mode="formal", max_bytes=20)
+        build_wecom_text(
+            _package(copywriting=copywriting),
+            mode="test",
+            max_bytes=len(test_payload.encode("utf-8")) - 1,
+        )
 
 
 def test_group_delivery_fingerprint_namespace_is_distinct_from_legacy_route() -> None:

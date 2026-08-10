@@ -113,11 +113,12 @@ checks size, SHA-256, and PNG/JPEG signature. The self-built-app adapter uploads
 the group adapter sends a bounded Base64/MD5 payload. Temporary media IDs are discarded after the
 self-built-app call.
 
-The text payload contains the topic title and complete copywriting. Test mode adds a visible test
-marker. The self-built-app message types enable the official duplicate-check fields; the group
-webhook payloads use only their documented Markdown and Base64/MD5 fields. The stable application
-fingerprint is persisted for job/attempt identity; the provider request never receives secrets or
-an invented idempotency field.
+The text payload contains the complete copywriting only; the material-package topic title is kept
+for internal/package display and is not automatically prefixed to the Enterprise WeChat message.
+Test mode adds a visible test marker. The self-built-app message types enable the official
+duplicate-check fields; the group webhook payloads use only their documented Markdown and
+Base64/MD5 fields. The stable application fingerprint is persisted for job/attempt identity; the
+provider request never receives secrets or an invented idempotency field.
 
 In review-required mode, enqueueing and automatic reconciliation require `completed + approved`.
 In direct mode, they accept `awaiting_manual_use` or `completed` packages unless explicitly
