@@ -622,3 +622,24 @@ Added evidence-bound news framing and source/link footer to Moments copy, preser
 ### Status
 
 [OK] **Completed**
+
+
+## Session 28: 移除企业微信投递文本中的选题标题
+
+**Date**: 2026-08-10
+**Task**: 移除企业微信投递文本中的选题标题
+**Branch**: `main`
+
+### Summary
+
+调整 build_wecom_text，使正式投递只发送素材包文案正文，测试模式只保留测试标记；更新 WeCom 契约规范和单元测试。WeCom 定向测试、Ruff、mypy 与 git diff --check 全部通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `007000c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

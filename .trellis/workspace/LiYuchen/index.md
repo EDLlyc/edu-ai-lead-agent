@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
+- **Total Sessions**: 28
 - **Last Active**: 2026-08-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~624 | Active |
+| `journal-1.md` | ~645 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-08-10 | 移除企业微信投递文本中的选题标题 | `007000c` | `main` |
 | 27 | 2026-08-10 | Add news framing and evidence source links | `21f3188` | `main` |
 | 26 | 2026-08-10 | Relax local preview copy delivery | `d9db4e0` | `main` |
 | 25 | 2026-08-07 | Deploy copy-format release and verify brand image pipeline | `ef750df`, `a22c133` | `main` |
