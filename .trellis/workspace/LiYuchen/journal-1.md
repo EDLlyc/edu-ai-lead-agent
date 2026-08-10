@@ -601,3 +601,24 @@ Implemented preview-v6-local-relaxed for local copy/material previews: requested
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: Add news framing and evidence source links
+
+**Date**: 2026-08-10
+**Task**: Add news framing and evidence source links
+**Branch**: `main`
+
+### Summary
+
+Added evidence-bound news framing and source/link footer to Moments copy, preserved footer through WeCom delivery, kept preview warnings non-blocking, preserved paragraph breaks in local manifests, verified a real acquisition-to-copy-to-Comfly image preview, and passed backend/frontend quality gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21f3188` | (see git log) |
+
+### Status
+
+[OK] **Completed**
