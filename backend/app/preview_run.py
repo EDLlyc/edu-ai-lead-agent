@@ -169,6 +169,15 @@ def _safe_text(value: object, *, fallback: str = "", limit: int = 800) -> str:
     return " ".join(value.split())[:limit]
 
 
+def _safe_copywriting(value: object, *, fallback: str = "", limit: int = 1_200) -> str:
+    """Normalize copy lines while keeping paragraph breaks visible in local previews."""
+    if not isinstance(value, str):
+        return fallback
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    lines = [" ".join(line.split()) for line in normalized.split("\n")]
+    return "\n".join(lines)[:limit]
+
+
 def _safe_filename(value: str) -> str:
     normalized = _SAFE_FILENAME.sub("-", value).strip(".-")
     return normalized or "preview-image"
@@ -472,7 +481,7 @@ def _copy_snapshot(detail: dict[str, Any]) -> dict[str, Any]:
     if draft is None and drafts and isinstance(drafts[-1], dict):
         draft = drafts[-1]
     draft = draft or {}
-    copywriting = _safe_text(draft.get("copywriting"), limit=1200)
+    copywriting = _safe_copywriting(draft.get("copywriting"))
     return {
         "copywriting": copywriting,
         "hashtags": _extract_trailing_hashtags(copywriting),

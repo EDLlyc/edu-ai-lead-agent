@@ -51,7 +51,12 @@ from app.domain.copy_generation import (
     validate_material_draft,
 )
 from app.domain.value_objects import stable_key
-from app.schemas.copy_generation import AuditVerdict, CopyIssue, MaterialDraft
+from app.schemas.copy_generation import (
+    AuditVerdict,
+    CopyIssue,
+    MaterialDraft,
+    append_copy_news_source_footer,
+)
 
 logger = structlog.get_logger()
 
@@ -372,6 +377,19 @@ class CopyGenerationExecutor:
             model=result.model,
             version_bundle=claimed.version_bundle,
         )
+        evidence = topic.evidence[0]
+        result = replace(
+            result,
+            draft=result.draft.model_copy(
+                update={
+                    "copywriting": append_copy_news_source_footer(
+                        result.draft.copywriting,
+                        source_name=evidence.source_name,
+                        source_url=evidence.source_url,
+                    )
+                }
+            ),
+        )
         self._ensure_lease(lease_lost)
         issues = validate_material_draft(
             result.draft,
@@ -556,6 +574,9 @@ def _copy_format_contract(rule_version: str) -> str:
         "段间恰好留1个空白行。正文主体必须包含6到12个自然emoji，每段第一行首字符和"
         "第二行末字符都必须是emoji。长度、段落和emoji数量只是warning质量格式提示，"
         "最多触发一次有限修复，不能形成修复循环，最终不得仅因这些格式问题拒绝输出或阻断交付。"
+        "第一段必须明确以“今天看到一条新闻：”或同义新闻消息作为切入，说明下文来自新闻。"
+        "你只输出三段正文和末尾标签；新闻来源与原文链接由系统从已绑定证据安全追加，"
+        "不得自行编造、替换或输出来源链接。"
         f"{local_preview_note}"
     )
 

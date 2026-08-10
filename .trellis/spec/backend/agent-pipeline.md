@@ -257,11 +257,17 @@ checks schema, required fields, evidence coverage, source tiers, source URLs, ba
 lengths, date consistency, repeated-topic state, privacy/policy rules, image restrictions, and the
 manual-publishing boundary. The parent-facing copy must use plain Chinese, explain why learning
 science/innovation/AI/robotics is useful without grade or career promises, explain why the learning
-experience belongs at Sai Xiansheng using supplied brand context, target 300-500 CJK Chinese
-characters and 2-5 emoji in the body excluding the trailing hashtag line. The body must contain at
-least three non-empty natural paragraphs separated by one newline, with no blank line between
-paragraphs, and end with a separate line of two or three hashtags whose first tag is always
-`#赛先生科学`. Length, paragraph, and emoji targets are quality guidance, not delivery blockers.
+experience belongs at Sai Xiansheng using supplied brand context, target at most 300 CJK Chinese
+characters and 6-12 emoji in the body excluding the source footer and
+trailing hashtag line. The body must contain exactly three natural paragraphs, each represented by
+two non-empty lines, separated by one blank line, and end with a separate line of two or three
+hashtags whose first tag is always `#赛先生科学`. The opening paragraph must identify the content
+as news-derived (for example, `今天看到一条新闻`). Immediately before the final hashtag line,
+the system appends `新闻来源：<bound source name>` and
+`原文链接：<bound HTTPS evidence URL>` from the first locked evidence item. The footer is
+deterministic, is excluded from body counts/format checks, and remains a hard integrity check even
+under local preview. Length, paragraph, emoji, and news-framing targets are quality guidance, not
+delivery blockers; a missing or mismatched bound source footer is a technical error.
 
 Only a draft without deterministic errors proceeds to LLM audit; deterministic warnings proceed as
 well. The auditor judges parent readability,
@@ -287,40 +293,50 @@ The copy-counting helpers are the single source of truth for this contract:
 extract_copy_body(text: str) -> str
 extract_copy_paragraphs(text: str) -> tuple[str, ...]
 has_copy_paragraph_format(text: str) -> bool
+has_copy_news_framing(text: str) -> bool
+has_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> bool
+append_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> str
 count_hanzi(text: str) -> int
 count_emojis(text: str) -> int
 ```
 
-`extract_copy_body` removes the final hashtag-candidate line before counting. `count_hanzi` counts
-only CJK Unified Ideographs; punctuation, whitespace, digits, Latin letters, and emoji do not count.
-`has_copy_paragraph_format` requires at least three non-empty body lines and therefore rejects both
-a single text block and blank lines between paragraphs. `count_emojis` counts displayed emoji
-sequences, treating variation selectors, skin-tone modifiers, and zero-width-joiner components as
-part of the preceding emoji. The body targets 300-500 Hanzi and 2-5 emoji inclusive. Counts outside
-either target use `copy_length` or `copy_emoji_count` with `warning` severity under every preview
-and strict policy; the paragraph check uses `copy_paragraph_format` with the same warning severity.
-The count and format issue are retained in the material package for inspection.
+`extract_copy_body` removes the final hashtag-candidate line and a recognized source footer before
+counting. `count_hanzi` counts only CJK Unified Ideographs; punctuation, whitespace, digits, Latin
+letters, and emoji do not count. `has_copy_paragraph_format` requires exactly three two-line body
+paragraphs separated by one blank line. `count_emojis` counts displayed emoji sequences, treating
+variation selectors, skin-tone modifiers, and zero-width-joiner components as part of the preceding
+emoji. The body target is at most 300 Hanzi and 6-12 emoji inclusive. Counts outside either target
+and missing news framing use `copy_length`, `copy_emoji_count`, or `copy_news_framing` with
+`warning` severity under every preview and strict policy; the paragraph check uses
+`copy_paragraph_format` with the same warning severity. The source footer check is a hard
+`copy_news_source_footer` integrity issue. The count, format, framing, and footer results are
+retained in the material package for inspection.
 
 | Condition | Required result |
 | --- | --- |
-| Body has 299 or 501 Hanzi | `copy_length` warning; continue to audit and delivery when no hard issue exists |
-| Body has 300 or 500 Hanzi | Length check passes when other checks pass |
-| Body has 0, 1, or 6+ emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
-| Body has 2-5 emoji sequences | Emoji check passes when other checks pass |
-| Body has fewer than three paragraphs or contains a blank line | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
+| Body has 301 or more Hanzi | `copy_length` warning; continue to audit and delivery when no hard issue exists |
+| Body has 300 or fewer Hanzi | Length check passes when other checks pass |
+| Body has 0-5 or 13+ emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
+| Body has 6-12 emoji sequences | Emoji check passes when other checks pass |
+| Body does not have exactly three two-line paragraphs with one blank line between | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
+| First paragraph does not identify a news item | `copy_news_framing` warning; continue to audit and delivery when no hard issue exists |
+| Footer source name or URL differs from the first locked evidence item | `copy_news_source_footer` error; do not accept or deliver |
 | Tags appear only on the final line | Tags are validated separately and excluded from the Hanzi count |
 
-Good: `正文...🔬🤖` followed by `#赛先生科学 #科学思维` with 300-500 Hanzi has no count warning.
-If a 299-Hanzi body is padded with punctuation, ASCII, emoji, or hashtag text, those characters are
-still excluded from the count and the draft retains its visible warning rather than concealing it.
+Good: a three-paragraph news-framed body with 300 or fewer Hanzi, 6-12 emoji, the deterministic
+source footer, and `#赛先生科学 #科学思维` has no format or source warning. If a body exceeds 300
+Hanzi or misses a format target, those characters and layout defects remain visible as warnings;
+padding with punctuation, ASCII, emoji, or hashtag text cannot conceal the Hanzi count.
 
-Tests must assert 300/500 boundaries, exclusion of punctuation/ASCII/emoji/trailing tags, common
-variation-selector and ZWJ sequences, paragraph/newline cases, prompt wording, and continuation
-through audit for a warning-only draft. `copy_length` remains advisory without consuming a repair;
-`copy_emoji_count` and `copy_paragraph_format` can trigger the existing single product repair.
-A repaired draft with only those warnings remains deliverable, while hard-error repair remains
-single-attempt and ends in `review_required` when it still fails. Do not implement a second repair
-loop or duplicate the counting logic in a provider adapter.
+Tests must assert the 300-character upper boundary, exclusion of punctuation/ASCII/emoji/trailing
+tags and source footer, common variation-selector and ZWJ sequences, paragraph/newline cases,
+news framing, evidence-bound footer replacement, prompt wording, WeCom text preservation, and
+continuation through audit for a warning-only draft. `copy_length`, `copy_emoji_count`,
+`copy_paragraph_format`, and `copy_news_framing` remain advisory and can consume the existing
+single product repair; `copy_news_source_footer` remains hard. A repaired draft with only advisory
+warnings remains deliverable, while a missing/mismatched source footer or other hard error ends in
+`review_required`. Do not implement a second repair loop or duplicate the counting logic in a
+provider adapter.
 
 The auditor is not a retrieval tool and cannot add evidence from model memory. It cannot override
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
@@ -339,7 +355,9 @@ contracts use different verdict fields and must not be conflated:
 
 The normalized payload preserves both `passed` and `accepted` as separate nullable fields. This
 keeps the top-level manifest and nested `copy.audit` display consistent with the persisted package
-without changing durable state or workflow transitions.
+without changing durable state or workflow transitions. The manifest's `copy.copywriting` keeps
+normalized line breaks and blank paragraph separators; only intra-line whitespace is collapsed, so
+the local viewer displays the same paragraph/source-footer layout that Enterprise WeChat receives.
 
 ### Validation & Error Matrix
 
@@ -371,13 +389,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
-  version is `preview-v6-local-relaxed`. Earlier preview rule versions remain available for
+  version is `preview-v7-local-news-source-footer`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v7-parent-language-compact`.
-- Current copy versions: generator `moments-generator-v12-local-preview-relaxed`, auditor
-  `moments-auditor-v12-local-preview-relaxed`, and pipeline
-  `copy-pipeline-v12-local-preview-relaxed`.
+  `moments-rules-v8-parent-language-news-source`.
+- Current copy versions: generator `moments-generator-v13-news-source-footer`, auditor
+  `moments-auditor-v13-news-source-footer`, and pipeline
+  `copy-pipeline-v13-news-source-footer`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -391,18 +409,22 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
 - Preview-v1 and preview-v2 preserve their historical warning mappings. Under the current
-  `preview-v6-local-relaxed` policy, deterministic content findings are persisted as warnings,
+  `preview-v7-local-news-source-footer` policy, deterministic content findings are persisted as warnings,
   including `unclaimed_external_fact`, `evidence_text_mismatch`, privacy, prompt-injection echo,
-  automatic-publishing, marketing, education-anxiety, and unsafe-image codes. Unknown evidence or
-  brand IDs and malformed structured output remain hard technical failures.
+  automatic-publishing, marketing, education-anxiety, unsafe-image, and missing-news-framing codes.
+  Unknown evidence or brand IDs, a missing/mismatched source footer, and malformed structured
+  output remain hard technical failures.
 - Local preview LLM audit converts all content-quality findings to warnings. Strict-mode prompts
   and rules retain the broad content-risk guidance and error behavior. The persisted audit verdict
   is always the policy-adjusted verdict.
 - The copy body target is at most 300 CJK Hanzi, exactly three two-line paragraphs separated by
   one blank line, six to twelve emoji, and an emoji at the first/last boundary of every paragraph.
-  Length, emoji-count, and paragraph-format issues are warnings and may consume at most one
-  bounded repair. An imperfect repaired preview draft remains accepted when no technical failure
-  remains.
+  The first paragraph must identify a news item. The executor then deterministically replaces or
+  appends the source footer immediately before the final hashtag line using the first locked
+  evidence item's source name and HTTPS URL; model-provided source links are never trusted. The
+  footer is excluded from body counting and is a hard integrity check. Length, emoji-count,
+  paragraph-format, and news-framing issues are warnings and may consume at most one bounded
+  repair. An imperfect repaired preview draft remains accepted when no technical failure remains.
 - GLM-5.2 enables deep thinking by default. Structured copy/audit is a constrained transformation,
   so deep thinking is disabled to reserve the bounded completion budget for JSON. Do not compensate
   for reasoning-token exhaustion by increasing limits without a reviewed version change.
@@ -414,7 +436,7 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 | Preview-v1 draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Preview audit returns brand tone, fluency, or ordinary marketing exaggeration | Persist warning; accept when no error remains |
-| Local preview-v6 draft/audit contains privacy, injection, publishing, marketing, anxiety, image, or evidence-text content issue | Persist warning; continue local material preview |
+| Local preview-v7 draft/audit contains privacy, injection, publishing, marketing, anxiety, image, evidence-text, or format content issue | Persist warning; continue local material preview |
 | Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
 | Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |

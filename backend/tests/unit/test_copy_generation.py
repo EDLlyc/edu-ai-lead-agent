@@ -45,8 +45,11 @@ from app.schemas.copy_generation import (
     CopyIssue,
     DraftClaim,
     MaterialDraft,
+    append_copy_news_source_footer,
     count_emojis,
     extract_copy_body,
+    has_copy_news_framing,
+    has_copy_news_source_footer,
     has_copy_paragraph_format,
 )
 from structlog.testing import capture_logs
@@ -139,7 +142,7 @@ def _contract_draft(
         emoji_slots[min(index, len(emoji_slots) - 1)] += emoji
     decoration_text = decorations.replace("\n", " ")
     body_prefix = (
-        f"{emoji_slots[0]}{fact}\n"
+        f"{emoji_slots[0]}今天看到一条新闻：{fact}\n"
         f"{opinion}{emoji_slots[1]}\n\n"
         f"{emoji_slots[2]}孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。\n"
         f"把好奇心变成找证据和解决问题的能力{decoration_text}{emoji_slots[3]}\n\n"
@@ -150,8 +153,13 @@ def _contract_draft(
     assert filler_count >= 0
     body = f"{body_prefix}{'科' * filler_count}{emoji_slots[5]}"
     assert _fixture_cjk_count(body) == hanzi_count
+    copywriting = append_copy_news_source_footer(
+        f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维",
+        source_name=topic.evidence[0].source_name,
+        source_url=topic.evidence[0].source_url,
+    )
     return MaterialDraft(
-        copywriting=f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维",
+        copywriting=copywriting,
         parent_takeaway="帮助家长用可靠信息和开放问题陪伴孩子理解人工智能。",
         interaction="你最近和孩子讨论过哪一个人工智能或机器人话题？",
         source_note=f"信息来源：{topic.evidence[0].source_name}（原文链接供内部审核核对）。",
@@ -177,7 +185,16 @@ def _contract_draft(
 def _copy_without_paragraph_breaks(draft: MaterialDraft) -> MaterialDraft:
     body = extract_copy_body(draft.copywriting).replace("\n", "")
     hashtags = draft.copywriting.splitlines()[-1]
-    return draft.model_copy(update={"copywriting": f"{body}\n{hashtags}"})
+    topic = _topic()
+    return draft.model_copy(
+        update={
+            "copywriting": append_copy_news_source_footer(
+                f"{body}\n{hashtags}",
+                source_name=topic.evidence[0].source_name,
+                source_url=topic.evidence[0].source_url,
+            )
+        }
+    )
 
 
 class FakeBrandRetriever:
@@ -612,12 +629,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v6-local-relaxed"
+    assert preview.rule_version == "preview-v7-local-news-source-footer"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v7-parent-language-compact"
-    assert manual_strict.rule_version == "moments-rules-v7-parent-language-compact"
-    assert manual_preview.rule_version == "preview-v6-local-relaxed"
+    assert strict.rule_version == "moments-rules-v8-parent-language-news-source"
+    assert manual_strict.rule_version == "moments-rules-v8-parent-language-news-source"
+    assert manual_preview.rule_version == "preview-v7-local-news-source-footer"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -1014,10 +1031,76 @@ def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
         assert "首字符" in prompt
         assert "末字符" in prompt
         assert "一次有限修复" in prompt
+        assert "今天看到一条新闻" in prompt
+        assert "新闻来源与原文链接由系统" in prompt
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[0]
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[1]
     assert "本地preview中的个人信息" in prompts[0]
     assert "本地preview中的个人信息" in prompts[1]
+
+
+def test_copy_news_footer_is_evidence_bound_and_excluded_from_body_format() -> None:
+    topic = _topic()
+    draft = _contract_draft()
+    source = topic.evidence[0]
+
+    assert has_copy_news_framing(draft.copywriting) is True
+    assert (
+        has_copy_news_source_footer(
+            draft.copywriting,
+            source_name=source.source_name,
+            source_url=source.source_url,
+        )
+        is True
+    )
+    assert has_copy_paragraph_format(draft.copywriting) is True
+    assert "新闻来源：" not in extract_copy_body(draft.copywriting)
+    assert "原文链接：" not in extract_copy_body(draft.copywriting)
+
+    tampered = draft.model_copy(
+        update={
+            "copywriting": draft.copywriting.replace(
+                source.source_url,
+                "https://example.test/untrusted",
+            )
+        }
+    )
+    issue_codes = {
+        issue.code
+        for issue in validate_material_draft(tampered, topic=topic, brand_context=_brand())
+    }
+    assert "copy_news_source_footer" in issue_codes
+
+
+@pytest.mark.asyncio
+async def test_executor_appends_authoritative_news_footer_when_model_omits_it() -> None:
+    topic = _topic()
+    generated = _contract_draft()
+    generated = generated.model_copy(
+        update={
+            "copywriting": f"{extract_copy_body(generated.copywriting)}\n"
+            "#赛先生科学 #人工智能启蒙 #科学思维"
+        }
+    )
+    repository = FakeCopyRepository(topic)
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=ScriptedGenerator((generated,)),
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("copy-news-footer-worker") is True
+    assert repository.status == "accepted"
+    assert (
+        has_copy_news_source_footer(
+            repository.drafts[0].draft.copywriting,
+            source_name=topic.evidence[0].source_name,
+            source_url=topic.evidence[0].source_url,
+        )
+        is True
+    )
 
 
 def test_non_preview_prompts_preserve_content_safety_guidance() -> None:
@@ -1642,12 +1725,15 @@ async def test_local_preview_accepts_requested_content_warnings_without_repair()
 def test_preview_rule_marks_superlative_and_dangling_clause_as_warnings() -> None:
     topic = replace(_topic(), scoring_profile="strict")
     base = _contract_draft()
-    body = base.copywriting.rsplit("\n", 1)[0]
+    body = extract_copy_body(base.copywriting)
+    source = topic.evidence[0]
     draft = base.model_copy(
         update={
-            "copywriting": (
+            "copywriting": append_copy_news_source_footer(
                 f"行业首个机器人学习项目：{body}。进入标注环节后。"
-                "\n\n#赛先生科学 #人工智能启蒙 #科学思维"
+                "\n\n#赛先生科学 #人工智能启蒙 #科学思维",
+                source_name=source.source_name,
+                source_url=source.source_url,
             )
         }
     )

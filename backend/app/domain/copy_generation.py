@@ -18,6 +18,8 @@ from app.schemas.copy_generation import (
     count_hanzi,
     extract_copy_body,
     extract_trailing_hashtags,
+    has_copy_news_framing,
+    has_copy_news_source_footer,
     has_copy_paragraph_format,
     has_non_trailing_hashtags,
 )
@@ -284,9 +286,12 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v4-length-emoji-advisory",
         "preview-v5-paragraph-emoji-advisory",
         "preview-v6-local-relaxed",
+        "preview-v7-local-news-source-footer",
     }
 )
-_LOCAL_PREVIEW_RULE_VERSION = "preview-v6-local-relaxed"
+_LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
+    {"preview-v6-local-relaxed", "preview-v7-local-news-source-footer"}
+)
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
         {
@@ -337,10 +342,13 @@ _LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES = frozenset(
         "unbound_brand_statement",
         "opinion_has_binding",
         "opinion_smuggles_fact",
+        "copy_news_source_footer",
     }
 )
 # All visible copy-format misses are advisory and may consume the single bounded repair.
-COPY_FORMAT_ADVISORY_CODES = frozenset({"copy_length", "copy_emoji_count", "copy_paragraph_format"})
+COPY_FORMAT_ADVISORY_CODES = frozenset(
+    {"copy_length", "copy_emoji_count", "copy_paragraph_format", "copy_news_framing"}
+)
 COPY_FORMAT_REPAIR_CODES = COPY_FORMAT_ADVISORY_CODES
 _COPY_ADVISORY_AUDIT_CODES = COPY_FORMAT_ADVISORY_CODES
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
@@ -401,6 +409,29 @@ def validate_material_draft(
                 severity="warning",
             )
         )
+    if not has_copy_news_framing(draft.copywriting):
+        issues.append(
+            _issue(
+                "copy_news_framing",
+                "朋友圈首段必须明确以一条新闻或新闻消息作为切入",
+                field="copywriting",
+                severity="warning",
+            )
+        )
+    if topic.evidence:
+        source = topic.evidence[0]
+        if not has_copy_news_source_footer(
+            draft.copywriting,
+            source_name=source.source_name,
+            source_url=source.source_url,
+        ):
+            issues.append(
+                _issue(
+                    "copy_news_source_footer",
+                    "朋友圈文末必须保留系统绑定的新闻来源和原文链接",
+                    field="copywriting",
+                )
+            )
     if not 10 <= len(draft.parent_takeaway) <= 180:
         issues.append(
             _issue("parent_takeaway_length", "家长价值应为10到180个字符", field="parent_takeaway")
@@ -599,7 +630,7 @@ def validate_material_draft(
         deduplicated = [
             issue.model_copy(update={"severity": "warning"})
             if (
-                preview_rule_version == _LOCAL_PREVIEW_RULE_VERSION
+                preview_rule_version in _LOCAL_PREVIEW_RULE_VERSIONS
                 and issue.code not in _LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES
             )
             or issue.code in warning_codes
@@ -618,7 +649,7 @@ def is_preview_copy_rule_version(rule_version: str) -> bool:
 
 
 def is_local_preview_copy_rule_version(rule_version: str) -> bool:
-    return rule_version.strip().casefold() == _LOCAL_PREVIEW_RULE_VERSION
+    return rule_version.strip().casefold() in _LOCAL_PREVIEW_RULE_VERSIONS
 
 
 def apply_copy_audit_policy(

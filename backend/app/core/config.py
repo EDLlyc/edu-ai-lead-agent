@@ -135,13 +135,13 @@ class Settings(BaseSettings):
     )
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
-    copy_pipeline_version: str = "copy-pipeline-v12-local-preview-relaxed"
-    copy_generator_prompt_version: str = "moments-generator-v12-local-preview-relaxed"
+    copy_pipeline_version: str = "copy-pipeline-v13-news-source-footer"
+    copy_generator_prompt_version: str = "moments-generator-v13-news-source-footer"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
-    copy_auditor_prompt_version: str = "moments-auditor-v12-local-preview-relaxed"
+    copy_auditor_prompt_version: str = "moments-auditor-v13-news-source-footer"
     copy_audit_schema_version: str = "moments-audit-schema-v1"
-    copy_rule_version: str = "moments-rules-v7-parent-language-compact"
-    copy_preview_policy_version: str = "preview-v6-local-relaxed"
+    copy_rule_version: str = "moments-rules-v8-parent-language-news-source"
+    copy_preview_policy_version: str = "preview-v7-local-news-source-footer"
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)

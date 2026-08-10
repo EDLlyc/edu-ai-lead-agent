@@ -28,6 +28,8 @@ _EMOJI_MODIFIER_RANGES = ((0x1F3FB, 0x1F3FF),)
 _REGIONAL_INDICATOR_RANGE = (0x1F1E6, 0x1F1FF)
 _EMOJI_VARIATION_SELECTORS = frozenset({0xFE0E, 0xFE0F})
 _ZERO_WIDTH_JOINER = 0x200D
+_NEWS_SOURCE_PREFIX = "新闻来源\uff1a"
+_NEWS_LINK_PREFIX = "原文链接\uff1a"
 
 
 def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
@@ -58,7 +60,61 @@ def extract_copy_body(text: str) -> str:
         lines.pop()
     if lines and _is_hashtag_candidate_line(lines[-1]):
         lines.pop()
+    _remove_news_source_footer(lines)
     return "\n".join(lines)
+
+
+def append_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> str:
+    """Bind a generated copy to its first eligible news source without trusting model text."""
+    normalized_name = " ".join(source_name.split())
+    normalized_url = source_url.strip()
+    if (
+        not normalized_name
+        or not normalized_url
+        or "\n" in normalized_url
+        or "\r" in normalized_url
+    ):
+        raise ValueError("news source footer requires one safe source name and URL")
+    hashtags = extract_trailing_hashtags(text)
+    if not hashtags:
+        return text
+    body = extract_copy_body(text).rstrip()
+    return "\n".join(
+        (
+            body,
+            "",
+            f"{_NEWS_SOURCE_PREFIX}{normalized_name}",
+            f"{_NEWS_LINK_PREFIX}{normalized_url}",
+            " ".join(hashtags),
+        )
+    )
+
+
+def has_copy_news_framing(text: str) -> bool:
+    """Require the opening paragraph to identify the copy as news-derived."""
+    first_paragraph = "\n".join(extract_copy_paragraphs(text)[:2])
+    return any(
+        phrase in first_paragraph
+        for phrase in ("看到一条新闻", "一则新闻", "新闻消息", "这条新闻", "新闻报道")
+    )
+
+
+def has_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> bool:
+    """Check that the final copy carries the expected evidence-bound source footer."""
+    normalized_name = " ".join(source_name.split())
+    normalized_url = source_url.strip()
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and _is_hashtag_candidate_line(lines[-1]):
+        lines.pop()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return (
+        len(lines) >= 2
+        and lines[-2].strip() == f"{_NEWS_SOURCE_PREFIX}{normalized_name}"
+        and (lines[-1].strip() == f"{_NEWS_LINK_PREFIX}{normalized_url}")
+    )
 
 
 def extract_copy_paragraphs(text: str) -> tuple[str, ...]:
@@ -119,6 +175,20 @@ def count_emojis(text: str) -> int:
 def _is_hashtag_candidate_line(line: str) -> bool:
     tokens = line.strip().split()
     return bool(tokens) and all(token.startswith("#") and len(token) > 1 for token in tokens)
+
+
+def _remove_news_source_footer(lines: list[str]) -> None:
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if (
+        len(lines) >= 2
+        and lines[-2].strip().startswith(_NEWS_SOURCE_PREFIX)
+        and lines[-1].strip().startswith(_NEWS_LINK_PREFIX)
+    ):
+        lines.pop()
+        lines.pop()
+    while lines and not lines[-1].strip():
+        lines.pop()
 
 
 def _is_emoji_base(codepoint: int) -> bool:

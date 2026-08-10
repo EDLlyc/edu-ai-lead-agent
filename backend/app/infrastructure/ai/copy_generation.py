@@ -31,7 +31,13 @@ from app.core.errors import (
     provider_validation_issues_metadata,
 )
 from app.infrastructure.ai.zhipu import _post_json_with_retries, _safe_provider_request_id
-from app.schemas.copy_generation import AuditVerdict, CopyIssue, DraftClaim, MaterialDraft
+from app.schemas.copy_generation import (
+    AuditVerdict,
+    CopyIssue,
+    DraftClaim,
+    MaterialDraft,
+    append_copy_news_source_footer,
+)
 
 _PROVIDER_JSON_MAX_CHARACTERS = 32_768
 _PROVIDER_JSON_MAX_AFFIX_CHARACTERS = 512
@@ -163,14 +169,18 @@ class DeterministicFakeMaterialDraftGenerator:
         brand_statement = "赛先生重视科学精神、好奇心、思考力和创造力。"
         opinion = "这也提醒我们，和孩子一起理解技术、提出问题，比追逐概念更有价值。"
         body = (
-            f"📚 今天想和家长分享一条科技教育动态：{fact}\n"
+            f"📚今天看到一条新闻：{fact}\n"
             "孩子从真实问题开始观察技术，才会把陌生名词变成理解世界的线索。🔎\n\n"
             f"🤖 {opinion}\n"
             "科学学习的价值不只在答案，而在提问、找证据和动手验证想法。💡\n\n"
             f"✨ {brand_statement}\n"
             "在赛先生，孩子会观察、实践、复盘，把好奇心慢慢变成解决问题的能力。🚀"
         )
-        copywriting = f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维"
+        copywriting = append_copy_news_source_footer(
+            f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维",
+            source_name=evidence.source_name,
+            source_url=evidence.source_url,
+        )
         draft = MaterialDraft(
             copywriting=copywriting,
             parent_takeaway="帮助家长用可靠信息和开放问题陪伴孩子理解人工智能。",

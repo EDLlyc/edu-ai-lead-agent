@@ -134,6 +134,26 @@ def test_build_wecom_text_contains_title_and_test_marker() -> None:
     assert text == "【测试消息】\n【机器人如何学会调整动作】\n\n家长能看懂的正文"
 
 
+def test_build_wecom_text_keeps_evidence_bound_news_source_footer() -> None:
+    copywriting = (
+        "📰今天看到一条新闻\uff1a机器人研究有了新进展。\n"
+        "孩子能从真实问题里理解技术。🔎\n\n"
+        "🤖科学学习从提问开始。\n"
+        "一次次动手验证,让想法更清楚。💡\n\n"
+        "✨在赛先生,孩子会把好奇心变成行动。\n"
+        "在探索中慢慢学会解决问题。🚀\n\n"
+        "新闻来源\uff1a科技日报\n"
+        "原文链接\uff1ahttps://example.test/article\n"
+        "#赛先生科学 #科学思维"
+    )
+
+    text = build_wecom_text(_package(copywriting=copywriting), mode="formal", max_bytes=4096)
+
+    assert "新闻来源\uff1a科技日报" in text
+    assert "https://example.test/article" in text
+    assert text.endswith("#赛先生科学 #科学思维")
+
+
 def test_build_wecom_text_rejects_utf8_overflow() -> None:
     with pytest.raises(ConflictError, match="exceeds WeCom text limit"):
         build_wecom_text(_package(copywriting="正文" * 100), mode="formal", max_bytes=20)

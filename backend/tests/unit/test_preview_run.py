@@ -86,6 +86,7 @@ def test_preview_manifest_contains_only_local_image_url_and_redacted_stage_data(
     serialized = json.dumps(payload, ensure_ascii=False)
     assert payload["status"] == "ready"
     assert payload["image"]["url"].startswith("/preview/")
+    assert payload["copy"]["copywriting"] == "家长看得懂的科学内容\n#赛先生科学 #做中学"
     assert "COMFLY_API_KEY" not in serialized
     assert "webstatic.aiproxy.vip" not in serialized
     assert "minio" not in serialized.lower()
