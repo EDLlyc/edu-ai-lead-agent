@@ -67,9 +67,17 @@ def extract_copy_paragraphs(text: str) -> tuple[str, ...]:
 
 
 def has_copy_paragraph_format(text: str) -> bool:
-    """Require three non-empty body paragraphs separated by exactly one newline."""
-    paragraphs = extract_copy_paragraphs(text)
-    return len(paragraphs) >= 3 and all(paragraph.strip() for paragraph in paragraphs)
+    """Require the exact three-paragraph, two-line copy body shape."""
+    lines = extract_copy_paragraphs(text)
+    if len(lines) != 8 or lines[2].strip() or lines[5].strip():
+        return False
+    paragraphs = ((lines[0], lines[1]), (lines[3], lines[4]), (lines[6], lines[7]))
+    return all(
+        all(line.strip() for line in paragraph)
+        and _starts_with_emoji(paragraph[0])
+        and _ends_with_emoji(paragraph[1])
+        for paragraph in paragraphs
+    )
 
 
 def count_hanzi(text: str) -> int:
@@ -117,6 +125,21 @@ def _is_emoji_base(codepoint: int) -> bool:
     return not _is_emoji_modifier(codepoint) and any(
         start <= codepoint <= end for start, end in _EMOJI_RANGES
     )
+
+
+def _starts_with_emoji(value: str) -> bool:
+    value = value.lstrip()
+    return bool(value) and _is_emoji_base(ord(value[0]))
+
+
+def _ends_with_emoji(value: str) -> bool:
+    value = value.rstrip()
+    index = len(value) - 1
+    while index >= 0 and (
+        ord(value[index]) in _EMOJI_VARIATION_SELECTORS or _is_emoji_modifier(ord(value[index]))
+    ):
+        index -= 1
+    return index >= 0 and _is_emoji_base(ord(value[index]))
 
 
 def _is_emoji_modifier(codepoint: int) -> bool:

@@ -283,8 +283,10 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v3-length-emoji",
         "preview-v4-length-emoji-advisory",
         "preview-v5-paragraph-emoji-advisory",
+        "preview-v6-local-relaxed",
     }
 )
+_LOCAL_PREVIEW_RULE_VERSION = "preview-v6-local-relaxed"
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
         {
@@ -325,10 +327,21 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
         }
     ),
 }
-# All three are warning-only audit signals; only the two visible format misses may consume the
-# single product repair. Length remains advisory without triggering another provider call.
+_LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES = frozenset(
+    {
+        "unknown_evidence_id",
+        "unknown_brand_chunk_id",
+        "unbound_external_fact",
+        "brand_as_fact_evidence",
+        "evidence_as_brand_binding",
+        "unbound_brand_statement",
+        "opinion_has_binding",
+        "opinion_smuggles_fact",
+    }
+)
+# All visible copy-format misses are advisory and may consume the single bounded repair.
 COPY_FORMAT_ADVISORY_CODES = frozenset({"copy_length", "copy_emoji_count", "copy_paragraph_format"})
-COPY_FORMAT_REPAIR_CODES = frozenset({"copy_emoji_count", "copy_paragraph_format"})
+COPY_FORMAT_REPAIR_CODES = COPY_FORMAT_ADVISORY_CODES
 _COPY_ADVISORY_AUDIT_CODES = COPY_FORMAT_ADVISORY_CODES
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
@@ -360,21 +373,21 @@ def validate_material_draft(
     brand_by_id = {item.chunk_id: item for item in brand_context}
     copy_body = extract_copy_body(draft.copywriting)
     hanzi_count = count_hanzi(copy_body)
-    if not 300 <= hanzi_count <= 500:
+    if hanzi_count > 300:
         issues.append(
             _issue(
                 "copy_length",
-                f"朋友圈正文汉字数为{hanzi_count}，目标为300到500个（不含标签、标点、空格、数字、英文和emoji）",
+                f"朋友圈正文汉字数为{hanzi_count}，目标为不超过300个（不含标签、标点、空格、数字、英文和emoji）",
                 field="copywriting",
                 severity="warning",
             )
         )
     emoji_count = count_emojis(copy_body)
-    if not 2 <= emoji_count <= 5:
+    if not 6 <= emoji_count <= 12:
         issues.append(
             _issue(
                 "copy_emoji_count",
-                f"朋友圈正文emoji目标为2到5个，当前为{emoji_count}个",
+                f"朋友圈正文emoji目标为6到12个，当前为{emoji_count}个",
                 field="copywriting",
                 severity="warning",
             )
@@ -383,7 +396,7 @@ def validate_material_draft(
         issues.append(
             _issue(
                 "copy_paragraph_format",
-                "朋友圈正文主体必须至少分成3个自然段，段间只换一行且不得有空白行",
+                "朋友圈正文主体必须恰好3个自然段，每段恰好2行非空手工文字，段间恰好1个空白行，且每段首尾必须是emoji",
                 field="copywriting",
                 severity="warning",
             )
@@ -580,10 +593,16 @@ def validate_material_draft(
         rule_version=rule_version,
     )
     if preview_rule_version is not None:
-        warning_codes = _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION[preview_rule_version]
+        warning_codes = _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION.get(
+            preview_rule_version, ()
+        )
         deduplicated = [
             issue.model_copy(update={"severity": "warning"})
-            if issue.code in warning_codes
+            if (
+                preview_rule_version == _LOCAL_PREVIEW_RULE_VERSION
+                and issue.code not in _LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES
+            )
+            or issue.code in warning_codes
             else issue
             for issue in deduplicated
         ]
@@ -598,6 +617,10 @@ def is_preview_copy_rule_version(rule_version: str) -> bool:
     return rule_version.strip().casefold() in _PREVIEW_RULE_VERSIONS
 
 
+def is_local_preview_copy_rule_version(rule_version: str) -> bool:
+    return rule_version.strip().casefold() == _LOCAL_PREVIEW_RULE_VERSION
+
+
 def apply_copy_audit_policy(
     verdict: AuditVerdict,
     *,
@@ -608,12 +631,14 @@ def apply_copy_audit_policy(
         scoring_profile=scoring_profile,
         rule_version=rule_version,
     )
+    uses_local_preview = is_local_preview_copy_rule_version(rule_version or "")
     has_advisory_issue = any(issue.code in _COPY_ADVISORY_AUDIT_CODES for issue in verdict.issues)
     if not uses_preview and not has_advisory_issue:
         return verdict
     issues = tuple(
         issue.model_copy(update={"severity": "warning"})
-        if issue.code in _COPY_ADVISORY_AUDIT_CODES
+        if uses_local_preview
+        or issue.code in _COPY_ADVISORY_AUDIT_CODES
         or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
         else issue
         for issue in verdict.issues

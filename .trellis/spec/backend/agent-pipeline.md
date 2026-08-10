@@ -370,14 +370,14 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Version selection: `build_copy_version_bundle(settings, scoring_profile=<effective profile>)`.
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
-- Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current durable rule version is
-  `preview-v5-paragraph-emoji-advisory`. Earlier preview rule versions remain available for
+- Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
+  version is `preview-v6-local-relaxed`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v6-parent-language-paragraph-emoji-advisory`.
-- Current copy versions: generator `moments-generator-v11-parent-language-paragraph-emoji-advisory`,
-  auditor `moments-auditor-v11-parent-language-paragraph-emoji-advisory`, and pipeline
-  `copy-pipeline-v11-parent-language-paragraph-emoji-advisory`.
+  `moments-rules-v7-parent-language-compact`.
+- Current copy versions: generator `moments-generator-v12-local-preview-relaxed`, auditor
+  `moments-auditor-v12-local-preview-relaxed`, and pipeline
+  `copy-pipeline-v12-local-preview-relaxed`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -390,23 +390,19 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   the claimed run's durable `CopyVersionBundle`. Perform this check before deterministic policy,
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
-- Preview-v1 deterministic policy converts only `unverified_superlative` and `incomplete_sentence`
-  to warnings. Preview-v2 retains those two historical warnings and additionally converts only
-  `claim_not_in_copy` and `source_note_unlinked` to warnings. `copy_length` and
-  `copy_emoji_count` are advisory warnings under every rule version. Deterministic evidence/binding,
-  factual, privacy, injection, anxiety, publishing, image, prohibited-marketing, and hashtag
-  findings remain errors under all preview versions.
-- Preview LLM audit may convert brand tone/fit, fluency, ordinary promotional language, and the
-  typed `exaggeration` / `marketing_exaggeration` quality codes to warnings.
-  Length, emoji-count, and paragraph-format audit findings are warnings under every rule version
-  and cannot alone reject a draft. Emoji-count and paragraph-format warnings may trigger the one
-  bounded product repair; length-only warnings never consume that repair.
-  `unsupported_implication` and every factual or safety issue remain blocking errors.
-- The persisted audit verdict is the policy-adjusted verdict. A warning-only preview audit without
-  paragraph/emoji format warnings is accepted without consuming the single product repair. A
-  paragraph/emoji format warning consumes at most that one repair; an imperfect repaired draft is
-  still accepted when no hard error remains. Any remaining hard error retains the normal
-  repair/review-required behavior.
+- Preview-v1 and preview-v2 preserve their historical warning mappings. Under the current
+  `preview-v6-local-relaxed` policy, deterministic content findings are persisted as warnings,
+  including `unclaimed_external_fact`, `evidence_text_mismatch`, privacy, prompt-injection echo,
+  automatic-publishing, marketing, education-anxiety, and unsafe-image codes. Unknown evidence or
+  brand IDs and malformed structured output remain hard technical failures.
+- Local preview LLM audit converts all content-quality findings to warnings. Strict-mode prompts
+  and rules retain the broad content-risk guidance and error behavior. The persisted audit verdict
+  is always the policy-adjusted verdict.
+- The copy body target is at most 300 CJK Hanzi, exactly three two-line paragraphs separated by
+  one blank line, six to twelve emoji, and an emoji at the first/last boundary of every paragraph.
+  Length, emoji-count, and paragraph-format issues are warnings and may consume at most one
+  bounded repair. An imperfect repaired preview draft remains accepted when no technical failure
+  remains.
 - GLM-5.2 enables deep thinking by default. Structured copy/audit is a constrained transformation,
   so deep thinking is disabled to reserve the bounded completion budget for JSON. Do not compensate
   for reasoning-token exhaustion by increasing limits without a reviewed version change.
@@ -418,7 +414,8 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 | Preview-v1 draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Preview audit returns brand tone, fluency, or ordinary marketing exaggeration | Persist warning; accept when no error remains |
-| Audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
+| Local preview-v6 draft/audit contains privacy, injection, publishing, marketing, anxiety, image, or evidence-text content issue | Persist warning; continue local material preview |
+| Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
 | Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
 | Manual API requests `preview` while server default is strict | Persist preview rule version/fingerprint |
@@ -437,8 +434,8 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 
 ### 6. Tests Required
 
-- Domain/unit tests assert preview deterministic warning codes, strict preservation, warning-only
-  acceptance without repair, and unchanged hard-risk severities.
+- Domain/unit tests assert preview deterministic warning codes, local-preview acceptance, strict
+  preservation, warning-only acceptance without repair, and unchanged technical hard failures.
 - Version-bundle tests cover configured and explicit manual-profile overrides in both directions.
 - Provider-identity tests cover generator and auditor provider drift plus generator and auditor
   model drift. They assert `provider_identity_mismatch` and that the mismatched draft/audit is not

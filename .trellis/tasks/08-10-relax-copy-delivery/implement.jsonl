@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend layer boundaries and existing copy/material/WeCom contracts."}
+{"file": ".trellis/spec/backend/agent-pipeline.md", "reason": "Copy-generation stage, schema, deterministic validation, audit, repair, and package handoff."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required Python, Pydantic, versioning, test, and local validation practices."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed validation/provider errors, bounded repair, retry, and terminal-state behavior."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Warning/audit observability and privacy-safe logging requirements."}
+{"file": ".trellis/spec/backend/wecom-delivery.md", "reason": "Local delivery boundary and transport constraints; delivery must remain disabled."}
