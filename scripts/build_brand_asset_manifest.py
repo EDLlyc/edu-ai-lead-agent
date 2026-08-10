@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import zlib
 from collections.abc import Mapping
@@ -25,6 +26,22 @@ _METADATA_FILENAME = "visual-assets.metadata.json"
 _IDENTITY_ROLE = "identity_reference"
 _ACTION_ROLE = "action_reference"
 _STYLE_ROLE = "style_reference"
+_ASSET_KINDS = {"identity", "action", "style"}
+_SAFE_TAG = re.compile(r"^[^\x00-\x1f\x7f\s/\\]{1,40}$")
+_ALLOWED_METADATA_FIELDS = {
+    "asset_kind",
+    "variant_group",
+    "display_name",
+    "selection_tags",
+    "roles",
+    "characters",
+    "topics",
+    "poses",
+    "scene_tags",
+    "priority",
+    "approved",
+    "manual_review_note",
+}
 
 # These labels are deliberately small and human-readable. The manifest is a private catalog, so
 # the filename rules are only a safe default; a colocated metadata override can narrow or extend
@@ -253,6 +270,32 @@ def _character_tags(filename: str) -> list[str]:
     return tags
 
 
+def _default_asset_kind(category: str, relative_path: str) -> str:
+    if category == "image-example":
+        return "style"
+    if "logo_and_ip/" in relative_path:
+        return "identity"
+    return "action"
+
+
+def _default_variant_group(
+    *, asset_kind: str, filename: str, characters: list[str], topics: list[str]
+) -> str:
+    if asset_kind == "style":
+        return "style-default"
+    if asset_kind == "identity" and len(characters) == 1:
+        return f"identity-{characters[0]}"
+    if topics:
+        return f"{asset_kind}-{topics[0]}"
+    stem = Path(filename).stem.casefold()
+    stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
+    return f"{asset_kind}-{stem or 'default'}"[:80]
+
+
+def _display_name(filename: str) -> str:
+    return Path(filename).stem
+
+
 def _tag_list(value: object, *, field_name: str) -> list[str]:
     if value is None:
         return []
@@ -260,8 +303,12 @@ def _tag_list(value: object, *, field_name: str) -> list[str]:
         raise TypeError(f"visual asset {field_name} must be a list")
     tags: list[str] = []
     for raw_tag in value:
-        tag = str(raw_tag).strip()
+        if not isinstance(raw_tag, str):
+            raise TypeError(f"visual asset {field_name} contains a non-string value")
+        tag = raw_tag.strip()
         if tag and tag not in tags:
+            if _SAFE_TAG.fullmatch(tag) is None:
+                raise ValueError(f"visual asset {field_name} contains an unsafe tag")
             tags.append(tag)
     if len(tags) > 20 or any(len(tag) > 40 for tag in tags):
         raise ValueError(f"visual asset {field_name} is too large")
@@ -290,6 +337,9 @@ def _metadata_overrides(materials_root: Path) -> dict[str, dict[str, Any]]:
         relative = Path(raw_path)
         if relative.is_absolute() or ".." in relative.parts or "\\" in raw_path:
             raise ValueError("visual asset metadata path must remain relative")
+        unknown_fields = set(raw_metadata) - _ALLOWED_METADATA_FIELDS
+        if unknown_fields:
+            raise ValueError("visual asset metadata contains unsupported fields")
         overrides[relative.as_posix()] = dict(raw_metadata)
     return overrides
 
@@ -302,18 +352,17 @@ def _asset_metadata(
     characters: list[str],
     overrides: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if category == "image-example":
+    asset_kind = _default_asset_kind(category, relative_path)
+    if asset_kind == "style":
         metadata: dict[str, Any] = {
-            "roles": [_STYLE_ROLE],
             "topics": ["science", "education"],
             "poses": [],
             "scene_tags": ["editorial"],
             "priority": 0,
             "approved": False,
         }
-    elif "logo_and_ip/" in relative_path:
+    elif asset_kind == "identity":
         metadata = {
-            "roles": [_IDENTITY_ROLE],
             "topics": ["science", "education", "brand"],
             "poses": [],
             "scene_tags": ["brand"],
@@ -322,7 +371,6 @@ def _asset_metadata(
         }
     else:
         metadata = {
-            "roles": [_IDENTITY_ROLE, _ACTION_ROLE],
             "topics": ["science", "education"],
             "poses": [],
             "scene_tags": ["editorial"],
@@ -331,6 +379,21 @@ def _asset_metadata(
         }
     metadata.update(_KNOWN_METADATA.get(filename, {}))
     metadata.update(overrides)
+    asset_kind = metadata.get("asset_kind", asset_kind)
+    if not isinstance(asset_kind, str) or asset_kind not in _ASSET_KINDS:
+        raise ValueError("visual asset asset_kind is not allowlisted")
+    metadata["asset_kind"] = asset_kind
+    expected_role = {
+        "identity": _IDENTITY_ROLE,
+        "action": _ACTION_ROLE,
+        "style": _STYLE_ROLE,
+    }[asset_kind]
+    roles = metadata.get("roles")
+    if roles is not None:
+        role_values = _tag_list(roles, field_name="roles")
+        if role_values and role_values != [expected_role]:
+            raise ValueError("visual asset roles must match asset_kind")
+    metadata["roles"] = [expected_role]
     metadata["roles"] = _tag_list(metadata.get("roles"), field_name="roles")
     metadata["topics"] = _tag_list(metadata.get("topics"), field_name="topics")
     metadata["poses"] = _tag_list(metadata.get("poses"), field_name="poses")
@@ -353,13 +416,47 @@ def _asset_metadata(
     metadata["priority"] = priority
     metadata["approved"] = approved
     metadata["manual_review_note"] = note
-    metadata["characters"] = characters
+    metadata["characters"] = _tag_list(
+        metadata.get("characters", characters), field_name="characters"
+    )
+    characters = metadata["characters"]
+    variant_group = metadata.get("variant_group")
+    if variant_group is None:
+        variant_group = _default_variant_group(
+            asset_kind=asset_kind,
+            filename=filename,
+            characters=characters,
+            topics=metadata["topics"],
+        )
+    if not isinstance(variant_group, str) or not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}", variant_group
+    ):
+        raise ValueError("visual asset variant_group is invalid")
+    metadata["variant_group"] = variant_group
+    display_name = metadata.get("display_name", _display_name(filename))
+    if (
+        not isinstance(display_name, str)
+        or not display_name.strip()
+        or len(display_name) > 160
+    ):
+        raise ValueError("visual asset display_name is invalid")
+    metadata["display_name"] = display_name.strip()
+    selection_tags = metadata.get("selection_tags")
+    if selection_tags is None:
+        selection_tags = [
+            *metadata["topics"],
+            *metadata["poses"],
+            *metadata["scene_tags"],
+        ]
+    metadata["selection_tags"] = _tag_list(selection_tags, field_name="selection_tags")
     return metadata
 
 
-def build_manifest(materials_root: Path) -> dict[str, Any]:
+def build_manifest(
+    materials_root: Path, *, include_metadata: bool = True
+) -> dict[str, Any]:
     materials_root = materials_root.resolve(strict=True)
-    overrides = _metadata_overrides(materials_root)
+    overrides = _metadata_overrides(materials_root) if include_metadata else {}
     asset_roots = (
         ("image-example", materials_root / "03-image-examples"),
         ("visual-asset", materials_root / "05-visual-assets"),

@@ -110,6 +110,15 @@ in structured logs linked by `request_id`, not in the response.
 Draft audit rejection may trigger a bounded regeneration attempt with typed issue codes and claim
 IDs. It is not treated as a generic infrastructure retry.
 
+Ordinary copy editorial findings and ordinary image OCR/visual-quality findings are recoverable
+warnings. Each stage may consume at most one targeted repair; a remaining warning does not block a
+package when no hard safety, evidence, provenance, output-integrity, or publishing-boundary error
+exists. After the image repair budget or a single provider-rejection neutralization is exhausted,
+the worker may render one already-reserved, topic-matched brand-catalog reference. The fallback is
+validated and stored through the normal private immutable path, records a typed initial error, and
+never makes a third provider request. Missing/invalid references or storage failure remain
+`review_required`/failed terminal states.
+
 ## Catching and logging
 
 Catch exceptions only where code can translate, compensate, add structured context, or define an

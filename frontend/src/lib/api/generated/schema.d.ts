@@ -2242,7 +2242,7 @@ export interface components {
         ImageFallbackResponse: {
             asset?: components["schemas"]["ImageFallbackAssetResponse"] | null;
             /** Initial Error Code */
-            initial_error_code: "image_provider_rejected" | null;
+            initial_error_code: string | null;
             /** Primary Model */
             primary_model: string | null;
             /** Primary Provider */

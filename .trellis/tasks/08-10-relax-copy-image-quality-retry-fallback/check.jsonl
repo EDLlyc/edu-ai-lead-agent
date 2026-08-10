@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/agent-pipeline.md", "reason": "Check state transitions, retry limits, fallback eligibility, and no-third-provider-call behavior across the pipeline."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Check hard versus recoverable failures, bounded retries, and auditable terminal states."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check structured events and ensure logs exclude prompts, provider responses, URLs, secrets, and private paths."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Check tests, typing, lint, diff hygiene, and regression coverage for the changed backend behavior."}

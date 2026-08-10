@@ -93,7 +93,10 @@ class ImageFallbackResponse(BaseModel):
     version: Literal["image-fallback-v1"]
     state: Literal["not_used", "neutralized_retry", "brand_catalog"]
     provider_rejection_retry_count: int = Field(ge=0, le=1)
-    initial_error_code: Literal["image_provider_rejected"] | None
+    initial_error_code: str | None = Field(
+        ...,
+        pattern=r"^[a-z][a-z0-9_.-]{0,119}$",
+    )
     primary_provider: str | None
     primary_model: str | None
     asset: ImageFallbackAssetResponse | None = None

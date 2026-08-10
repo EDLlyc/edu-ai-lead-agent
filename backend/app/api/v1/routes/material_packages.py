@@ -386,8 +386,9 @@ def _safe_image_fallback(
         state = value.get("state")
         if state in {"not_used", "neutralized_retry", "brand_catalog"}:
             fallback["state"] = state
-        if value.get("initial_error_code") == "image_provider_rejected":
-            fallback["initial_error_code"] = "image_provider_rejected"
+        initial_error_code = value.get("initial_error_code")
+        if _safe_fallback_identifier(initial_error_code, limit=120):
+            fallback["initial_error_code"] = initial_error_code
         for key in ("primary_provider", "primary_model"):
             item = value.get(key)
             if _safe_fallback_identifier(item, limit=120):

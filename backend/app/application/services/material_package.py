@@ -138,6 +138,7 @@ class PreparedImageInput:
     visual_brief_fingerprint: str
     catalog_version: str
     selector_version: str
+    selection_seed: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +193,7 @@ async def enqueue_material_package(
         image_selector_enabled=image_selector_enabled,
         image_max_reference_images=image_max_reference_images,
         image_reference_budget_bytes=image_reference_budget_bytes,
+        selection_seed=str(accepted.run.id),
     )
     reference_sha256 = prepared.references[0].sha256 if prepared.references else None
     fingerprint = image_request_fingerprint(
@@ -297,6 +299,7 @@ async def enqueue_material_package(
                         ],
                         "catalog_version": prepared.catalog_version,
                         "selector_version": prepared.selector_version,
+                        "selection_seed": prepared.selection_seed,
                         "fallback": _image_fallback_snapshot(
                             state="not_used",
                             provider_rejection_retry_count=0,
@@ -448,6 +451,7 @@ def _prepare_image_input(
     image_selector_enabled: bool,
     image_max_reference_images: int,
     image_reference_budget_bytes: int,
+    selection_seed: str = "",
 ) -> PreparedImageInput:
     brief = accepted.visual_brief
     if not image_selector_enabled or image_asset_manifest is None or brief is None:
@@ -483,6 +487,7 @@ def _prepare_image_input(
             visual_brief_fingerprint="no-visual-brief",
             catalog_version="no-catalog",
             selector_version="no-selector",
+            selection_seed="",
         )
 
     try:
@@ -497,6 +502,7 @@ def _prepare_image_input(
             reference_roles=tuple(VisualAssetRole(role.value) for role in brief.reference_roles),
             max_references=image_max_reference_images,
             max_reference_bytes=image_reference_budget_bytes,
+            selection_seed=selection_seed,
         )
         selection = select_visual_assets(
             loaded,
@@ -552,6 +558,7 @@ def _prepare_image_input(
         visual_brief_fingerprint=brief.fingerprint,
         catalog_version=selection.catalog_version,
         selector_version=selection.selector_version,
+        selection_seed=selection.selection_seed,
     )
 
 
@@ -809,12 +816,13 @@ class MaterialPackageExecutor:
             validation_snapshot = _image_validation_snapshot(output_validation, configured=True)
             audit_snapshot = _image_audit_not_run_snapshot()
             if not output_validation.passed:
-                await self._finish_generated_quality_attempt(
+                await self._finish_attempt(
                     claimed,
-                    references=references,
+                    error_code="image_output_validation_failed",
+                    retryable=False,
+                    review_required=True,
                     validation_snapshot=validation_snapshot,
                     audit_snapshot=audit_snapshot,
-                    error_code="image_output_validation_failed",
                 )
                 return True
             if self._settings.image_ocr_enabled:
@@ -905,13 +913,23 @@ class MaterialPackageExecutor:
                     raise ProviderIdentityMismatchError()
                 audit_snapshot = _image_audit_snapshot(audit_result)
                 if not audit_result.accepted:
-                    await self._finish_generated_quality_attempt(
-                        claimed,
-                        references=references,
-                        validation_snapshot=validation_snapshot,
-                        audit_snapshot=audit_snapshot,
-                        error_code="image_quality_audit_failed",
-                    )
+                    if any(issue.severity == "error" for issue in audit_result.issues):
+                        await self._finish_attempt(
+                            claimed,
+                            error_code="image_quality_audit_hard_failure",
+                            retryable=False,
+                            review_required=True,
+                            validation_snapshot=validation_snapshot,
+                            audit_snapshot=audit_snapshot,
+                        )
+                    else:
+                        await self._finish_generated_quality_attempt(
+                            claimed,
+                            references=references,
+                            validation_snapshot=validation_snapshot,
+                            audit_snapshot=audit_snapshot,
+                            error_code="image_quality_audit_failed",
+                        )
                     return True
             self._ensure_lease(lease_lost)
             descriptor = await self._image_store.put_immutable(
@@ -951,6 +969,7 @@ class MaterialPackageExecutor:
                     references=references,
                     validation_snapshot=validation_snapshot,
                     audit_snapshot=audit_snapshot,
+                    initial_error_code="image_provider_rejected",
                 )
         except AppError as error:
             if isinstance(error, ImageOutputValidationError) and not validation_snapshot:
@@ -959,10 +978,11 @@ class MaterialPackageExecutor:
                     provider=claimed.provider,
                     model=claimed.model,
                 )
-            await self._finish_attempt(
+            await self._finish_transient_or_finish(
                 claimed,
                 error_code=error.code,
                 retryable=error.retryable,
+                references=references,
                 validation_snapshot=validation_snapshot,
                 audit_snapshot=audit_snapshot,
                 review_required=isinstance(
@@ -983,10 +1003,11 @@ class MaterialPackageExecutor:
                 review_required=True,
             )
         except Exception:
-            await self._finish_attempt(
+            await self._finish_transient_or_finish(
                 claimed,
                 error_code="image_provider_unavailable",
                 retryable=True,
+                references=references,
                 validation_snapshot=validation_snapshot,
                 audit_snapshot=audit_snapshot,
                 review_required=False,
@@ -996,6 +1017,35 @@ class MaterialPackageExecutor:
             stop.set()
             await asyncio.gather(heartbeat, return_exceptions=True)
         return True
+
+    async def _finish_transient_or_finish(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        error_code: str,
+        retryable: bool,
+        review_required: bool,
+        references: tuple[ImageReference, ...],
+        validation_snapshot: dict[str, Any] | None = None,
+        audit_snapshot: dict[str, Any] | None = None,
+    ) -> None:
+        if retryable and claimed.attempt_number >= self._settings.image_max_attempts:
+            await self._persist_catalog_fallback(
+                claimed,
+                references=references,
+                validation_snapshot=validation_snapshot or {},
+                audit_snapshot=audit_snapshot or _image_audit_not_run_snapshot(),
+                initial_error_code=error_code,
+            )
+            return
+        await self._finish_attempt(
+            claimed,
+            error_code=error_code,
+            retryable=retryable,
+            review_required=review_required,
+            validation_snapshot=validation_snapshot,
+            audit_snapshot=audit_snapshot,
+        )
 
     async def _read_claimed_references(
         self, claimed: ClaimedMaterialPackage
@@ -1292,7 +1342,18 @@ class MaterialPackageExecutor:
         references: tuple[ImageReference, ...],
         validation_snapshot: dict[str, Any],
         audit_snapshot: dict[str, Any],
+        initial_error_code: str = "image_provider_rejected",
     ) -> None:
+        logger.warning(
+            "material_package_image_fallback_requested",
+            package_id=str(claimed.package_id),
+            image_id=str(claimed.image_id),
+            attempt=claimed.attempt_number,
+            repair_count=claimed.repair_count,
+            provider_rejection_retry_count=claimed.provider_rejection_retry_count,
+            error_code=initial_error_code,
+            next_action="brand_catalog_fallback",
+        )
         selected = _select_catalog_fallback_reference(claimed.references, references)
         if selected is None:
             await self._finish_attempt(
@@ -1342,6 +1403,7 @@ class MaterialPackageExecutor:
                 validation_snapshot=fallback_validation,
                 audit_snapshot=fallback_audit,
                 asset=reserved,
+                initial_error_code=initial_error_code,
             ):
                 logger.info(
                     "material_package_image_fallback_ready",
@@ -1411,6 +1473,7 @@ class MaterialPackageExecutor:
         validation_snapshot: dict[str, Any],
         audit_snapshot: dict[str, Any],
         asset: ReservedVisualReference,
+        initial_error_code: str,
     ) -> bool:
         now = datetime.now(UTC)
         async with self._session_factory() as session:
@@ -1453,7 +1516,7 @@ class MaterialPackageExecutor:
                 package,
                 state="brand_catalog",
                 provider_rejection_retry_count=claimed.provider_rejection_retry_count,
-                initial_error_code="image_provider_rejected",
+                initial_error_code=initial_error_code,
                 primary_provider=claimed.provider,
                 primary_model=claimed.model,
                 asset=asset,
@@ -1474,12 +1537,13 @@ class MaterialPackageExecutor:
     ) -> None:
         """Avoid additional provider calls after the single neutralized recovery request."""
 
-        if claimed.provider_rejection_retry_count > 0:
+        if claimed.provider_rejection_retry_count > 0 or claimed.repair_count > 0:
             await self._persist_catalog_fallback(
                 claimed,
                 references=references,
                 validation_snapshot=validation_snapshot,
                 audit_snapshot=audit_snapshot,
+                initial_error_code=error_code,
             )
             return
         await self._finish_quality_attempt(
@@ -1584,11 +1648,23 @@ class MaterialPackageExecutor:
                 image.available_at = now
                 image.completed_at = None
                 package.status = "queued"
+                next_action = "targeted_repair"
             else:
                 image.status = "review_required"
                 image.completed_at = now
                 package.status = "failed"
+                next_action = "review_required"
             await session.commit()
+            logger.warning(
+                "material_package_image_quality_transition",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                attempt=claimed.attempt_number,
+                repair_count=image.repair_count,
+                provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
+                error_code=error_code,
+                next_action=next_action,
+            )
 
     async def _finish_attempt(
         self,
@@ -1643,6 +1719,17 @@ class MaterialPackageExecutor:
                 image.completed_at = now
                 package.status = "failed"
             await session.commit()
+            logger.warning(
+                "material_package_image_attempt_finished",
+                package_id=str(claimed.package_id),
+                image_id=str(claimed.image_id),
+                attempt=claimed.attempt_number,
+                error_code=error_code,
+                retry_scheduled=retry,
+                next_action=(
+                    "retry" if retry else "review_required" if review_required else "failed"
+                ),
+            )
 
     async def _heartbeat_loop(
         self,

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/agent-pipeline.md", "reason": "Defines copy/image pipeline states, retry ownership, idempotency, and package transitions affected by this task."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Defines bounded retries, terminal failures, fallback behavior, and safety-preserving error classification."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Defines backend quality, validation, logging, and test expectations for the implementation."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Captures cross-layer contracts between workers, persistence, assets, and delivery status."}

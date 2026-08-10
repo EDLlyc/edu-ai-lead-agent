@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.application.ports.image_generation import ImageReference
@@ -11,8 +10,8 @@ from app.domain.visual_assets import (
     AssetSelectionRequest,
     AssetSelector,
     SelectedVisualAsset,
-    VisualAsset,
     VisualAssetCatalog,
+    VisualAssetCatalogLoader,
     VisualAssetError,
     VisualAssetSelection,
 )
@@ -36,36 +35,7 @@ def load_visual_catalog(manifest_path: str | Path) -> LoadedVisualCatalog:
     materials_root = resolved_manifest.parent
     if resolved_manifest.stat().st_size > _MAX_MANIFEST_BYTES:
         raise VisualAssetError("visual asset manifest is too large")
-    try:
-        raw_value: object = json.loads(resolved_manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise VisualAssetError("visual asset manifest is invalid") from error
-    if not isinstance(raw_value, dict):
-        raise VisualAssetError("visual asset manifest must be an object")
-    if raw_value.get("private") is not True or raw_value.get("text_rag_eligible") is not False:
-        raise VisualAssetError("visual asset manifest privacy flags are invalid")
-    raw_assets = raw_value.get("assets")
-    if not isinstance(raw_assets, list):
-        raise VisualAssetError("visual asset manifest assets must be a list")
-    schema_version = raw_value.get("schema_version")
-    catalog_version = raw_value.get("catalog_version")
-    if not isinstance(schema_version, str) or not isinstance(catalog_version, str):
-        raise VisualAssetError("visual asset manifest versions are invalid")
-    assets = tuple(
-        VisualAsset.from_mapping(
-            item,
-            catalog_schema_version=schema_version,
-        )
-        for item in raw_assets
-        if isinstance(item, dict)
-    )
-    if len(assets) != len(raw_assets):
-        raise VisualAssetError("visual asset manifest contains an invalid asset")
-    catalog = VisualAssetCatalog(
-        schema_version=schema_version,
-        catalog_version=catalog_version,
-        assets=assets,
-    )
+    catalog = VisualAssetCatalogLoader(resolved_manifest.parent, resolved_manifest).load()
     return LoadedVisualCatalog(catalog=catalog, materials_root=materials_root)
 
 
@@ -97,14 +67,20 @@ def read_selected_reference(
     """Recheck the immutable private input immediately before provider use."""
 
     asset = selected.asset
-    asset_path = (loaded.materials_root / asset.relative_path).resolve(strict=True)
+    asset_path = loaded.materials_root.joinpath(*PurePosixPath(asset.relative_path).parts)
+    current = loaded.materials_root
+    for part in PurePosixPath(asset.relative_path).parts:
+        current = current / part
+        if current.is_symlink():
+            raise VisualAssetError("selected visual asset path contains a symbolic link")
     try:
-        asset_path.relative_to(loaded.materials_root)
-    except ValueError:
+        resolved_asset_path = asset_path.resolve(strict=True)
+        resolved_asset_path.relative_to(loaded.materials_root)
+    except (OSError, RuntimeError, ValueError):
         raise VisualAssetError("visual asset path escapes the private materials root") from None
-    if asset_path.is_symlink() or not asset_path.is_file():
+    if not resolved_asset_path.is_file():
         raise VisualAssetError("selected visual asset is unavailable")
-    body = asset_path.read_bytes()
+    body = resolved_asset_path.read_bytes()
     digest = hashlib.sha256(body).hexdigest()
     if digest != asset.checksum or len(body) != asset.byte_size:
         raise VisualAssetError("selected visual asset checksum changed")

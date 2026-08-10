@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 import zlib
 from collections.abc import Iterable, Mapping, Sequence
@@ -13,6 +14,9 @@ from typing import Self
 VISUAL_ASSET_SCHEMA_VERSION = "brand-visual-assets-v2"
 VISUAL_ASSET_CATALOG_VERSION = "brand-visual-catalog-v1"
 VISUAL_ASSET_SELECTOR_VERSION = "visual-asset-selector-v1"
+SUPPORTED_VISUAL_ASSET_SCHEMA_VERSIONS = frozenset(
+    {"brand-visual-assets-v1", VISUAL_ASSET_SCHEMA_VERSION}
+)
 MAX_VISUAL_ASSET_BYTES = 25 * 1024 * 1024
 MAX_VISUAL_ASSET_DIMENSION = 8_192
 MAX_VISUAL_ASSET_PIXELS = 32_000_000
@@ -37,6 +41,21 @@ class VisualAssetRole(StrEnum):
             return aliases.get(normalized, cls(normalized))
         except ValueError as error:
             raise ValueError(f"unsupported visual asset role: {value!r}") from error
+
+
+class VisualAssetKind(StrEnum):
+    """The single intended use of one private catalog asset."""
+
+    IDENTITY = "identity"
+    ACTION = "action"
+    STYLE = "style"
+
+    @classmethod
+    def parse(cls, value: str) -> VisualAssetKind:
+        try:
+            return cls(value.strip().casefold())
+        except ValueError as error:
+            raise ValueError(f"unsupported visual asset kind: {value!r}") from error
 
 
 class VisualAssetReferenceMode(StrEnum):
@@ -91,6 +110,46 @@ def _text_tuple(
     return tuple(sorted(values))
 
 
+_SAFE_TAG = re.compile(r"^[^\x00-\x1f\x7f\s/\\]{1,40}$")
+_SAFE_VARIANT_GROUP = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+
+
+def _safe_tag_tuple(value: object, *, field_name: str) -> tuple[str, ...]:
+    values = _text_tuple(value, field_name=field_name, maximum_item_length=40)
+    if any(_SAFE_TAG.fullmatch(item) is None for item in values):
+        raise VisualAssetError(f"visual asset {field_name} contains an unsafe tag")
+    return values
+
+
+def _safe_variant_group(value: object, *, field_name: str = "variant_group") -> str:
+    normalized = _bounded_text(value, field_name=field_name, maximum=80)
+    if _SAFE_VARIANT_GROUP.fullmatch(normalized) is None:
+        raise VisualAssetError(f"visual asset {field_name} contains unsupported characters")
+    return normalized
+
+
+def _role_for_kind(kind: VisualAssetKind) -> VisualAssetRole:
+    return {
+        VisualAssetKind.IDENTITY: VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetKind.ACTION: VisualAssetRole.ACTION_REFERENCE,
+        VisualAssetKind.STYLE: VisualAssetRole.STYLE_REFERENCE,
+    }[kind]
+
+
+def _infer_asset_kind(relative_path: str, roles: tuple[VisualAssetRole, ...]) -> VisualAssetKind:
+    """Map v1/v2 manifests to the separated role model without trusting old role combinations."""
+
+    if "logo_and_ip/" in relative_path:
+        return VisualAssetKind.IDENTITY
+    if VisualAssetRole.STYLE_REFERENCE in roles:
+        return VisualAssetKind.STYLE
+    if VisualAssetRole.ACTION_REFERENCE in roles:
+        return VisualAssetKind.ACTION
+    if VisualAssetRole.IDENTITY_REFERENCE in roles:
+        return VisualAssetKind.IDENTITY
+    return VisualAssetKind.ACTION
+
+
 def _role_tuple(value: object) -> tuple[VisualAssetRole, ...]:
     values = _text_tuple(value, field_name="roles", maximum_item_length=40)
     roles = tuple(
@@ -124,6 +183,10 @@ class VisualAsset:
     width: int
     height: int
     has_alpha: bool
+    asset_kind: VisualAssetKind | str | None = None
+    variant_group: str | None = None
+    display_name: str | None = None
+    selection_tags: tuple[str, ...] = ()
     characters: tuple[str, ...] = ()
     roles: tuple[VisualAssetRole, ...] = ()
     topics: tuple[str, ...] = ()
@@ -165,19 +228,49 @@ class VisualAsset:
             raise VisualAssetError("visual asset pixel count is outside the safety bound")
         if self.priority < 0 or self.priority > 1_000:
             raise VisualAssetError("visual asset priority is outside the safety bound")
-        if self.catalog_schema_version != VISUAL_ASSET_SCHEMA_VERSION:
+        if self.catalog_schema_version not in SUPPORTED_VISUAL_ASSET_SCHEMA_VERSIONS:
             raise VisualAssetError("unsupported visual asset schema version")
         if self.manual_review_note is not None and len(self.manual_review_note) > 240:
             raise VisualAssetError("visual asset review note is too long")
+        raw_roles = _role_tuple(self.roles)
+        if self.asset_kind is None:
+            asset_kind = _infer_asset_kind(relative_path, raw_roles)
+        else:
+            try:
+                asset_kind = VisualAssetKind.parse(str(self.asset_kind))
+            except ValueError as error:
+                raise VisualAssetError("visual asset asset_kind is invalid") from error
+            expected_role = _role_for_kind(asset_kind)
+            if raw_roles and raw_roles != (expected_role,):
+                raise VisualAssetError("visual asset roles do not match asset_kind")
+        expected_role = _role_for_kind(asset_kind)
+        object.__setattr__(self, "asset_kind", asset_kind)
+        object.__setattr__(self, "roles", (expected_role,))
+        variant_group = self.variant_group
+        if variant_group is None:
+            variant_group = f"{asset_kind.value}-{self.asset_id[:16]}"
+        object.__setattr__(self, "variant_group", _safe_variant_group(variant_group))
+        display_name = self.display_name or self.filename
+        object.__setattr__(
+            self,
+            "display_name",
+            _bounded_text(display_name, field_name="display_name", maximum=160),
+        )
         object.__setattr__(
             self, "characters", _text_tuple(self.characters, field_name="characters")
         )
-        object.__setattr__(self, "roles", _role_tuple(self.roles))
         object.__setattr__(self, "topics", _text_tuple(self.topics, field_name="topics"))
         object.__setattr__(self, "poses", _text_tuple(self.poses, field_name="poses"))
         object.__setattr__(
             self, "scene_tags", _text_tuple(self.scene_tags, field_name="scene_tags")
         )
+        selection_tags = _safe_tag_tuple(self.selection_tags, field_name="selection_tags")
+        if not selection_tags:
+            selection_tags = _safe_tag_tuple(
+                (*self.topics, *self.poses, *self.scene_tags),
+                field_name="selection_tags",
+            )
+        object.__setattr__(self, "selection_tags", selection_tags)
 
     @property
     def checksum(self) -> str:
@@ -212,6 +305,18 @@ class VisualAsset:
         note = raw.get("manual_review_note")
         if note is not None and not isinstance(note, str):
             raise VisualAssetError("visual asset review note must be a string")
+        asset_kind = raw.get("asset_kind")
+        if asset_kind is not None and not isinstance(asset_kind, str):
+            raise VisualAssetError("visual asset asset_kind must be a string")
+        variant_group = raw.get("variant_group")
+        if variant_group is not None and not isinstance(variant_group, str):
+            raise VisualAssetError("visual asset variant_group must be a string")
+        display_name = raw.get("display_name")
+        if display_name is not None and not isinstance(display_name, str):
+            raise VisualAssetError("visual asset display_name must be a string")
+        entry_schema = raw.get("catalog_schema_version")
+        if entry_schema is not None and entry_schema != catalog_schema_version:
+            raise VisualAssetError("visual asset entry schema version does not match manifest")
         return cls(
             asset_id=asset_id,
             relative_path=required_string("relative_path", 500),
@@ -222,6 +327,10 @@ class VisualAsset:
             width=width,
             height=height,
             has_alpha=has_alpha,
+            asset_kind=asset_kind,
+            variant_group=variant_group,
+            display_name=display_name,
+            selection_tags=_safe_tag_tuple(raw.get("selection_tags"), field_name="selection_tags"),
             characters=_text_tuple(raw.get("characters"), field_name="characters"),
             roles=_role_tuple(raw.get("roles")),
             topics=_text_tuple(raw.get("topics"), field_name="topics"),
@@ -245,7 +354,7 @@ class VisualAssetCatalog:
     assets: tuple[VisualAsset, ...]
 
     def __post_init__(self) -> None:
-        if not self.schema_version or len(self.schema_version) > 80:
+        if self.schema_version not in SUPPORTED_VISUAL_ASSET_SCHEMA_VERSIONS:
             raise VisualAssetError("visual asset catalog schema version is invalid")
         if not self.catalog_version or len(self.catalog_version) > 80:
             raise VisualAssetError("visual asset catalog version is invalid")
@@ -295,7 +404,10 @@ class VisualAssetCatalogLoader:
         if raw_value.get("private") is not True or raw_value.get("text_rag_eligible") is not False:
             raise VisualAssetCatalogError("visual asset manifest privacy flags are invalid")
         schema_version = raw_value.get("schema_version")
-        if schema_version != VISUAL_ASSET_SCHEMA_VERSION:
+        if (
+            not isinstance(schema_version, str)
+            or schema_version not in SUPPORTED_VISUAL_ASSET_SCHEMA_VERSIONS
+        ):
             raise VisualAssetCatalogError("unsupported visual asset manifest schema version")
         catalog_version = raw_value.get("catalog_version")
         if not isinstance(catalog_version, str) or not catalog_version.strip():
@@ -308,13 +420,16 @@ class VisualAssetCatalogLoader:
             if not isinstance(raw_asset, Mapping):
                 raise VisualAssetCatalogError("visual asset manifest entry is invalid")
             try:
-                asset = VisualAsset.from_mapping(raw_asset)
+                asset = VisualAsset.from_mapping(
+                    raw_asset,
+                    catalog_schema_version=schema_version,
+                )
             except VisualAssetError as error:
                 raise VisualAssetCatalogError("visual asset manifest entry is unsafe") from error
             self._validate_asset_file(asset)
             assets.append(asset)
         asset_count = raw_value.get("asset_count")
-        if asset_count != len(assets):
+        if asset_count is not None and asset_count != len(assets):
             raise VisualAssetCatalogError("visual asset manifest count is inconsistent")
         try:
             return VisualAssetCatalog(
@@ -379,18 +494,21 @@ class VisualAssetCatalogLoader:
         path = self._safe_asset_path(asset)
         try:
             byte_size = path.stat().st_size
+            if byte_size > self._max_asset_bytes:
+                raise VisualAssetCatalogError("visual asset exceeds the configured byte bound")
             body = path.read_bytes()
         except OSError as error:
             raise VisualAssetCatalogError("visual asset file cannot be read") from error
         if byte_size != asset.byte_size or len(body) != asset.byte_size:
             raise VisualAssetCatalogError("visual asset byte size changed")
-        if len(body) > self._max_asset_bytes:
-            raise VisualAssetCatalogError("visual asset exceeds the configured byte bound")
-        if not _valid_png_body(body):
-            raise VisualAssetCatalogError("visual asset PNG signature is invalid")
         digest = hashlib.sha256(body).hexdigest()
         if digest != asset.checksum:
             raise VisualAssetCatalogError("visual asset checksum changed")
+        dimensions = _png_dimensions(body)
+        if dimensions is None:
+            raise VisualAssetCatalogError("visual asset PNG signature is invalid")
+        if dimensions != (asset.width, asset.height):
+            raise VisualAssetCatalogError("visual asset dimensions changed")
         return body
 
 
@@ -410,9 +528,9 @@ def load_visual_asset_catalog(
     ).load()
 
 
-def _valid_png_body(body: bytes) -> bool:
+def _png_dimensions(body: bytes) -> tuple[int, int] | None:
     if len(body) < 45 or not body.startswith(_PNG_SIGNATURE):
-        return False
+        return None
     header = body[:33]
     trailer = body[-12:]
     try:
@@ -422,8 +540,8 @@ def _valid_png_body(body: bytes) -> bool:
         ihdr_crc = struct.unpack(">I", header[29:33])[0]
         iend_crc = struct.unpack(">I", trailer[8:12])[0]
     except struct.error:
-        return False
-    return (
+        return None
+    if not (
         header[8:12] == b"\x00\x00\x00\r"
         and header[12:16] == b"IHDR"
         and ihdr_crc == zlib.crc32(header[12:29])
@@ -434,7 +552,9 @@ def _valid_png_body(body: bytes) -> bool:
         and width * height <= MAX_VISUAL_ASSET_PIXELS
         and trailer[:8] == b"\x00\x00\x00\x00IEND"
         and iend_crc == zlib.crc32(b"IEND")
-    )
+    ):
+        return None
+    return width, height
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,6 +572,7 @@ class AssetSelectionRequest:
     )
     max_references: int = DEFAULT_MAX_REFERENCE_ASSETS
     max_reference_bytes: int = DEFAULT_MAX_REFERENCE_BYTES
+    selection_seed: str = ""
 
     def __post_init__(self) -> None:
         if self.max_references < 1 or self.max_references > 3:
@@ -462,6 +583,7 @@ class AssetSelectionRequest:
         if VisualAssetRole.IDENTITY_REFERENCE not in roles:
             raise VisualAssetSelectionError("an identity reference is required")
         object.__setattr__(self, "reference_roles", roles)
+        object.__setattr__(self, "selection_seed", _normalize_selection_seed(self.selection_seed))
         object.__setattr__(
             self, "asset_tags", _text_tuple(self.asset_tags, field_name="asset_tags")
         )
@@ -514,6 +636,7 @@ class AssetSelectionRequest:
                 field_name="max_reference_bytes",
                 maximum=100 * 1024 * 1024,
             ),
+            selection_seed=_normalize_selection_seed(raw.get("selection_seed")),
         )
 
 
@@ -545,6 +668,19 @@ def _bounded_positive_int(
     return value
 
 
+def _normalize_selection_seed(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise VisualAssetError("visual asset selection_seed must be a string")
+    normalized = value.strip()
+    if len(normalized) > 128 or any(
+        character in "\r\n\x00" or character.isspace() for character in normalized
+    ):
+        raise VisualAssetError("visual asset selection_seed is invalid")
+    return normalized
+
+
 @dataclass(frozen=True, slots=True)
 class SelectedVisualAsset:
     asset: VisualAsset
@@ -567,6 +703,7 @@ class SelectedVisualAsset:
 class VisualAssetSelection:
     catalog_version: str
     selector_version: str
+    selection_seed: str
     selected_assets: tuple[SelectedVisualAsset, ...]
     reference_mode: VisualAssetReferenceMode
     total_byte_size: int
@@ -723,20 +860,15 @@ class AssetSelector:
                         self._selected(candidate, VisualAssetRole.STYLE_REFERENCE, fallback=False)
                     )
                     remaining_bytes -= candidate.asset.byte_size
-                else:
-                    fallback_used = True
-            else:
-                fallback_used = True
 
         total_byte_size = sum(item.asset.byte_size for item in selected)
-        requested_multiple = len(selection_request.reference_roles) > 1
-        covered_roles = {role for item in selected for role in item.asset.roles}
+        requested_roles = set(selection_request.reference_roles)
+        required_roles = requested_roles - {VisualAssetRole.STYLE_REFERENCE}
+        covered_roles = {item.role for item in selected}
         if (
             len(selected) == 1
-            and requested_multiple
-            and (
-                fallback_used or not set(selection_request.reference_roles).issubset(covered_roles)
-            )
+            and len(requested_roles) > 1
+            and (fallback_used or not required_roles.issubset(covered_roles))
         ):
             reference_mode = VisualAssetReferenceMode.SINGLE_FALLBACK
         elif len(selected) > 1:
@@ -746,6 +878,7 @@ class AssetSelector:
         return VisualAssetSelection(
             catalog_version=self._catalog.catalog_version,
             selector_version=self._selector_version,
+            selection_seed=selection_request.selection_seed,
             selected_assets=tuple(selected),
             reference_mode=reference_mode,
             total_byte_size=total_byte_size,
@@ -771,6 +904,7 @@ class AssetSelector:
                 "main_action": request.main_action,
                 "poses": request.poses,
                 "reference_roles": request.reference_roles,
+                "selection_seed": request.selection_seed,
             }
             raw.update(overrides)
             return AssetSelectionRequest.from_mapping(raw)
@@ -789,6 +923,7 @@ class AssetSelector:
                 "main_action",
                 "poses",
                 "reference_roles",
+                "selection_seed",
             )
             if hasattr(request, key)
         }
@@ -824,7 +959,13 @@ class AssetSelector:
                 continue
             matched_tags = tuple(
                 sorted(
-                    requested_tags & (set(asset.topics) | set(asset.poses) | set(asset.scene_tags))
+                    requested_tags
+                    & (
+                        set(asset.selection_tags)
+                        | set(asset.topics)
+                        | set(asset.poses)
+                        | set(asset.scene_tags)
+                    )
                 )
             )
             topic_matches = requested_tags & set(asset.topics)
@@ -853,9 +994,22 @@ class AssetSelector:
         return tuple(
             sorted(
                 candidates,
-                key=lambda item: (-item.score, -item.asset.priority, item.asset.asset_id),
+                key=lambda item: (
+                    -item.score,
+                    -item.asset.priority,
+                    self._variant_sort_key(item.asset, request.selection_seed),
+                    item.asset.asset_id,
+                ),
             )
         )
+
+    def _variant_sort_key(self, asset: VisualAsset, selection_seed: str) -> str:
+        if not selection_seed:
+            return asset.asset_id
+        return hashlib.sha256(
+            f"{self._selector_version}\0{selection_seed}\0"
+            f"{asset.variant_group}\0{asset.asset_id}".encode()
+        ).hexdigest()
 
     @staticmethod
     def _first_fitting(
@@ -913,7 +1067,15 @@ class AssetSelector:
     @staticmethod
     def _action_match_score(asset: VisualAsset, request: AssetSelectionRequest) -> int:
         requested_tags = AssetSelector._requested_tags(request)
-        return len(requested_tags & (set(asset.topics) | set(asset.poses) | set(asset.scene_tags)))
+        return len(
+            requested_tags
+            & (
+                set(asset.selection_tags)
+                | set(asset.topics)
+                | set(asset.poses)
+                | set(asset.scene_tags)
+            )
+        )
 
 
 VisualAssetSelector = AssetSelector

@@ -450,6 +450,24 @@ class AdvisoryRejectingAuditor(CountingAuditor):
         )
 
 
+class HardRejectingAuditor(CountingAuditor):
+    async def audit(self, request: DraftAuditRequest) -> DraftAuditResult:
+        result = await super().audit(request)
+        return replace(
+            result,
+            verdict=AuditVerdict(
+                accepted=False,
+                issues=(
+                    CopyIssue(
+                        code="education_anxiety",
+                        message="表达制造教育焦虑",
+                        severity="error",
+                    ),
+                ),
+            ),
+        )
+
+
 class DriftedGenerator(CountingGenerator):
     def __init__(self, *, provider: str, model: str) -> None:
         super().__init__()
@@ -629,12 +647,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v7-local-news-source-footer"
+    assert preview.rule_version == "preview-v8-quality-warning-recovery"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v8-parent-language-news-source"
-    assert manual_strict.rule_version == "moments-rules-v8-parent-language-news-source"
-    assert manual_preview.rule_version == "preview-v7-local-news-source-footer"
+    assert strict.rule_version == "moments-rules-v9-quality-warning-recovery"
+    assert manual_strict.rule_version == "moments-rules-v9-quality-warning-recovery"
+    assert manual_preview.rule_version == "preview-v8-quality-warning-recovery"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -675,8 +693,8 @@ def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerp
         "expected_severity",
     ),
     [
-        ("strict", "preview", "review_required", 1, 2, "error"),
-        ("preview", "strict", "accepted", 0, 1, "warning"),
+        ("strict", "preview", "accepted", 1, 2, "warning"),
+        ("preview", "strict", "accepted", 1, 2, "warning"),
     ],
 )
 @pytest.mark.asyncio
@@ -1035,8 +1053,10 @@ def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
         assert "新闻来源与原文链接由系统" in prompt
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[0]
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[1]
-    assert "本地preview中的个人信息" in prompts[0]
-    assert "本地preview中的个人信息" in prompts[1]
+    assert "普通格式" in prompts[0]
+    assert "普通格式" in prompts[1]
+    assert "硬阻断" in prompts[0]
+    assert "硬阻断" in prompts[1]
 
 
 def test_copy_news_footer_is_evidence_bound_and_excluded_from_body_format() -> None:
@@ -1461,7 +1481,7 @@ async def test_audit_rejection_allows_exactly_one_repair_then_stops() -> None:
     strict_topic = replace(_topic(), scoring_profile="strict")
     repository = FakeCopyRepository(strict_topic)
     generator = CountingGenerator()
-    auditor = CountingAuditor(reject_all=True)
+    auditor = HardRejectingAuditor()
     executor = CopyGenerationExecutor(
         repository=repository,
         brand_retriever=FakeBrandRetriever(),
@@ -1481,7 +1501,7 @@ async def test_audit_rejection_allows_exactly_one_repair_then_stops() -> None:
 
 
 @pytest.mark.asyncio
-async def test_preview_brand_fit_audit_warning_accepts_without_repair() -> None:
+async def test_preview_brand_fit_audit_warning_uses_one_repair() -> None:
     repository = FakeCopyRepository(_topic())
     generator = CountingGenerator()
     auditor = CountingAuditor(reject_all=True)
@@ -1496,13 +1516,13 @@ async def test_preview_brand_fit_audit_warning_accepts_without_repair() -> None:
     assert await executor.execute_next("copy-preview-worker") is True
 
     assert repository.status == "accepted"
-    assert repository.repair_count == 0
-    assert generator.calls == 1
-    assert auditor.calls == 1
-    assert repository.drafts[0].audit is not None
-    assert repository.drafts[0].audit.accepted is True
-    assert repository.drafts[0].audit.issues[0].code == "brand_fit"
-    assert repository.drafts[0].audit.issues[0].severity == "warning"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert auditor.calls == 2
+    assert repository.drafts[1].audit is not None
+    assert repository.drafts[1].audit.accepted is True
+    assert repository.drafts[1].audit.issues[0].code == "brand_fit"
+    assert repository.drafts[1].audit.issues[0].severity == "warning"
 
 
 def test_preview_audit_policy_keeps_safety_and_factual_risks_blocking() -> None:
@@ -1532,14 +1552,14 @@ def test_preview_audit_policy_keeps_safety_and_factual_risks_blocking() -> None:
     normalized = apply_copy_audit_policy(
         verdict,
         scoring_profile="strict",
-        rule_version="preview-v1",
+        rule_version="moments-rules-v9-quality-warning-recovery",
     )
 
     assert normalized.accepted is False
     assert {issue.code: issue.severity for issue in normalized.issues} == {
         "brand_fit": "warning",
-        "exaggeration": "warning",
-        "marketing_exaggeration": "warning",
+        "exaggeration": "error",
+        "marketing_exaggeration": "error",
         "education_anxiety": "error",
         "unsupported_implication": "error",
     }
@@ -1553,7 +1573,7 @@ def test_preview_audit_policy_keeps_safety_and_factual_risks_blocking() -> None:
     )
 
 
-def test_local_preview_audit_policy_marks_all_content_findings_as_warnings() -> None:
+def test_local_preview_audit_policy_keeps_safety_findings_blocking() -> None:
     verdict = AuditVerdict(
         accepted=False,
         issues=(
@@ -1579,8 +1599,8 @@ def test_local_preview_audit_policy_marks_all_content_findings_as_warnings() -> 
         rule_version="preview-v6-local-relaxed",
     )
 
-    assert normalized.accepted is True
-    assert all(issue.severity == "warning" for issue in normalized.issues)
+    assert normalized.accepted is False
+    assert all(issue.severity == "error" for issue in normalized.issues)
 
 
 @pytest.mark.asyncio
@@ -1645,7 +1665,7 @@ async def test_restart_resumes_a_persisted_draft_without_regeneration() -> None:
 @pytest.mark.parametrize(
     ("rule_version", "expected_severity"),
     [
-        ("preview-v6-local-relaxed", "warning"),
+        ("preview-v6-local-relaxed", "error"),
         ("moments-rules-v7-parent-language-compact", "error"),
     ],
 )
@@ -1694,7 +1714,7 @@ def test_local_preview_content_gates_are_advisory_but_non_preview_remains_unchan
 
 
 @pytest.mark.asyncio
-async def test_local_preview_accepts_requested_content_warnings_without_repair() -> None:
+async def test_local_preview_keeps_safety_findings_blocking_after_one_repair() -> None:
     repository = FakeCopyRepository(_topic())
     generator = LocalPreviewContentWarningGenerator()
     executor = CopyGenerationExecutor(
@@ -1707,9 +1727,10 @@ async def test_local_preview_accepts_requested_content_warnings_without_repair()
 
     assert await executor.execute_next("local-preview-content-warning-worker") is True
 
-    assert repository.status == "accepted"
-    assert repository.repair_count == 0
-    assert generator.calls == 1
+    assert repository.status == "review_required"
+    assert repository.error_code == "repair_validation_failed"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
     issue_by_code = {issue.code: issue for issue in repository.drafts[0].validation_issues}
     assert {
         "education_anxiety",
@@ -1719,7 +1740,7 @@ async def test_local_preview_accepts_requested_content_warnings_without_repair()
         "automatic_publishing",
         "unsafe_image_prompt",
     }.issubset(issue_by_code)
-    assert all(issue.severity == "warning" for issue in issue_by_code.values())
+    assert all(issue.severity == "error" for issue in issue_by_code.values())
 
 
 def test_preview_rule_marks_superlative_and_dangling_clause_as_warnings() -> None:
@@ -1903,10 +1924,10 @@ def test_local_preview_marks_evidence_text_mismatch_as_warning() -> None:
     )
 
     issue_by_code = {issue.code: issue for issue in issues}
-    assert issue_by_code["evidence_text_mismatch"].severity == "warning"
+    assert issue_by_code["evidence_text_mismatch"].severity == "error"
 
 
-def test_local_preview_marks_unclaimed_external_facts_as_warnings() -> None:
+def test_local_preview_keeps_unclaimed_external_facts_blocking() -> None:
     topic = _topic()
     base = _contract_draft()
     draft = base.model_copy(
@@ -1926,7 +1947,7 @@ def test_local_preview_marks_unclaimed_external_facts_as_warnings() -> None:
     )
 
     issue_by_code = {issue.code: issue for issue in issues}
-    assert issue_by_code["unclaimed_external_fact"].severity == "warning"
+    assert issue_by_code["unclaimed_external_fact"].severity == "error"
 
 
 def test_numeric_fact_outside_claims_is_rejected() -> None:

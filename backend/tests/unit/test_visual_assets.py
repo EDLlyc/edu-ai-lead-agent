@@ -12,6 +12,8 @@ from app.domain.visual_assets import (
     VisualAssetCatalog,
     VisualAssetCatalogError,
     VisualAssetCatalogLoader,
+    VisualAssetError,
+    VisualAssetKind,
     VisualAssetReferenceMode,
     VisualAssetRole,
     VisualAssetSelectionError,
@@ -44,6 +46,8 @@ def _asset(
     byte_size: int = 100,
     priority: int = 50,
     approved: bool = True,
+    asset_kind: VisualAssetKind | None = None,
+    variant_group: str | None = None,
 ) -> VisualAsset:
     digest = hashlib.sha256(name.encode()).hexdigest()
     return VisualAsset(
@@ -56,6 +60,8 @@ def _asset(
         width=100,
         height=100,
         has_alpha=True,
+        asset_kind=asset_kind,
+        variant_group=variant_group,
         characters=characters,
         roles=roles,
         topics=topics,
@@ -126,23 +132,31 @@ def _write_manifest(root: Path, entries: list[dict[str, object]]) -> Path:
     return manifest
 
 
-def test_robotics_selection_prefers_combined_identity_and_explains_matches() -> None:
-    combined = _asset(
-        "robotics-combined",
-        roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
+def test_robotics_selection_keeps_identity_and_action_roles_separate() -> None:
+    identity_xiao = _asset(
+        "robotics-identity-xiao",
+        characters=("xiao-sai",),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        priority=100,
+    )
+    identity_sai = _asset(
+        "robotics-identity-sai",
+        characters=("sai-xiansheng",),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        priority=90,
+    )
+    action = _asset(
+        "robotics-action",
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
         topics=("robotics", "ai", "experiment"),
         poses=("observe",),
         priority=40,
     )
-    single_character = _asset(
-        "robotics-xiao",
-        characters=("xiao-sai",),
-        roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
-        topics=("robotics",),
-        priority=100,
-    )
 
-    selection = AssetSelector(_catalog(single_character, combined)).select(
+    selection = AssetSelector(_catalog(action, identity_sai, identity_xiao)).select(
         AssetSelectionRequest(
             category="robotics",
             asset_tags=("robotics", "experiment"),
@@ -154,11 +168,30 @@ def test_robotics_selection_prefers_combined_identity_and_explains_matches() -> 
         )
     )
 
-    assert [item.filename for item in selection.selected_assets] == ["robotics-combined.png"]
-    assert selection.reference_mode == VisualAssetReferenceMode.SINGLE_REFERENCE
+    assert [item.filename for item in selection.selected_assets] == [
+        "robotics-identity-xiao.png",
+        "robotics-identity-sai.png",
+        "robotics-action.png",
+    ]
+    assert selection.reference_mode == VisualAssetReferenceMode.BUDGETED_MULTI_REFERENCE
     assert selection.fallback_used is False
-    assert "combined-character preference" in selection.selected_assets[0].reason
-    assert "robotics" in selection.selected_assets[0].reason
+    assert [item.role for item in selection.selected_assets] == [
+        VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetRole.ACTION_REFERENCE,
+    ]
+
+
+def test_structured_asset_kind_rejects_combined_roles() -> None:
+    with pytest.raises(VisualAssetError, match="roles"):
+        _asset(
+            "combined",
+            asset_kind=VisualAssetKind.IDENTITY,
+            roles=(
+                VisualAssetRole.IDENTITY_REFERENCE,
+                VisualAssetRole.ACTION_REFERENCE,
+            ),
+        )
 
 
 @pytest.mark.parametrize(
@@ -174,13 +207,15 @@ def test_topic_selection_is_content_driven(
     astronomy = _asset(
         "astronomy",
         topics=("astronomy", "space"),
-        roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
         poses=("explore",),
     )
     reading = _asset(
         "reading",
         topics=("reading", "science"),
-        roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
         poses=("read",),
     )
 
@@ -188,6 +223,7 @@ def test_topic_selection_is_content_driven(
         AssetSelectionRequest(
             category=category,
             asset_tags=asset_tags,
+            characters=("xiao-sai",),
             reference_roles=(VisualAssetRole.IDENTITY_REFERENCE,),
         )
     )
@@ -239,8 +275,18 @@ def test_unapproved_asset_is_never_selected() -> None:
 
 def test_selector_adds_approved_style_reference_after_identity_and_action() -> None:
     identity_action = _asset(
-        "robotics-identity-action",
-        roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
+        "robotics-identity",
+        characters=("xiao-sai", "sai-xiansheng"),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        topics=("robotics",),
+        byte_size=50,
+    )
+    action = _asset(
+        "robotics-action",
+        characters=(),
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
         topics=("robotics",),
         byte_size=50,
     )
@@ -253,7 +299,7 @@ def test_selector_adds_approved_style_reference_after_identity_and_action() -> N
         byte_size=50,
     )
 
-    selection = AssetSelector(_catalog(identity_action, style)).select(
+    selection = AssetSelector(_catalog(identity_action, action, style)).select(
         AssetSelectionRequest(
             category="robotics",
             reference_roles=(
@@ -267,10 +313,92 @@ def test_selector_adds_approved_style_reference_after_identity_and_action() -> N
 
     assert [item.role for item in selection.selected_assets] == [
         VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetRole.ACTION_REFERENCE,
         VisualAssetRole.STYLE_REFERENCE,
     ]
     assert selection.reference_mode == VisualAssetReferenceMode.BUDGETED_MULTI_REFERENCE
     assert selection.fallback_used is False
+
+
+def test_missing_optional_style_does_not_mark_selection_as_fallback() -> None:
+    identity = _asset(
+        "robotics-identity",
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        topics=("robotics",),
+    )
+    action = _asset(
+        "robotics-action",
+        characters=(),
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
+        topics=("robotics",),
+    )
+
+    selection = AssetSelector(_catalog(identity, action)).select(
+        AssetSelectionRequest(
+            category="robotics",
+            characters=("xiao-sai", "sai-xiansheng"),
+            reference_roles=(
+                VisualAssetRole.IDENTITY_REFERENCE,
+                VisualAssetRole.ACTION_REFERENCE,
+                VisualAssetRole.STYLE_REFERENCE,
+            ),
+        )
+    )
+
+    assert [item.role for item in selection.selected_assets] == [
+        VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetRole.ACTION_REFERENCE,
+    ]
+    assert selection.reference_mode == VisualAssetReferenceMode.BUDGETED_MULTI_REFERENCE
+    assert selection.fallback_used is False
+
+
+def test_selection_seed_is_stable_and_rotates_equal_variants() -> None:
+    first = _asset(
+        "variant-a",
+        characters=("xiao-sai",),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        variant_group="identity-xiao",
+        priority=10,
+    )
+    second = _asset(
+        "variant-b",
+        characters=("xiao-sai",),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        variant_group="identity-xiao",
+        priority=10,
+    )
+    selector = AssetSelector(_catalog(first, second))
+
+    def choose(seed: str) -> str:
+        return (
+            selector.select(
+                AssetSelectionRequest(
+                    characters=("xiao-sai",),
+                    reference_roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+                    selection_seed=seed,
+                )
+            )
+            .selected_assets[0]
+            .filename
+        )
+
+    assert choose("run-1") == choose("run-1")
+    assert choose("run-1") != choose("run-2")
+    assert (
+        selector.select(
+            AssetSelectionRequest(
+                characters=("xiao-sai",),
+                reference_roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+                selection_seed="run-1",
+            )
+        ).selection_seed
+        == "run-1"
+    )
 
 
 def test_byte_budget_records_explicit_single_reference_fallback() -> None:
@@ -329,6 +457,18 @@ def test_checksum_change_is_rejected_on_read_after_catalog_load(tmp_path: Path) 
 
     with pytest.raises(VisualAssetCatalogError, match="checksum"):
         loader.read_asset(catalog.assets[0])
+
+
+def test_manifest_dimensions_must_match_png_header(tmp_path: Path) -> None:
+    root = tmp_path / "materials"
+    root.mkdir()
+    body = _png(width=2, height=3)
+    entry = _manifest_entry(root, "05-visual-assets/mismatched.png", body)
+    entry["width"] = 3
+    manifest = _write_manifest(root, [entry])
+
+    with pytest.raises(VisualAssetCatalogError, match="dimensions"):
+        VisualAssetCatalogLoader(root, manifest).load()
 
 
 def test_path_escape_and_symlink_are_rejected_before_selection(tmp_path: Path) -> None:

@@ -4220,7 +4220,7 @@
           "initial_error_code": {
             "anyOf": [
               {
-                "const": "image_provider_rejected",
+                "pattern": "^[a-z][a-z0-9_.-]{0,119}$",
                 "type": "string"
               },
               {

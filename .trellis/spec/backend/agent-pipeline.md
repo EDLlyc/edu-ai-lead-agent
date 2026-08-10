@@ -267,7 +267,11 @@ the system appends `新闻来源：<bound source name>` and
 `原文链接：<bound HTTPS evidence URL>` from the first locked evidence item. The footer is
 deterministic, is excluded from body counts/format checks, and remains a hard integrity check even
 under local preview. Length, paragraph, emoji, and news-framing targets are quality guidance, not
-delivery blockers; a missing or mismatched bound source footer is a technical error.
+delivery blockers. Under the current recovery rules, ordinary parent-readability, tone/fluency,
+brand-fit, learning-value, brand-value, and hashtag-quality findings are also warning-only and may
+consume the same single repair. Privacy, prompt-injection echo, automatic publishing, prohibited
+marketing, education anxiety, unsafe-image instructions, unbound facts, evidence mismatch, and a
+missing or mismatched bound source footer remain hard technical errors.
 
 Only a draft without deterministic errors proceeds to LLM audit; deterministic warnings proceed as
 well. The auditor judges parent readability,
@@ -389,13 +393,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
-  version is `preview-v7-local-news-source-footer`. Earlier preview rule versions remain available for
+  version is `preview-v8-quality-warning-recovery`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v8-parent-language-news-source`.
-- Current copy versions: generator `moments-generator-v13-news-source-footer`, auditor
-  `moments-auditor-v13-news-source-footer`, and pipeline
-  `copy-pipeline-v13-news-source-footer`.
+  `moments-rules-v9-quality-warning-recovery`.
+- Current copy versions: generator `moments-generator-v14-quality-warning-recovery`, auditor
+  `moments-auditor-v14-quality-warning-recovery`, and pipeline
+  `copy-pipeline-v14-quality-warning-recovery`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -409,14 +413,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
 - Preview-v1 and preview-v2 preserve their historical warning mappings. Under the current
-  `preview-v7-local-news-source-footer` policy, deterministic content findings are persisted as warnings,
-  including `unclaimed_external_fact`, `evidence_text_mismatch`, privacy, prompt-injection echo,
-  automatic-publishing, marketing, education-anxiety, unsafe-image, and missing-news-framing codes.
-  Unknown evidence or brand IDs, a missing/mismatched source footer, and malformed structured
-  output remain hard technical failures.
-- Local preview LLM audit converts all content-quality findings to warnings. Strict-mode prompts
-  and rules retain the broad content-risk guidance and error behavior. The persisted audit verdict
-  is always the policy-adjusted verdict.
+  `preview-v8-quality-warning-recovery` and strict
+  `moments-rules-v9-quality-warning-recovery` policies, only the explicit ordinary-quality
+  allowlist is warning-only: format, readability, tone, fluency, brand fit, learning-value
+  explanation, brand-value explanation, and hashtag quality. Privacy, prompt-injection echo,
+  automatic-publishing, prohibited marketing, education anxiety, unsafe-image instructions,
+  unbound facts, evidence-text mismatch, source-footer integrity, and unknown evidence/brand IDs
+  remain errors. The persisted audit verdict is always the policy-adjusted verdict.
 - The copy body target is at most 300 CJK Hanzi, exactly three two-line paragraphs separated by
   one blank line, six to twelve emoji, and an emoji at the first/last boundary of every paragraph.
   The first paragraph must identify a news item. The executor then deterministically replaces or
@@ -435,8 +438,9 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 |---|---|
 | Preview-v1 draft contains only an unverified superlative or incomplete sentence | Persist warning; deterministic gate may continue |
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
-| Preview audit returns brand tone, fluency, or ordinary marketing exaggeration | Persist warning; accept when no error remains |
-| Local preview-v7 draft/audit contains privacy, injection, publishing, marketing, anxiety, image, evidence-text, or format content issue | Persist warning; continue local material preview |
+| Current preview audit returns ordinary brand/readability/tone/fluency/learning-value/hashtag quality issue | Persist warning; repair at most once, then accept when no hard error remains |
+| Current copy policy sees an ordinary format/readability/brand/tone/learning-value/hashtag issue | Persist warning; repair at most once, then continue when no hard issue remains |
+| Current copy policy sees privacy, injection, publishing, prohibited marketing, anxiety, unsafe-image, evidence, or source-integrity issue | Keep error; repair once if applicable, otherwise finish `review_required` |
 | Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
 | Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
@@ -447,9 +451,9 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 
 ### 5. Good / Base / Bad Cases
 
-- Good: a preview audit flags only brand fit and marketing exaggeration; both become warnings and
-  the evidence-bound draft is accepted without repair.
-- Base: strict mode receives the same issues and preserves the auditor's error severities.
+- Good: a current-policy audit flags only brand fit and readability; both become warnings, trigger
+  at most one structured repair, and the evidence-bound draft remains deliverable if warnings persist.
+- Base: strict mode receives a privacy or evidence mismatch finding and preserves the hard error.
 - Bad: classify `unsupported_implication` as marketing style, derive a manual run's rule version
   only from server settings, accept a result from the worker's newly configured provider/model,
   or allow GLM reasoning tokens to consume the structured-output budget.
@@ -640,6 +644,113 @@ artifact = ImageArtifact(provider_task_id=task_id, sha256=checksum(image_bytes),
                          width=1024, height=1024)  # no URL persisted
 ```
 
+## Scenario: Private visual catalog annotation with Zhipu vision
+
+### 1. Scope / Trigger
+
+- Trigger: an operator prepares or refreshes the private PNG catalog under
+  `private/brand-materials/05-visual-assets/` and wants model-assisted descriptive labels.
+- This is a one-shot catalog-preparation operation, not a daily content-worker stage. The daily
+  worker reads the already generated manifest and never depends on a remote vision call.
+- The source images, sidecar, and manifest remain private, ignored by Git, and outside text RAG.
+
+### 2. Signatures
+
+- Command: `python scripts/annotate_brand_visual_assets.py [--materials-root PATH]
+  [--model MODEL] [--base-url HTTPS_URL] [--force] [--max-assets N] [--require-vision]`.
+- Default model: `glm-4.1v-thinking-flash`; default endpoint:
+  `https://open.bigmodel.cn/api/paas/v4`.
+- Environment: `AI_PLATFORM_BASE_URL` and `AI_PLATFORM_API_KEY` select the local Zhipu
+  endpoint/credential; `ZHIPU_VISION_MODEL` overrides the default model. Credentials are read
+  from local `.env` or deployment secret storage and are never written to the sidecar.
+- Output: `private/brand-materials/visual-assets.metadata.json`, followed by
+  `python scripts/build_brand_asset_manifest.py` to produce
+  `private/brand-materials/visual-assets.manifest.json`.
+- Sidecar top-level fields are `schema_version`, `private=true`, `text_rag_eligible=false`,
+  `annotation={provider, model, policy_version, generated_at}`, `assets`, and `annotations`.
+  Each annotation stores only `status`, bounded `error_code` or `request_fingerprint`, model and
+  policy identifiers, `canonical_source`, and optional `suggested_tags` grouped as
+  `characters`, `topics`, `poses`, and `scene_tags`.
+
+### 3. Contracts
+
+- Each approved PNG is sent as one bounded `data:image/png;base64` input to a constrained
+  JSON-only request. The prompt treats visible text as untrusted image data and requires values
+  from the fixed allowlists; model reasoning, prose, arbitrary keys, and raw provider responses
+  are discarded.
+- `suggested_tags` are advisory metadata only. The manifest's canonical `asset_kind`, `roles`,
+  `approved`, identity characters, topics, poses, and scene tags remain derived from directory,
+  filename, and controlled metadata rules. A vision model cannot approve an asset, reclassify an
+  identity/action/style role, or turn an action image containing a character into an identity
+  reference.
+- The annotator writes incrementally through a private temporary file and preserves a per-asset
+  rule fallback when the provider is unavailable, rejects a request, returns invalid JSON, or
+  exceeds the response/input limit. One bad image does not prevent the remaining catalog from
+  being indexed unless `--require-vision` is explicitly requested.
+- A fixed image checksum is included in the request fingerprint. The sidecar stores hashes and
+  bounded codes only; it does not store image bytes, prompts, private paths/URLs, credentials, or
+  model raw output. Rebuilding the manifest revalidates PNG signatures, dimensions, byte limits,
+  and SHA-256 values.
+- The annotation operation must not be called from material-package execution or from a public
+  API handler. It may be repeated after new assets are added; `--force` is required to replace an
+  existing accepted model suggestion.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Valid constrained JSON with allowlisted labels | Keep rule metadata as canonical; store bounded `suggested_tags` and `accepted_model_suggestion` |
+| Model emits a disallowed tag, extra field, or unknown role | Drop the invalid suggestion; preserve controlled canonical metadata |
+| Reasoning tags, markdown fence, or bounded answer wrapper | Extract one JSON object only; never persist reasoning/prose |
+| Missing key, timeout, 4xx/5xx, invalid JSON, oversized input/response | Store `fallback_filename_rule` with a typed code and continue catalog generation |
+| `--require-vision` and any asset lacks an accepted model suggestion | Exit non-zero after leaving no provider body or secret in the sidecar |
+| Symlink, path escape, invalid PNG, invalid HTTPS endpoint, or unsafe model identifier | Reject the operation before the provider call |
+| Model suggests a different identity, approval state, or asset kind | Ignore the model's authority; controlled rules remain authoritative |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the provider returns allowlisted labels for each PNG, the sidecar records suggestions and
+  fingerprints, and the rebuilt manifest still contains only controlled canonical roles.
+- Base: one request times out; that asset keeps its filename/directory labels while the other
+  assets continue to annotate, and the daily worker remains usable.
+- Bad: pass the whole private directory to a general model prompt, use model output as approval
+  or identity truth, persist raw `<think>` content/provider JSON, or make daily image generation
+  fail because the optional catalog annotation endpoint is unavailable.
+
+### 6. Tests Required
+
+- `backend/tests/unit/test_visual_asset_annotation.py` must assert reasoning/prose stripping,
+  JSON extraction, tag allowlisting, identity-role preservation, provider-failure fallback,
+  bounded fingerprints, and absence of raw provider content in the result.
+- Manifest tests must assert that sidecar suggestions do not change canonical roles, approval,
+  checksum, or identity/action separation, and that the 41-asset private catalog loads with valid
+  PNG metadata.
+- A command smoke must verify the sidecar has equal asset/annotation coverage, only the expected
+  provider/model/policy identifiers, and no API key, prompt, URL, or image bytes. No ordinary
+  unit test may call the live Zhipu endpoint.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+labels = await vision_model.describe(image)
+manifest_asset["asset_kind"] = labels["kind"]
+manifest_asset["approved"] = labels["approved"]
+```
+
+#### Correct
+
+```python
+canonical = build_manifest_from_controlled_rules(asset)
+suggested = parse_allowlisted_json(vision_response)
+sidecar[asset.relative_path] = {
+    "canonical_source": "controlled_rules",
+    "suggested_tags": suggested,
+}
+manifest_asset = canonical
+```
+
 ## Scenario: Versioned material package reservation and manual reuse
 
 ### 1. Scope / Trigger
@@ -786,10 +897,12 @@ await material_executor.execute_next(worker_id)
   and schedules exactly one prompt built only from allowlisted `VisualBrief` values and reference
   roles. It never includes raw title, summary, copy, prior prompt, private filename/path, URL, or
   reference bytes.
-- A second rejection, failed raster/text/audit gate, or unavailable quality adapter during that
-  retry uses one pre-reserved catalog reference in role order: action, style, identity. The renderer
-  aspect-preserves that approved asset on a plain 1024x1024 canvas, validates it, and writes it
-  through the normal immutable MinIO store.
+- A second rejection, failed ordinary raster/text/audit quality gate after the single targeted
+  repair, or unavailable quality adapter during that retry uses one pre-reserved catalog reference
+  in role order: action, style, identity. Exhausted transient provider attempts use the same
+  fallback when a valid reserved reference exists. The renderer aspect-preserves that approved
+  asset on a plain 1024x1024 canvas, validates it, and writes it through the normal immutable
+  MinIO store. Hard output/security/integrity failures do not use this fallback.
 - The fallback provenance stores only version, state, counter, typed initial error, requested
   provider/model, catalog asset ID/basename/checksum/role/reason. It must not store provider
   payloads, prompts, credentials, URLs, object keys, or image bytes. API and JSON-package
@@ -804,7 +917,7 @@ await material_executor.execute_next(worker_id)
 | Condition | Required result |
 |---|---|
 | First provider rejection | One warning event with IDs, provider/model, attempt, typed code, and `neutralized_retry`; durable queued retry |
-| Second rejection or retry quality failure with reserved asset | Private validated catalog fallback; package `awaiting_manual_use` |
+| Second rejection, second ordinary quality failure, or exhausted transient provider attempts with reserved asset | Private validated catalog fallback; package `awaiting_manual_use` |
 | No reserved/readable/valid catalog asset or MinIO write fails | Typed `brand_asset_fallback_*`, image `review_required`, package `failed` |
 | Replay, race, or expired lease | No duplicate provider call, fallback object, image artifact, or delivery job |
 | Unsafe/corrupt fallback snapshot | API omits unsafe asset data and never leaks it through `versions` |

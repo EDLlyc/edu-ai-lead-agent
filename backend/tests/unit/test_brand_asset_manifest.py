@@ -6,6 +6,8 @@ import zlib
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _load_builder() -> ModuleType:
     path = Path(__file__).parents[3] / "scripts" / "build_brand_asset_manifest.py"
@@ -59,7 +61,11 @@ def test_manifest_indexes_png_and_skips_sidecars_symlinks_and_invalid_files(
     assert indexed["has_alpha"] is True
     assert indexed["characters"] == ["xiao-sai", "sai-xiansheng"]
     assert indexed["checksum"] == indexed["asset_id"]
-    assert indexed["roles"] == ["identity_reference", "action_reference"]
+    assert indexed["asset_kind"] == "action"
+    assert indexed["roles"] == ["action_reference"]
+    assert indexed["variant_group"] == "action-science"
+    assert indexed["display_name"] == "小赛与赛先生"
+    assert indexed["selection_tags"] == ["science", "education", "editorial"]
     assert indexed["approved"] is True
     assert indexed["catalog_schema_version"] == "brand-visual-assets-v2"
 
@@ -75,6 +81,51 @@ def test_manifest_rejects_oversized_dimensions(tmp_path: Path) -> None:
 
     assert manifest["asset_count"] == 0
     assert manifest["skipped_unsupported_count"] == 1
+
+
+def test_manifest_metadata_overrides_are_typed_and_role_consistent(tmp_path: Path) -> None:
+    builder = _load_builder()
+    materials = tmp_path / "materials"
+    visual = materials / "05-visual-assets"
+    visual.mkdir(parents=True)
+    asset = visual / "scene.png"
+    asset.write_bytes(_png())
+    (materials / "visual-assets.metadata.json").write_text(
+        '{"assets": {"05-visual-assets/scene.png": {'
+        '"asset_kind": "identity", "characters": ["xiao-sai"], '
+        '"variant_group": "identity-xiao", "display_name": "Xiao", '
+        '"selection_tags": ["robotics", "approved"]}}}\n',
+        encoding="utf-8",
+    )
+
+    indexed = builder.build_manifest(materials)["assets"][0]
+
+    assert indexed["asset_kind"] == "identity"
+    assert indexed["roles"] == ["identity_reference"]
+    assert indexed["characters"] == ["xiao-sai"]
+    assert indexed["variant_group"] == "identity-xiao"
+    assert indexed["display_name"] == "Xiao"
+    assert indexed["selection_tags"] == ["robotics", "approved"]
+
+    rule_only = builder.build_manifest(materials, include_metadata=False)["assets"][0]
+    assert rule_only["asset_kind"] == "action"
+    assert rule_only["roles"] == ["action_reference"]
+    assert rule_only["topics"] == ["science", "education"]
+
+
+def test_manifest_metadata_rejects_unsafe_selection_tags(tmp_path: Path) -> None:
+    builder = _load_builder()
+    materials = tmp_path / "materials"
+    visual = materials / "05-visual-assets"
+    visual.mkdir(parents=True)
+    (visual / "scene.png").write_bytes(_png())
+    (materials / "visual-assets.metadata.json").write_text(
+        '{"05-visual-assets/scene.png": {"selection_tags": ["robotics/unsafe"]}}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="selection_tags"):
+        builder.build_manifest(materials)
 
 
 def test_manifest_output_must_stay_private_and_reject_symbolic_links(tmp_path: Path) -> None:

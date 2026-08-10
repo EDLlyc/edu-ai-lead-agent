@@ -31,7 +31,12 @@ from app.application.services.material_package import (
     retry_material_package_image,
 )
 from app.core.config import Settings
-from app.core.errors import ConflictError, ImageOutputValidationError, ImageProviderRejectedError
+from app.core.errors import (
+    ConflictError,
+    ImageOutputValidationError,
+    ImageProviderRejectedError,
+    ImageProviderTimeoutError,
+)
 from app.domain.visual_brief import AcceptedVisualContext, VisualBrief, build_visual_brief
 from app.infrastructure.ai.image_generation import _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
@@ -438,7 +443,7 @@ def _claimed_material_package(
         provider="fake",
         model="gpt-image-2",
         prompt="面向家长的科学探索插画",
-        reference_sha256=None,
+        reference_sha256=references[0].sha256 if references else None,
         lease_token=uuid4(),
         attempt_number=1,
         eligible=eligible,
@@ -755,10 +760,12 @@ async def test_material_worker_second_provider_rejection_uses_catalog_fallback(
         references: tuple[ImageReference, ...],
         validation_snapshot: dict[str, object],
         audit_snapshot: dict[str, object],
+        initial_error_code: str,
     ) -> None:
         assert references == ()
         assert validation_snapshot == {}
         assert audit_snapshot["status"] == "not_configured"
+        assert initial_error_code == "image_provider_rejected"
         fallbacks.append(value)
 
     monkeypatch.setattr(executor, "_claim", fake_claim)
@@ -832,6 +839,33 @@ async def test_catalog_fallback_stores_a_validated_private_brand_image() -> None
             "fallback": False,
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_catalog_fallback_without_a_reserved_asset_stays_reviewable() -> None:
+    claimed = _claimed_material_package(provider_rejection_retry_count=1)
+    image, package, session = _quality_attempt_state(claimed)
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=store,
+        settings=Settings(),
+        reference_asset=None,
+    )
+
+    await executor._persist_catalog_fallback(
+        claimed,
+        references=(),
+        validation_snapshot={},
+        audit_snapshot={"status": "not_configured"},
+    )
+
+    assert store.calls == 0
+    assert image.status == "review_required"
+    assert image.error_code == "brand_asset_fallback_unavailable"
+    assert package.status == "failed"
+    assert session.commits == 1
 
 
 @pytest.mark.asyncio
@@ -985,20 +1019,30 @@ async def test_material_worker_ocr_missing_and_unexpected_text_queues_one_repair
 
 
 @pytest.mark.asyncio
-async def test_material_worker_second_quality_failure_requires_review(
+async def test_material_worker_second_quality_failure_uses_brand_catalog_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-robot-action",
+        filename="robot-action.png",
+        sha256="b" * 64,
+        selection_reason="robotics action match",
+        fallback=False,
+    )
     claimed = _claimed_material_package(
         repair_count=1,
         visual_brief=_quality_visual_brief(),
+        references=(reserved,),
     )
     image, package, session = _quality_attempt_state(claimed)
     generator = _RecordingImageGenerator()
     recognizer = _RecordingImageTextRecognizer(("具身智能", "未经允许的文案"))
+    store = _RecordingImageStore()
     executor = MaterialPackageExecutor(
         session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
         image_generator=generator,
-        image_store=object(),  # type: ignore[arg-type]
+        image_store=store,
         settings=Settings(image_ocr_enabled=True),
         reference_asset=None,
         image_text_recognizer=recognizer,
@@ -1008,22 +1052,110 @@ async def test_material_worker_second_quality_failure_requires_review(
         del worker_id
         return claimed
 
+    reference = ImageReference(
+        role=reserved.role,
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=_solid_png("catalog-fallback", "robot-action"),
+        selection_reason=reserved.selection_reason,
+    )
+
+    async def fake_read_references(
+        value: ClaimedMaterialPackage,
+    ) -> tuple[ImageReference, ...]:
+        assert value == claimed
+        return (reference,)
+
     monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_read_claimed_references", fake_read_references)
 
     assert await executor.execute_next("material-worker") is True
     assert generator.calls == 1
     assert len(recognizer.requests) == 1
-    assert image.status == "review_required"
+    assert store.calls == 1
+    assert image.status == "succeeded"
     assert image.repair_count == 1
-    assert image.error_code == "image_text_validation_failed"
+    assert image.error_code is None
     assert image.completed_at is not None
     assert image.lease_token is None
-    assert package.status == "failed"
-    assert image.validation_snapshot["issue_codes"] == [
-        "missing_visual_text",
-        "unexpected_visual_text",
-    ]
+    assert package.status == "awaiting_manual_use"
+    assert image.validation_snapshot["passed"] is True
+    assert image.validation_snapshot["stage"] == "brand_catalog_fallback"
+    assert image.audit_snapshot["status"] == "not_applicable"
     assert session.commits == 1
+    assert package.version_snapshot["image"]["fallback"]["state"] == "brand_catalog"
+    assert (
+        package.version_snapshot["image"]["fallback"]["initial_error_code"]
+        == "image_text_validation_failed"
+    )
+
+
+class _TimeoutImageGenerator:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        del request
+        self.calls += 1
+        raise ImageProviderTimeoutError()
+
+
+@pytest.mark.asyncio
+async def test_material_worker_exhausted_transient_provider_uses_catalog_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-robot-action",
+        filename="robot-action.png",
+        sha256="b" * 64,
+        selection_reason="robotics action match",
+        fallback=False,
+    )
+    claimed = _claimed_material_package(references=(reserved,))
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _TimeoutImageGenerator()
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+
+    reference = ImageReference(
+        role=reserved.role,
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=_solid_png("catalog-fallback", "robot-action"),
+        selection_reason=reserved.selection_reason,
+    )
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_read_references(
+        value: ClaimedMaterialPackage,
+    ) -> tuple[ImageReference, ...]:
+        assert value == claimed
+        return (reference,)
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_read_claimed_references", fake_read_references)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert store.calls == 1
+    assert image.status == "succeeded"
+    assert package.status == "awaiting_manual_use"
+    assert (
+        package.version_snapshot["image"]["fallback"]["initial_error_code"]
+        == "image_provider_timeout"
+    )
 
 
 @pytest.mark.asyncio
@@ -1117,7 +1249,9 @@ def test_content_driven_image_input_persists_ordered_real_reference_metadata(
     asset_root.mkdir(parents=True)
     entries: list[dict[str, object]] = []
     for filename, roles, priority in (
-        ("robotics-identity.png", ["identity_reference", "action_reference"], 90),
+        ("robotics-identity-xiao.png", ["identity_reference"], 90),
+        ("robotics-identity-sai.png", ["identity_reference"], 80),
+        ("robotics-action.png", ["action_reference"], 70),
         ("robotics-style.png", ["style_reference"], 10),
     ):
         body = _solid_png(filename, "approved")
@@ -1137,7 +1271,13 @@ def test_content_driven_image_input_persists_ordered_real_reference_metadata(
                 "width": 1024,
                 "height": 1024,
                 "has_alpha": False,
-                "characters": ["xiao-sai", "sai-xiansheng"] if "identity" in filename else [],
+                "characters": (
+                    ["xiao-sai"]
+                    if "identity-xiao" in filename
+                    else ["sai-xiansheng"]
+                    if "identity-sai" in filename
+                    else []
+                ),
                 "roles": roles,
                 "topics": ["robotics", "ai", "science"],
                 "poses": ["observe"],
@@ -1196,8 +1336,9 @@ def test_content_driven_image_input_persists_ordered_real_reference_metadata(
 
     assert prepared.reference_mode == "budgeted_multi_reference"
     assert [reference.filename for reference in prepared.references] == [
-        "robotics-identity.png",
-        "robotics-style.png",
+        "robotics-identity-xiao.png",
+        "robotics-identity-sai.png",
+        "robotics-action.png",
     ]
     assert prepared.visual_brief_snapshot["category"] == "robotics"
     assert "家长能看懂的正文" not in prepared.prompt

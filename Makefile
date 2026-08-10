@@ -98,16 +98,16 @@ infra-logs:
 	docker compose logs --tail=100 postgres minio minio-init
 
 backend-format:
-	$(PY_RUN) ruff format backend scripts/build_brand_asset_manifest.py
+	$(PY_RUN) ruff format backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-format-check:
-	$(PY_RUN) ruff format --check backend scripts/build_brand_asset_manifest.py
+	$(PY_RUN) ruff format --check backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-lint:
-	$(PY_RUN) ruff check backend scripts/build_brand_asset_manifest.py
+	$(PY_RUN) ruff check backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-typecheck:
-	$(PY_RUN) mypy backend/app backend/scripts scripts/build_brand_asset_manifest.py
+	$(PY_RUN) mypy backend/app backend/scripts scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-test:
 	$(PY_RUN) pytest backend

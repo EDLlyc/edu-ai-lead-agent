@@ -83,6 +83,15 @@ Logs complement, but do not replace, durable run/audit records. Emit metrics for
 Use correlation IDs to link logs to persisted artifacts. Record prompt, parser, scoring, model,
 embedding, and policy versions in durable data as well as relevant events.
 
+The copy/image recovery path uses bounded, queryable events such as
+`material_package_image_quality_transition`, `material_package_image_attempt_finished`,
+`material_package_image_fallback_requested`, and `material_package_image_fallback_ready`.
+These events may include package/image IDs, attempt and repair counters, typed error codes,
+fallback state, next action, asset ID, renderer version, dimensions, and byte size. They must not
+include prompts, source/copy text, provider payloads, URLs, object keys, filenames/paths, image
+bytes, or secrets. Quality warnings and fallback use are degradation events, not silent success;
+the durable package snapshot remains the source of truth for the final state.
+
 ## Avoid
 
 - `print()` in application code.

@@ -287,10 +287,14 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v5-paragraph-emoji-advisory",
         "preview-v6-local-relaxed",
         "preview-v7-local-news-source-footer",
+        "preview-v8-quality-warning-recovery",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
     {"preview-v6-local-relaxed", "preview-v7-local-news-source-footer"}
+)
+_QUALITY_WARNING_RULE_VERSIONS = frozenset(
+    {"moments-rules-v9-quality-warning-recovery", "preview-v8-quality-warning-recovery"}
 )
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
@@ -345,12 +349,48 @@ _LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES = frozenset(
         "copy_news_source_footer",
     }
 )
-# All visible copy-format misses are advisory and may consume the single bounded repair.
+# Ordinary editorial findings are advisory and may consume the single bounded repair.  Safety,
+# evidence, provenance, and publishing-boundary findings stay outside this allowlist.
 COPY_FORMAT_ADVISORY_CODES = frozenset(
-    {"copy_length", "copy_emoji_count", "copy_paragraph_format", "copy_news_framing"}
+    {
+        "copy_length",
+        "copy_emoji_count",
+        "copy_paragraph_format",
+        "copy_news_framing",
+        "parent_takeaway_length",
+        "interaction_length",
+        "image_prompt_length",
+        "hashtag_placement",
+        "hashtag_format",
+        "hashtag_count",
+        "required_hashtag",
+        "incomplete_sentence",
+    }
+)
+COPY_QUALITY_WARNING_CODES = frozenset(
+    {
+        *COPY_FORMAT_ADVISORY_CODES,
+        "brand_fit",
+        "brand_tone",
+        "tone_mismatch",
+        "fluency",
+        "copy_fluency",
+        "readability",
+        "parent_readability",
+        "plain_language",
+        "technical_jargon",
+        "wordiness",
+        "learning_value",
+        "learning_explanation",
+        "brand_value",
+        "brand_explanation",
+        "hashtag_quality",
+        "tag_quality",
+    }
 )
 COPY_FORMAT_REPAIR_CODES = COPY_FORMAT_ADVISORY_CODES
-_COPY_ADVISORY_AUDIT_CODES = COPY_FORMAT_ADVISORY_CODES
+COPY_QUALITY_REPAIR_CODES = COPY_QUALITY_WARNING_CODES
+_COPY_ADVISORY_AUDIT_CODES = COPY_QUALITY_WARNING_CODES
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
         "brand_fit",
@@ -358,10 +398,17 @@ _PREVIEW_AUDIT_WARNING_CODES = frozenset(
         "tone_mismatch",
         "fluency",
         "copy_fluency",
-        "exaggeration",
-        "marketing_exaggeration",
-        "marketing_expression",
-        "promotional_language",
+        "readability",
+        "parent_readability",
+        "plain_language",
+        "technical_jargon",
+        "wordiness",
+        "learning_value",
+        "learning_explanation",
+        "brand_value",
+        "brand_explanation",
+        "hashtag_quality",
+        "tag_quality",
     }
 )
 _REQUIRED_HASHTAG = "#赛先生科学"
@@ -623,20 +670,17 @@ def validate_material_draft(
         scoring_profile=topic.scoring_profile,
         rule_version=rule_version,
     )
-    if preview_rule_version is not None:
-        warning_codes = _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION.get(
-            preview_rule_version, ()
-        )
-        deduplicated = [
-            issue.model_copy(update={"severity": "warning"})
-            if (
-                preview_rule_version in _LOCAL_PREVIEW_RULE_VERSIONS
-                and issue.code not in _LOCAL_PREVIEW_DETERMINISTIC_HARD_CODES
-            )
-            or issue.code in warning_codes
-            else issue
-            for issue in deduplicated
-        ]
+    warning_codes = _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION.get(
+        preview_rule_version or "", ()
+    )
+    quality_warning_policy = rule_version in _QUALITY_WARNING_RULE_VERSIONS
+    deduplicated = [
+        issue.model_copy(update={"severity": "warning"})
+        if (quality_warning_policy and issue.code in COPY_QUALITY_WARNING_CODES)
+        or issue.code in warning_codes
+        else issue
+        for issue in deduplicated
+    ]
     return tuple(deduplicated)
 
 
@@ -662,14 +706,15 @@ def apply_copy_audit_policy(
         scoring_profile=scoring_profile,
         rule_version=rule_version,
     )
-    uses_local_preview = is_local_preview_copy_rule_version(rule_version or "")
-    has_advisory_issue = any(issue.code in _COPY_ADVISORY_AUDIT_CODES for issue in verdict.issues)
+    quality_warning_policy = rule_version in _QUALITY_WARNING_RULE_VERSIONS
+    has_advisory_issue = quality_warning_policy and any(
+        issue.code in _COPY_ADVISORY_AUDIT_CODES for issue in verdict.issues
+    )
     if not uses_preview and not has_advisory_issue:
         return verdict
     issues = tuple(
         issue.model_copy(update={"severity": "warning"})
-        if uses_local_preview
-        or issue.code in _COPY_ADVISORY_AUDIT_CODES
+        if (quality_warning_policy and issue.code in _COPY_ADVISORY_AUDIT_CODES)
         or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
         else issue
         for issue in verdict.issues
