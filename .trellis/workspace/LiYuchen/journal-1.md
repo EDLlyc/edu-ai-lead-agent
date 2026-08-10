@@ -664,3 +664,24 @@ Implemented warning-only copy quality findings with one bounded repair, image qu
 ### Status
 
 [OK] **Completed**
+
+
+## Session 30: Deploy backend automation to production server
+
+**Date**: 2026-08-10
+**Task**: Deploy backend automation to production server
+**Branch**: `main`
+
+### Summary
+
+Updated the backend-only production runtime to a14847a on 124.222.207.221. Verified production configuration, migration 20260807_0019, all automation services, brand manifest, local backups, firewall/listeners, API health, and refreshed redacted deployment evidence. Local automatic workers remain stopped.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a14847a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
