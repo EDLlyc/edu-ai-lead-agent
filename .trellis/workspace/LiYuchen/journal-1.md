@@ -580,3 +580,24 @@ Deployed the copy paragraph/emoji release to the Ubuntu backend services using d
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: Relax local preview copy delivery
+
+**Date**: 2026-08-10
+**Task**: Relax local preview copy delivery
+**Branch**: `main`
+
+### Summary
+
+Implemented preview-v6-local-relaxed for local copy/material previews: requested content findings remain traceable warnings, copy format is capped at 300 Hanzi with exact three two-line paragraphs, one blank separator, 6-12 emoji and paragraph boundary emoji, and one bounded repair. Added prompt/version/test/spec coverage. Passed backend/frontend gates, doctor, Compose config, local provider smoke, and built local content images. Kept local WeCom disabled and content scheduler/worker stopped; no server action.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d9db4e0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
