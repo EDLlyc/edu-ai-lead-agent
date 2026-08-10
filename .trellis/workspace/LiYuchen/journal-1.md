@@ -643,3 +643,24 @@ Added evidence-bound news framing and source/link footer to Moments copy, preser
 ### Status
 
 [OK] **Completed**
+
+
+## Session 29: Relax copy and image quality recovery
+
+**Date**: 2026-08-10
+**Task**: Relax copy and image quality recovery
+**Branch**: `main`
+
+### Summary
+
+Implemented warning-only copy quality findings with one bounded repair, image quality/provider rejection recovery with validated brand-catalog fallback, separated identity/action/style visual references, stable selection metadata, and optional Zhipu vision annotation for 41 private PNG assets. Updated specs, tests, OpenAPI/frontend contract, and verified backend 538 tests plus frontend checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `126129e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
