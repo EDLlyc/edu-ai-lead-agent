@@ -749,3 +749,24 @@ Confirmed Comfly request fields matched the published gpt-image-2 contract. The 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 34: Deploy Comfly parser fix to backend server
+
+**Date**: 2026-08-11
+**Task**: Deploy Comfly parser fix to backend server
+**Branch**: `main`
+
+### Summary
+
+Deployed local release a29588b to the existing backend runtime at 124.222.207.221. Read-only preflight matched /opt/edu-ai-lead-agent, PostgreSQL/MinIO volumes, migration 20260807_0019, 256-file brand manifest, loopback bindings, and active acquisition/governance/content/group-webhook profiles. Created verified local PostgreSQL, MinIO, brand-material, and old-release backups. The server's normal image build could not resolve setuptools>=75 from the package source, so reused the existing dependency layer and overlaid the pinned backend/app code; parser/config hashes matched local. Normalized only image wait settings to 300/300, ran minio-init and migration, restarted all previously active backend profiles, verified API health, parser behavior, brand mount, zero restarts, no duplicate delivery fingerprints, no test-mode jobs, safe logs, backup checksums, and redacted deployment evidence. Local automatic processes remained stopped.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc1d189` | (see git log) |
+
+### Status
+
+[OK] **Completed**

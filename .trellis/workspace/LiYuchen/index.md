@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 33
+- **Total Sessions**: 34
 - **Last Active**: 2026-08-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~751 | Active |
+| `journal-1.md` | ~772 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 34 | 2026-08-11 | Deploy Comfly parser fix to backend server | `bc1d189` | `main` |
 | 33 | 2026-08-11 | Verify and repair live Comfly image response handling | `0d4c2a2` | `main` |
 | 32 | 2026-08-11 | Verify Comfly direct image response repair | `6c58689` | `main` |
 | 31 | 2026-08-11 | Relax copy warning blockers and deploy logging fix | `8dfa9f5`, `6a5659d` | `main` |
