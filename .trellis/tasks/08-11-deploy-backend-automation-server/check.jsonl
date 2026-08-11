@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply final release, Compose, diff, and quality-gate requirements."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify migration head, durable state, backup, and non-destructive rollback behavior."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify existing dispatcher profile/configuration, idempotency, date scoping, and safe provider state."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review server evidence and bounded logs for credentials, provider bodies, prompts, and private paths."}
+{"file":"docs/operations/production-environment-checklist.md","reason":"Run the host, configuration, startup, backup, monitoring, and rollback acceptance checks."}

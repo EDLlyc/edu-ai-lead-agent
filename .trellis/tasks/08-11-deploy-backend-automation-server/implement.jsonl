@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/archive/2026-08/08-10-deploy-backend-server/design.md","reason":"Reuse the previously reviewed single-host runtime boundary, staging, backup, rollback, and service-order decisions."}
+{"file":"docs/operations/production-server-migration-runbook.md","reason":"Follow the repository's documented production startup order, protected brand mount, backup, verification, and rollback commands."}
+{"file":"compose.yaml","reason":"Use the actual service names, profiles, private bindings, image timeout settings, and volume dependencies."}
+{"file":"scripts/edu-ai-backup.sh","reason":"Inspect the existing server-local backup contract before creating the pre-upgrade backup."}
+{"file":".trellis/tasks/08-11-deploy-backend-automation-server/prd.md","reason":"Implement only the approved pinned backend release deployment scope and acceptance criteria."}
