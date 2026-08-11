@@ -253,9 +253,10 @@ async def OpenAICompatibleImageGenerator.generate(
   ```
 
 - Decode only the fixed documented nesting. Do not recursively scan arbitrary provider objects.
-  A queued task remains pending; a completed task without exactly one valid `url` or `b64_json`
-  remains a typed rejection. Provider bodies, temporary URLs, prompts, and credentials stay inside
-  the adapter.
+  A queued task remains pending; a completed task without exactly one non-empty string `url` or
+  `b64_json` remains a typed rejection. The alternate representation may be omitted or present as
+  an empty string, but explicit null/non-string values and two non-empty representations remain
+  rejected. Provider bodies, temporary URLs, prompts, and credentials stay inside the adapter.
 
 ### 4. Validation & Error Matrix
 

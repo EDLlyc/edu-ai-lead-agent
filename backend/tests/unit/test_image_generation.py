@@ -779,6 +779,81 @@ async def test_comfly_direct_base64_response_is_normalized_without_provider_url(
 
 
 @pytest.mark.asyncio
+async def test_comfly_accepts_url_with_empty_base64_placeholder() -> None:
+    image = _solid_png("comfly", "url-with-empty-base64")
+
+    async def resolver(_host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/images/generations":
+            return httpx.Response(
+                200,
+                json={
+                    "created": 1,
+                    "data": [
+                        {
+                            "url": "https://cdn.example/result.png",
+                            "b64_json": "",
+                            "revised_prompt": "provider metadata",
+                        }
+                    ],
+                    "model": "gpt-image-2",
+                    "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+                },
+            )
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client, resolver=resolver).generate(_image_request())
+
+    assert result.image_bytes == image
+    assert result.media_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_comfly_accepts_base64_with_empty_url_placeholder() -> None:
+    image = _solid_png("comfly", "base64-with-empty-url")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            json={"data": [{"url": "", "b64_json": base64.b64encode(image).decode("ascii")}]},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client).generate(_image_request())
+
+    assert result.image_bytes == image
+    assert result.media_type == "image/png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"url": "https://cdn.example/result.png", "b64_json": "not-empty"},
+        {"url": "", "b64_json": ""},
+        {"url": 123, "b64_json": "valid-but-must-reject"},
+        {"url": "https://cdn.example/result.png", "b64_json": 123},
+        {"url": "https://cdn.example/result.png", "b64_json": None},
+        {"url": None, "b64_json": "valid-but-must-reject"},
+    ],
+)
+async def test_comfly_rejects_ambiguous_or_invalid_image_placeholders(
+    entry: dict[str, object],
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(200, json={"data": [entry]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageProviderRejectedError):
+            await _comfly_generator(client).generate(_image_request())
+
+
+@pytest.mark.asyncio
 async def test_comfly_async_task_polls_tasks_route_and_accepts_completed_result() -> None:
     image = _solid_png("comfly", "async")
     poll_count = 0

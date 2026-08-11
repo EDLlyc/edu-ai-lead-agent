@@ -45,9 +45,9 @@ Run one production-configured Comfly image call locally with the content-driven 
 
 ## Acceptance Criteria
 
-- [ ] A configured Comfly call completes successfully and creates a new file under
+- [x] A configured Comfly call completes successfully and creates a new file under
       `output/imagegen/`; the retry, if needed, uses a separate output filename.
-- [ ] The command reports an image that meets the existing 1024x1024 output contract.
+- [x] The command reports an image that meets the existing 1024x1024 output contract.
 - [x] The database and Enterprise WeChat paths are not invoked by this validation.
 - [x] If the provider fails, the command exposes only the existing typed, non-sensitive failure
       summary and creates no output file.
@@ -63,14 +63,13 @@ Run one production-configured Comfly image call locally with the content-driven 
 - This is a lightweight operational acceptance test, so PRD-only planning is sufficient.
 - The test uses the content-driven path to exercise current private IP reference selection and the
   same Comfly adapter used by automatic image generation.
-- The first call ended with no output file and the command harness did not retain its typed result;
-  the first retry had the same result. The final file-captured call established that the creation
-  response is JSON but has an unsupported envelope. The remaining discrimination call uses one
-  known configured brand reference and the standard smoke prompt, rather than the multi-reference
-  content-driven input.
+- The initial no-reference call ended with no output because the adapter rejected the provider's
+  valid `url` plus empty `b64_json` response shape. A structural diagnostic confirmed the response
+  keys without retaining provider values. The parser was repaired to choose the one non-empty image
+  representation and to keep rejecting ambiguous or malformed entries.
 - The operator requested that the current public Comfly documentation supersede the historical
   `aspect_ratio` compatibility assumption. The adapter therefore uses documented request fields and
   explicitly requests inline Base64 output.
-- All real calls in this task ended with the same typed result: HTTP 200, JSON, no usable image.
-  A no-reference request had the same result, which rules out local private assets and local output
-  validation. The live acceptance is blocked on the provider returning a supported image envelope.
+- After the parser repair, a fresh no-reference call returned a valid 1024x1024 PNG and saved it as
+  `output/imagegen/live-comfly-no-reference-20260811-v2.png`. No database or Enterprise WeChat
+  path was invoked.

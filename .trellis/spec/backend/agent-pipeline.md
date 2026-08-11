@@ -549,9 +549,11 @@ deterministic validation as if it were a network timeout.
   catalog/selector versions, ordered reference roles/checksums, selection reasons, and an explicit
   `reference_mode` (`single_reference`, `budgeted_multi_reference`, or `single_fallback`). The raw
   Moments copy is never used as the image text layer.
-- Response: accept exactly one synchronous `data[].url` or `data[].b64_json`. If the gateway returns
-  a safe task identifier and a pending status, poll `GET /v1/images/tasks/{task_id}` after the
-  configured initial delay and interval, bounded by the provider window.
+- Response: accept exactly one non-empty synchronous `data[].url` or `data[].b64_json`; the other
+  field may be omitted or present as an empty string because Comfly returns both placeholders in
+  some successful responses. If the gateway returns a safe task identifier and a pending status,
+  poll `GET /v1/images/tasks/{task_id}` after the configured initial delay and interval, bounded by
+  the provider window.
 - Download: URL results require HTTPS, no redirects, bounded bytes, and exactly 1024x1024
   dimensions. Every literal or DNS-resolved output address must be globally routable; private,
   loopback, link-local, metadata, reserved, and Fake-IP addresses are rejected before the CDN

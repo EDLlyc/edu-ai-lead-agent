@@ -923,14 +923,17 @@ def _extract_documented_task_image(payload: dict[str, Any]) -> tuple[str, str] |
 def _extract_compatible_image_entry(entry: dict[str, Any]) -> tuple[str, str]:
     url = entry.get("url")
     b64_json = entry.get("b64_json")
-    if (url is None) == (b64_json is None):
-        raise ImageProviderRejectedError()
-    if url is not None:
-        if not isinstance(url, str) or not url:
+    for key in ("url", "b64_json"):
+        if key in entry and not isinstance(entry[key], str):
             raise ImageProviderRejectedError()
-        return "url", url
-    if not isinstance(b64_json, str) or not b64_json:
+    has_url = isinstance(url, str) and bool(url)
+    has_b64_json = isinstance(b64_json, str) and bool(b64_json)
+    if has_url == has_b64_json:
         raise ImageProviderRejectedError()
+    if has_url:
+        assert isinstance(url, str)
+        return "url", url
+    assert isinstance(b64_json, str)
     return "b64_json", b64_json
 
 
