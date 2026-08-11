@@ -183,10 +183,21 @@ class ImageProviderConfigurationError(ProviderError):
 
 
 class ImageProviderRejectedError(ProviderError):
-    def __init__(self) -> None:
+    _SAFE_RESPONSE_KINDS = frozenset({"json", "raster", "other"})
+
+    def __init__(
+        self,
+        *,
+        http_status: int | None = None,
+        response_kind: str | None = None,
+    ) -> None:
         super().__init__(
             "image_provider_rejected", "image provider rejected the image request", 422
         )
+        self.http_status = (
+            http_status if isinstance(http_status, int) and 100 <= http_status <= 599 else None
+        )
+        self.response_kind = response_kind if response_kind in self._SAFE_RESPONSE_KINDS else None
 
 
 class ImageProviderQuotaError(ProviderError):

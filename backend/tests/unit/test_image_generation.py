@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+from io import BytesIO
 from uuid import uuid4
 
 import httpx
@@ -23,6 +24,7 @@ from app.infrastructure.ai.image_generation import (
     _generation_payload,
     _solid_png,
 )
+from PIL import Image
 from pydantic import SecretStr
 
 
@@ -349,6 +351,107 @@ def _image_request(
         reference_image,
         "reference.png" if reference_image is not None else None,
     )
+
+
+def _direct_raster(media_type: str, *, webp_lossless: bool = False) -> bytes:
+    image = Image.new("RGB", (1024, 1024), (37, 97, 158))
+    output = BytesIO()
+    options: dict[str, str | bool] = {
+        "format": {
+            "image/png": "PNG",
+            "image/jpeg": "JPEG",
+            "image/webp": "WEBP",
+        }[media_type]
+    }
+    if media_type == "image/webp":
+        options["lossless"] = webp_lossless
+    image.save(output, **options)
+    return output.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("media_type", "webp_lossless"),
+    [
+        ("image/png", False),
+        ("image/jpeg", False),
+        ("image/webp", False),
+        ("image/webp", True),
+    ],
+)
+async def test_comfly_accepts_direct_raster_creation_response(
+    media_type: str,
+    webp_lossless: bool,
+) -> None:
+    image = _direct_raster(media_type, webp_lossless=webp_lossless)
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        return httpx.Response(200, headers={"content-type": media_type}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client).generate(_image_request())
+
+    assert seen_paths == ["/v1/images/generations"]
+    assert result.image_bytes == image
+    assert (result.width, result.height, result.media_type) == (1024, 1024, media_type)
+
+
+@pytest.mark.asyncio
+async def test_comfly_rejects_invalid_direct_raster_without_json_parsing() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "image/png"},
+            content=b"not-an-image",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.reason == "image_raster_signature_invalid"
+
+
+@pytest.mark.asyncio
+async def test_comfly_rejects_oversized_direct_raster() -> None:
+    image = _direct_raster("image/png")
+    assert len(image) > 1_024
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "image/png; charset=binary"},
+            content=image,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client, max_download_bytes=1_024).generate(_image_request())
+
+    assert raised.value.reason == "image_download_too_large"
+
+
+@pytest.mark.asyncio
+async def test_comfly_non_raster_non_json_response_is_rejected_with_safe_diagnostics() -> None:
+    raw_marker = "PRIVATE-COMFLY-RESPONSE"
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain"},
+            content=raw_marker.encode(),
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageProviderRejectedError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.http_status == 200
+    assert raised.value.response_kind == "other"
+    assert raw_marker not in str(raised.value)
+    assert raw_marker not in repr(raised.value)
 
 
 @pytest.mark.asyncio

@@ -119,6 +119,97 @@ validated and stored through the normal private immutable path, records a typed 
 never makes a third provider request. Missing/invalid references or storage failure remain
 `review_required`/failed terminal states.
 
+## Scenario: Direct Comfly raster generation response
+
+### 1. Scope / Trigger
+
+`OpenAICompatibleImageGenerator` is an OpenAI-compatible adapter, not a JSON-only adapter. The
+Comfly creation endpoint may return a completed raster directly instead of a JSON URL, Base64
+envelope, or task identifier. Treating every non-JSON HTTP 200 response as
+`image_provider_rejected` causes a false retry and hides a valid model image behind the catalog
+fallback.
+
+### 2. Signatures
+
+```python
+async def generate(request: ImageGenerationRequest) -> ImageGenerationResult: ...
+
+class ImageProviderRejectedError(ProviderError):
+    def __init__(
+        self,
+        *,
+        http_status: int | None = None,
+        response_kind: str | None = None,
+    ) -> None: ...
+```
+
+The only permitted `response_kind` values are `json`, `raster`, and `other`.
+
+### 3. Contracts
+
+- `POST /v1/images/generations` with a successful `Content-Type` of `image/png`, `image/jpeg`, or
+  `image/webp` is a direct candidate output. Validate bounded bytes, matching signature, and the
+  required 1024x1024 dimensions before returning `ImageGenerationResult`.
+- JSON URL, JSON Base64, and asynchronous task responses continue through their existing JSON
+  decoder and output-host/download checks.
+- A direct raster result never schedules provider-rejection recovery or a brand-catalog fallback.
+- A true `ImageProviderRejectedError` may expose only integer HTTP status and the allowlisted
+  response kind to the material-package warning event. Do not persist or log raw bodies, prompts,
+  response headers, URLs, credentials, or private image data.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| 2xx allowed raster type, valid signature and 1024x1024 dimensions | Return success and persist generated image normally |
+| 2xx allowed raster type with invalid signature, dimensions, or byte size | `ImageOutputValidationError` with an allowlisted reason |
+| 2xx JSON URL/Base64/task envelope | Existing JSON behavior |
+| 2xx non-raster non-JSON body | `ImageProviderRejectedError(http_status=200, response_kind="other")` |
+| 3xx/4xx provider response | `ImageProviderRejectedError` with safe status/kind when available |
+| 401/403, quota, rate limit, timeout, or 5xx | Existing typed authentication/quota/transient errors |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a direct `image/png; charset=binary` response passes signature and dimension checks and is
+  stored as a generated image.
+- Base: a JSON response with a signed external URL follows existing safe DNS resolution and bounded
+  download behavior.
+- Bad: decoding a `text/plain` success body as an image, logging its text, or treating an invalid
+  raster as a successful image.
+
+### 6. Tests Required
+
+- Mock direct PNG, JPEG, lossy WebP (`VP8`), and lossless WebP (`VP8L`) creation responses; assert
+  no task poll or URL download occurs.
+- Assert invalid or oversized direct raster bytes raise `ImageOutputValidationError`.
+- Assert a non-raster non-JSON body remains rejected, preserves only safe diagnostics, and never
+  exposes its content through `str`, `repr`, or the material-package log event.
+- Keep existing URL, Base64, task-polling, authentication, quota, and multi-reference tests green.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+created = await request_json("POST", "/v1/images/generations", payload)
+```
+
+This assumes every successful provider response is JSON and converts direct raster success into a
+provider rejection.
+
+#### Correct
+
+```python
+response = await request("POST", "/v1/images/generations", json=payload)
+direct = normalize_direct_raster(response)
+if direct is not None:
+    return direct
+created = decode_json_envelope(response)
+```
+
+The direct branch shares the existing byte/signature/dimension validation and the JSON branch stays
+unchanged.
+
 ## Catching and logging
 
 Catch exceptions only where code can translate, compensate, add structured context, or define an

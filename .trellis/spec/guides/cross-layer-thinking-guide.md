@@ -31,6 +31,9 @@ For each arrow, ask:
 - What format is the data in?
 - What could go wrong?
 - Who is responsible for validation?
+- For a successful external-provider response, which representations are valid (for example JSON,
+  direct raster bytes, or an asynchronous task), and does the adapter dispatch by `Content-Type`
+  before parsing?
 
 ### Step 2: Identify Boundaries
 

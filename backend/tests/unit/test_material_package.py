@@ -477,13 +477,14 @@ class _RecordingImageGenerator:
 
 
 class _RejectingImageGenerator:
-    def __init__(self) -> None:
+    def __init__(self, error: ImageProviderRejectedError | None = None) -> None:
         self.calls = 0
+        self._error = error or ImageProviderRejectedError()
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         del request
         self.calls += 1
-        raise ImageProviderRejectedError()
+        raise self._error
 
 
 class _InvalidOutputImageGenerator:
@@ -733,6 +734,45 @@ async def test_material_worker_provider_rejection_schedules_one_neutralized_retr
             },
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_material_worker_logs_only_safe_provider_rejection_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _RejectingImageGenerator(
+        ImageProviderRejectedError(http_status=422, response_kind="other")
+    )
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+    claimed = _claimed_material_package()
+    events: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_schedule(_value: ClaimedMaterialPackage) -> bool:
+        return True
+
+    class _SafeLogger:
+        def warning(self, event: str, **values: object) -> None:
+            events.append((event, values))
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_schedule_provider_rejection_retry", fake_schedule)
+    monkeypatch.setattr("app.application.services.material_package.logger", _SafeLogger())
+
+    assert await executor.execute_next("material-worker") is True
+    assert events[0][0] == "material_package_image_provider_rejected"
+    assert events[0][1]["provider_http_status"] == 422
+    assert events[0][1]["provider_response_kind"] == "other"
+    assert "PRIVATE-COMFLY-RESPONSE" not in json.dumps(events[0][1])
 
 
 @pytest.mark.asyncio

@@ -97,6 +97,15 @@ _PRIVATE_STORAGE_METADATA: dict[str, object] = {
 }
 
 
+def _provider_rejection_log_context(error: ImageProviderRejectedError) -> dict[str, int | str]:
+    context: dict[str, int | str] = {}
+    if error.http_status is not None:
+        context["provider_http_status"] = error.http_status
+    if error.response_kind is not None:
+        context["provider_response_kind"] = error.response_kind
+    return context
+
+
 @dataclass(frozen=True, slots=True)
 class MaterialPackageResult:
     package: MaterialPackageModel
@@ -949,7 +958,7 @@ class MaterialPackageExecutor:
                 )
         except asyncio.CancelledError:
             raise
-        except ImageProviderRejectedError:
+        except ImageProviderRejectedError as error:
             if claimed.provider_rejection_retry_count == 0:
                 if await self._schedule_provider_rejection_retry(claimed):
                     logger.warning(
@@ -962,6 +971,7 @@ class MaterialPackageExecutor:
                         repair_count=claimed.repair_count,
                         provider_rejection_retry_count=1,
                         next_action="neutralized_retry",
+                        **_provider_rejection_log_context(error),
                     )
             else:
                 await self._persist_catalog_fallback(

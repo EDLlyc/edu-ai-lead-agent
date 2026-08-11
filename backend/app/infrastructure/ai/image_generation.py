@@ -10,6 +10,7 @@ import struct
 import time
 import zlib
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -63,6 +64,15 @@ _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MO
 _COMFLY_IMAGE_SIZE = "1024x1024"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
+
+
+@dataclass(frozen=True, slots=True)
+class _ComflyResponse:
+    status_code: int
+    body: bytes
+    too_large: bool
+    retry_after_seconds: float | None
+    content_type: str
 
 
 def _request_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
@@ -486,24 +496,32 @@ class OpenAICompatibleImageGenerator:
                 except ValueError:
                     raise ImageOutputValidationError() from None
                 payload = self._payload(prompt, request)
-                created = await self._request_json(
+                created_response = await self._request(
                     "POST",
                     "/v1/images/generations",
-                    payload,
                     idempotency_key=(
                         request.provider_request_fingerprint or request.request_fingerprint
                     ),
+                    json=payload,
                 )
-                representation = _extract_compatible_image(created)
-                if representation is None:
-                    task_id = _safe_id(_first_value(created, "task_id", "id"))
-                    if task_id is None:
-                        raise ImageProviderRejectedError()
-                    completed = await self._poll(task_id)
-                    representation = _extract_compatible_image(completed)
+                direct_image = self._direct_image(created_response)
+                if direct_image is not None:
+                    body, media_type, width, height = direct_image
+                else:
+                    created = self._json_response(created_response)
+                    representation = _extract_compatible_image(created)
                     if representation is None:
-                        raise ImageProviderRejectedError()
-                body, media_type, width, height = await self._normalize_image(representation)
+                        task_id = _safe_id(_first_value(created, "task_id", "id"))
+                        if task_id is None:
+                            raise ImageProviderRejectedError(
+                                http_status=created_response.status_code,
+                                response_kind=_response_kind(created_response.content_type),
+                            )
+                        completed = await self._poll(task_id)
+                        representation = _extract_compatible_image(completed)
+                        if representation is None:
+                            raise ImageProviderRejectedError()
+                    body, media_type, width, height = await self._normalize_image(representation)
         except TimeoutError:
             raise ImageProviderTimeoutError() from None
         except ImageProviderTimeoutError:
@@ -576,6 +594,16 @@ class OpenAICompatibleImageGenerator:
             await self._sleep(min(self._poll_interval_seconds, max(0.1, remaining)))
         raise ImageProviderTimeoutError()
 
+    def _direct_image(self, response: _ComflyResponse) -> tuple[bytes, str, int, int] | None:
+        if response.content_type not in _ALLOWED_MEDIA_TYPES:
+            return None
+        if response.too_large:
+            raise ImageOutputValidationError("image_download_too_large")
+        return self._normalize_image_bytes(
+            response.body,
+            declared_media_type=response.content_type,
+        )
+
     async def _request_json(
         self,
         method: str,
@@ -584,26 +612,35 @@ class OpenAICompatibleImageGenerator:
         *,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        _status_code, body, too_large, _retry_after_seconds = await self._request(
+        response = await self._request(
             method,
             path,
             idempotency_key=idempotency_key,
             json=payload if payload is not None else None,
         )
-        if too_large:
+        return self._json_response(response)
+
+    def _json_response(self, response: _ComflyResponse) -> dict[str, Any]:
+        if response.too_large:
             raise ImageProviderRejectedError()
         try:
-            value = json.loads(body)
+            value = json.loads(response.body)
         except (json.JSONDecodeError, TypeError, ValueError):
-            raise ImageProviderRejectedError() from None
+            raise ImageProviderRejectedError(
+                http_status=response.status_code,
+                response_kind=_response_kind(response.content_type),
+            ) from None
         if not isinstance(value, dict):
-            raise ImageProviderRejectedError()
+            raise ImageProviderRejectedError(
+                http_status=response.status_code,
+                response_kind=_response_kind(response.content_type),
+            )
         _raise_for_compatible_payload(value)
         return value
 
     async def _request(
         self, method: str, path: str, *, idempotency_key: str | None = None, **kwargs: Any
-    ) -> tuple[int, bytes, bool, float | None]:
+    ) -> _ComflyResponse:
         headers = {"Authorization": f"Bearer {self._api_key.get_secret_value()}"}
         if idempotency_key is not None:
             if _SAFE_PROVIDER_ID.fullmatch(idempotency_key) is None:
@@ -624,6 +661,9 @@ class OpenAICompatibleImageGenerator:
                     )
                     status_code = response.status_code
                     retry_after_seconds = _retry_after(response)
+                    content_type = _normalized_content_type(
+                        response.headers.get("content-type", "")
+                    )
             except httpx.TimeoutException:
                 if attempt + 1 >= self._max_attempts:
                     raise ImageProviderTimeoutError() from None
@@ -649,12 +689,27 @@ class OpenAICompatibleImageGenerator:
                 await self._sleep(retry_after_seconds or min(2.0**attempt, 8.0))
                 continue
             if 300 <= status_code < 400:
-                raise ImageProviderRejectedError()
+                raise ImageProviderRejectedError(
+                    http_status=status_code,
+                    response_kind=_response_kind(content_type),
+                )
             if too_large:
-                raise ImageProviderRejectedError()
+                raise ImageProviderRejectedError(
+                    http_status=status_code,
+                    response_kind=_response_kind(content_type),
+                )
             if status_code >= 400:
-                raise ImageProviderRejectedError()
-            return status_code, body, False, retry_after_seconds
+                raise ImageProviderRejectedError(
+                    http_status=status_code,
+                    response_kind=_response_kind(content_type),
+                )
+            return _ComflyResponse(
+                status_code=status_code,
+                body=body,
+                too_large=False,
+                retry_after_seconds=retry_after_seconds,
+                content_type=content_type,
+            )
         raise ProviderUnavailableError()
 
     async def _normalize_image(
@@ -669,9 +724,19 @@ class OpenAICompatibleImageGenerator:
             body = base64.b64decode(value, validate=True)
         except (binascii.Error, ValueError, TypeError):
             raise ImageOutputValidationError("image_output_representation_invalid") from None
+        return self._normalize_image_bytes(body)
+
+    def _normalize_image_bytes(
+        self,
+        body: bytes,
+        *,
+        declared_media_type: str | None = None,
+    ) -> tuple[bytes, str, int, int]:
         if not body or len(body) > self._max_download_bytes:
             raise ImageOutputValidationError("image_download_too_large")
         media_type = _detect_image_media_type(body)
+        if declared_media_type in _ALLOWED_MEDIA_TYPES and media_type != declared_media_type:
+            raise ImageOutputValidationError("image_raster_signature_invalid")
         width, height = _image_dimensions(body, media_type)
         if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
             raise ImageOutputValidationError("image_dimensions_invalid")
@@ -737,7 +802,9 @@ class OpenAICompatibleImageGenerator:
                             raise ImageOutputValidationError(
                                 "image_download_content_type_invalid"
                             ) from None
-                    content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    content_type = _normalized_content_type(
+                        response.headers.get("content-type", "")
+                    )
                     if (
                         content_type not in _ALLOWED_MEDIA_TYPES
                         and content_type not in _GENERIC_DOWNLOAD_MEDIA_TYPES
@@ -758,13 +825,10 @@ class OpenAICompatibleImageGenerator:
                     raise ProviderUnavailableError() from None
                 await self._sleep(min(2.0**attempt, 8.0))
                 continue
-            detected_type = _detect_image_media_type(body)
-            if content_type in _ALLOWED_MEDIA_TYPES and detected_type != content_type:
-                raise ImageOutputValidationError("image_raster_signature_invalid")
-            width, height = _image_dimensions(body, detected_type)
-            if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
-                raise ImageOutputValidationError("image_dimensions_invalid")
-            return body, detected_type, width, height
+            return self._normalize_image_bytes(
+                body,
+                declared_media_type=content_type,
+            )
         raise ProviderUnavailableError()
 
 
@@ -976,6 +1040,18 @@ def _retry_after(response: httpx.Response) -> float | None:
     return max(0.0, min(value, 30.0))
 
 
+def _normalized_content_type(value: str) -> str:
+    return value.split(";", 1)[0].strip().lower()
+
+
+def _response_kind(content_type: str) -> str:
+    if content_type in _ALLOWED_MEDIA_TYPES:
+        return "raster"
+    if content_type == "application/json" or content_type.endswith("+json"):
+        return "json"
+    return "other"
+
+
 def _raise_for_quota_response(response: httpx.Response) -> None:
     try:
         payload = response.json()
@@ -993,9 +1069,24 @@ def _image_dimensions(body: bytes, media_type: str) -> tuple[int, int]:
     if media_type == "image/webp":
         if len(body) < 30 or body[:4] != b"RIFF" or body[8:12] != b"WEBP":
             raise ImageOutputValidationError("image_raster_signature_invalid")
-        if body[12:16] == b"VP8X":
+        chunk_type = body[12:16]
+        if chunk_type == b"VP8X":
             return 1 + int.from_bytes(body[24:27], "little"), 1 + int.from_bytes(
                 body[27:30], "little"
+            )
+        if chunk_type == b"VP8 ":
+            if body[23:26] != b"\x9d\x01\x2a":
+                raise ImageOutputValidationError("image_raster_signature_invalid")
+            return (
+                int.from_bytes(body[26:28], "little") & 0x3FFF,
+                int.from_bytes(body[28:30], "little") & 0x3FFF,
+            )
+        if chunk_type == b"VP8L":
+            if len(body) < 25 or body[20] != 0x2F:
+                raise ImageOutputValidationError("image_raster_signature_invalid")
+            return (
+                1 + body[21] + ((body[22] & 0x3F) << 8),
+                1 + (body[22] >> 6) + (body[23] << 2) + ((body[24] & 0x0F) << 10),
             )
     if media_type == "image/jpeg":
         return _jpeg_dimensions(body)
