@@ -685,3 +685,25 @@ Updated the backend-only production runtime to a14847a on 124.222.207.221. Verif
 ### Status
 
 [OK] **Completed**
+
+
+## Session 31: Relax copy warning blockers and deploy logging fix
+
+**Date**: 2026-08-11
+**Task**: Relax copy warning blockers and deploy logging fix
+**Branch**: `main`
+
+### Summary
+
+降级 preview-v9 中隐私、提示词注入回显、违规营销、教育焦虑和文案一致性问题为可追踪 warning，保留硬错误和一次修复；通过 543 个后端测试、Ruff、mypy、Compose、doctor。将 6a5659d 的脱敏验证/审计日志修正同步到服务器，复用既有依赖层构建 content-worker，所有后台服务运行稳定，企业微信 group_webhook 自动投递已开启，未执行额外手动发送。保留工作区中原有 reports/ 和 Trellis 技能未提交文件。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8dfa9f5` | (see git log) |
+| `6a5659d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
