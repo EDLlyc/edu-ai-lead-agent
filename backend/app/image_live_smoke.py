@@ -10,7 +10,7 @@ import httpx
 
 from app.application.ports.image_generation import ImageGenerationRequest
 from app.core.config import Settings, get_settings
-from app.core.errors import AppError
+from app.core.errors import AppError, ImageOutputValidationError, ImageProviderRejectedError
 from app.domain.image_generation import image_checksum, image_request_fingerprint
 from app.domain.visual_assets import AssetSelectionRequest, VisualAssetRole
 from app.domain.visual_brief import (
@@ -81,6 +81,25 @@ _ZH_BRAND_V2_PROMPT = (
 )
 
 
+def _safe_failure_summary(error: AppError) -> str:
+    """Format only already-allowlisted provider diagnostics for operator smoke checks."""
+    fields = [f"code={error.code}", f"retryable={str(error.retryable).lower()}"]
+    if isinstance(error, ImageOutputValidationError):
+        fields.append(f"reason={error.reason}")
+    elif isinstance(error, ImageProviderRejectedError):
+        if error.http_status is not None:
+            fields.append(f"provider_http_status={error.http_status}")
+        if error.response_kind is not None:
+            fields.append(f"provider_response_kind={error.response_kind}")
+    return " ".join(fields)
+
+
+def _effective_business_run_id(value: str | None) -> str:
+    """Use a fresh business identity unless an operator explicitly supplied one."""
+    normalized = value.strip() if value is not None else ""
+    return normalized or f"live-smoke-{uuid4()}"
+
+
 def _prompt_for_profile(profile: str) -> str:
     if profile == "default":
         return _DEFAULT_PROMPT
@@ -97,7 +116,7 @@ async def run(
     reference: Path | None,
     output: Path | None,
     model_override: str | None = None,
-    business_run_id: str = "live-smoke-2026-07-31",
+    business_run_id: str | None = None,
     prompt_profile: str = "default",
     discover_output_host: bool = False,
     content_driven: bool = False,
@@ -109,6 +128,7 @@ async def run(
         raise ValueError("an output path is required unless discovering an output hostname")
     if output is not None and not discover_output_host and output.exists():
         raise FileExistsError(f"refusing to overwrite existing output: {output}")
+    effective_business_run_id = _effective_business_run_id(business_run_id)
     runtime_settings = (
         settings.model_copy(update={"image_model": model_override}) if model_override else settings
     )
@@ -117,7 +137,7 @@ async def run(
         request = _content_driven_request(
             runtime_settings,
             model=model,
-            business_run_id=business_run_id,
+            business_run_id=effective_business_run_id,
         )
     else:
         if reference is None:
@@ -125,7 +145,7 @@ async def run(
         reference_body = reference.read_bytes()
         prompt = _prompt_for_profile(prompt_profile)
         fingerprint = image_request_fingerprint(
-            run_id=business_run_id,
+            run_id=effective_business_run_id,
             draft_version_id="embodied-ai-robot-self-correction",
             prompt=prompt,
             provider=runtime_settings.image_provider_mode,
@@ -266,7 +286,7 @@ def main() -> None:
     parser.add_argument("--reference", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--model", type=str)
-    parser.add_argument("--business-run-id", default="live-smoke-2026-07-31")
+    parser.add_argument("--business-run-id")
     parser.add_argument(
         "--prompt-profile",
         choices=("default", "zh", "zh_minimal", "zh_brand_v2"),
@@ -294,7 +314,7 @@ def main() -> None:
             )
         )
     except AppError as error:
-        print(f"image_smoke_failed code={error.code} retryable={error.retryable}")
+        print(f"image_smoke_failed {_safe_failure_summary(error)}")
         raise SystemExit(1) from None
 
 

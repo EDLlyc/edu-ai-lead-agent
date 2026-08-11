@@ -62,6 +62,7 @@ _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
 _COMFLY_IMAGE_SIZE = "1024x1024"
+_COMFLY_RESPONSE_FORMAT = "b64_json"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
 
@@ -509,7 +510,10 @@ class OpenAICompatibleImageGenerator:
                     body, media_type, width, height = direct_image
                 else:
                     created = self._json_response(created_response)
-                    representation = _extract_compatible_image(created)
+                    try:
+                        representation = _extract_compatible_image(created)
+                    except ImageProviderRejectedError as error:
+                        raise _with_response_diagnostics(error, created_response) from error
                     if representation is None:
                         task_id = _safe_id(_first_value(created, "task_id", "id"))
                         if task_id is None:
@@ -543,10 +547,10 @@ class OpenAICompatibleImageGenerator:
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
-            # Comfly treats a ratio-only size as its 2K default.  Send the OpenAI
-            # raster-size value explicitly so the stored image contract remains 1024x1024.
             "size": _COMFLY_IMAGE_SIZE,
-            "aspect_ratio": IMAGE_SIZE,
+            # Comfly documents Base64 as the default. Sending it explicitly avoids a
+            # temporary CDN URL and keeps the result within this adapter boundary.
+            "response_format": _COMFLY_RESPONSE_FORMAT,
         }
         references = _request_references(request)
         if len(references) > self._max_reference_images:
@@ -869,6 +873,9 @@ async def _read_bounded_response(response: httpx.Response, limit: int) -> tuple[
 
 def _extract_compatible_image(payload: dict[str, Any]) -> tuple[str, str] | None:
     """Extract one recognized image representation without retaining provider metadata."""
+    documented_task_image = _extract_documented_task_image(payload)
+    if documented_task_image is not None:
+        return documented_task_image
     containers: list[dict[str, Any]] = [payload]
     result = payload.get("result")
     if isinstance(result, dict):
@@ -896,6 +903,21 @@ def _extract_compatible_image(payload: dict[str, Any]) -> tuple[str, str] | None
     if len(representations) > 1:
         raise ImageProviderRejectedError()
     return representations[0] if representations else None
+
+
+def _extract_documented_task_image(payload: dict[str, Any]) -> tuple[str, str] | None:
+    """Extract the documented Comfly task result without accepting arbitrary nesting."""
+
+    task = payload.get("data")
+    if not isinstance(task, dict) or not _is_compatible_task_container(task, payload):
+        return None
+    result = task.get("data")
+    if not isinstance(result, dict):
+        return None
+    entries = result.get("data")
+    if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+        return None
+    return _extract_compatible_image_entry(entries[0])
 
 
 def _extract_compatible_image_entry(entry: dict[str, Any]) -> tuple[str, str]:
@@ -1050,6 +1072,20 @@ def _response_kind(content_type: str) -> str:
     if content_type == "application/json" or content_type.endswith("+json"):
         return "json"
     return "other"
+
+
+def _with_response_diagnostics(
+    error: ImageProviderRejectedError,
+    response: _ComflyResponse,
+) -> ImageProviderRejectedError:
+    return ImageProviderRejectedError(
+        http_status=error.http_status if error.http_status is not None else response.status_code,
+        response_kind=(
+            error.response_kind
+            if error.response_kind is not None
+            else _response_kind(response.content_type)
+        ),
+    )
 
 
 def _raise_for_quota_response(response: httpx.Response) -> None:

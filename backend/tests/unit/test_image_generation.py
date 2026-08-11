@@ -455,6 +455,27 @@ async def test_comfly_non_raster_non_json_response_is_rejected_with_safe_diagnos
 
 
 @pytest.mark.asyncio
+async def test_comfly_malformed_json_envelope_has_only_safe_response_diagnostics() -> None:
+    raw_marker = "PRIVATE-COMFLY-JSON"
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"data": [{"detail": raw_marker}]},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageProviderRejectedError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.http_status == 200
+    assert raised.value.response_kind == "json"
+    assert raw_marker not in str(raised.value)
+    assert raw_marker not in repr(raised.value)
+
+
+@pytest.mark.asyncio
 async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image() -> None:
     image = _solid_png("comfly", "direct-url")
     seen_payload: dict[str, object] | None = None
@@ -499,7 +520,8 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert seen_payload is not None
     assert seen_payload["model"] == "gpt-image-2"
     assert seen_payload["size"] == "1024x1024"
-    assert seen_payload["aspect_ratio"] == "1:1"
+    assert seen_payload["response_format"] == "b64_json"
+    assert "aspect_ratio" not in seen_payload
     assert seen_payload["prompt"] == "parent-facing science illustration"
     image_values = seen_payload["image"]
     assert isinstance(image_values, list) and len(image_values) == 1
@@ -826,6 +848,46 @@ async def test_comfly_nested_task_envelope_is_polled_without_treating_metadata_a
         "/v1/images/generations",
         "/v1/images/tasks/nested-task-1",
         "/nested.png",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_comfly_documented_task_envelope_extracts_nested_base64_result() -> None:
+    image = _solid_png("comfly", "documented-task")
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/v1/images/generations":
+            return httpx.Response(
+                200,
+                json={
+                    "code": "success",
+                    "data": {"task_id": "documented-task-1", "status": "IN_PROGRESS"},
+                },
+            )
+        if request.url.path == "/v1/images/tasks/documented-task-1":
+            return httpx.Response(
+                200,
+                json={
+                    "code": "success",
+                    "data": {
+                        "task_id": "documented-task-1",
+                        "status": "SUCCESS",
+                        "data": {"data": [{"b64_json": base64.b64encode(image).decode("ascii")}]},
+                    },
+                },
+            )
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(client).generate(_image_request())
+
+    assert result.provider_task_id == "documented-task-1"
+    assert result.image_bytes == image
+    assert paths == [
+        "/v1/images/generations",
+        "/v1/images/tasks/documented-task-1",
     ]
 
 

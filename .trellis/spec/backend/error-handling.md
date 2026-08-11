@@ -152,6 +152,10 @@ The only permitted `response_kind` values are `json`, `raster`, and `other`.
   required 1024x1024 dimensions before returning `ImageGenerationResult`.
 - JSON URL, JSON Base64, and asynchronous task responses continue through their existing JSON
   decoder and output-host/download checks.
+- If a syntactically valid creation JSON envelope is structurally unsupported while extracting an
+  image representation, preserve only the already-allowlisted HTTP status and normalized response
+  kind on `ImageProviderRejectedError`. This distinguishes a provider's `200` JSON error/envelope
+  from a local output-validation failure without retaining its fields or content.
 - A direct raster result never schedules provider-rejection recovery or a brand-catalog fallback.
 - A true `ImageProviderRejectedError` may expose only integer HTTP status and the allowlisted
   response kind to the material-package warning event. Do not persist or log raw bodies, prompts,
@@ -164,6 +168,7 @@ The only permitted `response_kind` values are `json`, `raster`, and `other`.
 | 2xx allowed raster type, valid signature and 1024x1024 dimensions | Return success and persist generated image normally |
 | 2xx allowed raster type with invalid signature, dimensions, or byte size | `ImageOutputValidationError` with an allowlisted reason |
 | 2xx JSON URL/Base64/task envelope | Existing JSON behavior |
+| 2xx JSON envelope with no supported image/task representation | `ImageProviderRejectedError(http_status=200, response_kind="json")` |
 | 2xx non-raster non-JSON body | `ImageProviderRejectedError(http_status=200, response_kind="other")` |
 | 3xx/4xx provider response | `ImageProviderRejectedError` with safe status/kind when available |
 | 401/403, quota, rate limit, timeout, or 5xx | Existing typed authentication/quota/transient errors |
@@ -209,6 +214,101 @@ created = decode_json_envelope(response)
 
 The direct branch shares the existing byte/signature/dimension validation and the JSON branch stays
 unchanged.
+
+## Scenario: Documented Comfly gpt-image-2 task envelope
+
+### 1. Scope / Trigger
+
+This applies when changing the Comfly `gpt-image-2` creation payload or interpreting a JSON task
+response. The provider documentation defines a bounded field set and nests asynchronous result
+images below task metadata. Keeping undocumented creation fields or treating task metadata as an
+image causes false `image_provider_rejected` failures.
+
+### 2. Signatures
+
+```python
+POST /v1/images/generations
+GET /v1/images/tasks/{task_id}
+
+async def OpenAICompatibleImageGenerator.generate(
+    request: ImageGenerationRequest,
+) -> ImageGenerationResult: ...
+```
+
+### 3. Contracts
+
+- The creation JSON contains `model`, `prompt`, `size`, optional ordered `image`, and explicit
+  `response_format="b64_json"`. Do not send `aspect_ratio`, which is not in the published
+  `gpt-image-2` contract.
+- A completed documented task response is accepted only in this shape:
+
+  ```json
+  {
+    "data": {
+      "task_id": "safe-provider-id",
+      "status": "SUCCESS",
+      "data": {"data": [{"b64_json": "..."}]}
+    }
+  }
+  ```
+
+- Decode only the fixed documented nesting. Do not recursively scan arbitrary provider objects.
+  A queued task remains pending; a completed task without exactly one valid `url` or `b64_json`
+  remains a typed rejection. Provider bodies, temporary URLs, prompts, and credentials stay inside
+  the adapter.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+| --- | --- |
+| Creation payload has documented fields and direct `data[0].b64_json` | Decode and validate the 1024x1024 raster |
+| Task response has documented `data.data.data[0].b64_json` | Decode and validate the 1024x1024 raster |
+| Task is queued/pending and has no result | Continue bounded polling |
+| Completed task lacks one valid image representation | `ImageProviderRejectedError` with safe status/kind only |
+| HTTP 200 declares JSON but body is not parseable JSON | `ImageProviderRejectedError(http_status=200, response_kind="json")` |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the request explicitly asks for Base64, then a one-level direct or documented nested task
+  response decodes through the existing size/signature validation.
+- Base: a signed URL result follows the existing public-DNS and bounded-download rules.
+- Bad: send an undocumented `aspect_ratio`, accept a result from arbitrary nested `data` objects,
+  or expose the provider envelope while diagnosing a failure.
+
+### 6. Tests Required
+
+- Assert the Comfly payload includes `response_format="b64_json"`, retains `size="1024x1024"`,
+  and omits `aspect_ratio`.
+- Mock the exact documented `data.task_id` and `data.data.data[0].b64_json` response; assert one
+  task lookup produces a validated image with no URL download.
+- Keep malformed JSON-envelope tests proving only status and response kind escape the adapter.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+payload = {"model": model, "prompt": prompt, "size": "1024x1024", "aspect_ratio": "1:1"}
+task_id = created["task_id"]
+```
+
+This retains an undocumented parameter and misses the documented nested task ID.
+
+#### Correct
+
+```python
+payload = {
+    "model": model,
+    "prompt": prompt,
+    "size": "1024x1024",
+    "response_format": "b64_json",
+}
+task_id = first_value(created, "task_id", "id")
+result = extract_documented_task_image(completed)
+```
+
+The decoder accepts only known direct or documented nested image representations, then reuses the
+normal bounded raster validation path.
 
 ## Catching and logging
 
