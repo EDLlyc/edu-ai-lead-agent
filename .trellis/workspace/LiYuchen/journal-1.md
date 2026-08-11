@@ -728,3 +728,24 @@ Verified the committed Comfly direct-raster compatibility repair locally: direct
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: Verify and repair live Comfly image response handling
+
+**Date**: 2026-08-11
+**Task**: Verify and repair live Comfly image response handling
+**Branch**: `main`
+
+### Summary
+
+Confirmed Comfly request fields matched the published gpt-image-2 contract. The provider returned HTTP 200 JSON with one populated image representation and an empty alternate placeholder; the old parser treated simultaneous keys as ambiguous and raised image_provider_rejected. Updated the adapter to accept exactly one non-empty url or b64_json while rejecting dual, empty, null, and non-string values; added regression tests and synchronized backend specs. Real no-reference and content-driven calls saved valid 1024x1024 PNGs under output/imagegen without database or WeCom side effects. Backend/frontend checks, doctor, Compose config, and diff checks passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0d4c2a2` | (see git log) |
+
+### Status
+
+[OK] **Completed**
