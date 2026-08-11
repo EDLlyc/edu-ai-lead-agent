@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required backend lint, type, test, security, and cross-layer quality gates."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"No-migration persistence contract, durable issue history, and non-destructive deployment/rollback rules."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Safe structured logging for warning transitions, repair outcomes, and deployment evidence."}
+{"file":".trellis/tasks/archive/2026-08/08-10-relax-copy-delivery/prd.md","reason":"Earlier decision that quality warnings may continue while technical and policy boundaries remain hard."}

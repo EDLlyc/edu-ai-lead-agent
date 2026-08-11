@@ -269,9 +269,11 @@ deterministic, is excluded from body counts/format checks, and remains a hard in
 under local preview. Length, paragraph, emoji, and news-framing targets are quality guidance, not
 delivery blockers. Under the current recovery rules, ordinary parent-readability, tone/fluency,
 brand-fit, learning-value, brand-value, and hashtag-quality findings are also warning-only and may
-consume the same single repair. Privacy, prompt-injection echo, automatic publishing, prohibited
-marketing, education anxiety, unsafe-image instructions, unbound facts, evidence mismatch, and a
-missing or mismatched bound source footer remain hard technical errors.
+consume the same single repair. Under `preview-v9-content-warning-recovery`, privacy, prompt-injection
+echo, prohibited marketing, education anxiety, `claim_not_in_copy`, `source_note_unlinked`, and
+`unclaimed_external_fact` are also warning-only; detection and audit records remain persisted.
+Automatic publishing, unsafe-image instructions, unknown IDs, truly unbound facts, evidence
+mismatch, and a missing or mismatched bound source footer remain hard technical errors.
 
 Only a draft without deterministic errors proceeds to LLM audit; deterministic warnings proceed as
 well. The auditor judges parent readability,
@@ -393,13 +395,13 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
-  version is `preview-v8-quality-warning-recovery`. Earlier preview rule versions remain available for
+  version is `preview-v9-content-warning-recovery`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
   `moments-rules-v9-quality-warning-recovery`.
-- Current copy versions: generator `moments-generator-v14-quality-warning-recovery`, auditor
-  `moments-auditor-v14-quality-warning-recovery`, and pipeline
-  `copy-pipeline-v14-quality-warning-recovery`.
+- Current copy versions: generator `moments-generator-v15-content-warning-recovery`, auditor
+  `moments-auditor-v15-content-warning-recovery`, and pipeline
+  `copy-pipeline-v15-content-warning-recovery`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -412,14 +414,15 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   the claimed run's durable `CopyVersionBundle`. Perform this check before deterministic policy,
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
-- Preview-v1 and preview-v2 preserve their historical warning mappings. Under the current
-  `preview-v8-quality-warning-recovery` and strict
-  `moments-rules-v9-quality-warning-recovery` policies, only the explicit ordinary-quality
-  allowlist is warning-only: format, readability, tone, fluency, brand fit, learning-value
-  explanation, brand-value explanation, and hashtag quality. Privacy, prompt-injection echo,
-  automatic-publishing, prohibited marketing, education anxiety, unsafe-image instructions,
-  unbound facts, evidence-text mismatch, source-footer integrity, and unknown evidence/brand IDs
-  remain errors. The persisted audit verdict is always the policy-adjusted verdict.
+- Preview-v1, preview-v2, and preview-v8 preserve their historical warning mappings. Under the
+  current `preview-v9-content-warning-recovery` policy, the ordinary-quality allowlist remains
+  warning-only and privacy, prompt-injection echo, prohibited marketing, education anxiety,
+  `claim_not_in_copy`, `source_note_unlinked`, and `unclaimed_external_fact` are warning-only as
+  well. Detection and issue persistence remain active, and the existing one-repair budget still
+  applies. Under strict `moments-rules-v9-quality-warning-recovery`, those content findings remain
+  errors. Automatic-publishing, unsafe-image instructions, truly unbound facts, evidence-text
+  mismatch, source-footer integrity, and unknown evidence/brand IDs remain errors in every profile.
+  The persisted audit verdict is always the policy-adjusted verdict.
 - The copy body target is at most 300 CJK Hanzi, exactly three two-line paragraphs separated by
   one blank line, six to twelve emoji, and an emoji at the first/last boundary of every paragraph.
   The first paragraph must identify a news item. The executor then deterministically replaces or
@@ -440,9 +443,10 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Current preview audit returns ordinary brand/readability/tone/fluency/learning-value/hashtag quality issue | Persist warning; repair at most once, then accept when no hard error remains |
 | Current copy policy sees an ordinary format/readability/brand/tone/learning-value/hashtag issue | Persist warning; repair at most once, then continue when no hard issue remains |
-| Current copy policy sees privacy, injection, publishing, prohibited marketing, anxiety, unsafe-image, evidence, or source-integrity issue | Keep error; repair once if applicable, otherwise finish `review_required` |
+| Current `preview-v9-content-warning-recovery` policy sees privacy, injection echo, prohibited marketing, anxiety, `claim_not_in_copy`, `source_note_unlinked`, or `unclaimed_external_fact` | Persist warning; repair at most once, then continue when no hard error remains |
+| Current copy policy sees automatic publishing, unsafe-image, truly unbound facts, evidence mismatch, or source-integrity issue | Keep error; repair once if applicable, otherwise finish `review_required` |
 | Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
-| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Keep `prohibited_marketing` error under every profile |
+| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Persist `prohibited_marketing` as a warning under `preview-v9-content-warning-recovery`; keep it as an error under strict and historical policies |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
 | Manual API requests `preview` while server default is strict | Persist preview rule version/fingerprint |
 | Generator/auditor returns a different provider or model than the claimed bundle | Fail closed with non-retryable `provider_identity_mismatch`; do not persist the mismatched draft/audit |

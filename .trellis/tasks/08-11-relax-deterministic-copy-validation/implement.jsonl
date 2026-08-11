@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Copy deterministic validation, bounded repair, warning/error policy, version bundle, and delivery acceptance contract."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed distinction between content policy outcomes, retryable provider failures, and terminal technical failures."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Date-scoped eligibility, idempotent job creation, and provider delivery contract after package acceptance."}
+{"file":".trellis/tasks/archive/2026-08/08-10-relax-copy-image-quality-retry-fallback/prd.md","reason":"Prior production quality-warning and bounded image-recovery decisions that this task must preserve."}

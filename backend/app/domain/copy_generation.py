@@ -288,14 +288,20 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v6-local-relaxed",
         "preview-v7-local-news-source-footer",
         "preview-v8-quality-warning-recovery",
+        "preview-v9-content-warning-recovery",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
     {"preview-v6-local-relaxed", "preview-v7-local-news-source-footer"}
 )
 _QUALITY_WARNING_RULE_VERSIONS = frozenset(
-    {"moments-rules-v9-quality-warning-recovery", "preview-v8-quality-warning-recovery"}
+    {
+        "moments-rules-v9-quality-warning-recovery",
+        "preview-v8-quality-warning-recovery",
+        "preview-v9-content-warning-recovery",
+    }
 )
+_PREVIEW_CONTENT_WARNING_RULE_VERSIONS = frozenset({"preview-v9-content-warning-recovery"})
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
         {
@@ -333,6 +339,19 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
             "incomplete_sentence",
             "claim_not_in_copy",
             "source_note_unlinked",
+        }
+    ),
+    "preview-v9-content-warning-recovery": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+            "unclaimed_external_fact",
+            "personal_data",
+            "prompt_injection_echo",
+            "prohibited_marketing",
+            "education_anxiety",
         }
     ),
 }
@@ -391,6 +410,29 @@ COPY_QUALITY_WARNING_CODES = frozenset(
 COPY_FORMAT_REPAIR_CODES = COPY_FORMAT_ADVISORY_CODES
 COPY_QUALITY_REPAIR_CODES = COPY_QUALITY_WARNING_CODES
 _COPY_ADVISORY_AUDIT_CODES = COPY_QUALITY_WARNING_CODES
+COPY_CONTENT_WARNING_CODES = frozenset(
+    {
+        "claim_not_in_copy",
+        "source_note_unlinked",
+        "unclaimed_external_fact",
+        "personal_data",
+        "personal_information",
+        "privacy",
+        "privacy_issue",
+        "prompt_injection_echo",
+        "prompt_injection",
+        "prompt_echo",
+        "instruction_echo",
+        "prohibited_marketing",
+        "exaggeration",
+        "marketing_exaggeration",
+        "marketing_expression",
+        "promotional_language",
+        "education_anxiety",
+        "education_anxiety_language",
+        "anxiety_inducing_language",
+    }
+)
 _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     {
         "brand_fit",
@@ -412,6 +454,14 @@ _PREVIEW_AUDIT_WARNING_CODES = frozenset(
     }
 )
 _REQUIRED_HASHTAG = "#赛先生科学"
+
+
+def copy_repair_codes_for_rule(rule_version: str | None) -> frozenset[str]:
+    """Return the bounded repair allowlist for a persisted copy policy."""
+
+    if rule_version in _PREVIEW_CONTENT_WARNING_RULE_VERSIONS:
+        return COPY_QUALITY_REPAIR_CODES | COPY_CONTENT_WARNING_CODES
+    return COPY_QUALITY_REPAIR_CODES
 
 
 def validate_material_draft(
@@ -707,15 +757,20 @@ def apply_copy_audit_policy(
         rule_version=rule_version,
     )
     quality_warning_policy = rule_version in _QUALITY_WARNING_RULE_VERSIONS
+    content_warning_policy = rule_version in _PREVIEW_CONTENT_WARNING_RULE_VERSIONS
     has_advisory_issue = quality_warning_policy and any(
         issue.code in _COPY_ADVISORY_AUDIT_CODES for issue in verdict.issues
     )
-    if not uses_preview and not has_advisory_issue:
+    has_content_warning = content_warning_policy and any(
+        issue.code in COPY_CONTENT_WARNING_CODES for issue in verdict.issues
+    )
+    if not uses_preview and not has_advisory_issue and not has_content_warning:
         return verdict
     issues = tuple(
         issue.model_copy(update={"severity": "warning"})
         if (quality_warning_policy and issue.code in _COPY_ADVISORY_AUDIT_CODES)
         or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
+        or (content_warning_policy and issue.code in COPY_CONTENT_WARNING_CODES)
         else issue
         for issue in verdict.issues
     )
