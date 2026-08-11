@@ -538,7 +538,8 @@ deterministic validation as if it were a network timeout.
 - Active local provider origin: `https://ai.comfly.org`; the model remains configurable and is
   currently `gpt-image-2`. The old `toapis` adapter remains an explicit rollback mode.
 - Comfly generate: `POST /v1/images/generations` with `model`, a validated bounded `prompt`,
-  `size=1024x1024`, `aspect_ratio=1:1`, and an optional ordered `image=[data:image/png;base64,...]`
+  `size=1024x1024`, `response_format=b64_json`, and an optional ordered
+  `image=[data:image/png;base64,...]`
   tuple containing approved local references. Each reference carries a role, asset ID, filename,
   checksum, and bytes in the provider-neutral request; private MinIO URLs and provider upload URLs
   are never sent. The default aggregate reference budget is 3 MiB (`IMAGE_REFERENCE_BUDGET_BYTES`),
@@ -576,11 +577,15 @@ deterministic validation as if it were a network timeout.
   (`disabled`/`fake`/`toapis`/`comfly`), `toapis_base_url`, `toapis_api_key`, `comfly_base_url`,
   `comfly_api_key`, `image_model`, `image_prompt_version`,
   `image_pipeline_version`, `image_max_attempts` (default 3, 1-6), `image_poll_initial_seconds`,
-  `image_poll_interval_seconds`, `image_provider_timeout_seconds` (default 120s),
-  `image_provider_window_seconds` (default 180s, 1-180), `image_max_download_bytes`
+  `image_poll_interval_seconds`, `image_provider_timeout_seconds` (default 300s, 1-300),
+  `image_provider_window_seconds` (default 300s, 2-300), `image_max_download_bytes`
   (1 KiB-50 MiB), `image_max_request_bytes`, `image_max_provider_response_bytes`,
   `image_max_reference_images` (default 3), `image_reference_budget_bytes` (default 3 MiB),
   `image_asset_manifest`, `image_selector_version`, and `image_selector_enabled`.
+- A material-package image call may outlive the `content_lease_seconds` value: the executor starts
+  its `content_heartbeat_seconds` loop before the provider call and renews the image lease while the
+  async request or polling is in progress. The heartbeat must remain shorter than the lease; a lost
+  heartbeat fences the result and prevents persistence of an image produced by a stale worker.
 - `image_enabled=True` with `image_provider_mode="disabled"` raises at startup; `toapis` mode
   requires a non-empty `TOAPIS_API_KEY` and pinned HTTPS `toapis_base_url`; `comfly` mode requires
   a non-empty `COMFLY_API_KEY` and an HTTPS `comfly_base_url` without credentials, query, or
@@ -598,7 +603,7 @@ deterministic validation as if it were a network timeout.
 | 401/403 or an explicit invalid-token response | Raise non-retryable provider authentication error; do not retry |
 | 429 or bounded transient 5xx | Retry within the configured attempt/window bounds; stop with a typed rate-limit/unavailable error |
 | Synchronous response has multiple images, malformed JSON, or unknown task status | Reject the provider result; never choose an arbitrary image |
-| 429/503 during polling | Honor `Retry-After`, retry within the configured provider window (180s by default) |
+| 429/503 during polling | Honor `Retry-After`, retry within the configured provider window (300s by default) |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
 | Selected references exceed count/byte bounds | Reject before the paid provider call; preserve the explicit fallback mode if a bounded single reference remains |
 | Active provider key missing or URL is not a valid HTTPS origin | Startup fails closed |

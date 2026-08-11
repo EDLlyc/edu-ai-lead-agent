@@ -1150,6 +1150,17 @@ def test_settings_use_a_provider_friendly_reference_budget_by_default() -> None:
 def test_image_provider_defaults_use_bounded_comfly_timeouts_and_retries() -> None:
     settings = Settings(_env_file=None)
 
-    assert settings.image_provider_timeout_seconds == 120.0
-    assert settings.image_provider_window_seconds == 180.0
+    assert settings.image_provider_timeout_seconds == 300.0
+    assert settings.image_provider_window_seconds == 300.0
     assert settings.image_max_attempts == 3
+
+
+def test_settings_accept_the_300_second_comfly_timeout_bounds() -> None:
+    settings = Settings(
+        _env_file=None,
+        image_provider_timeout_seconds=300,
+        image_provider_window_seconds=300,
+    )
+
+    assert settings.image_provider_timeout_seconds == 300.0
+    assert settings.image_provider_window_seconds == 300.0
