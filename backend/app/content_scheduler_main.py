@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import signal
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -37,14 +38,16 @@ async def run_content_scheduler() -> None:
     copy_repository = PostgresCopyGenerationRepository(create_session_factory(engine))
 
     async def reconcile() -> None:
+        now = datetime.now(UTC)
         run_id = await reconcile_daily_topic_selection(
             repository,
             settings,
-            now=datetime.now(UTC),
+            now=now,
         )
         if run_id is not None:
             logger.info("topic_selection_run_reconciled", run_id=str(run_id))
         created = await copy_repository.reconcile_ready_topics(
+            business_date=now.astimezone(ZoneInfo(settings.business_timezone)).date(),
             timezone=settings.business_timezone,
             scoring_profile=settings.content_scoring_profile,
             version_bundle=build_copy_version_bundle(settings),

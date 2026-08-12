@@ -87,8 +87,18 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
         scoring_profile=profile,
         version_bundle=build_copy_version_bundle(diagnostic_settings),
     )
+    assert (
+        await repository.claim(
+            worker_id="copy-provider-other-business-date-worker",
+            business_date=date(2097, 7, 31),
+            lease_seconds=60,
+            max_attempts=1,
+        )
+        is None
+    )
     diagnostic_claim = await repository.claim(
         worker_id="copy-provider-diagnostic-worker",
+        business_date=business_date,
         lease_seconds=60,
         max_attempts=1,
     )
@@ -152,6 +162,7 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
         )
         review_claim = await repository.claim(
             worker_id=f"copy-provider-review-worker-{index}",
+            business_date=business_date,
             lease_seconds=60,
             max_attempts=1,
         )
@@ -201,7 +212,9 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
         settings=settings,
     )
 
-    assert await executor.execute_next("copy-no-topic-worker")
+    assert await executor.execute_next(
+        "copy-no-topic-worker", now=datetime(2097, 7, 30, tzinfo=UTC)
+    )
     assert not await executor.execute_next("copy-no-topic-worker-replay")
 
     async with integration_context.session_factory() as session:

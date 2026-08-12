@@ -103,6 +103,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
     async def reconcile_ready_topics(
         self,
         *,
+        business_date: date,
         timezone: str,
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
@@ -124,6 +125,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                             ),
                         )
                         .where(
+                            DailyTopicSelectionModel.business_date == business_date,
                             DailyTopicSelectionModel.timezone == timezone,
                             DailyTopicSelectionModel.scoring_profile == scoring_profile,
                             DailyTopicSelectionModel.superseded_at.is_(None),
@@ -150,12 +152,18 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         return created
 
     async def claim(
-        self, *, worker_id: str, lease_seconds: int, max_attempts: int
+        self,
+        *,
+        worker_id: str,
+        business_date: date,
+        lease_seconds: int,
+        max_attempts: int,
     ) -> ClaimedCopyGenerationJob | None:
         async with self._session_factory() as session:
             return await _claim(
                 session,
                 worker_id=worker_id,
+                business_date=business_date,
                 lease_seconds=lease_seconds,
                 max_attempts=max_attempts,
             )
@@ -858,6 +866,7 @@ async def _claim(
     session: AsyncSession,
     *,
     worker_id: str,
+    business_date: date,
     lease_seconds: int,
     max_attempts: int,
 ) -> ClaimedCopyGenerationJob | None:
@@ -866,7 +875,9 @@ async def _claim(
         (
             await session.scalars(
                 select(CopyGenerationJobModel)
+                .join(CopyGenerationRunModel)
                 .where(
+                    CopyGenerationRunModel.business_date == business_date,
                     CopyGenerationJobModel.status == CopyJobStatus.RUNNING.value,
                     CopyGenerationJobModel.lease_expires_at < now,
                 )
@@ -890,7 +901,9 @@ async def _claim(
             run.completed_at = now if terminal else None
     job = await session.scalar(
         select(CopyGenerationJobModel)
+        .join(CopyGenerationRunModel)
         .where(
+            CopyGenerationRunModel.business_date == business_date,
             CopyGenerationJobModel.status.in_(
                 [CopyJobStatus.QUEUED.value, CopyJobStatus.RETRY_SCHEDULED.value]
             ),

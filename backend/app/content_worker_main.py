@@ -5,7 +5,9 @@ import os
 import signal
 import socket
 from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 import structlog
@@ -233,6 +235,7 @@ async def _worker_loop(
     cursor = 0
     while not stop.is_set():
         await copy_repository.reconcile_ready_topics(
+            business_date=datetime.now(UTC).astimezone(ZoneInfo(settings.business_timezone)).date(),
             timezone=settings.business_timezone,
             scoring_profile=settings.content_scoring_profile,
             version_bundle=build_copy_version_bundle(settings),

@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from app.application.ports.copy_generation import (
@@ -237,6 +238,7 @@ class FakeCopyRepository:
         self.provider_validation_issues: tuple[ProviderValidationIssue, ...] = ()
         self.persisted_draft_bundles: list[CopyVersionBundle] = []
         self.persisted_audit_bundles: list[CopyVersionBundle] = []
+        self.claim_business_dates: list[date] = []
 
     async def enqueue_for_daily_topic(self, **_kwargs: object) -> UUID:
         return RUN_ID
@@ -245,9 +247,10 @@ class FakeCopyRepository:
         return 0
 
     async def claim(
-        self, *, worker_id: str, lease_seconds: int, max_attempts: int
+        self, *, worker_id: str, business_date: date, lease_seconds: int, max_attempts: int
     ) -> ClaimedCopyGenerationJob | None:
-        assert worker_id and lease_seconds > 0 and max_attempts > 0
+        assert worker_id and business_date and lease_seconds > 0 and max_attempts > 0
+        self.claim_business_dates.append(business_date)
         claimed, self.claimed = self.claimed, None
         return claimed
 
@@ -637,6 +640,9 @@ async def test_valid_topic_generates_audits_and_accepts_one_draft() -> None:
 
     assert await executor.execute_next("copy-worker") is True
 
+    assert repository.claim_business_dates == [
+        datetime.now(UTC).astimezone(ZoneInfo("Asia/Shanghai")).date()
+    ]
     assert repository.status == "accepted"
     assert repository.repair_count == 0
     assert generator.calls == 1

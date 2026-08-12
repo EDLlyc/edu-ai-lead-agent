@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import structlog
 from langgraph.types import Checkpointer
@@ -151,9 +152,13 @@ class CopyGenerationExecutor:
             checkpointer=checkpointer,
         )
 
-    async def execute_next(self, worker_id: str) -> bool:
+    async def execute_next(self, worker_id: str, *, now: datetime | None = None) -> bool:
+        effective_now = now or datetime.now(UTC)
         claimed = await self._repository.claim(
             worker_id=worker_id,
+            business_date=effective_now.astimezone(
+                ZoneInfo(self._settings.business_timezone)
+            ).date(),
             lease_seconds=self._settings.content_lease_seconds,
             max_attempts=self._settings.content_max_attempts,
         )

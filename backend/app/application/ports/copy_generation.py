@@ -118,6 +118,7 @@ class CopyGenerationRepository(Protocol):
     async def reconcile_ready_topics(
         self,
         *,
+        business_date: date,
         timezone: str,
         scoring_profile: str,
         version_bundle: CopyVersionBundle,
@@ -126,7 +127,12 @@ class CopyGenerationRepository(Protocol):
     ) -> int: ...
 
     async def claim(
-        self, *, worker_id: str, lease_seconds: int, max_attempts: int
+        self,
+        *,
+        worker_id: str,
+        business_date: date,
+        lease_seconds: int,
+        max_attempts: int,
     ) -> ClaimedCopyGenerationJob | None: ...
 
     async def heartbeat(self, *, claimed: ClaimedCopyGenerationJob, lease_seconds: int) -> bool: ...

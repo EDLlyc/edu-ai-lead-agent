@@ -349,6 +349,17 @@ The auditor is not a retrieval tool and cannot add evidence from model memory. I
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
 configured maximum; exhaustion produces a terminal, reviewable run state.
 
+## Automatic daily copy boundary
+
+The content scheduler and content worker reconcile and claim copy-generation work only for the
+current `BUSINESS_TIMEZONE` date. This boundary applies to automatic work, including process
+startup and polling: a newly deployed worker must not backfill old selected topics merely because
+their current copy-version fingerprint is absent. Historical queued runs remain durable for audit
+and explicit, separately authorized recovery; they are not deleted, rewritten, or automatically
+claimed. Repository reconciliation filters `DailyTopicSelectionModel.business_date`, and claiming
+joins the durable copy run to apply the same date filter. Tests use an injected `now` value only
+where a non-current business date must be exercised deterministically.
+
 ## Preview quality projection
 
 The redacted preview manifest normalizes validation and audit records through one
