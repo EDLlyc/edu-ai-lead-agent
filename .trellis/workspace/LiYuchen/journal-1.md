@@ -791,3 +791,24 @@ Versioned Moments copy defaults to 180-240 Hanzi, 2-5 emoji, and 2-3 natural par
 ### Status
 
 [OK] **Completed**
+
+
+## Session 36: Deploy compact copy and daily boundary
+
+**Date**: 2026-08-12
+**Task**: Deploy compact copy and daily boundary
+**Branch**: `main`
+
+### Summary
+
+Deployed compact Moments copy defaults to the backend server and fixed automatic content replay so scheduler and worker only reconcile and claim the current Shanghai business date. Verified full backend tests, server health, zero historical running jobs, and no new WeCom delivery.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a2660dd` | (see git log) |
+
+### Status
+
+[OK] **Completed**
