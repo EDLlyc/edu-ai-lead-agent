@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
-- **Last Active**: 2026-08-11
+- **Total Sessions**: 35
+- **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~772 | Active |
+| `journal-1.md` | ~793 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-08-12 | Compact Moments copy defaults | `dbd2c42` | `main` |
 | 34 | 2026-08-11 | Deploy Comfly parser fix to backend server | `bc1d189` | `main` |
 | 33 | 2026-08-11 | Verify and repair live Comfly image response handling | `0d4c2a2` | `main` |
 | 32 | 2026-08-11 | Verify Comfly direct image response repair | `6c58689` | `main` |

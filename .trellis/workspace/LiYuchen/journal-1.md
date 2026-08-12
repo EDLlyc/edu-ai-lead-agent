@@ -770,3 +770,24 @@ Deployed local release a29588b to the existing backend runtime at 124.222.207.22
 ### Status
 
 [OK] **Completed**
+
+
+## Session 35: Compact Moments copy defaults
+
+**Date**: 2026-08-12
+**Task**: Compact Moments copy defaults
+**Branch**: `main`
+
+### Summary
+
+Versioned Moments copy defaults to 180-240 Hanzi, 2-5 emoji, and 2-3 natural paragraphs; verified a no-persistence Zhipu Smart Bus preview with one compression repair.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dbd2c42` | (see git log) |
+
+### Status
+
+[OK] **Completed**
