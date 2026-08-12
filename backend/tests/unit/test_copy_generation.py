@@ -666,12 +666,12 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v10-compact-content-warning-recovery"
+    assert preview.rule_version == "preview-v11-compact-content-warning-recovery"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v10-compact-warning-recovery"
-    assert manual_strict.rule_version == "moments-rules-v10-compact-warning-recovery"
-    assert manual_preview.rule_version == "preview-v10-compact-content-warning-recovery"
+    assert strict.rule_version == "moments-rules-v11-compact-warning-recovery"
+    assert manual_strict.rule_version == "moments-rules-v11-compact-warning-recovery"
+    assert manual_preview.rule_version == "preview-v11-compact-content-warning-recovery"
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -1830,7 +1830,7 @@ def test_current_preview_audit_content_warnings_do_not_downgrade_hard_boundaries
     normalized = apply_copy_audit_policy(
         verdict,
         scoring_profile="preview",
-        rule_version="preview-v10-compact-content-warning-recovery",
+        rule_version="preview-v11-compact-content-warning-recovery",
     )
 
     issue_by_code = {issue.code: issue for issue in normalized.issues}
@@ -1956,7 +1956,7 @@ def test_strict_rule_keeps_superlative_and_dangling_clause_blocking() -> None:
         "expected_sentence_severity",
     ),
     [
-        ("preview-v10-compact-content-warning-recovery", "warning", "warning", "warning"),
+        ("preview-v11-compact-content-warning-recovery", "warning", "warning", "warning"),
         ("preview-v9-content-warning-recovery", "warning", "warning", "warning"),
         ("preview-v8-quality-warning-recovery", "error", "error", "warning"),
         ("preview-v5-paragraph-emoji-advisory", "warning", "warning", "warning"),
@@ -2140,6 +2140,71 @@ def test_current_preview_downgrades_unclaimed_fact_but_not_unbound_fact() -> Non
     )
     unbound_by_code = {issue.code: issue for issue in unbound_issues}
     assert unbound_by_code["unbound_external_fact"].severity == "error"
+
+
+def test_system_owned_source_note_date_is_not_a_narrative_claim() -> None:
+    topic = _topic()
+    base = _contract_draft()
+    draft = base.model_copy(
+        update={
+            "source_note": "信息来源：科技日报，2026年8月10日发布。",
+        }
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="preview-v11-compact-content-warning-recovery",
+    )
+
+    assert "unbound_date" not in {issue.code for issue in issues}
+
+
+def test_current_preview_keeps_narrative_unbound_date_as_warning() -> None:
+    topic = _topic()
+    base = _contract_draft()
+    draft = base.model_copy(
+        update={
+            "copywriting": base.copywriting.replace(
+                "孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。",
+                "孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。2026年8月11日值得记住。",
+            )
+        }
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="preview-v11-compact-content-warning-recovery",
+    )
+
+    issue_by_code = {issue.code: issue for issue in issues}
+    assert issue_by_code["unbound_date"].severity == "warning"
+
+
+def test_strict_policy_keeps_narrative_unbound_date_blocking() -> None:
+    topic = _topic()
+    base = _contract_draft()
+    draft = base.model_copy(
+        update={
+            "copywriting": base.copywriting.replace(
+                "孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。",
+                "孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。2026年8月11日值得记住。",
+            )
+        }
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="moments-rules-v11-compact-warning-recovery",
+    )
+
+    issue_by_code = {issue.code: issue for issue in issues}
+    assert issue_by_code["unbound_date"].severity == "error"
 
 
 def test_numeric_fact_outside_claims_is_rejected() -> None:

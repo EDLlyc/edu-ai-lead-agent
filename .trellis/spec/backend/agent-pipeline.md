@@ -269,7 +269,7 @@ deterministic, is excluded from body counts/format checks, and remains a hard in
 under local preview. Length, paragraph, emoji, and news-framing targets are quality guidance, not
 delivery blockers. Under the current recovery rules, ordinary parent-readability, tone/fluency,
 brand-fit, learning-value, brand-value, and hashtag-quality findings are also warning-only and may
-consume the same single repair. Under `preview-v10-compact-content-warning-recovery`, privacy, prompt-injection
+consume the same single repair. Under `preview-v11-compact-content-warning-recovery`, privacy, prompt-injection
 echo, prohibited marketing, education anxiety, `claim_not_in_copy`, `source_note_unlinked`, and
 `unclaimed_external_fact` are also warning-only; detection and audit records remain persisted.
 Automatic publishing, unsafe-image instructions, unknown IDs, truly unbound facts, evidence
@@ -407,12 +407,12 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
-  version is `preview-v10-compact-content-warning-recovery`. Earlier preview rule versions remain available for
+  version is `preview-v11-compact-content-warning-recovery`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v10-compact-warning-recovery`.
+  `moments-rules-v11-compact-warning-recovery`.
 - Current copy versions: generator `moments-generator-v16-compact-moments`, auditor
-  `moments-auditor-v16-compact-moments`, and pipeline `copy-pipeline-v16-compact-moments`.
+  `moments-auditor-v16-compact-moments`, and pipeline `copy-pipeline-v17-compact-moments`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -426,11 +426,11 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
 - Preview-v1, preview-v2, and preview-v8 preserve their historical warning mappings. Under the
-  current `preview-v10-compact-content-warning-recovery` policy, the ordinary-quality allowlist remains
+  current `preview-v11-compact-content-warning-recovery` policy, the ordinary-quality allowlist remains
   warning-only and privacy, prompt-injection echo, prohibited marketing, education anxiety,
   `claim_not_in_copy`, `source_note_unlinked`, and `unclaimed_external_fact` are warning-only as
   well. Detection and issue persistence remain active, and the existing one-repair budget still
-  applies. Under strict `moments-rules-v10-compact-warning-recovery`, those content findings remain
+  applies. Under strict `moments-rules-v11-compact-warning-recovery`, those content findings remain
   errors. Automatic-publishing, unsafe-image instructions, truly unbound facts, evidence-text
   mismatch, source-footer integrity, and unknown evidence/brand IDs remain errors in every profile.
   The persisted audit verdict is always the policy-adjusted verdict.
@@ -455,10 +455,10 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Current preview audit returns ordinary brand/readability/tone/fluency/learning-value/hashtag quality issue | Persist warning; repair at most once, then accept when no hard error remains |
 | Current copy policy sees an ordinary format/readability/brand/tone/learning-value/hashtag issue | Persist warning; repair at most once, then continue when no hard issue remains |
-| Current `preview-v10-compact-content-warning-recovery` policy sees privacy, injection echo, prohibited marketing, anxiety, `claim_not_in_copy`, `source_note_unlinked`, or `unclaimed_external_fact` | Persist warning; repair at most once, then continue when no hard error remains |
+| Current `preview-v11-compact-content-warning-recovery` policy sees privacy, injection echo, prohibited marketing, anxiety, `claim_not_in_copy`, `source_note_unlinked`, `unclaimed_external_fact`, or `unbound_date` | Persist warning; repair at most once, then continue when no hard error remains |
 | Current copy policy sees automatic publishing, unsafe-image, truly unbound facts, evidence mismatch, or source-integrity issue | Keep error; repair once if applicable, otherwise finish `review_required` |
 | Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
-| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Persist `prohibited_marketing` as a warning under `preview-v10-compact-content-warning-recovery`; keep it as an error under strict and historical policies |
+| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Persist `prohibited_marketing` as a warning under `preview-v11-compact-content-warning-recovery`; keep it as an error under strict and historical policies |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
 | Manual API requests `preview` while server default is strict | Persist preview rule version/fingerprint |
 | Generator/auditor returns a different provider or model than the claimed bundle | Fail closed with non-retryable `provider_identity_mismatch`; do not persist the mismatched draft/audit |

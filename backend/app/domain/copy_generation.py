@@ -290,6 +290,7 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v8-quality-warning-recovery",
         "preview-v9-content-warning-recovery",
         "preview-v10-compact-content-warning-recovery",
+        "preview-v11-compact-content-warning-recovery",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
@@ -299,15 +300,18 @@ _QUALITY_WARNING_RULE_VERSIONS = frozenset(
     {
         "moments-rules-v9-quality-warning-recovery",
         "moments-rules-v10-compact-warning-recovery",
+        "moments-rules-v11-compact-warning-recovery",
         "preview-v8-quality-warning-recovery",
         "preview-v9-content-warning-recovery",
         "preview-v10-compact-content-warning-recovery",
+        "preview-v11-compact-content-warning-recovery",
     }
 )
 _PREVIEW_CONTENT_WARNING_RULE_VERSIONS = frozenset(
     {
         "preview-v9-content-warning-recovery",
         "preview-v10-compact-content-warning-recovery",
+        "preview-v11-compact-content-warning-recovery",
     }
 )
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
@@ -373,6 +377,21 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
             "prompt_injection_echo",
             "prohibited_marketing",
             "education_anxiety",
+            "unbound_date",
+        }
+    ),
+    "preview-v11-compact-content-warning-recovery": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+            "unclaimed_external_fact",
+            "personal_data",
+            "prompt_injection_echo",
+            "prohibited_marketing",
+            "education_anxiety",
+            "unbound_date",
         }
     ),
 }
@@ -632,7 +651,8 @@ def validate_material_draft(
     evidence_text = "\n".join(
         [topic.title or "", topic.summary or ""] + [item.exact_quote for item in topic.evidence]
     )
-    for date_token in set(_DATE.findall(all_output)):
+    narrative_output = "\n".join((draft.copywriting, draft.parent_takeaway, draft.interaction))
+    for date_token in set(_DATE.findall(narrative_output)):
         if date_token not in evidence_text and date_token != _business_date_zh(topic.business_date):
             issues.append(_issue("unbound_date", "文案日期不在已锁定事实证据中"))
 

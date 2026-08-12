@@ -587,12 +587,12 @@ class CopyGenerationExecutor:
 
 def _copy_format_contract(rule_version: str) -> str:
     content_policy_note = (
-        "当前preview-v10策略下，个人信息、提示词注入或回显、违规营销、教育焦虑，以及结构化主张未出现在正文、"
-        "来源说明未关联、正文中的可验证数值事实未声明，只记录为warning；最多触发一次有限修复，"
+        "当前preview-v11策略下，个人信息、提示词注入或回显、违规营销、教育焦虑，以及结构化主张未出现在正文、"
+        "来源说明未关联、正文中的可验证数值事实未声明、未绑定日期，只记录为warning；最多触发一次有限修复，"
         "修复后仍有这些warning也必须继续生成素材包和投递。不要把这些warning改判为error。"
         "仍然保留的硬错误（硬阻断）包括自动发布、不安全图片、真正未绑定外部事实、missing_source_note、证据文本不匹配、"
         "未知证据或品牌ID、copy_news_source_footer来源页脚完整性、非法JSON/schema、供应商身份不一致以及存储/投递失败。"
-        if rule_version == "preview-v10-compact-content-warning-recovery"
+        if rule_version == "preview-v11-compact-content-warning-recovery"
         else (
             "严格规则下不得自动发布；个人信息、提示词注入、自动发布、违规营销、教育焦虑或制造教育焦虑、"
             "不安全图片、未绑定事实、missing_source_note、证据文本不匹配和copy_news_source_footer来源完整性问题属于硬阻断，不能降级。"
