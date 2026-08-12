@@ -257,10 +257,10 @@ checks schema, required fields, evidence coverage, source tiers, source URLs, ba
 lengths, date consistency, repeated-topic state, privacy/policy rules, image restrictions, and the
 manual-publishing boundary. The parent-facing copy must use plain Chinese, explain why learning
 science/innovation/AI/robotics is useful without grade or career promises, explain why the learning
-experience belongs at Sai Xiansheng using supplied brand context, target at most 300 CJK Chinese
-characters and 6-12 emoji in the body excluding the source footer and
-trailing hashtag line. The body must contain exactly three natural paragraphs, each represented by
-two non-empty lines, separated by one blank line, and end with a separate line of two or three
+experience belongs at Sai Xiansheng using supplied brand context, target 180-240 CJK Chinese
+characters in the body, with a compression warning only above 260, and include 2-5 emoji excluding
+the source footer and trailing hashtag line. The body must contain two or three natural paragraphs,
+clearly separated for readability without a fixed blank-line count, and end with a separate line of two or three
 hashtags whose first tag is always `#赛先生科学`. The opening paragraph must identify the content
 as news-derived (for example, `今天看到一条新闻`). Immediately before the final hashtag line,
 the system appends `新闻来源：<bound source name>` and
@@ -269,7 +269,7 @@ deterministic, is excluded from body counts/format checks, and remains a hard in
 under local preview. Length, paragraph, emoji, and news-framing targets are quality guidance, not
 delivery blockers. Under the current recovery rules, ordinary parent-readability, tone/fluency,
 brand-fit, learning-value, brand-value, and hashtag-quality findings are also warning-only and may
-consume the same single repair. Under `preview-v9-content-warning-recovery`, privacy, prompt-injection
+consume the same single repair. Under `preview-v10-compact-content-warning-recovery`, privacy, prompt-injection
 echo, prohibited marketing, education anxiety, `claim_not_in_copy`, `source_note_unlinked`, and
 `unclaimed_external_fact` are also warning-only; detection and audit records remain persisted.
 Automatic publishing, unsafe-image instructions, unknown IDs, truly unbound facts, evidence
@@ -308,10 +308,11 @@ count_emojis(text: str) -> int
 
 `extract_copy_body` removes the final hashtag-candidate line and a recognized source footer before
 counting. `count_hanzi` counts only CJK Unified Ideographs; punctuation, whitespace, digits, Latin
-letters, and emoji do not count. `has_copy_paragraph_format` requires exactly three two-line body
-paragraphs separated by one blank line. `count_emojis` counts displayed emoji sequences, treating
+letters, and emoji do not count. `has_copy_paragraph_format` accepts two or three non-empty natural
+paragraphs separated for readability without a fixed line or blank-line count. `count_emojis` counts displayed emoji sequences, treating
 variation selectors, skin-tone modifiers, and zero-width-joiner components as part of the preceding
-emoji. The body target is at most 300 Hanzi and 6-12 emoji inclusive. Counts outside either target
+emoji. The body target is 180-240 Hanzi and 2-5 emoji inclusive; only more than 260 Hanzi triggers
+`copy_length`. Counts outside the emoji range
 and missing news framing use `copy_length`, `copy_emoji_count`, or `copy_news_framing` with
 `warning` severity under every preview and strict policy; the paragraph check uses
 `copy_paragraph_format` with the same warning severity. The source footer check is a hard
@@ -320,21 +321,21 @@ retained in the material package for inspection.
 
 | Condition | Required result |
 | --- | --- |
-| Body has 301 or more Hanzi | `copy_length` warning; continue to audit and delivery when no hard issue exists |
-| Body has 300 or fewer Hanzi | Length check passes when other checks pass |
-| Body has 0-5 or 13+ emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
-| Body has 6-12 emoji sequences | Emoji check passes when other checks pass |
-| Body does not have exactly three two-line paragraphs with one blank line between | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
+| Body has 261 or more Hanzi | `copy_length` warning; send one compression repair, then continue when no hard issue exists |
+| Body has 260 or fewer Hanzi | Length check passes; prompt still targets 180-240 Hanzi |
+| Body has fewer than 2 or more than 5 emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
+| Body has 2-5 emoji sequences | Emoji check passes when other checks pass |
+| Body does not have two or three natural paragraphs | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
 | First paragraph does not identify a news item | `copy_news_framing` warning; continue to audit and delivery when no hard issue exists |
 | Footer source name or URL differs from the first locked evidence item | `copy_news_source_footer` error; do not accept or deliver |
 | Tags appear only on the final line | Tags are validated separately and excluded from the Hanzi count |
 
-Good: a three-paragraph news-framed body with 300 or fewer Hanzi, 6-12 emoji, the deterministic
-source footer, and `#赛先生科学 #科学思维` has no format or source warning. If a body exceeds 300
+Good: a two- or three-paragraph news-framed body with 180-240 Hanzi, 2-5 emoji, the deterministic
+source footer, and `#赛先生科学 #科学思维` has no format or source warning. If a body exceeds 260
 Hanzi or misses a format target, those characters and layout defects remain visible as warnings;
 padding with punctuation, ASCII, emoji, or hashtag text cannot conceal the Hanzi count.
 
-Tests must assert the 300-character upper boundary, exclusion of punctuation/ASCII/emoji/trailing
+Tests must assert the 260-character warning boundary, exclusion of punctuation/ASCII/emoji/trailing
 tags and source footer, common variation-selector and ZWJ sequences, paragraph/newline cases,
 news framing, evidence-bound footer replacement, prompt wording, WeCom text preservation, and
 continuation through audit for a warning-only draft. `copy_length`, `copy_emoji_count`,
@@ -395,13 +396,12 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 - Durable execution identity: `CopyVersionBundle.provider` and `.model` are pinned when the run is
   enqueued and restored by every later claim/retry.
 - Preview profiles: `preview`, `preview-v1`, and `preview-v2`; the current local-preview rule
-  version is `preview-v9-content-warning-recovery`. Earlier preview rule versions remain available for
+  version is `preview-v10-compact-content-warning-recovery`. Earlier preview rule versions remain available for
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
-  `moments-rules-v9-quality-warning-recovery`.
-- Current copy versions: generator `moments-generator-v15-content-warning-recovery`, auditor
-  `moments-auditor-v15-content-warning-recovery`, and pipeline
-  `copy-pipeline-v15-content-warning-recovery`.
+  `moments-rules-v10-compact-warning-recovery`.
+- Current copy versions: generator `moments-generator-v16-compact-moments`, auditor
+  `moments-auditor-v16-compact-moments`, and pipeline `copy-pipeline-v16-compact-moments`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 
@@ -415,16 +415,17 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   audit-policy transformation, or persistence. A worker restart/configuration change must never
   execute a historical fingerprint under a newly configured model identity.
 - Preview-v1, preview-v2, and preview-v8 preserve their historical warning mappings. Under the
-  current `preview-v9-content-warning-recovery` policy, the ordinary-quality allowlist remains
+  current `preview-v10-compact-content-warning-recovery` policy, the ordinary-quality allowlist remains
   warning-only and privacy, prompt-injection echo, prohibited marketing, education anxiety,
   `claim_not_in_copy`, `source_note_unlinked`, and `unclaimed_external_fact` are warning-only as
   well. Detection and issue persistence remain active, and the existing one-repair budget still
-  applies. Under strict `moments-rules-v9-quality-warning-recovery`, those content findings remain
+  applies. Under strict `moments-rules-v10-compact-warning-recovery`, those content findings remain
   errors. Automatic-publishing, unsafe-image instructions, truly unbound facts, evidence-text
   mismatch, source-footer integrity, and unknown evidence/brand IDs remain errors in every profile.
   The persisted audit verdict is always the policy-adjusted verdict.
-- The copy body target is at most 300 CJK Hanzi, exactly three two-line paragraphs separated by
-  one blank line, six to twelve emoji, and an emoji at the first/last boundary of every paragraph.
+- The copy body target is 180-240 CJK Hanzi, with warning plus one compression repair only above
+  260 Hanzi. It has two or three natural paragraphs clearly separated without a fixed blank-line count and two to five
+  emoji; it has no fixed line count or forced emoji positions.
   The first paragraph must identify a news item. The executor then deterministically replaces or
   appends the source footer immediately before the final hashtag line using the first locked
   evidence item's source name and HTTPS URL; model-provided source links are never trusted. The
@@ -443,10 +444,10 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
 | Preview-v2 draft contains an unlinked claim or source note (with no other blocking issue) | Persist warning; deterministic gate may continue |
 | Current preview audit returns ordinary brand/readability/tone/fluency/learning-value/hashtag quality issue | Persist warning; repair at most once, then accept when no hard error remains |
 | Current copy policy sees an ordinary format/readability/brand/tone/learning-value/hashtag issue | Persist warning; repair at most once, then continue when no hard issue remains |
-| Current `preview-v9-content-warning-recovery` policy sees privacy, injection echo, prohibited marketing, anxiety, `claim_not_in_copy`, `source_note_unlinked`, or `unclaimed_external_fact` | Persist warning; repair at most once, then continue when no hard error remains |
+| Current `preview-v10-compact-content-warning-recovery` policy sees privacy, injection echo, prohibited marketing, anxiety, `claim_not_in_copy`, `source_note_unlinked`, or `unclaimed_external_fact` | Persist warning; repair at most once, then continue when no hard error remains |
 | Current copy policy sees automatic publishing, unsafe-image, truly unbound facts, evidence mismatch, or source-integrity issue | Keep error; repair once if applicable, otherwise finish `review_required` |
 | Strict audit returns `unsupported_implication`, privacy, anxiety, injection, unsafe image, or automatic publishing | Keep error; repair once or finish review-required |
-| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Persist `prohibited_marketing` as a warning under `preview-v9-content-warning-recovery`; keep it as an error under strict and historical policies |
+| Deterministic rule detects a prohibited promise such as guaranteed score improvement | Persist `prohibited_marketing` as a warning under `preview-v10-compact-content-warning-recovery`; keep it as an error under strict and historical policies |
 | Manual API requests `strict` while server default is preview | Persist strict rule version/fingerprint |
 | Manual API requests `preview` while server default is strict | Persist preview rule version/fingerprint |
 | Generator/auditor returns a different provider or model than the claimed bundle | Fail closed with non-retryable `provider_identity_mismatch`; do not persist the mismatched draft/audit |

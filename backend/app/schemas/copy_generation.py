@@ -123,17 +123,13 @@ def extract_copy_paragraphs(text: str) -> tuple[str, ...]:
 
 
 def has_copy_paragraph_format(text: str) -> bool:
-    """Require the exact three-paragraph, two-line copy body shape."""
-    lines = extract_copy_paragraphs(text)
-    if len(lines) != 8 or lines[2].strip() or lines[5].strip():
-        return False
-    paragraphs = ((lines[0], lines[1]), (lines[3], lines[4]), (lines[6], lines[7]))
-    return all(
-        all(line.strip() for line in paragraph)
-        and _starts_with_emoji(paragraph[0])
-        and _ends_with_emoji(paragraph[1])
-        for paragraph in paragraphs
+    """Accept a readable two- or three-paragraph copy body without line-shape rules."""
+    paragraphs = tuple(
+        paragraph.strip()
+        for paragraph in re.split(r"\n\s*\n", extract_copy_body(text).strip())
+        if paragraph.strip()
     )
+    return 2 <= len(paragraphs) <= 3
 
 
 def count_hanzi(text: str) -> int:

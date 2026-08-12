@@ -165,16 +165,14 @@ class DeterministicFakeMaterialDraftGenerator:
     async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
         evidence = request.topic.evidence[0]
         brand = request.brand_context[0]
-        fact = _bounded_sentence(evidence.exact_quote, 120)
+        fact = _bounded_sentence(evidence.exact_quote, 72)
         brand_statement = "赛先生重视科学精神、好奇心、思考力和创造力。"
-        opinion = "这也提醒我们，和孩子一起理解技术、提出问题，比追逐概念更有价值。"
+        opinion = "孩子学科学，不只是记住概念，更是在真实问题里学会观察、提问和动手想办法。"
         body = (
-            f"📚今天看到一条新闻：{fact}\n"
-            "孩子从真实问题开始观察技术，才会把陌生名词变成理解世界的线索。🔎\n\n"
-            f"🤖 {opinion}\n"
-            "科学学习的价值不只在答案，而在提问、找证据和动手验证想法。💡\n\n"
-            f"✨ {brand_statement}\n"
-            "在赛先生，孩子会观察、实践、复盘，把好奇心慢慢变成解决问题的能力。🚀"
+            f"📰今天看到一条新闻：{fact}\n"
+            f"{opinion}🔍\n\n"
+            f"在赛先生，{brand_statement}老师不会急着给答案，而是陪孩子观察、实践、复盘，"
+            "把好奇心慢慢变成解决问题的能力。🌱"
         )
         copywriting = append_copy_news_source_footer(
             f"{body}\n#赛先生科学 #人工智能启蒙 #科学思维",

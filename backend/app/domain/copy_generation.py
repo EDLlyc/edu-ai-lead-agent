@@ -289,6 +289,7 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v7-local-news-source-footer",
         "preview-v8-quality-warning-recovery",
         "preview-v9-content-warning-recovery",
+        "preview-v10-compact-content-warning-recovery",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
@@ -297,11 +298,18 @@ _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
 _QUALITY_WARNING_RULE_VERSIONS = frozenset(
     {
         "moments-rules-v9-quality-warning-recovery",
+        "moments-rules-v10-compact-warning-recovery",
         "preview-v8-quality-warning-recovery",
         "preview-v9-content-warning-recovery",
+        "preview-v10-compact-content-warning-recovery",
     }
 )
-_PREVIEW_CONTENT_WARNING_RULE_VERSIONS = frozenset({"preview-v9-content-warning-recovery"})
+_PREVIEW_CONTENT_WARNING_RULE_VERSIONS = frozenset(
+    {
+        "preview-v9-content-warning-recovery",
+        "preview-v10-compact-content-warning-recovery",
+    }
+)
 _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
     "preview-v1": frozenset(
         {
@@ -342,6 +350,19 @@ _PREVIEW_DETERMINISTIC_WARNING_CODES_BY_VERSION = {
         }
     ),
     "preview-v9-content-warning-recovery": frozenset(
+        {
+            "unverified_superlative",
+            "incomplete_sentence",
+            "claim_not_in_copy",
+            "source_note_unlinked",
+            "unclaimed_external_fact",
+            "personal_data",
+            "prompt_injection_echo",
+            "prohibited_marketing",
+            "education_anxiety",
+        }
+    ),
+    "preview-v10-compact-content-warning-recovery": frozenset(
         {
             "unverified_superlative",
             "incomplete_sentence",
@@ -478,21 +499,21 @@ def validate_material_draft(
     brand_by_id = {item.chunk_id: item for item in brand_context}
     copy_body = extract_copy_body(draft.copywriting)
     hanzi_count = count_hanzi(copy_body)
-    if hanzi_count > 300:
+    if hanzi_count > 260:
         issues.append(
             _issue(
                 "copy_length",
-                f"朋友圈正文汉字数为{hanzi_count}，目标为不超过300个（不含标签、标点、空格、数字、英文和emoji）",
+                f"朋友圈正文汉字数为{hanzi_count}，目标为180到240个，超过260个才需压缩（不含标签、标点、空格、数字、英文和emoji）",
                 field="copywriting",
                 severity="warning",
             )
         )
     emoji_count = count_emojis(copy_body)
-    if not 6 <= emoji_count <= 12:
+    if not 2 <= emoji_count <= 5:
         issues.append(
             _issue(
                 "copy_emoji_count",
-                f"朋友圈正文emoji目标为6到12个，当前为{emoji_count}个",
+                f"朋友圈正文emoji目标为2到5个，当前为{emoji_count}个",
                 field="copywriting",
                 severity="warning",
             )
@@ -501,7 +522,7 @@ def validate_material_draft(
         issues.append(
             _issue(
                 "copy_paragraph_format",
-                "朋友圈正文主体必须恰好3个自然段，每段恰好2行非空手工文字，段间恰好1个空白行，且每段首尾必须是emoji",
+                "朋友圈正文主体应自然分为2到3个段落，每段使用完整自然句；不强制固定行数、空行数量或emoji位置",
                 field="copywriting",
                 severity="warning",
             )
