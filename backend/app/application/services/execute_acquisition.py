@@ -28,11 +28,17 @@ from app.core.errors import (
 from app.domain.editorial_relevance import (
     EDITORIAL_CONTENT_CHARACTER_LIMIT,
     PRODUCT_MATRIX_FIT_RULE_VERSION,
+    PRODUCT_MATRIX_FIT_V2_RULE_VERSION,
     SCIENCE_AI_EDUCATION_RULE_VERSION,
+    SCIENCE_TECH_EDITORIAL_RULE_VERSION,
     ProductMatrixFitResult,
     ScienceAiEducationResult,
+    ScienceTechEditorialCohort,
+    ScienceTechEditorialResult,
     evaluate_product_matrix_fit,
+    evaluate_product_matrix_fit_v2,
     evaluate_science_ai_education_relevance,
+    evaluate_science_tech_editorial_relevance,
 )
 from app.domain.entities import DiscoveredItem
 from app.domain.enums import JobStatus, ObservationOutcome
@@ -56,6 +62,12 @@ logger = structlog.get_logger()
 @dataclass(frozen=True, slots=True)
 class _EditorialDiscoveryEvaluation:
     relevance: ScienceAiEducationResult
+    product_fit: ProductMatrixFitResult
+
+
+@dataclass(frozen=True, slots=True)
+class _TieredDiscoveryEvaluation:
+    relevance: ScienceTechEditorialResult
     product_fit: ProductMatrixFitResult
 
 
@@ -96,6 +108,9 @@ class AcquisitionExecutor:
         scanned_count = 0
         relevant_count = 0
         deferred_relevant_count = 0
+        education_title_count = 0
+        frontier_title_count = 0
+        neutral_probe_count = 0
         job_outcome = "succeeded"
         heartbeat_stop = asyncio.Event()
         lease_lost = asyncio.Event()
@@ -161,6 +176,7 @@ class AcquisitionExecutor:
                         TitleRelevanceResult
                         | ScienceRelevanceResult
                         | _EditorialDiscoveryEvaluation
+                        | _TieredDiscoveryEvaluation
                         | None,
                     ]
                 ]
@@ -260,6 +276,67 @@ class AcquisitionExecutor:
                     deferred_relevant_count = max(
                         0, len(editorial_title_matches) - accepted_title_matches
                     )
+                elif claimed.profile.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION:
+                    tiered_items = [
+                        (
+                            item,
+                            _TieredDiscoveryEvaluation(
+                                relevance=evaluate_science_tech_editorial_relevance(item.title),
+                                product_fit=evaluate_product_matrix_fit_v2(item.title),
+                            ),
+                            index,
+                        )
+                        for index, item in enumerate(scanned_items)
+                    ]
+                    education_title_items = [
+                        row
+                        for row in tiered_items
+                        if row[1].relevance.cohort
+                        is ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY
+                    ]
+                    frontier_title_items = [
+                        row
+                        for row in tiered_items
+                        if row[1].relevance.cohort
+                        is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+                    ]
+                    neutral_title_items = [
+                        row
+                        for row in tiered_items
+                        if row[1].relevance.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
+                    ]
+                    education_title_items.sort(key=_tiered_discovery_sort_key)
+                    frontier_title_items.sort(key=_tiered_discovery_sort_key)
+                    tiered_ordered_items = [
+                        *education_title_items,
+                        *frontier_title_items,
+                        *neutral_title_items,
+                    ]
+                    selected_tiered_items = tiered_ordered_items[:accepted_limit]
+                    accepted_items.extend(
+                        (item, evaluation) for item, evaluation, _index in selected_tiered_items
+                    )
+                    education_title_count = sum(
+                        evaluation.relevance.cohort
+                        is ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY
+                        for _item, evaluation, _index in selected_tiered_items
+                    )
+                    frontier_title_count = sum(
+                        evaluation.relevance.cohort
+                        is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+                        for _item, evaluation, _index in selected_tiered_items
+                    )
+                    neutral_probe_count = sum(
+                        evaluation.relevance.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
+                        for _item, evaluation, _index in selected_tiered_items
+                    )
+                    selected_title_candidates = education_title_count + frontier_title_count
+                    deferred_relevant_count = max(
+                        0,
+                        len(education_title_items)
+                        + len(frontier_title_items)
+                        - selected_title_candidates,
+                    )
                 else:
                     raise ParseError("relevance rule version is not installed")
 
@@ -272,6 +349,7 @@ class AcquisitionExecutor:
                         TitleRelevanceResult
                         | ScienceRelevanceResult
                         | _EditorialDiscoveryEvaluation
+                        | _TieredDiscoveryEvaluation
                         | None,
                     ]
                 ] = []
@@ -286,6 +364,7 @@ class AcquisitionExecutor:
                             None,
                             SCIENCE_RELEVANCE_RULE_VERSION,
                             SCIENCE_AI_EDUCATION_RULE_VERSION,
+                            SCIENCE_TECH_EDITORIAL_RULE_VERSION,
                         }:
                             freshness_filtered_count += 1
                             filtered_count += 1
@@ -298,6 +377,14 @@ class AcquisitionExecutor:
                             elif isinstance(relevance_value, _EditorialDiscoveryEvaluation):
                                 metadata = {
                                     **_editorial_relevance_metadata(
+                                        relevance_value.relevance,
+                                        relevance_value.product_fit,
+                                    ),
+                                    **metadata,
+                                }
+                            elif isinstance(relevance_value, _TieredDiscoveryEvaluation):
+                                metadata = {
+                                    **_tiered_editorial_relevance_metadata(
                                         relevance_value.relevance,
                                         relevance_value.product_fit,
                                     ),
@@ -339,6 +426,7 @@ class AcquisitionExecutor:
                     relevance_metadata: dict[str, object] = {}
                     science_relevance: ScienceRelevanceResult | None = None
                     editorial_relevance: ScienceAiEducationResult | None = None
+                    tiered_relevance: ScienceTechEditorialResult | None = None
                     if claimed.profile.relevance_rule_version == SCIENCE_RELEVANCE_RULE_VERSION:
                         science_relevance = evaluate_moe_science_relevance(
                             document.title, document.clean_text
@@ -355,6 +443,20 @@ class AcquisitionExecutor:
                         )
                         relevance_metadata = _editorial_relevance_metadata(
                             editorial_relevance,
+                            product_fit,
+                        )
+                    elif (
+                        claimed.profile.relevance_rule_version
+                        == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                    ):
+                        tiered_relevance = evaluate_science_tech_editorial_relevance(
+                            document.title, document.clean_text
+                        )
+                        product_fit = evaluate_product_matrix_fit_v2(
+                            document.title, document.clean_text
+                        )
+                        relevance_metadata = _tiered_editorial_relevance_metadata(
+                            tiered_relevance,
                             product_fit,
                         )
                     elif isinstance(relevance_value, TitleRelevanceResult):
@@ -410,9 +512,22 @@ class AcquisitionExecutor:
                             metadata=relevance_metadata,
                         )
                         continue
+                    if tiered_relevance is not None and not tiered_relevance.is_candidate:
+                        filtered_count += 1
+                        await self._repository.observe(
+                            claimed=claimed,
+                            source_item_id=item.source_item_id,
+                            outcome=ObservationOutcome.FILTERED,
+                            snapshot_id=snapshot_id,
+                            http_status=detail_response.status_code,
+                            metadata=relevance_metadata,
+                        )
+                        continue
                     if science_relevance is not None:
                         relevant_count += 1
                     if editorial_relevance is not None:
+                        relevant_count += 1
+                    if tiered_relevance is not None:
                         relevant_count += 1
                     persisted = await self._repository.save_candidate(
                         claimed=claimed,
@@ -489,6 +604,30 @@ class AcquisitionExecutor:
                                     0, len(scanned_items) - len(accepted_items)
                                 ),
                                 "content_character_limit": (EDITORIAL_CONTENT_CHARACTER_LIMIT),
+                            }
+                        )
+                        if relevant_count == 0:
+                            job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
+                    elif (
+                        claimed.profile.relevance_rule_version
+                        == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                    ):
+                        filter_metadata.update(
+                            {
+                                "science_tech_editorial_rule_version": (
+                                    SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                                ),
+                                "product_matrix_fit_rule_version": (
+                                    PRODUCT_MATRIX_FIT_V2_RULE_VERSION
+                                ),
+                                "education_title_count": education_title_count,
+                                "frontier_title_count": frontier_title_count,
+                                "neutral_probe_count": neutral_probe_count,
+                                "detail_probe_limit": accepted_limit,
+                                "deferred_detail_count": max(
+                                    0, len(scanned_items) - len(accepted_items)
+                                ),
+                                "content_character_limit": EDITORIAL_CONTENT_CHARACTER_LIMIT,
                             }
                         )
                         if relevant_count == 0:
@@ -772,6 +911,20 @@ def _editorial_discovery_sort_key(
     )
 
 
+def _tiered_discovery_sort_key(
+    row: tuple[DiscoveredItem, _TieredDiscoveryEvaluation, int],
+) -> tuple[float, float, float, int, str]:
+    item, evaluation, source_index = row
+    published_timestamp = item.published_at.timestamp() if item.published_at is not None else 0.0
+    return (
+        -evaluation.relevance.editorial_priority_score,
+        -evaluation.product_fit.score,
+        -published_timestamp,
+        source_index,
+        item.source_item_id,
+    )
+
+
 def _editorial_relevance_metadata(
     relevance: ScienceAiEducationResult,
     product_fit: ProductMatrixFitResult,
@@ -792,6 +945,51 @@ def _editorial_relevance_metadata(
         "matched_content_context_terms": list(relevance.matched_body_context_terms),
         "title_relevance_match": bool(relevance.matched_title_terms),
         "content_relevance_match": bool(relevance.matched_body_terms),
+        "product_matrix_fit_rule_version": product_fit.rule_version,
+        "product_matrix_fit_score": product_fit.score,
+        "product_matrix_direction_ids": list(product_fit.direction_ids),
+        "product_matrix_reason_codes": list(product_fit.reason_codes),
+        "product_matrix_title_direction_ids": list(product_fit.matched_title_direction_ids),
+        "product_matrix_content_direction_ids": list(product_fit.matched_body_direction_ids),
+        "content_character_limit": EDITORIAL_CONTENT_CHARACTER_LIMIT,
+        "content_characters_considered": relevance.body_characters_considered,
+        "content_truncated": relevance.body_truncated,
+    }
+
+
+def _tiered_editorial_relevance_metadata(
+    relevance: ScienceTechEditorialResult,
+    product_fit: ProductMatrixFitResult,
+) -> dict[str, object]:
+    return {
+        "relevance_rule_version": relevance.rule_version,
+        "science_tech_editorial_rule_version": relevance.rule_version,
+        "science_tech_candidate": relevance.is_candidate,
+        "editorial_cohort": relevance.cohort.value,
+        "editorial_priority_score": relevance.editorial_priority_score,
+        "education_relevance_score": relevance.education_relevance_score,
+        "frontier_significance_score": relevance.frontier_significance_score,
+        "editorial_reason_codes": list(relevance.reason_codes),
+        "matched_title_education_terms": list(relevance.matched_title_education_terms),
+        "matched_content_education_terms": list(relevance.matched_body_education_terms),
+        "matched_title_topic_terms": list(relevance.matched_title_topic_terms),
+        "matched_content_topic_terms": list(relevance.matched_body_topic_terms),
+        "matched_title_progress_terms": list(relevance.matched_title_progress_terms),
+        "matched_content_progress_terms": list(relevance.matched_body_progress_terms),
+        "matched_title_exclusion_terms": list(relevance.matched_title_exclusion_terms),
+        "matched_content_exclusion_terms": list(relevance.matched_body_exclusion_terms),
+        "title_relevance_match": relevance.is_candidate
+        and bool(
+            relevance.matched_title_education_terms
+            or relevance.matched_title_topic_terms
+            or relevance.matched_title_progress_terms
+        ),
+        "content_relevance_match": relevance.is_candidate
+        and bool(
+            relevance.matched_body_education_terms
+            or relevance.matched_body_topic_terms
+            or relevance.matched_body_progress_terms
+        ),
         "product_matrix_fit_rule_version": product_fit.rule_version,
         "product_matrix_fit_score": product_fit.score,
         "product_matrix_direction_ids": list(product_fit.direction_ids),

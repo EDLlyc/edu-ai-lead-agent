@@ -73,19 +73,19 @@ API、Scheduler 和 Worker 是独立进程。Scheduler 默认每天 `06:30 Asia/
 
 来源入口、HTTPS 主机/路径白名单、robots/条款复核、限速、解析器版本和标题相关性规则保存在版本化来源登记中。单个来源可以独立禁用；一个来源失败不会阻止其他来源完成。
 
-当前活动来源版本使用确定性的 `science-ai-education-v1` 中英双语规则。明确的科学教育、AI 教育、科学/AI 素养、STEM、科学探究或青少年科创表达可以进入候选；其他文本必须同时出现科学/AI 主题与教育、学习者、教师或实践场景。普通教育、纯科技产业新闻和泛 AI 标题会被过滤。`product-matrix-fit-v1` 只为六类产品方向提供软排序信号，绝不能改变资格或救回任何 veto。规则不调用 LLM、Embedding 或外部分类服务。
+当前活动来源版本使用确定性的 `science-tech-editorial-v2` 中英双语分层规则。科学/AI/科技教育、STEM、科学探究、白名单赛事、科技特长生、强基计划和综评等具备实质政策或培养语境的内容进入教育优先层；不含教育语境但同时具备具体科技主题与突破/发现/验证等进展信号的机器人、人工智能和重大科研成果进入前沿科技层。培训导流、保录保过、分数线聚合、融资营销、消费电子和普通企业公告不会仅凭关键词入选。`product-matrix-fit-v2-science-pathways` 仍只是六类产品方向的有上限软排序信号，绝不能创造资格或覆盖 veto。历史 `science-ai-education-v1` 与 `product-matrix-fit-v1` 保持可回放，所有规则均不调用 LLM、Embedding 或外部分类服务。
 
-采集器会先扫描一个有界的近期列表，优先请求标题已经命中范围的详情；标题信息不足时，仅用剩余条目窗口做有界中性详情探测，并在正文提取后用标题加最多 6000 个规范化正文字符重新判定。`ACQUISITION_FIRST_RUN_SCAN_LIMIT` / `ACQUISITION_DAILY_SCAN_LIMIT` 控制扫描深度，`ACQUISITION_FIRST_RUN_ITEM_LIMIT` / `ACQUISITION_DAILY_ITEM_LIMIT` 控制最多接收多少个合格条目；扫描上限必须大于或等于接收上限。零匹配来源会成功结束、记录过滤与探测计数并推进原始列表游标，不会用无关文章填满配额。
+`acquisition-v5-tiered-science-tech` 会先扫描有界近期列表，按教育标题、前沿突破标题、中性正文探测的顺序请求详情，同层内才使用产品适配、发布时间、原列表位置和稳定 ID 排序；正文提取后用标题加最多 6000 个规范化正文字符复核。`ACQUISITION_FIRST_RUN_SCAN_LIMIT` / `ACQUISITION_DAILY_SCAN_LIMIT` 控制扫描深度，`ACQUISITION_FIRST_RUN_ITEM_LIMIT` / `ACQUISITION_DAILY_ITEM_LIMIT` 控制详情探测窗口。零匹配来源会成功结束、记录三层计数及过滤/延后计数并推进原始列表游标，不会用无关文章填满配额。
 
 ## 查看采集结果
 
 候选列表直接提供后续工作流需要的来源、最新相关标题、发布时间和原文链接，同时保留候选 ID 与规则版本：
 
 ```bash
-curl 'http://127.0.0.1:8000/api/v1/evidence-candidates?relevance_rule_version=science-ai-education-v1&limit=20'
+curl 'http://127.0.0.1:8000/api/v1/evidence-candidates?relevance_rule_version=science-tech-editorial-v2&limit=20'
 ```
 
-`relevance_rule_version=science-ai-education-v1` 会把旧规则候选排除在当前下游队列之外，但旧记录仍可在不带该参数时用于审计和历史回放。重点字段为 `source_display_name`、`title`、`published_at` 和 `original_url`。使用返回的候选 ID 查询详情，可读取已存储的 `clean_text`、不可变快照元数据和 observation provenance；正常下游处理不需要再次访问原网站：
+`relevance_rule_version=science-tech-editorial-v2` 会把旧规则候选排除在当前下游队列之外，但旧记录仍可在不带该参数时用于审计和历史回放。重点字段为 `source_display_name`、`title`、`published_at` 和 `original_url`。使用返回的候选 ID 查询详情，可读取已存储的 `clean_text`、不可变快照元数据、内容层级/理由/产品方向和 observation provenance；正常下游处理不需要再次访问原网站：
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/evidence-candidates/<candidate-id>'

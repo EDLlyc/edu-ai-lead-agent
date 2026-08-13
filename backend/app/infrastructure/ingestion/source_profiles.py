@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from app.domain.editorial_relevance import SCIENCE_AI_EDUCATION_RULE_VERSION
+from app.domain.editorial_relevance import SCIENCE_TECH_EDITORIAL_RULE_VERSION
 from app.domain.enums import SourceTier
 from app.domain.value_objects import stable_key
 
@@ -28,7 +28,7 @@ class SourceSeed:
     language: str = "zh-CN"
     connector_version: str = "1.0.0"
     parser_version: str = "1.0.0"
-    relevance_rule_version: str | None = SCIENCE_AI_EDUCATION_RULE_VERSION
+    relevance_rule_version: str | None = SCIENCE_TECH_EDITORIAL_RULE_VERSION
     allow_http_fallback: bool = False
     topic_priority_policy: str | None = None
 

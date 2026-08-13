@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     acquisition_first_run_scan_limit: int = Field(default=100, ge=1, le=500)
     acquisition_daily_scan_limit: int = Field(default=50, ge=1, le=200)
     acquisition_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    acquisition_version: str = "acquisition-v4-science-education-fit"
+    acquisition_version: str = "acquisition-v5-tiered-science-tech"
 
     governance_enabled: bool = False
     governance_scheduler_enabled: bool = False
@@ -86,9 +86,9 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.5-science-education-product-fit"
+    content_scoring_version: str = "scoring-v1-preview.6-tiered-science-tech-priority"
     content_scoring_profile: str = "preview"
-    content_selection_priority_rule_version: str | None = None
+    content_selection_priority_rule_version: str | None = "ministry-education-priority-v3"
 
     wecom_enabled: bool = False
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com"

@@ -116,7 +116,7 @@ async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
         source.enabled is False and source.active_version_id is None for source in pending_sources
     )
     assert {version.relevance_rule_version for version in active_versions} == {
-        "science-ai-education-v1"
+        "science-tech-editorial-v2"
     }
     ministry = next(seed for seed in SOURCE_SEEDS if seed.slug == "moe-science-news")
     active_ministry = next(

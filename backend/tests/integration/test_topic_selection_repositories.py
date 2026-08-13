@@ -1,17 +1,29 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
-from uuid import uuid4
+from datetime import UTC, date, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
+from app.application.services.governance_graph import governance_graph_input
+from app.application.services.governance_runtime import build_governance_version_bundle
 from app.core.errors import ConflictError
+from app.domain.governance_enums import FactualCategory
+from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
+    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
     NoTopicCode,
     TopicScoringConfig,
     select_daily_topic,
 )
-from app.infrastructure.db.models import TopicSelectionJobModel
+from app.infrastructure.db.governance_repositories import create_governance_run_for_acquisition
+from app.infrastructure.db.models import (
+    AcquisitionJobModel,
+    EvidenceCandidateModel,
+    SourceObservationModel,
+    SourceSnapshotModel,
+    TopicSelectionJobModel,
+)
 from app.infrastructure.db.topic_selection import (
     claim_topic_selection_job,
     complete_topic_selection_job,
@@ -23,8 +35,12 @@ from app.infrastructure.db.topic_selection import (
     load_topic_candidates,
     persist_topic_selection_decision,
 )
+from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
 
 from .conftest import IntegrationContext
+from .governance_graph_support import FakeEmbeddingModel, FakeFactualAnalysisModel
+from .test_event_organization import _build_graph, _claim
+from .test_governance_repositories import _create_acquisition_fixture
 
 
 @pytest.mark.integration
@@ -239,3 +255,147 @@ async def test_expired_topic_job_stops_after_the_configured_attempt_limit(
     assert job.status == "failed"
     assert job.error_code == "max_attempts_exhausted"
     assert stored_run.status == "failed"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_ministry_policy_authenticates_from_source_version_and_round_trips_explanation(
+    integration_context: IntegrationContext,
+) -> None:
+    acquisition_run_id, candidate_ids = await _create_acquisition_fixture(
+        integration_context,
+        candidate_count=1,
+    )
+    candidate_id = candidate_ids[0]
+    ministry_seed = next(seed for seed in SOURCE_SEEDS if seed.slug == "moe-science-news")
+    now = datetime.now(UTC)
+    ministry_job_id = uuid4()
+    ministry_snapshot_id = uuid4()
+    ministry_observation_id = uuid4()
+    async with integration_context.session_factory() as session:
+        candidate = await session.get(EvidenceCandidateModel, candidate_id)
+        assert candidate is not None
+        candidate.title = "教育部报道人工智能教育课程实践成果"
+        candidate.clean_text = "教育部报道学校人工智能课程实践取得新成果。"
+        candidate.published_at = now
+        candidate.first_fetched_at = now
+        session.add(
+            AcquisitionJobModel(
+                id=ministry_job_id,
+                run_id=acquisition_run_id,
+                source_id=ministry_seed.source_id,
+                source_version_id=ministry_seed.source_version_id,
+                status="succeeded",
+                outcome="completed",
+                completed_at=now,
+            )
+        )
+        session.add(
+            SourceSnapshotModel(
+                id=ministry_snapshot_id,
+                provenance_key=uuid4().hex + uuid4().hex,
+                source_version_id=ministry_seed.source_version_id,
+                kind="detail",
+                original_url="https://www.moe.gov.cn/jyb_xwfb/ministry-priority-fixture.html",
+                final_url="https://www.moe.gov.cn/jyb_xwfb/ministry-priority-fixture.html",
+                bucket="fixture",
+                object_key=f"fixture/{ministry_snapshot_id}",
+                media_type="text/html",
+                byte_size=100,
+                sha256="e" * 64,
+                response_metadata={},
+                fetched_at=now,
+                connector_version=ministry_seed.connector_version,
+                parser_version=ministry_seed.parser_version,
+            )
+        )
+        await session.flush()
+        session.add(
+            SourceObservationModel(
+                id=ministry_observation_id,
+                idempotency_key=uuid4().hex + uuid4().hex,
+                run_id=acquisition_run_id,
+                job_id=ministry_job_id,
+                source_version_id=ministry_seed.source_version_id,
+                source_item_id="ministry-priority-fixture",
+                outcome="exact_duplicate",
+                snapshot_id=ministry_snapshot_id,
+                candidate_id=candidate_id,
+                observed_at=now,
+                observation_metadata={},
+            )
+        )
+        await session.commit()
+
+    bundle = build_governance_version_bundle(integration_context.settings)
+    async with integration_context.session_factory() as session:
+        await create_governance_run_for_acquisition(
+            session,
+            acquisition_run_id=acquisition_run_id,
+            bundle=bundle,
+            timezone="Asia/Shanghai",
+        )
+    claimed_governance = await _claim(
+        integration_context,
+        worker_id="topic-ministry-source-policy",
+    )
+    graph = _build_graph(
+        integration_context,
+        bundle=bundle,
+        analysis_model=FakeFactualAnalysisModel(
+            category=FactualCategory.AI_EDUCATION_POLICY,
+            entity_name="教育部",
+        ),
+        embedding_model=FakeEmbeddingModel(),
+        now=now,
+    )
+    graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+    event_id = graph_result["event_id"]
+    assert isinstance(event_id, UUID)
+
+    suffix = uuid4().hex[:12]
+    config = TopicScoringConfig(
+        profile=f"ministry-auth-{suffix}",
+        threshold=0.99,
+        selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    )
+    cutoff = now + timedelta(minutes=1)
+    async with integration_context.session_factory() as session:
+        topic_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=now.date(),
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=cutoff,
+        )
+        candidates = await load_topic_candidates(session, topic_run.id)
+        target = next(candidate for candidate in candidates if candidate.event_id == event_id)
+        assert target.topic_priority_policy == MOE_SCIENCE_TOP1_PRIORITY_POLICY
+        claimed_topic = await claim_topic_selection_job(
+            session,
+            run_id=topic_run.id,
+            worker_id="topic-ministry-source-policy",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed_topic is not None
+        decision = select_daily_topic((target,), as_of=cutoff, config=config)
+        assert decision.scores[0].passes_threshold is False
+        assert decision.scores[0].eligible is True
+        assert decision.scores[0].priority_applied is True
+        assert decision.scores[0].threshold_bypass_applied is True
+        assert await persist_topic_selection_decision(
+            session,
+            claimed=claimed_topic,
+            config=config,
+            decision=decision,
+        )
+        score_rows = await list_topic_score_rows(session, topic_run.id)
+
+    assert len(score_rows) == 1
+    stored = score_rows[0].score
+    assert stored.passes_threshold is False
+    assert stored.eligible is True
+    assert stored.explanation["topic_priority_policy"] == MOE_SCIENCE_TOP1_PRIORITY_POLICY
+    assert stored.explanation["priority_applied"] is True
+    assert stored.explanation["threshold_bypass_applied"] is True

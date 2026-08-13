@@ -12,6 +12,7 @@ from app.application.services.topic_selection import (
 )
 from app.core.config import Settings
 from app.core.errors import ConflictError
+from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.topic_selection import (
     DailyTopicDecision,
     TopicCandidate,
@@ -129,6 +130,13 @@ def _candidate() -> TopicCandidate:
         science_ai_education_eligible=True,
         science_ai_education_reason_codes=("science_ai_topic_with_education_context",),
         product_matrix_fit=1.0,
+        editorial_priority=1.0,
+        science_tech_editorial_cohort=(
+            ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY
+        ),
+        science_tech_education_relevance=1.0,
+        science_tech_editorial_reason_codes=("explicit_science_technology_education",),
+        product_matrix_fit_v2=1.0,
     )
 
 
@@ -150,8 +158,8 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.5-science-education-product-fit"
-    assert config.selection_priority_rule_version is None
+    assert config.version == "scoring-v1-preview.6-tiered-science-tech-priority"
+    assert config.selection_priority_rule_version == "ministry-education-priority-v3"
 
 
 @pytest.mark.asyncio

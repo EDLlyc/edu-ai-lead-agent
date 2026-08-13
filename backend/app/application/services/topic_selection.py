@@ -13,17 +13,35 @@ from app.application.ports.topic_selection import (
 )
 from app.core.config import Settings
 from app.core.errors import ConflictError, TopicSelectionLeaseLostError
-from app.domain.topic_selection import TopicScoringConfig, select_daily_topic
+from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERSION
+from app.domain.topic_selection import (
+    DEFAULT_TOPIC_SCORING_VERSION,
+    SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    TopicScoringConfig,
+    select_daily_topic,
+)
 from app.domain.value_objects import due_business_date
 
 logger = structlog.get_logger()
 
 
 def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
+    if settings.content_scoring_version == DEFAULT_TOPIC_SCORING_VERSION:
+        priority_rule_version = (
+            settings.content_selection_priority_rule_version
+            or MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+        )
+    elif settings.content_scoring_version == SCIENCE_EDUCATION_TOPIC_SCORING_VERSION:
+        priority_rule_version = None
+    elif settings.content_scoring_version == "scoring-v1-preview.4-science-policy-priority":
+        priority_rule_version = SCIENCE_POLICY_PRIORITY_RULE_VERSION
+    else:
+        priority_rule_version = settings.content_selection_priority_rule_version or None
     return TopicScoringConfig(
         version=settings.content_scoring_version,
         profile=settings.content_scoring_profile,
-        selection_priority_rule_version=(settings.content_selection_priority_rule_version or None),
+        selection_priority_rule_version=priority_rule_version,
         freshness_window_days=float(settings.content_freshness_window_days),
     )
 

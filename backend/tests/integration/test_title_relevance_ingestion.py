@@ -9,6 +9,7 @@ import pytest
 from app.api_main import app
 from app.application.services.enqueue_runs import enqueue_manual_run
 from app.application.services.execute_acquisition import AcquisitionExecutor
+from app.core.config import Settings
 from app.domain.entities import FetchedResponse, SourceProfile
 from app.domain.enums import JobStatus, ObservationOutcome, RunStatus
 from app.domain.value_objects import sha256_bytes
@@ -17,7 +18,9 @@ from app.infrastructure.db.models import (
     EvidenceCandidateModel,
     SourceCursorModel,
     SourceFetchLeaseModel,
+    SourceModel,
     SourceObservationModel,
+    SourceVersionModel,
 )
 from app.infrastructure.db.repositories import (
     PostgresAcquisitionRepository,
@@ -110,14 +113,17 @@ async def _execute_government_run(
     fetcher: RelevanceFixtureFetcher,
     *,
     sleep: Callable[[float], Awaitable[None]] = _no_sleep,
+    settings: Settings | None = None,
+    seed_before_run: bool = True,
 ) -> tuple[object, AcquisitionJobModel]:
     await _cancel_nonterminal(context)
-    async with context.session_factory() as session:
-        await seed_sources(session)
+    if seed_before_run:
+        async with context.session_factory() as session:
+            await seed_sources(session)
     repository = PostgresAcquisitionRepository(context.session_factory)
     run_id, created = await enqueue_manual_run(
         repository,
-        context.settings,
+        settings or context.settings,
         source_ids=[SOURCE_SEEDS[0].source_id],
         idempotency_key=f"title-relevance-{uuid4()}",
     )
@@ -126,7 +132,7 @@ async def _execute_government_run(
         repository,
         fetcher,
         MinioSnapshotStore(context.settings),
-        context.settings,
+        settings or context.settings,
         sleep=sleep,
         jitter=lambda: 0.0,
         clock=fixture_clock,
@@ -139,6 +145,142 @@ async def _execute_government_run(
         )
     assert job is not None
     return run, job
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_historical_science_ai_education_source_version_keeps_its_hard_boundary(
+    integration_context: IntegrationContext,
+) -> None:
+    seed = SOURCE_SEEDS[0]
+    legacy_version_id = uuid4()
+    async with integration_context.session_factory() as session:
+        await seed_sources(session)
+        source = await session.get(SourceModel, seed.source_id)
+        current = await session.get(SourceVersionModel, seed.source_version_id)
+        assert source is not None and current is not None
+        session.add(
+            SourceVersionModel(
+                id=legacy_version_id,
+                source_id=current.source_id,
+                version=current.version + 100_000,
+                trust_tier=current.trust_tier,
+                connector_key=current.connector_key,
+                entry_url=current.entry_url,
+                allowed_hosts=current.allowed_hosts,
+                allowed_path_prefixes=current.allowed_path_prefixes,
+                cadence=current.cadence,
+                timezone=current.timezone,
+                language=current.language,
+                robots_status=current.robots_status,
+                terms_reviewed_at=current.terms_reviewed_at,
+                rate_limit_seconds=current.rate_limit_seconds,
+                connector_version=current.connector_version,
+                parser_version=current.parser_version,
+                relevance_rule_version="science-ai-education-v1",
+                allow_http_fallback=current.allow_http_fallback,
+                topic_priority_policy=current.topic_priority_policy,
+                config_fingerprint=uuid4().hex,
+            )
+        )
+        await session.flush()
+        source.active_version_id = legacy_version_id
+        await session.commit()
+
+    records = [
+        {
+            "TITLE": "人工智能新算法刷新推理纪录",
+            "URL": "https://www.gov.cn/zhengce/content/202607/content_legacy_frontier.htm",
+            "DOCRELPUBTIME": "2026-07-30",
+        }
+    ]
+    fetcher = RelevanceFixtureFetcher(records)
+    run, job = await _execute_government_run(
+        integration_context,
+        fetcher,
+        seed_before_run=False,
+    )
+
+    assert run.new_count == 0
+    assert job.outcome == ObservationOutcome.NO_RELEVANT_ITEMS.value
+    async with integration_context.session_factory() as session:
+        no_match = await session.scalar(
+            select(SourceObservationModel).where(
+                SourceObservationModel.job_id == job.id,
+                SourceObservationModel.outcome == ObservationOutcome.NO_RELEVANT_ITEMS.value,
+            )
+        )
+        await seed_sources(session)
+    assert no_match is not None
+    assert no_match.observation_metadata["relevance_rule_version"] == ("science-ai-education-v1")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_tiered_list_order_is_education_then_frontier_then_neutral_and_stable(
+    integration_context: IntegrationContext,
+) -> None:
+    records = [
+        {
+            "TITLE": "文化产业发展规划发布",
+            "URL": "https://www.gov.cn/zhengce/content/202607/content_tiered_neutral.htm",
+            "DOCRELPUBTIME": "2026-07-30",
+        },
+        {
+            "TITLE": "量子计算实现重大突破",
+            "URL": "https://www.gov.cn/zhengce/content/202607/content_tiered_frontier.htm",
+            "DOCRELPUBTIME": "2026-07-29",
+        },
+        {
+            "TITLE": "学校科技教育课程实践成果发布",
+            "URL": "https://www.gov.cn/zhengce/content/202607/content_tiered_education.htm",
+            "DOCRELPUBTIME": "2026-07-28",
+        },
+    ]
+    settings = integration_context.settings.model_copy(
+        update={
+            "acquisition_first_run_item_limit": 3,
+            "acquisition_daily_item_limit": 3,
+        }
+    )
+    first_fetcher = RelevanceFixtureFetcher(records)
+    first_run, first_job = await _execute_government_run(
+        integration_context,
+        first_fetcher,
+        settings=settings,
+    )
+    second_fetcher = RelevanceFixtureFetcher(records)
+    second_run, second_job = await _execute_government_run(
+        integration_context,
+        second_fetcher,
+        settings=settings,
+    )
+
+    expected_urls = [
+        SOURCE_SEEDS[0].entry_url,
+        records[2]["URL"],
+        records[1]["URL"],
+        records[0]["URL"],
+    ]
+    assert first_fetcher.requested_urls == expected_urls
+    assert second_fetcher.requested_urls == expected_urls
+    assert first_run.new_count == 2
+    assert first_run.filtered_count == 1
+    assert second_run.filtered_count == 1
+
+    async with integration_context.session_factory() as session:
+        observation = await session.scalar(
+            select(SourceObservationModel).where(
+                SourceObservationModel.job_id == first_job.id,
+                SourceObservationModel.source_item_id.is_(None),
+                SourceObservationModel.outcome == ObservationOutcome.FILTERED.value,
+            )
+        )
+    assert observation is not None
+    assert observation.observation_metadata["education_title_count"] == 1
+    assert observation.observation_metadata["frontier_title_count"] == 1
+    assert observation.observation_metadata["neutral_probe_count"] == 1
+    assert second_job.status == JobStatus.SUCCEEDED.value
 
 
 @pytest.mark.integration
@@ -197,10 +339,13 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
     assert cursor is not None and cursor.last_item_id == "content_mixed_unrelated.htm"
     assert candidate is not None
     assert candidate.title == records[2]["TITLE"]
-    assert candidate.relevance_rule_version == "science-ai-education-v1"
-    assert candidate.extraction_metadata["relevance_rule_version"] == ("science-ai-education-v1")
-    assert "人工智能" in candidate.extraction_metadata["matched_title_terms"]
-    assert candidate.extraction_metadata["science_ai_education_eligible"] is True
+    assert candidate.relevance_rule_version == "science-tech-editorial-v2"
+    assert candidate.extraction_metadata["relevance_rule_version"] == ("science-tech-editorial-v2")
+    assert "人工智能" in candidate.extraction_metadata["matched_title_topic_terms"]
+    assert candidate.extraction_metadata["science_tech_candidate"] is True
+    assert candidate.extraction_metadata["editorial_cohort"] == (
+        "science_technology_education_priority"
+    )
     assert candidate.extraction_metadata["product_matrix_fit_score"] > 0
     assert candidate.extraction_metadata["product_matrix_direction_ids"] == [
         "ai_literacy_project_learning"
@@ -211,10 +356,11 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
     assert filter_observation.observation_metadata["accepted_count"] == 1
     assert filter_observation.observation_metadata["filtered_count"] == 0
     assert filter_observation.observation_metadata["deferred_relevant_count"] == 1
-    assert filter_observation.observation_metadata["title_match_count"] == 1
-    assert filter_observation.observation_metadata["body_probe_count"] == 0
+    assert filter_observation.observation_metadata["education_title_count"] == 1
+    assert filter_observation.observation_metadata["frontier_title_count"] == 0
+    assert filter_observation.observation_metadata["neutral_probe_count"] == 0
     assert filter_observation.observation_metadata["relevance_rule_version"] == (
-        "science-ai-education-v1"
+        "science-tech-editorial-v2"
     )
 
     app.state.settings = integration_context.settings
@@ -226,7 +372,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
             "/api/v1/evidence-candidates",
             params={
                 "source_id": str(SOURCE_SEEDS[0].source_id),
-                "relevance_rule_version": "science-ai-education-v1",
+                "relevance_rule_version": "science-tech-editorial-v2",
                 "limit": 100,
             },
         )
@@ -236,7 +382,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         assert summary["source_display_name"] == SOURCE_SEEDS[0].display_name
         assert summary["original_url"] == records[2]["URL"]
         assert summary["canonical_url"] == records[2]["URL"]
-        assert summary["relevance_rule_version"] == "science-ai-education-v1"
+        assert summary["relevance_rule_version"] == "science-tech-editorial-v2"
 
         legacy_queue = await client.get(
             "/api/v1/evidence-candidates",
@@ -254,7 +400,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         assert detail.json()["clean_text"] == candidate.clean_text
         assert detail.json()["snapshot"]["sha256"]
         assert any(
-            observation["metadata"].get("relevance_rule_version") == "science-ai-education-v1"
+            observation["metadata"].get("relevance_rule_version") == "science-tech-editorial-v2"
             for observation in detail.json()["observations"]
         )
     assert len(fetcher.requested_urls) == request_count_before_api
@@ -323,7 +469,8 @@ async def test_zero_match_uses_bounded_neutral_probe_and_advances_raw_cursor(
     assert no_match.observation_metadata["accepted_count"] == 1
     assert no_match.observation_metadata["filtered_count"] == 1
     assert no_match.observation_metadata["deferred_relevant_count"] == 0
-    assert no_match.observation_metadata["title_match_count"] == 0
-    assert no_match.observation_metadata["body_probe_count"] == 1
+    assert no_match.observation_metadata["education_title_count"] == 0
+    assert no_match.observation_metadata["frontier_title_count"] == 0
+    assert no_match.observation_metadata["neutral_probe_count"] == 1
     assert no_match.observation_metadata["deferred_detail_count"] == 1
-    assert no_match.observation_metadata["relevance_rule_version"] == ("science-ai-education-v1")
+    assert no_match.observation_metadata["relevance_rule_version"] == ("science-tech-editorial-v2")

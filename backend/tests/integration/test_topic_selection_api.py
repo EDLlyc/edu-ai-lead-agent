@@ -82,7 +82,7 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         run_id = UUID(created.json()["id"])
         assert created.json()["status"] == "queued"
         assert created.json()["scoring_version"] == (
-            "scoring-v1-preview.5-science-education-product-fit"
+            "scoring-v1-preview.6-tiered-science-tech-priority"
         )
         assert created.headers["location"] == f"/api/v1/topic-selection-runs/{run_id}"
 

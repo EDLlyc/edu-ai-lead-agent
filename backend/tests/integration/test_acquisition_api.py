@@ -27,7 +27,7 @@ async def test_internal_api_lists_sources_and_enqueues_without_fetching(
         assert sources.status_code == 200
         assert sources.json()["count"] == 10
         assert {item["relevance_rule_version"] for item in sources.json()["items"]} == {
-            "science-ai-education-v1",
+            "science-tech-editorial-v2",
         }
         assert all("latest_filtered_count" in item for item in sources.json()["items"])
 

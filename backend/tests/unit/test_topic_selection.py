@@ -2,6 +2,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from app.domain.editorial_relevance import ScienceTechEditorialCohort
+from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
@@ -15,7 +17,13 @@ from app.domain.topic_selection import (
 from app.infrastructure.db.topic_selection import source_trust_projection
 
 NOW = datetime(2026, 7, 30, 2, 0, tzinfo=UTC)
-CONFIG = TopicScoringConfig()
+CONFIG = TopicScoringConfig(
+    version="scoring-v1-preview.5-science-education-product-fit",
+    selection_priority_rule_version=None,
+)
+TIERED_CONFIG = TopicScoringConfig(
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+)
 LEGACY_CONFIG = TopicScoringConfig(
     version="scoring-v1-preview.4-science-policy-priority",
     selection_priority_rule_version="science-policy-priority-v2",
@@ -40,6 +48,14 @@ def _candidate(
         "science_ai_education_reason_codes": ("science_ai_topic_with_education_context",),
         "product_matrix_fit": 0.75,
         "product_matrix_direction_ids": ("ai_literacy_project_learning",),
+        "editorial_priority": 0.95,
+        "science_tech_editorial_cohort": (
+            ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY
+        ),
+        "science_tech_education_relevance": 0.95,
+        "science_tech_editorial_reason_codes": ("science_technology_topic_with_education_context",),
+        "product_matrix_fit_v2": 0.75,
+        "product_matrix_v2_direction_ids": ("ai_literacy_project_learning",),
     }
     values.update(changes)
     return TopicCandidate(**values)  # type: ignore[arg-type]
@@ -70,6 +86,25 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
         "event_time",
         "event_id",
     ]
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+def test_tiered_config_exposes_immutable_v2_rules_and_round_trips() -> None:
+    metadata = TIERED_CONFIG.as_metadata()
+
+    assert metadata["version"] == "scoring-v1-preview.6-tiered-science-tech-priority"
+    assert metadata["veto_rule_version"] == "topic-veto-v3-governed-content"
+    assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
+    assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
+    assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
+    assert dict(TIERED_CONFIG.positive_weights) == {
+        "editorial_priority": 0.30,
+        "product_matrix_fit": 0.25,
+        "source_trust": 0.15,
+        "source_diversity": 0.10,
+        "freshness": 0.10,
+        "communication_potential": 0.10,
+    }
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
@@ -382,6 +417,203 @@ def test_product_fit_is_a_soft_numeric_signal_for_eligible_events() -> None:
 
     assert with_fit.total - without_fit.total == pytest.approx(0.20)
     assert TopicVetoCode.OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE not in without_fit.veto_codes
+
+
+def test_tiered_frontier_candidate_has_no_historical_scope_veto() -> None:
+    frontier = _candidate(
+        editorial_priority=0.76,
+        science_tech_editorial_cohort=(ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY),
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.76,
+        science_tech_editorial_reason_codes=("frontier_topic_with_substantive_progress",),
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+    )
+
+    score = score_topic_candidate(frontier, as_of=NOW, config=TIERED_CONFIG)
+
+    assert TopicVetoCode.OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE not in score.veto_codes
+    assert score.normalized_features["editorial_priority"] == pytest.approx(0.76)
+    assert score.science_tech_editorial_cohort is (
+        ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+    )
+
+
+def test_tiered_product_fit_cannot_create_eligibility_for_out_of_scope_content() -> None:
+    product_only = _candidate(
+        source_trust=1.0,
+        source_diversity=4,
+        communication_potential=1.0,
+        editorial_priority=0.0,
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.OUT_OF_SCOPE,
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.0,
+        science_tech_editorial_reason_codes=("missing_substantive_frontier_progress",),
+        product_matrix_fit_v2=1.0,
+    )
+
+    score = score_topic_candidate(product_only, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.total >= score.threshold
+    assert score.passes_threshold is True
+    assert score.veto_codes == ()
+    assert score.eligible is False
+    assert score.priority_applied is False
+    assert score.threshold_bypass_applied is False
+
+
+def test_authenticated_ministry_education_priority_bypasses_only_numeric_threshold() -> None:
+    ministry = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育部报道科技教育课程实践成果",
+        priority_summary="学生参加科学探究实践。",
+    )
+
+    score = score_topic_candidate(ministry, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.total < score.threshold
+    assert score.passes_threshold is False
+    assert score.eligible is True
+    assert score.priority_applied is True
+    assert score.priority_reason == "ministry_education_priority"
+    assert score.threshold_bypass_applied is True
+
+
+def test_ministry_title_spoof_without_controlled_policy_cannot_bypass_threshold() -> None:
+    spoof = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=None,
+        priority_title="教育部报道人工智能教育成果",
+        priority_summary="推动学校课程实践。",
+    )
+
+    score = score_topic_candidate(spoof, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.passes_threshold is False
+    assert score.eligible is False
+    assert score.priority_applied is False
+    assert score.priority_reason == "no_topic_priority_policy"
+    assert score.threshold_bypass_applied is False
+
+
+@pytest.mark.parametrize(
+    "veto_change",
+    [
+        {"governance_resolved": False},
+        {"has_eligible_evidence": False},
+        {"tier_c_only": True},
+        {"unverified": True},
+        {"unsuitable_negative_incident": True},
+        {"privacy_legal_safety_uncertain": True},
+        {"prohibited_marketing_risk": True},
+        {"days_since_last_selection": 2},
+        {"event_time": NOW - timedelta(days=11)},
+    ],
+)
+def test_ministry_threshold_bypass_never_overrides_a_genuine_veto(
+    veto_change: dict[str, object],
+) -> None:
+    ministry = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        **veto_change,
+    )
+
+    score = score_topic_candidate(ministry, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.veto_codes
+    assert score.eligible is False
+    assert score.priority_applied is False
+    assert score.priority_reason == "hard_veto"
+    assert score.threshold_bypass_applied is False
+
+
+def test_ministry_policy_does_not_prioritize_frontier_only_content() -> None:
+    frontier = _candidate(
+        editorial_priority=0.76,
+        science_tech_editorial_cohort=(ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY),
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.76,
+        science_tech_editorial_reason_codes=("frontier_topic_with_substantive_progress",),
+        product_matrix_fit_v2=0.0,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    )
+
+    score = score_topic_candidate(frontier, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.priority_applied is False
+    assert score.priority_reason == "ministry_education_topic_missing"
+
+
+def test_ministry_v3_cannot_be_reused_by_a_non_tiered_scoring_config() -> None:
+    config = TopicScoringConfig(
+        version="scoring-v1-preview.4-science-policy-priority",
+        selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    )
+    ministry = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        ai_relevance=0.1,
+        parent_relevance=0.1,
+        communication_potential=0.1,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    )
+
+    score = score_topic_candidate(ministry, as_of=NOW, config=config)
+
+    assert score.passes_threshold is False
+    assert score.eligible is False
+    assert score.priority_applied is False
+    assert score.priority_reason == "ministry_priority_disabled_for_config"
+    assert score.threshold_bypass_applied is False
+
+
+def test_tiered_ranking_places_education_above_equivalent_frontier() -> None:
+    education = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+    )
+    frontier = _candidate(
+        editorial_priority=0.76,
+        science_tech_editorial_cohort=(ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY),
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.76,
+        science_tech_editorial_reason_codes=("frontier_topic_with_substantive_progress",),
+        product_matrix_fit_v2=0.0,
+    )
+
+    decision = select_daily_topic((frontier, education), as_of=NOW, config=TIERED_CONFIG)
+
+    assert decision.selected_event_id == education.event_id
+    assert decision.scores[0].event_id == education.event_id
+
+
+def test_tiered_score_explanation_contains_cohort_versions_and_bypass_state() -> None:
+    score = score_topic_candidate(_candidate(), as_of=NOW, config=TIERED_CONFIG)
+    metadata = score.as_metadata()
+
+    assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
+    assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
+    assert metadata["science_tech_editorial_cohort"] == ("science_technology_education_priority")
+    assert metadata["science_tech_education_relevance"] == pytest.approx(0.95)
+    assert metadata["threshold_bypass_applied"] is False
 
 
 def test_source_trust_projection_never_promotes_unknown_or_tier_c_sources() -> None:

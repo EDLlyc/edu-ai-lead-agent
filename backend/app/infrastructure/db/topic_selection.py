@@ -17,7 +17,9 @@ from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.editorial_relevance import (
     evaluate_product_matrix_fit,
+    evaluate_product_matrix_fit_v2,
     evaluate_science_ai_education_relevance,
+    evaluate_science_tech_editorial_relevance,
 )
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
@@ -613,6 +615,14 @@ async def load_topic_candidates(
             version.representative_title,
             editorial_body,
         )
+        science_tech_editorial = evaluate_science_tech_editorial_relevance(
+            version.representative_title,
+            editorial_body,
+        )
+        product_fit_v2 = evaluate_product_matrix_fit_v2(
+            version.representative_title,
+            editorial_body,
+        )
         controversy_hits = sum(term in searchable_text for term in _CONTROVERSY_TERMS)
         marketing_hits = sum(term in searchable_text for term in _PROHIBITED_MARKETING_TERMS)
         analysis_id = analysis_ids.get(version.event_id)
@@ -631,6 +641,13 @@ async def load_topic_candidates(
                 science_ai_education_reason_codes=science_education.reason_codes,
                 product_matrix_fit=product_fit.score,
                 product_matrix_direction_ids=product_fit.direction_ids,
+                editorial_priority=science_tech_editorial.editorial_priority_score,
+                science_tech_editorial_cohort=science_tech_editorial.cohort,
+                science_tech_education_relevance=(science_tech_editorial.education_relevance_score),
+                frontier_significance=science_tech_editorial.frontier_significance_score,
+                science_tech_editorial_reason_codes=science_tech_editorial.reason_codes,
+                product_matrix_fit_v2=product_fit_v2.score,
+                product_matrix_v2_direction_ids=product_fit_v2.direction_ids,
                 topic_priority_policy=topic_priority_policy,
                 priority_title=version.representative_title,
                 priority_summary=summary,
@@ -763,12 +780,26 @@ async def persist_topic_selection_decision(
                     "topic_priority_policy": score.topic_priority_policy,
                     "priority_applied": score.priority_applied,
                     "priority_reason": score.priority_reason,
+                    "threshold_bypass_applied": score.threshold_bypass_applied,
                     "science_ai_education_rule_version": (score.science_ai_education_rule_version),
+                    "science_tech_editorial_rule_version": (
+                        score.science_tech_editorial_rule_version
+                    ),
                     "product_matrix_fit_rule_version": (score.product_matrix_fit_rule_version),
                     "science_ai_education_reason_codes": list(
                         score.science_ai_education_reason_codes
                     ),
                     "product_matrix_direction_ids": list(score.product_matrix_direction_ids),
+                    "science_tech_editorial_cohort": (
+                        score.science_tech_editorial_cohort.value
+                        if score.science_tech_editorial_cohort is not None
+                        else None
+                    ),
+                    "science_tech_education_relevance": (score.science_tech_education_relevance),
+                    "frontier_significance": score.frontier_significance,
+                    "science_tech_editorial_reason_codes": list(
+                        score.science_tech_editorial_reason_codes
+                    ),
                 },
             )
             .on_conflict_do_nothing(constraint="uq_topic_scores_run_event")
