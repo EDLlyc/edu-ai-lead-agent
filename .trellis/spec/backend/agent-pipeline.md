@@ -56,7 +56,7 @@ Normalize boilerplate, whitespace, timestamps, URLs, and source names. Deduplica
 SHA-256 first, then use SimHash/embedding similarity and event clustering. Retain links from
 duplicates to the canonical article/event so provenance is not lost.
 
-## Scenario: Ten-active-source science/AI-education evidence acquisition
+## Scenario: Ten-active-source tiered science/technology evidence acquisition
 
 ### 1. Scope / Trigger
 
@@ -76,8 +76,9 @@ bounded live gate; the approved target count is twelve.
 - Run/job query: `GET /api/v1/acquisition-runs/{run_id}` and `.../{run_id}/jobs`.
 - Evidence queue: `GET /api/v1/evidence-candidates`; stored handoff:
   `GET /api/v1/evidence-candidates/{candidate_id}`.
-- Active rule: `SCIENCE_AI_EDUCATION_RULE_VERSION = "science-ai-education-v1"` and soft-ordering
-  rule `PRODUCT_MATRIX_FIT_RULE_VERSION = "product-matrix-fit-v1"` in
+- Active rule: `SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v2"` and
+  soft-ordering rule `PRODUCT_MATRIX_FIT_V2_RULE_VERSION =
+  "product-matrix-fit-v2-science-pathways"` in
   [`editorial_relevance.py`](../../../backend/app/domain/editorial_relevance.py).
 - Worker controls: `ACQUISITION_FIRST_RUN_SCAN_LIMIT`, `ACQUISITION_DAILY_SCAN_LIMIT`,
   `ACQUISITION_FIRST_RUN_ITEM_LIMIT`, and `ACQUISITION_DAILY_ITEM_LIMIT`.
@@ -86,21 +87,27 @@ bounded live gate; the approved target count is twelve.
 
 - Parse a bounded raw discovery window and merge duplicate blank-image/text anchors. Evaluate
   bilingual title relevance and product fit without trusting page instructions.
-- Eligibility requires an explicit science/AI-education phrase or both a science/AI topic and an
-  education/learner/teacher/practice context. Generic AI, generic science, and generic education
-  remain out of scope. Title/body evaluation is deterministic, NFKC-normalized, and bounded to
-  6000 normalized body characters.
-- Order eligible title matches by science/AI-education score, product-fit score, publication time,
-  original source order, and stable item ID. Fill only the remainder of the existing item-limit
-  window with title-neutral records in source order. Product fit never changes eligibility.
+- Education qualification covers science/AI/technology/STEM education plus evidence-substantive
+  white-list competition, technology-specialty student, Strong Foundation Plan, and comprehensive
+  evaluation pathways. Frontier qualification requires both a concrete technology/science topic
+  and substantive progress. Generic AI/science/education, training/admissions marketing,
+  guaranteed outcomes, score-line aggregation, financing, and ordinary product/company releases
+  remain out of scope. Evaluation is deterministic, NFKC-normalized, and bounded to 6000 normalized
+  body characters.
+- Order title matches as education, frontier, then the remaining bounded title-neutral probes.
+  Within education/frontier cohorts order by editorial score, product-fit score, publication time,
+  original source order, and stable item ID. Product fit never changes eligibility.
 - Re-evaluate title plus extracted body and freshness after each bounded detail request. Persist
-  only fresh, eligible candidates. A zero-match source succeeds with
+  only fresh education or qualified-frontier candidates. A zero-match source succeeds with
   `outcome=no_relevant_items`; unrelated detail responses remain auditable filtered observations.
-- Accepted candidates persist both rule versions, eligibility/score/reason codes, title/body
-  terms, product direction IDs, character-bound/truncation metadata, cleaned text,
+- Accepted candidates persist both rule versions, cohort and education/frontier/editorial scores,
+  reason codes, title/body topic/progress/exclusion terms, product direction IDs,
+  character-bound/truncation metadata, cleaned text,
   original/canonical URL, publication/fetch time, source/version IDs, immutable snapshot, and
   observations. Historical `ai-title-v1` and `moe-science-v1` source versions remain executable.
-- Candidate lists expose source/title/time/original+canonical URL/candidate ID/rule version. Later
+- Historical `science-ai-education-v1`, `ai-title-v1`, and `moe-science-v1` source versions remain
+  executable by their stored version strings. Candidate lists expose
+  source/title/time/original+canonical URL/candidate ID/rule version. Later
   LangGraph nodes read candidate detail and stored text/snapshot; they do not normally re-crawl the
   original URL.
 
@@ -119,8 +126,9 @@ bounded live gate; the approved target count is twelve.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: eligible science-education titles precede neutral items; product direction breadth orders
-  equal-relevance items, then body evaluation confirms scope before persistence.
+- Good: eligible science/technology-education titles precede qualified frontier titles, which
+  precede neutral probes; product direction breadth orders only inside the same cohort, then body
+  evaluation confirms scope before persistence.
 - Base: a bounded source window with no eligible title/body completes successfully with zero
   candidates and auditable filter/probe metadata.
 - Bad: fetch the first headline per site, treat any HTTP 200 as useful evidence, accept ambiguous
@@ -129,8 +137,9 @@ bounded live gate; the approved target count is twelve.
 ### 6. Tests Required
 
 - [`test_editorial_relevance.py`](../../../backend/tests/unit/test_editorial_relevance.py) covers
-  bilingual positives, conjunction/negative cases, body bounds, all six product directions, caps,
-  and the eligibility/product separation.
+  bilingual education/pathway/frontier positives, marketing/financing/product-release negatives,
+  same-text bounded pathway substance, body bounds, product v1/v2 direction caps, and the
+  eligibility/product separation.
 - Connector contracts cover all ten active and two pending source fixtures, ordering, exact
   article-path restrictions, duplicate anchor merging, sponsored/API/external/HTTP exclusion,
   parser drift, and source-specific selectors.
@@ -153,13 +162,15 @@ detail = await fetcher.fetch(items[0].url, profile)
 
 ```python
 discovered = connector.discover(list_response, profile, limit=scan_limit)
-evaluated = [(item, evaluate_science_ai_education_relevance(item.title)) for item in discovered]
-ordered = sorted((row for row in evaluated if row[1].is_eligible), key=editorial_key)
-window = [*ordered, *(row for row in evaluated if not row[1].is_eligible)][:item_limit]
+evaluated = [(item, evaluate_science_tech_editorial_relevance(item.title)) for item in discovered]
+education = sorted((row for row in evaluated if row[1].cohort == EDUCATION), key=editorial_key)
+frontier = sorted((row for row in evaluated if row[1].cohort == FRONTIER), key=editorial_key)
+neutral = (row for row in evaluated if not row[1].is_candidate)
+window = [*education, *frontier, *neutral][:item_limit]
 for item, _title_result in window:
     detail = await fetcher.fetch(item.url, profile)
-    result = evaluate_science_ai_education_relevance(detail.title, detail.clean_text)
-    if result.is_eligible:
+    result = evaluate_science_tech_editorial_relevance(detail.title, detail.clean_text)
+    if result.is_candidate:
         await persist(detail, result)
 ```
 
@@ -212,15 +223,19 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.5-science-education-product-fit` gives 0.30 to explicit
-science/AI-education relevance, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source
-diversity, freshness, and communication potential. `outside_science_ai_education_scope` is a hard
-veto; no numeric feature, including product fit, can rescue it. The profile retains the 0.62
-threshold, penalties, and stable tie-break, and disables absolute source priority. Historical
-`.4` configurations keep their legacy feature map and Ministry priority semantics on replay.
+The implemented `scoring-v1-preview.6-tiered-science-tech-priority` gives 0.30 to tiered editorial
+priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
+and communication potential. It keeps genuine hard vetoes but does not add the historical
+`outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
+0.62 numeric threshold only when no hard veto exists; ordinary education and frontier candidates
+remain threshold-bound. Historical `.5` configurations keep their science/AI-education scope veto
+and disabled source priority, while `.4` keeps its legacy feature map, policy-action requirement,
+and Ministry priority semantics on replay.
 
-Select Top 1 only from eligible candidates with `total >= threshold`. Stable tie-breakers must be
-documented (for example source tier, publication time, then stable ID). If none qualifies, persist
+Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
+authenticated Ministry education priority under `.6` may bypass only that numeric threshold and
+still requires zero hard vetoes. Stable tie-breakers must be documented (for example source tier,
+publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.
 
 ## Retrieval boundary
