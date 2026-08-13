@@ -812,3 +812,25 @@ Deployed compact Moments copy defaults to the backend server and fixed automatic
 ### Status
 
 [OK] **Completed**
+
+
+## Session 37: Unblock copy source dates and prevent daily duplicate delivery
+
+**Date**: 2026-08-13
+**Task**: Unblock copy source dates and prevent daily duplicate delivery
+**Branch**: `main`
+
+### Summary
+
+Fixed system-owned source-date false positives under compact copy policy, deployed current-day copy processing, then tightened automatic WeCom reconciliation to one formal job per Shanghai business date after observing a same-day regeneration duplicate. Verified focused tests, static checks, server health, current-day candidate suppression, and persistent local rollback backups.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d47a1d1` | (see git log) |
+| `3383841` | (see git log) |
+
+### Status
+
+[OK] **Completed**
