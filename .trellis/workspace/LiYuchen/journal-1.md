@@ -878,3 +878,24 @@ Implemented versioned education/frontier editorial cohorts, science-talent pathw
 ### Status
 
 [OK] **Completed**
+
+
+## Session 40: Restore CAST and EdSurge production DNS
+
+**Date**: 2026-08-13
+**Task**: Restore CAST and EdSurge production DNS
+**Branch**: `main`
+
+### Summary
+
+Restored real public DNS for CAST and EdSurge through the scoped Clash Fake-IP filter and administrator service reload while preserving SSRF checks. Verified WSL, Compose, and application resolution; both live entry pages returned HTTP 200 but deterministic discovery reported parse_failure, so both sources remain pending for a separate connector-parser follow-up. Focused tests, doctor, lint, type-check, and safety audits passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4992988` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 39
+- **Total Sessions**: 40
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~880 | Active |
+| `journal-1.md` | ~901 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 40 | 2026-08-13 | Restore CAST and EdSurge production DNS | `4992988` | `main` |
 | 39 | 2026-08-13 | Restore tiered science and technology news priority | `6bd7a17`, `af2b652` | `main` |
 | 38 | 2026-08-13 | Science education source priority | `4bba9eb`, `e644b2e` | `main` |
 | 37 | 2026-08-13 | Unblock copy source dates and prevent daily duplicate delivery | `d47a1d1`, `3383841` | `main` |
