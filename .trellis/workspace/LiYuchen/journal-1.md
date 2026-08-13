@@ -856,3 +856,25 @@ Implemented bilingual science/AI education eligibility, product-matrix soft fit,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 39: Restore tiered science and technology news priority
+
+**Date**: 2026-08-13
+**Task**: Restore tiered science and technology news priority
+**Branch**: `main`
+
+### Summary
+
+Implemented versioned education/frontier editorial cohorts, science-talent pathway keywords, product-fit v2, acquisition v5, authenticated Ministry threshold bypass in scoring .6, exact historical replay, audit persistence, regressions, and executable specs. Full backend, focused integration, frontend, API, Compose, doctor, and diff gates passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6bd7a17` | (see git log) |
+| `af2b652` | (see git log) |
+
+### Status
+
+[OK] **Completed**

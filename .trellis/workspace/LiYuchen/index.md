@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
+- **Total Sessions**: 39
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~858 | Active |
+| `journal-1.md` | ~880 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-08-13 | Restore tiered science and technology news priority | `6bd7a17`, `af2b652` | `main` |
 | 38 | 2026-08-13 | Science education source priority | `4bba9eb`, `e644b2e` | `main` |
 | 37 | 2026-08-13 | Unblock copy source dates and prevent daily duplicate delivery | `d47a1d1`, `3383841` | `main` |
 | 36 | 2026-08-12 | Deploy compact copy and daily boundary | `a2660dd` | `main` |
