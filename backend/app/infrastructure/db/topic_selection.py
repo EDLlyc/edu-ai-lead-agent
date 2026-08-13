@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.core.errors import ConflictError, NotFoundError
+from app.domain.editorial_relevance import (
+    evaluate_product_matrix_fit,
+    evaluate_science_ai_education_relevance,
+)
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     DailyTopicDecision,
@@ -57,6 +61,15 @@ _NEGATIVE_INCIDENT_TERMS = ("伤亡", "诈骗", "自杀", "暴力", "事故", "�
 _PRIVACY_SAFETY_TERMS = ("隐私泄露", "个人信息泄露", "未成年人数据", "人脸泄露")
 _PROHIBITED_MARKETING_TERMS = ("保过", "包会", "稳赚", "零风险", "百分百提升")
 _SOURCE_TRUST_WEIGHTS = {"A": 1.0, "B": 0.75, "C": 0.0}
+_EDITORIAL_CATEGORY_TEXT = {
+    "ai_education_policy": "人工智能教育 政策 课程 教师 学生",
+    "youth_science_education": "青少年 科学教育 科学探究",
+    "robotics_embodied_intelligence": "机器人 具身智能",
+    "large_generative_models": "大模型 生成式人工智能",
+    "ai_governance_safety": "人工智能 安全 治理",
+    "ai_industry_application": "人工智能 产业应用",
+    "ai_compute_chips": "人工智能 算力 芯片",
+}
 _TERMINAL_ACQUISITION_STATUSES = ("succeeded", "partially_succeeded")
 _TERMINAL_GOVERNANCE_RUN_STATUSES = ("succeeded", "partially_succeeded")
 _NON_TERMINAL_GOVERNANCE_JOB_STATUSES = ("queued", "running", "retry_scheduled")
@@ -586,7 +599,20 @@ async def load_topic_candidates(
                     )
         summary_value = version.summary_projection.get("summary")
         summary = summary_value if isinstance(summary_value, str) else ""
+        governed_facts = " ".join(fact for fact in facts_value if isinstance(fact, str))
         searchable_text = f"{version.representative_title}\n{summary}"
+        category_editorial_text = " ".join(
+            _EDITORIAL_CATEGORY_TEXT.get(category, category) for category in categories
+        )
+        editorial_body = f"{summary}\n{governed_facts}\n{category_editorial_text}"
+        science_education = evaluate_science_ai_education_relevance(
+            version.representative_title,
+            editorial_body,
+        )
+        product_fit = evaluate_product_matrix_fit(
+            version.representative_title,
+            editorial_body,
+        )
         controversy_hits = sum(term in searchable_text for term in _CONTROVERSY_TERMS)
         marketing_hits = sum(term in searchable_text for term in _PROHIBITED_MARKETING_TERMS)
         analysis_id = analysis_ids.get(version.event_id)
@@ -600,6 +626,11 @@ async def load_topic_candidates(
                 ai_relevance=1.0 if categories else 0.0,
                 parent_relevance=parent_relevance,
                 communication_potential=communication_potential,
+                science_education_relevance=science_education.score,
+                science_ai_education_eligible=science_education.is_eligible,
+                science_ai_education_reason_codes=science_education.reason_codes,
+                product_matrix_fit=product_fit.score,
+                product_matrix_direction_ids=product_fit.direction_ids,
                 topic_priority_policy=topic_priority_policy,
                 priority_title=version.representative_title,
                 priority_summary=summary,
@@ -732,6 +763,12 @@ async def persist_topic_selection_decision(
                     "topic_priority_policy": score.topic_priority_policy,
                     "priority_applied": score.priority_applied,
                     "priority_reason": score.priority_reason,
+                    "science_ai_education_rule_version": (score.science_ai_education_rule_version),
+                    "product_matrix_fit_rule_version": (score.product_matrix_fit_rule_version),
+                    "science_ai_education_reason_codes": list(
+                        score.science_ai_education_reason_codes
+                    ),
+                    "product_matrix_direction_ids": list(score.product_matrix_direction_ids),
                 },
             )
             .on_conflict_do_nothing(constraint="uq_topic_scores_run_event")

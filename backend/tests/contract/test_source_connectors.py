@@ -5,15 +5,30 @@ import pytest
 from app.core.errors import ParseError
 from app.domain.entities import DiscoveredItem, FetchedResponse, SourceProfile
 from app.infrastructure.ingestion.connectors import get_connector
-from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
+from app.infrastructure.ingestion.source_profiles import PENDING_SOURCE_SEEDS, SOURCE_SEEDS
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources"
 BNU_ARTICLE_ID = "822c744c15a54dc1828c554b06d18313"
 BNU_ARTICLE_URL = f"https://news.bnu.edu.cn/zx/ttgz/{BNU_ARTICLE_ID}.htm"
 
 
+def test_registry_keeps_two_fixture_ready_profiles_outside_the_ten_active_seeds() -> None:
+    assert len(SOURCE_SEEDS) == 10
+    assert {seed.slug for seed in PENDING_SOURCE_SEEDS} == {
+        "cast-science-education",
+        "edsurge-ai-education",
+    }
+    assert {seed.source_id for seed in SOURCE_SEEDS}.isdisjoint(
+        seed.source_id for seed in PENDING_SOURCE_SEEDS
+    )
+
+
 def _profile(connector_key: str) -> SourceProfile:
-    seed = next(item for item in SOURCE_SEEDS if item.connector_key == connector_key)
+    seed = next(
+        item
+        for item in (*SOURCE_SEEDS, *PENDING_SOURCE_SEEDS)
+        if item.connector_key == connector_key
+    )
     return SourceProfile(
         source_id=seed.source_id,
         source_version_id=seed.source_version_id,
@@ -31,12 +46,18 @@ def _profile(connector_key: str) -> SourceProfile:
         allow_http_fallback=seed.allow_http_fallback,
         topic_priority_policy=seed.topic_priority_policy,
         language=seed.language,
+        timezone=seed.timezone,
         rate_limit_seconds=seed.rate_limit_seconds,
+        robots_status=seed.robots_status,
     )
 
 
-@pytest.mark.parametrize("connector_key", [seed.connector_key for seed in SOURCE_SEEDS])
-def test_all_nine_connectors_discover_and_extract_fixture(connector_key: str) -> None:
+@pytest.mark.parametrize(
+    "connector_key", [seed.connector_key for seed in (*SOURCE_SEEDS, *PENDING_SOURCE_SEEDS)]
+)
+def test_all_ten_active_and_two_pending_connectors_use_contract_fixtures(
+    connector_key: str,
+) -> None:
     profile = _profile(connector_key)
     directory = FIXTURE_ROOT / connector_key
     list_path = directory / ("list.json" if connector_key == "gov_cn_policy_v1" else "list.html")
@@ -118,6 +139,73 @@ def test_moe_connector_uses_fixed_section_and_article_path() -> None:
     assert len(items) == 2
     assert items[0].url.endswith("/202608/t20260804_1446039.html")
     assert items[0].published_at == datetime(2026, 8, 3, 16, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("connector_key", "expected_path"),
+    [
+        (
+            "xinhua_education_v1",
+            "/20260813/0123456789abcdef0123456789abcdef/c.html",
+        ),
+        (
+            "cast_science_education_v1",
+            "/xw/tzgg/KXPJ/art/2026/art_a92767489fdc4d90830e4b6930be6459.html",
+        ),
+        (
+            "edsurge_ai_education_v1",
+            "/news/2026-08-12-schools-build-ai-literacy-through-classroom-projects",
+        ),
+    ],
+)
+def test_new_connectors_enforce_fixture_proven_article_paths(
+    connector_key: str, expected_path: str
+) -> None:
+    profile = _profile(connector_key)
+    connector = get_connector(connector_key)
+    response = FetchedResponse(
+        requested_url=profile.entry_url,
+        final_url=profile.entry_url,
+        status_code=200,
+        media_type="text/html",
+        body=(FIXTURE_ROOT / connector_key / "list.html").read_bytes(),
+        sha256="list",
+        fetched_at=datetime.now(UTC),
+    )
+
+    items = connector.discover(response, profile, limit=10)
+
+    assert len(items) == 1
+    assert expected_path in items[0].url
+
+
+def test_edsurge_excludes_visible_sponsor_api_external_and_http_items() -> None:
+    profile = _profile("edsurge_ai_education_v1")
+    connector = get_connector(profile.connector_key)
+    safe_path = "/news/2026-08-12-schools-build-ai-literacy-through-classroom-projects"
+    body = (
+        '<main class="coverage-area"><section class="articles">'
+        f'<article><a href="{safe_path}">AI Literacy in Schools</a></article>'
+        '<article class="sponsored"><span>Sponsored</span>'
+        '<a href="/news/2026-08-11-company-ai-product">Paid story</a></article>'
+        '<a href="/api/articles">API</a>'
+        '<a href="https://outside.example/news/2026-08-10-story">External</a>'
+        '<a href="http://www.edsurge.com/news/2026-08-09-http-story">HTTP</a>'
+        "</section></main>"
+    ).encode()
+    response = FetchedResponse(
+        requested_url=profile.entry_url,
+        final_url=profile.entry_url,
+        status_code=200,
+        media_type="text/html",
+        body=body,
+        sha256="list",
+        fetched_at=datetime.now(UTC),
+    )
+
+    items = connector.discover(response, profile, limit=10)
+
+    assert [item.url for item in items] == [f"https://www.edsurge.com{safe_path}"]
 
 
 def test_off_domain_and_prompt_like_links_are_not_discovered() -> None:

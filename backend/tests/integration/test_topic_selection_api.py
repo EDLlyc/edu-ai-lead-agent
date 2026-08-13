@@ -81,7 +81,9 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         assert created.status_code == 202
         run_id = UUID(created.json()["id"])
         assert created.json()["status"] == "queued"
-        assert created.json()["scoring_version"] == "scoring-v1-preview.4-science-policy-priority"
+        assert created.json()["scoring_version"] == (
+            "scoring-v1-preview.5-science-education-product-fit"
+        )
         assert created.headers["location"] == f"/api/v1/topic-selection-runs/{run_id}"
 
     async with integration_context.session_factory() as session:

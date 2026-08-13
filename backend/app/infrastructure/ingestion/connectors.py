@@ -163,6 +163,7 @@ class HtmlConnector:
         sort_discovered_by_published_at: bool = False,
         prefer_detail_published_at: bool = False,
         use_trafilatura_fallback: bool = True,
+        discovery_anchor_filter: Callable[[Tag], bool] | None = None,
     ) -> None:
         self._link_filter = link_filter
         self._content_selectors = content_selectors
@@ -171,6 +172,7 @@ class HtmlConnector:
         self._sort_discovered_by_published_at = sort_discovered_by_published_at
         self._prefer_detail_published_at = prefer_detail_published_at
         self._use_trafilatura_fallback = use_trafilatura_fallback
+        self._discovery_anchor_filter = discovery_anchor_filter
 
     def _discovery_anchors(self, soup: BeautifulSoup) -> Iterable[Tag]:
         if not self._discovery_selectors:
@@ -189,6 +191,10 @@ class HtmlConnector:
         item_indexes: dict[str, int] = {}
         items: list[DiscoveredItem] = []
         for anchor in self._discovery_anchors(soup):
+            if self._discovery_anchor_filter is not None and not self._discovery_anchor_filter(
+                anchor
+            ):
+                continue
             href = str(anchor.get("href"))
             candidate_url = _canonical_url(urljoin(response.final_url, href))
             url = _approved_discovered_url(candidate_url, profile)
@@ -314,6 +320,9 @@ def _path_matches(pattern: str) -> Callable[[str], bool]:
 
 STDAILY_DATED_ARTICLE_PATH = r"^/web/(?:[^/]+/)?20\d{2}-\d{2}/\d{2}/content_\d+\.html$"
 MOE_DATED_ARTICLE_PATH = r"^/jyb_xwfb/(?:[^/]+/)+20\d{4}/t20\d{6}_\d+\.html$"
+XINHUA_EDUCATION_ARTICLE_PATH = r"^/20\d{6}/[0-9a-fA-F]{32}/c\.html$"
+CAST_SCIENCE_ARTICLE_PATH = r"^/(?:kp|xw)/(?:[^/]+/){1,6}art/20\d{2}/art_[0-9a-fA-F]{32}\.html$"
+EDSURGE_NEWS_ARTICLE_PATH = r"^/news/20\d{2}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$"
 
 
 def _stdaily_published_at_from_url(url: str, timezone: str) -> datetime | None:
@@ -329,6 +338,42 @@ def _moe_published_at_from_url(url: str, timezone: str) -> datetime | None:
         return None
     value = match.group(1)
     return _parse_datetime(f"{value[:4]}-{value[4:6]}-{value[6:]}", timezone)
+
+
+def _xinhua_education_published_at_from_url(url: str, timezone: str) -> datetime | None:
+    match = re.search(r"/(20\d{6})/[0-9a-fA-F]{32}/c\.html$", urlsplit(url).path)
+    if match is None:
+        return None
+    value = match.group(1)
+    return _parse_datetime(f"{value[:4]}-{value[4:6]}-{value[6:]}", timezone)
+
+
+def _edsurge_published_at_from_url(url: str, timezone: str) -> datetime | None:
+    match = re.search(r"/news/(20\d{2}-\d{2}-\d{2})-", urlsplit(url).path)
+    return _parse_datetime(match.group(1), timezone) if match is not None else None
+
+
+def _not_sponsored(anchor: Tag) -> bool:
+    current: Tag | None = anchor
+    for _ in range(4):
+        if current is None:
+            break
+        if current.name in {"main", "section", "body", "html"}:
+            break
+        text = current.get_text(" ", strip=True).casefold()
+        class_value = current.get("class")
+        labels = (
+            " ".join(str(value) for value in class_value)
+            if isinstance(class_value, list)
+            else str(class_value or "")
+        ).casefold()
+        if any(
+            marker in f"{labels} {text}"
+            for marker in ("sponsored", "advertorial", "partner content")
+        ):
+            return False
+        current = current.parent if isinstance(current.parent, Tag) else None
+    return True
 
 
 CONNECTORS: dict[str, SourceConnector] = {
@@ -366,6 +411,31 @@ CONNECTORS: dict[str, SourceConnector] = {
         published_at_from_url=_moe_published_at_from_url,
         prefer_detail_published_at=True,
         use_trafilatura_fallback=False,
+    ),
+    "xinhua_education_v1": HtmlConnector(
+        _path_matches(XINHUA_EDUCATION_ARTICLE_PATH),
+        ("#detail", ".main-aticle", ".article", "article", "main"),
+        published_at_from_url=_xinhua_education_published_at_from_url,
+        prefer_detail_published_at=True,
+    ),
+    "cast_science_education_v1": HtmlConnector(
+        _path_matches(CAST_SCIENCE_ARTICLE_PATH),
+        (".TRS_Editor", ".article-content", ".content", "article", "main"),
+        discovery_selectors=("main", ".main", ".content", ".kp-list"),
+        prefer_detail_published_at=True,
+        use_trafilatura_fallback=False,
+    ),
+    "edsurge_ai_education_v1": HtmlConnector(
+        _path_matches(EDSURGE_NEWS_ARTICLE_PATH),
+        ("article", ".article-body", ".body-copy", "main"),
+        discovery_selectors=(
+            "main",
+            ".coverage-area",
+            ".articles",
+        ),
+        published_at_from_url=_edsurge_published_at_from_url,
+        prefer_detail_published_at=True,
+        discovery_anchor_filter=_not_sponsored,
     ),
 }
 

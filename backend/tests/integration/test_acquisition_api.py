@@ -25,10 +25,9 @@ async def test_internal_api_lists_sources_and_enqueues_without_fetching(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         sources = await client.get("/api/v1/sources")
         assert sources.status_code == 200
-        assert sources.json()["count"] == 9
+        assert sources.json()["count"] == 10
         assert {item["relevance_rule_version"] for item in sources.json()["items"]} == {
-            "ai-title-v1",
-            "moe-science-v1",
+            "science-ai-education-v1",
         }
         assert all("latest_filtered_count" in item for item in sources.json()["items"])
 

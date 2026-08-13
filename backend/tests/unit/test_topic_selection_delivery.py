@@ -125,6 +125,10 @@ def _candidate() -> TopicCandidate:
         ai_relevance=1.0,
         parent_relevance=1.0,
         communication_potential=1.0,
+        science_education_relevance=1.0,
+        science_ai_education_eligible=True,
+        science_ai_education_reason_codes=("science_ai_topic_with_education_context",),
+        product_matrix_fit=1.0,
     )
 
 
@@ -146,8 +150,8 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.4-science-policy-priority"
-    assert config.selection_priority_rule_version == "science-policy-priority-v2"
+    assert config.version == "scoring-v1-preview.5-science-education-product-fit"
+    assert config.selection_priority_rule_version is None
 
 
 @pytest.mark.asyncio

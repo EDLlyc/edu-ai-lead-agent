@@ -24,6 +24,8 @@ from app.schemas.copy_generation import (
     has_non_trailing_hashtags,
 )
 
+ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION = "copy-pipeline-v18-english-evidence"
+
 
 class CopyRunStatus(StrEnum):
     QUEUED = "queued"
@@ -55,6 +57,7 @@ class EligibleEvidence:
     source_tier: str
     published_at: datetime | None
     exact_quote: str
+    governed_statement: str | None = None
 
     def __post_init__(self) -> None:
         if self.source_tier not in {"A", "B"}:
@@ -67,6 +70,8 @@ class EligibleEvidence:
             raise ValueError("copy evidence metadata must not be blank")
         if self.published_at is not None and self.published_at.tzinfo is None:
             raise ValueError("evidence publication time must be timezone-aware")
+        if self.governed_statement is not None and not self.governed_statement.strip():
+            raise ValueError("governed evidence statement must not be blank")
 
 
 @dataclass(frozen=True, slots=True)
@@ -894,11 +899,25 @@ def _claim_has_minimum_evidence_support(
     normalized_claim = _normalize_support_text(claim_text)
     if not normalized_claim:
         return False
-    normalized_quotes = tuple(_normalize_support_text(item.exact_quote) for item in evidence)
+    normalized_quotes = tuple(
+        _normalize_support_text(value)
+        for item in evidence
+        for value in (item.exact_quote, item.governed_statement)
+        if value is not None
+    )
     if any(normalized_claim in quote for quote in normalized_quotes):
         return True
     claim_numbers = set(_NUMBER_TOKEN.findall(claim_text))
-    evidence_numbers = set(_NUMBER_TOKEN.findall("\n".join(item.exact_quote for item in evidence)))
+    evidence_numbers = set(
+        _NUMBER_TOKEN.findall(
+            "\n".join(
+                value
+                for item in evidence
+                for value in (item.exact_quote, item.governed_statement)
+                if value is not None
+            )
+        )
+    )
     if not claim_numbers.issubset(evidence_numbers):
         return False
     claim_bigrams = _bigrams(normalized_claim)

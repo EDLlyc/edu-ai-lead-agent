@@ -166,6 +166,43 @@ def test_prompt_delimits_prompt_injection_as_json_data_and_hashes_the_template()
     assert len(first.fingerprint) == 64
 
 
+def test_english_evidence_produces_chinese_facts_bound_to_original_passage() -> None:
+    english_passage = (
+        "Teachers are helping middle school students build AI literacy through classroom "
+        "projects that test model outputs and discuss safety."
+    )
+    request = replace(
+        _request(),
+        title="Schools Build AI Literacy Through Classroom Projects",
+        language="en",
+        passages=(replace(_request().passages[0], text=english_passage),),
+    )
+    payload = _analysis_payload()
+    payload["summary"] = {
+        "text": "教师通过课堂项目帮助中学生学习人工智能素养。",
+        "passage_ids": [PASSAGE_ID],
+    }
+    payload["key_facts"] = [
+        {
+            "text": "课程要求学生测试模型输出并讨论人工智能安全。",
+            "passage_ids": [PASSAGE_ID],
+            "event_time_start": None,
+            "event_time_end": None,
+            "event_time_precision": "unknown",
+        }
+    ]
+    analysis = FactualAnalysisOutput.model_validate(payload)
+
+    prompt = build_factual_analysis_prompt(request)
+    issues = validate_factual_analysis(analysis, request)
+
+    assert issues == ()
+    assert '"language":"en"' in prompt.user_message
+    assert english_passage in prompt.user_message
+    assert analysis.summary.passage_ids == (PASSAGE_ID,)
+    assert analysis.key_facts[0].passage_ids == (PASSAGE_ID,)
+
+
 class _SequenceModel:
     def __init__(self, outcomes: list[FactualAnalysisResult | Exception]) -> None:
         self.outcomes = outcomes

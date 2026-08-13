@@ -31,7 +31,11 @@ from app.infrastructure.db.models import (
     SourceSnapshotModel,
     SourceVersionModel,
 )
-from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS, TERMS_REVIEWED_AT
+from app.infrastructure.ingestion.source_profiles import (
+    PENDING_SOURCE_SEEDS,
+    SOURCE_SEEDS,
+    TERMS_REVIEWED_AT,
+)
 
 
 def _utcnow() -> datetime:
@@ -40,6 +44,13 @@ def _utcnow() -> datetime:
 
 async def seed_sources(session: AsyncSession) -> int:
     seeded = 0
+    pending_source_ids = [seed.source_id for seed in PENDING_SOURCE_SEEDS]
+    if pending_source_ids:
+        await session.execute(
+            update(SourceModel)
+            .where(SourceModel.id.in_(pending_source_ids))
+            .values(enabled=False, active_version_id=None, updated_at=_utcnow())
+        )
     for seed in SOURCE_SEEDS:
         source = await session.get(SourceModel, seed.source_id)
         if source is None:
@@ -57,6 +68,7 @@ async def seed_sources(session: AsyncSession) -> int:
         else:
             source.display_name = seed.display_name
             source.organization_type = seed.organization_type
+            source.enabled = True
             source.owner = seed.owner
             source.updated_at = _utcnow()
 

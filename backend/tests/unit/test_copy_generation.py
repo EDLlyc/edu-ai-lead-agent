@@ -1313,12 +1313,87 @@ def test_prompt_data_cannot_close_its_delimited_section() -> None:
     )
 
     prompt = build_generator_prompt(request)
-
     assert prompt.count("</EVIDENCE>") == 1
     assert "\\u003c/EVIDENCE\\u003e" in prompt
     assert "家长也能看懂" in prompt
     assert "为什么在赛先生学习" in prompt
     assert "#赛先生科学" in prompt
+
+
+def test_english_quote_keeps_original_binding_while_chinese_copy_uses_governed_fact() -> None:
+    topic = _topic()
+    governed_fact = "研究团队发布了用于机器人学习的世界模型研究进展。"
+    english_quote = "The research team released new world-model findings for robot learning."
+    evidence = replace(
+        topic.evidence[0],
+        source_name="EdSurge",
+        source_url=(
+            "https://www.edsurge.com/news/2026-08-12-schools-build-ai-literacy-"
+            "through-classroom-projects"
+        ),
+        exact_quote=english_quote,
+        governed_statement=governed_fact,
+    )
+    english_topic = replace(
+        topic,
+        title="学校通过课堂项目培养人工智能素养",
+        summary="教师帮助学生测试模型输出并讨论人工智能安全。",
+        evidence=(evidence,),
+    )
+    base = _contract_draft()
+    draft = base.model_copy(
+        update={
+            "copywriting": base.copywriting.replace("科技日报", "EdSurge").replace(
+                "https://example.test/article",
+                evidence.source_url,
+            ),
+        }
+    )
+    request = DraftGenerationRequest(
+        run_id=RUN_ID,
+        topic=english_topic,
+        brand_context=_brand(),
+        version_bundle=build_copy_version_bundle(Settings()),
+        draft_version=1,
+        max_output_tokens=2048,
+    )
+
+    issues = validate_material_draft(draft, topic=english_topic, brand_context=_brand())
+    prompt = build_generator_prompt(request)
+    auditor_prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=english_topic,
+            brand_context=_brand(),
+            draft=draft,
+            version_bundle=request.version_bundle,
+            max_output_tokens=1024,
+        )
+    )
+    legacy_prompt = build_generator_prompt(
+        replace(
+            request,
+            version_bundle=replace(
+                request.version_bundle,
+                pipeline_version="copy-pipeline-v17-compact-moments",
+                generator_prompt_version="moments-generator-v16-compact-moments",
+            ),
+        )
+    )
+
+    assert not any(issue.severity == "error" for issue in issues)
+    assert governed_fact in draft.copywriting
+    assert english_quote not in draft.copywriting
+    assert f'"exact_quote":"{english_quote}"' in prompt
+    assert f'"governed_statement":"{governed_fact}"' in prompt
+    assert "exact_quote始终是可追溯的原文引文" in prompt
+    assert "不得写成原文引语" in prompt
+    assert f'"exact_quote":"{english_quote}"' in auditor_prompt
+    assert f'"governed_statement":"{governed_fact}"' in auditor_prompt
+    assert "不得将它当作原文引语" in auditor_prompt
+    assert "governed_statement" not in legacy_prompt
+    assert prompt.index("<EVIDENCE>") < prompt.index("<BRAND>")
 
 
 @pytest.mark.asyncio

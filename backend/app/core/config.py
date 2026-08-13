@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 
 
@@ -49,7 +50,7 @@ class Settings(BaseSettings):
     acquisition_first_run_scan_limit: int = Field(default=100, ge=1, le=500)
     acquisition_daily_scan_limit: int = Field(default=50, ge=1, le=200)
     acquisition_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    acquisition_version: str = "acquisition-v3-freshness-pacing"
+    acquisition_version: str = "acquisition-v4-science-education-fit"
 
     governance_enabled: bool = False
     governance_scheduler_enabled: bool = False
@@ -85,9 +86,9 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.4-science-policy-priority"
+    content_scoring_version: str = "scoring-v1-preview.5-science-education-product-fit"
     content_scoring_profile: str = "preview"
-    content_selection_priority_rule_version: str = "science-policy-priority-v2"
+    content_selection_priority_rule_version: str | None = None
 
     wecom_enabled: bool = False
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com"
@@ -135,10 +136,10 @@ class Settings(BaseSettings):
     )
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
-    copy_pipeline_version: str = "copy-pipeline-v17-compact-moments"
-    copy_generator_prompt_version: str = "moments-generator-v16-compact-moments"
+    copy_pipeline_version: str = ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
+    copy_generator_prompt_version: str = "moments-generator-v17-english-evidence"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
-    copy_auditor_prompt_version: str = "moments-auditor-v16-compact-moments"
+    copy_auditor_prompt_version: str = "moments-auditor-v17-english-evidence"
     copy_audit_schema_version: str = "moments-audit-schema-v1"
     copy_rule_version: str = "moments-rules-v11-compact-warning-recovery"
     copy_preview_policy_version: str = "preview-v11-compact-content-warning-recovery"
@@ -401,7 +402,9 @@ class Settings(BaseSettings):
             self.image_prompt_version,
             self.image_pipeline_version,
         }
-        if any(not value.strip() or len(value) > 80 for value in version_values):
+        version_values.discard(None)
+        bounded_version_values = {value for value in version_values if value is not None}
+        if any(not value.strip() or len(value) > 80 for value in bounded_version_values):
             raise ValueError(
                 "governance version identifiers must be non-empty and at most 80 chars"
             )

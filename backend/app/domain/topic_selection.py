@@ -6,16 +6,22 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Self
+from typing import Any, Self
 from uuid import UUID
 
+from app.domain.editorial_relevance import (
+    PRODUCT_MATRIX_FIT_RULE_VERSION,
+    SCIENCE_AI_EDUCATION_RULE_VERSION,
+)
 from app.domain.science_policy_priority import (
     SCIENCE_POLICY_PRIORITY_RULE_VERSION,
     evaluate_science_policy_priority,
 )
 
-DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.4-science-policy-priority"
-DEFAULT_SELECTION_PRIORITY_RULE_VERSION = SCIENCE_POLICY_PRIORITY_RULE_VERSION
+DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.5-science-education-product-fit"
+DEFAULT_SELECTION_PRIORITY_RULE_VERSION: str | None = None
+SCIENCE_EDUCATION_VETO_RULE_VERSION = "topic-veto-v2-science-ai-education"
+LEGACY_TOPIC_VETO_RULE_VERSION = "topic-veto-v1"
 MOE_SCIENCE_TOP1_PRIORITY_POLICY = "moe-science-top1-v1"
 SOURCE_PRIORITY_RULE_VERSION = "source-priority-v1"
 
@@ -30,6 +36,7 @@ class TopicVetoCode(StrEnum):
     PROHIBITED_MARKETING_RISK = "prohibited_marketing_risk"
     REPEATED_WITHIN_WINDOW = "repeated_within_window"
     STALE_EVENT = "stale_event"
+    OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE = "outside_science_ai_education_scope"
 
 
 class NoTopicCode(StrEnum):
@@ -42,18 +49,26 @@ class NoTopicCode(StrEnum):
 class TopicScoringConfig:
     version: str = DEFAULT_TOPIC_SCORING_VERSION
     profile: str = "preview"
-    veto_rule_version: str = "topic-veto-v1"
+    veto_rule_version: str | None = None
     selection_priority_rule_version: str | None = DEFAULT_SELECTION_PRIORITY_RULE_VERSION
     threshold: float = 0.62
     recent_selection_window_days: int = 7
     freshness_window_days: float = 10.0
     source_diversity_cap: int = 4
+    science_ai_education_rule_version: str | None = None
+    product_matrix_fit_rule_version: str | None = None
     source_trust_weight: float = 0.20
     source_diversity_weight: float = 0.10
     ai_relevance_weight: float = 0.20
     parent_relevance_weight: float = 0.20
     freshness_weight: float = 0.15
     communication_potential_weight: float = 0.15
+    science_education_relevance_weight: float = 0.30
+    product_matrix_fit_weight: float = 0.25
+    editorial_source_trust_weight: float = 0.15
+    editorial_source_diversity_weight: float = 0.10
+    editorial_freshness_weight: float = 0.10
+    editorial_communication_potential_weight: float = 0.10
     theme_repetition_penalty: float = 0.15
     controversy_risk_penalty: float = 0.10
     marketing_risk_penalty: float = 0.15
@@ -70,13 +85,26 @@ class TopicScoringConfig:
             raise ValueError("topic scoring version must be non-blank and bounded")
         if not self.profile.strip() or len(self.profile) > 40:
             raise ValueError("topic scoring profile must be non-blank and bounded")
-        if not self.veto_rule_version.strip() or len(self.veto_rule_version) > 80:
+        if self.veto_rule_version is not None and (
+            not self.veto_rule_version.strip() or len(self.veto_rule_version) > 80
+        ):
             raise ValueError("topic veto rule version must be non-blank and bounded")
         if self.selection_priority_rule_version is not None and (
             not self.selection_priority_rule_version.strip()
             or len(self.selection_priority_rule_version) > 80
         ):
             raise ValueError("topic selection priority rule version must be non-blank and bounded")
+        explicit_editorial_versions = (
+            self.science_ai_education_rule_version,
+            self.product_matrix_fit_rule_version,
+        )
+        if any(explicit_editorial_versions) and not all(explicit_editorial_versions):
+            raise ValueError("topic editorial rule versions must be configured together")
+        if any(
+            value is not None and (not value.strip() or len(value) > 80)
+            for value in explicit_editorial_versions
+        ):
+            raise ValueError("topic editorial rule versions must be non-blank and bounded")
         if not -1 <= self.threshold <= 1 or not math.isfinite(self.threshold):
             raise ValueError("topic scoring threshold must be finite and in [-1, 1]")
         if self.recent_selection_window_days < 1:
@@ -109,6 +137,17 @@ class TopicScoringConfig:
 
     @property
     def positive_weights(self) -> Mapping[str, float]:
+        if self.uses_editorial_features:
+            return MappingProxyType(
+                {
+                    "science_education_relevance": (self.science_education_relevance_weight),
+                    "product_matrix_fit": self.product_matrix_fit_weight,
+                    "source_trust": self.editorial_source_trust_weight,
+                    "source_diversity": self.editorial_source_diversity_weight,
+                    "freshness": self.editorial_freshness_weight,
+                    "communication_potential": (self.editorial_communication_potential_weight),
+                }
+            )
         return MappingProxyType(
             {
                 "source_trust": self.source_trust_weight,
@@ -118,6 +157,35 @@ class TopicScoringConfig:
                 "freshness": self.freshness_weight,
                 "communication_potential": self.communication_potential_weight,
             }
+        )
+
+    @property
+    def uses_editorial_features(self) -> bool:
+        return (
+            self.version == DEFAULT_TOPIC_SCORING_VERSION
+            or self.science_ai_education_rule_version is not None
+        )
+
+    @property
+    def effective_science_ai_education_rule_version(self) -> str | None:
+        if not self.uses_editorial_features:
+            return None
+        return self.science_ai_education_rule_version or SCIENCE_AI_EDUCATION_RULE_VERSION
+
+    @property
+    def effective_product_matrix_fit_rule_version(self) -> str | None:
+        if not self.uses_editorial_features:
+            return None
+        return self.product_matrix_fit_rule_version or PRODUCT_MATRIX_FIT_RULE_VERSION
+
+    @property
+    def effective_veto_rule_version(self) -> str:
+        if self.veto_rule_version is not None:
+            return self.veto_rule_version
+        return (
+            SCIENCE_EDUCATION_VETO_RULE_VERSION
+            if self.uses_editorial_features
+            else LEGACY_TOPIC_VETO_RULE_VERSION
         )
 
     @property
@@ -134,7 +202,7 @@ class TopicScoringConfig:
         metadata: dict[str, object] = {
             "version": self.version,
             "profile": self.profile,
-            "veto_rule_version": self.veto_rule_version,
+            "veto_rule_version": self.effective_veto_rule_version,
             "threshold": self.threshold,
             "recent_selection_window_days": self.recent_selection_window_days,
             "freshness_window_days": self.freshness_window_days,
@@ -145,6 +213,13 @@ class TopicScoringConfig:
         }
         if self.selection_priority_rule_version is not None:
             metadata["selection_priority_rule_version"] = self.selection_priority_rule_version
+        if self.uses_editorial_features:
+            metadata["science_ai_education_rule_version"] = (
+                self.effective_science_ai_education_rule_version
+            )
+            metadata["product_matrix_fit_rule_version"] = (
+                self.effective_product_matrix_fit_rule_version
+            )
         return metadata
 
     @classmethod
@@ -156,17 +231,47 @@ class TopicScoringConfig:
             isinstance(value, str) for value in tie_break_value
         ):
             raise ValueError("topic scoring tie-break metadata is invalid")
-        return cls(
-            version=_metadata_str(metadata, "version"),
-            profile=_metadata_str(metadata, "profile"),
-            veto_rule_version=_metadata_str(metadata, "veto_rule_version"),
-            selection_priority_rule_version=_metadata_optional_str(
+        editorial_features = "science_education_relevance" in positive_weights
+        common: dict[str, Any] = {
+            "version": _metadata_str(metadata, "version"),
+            "profile": _metadata_str(metadata, "profile"),
+            "veto_rule_version": _metadata_str(metadata, "veto_rule_version"),
+            "selection_priority_rule_version": _metadata_optional_str(
                 metadata, "selection_priority_rule_version"
             ),
-            threshold=_metadata_float(metadata, "threshold"),
-            recent_selection_window_days=_metadata_int(metadata, "recent_selection_window_days"),
-            freshness_window_days=_metadata_float(metadata, "freshness_window_days"),
-            source_diversity_cap=_metadata_int(metadata, "source_diversity_cap"),
+            "threshold": _metadata_float(metadata, "threshold"),
+            "recent_selection_window_days": _metadata_int(metadata, "recent_selection_window_days"),
+            "freshness_window_days": _metadata_float(metadata, "freshness_window_days"),
+            "source_diversity_cap": _metadata_int(metadata, "source_diversity_cap"),
+            "theme_repetition_penalty": _metadata_float(penalty_weights, "theme_repetition"),
+            "controversy_risk_penalty": _metadata_float(penalty_weights, "controversy_risk"),
+            "marketing_risk_penalty": _metadata_float(penalty_weights, "marketing_risk"),
+            "tie_break_order": tuple(tie_break_value),
+        }
+        if editorial_features:
+            return cls(
+                **common,
+                science_ai_education_rule_version=_metadata_str(
+                    metadata, "science_ai_education_rule_version"
+                ),
+                product_matrix_fit_rule_version=_metadata_str(
+                    metadata, "product_matrix_fit_rule_version"
+                ),
+                science_education_relevance_weight=_metadata_float(
+                    positive_weights, "science_education_relevance"
+                ),
+                product_matrix_fit_weight=_metadata_float(positive_weights, "product_matrix_fit"),
+                editorial_source_trust_weight=_metadata_float(positive_weights, "source_trust"),
+                editorial_source_diversity_weight=_metadata_float(
+                    positive_weights, "source_diversity"
+                ),
+                editorial_freshness_weight=_metadata_float(positive_weights, "freshness"),
+                editorial_communication_potential_weight=_metadata_float(
+                    positive_weights, "communication_potential"
+                ),
+            )
+        return cls(
+            **common,
             source_trust_weight=_metadata_float(positive_weights, "source_trust"),
             source_diversity_weight=_metadata_float(positive_weights, "source_diversity"),
             ai_relevance_weight=_metadata_float(positive_weights, "ai_relevance"),
@@ -175,10 +280,6 @@ class TopicScoringConfig:
             communication_potential_weight=_metadata_float(
                 positive_weights, "communication_potential"
             ),
-            theme_repetition_penalty=_metadata_float(penalty_weights, "theme_repetition"),
-            controversy_risk_penalty=_metadata_float(penalty_weights, "controversy_risk"),
-            marketing_risk_penalty=_metadata_float(penalty_weights, "marketing_risk"),
-            tie_break_order=tuple(tie_break_value),
         )
 
 
@@ -192,6 +293,11 @@ class TopicCandidate:
     ai_relevance: float
     parent_relevance: float
     communication_potential: float
+    science_education_relevance: float = 0.0
+    science_ai_education_eligible: bool = False
+    science_ai_education_reason_codes: tuple[str, ...] = ()
+    product_matrix_fit: float = 0.0
+    product_matrix_direction_ids: tuple[str, ...] = ()
     topic_priority_policy: str | None = None
     priority_title: str = ""
     priority_summary: str = ""
@@ -223,12 +329,22 @@ class TopicCandidate:
             self.ai_relevance,
             self.parent_relevance,
             self.communication_potential,
+            self.science_education_relevance,
+            self.product_matrix_fit,
             self.theme_repetition,
             self.controversy_risk,
             self.marketing_risk,
         )
         if any(not 0 <= value <= 1 or not math.isfinite(value) for value in bounded_features):
             raise ValueError("topic candidate features must be finite and in [0, 1]")
+        if any(
+            not value.strip() or len(value) > 80 for value in self.science_ai_education_reason_codes
+        ):
+            raise ValueError("topic relevance reason codes must be non-blank and bounded")
+        if any(
+            not value.strip() or len(value) > 100 for value in self.product_matrix_direction_ids
+        ):
+            raise ValueError("topic product directions must be non-blank and bounded")
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +368,10 @@ class TopicScore:
     topic_priority_policy: str | None = None
     priority_applied: bool = False
     priority_reason: str = "not_eligible"
+    science_ai_education_rule_version: str | None = None
+    product_matrix_fit_rule_version: str | None = None
+    science_ai_education_reason_codes: tuple[str, ...] = ()
+    product_matrix_direction_ids: tuple[str, ...] = ()
     rank: int | None = None
 
     def __post_init__(self) -> None:
@@ -299,6 +419,10 @@ class TopicScore:
             "topic_priority_policy": self.topic_priority_policy,
             "priority_applied": self.priority_applied,
             "priority_reason": self.priority_reason,
+            "science_ai_education_rule_version": self.science_ai_education_rule_version,
+            "product_matrix_fit_rule_version": self.product_matrix_fit_rule_version,
+            "science_ai_education_reason_codes": list(self.science_ai_education_reason_codes),
+            "product_matrix_direction_ids": list(self.product_matrix_direction_ids),
             "rank": self.rank,
         }
 
@@ -327,28 +451,46 @@ def score_topic_candidate(
         raise ValueError("topic scoring time must be timezone-aware")
 
     age_days = max(0.0, (as_of - candidate.event_time).total_seconds() / 86_400)
-    normalized_features = {
+    common_normalized_features = {
         "source_trust": candidate.source_trust,
         "source_diversity": min(candidate.source_diversity / config.source_diversity_cap, 1.0),
-        "ai_relevance": candidate.ai_relevance,
-        "parent_relevance": candidate.parent_relevance,
         "freshness": max(0.0, 1.0 - age_days / config.freshness_window_days),
         "communication_potential": candidate.communication_potential,
         "theme_repetition": candidate.theme_repetition,
         "controversy_risk": candidate.controversy_risk,
         "marketing_risk": candidate.marketing_risk,
     }
-    raw_features = {
+    common_raw_features = {
         "source_trust": candidate.source_trust,
         "source_diversity": float(candidate.source_diversity),
-        "ai_relevance": candidate.ai_relevance,
-        "parent_relevance": candidate.parent_relevance,
         "freshness_age_days": age_days,
         "communication_potential": candidate.communication_potential,
         "theme_repetition": candidate.theme_repetition,
         "controversy_risk": candidate.controversy_risk,
         "marketing_risk": candidate.marketing_risk,
     }
+    if config.uses_editorial_features:
+        normalized_features = {
+            **common_normalized_features,
+            "science_education_relevance": candidate.science_education_relevance,
+            "product_matrix_fit": candidate.product_matrix_fit,
+        }
+        raw_features = {
+            **common_raw_features,
+            "science_education_relevance": candidate.science_education_relevance,
+            "product_matrix_fit": candidate.product_matrix_fit,
+        }
+    else:
+        normalized_features = {
+            **common_normalized_features,
+            "ai_relevance": candidate.ai_relevance,
+            "parent_relevance": candidate.parent_relevance,
+        }
+        raw_features = {
+            **common_raw_features,
+            "ai_relevance": candidate.ai_relevance,
+            "parent_relevance": candidate.parent_relevance,
+        }
     if candidate.days_since_last_selection is not None:
         raw_features["days_since_last_selection"] = float(candidate.days_since_last_selection)
     positive_components = {
@@ -386,6 +528,14 @@ def score_topic_candidate(
         topic_priority_policy=candidate.topic_priority_policy,
         priority_applied=priority_applied,
         priority_reason=priority_reason,
+        science_ai_education_rule_version=(config.effective_science_ai_education_rule_version),
+        product_matrix_fit_rule_version=config.effective_product_matrix_fit_rule_version,
+        science_ai_education_reason_codes=(
+            candidate.science_ai_education_reason_codes if config.uses_editorial_features else ()
+        ),
+        product_matrix_direction_ids=(
+            candidate.product_matrix_direction_ids if config.uses_editorial_features else ()
+        ),
     )
 
 
@@ -460,6 +610,8 @@ def _veto_codes(
     age_days = (as_of - candidate.event_time).total_seconds() / 86_400
     if age_days > config.freshness_window_days:
         vetoes.append(TopicVetoCode.STALE_EVENT)
+    if config.uses_editorial_features and not candidate.science_ai_education_eligible:
+        vetoes.append(TopicVetoCode.OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE)
     return tuple(vetoes)
 
 
@@ -491,7 +643,12 @@ def _priority_state(
     config: TopicScoringConfig,
 ) -> tuple[bool, str]:
     if config.selection_priority_rule_version is None:
-        return False, "selection_priority_rule_unavailable"
+        return (
+            False,
+            "source_priority_disabled_for_config"
+            if config.uses_editorial_features
+            else "selection_priority_rule_unavailable",
+        )
     if config.selection_priority_rule_version not in {
         SOURCE_PRIORITY_RULE_VERSION,
         SCIENCE_POLICY_PRIORITY_RULE_VERSION,

@@ -5,8 +5,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from app.domain.editorial_relevance import SCIENCE_AI_EDUCATION_RULE_VERSION
 from app.domain.enums import SourceTier
-from app.domain.title_relevance import TITLE_RELEVANCE_RULE_VERSION
 from app.domain.value_objects import stable_key
 
 
@@ -28,7 +28,7 @@ class SourceSeed:
     language: str = "zh-CN"
     connector_version: str = "1.0.0"
     parser_version: str = "1.0.0"
-    relevance_rule_version: str | None = TITLE_RELEVANCE_RULE_VERSION
+    relevance_rule_version: str | None = SCIENCE_AI_EDUCATION_RULE_VERSION
     allow_http_fallback: bool = False
     topic_priority_policy: str | None = None
 
@@ -163,10 +163,52 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
         2.0,
         connector_version="1.0.0",
         parser_version="1.0.0",
-        relevance_rule_version="moe-science-v1",
         allow_http_fallback=True,
         topic_priority_policy="moe-science-top1-v1",
     ),
+    SourceSeed(
+        "xinhua-education",
+        "新华教育",
+        "authoritative_media",
+        SourceTier.B,
+        "xinhua_education_v1",
+        "https://education.news.cn/index.htm",
+        ("education.news.cn",),
+        ("/",),
+        "allowed",
+        3.0,
+    ),
 )
 
-TERMS_REVIEWED_AT = datetime(2026, 7, 28, tzinfo=UTC)
+# These profiles have fixture/connector approval but are deliberately excluded from SOURCE_SEEDS.
+# A future activation must pass a production-safe bounded live entry + one-detail smoke first.
+PENDING_SOURCE_SEEDS: tuple[SourceSeed, ...] = (
+    SourceSeed(
+        "cast-science-education",
+        "中国科协科普与科学教育",
+        "science_organization_media",
+        SourceTier.B,
+        "cast_science_education_v1",
+        "https://www.cast.org.cn/kp/",
+        ("www.cast.org.cn",),
+        ("/kp/", "/xw/"),
+        "manual_review",
+        5.0,
+    ),
+    SourceSeed(
+        "edsurge-ai-education",
+        "EdSurge AI Education",
+        "specialist_education_media",
+        SourceTier.B,
+        "edsurge_ai_education_v1",
+        "https://www.edsurge.com/coverage-areas/artificial-intelligence",
+        ("www.edsurge.com",),
+        ("/coverage-areas/artificial-intelligence", "/news/"),
+        "allowed_with_path_exclusions",
+        4.0,
+        timezone="UTC",
+        language="en",
+    ),
+)
+
+TERMS_REVIEWED_AT = datetime(2026, 8, 13, tzinfo=UTC)

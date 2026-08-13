@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -25,6 +25,15 @@ from app.core.errors import (
     TransientFetchError,
     UnsupportedContentError,
 )
+from app.domain.editorial_relevance import (
+    EDITORIAL_CONTENT_CHARACTER_LIMIT,
+    PRODUCT_MATRIX_FIT_RULE_VERSION,
+    SCIENCE_AI_EDUCATION_RULE_VERSION,
+    ProductMatrixFitResult,
+    ScienceAiEducationResult,
+    evaluate_product_matrix_fit,
+    evaluate_science_ai_education_relevance,
+)
 from app.domain.entities import DiscoveredItem
 from app.domain.enums import JobStatus, ObservationOutcome
 from app.domain.freshness import FreshnessDecision, evaluate_publication_freshness
@@ -42,6 +51,12 @@ from app.domain.title_relevance import (
 from app.infrastructure.ingestion.connectors import get_connector
 
 logger = structlog.get_logger()
+
+
+@dataclass(frozen=True, slots=True)
+class _EditorialDiscoveryEvaluation:
+    relevance: ScienceAiEducationResult
+    product_fit: ProductMatrixFitResult
 
 
 class AcquisitionExecutor:
@@ -141,7 +156,13 @@ class AcquisitionExecutor:
                 scanned_items = connector.discover(list_response, claimed.profile, limit=scan_limit)
                 scanned_count = len(scanned_items)
                 accepted_items: list[
-                    tuple[DiscoveredItem, TitleRelevanceResult | ScienceRelevanceResult | None]
+                    tuple[
+                        DiscoveredItem,
+                        TitleRelevanceResult
+                        | ScienceRelevanceResult
+                        | _EditorialDiscoveryEvaluation
+                        | None,
+                    ]
                 ]
                 accepted_items = []
                 freshness_evaluated_at = self._clock()
@@ -208,6 +229,37 @@ class AcquisitionExecutor:
                     deferred_relevant_count = max(
                         0, len(title_matches) - accepted_title_match_count
                     )
+                elif claimed.profile.relevance_rule_version == SCIENCE_AI_EDUCATION_RULE_VERSION:
+                    editorial_items = [
+                        (
+                            item,
+                            _EditorialDiscoveryEvaluation(
+                                relevance=evaluate_science_ai_education_relevance(item.title),
+                                product_fit=evaluate_product_matrix_fit(item.title),
+                            ),
+                            index,
+                        )
+                        for index, item in enumerate(scanned_items)
+                    ]
+                    editorial_title_matches = [
+                        row for row in editorial_items if row[1].relevance.is_eligible
+                    ]
+                    editorial_title_neutral = [
+                        row for row in editorial_items if not row[1].relevance.is_eligible
+                    ]
+                    editorial_title_matches.sort(key=_editorial_discovery_sort_key)
+                    editorial_ordered_items = [
+                        *editorial_title_matches,
+                        *editorial_title_neutral,
+                    ]
+                    accepted_items.extend(
+                        (item, evaluation)
+                        for item, evaluation, _index in editorial_ordered_items[:accepted_limit]
+                    )
+                    accepted_title_matches = min(len(editorial_title_matches), accepted_limit)
+                    deferred_relevant_count = max(
+                        0, len(editorial_title_matches) - accepted_title_matches
+                    )
                 else:
                     raise ParseError("relevance rule version is not installed")
 
@@ -215,7 +267,13 @@ class AcquisitionExecutor:
                 # unknown date is retained for the bounded detail fetch so the connector can try
                 # to resolve it; unknown remains excluded if the detail page also has no date.
                 prechecked_items: list[
-                    tuple[DiscoveredItem, TitleRelevanceResult | ScienceRelevanceResult | None]
+                    tuple[
+                        DiscoveredItem,
+                        TitleRelevanceResult
+                        | ScienceRelevanceResult
+                        | _EditorialDiscoveryEvaluation
+                        | None,
+                    ]
                 ] = []
                 for item, relevance_value in accepted_items:
                     freshness = evaluate_publication_freshness(
@@ -227,6 +285,7 @@ class AcquisitionExecutor:
                         if claimed.profile.relevance_rule_version in {
                             None,
                             SCIENCE_RELEVANCE_RULE_VERSION,
+                            SCIENCE_AI_EDUCATION_RULE_VERSION,
                         }:
                             freshness_filtered_count += 1
                             filtered_count += 1
@@ -234,6 +293,14 @@ class AcquisitionExecutor:
                             if isinstance(relevance_value, ScienceRelevanceResult):
                                 metadata = {
                                     **_science_relevance_metadata(relevance_value),
+                                    **metadata,
+                                }
+                            elif isinstance(relevance_value, _EditorialDiscoveryEvaluation):
+                                metadata = {
+                                    **_editorial_relevance_metadata(
+                                        relevance_value.relevance,
+                                        relevance_value.product_fit,
+                                    ),
                                     **metadata,
                                 }
                             await self._repository.observe(
@@ -271,11 +338,25 @@ class AcquisitionExecutor:
                     )
                     relevance_metadata: dict[str, object] = {}
                     science_relevance: ScienceRelevanceResult | None = None
+                    editorial_relevance: ScienceAiEducationResult | None = None
                     if claimed.profile.relevance_rule_version == SCIENCE_RELEVANCE_RULE_VERSION:
                         science_relevance = evaluate_moe_science_relevance(
                             document.title, document.clean_text
                         )
                         relevance_metadata = _science_relevance_metadata(science_relevance)
+                    elif (
+                        claimed.profile.relevance_rule_version == SCIENCE_AI_EDUCATION_RULE_VERSION
+                    ):
+                        editorial_relevance = evaluate_science_ai_education_relevance(
+                            document.title, document.clean_text
+                        )
+                        product_fit = evaluate_product_matrix_fit(
+                            document.title, document.clean_text
+                        )
+                        relevance_metadata = _editorial_relevance_metadata(
+                            editorial_relevance,
+                            product_fit,
+                        )
                     elif isinstance(relevance_value, TitleRelevanceResult):
                         relevance_metadata = {
                             "relevance_rule_version": relevance_value.rule_version,
@@ -318,7 +399,20 @@ class AcquisitionExecutor:
                             metadata=relevance_metadata,
                         )
                         continue
+                    if editorial_relevance is not None and not editorial_relevance.is_eligible:
+                        filtered_count += 1
+                        await self._repository.observe(
+                            claimed=claimed,
+                            source_item_id=item.source_item_id,
+                            outcome=ObservationOutcome.FILTERED,
+                            snapshot_id=snapshot_id,
+                            http_status=detail_response.status_code,
+                            metadata=relevance_metadata,
+                        )
+                        continue
                     if science_relevance is not None:
+                        relevant_count += 1
+                    if editorial_relevance is not None:
                         relevant_count += 1
                     persisted = await self._repository.save_candidate(
                         claimed=claimed,
@@ -365,6 +459,36 @@ class AcquisitionExecutor:
                                     0, len(scanned_items) - accepted_limit
                                 ),
                                 "content_character_limit": SCIENCE_CONTENT_CHARACTER_LIMIT,
+                            }
+                        )
+                        if relevant_count == 0:
+                            job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
+                    elif (
+                        claimed.profile.relevance_rule_version == SCIENCE_AI_EDUCATION_RULE_VERSION
+                    ):
+                        filter_metadata.update(
+                            {
+                                "science_ai_education_rule_version": (
+                                    SCIENCE_AI_EDUCATION_RULE_VERSION
+                                ),
+                                "product_matrix_fit_rule_version": (
+                                    PRODUCT_MATRIX_FIT_RULE_VERSION
+                                ),
+                                "title_match_count": sum(
+                                    isinstance(relevance, _EditorialDiscoveryEvaluation)
+                                    and relevance.relevance.is_eligible
+                                    for _, relevance in accepted_items
+                                ),
+                                "body_probe_count": sum(
+                                    isinstance(relevance, _EditorialDiscoveryEvaluation)
+                                    and not relevance.relevance.is_eligible
+                                    for _, relevance in accepted_items
+                                ),
+                                "detail_probe_limit": accepted_limit,
+                                "deferred_detail_count": max(
+                                    0, len(scanned_items) - len(accepted_items)
+                                ),
+                                "content_character_limit": (EDITORIAL_CONTENT_CHARACTER_LIMIT),
                             }
                         )
                         if relevant_count == 0:
@@ -631,4 +755,50 @@ def _science_relevance_metadata(result: ScienceRelevanceResult) -> dict[str, obj
         "matched_terms": list(result.matched_terms),
         "content_characters_considered": result.content_characters_considered,
         "content_truncated": result.content_truncated,
+    }
+
+
+def _editorial_discovery_sort_key(
+    row: tuple[DiscoveredItem, _EditorialDiscoveryEvaluation, int],
+) -> tuple[float, float, float, int, str]:
+    item, evaluation, source_index = row
+    published_timestamp = item.published_at.timestamp() if item.published_at is not None else 0.0
+    return (
+        -evaluation.relevance.score,
+        -evaluation.product_fit.score,
+        -published_timestamp,
+        source_index,
+        item.source_item_id,
+    )
+
+
+def _editorial_relevance_metadata(
+    relevance: ScienceAiEducationResult,
+    product_fit: ProductMatrixFitResult,
+) -> dict[str, object]:
+    return {
+        "relevance_rule_version": relevance.rule_version,
+        "science_ai_education_rule_version": relevance.rule_version,
+        "science_ai_education_eligible": relevance.is_eligible,
+        "science_ai_education_score": relevance.score,
+        "science_ai_education_reason_codes": list(relevance.reason_codes),
+        "matched_title_terms": list(relevance.matched_title_terms),
+        "matched_content_terms": list(relevance.matched_body_terms),
+        "matched_title_explicit_terms": list(relevance.matched_title_explicit_terms),
+        "matched_content_explicit_terms": list(relevance.matched_body_explicit_terms),
+        "matched_title_topic_terms": list(relevance.matched_title_topic_terms),
+        "matched_content_topic_terms": list(relevance.matched_body_topic_terms),
+        "matched_title_context_terms": list(relevance.matched_title_context_terms),
+        "matched_content_context_terms": list(relevance.matched_body_context_terms),
+        "title_relevance_match": bool(relevance.matched_title_terms),
+        "content_relevance_match": bool(relevance.matched_body_terms),
+        "product_matrix_fit_rule_version": product_fit.rule_version,
+        "product_matrix_fit_score": product_fit.score,
+        "product_matrix_direction_ids": list(product_fit.direction_ids),
+        "product_matrix_reason_codes": list(product_fit.reason_codes),
+        "product_matrix_title_direction_ids": list(product_fit.matched_title_direction_ids),
+        "product_matrix_content_direction_ids": list(product_fit.matched_body_direction_ids),
+        "content_character_limit": EDITORIAL_CONTENT_CHARACTER_LIMIT,
+        "content_characters_considered": relevance.body_characters_considered,
+        "content_truncated": relevance.body_truncated,
     }

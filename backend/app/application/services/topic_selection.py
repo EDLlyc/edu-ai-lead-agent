@@ -23,7 +23,7 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
     return TopicScoringConfig(
         version=settings.content_scoring_version,
         profile=settings.content_scoring_profile,
-        selection_priority_rule_version=settings.content_selection_priority_rule_version,
+        selection_priority_rule_version=(settings.content_selection_priority_rule_version or None),
         freshness_window_days=float(settings.content_freshness_window_days),
     )
 

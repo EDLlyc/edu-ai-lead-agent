@@ -1,6 +1,6 @@
 # Edu AI Lead Agent
 
-面向家长的每日 AI 教育内容素材 Agent。当前已实现两层生产化能力：第一层每天从八个批准的权威来源增量采集 AI、人工智能、机器人等相关公开资料，并保存不可变快照与完整来源证据；第二层从已存储候选中做版本化规范化、事实结构化分析、精确/语义去重和可审计事件组织。
+面向家长的每日科学与 AI 教育内容素材 Agent。采集层当前从十个活动来源增量采集科学教育、AI 教育、科学素养、STEM 与青少年科创实践等公开资料，并保存不可变快照与完整来源证据；新华教育已通过新增来源激活门，另有两个已批准的连接器等待独立实时激活门，目标来源数为十二。治理层从已存储候选中做版本化规范化、事实结构化分析、精确/语义去重和可审计事件组织。
 
 第二层使用 PostgreSQL/pgvector 和可恢复的 LangGraph checkpoint，支持离线 fake provider 与显式启用的智谱模型。当前仍不包含选题评分、Top 1、品牌 RAG、文案/图片生成、产品前端页面或自动发布。
 
@@ -65,26 +65,27 @@ API、Scheduler 和 Worker 是独立进程。Scheduler 默认每天 `06:30 Asia/
 
 ## 首批权威来源
 
-| 层级 | 来源 |
-|---|---|
-| A | 中国政府网最新政策、北京师范大学新闻网、中国科学院科研进展、商汤科技新闻中心 |
-| B | 新华网科技、光明网教育、科技日报、中国新闻网教育 |
+| 状态 | 层级 | 来源 |
+|---|---|---|
+| 活动 | A | 中国政府网最新政策、北京师范大学新闻网、中国科学院科研进展、商汤科技新闻中心、教育部科学新闻 |
+| 活动 | B | 新华网科技、光明网教育、科技日报、中国新闻网教育、新华教育 |
+| 待实时激活门 | B | 中国科协科普与科学教育、EdSurge AI Education |
 
 来源入口、HTTPS 主机/路径白名单、robots/条款复核、限速、解析器版本和标题相关性规则保存在版本化来源登记中。单个来源可以独立禁用；一个来源失败不会阻止其他来源完成。
 
-当前活动来源版本使用确定性的 `ai-title-v1` 标题规则，只接收人工智能、大模型、机器学习、智能体、算法/算力/AI 芯片、视觉/语音/NLP、机器人/具身智能、自动驾驶/无人系统、无人机和脑机接口等主题。AI 相关规划、治理、标准、通知和支持政策属于范围；普通教育、文化、金融、生活以及未与 AI/机器人/智能系统明确关联的量子、航天、生物技术和新能源标题会被过滤。规则不调用 LLM、Embedding 或外部分类服务。
+当前活动来源版本使用确定性的 `science-ai-education-v1` 中英双语规则。明确的科学教育、AI 教育、科学/AI 素养、STEM、科学探究或青少年科创表达可以进入候选；其他文本必须同时出现科学/AI 主题与教育、学习者、教师或实践场景。普通教育、纯科技产业新闻和泛 AI 标题会被过滤。`product-matrix-fit-v1` 只为六类产品方向提供软排序信号，绝不能改变资格或救回任何 veto。规则不调用 LLM、Embedding 或外部分类服务。
 
-采集器会先扫描一个有界的近期列表，再只请求标题相关条目的详情。`ACQUISITION_FIRST_RUN_SCAN_LIMIT` / `ACQUISITION_DAILY_SCAN_LIMIT` 控制扫描深度，`ACQUISITION_FIRST_RUN_ITEM_LIMIT` / `ACQUISITION_DAILY_ITEM_LIMIT` 控制最多接收多少个相关条目；扫描上限必须大于或等于接收上限。零匹配来源会成功结束、记录过滤计数并推进原始列表游标，不会用无关文章填满配额。
+采集器会先扫描一个有界的近期列表，优先请求标题已经命中范围的详情；标题信息不足时，仅用剩余条目窗口做有界中性详情探测，并在正文提取后用标题加最多 6000 个规范化正文字符重新判定。`ACQUISITION_FIRST_RUN_SCAN_LIMIT` / `ACQUISITION_DAILY_SCAN_LIMIT` 控制扫描深度，`ACQUISITION_FIRST_RUN_ITEM_LIMIT` / `ACQUISITION_DAILY_ITEM_LIMIT` 控制最多接收多少个合格条目；扫描上限必须大于或等于接收上限。零匹配来源会成功结束、记录过滤与探测计数并推进原始列表游标，不会用无关文章填满配额。
 
 ## 查看采集结果
 
 候选列表直接提供后续工作流需要的来源、最新相关标题、发布时间和原文链接，同时保留候选 ID 与规则版本：
 
 ```bash
-curl 'http://127.0.0.1:8000/api/v1/evidence-candidates?relevance_rule_version=ai-title-v1&limit=20'
+curl 'http://127.0.0.1:8000/api/v1/evidence-candidates?relevance_rule_version=science-ai-education-v1&limit=20'
 ```
 
-`relevance_rule_version=ai-title-v1` 会把历史上尚未启用标题规则的候选排除在正常下游队列之外，但这些旧记录仍可在不带该参数时用于审计。重点字段为 `source_display_name`、`title`、`published_at` 和 `original_url`。使用返回的候选 ID 查询详情，可读取已存储的 `clean_text`、不可变快照元数据和 observation provenance；正常下游处理不需要再次访问原网站：
+`relevance_rule_version=science-ai-education-v1` 会把旧规则候选排除在当前下游队列之外，但旧记录仍可在不带该参数时用于审计和历史回放。重点字段为 `source_display_name`、`title`、`published_at` 和 `original_url`。使用返回的候选 ID 查询详情，可读取已存储的 `clean_text`、不可变快照元数据和 observation provenance；正常下游处理不需要再次访问原网站：
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/evidence-candidates/<candidate-id>'
@@ -145,7 +146,7 @@ make governance-live-smoke CANDIDATE_ID=<candidate-id>
 ```bash
 make infra-up          # 启动 PostgreSQL/pgvector 与 MinIO
 make migrate           # Alembic 升级到最新数据库版本
-make seed-sources      # 幂等写入八个批准来源并激活当前不可变版本
+make seed-sources      # 幂等写入十个活动来源并激活当前不可变版本
 make stack-up          # 构建并启动 migration/API/Scheduler/Worker 完整形状
 make governance-stack-up # 启动默认关闭的 Compose governance profile
 make governance-scheduler # 将终态采集 run 对账为治理 run
@@ -161,20 +162,20 @@ make backend-integration-test # 真实 PostgreSQL/MinIO 集成测试
 make frontend-check    # Prettier + ESLint + TypeScript + Vitest + Vite build
 make check             # 全部质量检查
 make doctor            # 环境与基础设施 smoke check
-make source-smoke      # 可选：按安全策略小规模访问八个实时官网入口
+make source-smoke      # 可选：按安全策略小规模访问十个活动官网入口
 ```
 
 前端依赖由 `frontend/package-lock.json` 锁定，日常安装使用 `npm ci --prefix frontend`。项目已配置 TanStack Query、`openapi-fetch` 与 `openapi-typescript`；FastAPI 接口变化后运行 `make api-generate`，提交更新后的 `backend/openapi.json` 与生成类型，不手写重复的接口模型。
 
 需要更换端口、采集时间或治理版本时，复制 `.env.example` 为 `.env` 后修改对应配置。修改 `APP_PORT` 时必须同步修改 `VITE_API_BASE_URL`；修改 `POSTGRES_PORT` 时必须同步修改宿主机使用的 `DATABASE_URL` 和 `GOVERNANCE_CHECKPOINT_DATABASE_URL`；修改 `MINIO_API_PORT` 时必须同步修改 `MINIO_ENDPOINT`。Compose 内 checkpoint URL 指向 `postgres:5432`。采集与治理的并发、租约、重试、模型、预算和所有派生规则版本都可独立配置。`.env` 不进入版本控制。
 
-实时官网访问只用于人工 smoke check，不属于自动测试。自动测试使用仓库内受控的八源页面样本；集成测试会创建随机命名的临时 PostgreSQL 数据库和测试专用 MinIO bucket，结束后清理。
+实时官网访问只用于人工 smoke check，不属于自动测试。自动测试使用仓库内受控的十个活动源加两个待激活源页面样本；集成测试会创建随机命名的临时 PostgreSQL 数据库和测试专用 MinIO bucket，结束后清理。中国科协与 EdSurge 在 2026-08-13 的当前网络环境中被安全抓取器以 `non_public_address` 阻断，因此不在活动 seed、默认 smoke 或定时任务中；修复 DNS 后仍须分别完成有界 entry + 单详情验证，不能用 fixture 结果代替激活门。
 
 如果 `make source-smoke` 对全部来源都返回 `non_public_address`，并且 `getent ahosts
 www.gov.cn` 等命令显示 `198.18.x.x`，通常是 Clash Verge/Mihomo 的 Fake-IP DNS 模式。
 应在代理的 `dns.fake-ip-filter` 中加入 `+.gov.cn`、`+.bnu.edu.cn`、`+.cas.cn`、
 `+.sensetime.com`、`+.news.cn`、`+.gmw.cn`、`+.stdaily.com` 和
-`+.chinanews.com.cn`，随后重载代理配置。不要把 `198.18.0.0/15` 加入公网白名单，
+`+.chinanews.com.cn`、`+.moe.gov.cn`、`+.cast.org.cn` 和 `+.edsurge.com`，随后重载代理配置。不要把 `198.18.0.0/15` 加入公网白名单，
 也不要关闭抓取器的 DNS/IP 安全检查。
 
 ## 安全边界

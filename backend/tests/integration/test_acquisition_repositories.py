@@ -28,7 +28,7 @@ from app.infrastructure.db.repositories import (
     reserve_source_request_slot,
     seed_sources,
 )
-from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
+from app.infrastructure.ingestion.source_profiles import PENDING_SOURCE_SEEDS, SOURCE_SEEDS
 from sqlalchemy import func, select
 
 from .conftest import IntegrationContext
@@ -85,22 +85,72 @@ async def _claim_sources(context: IntegrationContext, source_indexes: list[int])
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_source_seed_is_idempotent_and_exposes_nine_active_versions(
+async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
     integration_context: IntegrationContext,
 ) -> None:
     async with integration_context.session_factory() as session:
         first = await seed_sources(session)
         second = await seed_sources(session)
-        source_count = await session.scalar(select(func.count()).select_from(SourceModel))
+        source_count = await session.scalar(
+            select(func.count()).select_from(SourceModel).where(SourceModel.enabled.is_(True))
+        )
         versions = list((await session.scalars(select(SourceVersionModel))).all())
-    assert first in {0, 9}
+        active_version_ids = set(
+            (await session.scalars(select(SourceModel.active_version_id))).all()
+        )
+        pending_sources = list(
+            (
+                await session.scalars(
+                    select(SourceModel).where(
+                        SourceModel.id.in_([seed.source_id for seed in PENDING_SOURCE_SEEDS])
+                    )
+                )
+            ).all()
+        )
+    active_versions = [version for version in versions if version.id in active_version_ids]
+    assert first in {0, 1, 3, 10}
     assert second == 0
-    assert source_count == 9
-    assert len(versions) == 9
-    assert {version.relevance_rule_version for version in versions} == {
-        "ai-title-v1",
-        "moe-science-v1",
+    assert source_count == 10
+    assert len(active_versions) == 10
+    assert all(
+        source.enabled is False and source.active_version_id is None for source in pending_sources
+    )
+    assert {version.relevance_rule_version for version in active_versions} == {
+        "science-ai-education-v1"
     }
+    ministry = next(seed for seed in SOURCE_SEEDS if seed.slug == "moe-science-news")
+    active_ministry = next(
+        version for version in active_versions if version.source_id == ministry.source_id
+    )
+    assert active_ministry.allow_http_fallback is True
+    assert active_ministry.topic_priority_policy == "moe-science-top1-v1"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_source_seed_deactivates_a_preexisting_pending_profile(
+    integration_context: IntegrationContext,
+) -> None:
+    pending = PENDING_SOURCE_SEEDS[0]
+    async with integration_context.session_factory() as session:
+        source = await session.get(SourceModel, pending.source_id)
+        if source is None:
+            source = SourceModel(
+                id=pending.source_id,
+                slug=pending.slug,
+                display_name=pending.display_name,
+                organization_type=pending.organization_type,
+                enabled=True,
+                owner=pending.owner,
+            )
+            session.add(source)
+        else:
+            source.enabled = True
+        await session.commit()
+        await seed_sources(session)
+        await session.refresh(source)
+        assert source.enabled is False
+        assert source.active_version_id is None
 
 
 @pytest.mark.integration

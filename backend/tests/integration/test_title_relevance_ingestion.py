@@ -154,12 +154,12 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
             "DOCRELPUBTIME": "2026-07-30",
         },
         {
-            "TITLE": "人工智能教育治理标准发布",
+            "TITLE": "学校人工智能教育课程建设",
             "URL": "https://www.gov.cn/zhengce/content/202607/content_mixed_ai_new.htm",
             "DOCRELPUBTIME": "2026-07-29",
         },
         {
-            "TITLE": "机器人支持课堂实验教学",
+            "TITLE": "学校人工智能教育与人工智能素养项目",
             "URL": "https://www.gov.cn/zhengce/content/202607/content_mixed_ai_old.htm",
             "DOCRELPUBTIME": "2026-07-28",
         },
@@ -174,10 +174,10 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
 
     assert run.status == RunStatus.SUCCEEDED.value
     assert run.new_count == 1
-    assert run.filtered_count == 1
+    assert run.filtered_count == 0
     assert job.outcome == "succeeded"
-    assert job.filtered_count == 1
-    assert fetcher.requested_urls == [entry_url, records[1]["URL"]]
+    assert job.filtered_count == 0
+    assert fetcher.requested_urls == [entry_url, records[2]["URL"]]
     assert sleep_calls == pytest.approx([SOURCE_SEEDS[0].rate_limit_seconds], abs=0.2)
 
     async with integration_context.session_factory() as session:
@@ -185,7 +185,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         candidate = await session.scalar(
             select(EvidenceCandidateModel).where(
                 EvidenceCandidateModel.source_version_id == SOURCE_SEEDS[0].source_version_id,
-                EvidenceCandidateModel.source_item_id == "content_mixed_ai_new.htm",
+                EvidenceCandidateModel.source_item_id == "content_mixed_ai_old.htm",
             )
         )
         filter_observation = await session.scalar(
@@ -196,19 +196,26 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         )
     assert cursor is not None and cursor.last_item_id == "content_mixed_unrelated.htm"
     assert candidate is not None
-    assert candidate.title == records[1]["TITLE"]
-    assert candidate.relevance_rule_version == "ai-title-v1"
-    assert candidate.extraction_metadata["relevance_rule_version"] == "ai-title-v1"
+    assert candidate.title == records[2]["TITLE"]
+    assert candidate.relevance_rule_version == "science-ai-education-v1"
+    assert candidate.extraction_metadata["relevance_rule_version"] == ("science-ai-education-v1")
     assert "人工智能" in candidate.extraction_metadata["matched_title_terms"]
+    assert candidate.extraction_metadata["science_ai_education_eligible"] is True
+    assert candidate.extraction_metadata["product_matrix_fit_score"] > 0
+    assert candidate.extraction_metadata["product_matrix_direction_ids"] == [
+        "ai_literacy_project_learning"
+    ]
     assert filter_observation is not None
-    assert filter_observation.observation_metadata == {
-        "scanned_count": 3,
-        "relevant_count": 2,
-        "accepted_count": 1,
-        "filtered_count": 1,
-        "deferred_relevant_count": 1,
-        "relevance_rule_version": "ai-title-v1",
-    }
+    assert filter_observation.observation_metadata["scanned_count"] == 3
+    assert filter_observation.observation_metadata["relevant_count"] == 1
+    assert filter_observation.observation_metadata["accepted_count"] == 1
+    assert filter_observation.observation_metadata["filtered_count"] == 0
+    assert filter_observation.observation_metadata["deferred_relevant_count"] == 1
+    assert filter_observation.observation_metadata["title_match_count"] == 1
+    assert filter_observation.observation_metadata["body_probe_count"] == 0
+    assert filter_observation.observation_metadata["relevance_rule_version"] == (
+        "science-ai-education-v1"
+    )
 
     app.state.settings = integration_context.settings
     app.state.session_factory = integration_context.session_factory
@@ -219,7 +226,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
             "/api/v1/evidence-candidates",
             params={
                 "source_id": str(SOURCE_SEEDS[0].source_id),
-                "relevance_rule_version": "ai-title-v1",
+                "relevance_rule_version": "science-ai-education-v1",
                 "limit": 100,
             },
         )
@@ -227,9 +234,9 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         summary = next(item for item in listed.json()["items"] if item["id"] == str(candidate.id))
         assert summary["source_slug"] == SOURCE_SEEDS[0].slug
         assert summary["source_display_name"] == SOURCE_SEEDS[0].display_name
-        assert summary["original_url"] == records[1]["URL"]
-        assert summary["canonical_url"] == records[1]["URL"]
-        assert summary["relevance_rule_version"] == "ai-title-v1"
+        assert summary["original_url"] == records[2]["URL"]
+        assert summary["canonical_url"] == records[2]["URL"]
+        assert summary["relevance_rule_version"] == "science-ai-education-v1"
 
         legacy_queue = await client.get(
             "/api/v1/evidence-candidates",
@@ -247,7 +254,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         assert detail.json()["clean_text"] == candidate.clean_text
         assert detail.json()["snapshot"]["sha256"]
         assert any(
-            observation["metadata"].get("relevance_rule_version") == "ai-title-v1"
+            observation["metadata"].get("relevance_rule_version") == "science-ai-education-v1"
             for observation in detail.json()["observations"]
         )
     assert len(fetcher.requested_urls) == request_count_before_api
@@ -255,7 +262,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_zero_match_succeeds_without_detail_request_and_advances_raw_cursor(
+async def test_zero_match_uses_bounded_neutral_probe_and_advances_raw_cursor(
     integration_context: IntegrationContext,
 ) -> None:
     records = [
@@ -276,11 +283,11 @@ async def test_zero_match_succeeds_without_detail_request_and_advances_raw_curso
 
     assert run.status == RunStatus.SUCCEEDED.value
     assert run.new_count == 0
-    assert run.filtered_count == 2
+    assert run.filtered_count == 1
     assert job.status == JobStatus.SUCCEEDED.value
     assert job.outcome == ObservationOutcome.NO_RELEVANT_ITEMS.value
-    assert job.filtered_count == 2
-    assert fetcher.requested_urls == [SOURCE_SEEDS[0].entry_url]
+    assert job.filtered_count == 1
+    assert fetcher.requested_urls == [SOURCE_SEEDS[0].entry_url, records[0]["URL"]]
 
     async with integration_context.session_factory() as session:
         cursor = await session.get(SourceCursorModel, SOURCE_SEEDS[0].source_version_id)
@@ -311,11 +318,12 @@ async def test_zero_match_succeeds_without_detail_request_and_advances_raw_curso
         for observation in observations
         if observation.outcome == ObservationOutcome.NO_RELEVANT_ITEMS.value
     )
-    assert no_match.observation_metadata == {
-        "scanned_count": 2,
-        "relevant_count": 0,
-        "accepted_count": 0,
-        "filtered_count": 2,
-        "deferred_relevant_count": 0,
-        "relevance_rule_version": "ai-title-v1",
-    }
+    assert no_match.observation_metadata["scanned_count"] == 2
+    assert no_match.observation_metadata["relevant_count"] == 0
+    assert no_match.observation_metadata["accepted_count"] == 1
+    assert no_match.observation_metadata["filtered_count"] == 1
+    assert no_match.observation_metadata["deferred_relevant_count"] == 0
+    assert no_match.observation_metadata["title_match_count"] == 0
+    assert no_match.observation_metadata["body_probe_count"] == 1
+    assert no_match.observation_metadata["deferred_detail_count"] == 1
+    assert no_match.observation_metadata["relevance_rule_version"] == ("science-ai-education-v1")

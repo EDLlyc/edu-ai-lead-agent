@@ -157,10 +157,10 @@ pass "Governance embedding column is $embedding_vector_type"
 
 source_count="$(
   docker compose exec -T postgres sh -c \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM sources WHERE active_version_id IS NOT NULL;"'
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM sources WHERE enabled IS TRUE AND active_version_id IS NOT NULL;"'
 )"
-[[ "$source_count" == "9" ]] || fail "Source registry is not ready; run 'make seed-sources'"
-pass "Nine approved source profiles are active"
+[[ "$source_count" == "10" ]] || fail "Source registry is not ready; run 'make seed-sources'"
+pass "Ten approved source profiles are active"
 
 minio_address="$(docker compose port minio 9000)"
 [[ -n "$minio_address" ]] || fail "Unable to resolve the MinIO host port"

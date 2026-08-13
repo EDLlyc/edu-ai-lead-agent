@@ -27,6 +27,7 @@ from app.core.errors import (
     provider_validation_issues_metadata,
 )
 from app.domain.copy_generation import (
+    ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION,
     ActiveBrandContext,
     CopyJobStatus,
     CopyRunStatus,
@@ -36,6 +37,7 @@ from app.domain.copy_generation import (
 )
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
+    AnalysisFactModel,
     ArticleOccurrenceModel,
     BrandChunkModel,
     BrandDocumentModel,
@@ -220,7 +222,14 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             version = await session.get(EventClusterVersionModel, run.selected_event_version_id)
             if version is None or version.event_id != run.selected_event_id:
                 raise RuntimeError("locked event version is unavailable")
-            evidence = await _load_evidence(session, version)
+            evidence = await _load_evidence(
+                session,
+                version,
+                include_governed_statement=(
+                    claimed.version_bundle.pipeline_version
+                    == ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
+                ),
+            )
             raw_summary = version.summary_projection.get("summary")
             return LockedTopicContext(
                 daily_topic_selection_id=run.daily_topic_selection_id,
@@ -953,7 +962,10 @@ async def _claim(
 
 
 async def _load_evidence(
-    session: AsyncSession, version: EventClusterVersionModel
+    session: AsyncSession,
+    version: EventClusterVersionModel,
+    *,
+    include_governed_statement: bool,
 ) -> tuple[EligibleEvidence, ...]:
     rows = tuple(
         (
@@ -961,6 +973,8 @@ async def _load_evidence(
                 select(
                     EvidenceBindingModel,
                     ArticleOccurrenceModel,
+                    CandidateAnalysisModel.summary,
+                    AnalysisFactModel.fact_text,
                 )
                 .select_from(EventMembershipModel)
                 .join(
@@ -978,6 +992,10 @@ async def _load_evidence(
                 .join(
                     ArticleOccurrenceModel,
                     ArticleOccurrenceModel.id == EvidenceBindingModel.occurrence_id,
+                )
+                .outerjoin(
+                    AnalysisFactModel,
+                    AnalysisFactModel.id == EvidenceBindingModel.fact_id,
                 )
                 .where(
                     EventMembershipModel.event_id == version.event_id,
@@ -1013,8 +1031,9 @@ async def _load_evidence(
             source_tier=occurrence.trust_tier,
             published_at=occurrence.published_at,
             exact_quote=binding.exact_quote,
+            governed_statement=(fact_text or summary) if include_governed_statement else None,
         )
-        for binding, occurrence in rows
+        for binding, occurrence, summary, fact_text in rows
     )
 
 
