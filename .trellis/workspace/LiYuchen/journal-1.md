@@ -834,3 +834,25 @@ Fixed system-owned source-date false positives under compact copy policy, deploy
 ### Status
 
 [OK] **Completed**
+
+
+## Session 38: Science education source priority
+
+**Date**: 2026-08-13
+**Task**: Science education source priority
+**Branch**: `main`
+
+### Summary
+
+Implemented bilingual science/AI education eligibility, product-matrix soft fit, acquisition v4, scoring preview .5, Xinhua activation, fail-closed CAST/EdSurge pending gates, English evidence provenance, tests, and executable specs. Full backend 618 passed; frontend, API contract, Compose, doctor, and diff checks passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4bba9eb` | (see git log) |
+| `e644b2e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
