@@ -168,9 +168,15 @@ audit records and must not be rewritten in place.
 
 ### 3. Contracts
 
-- Legacy rows keep `relevance_rule_version=NULL`; seeding creates a new immutable active version
-  with `ai-title-v1` for each of the eight existing sources and `moe-science-v1` for the Ministry
-  source.
+- Legacy rows keep `relevance_rule_version=NULL`; the original `0003` rollout created immutable
+  `ai-title-v1`/`moe-science-v1` versions, which remain replayable. Current seeding creates a new
+  immutable `science-ai-education-v1` version for each of ten active sources. CAST science
+  education and EdSurge AI education remain unseeded/inactive until their independent live gates
+  pass; if rows from an experimental run exist, seeding disables them and clears their active
+  version without deleting history.
+- `science-ai-education-v1` and `product-matrix-fit-v1` audit fields stay in existing observation
+  and extraction JSON. This rollout adds no migration and does not rewrite historical candidates,
+  snapshots, source versions, or topic scoring configurations.
 - Retry-scheduled attempts do not persist or accumulate a filtered count. The terminal scan value
   becomes the job count; the run count is the sum of terminal job counts.
 - A downgrade from `0003` first repoints every active relevance-enabled source to its highest

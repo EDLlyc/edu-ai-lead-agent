@@ -56,15 +56,18 @@ Normalize boilerplate, whitespace, timestamps, URLs, and source names. Deduplica
 SHA-256 first, then use SimHash/embedding similarity and event clustering. Retain links from
 duplicates to the canonical article/event so provenance is not lost.
 
-## Scenario: Nine-source AI evidence acquisition
+## Scenario: Ten-active-source science/AI-education evidence acquisition
 
 ### 1. Scope / Trigger
 
-This is the implemented boundary for the first stage. It applies to the nine approved government,
+This is the implemented boundary for the first stage. It applies to ten active government,
 education, research, company, and media profiles in
 [`source_profiles.py`](../../../backend/app/infrastructure/ingestion/source_profiles.py). It does
 not authorize arbitrary URLs, general web search, LangGraph execution, summarization, scoring, or
-generation.
+generation. Xinhua Education passed its production-safe activation smoke. CAST science education
+and EdSurge AI education have approved connectors and fixtures but remain in
+`PENDING_SOURCE_SEEDS`, outside seeding and scheduling, until each independently passes the same
+bounded live gate; the approved target count is twelve.
 
 ### 2. Signatures
 
@@ -73,25 +76,30 @@ generation.
 - Run/job query: `GET /api/v1/acquisition-runs/{run_id}` and `.../{run_id}/jobs`.
 - Evidence queue: `GET /api/v1/evidence-candidates`; stored handoff:
   `GET /api/v1/evidence-candidates/{candidate_id}`.
-- Rule: `AI_TITLE_RELEVANCE_RULE_VERSION = "ai-title-v1"` in
-  [`title_relevance.py`](../../../backend/app/domain/title_relevance.py).
+- Active rule: `SCIENCE_AI_EDUCATION_RULE_VERSION = "science-ai-education-v1"` and soft-ordering
+  rule `PRODUCT_MATRIX_FIT_RULE_VERSION = "product-matrix-fit-v1"` in
+  [`editorial_relevance.py`](../../../backend/app/domain/editorial_relevance.py).
 - Worker controls: `ACQUISITION_FIRST_RUN_SCAN_LIMIT`, `ACQUISITION_DAILY_SCAN_LIMIT`,
   `ACQUISITION_FIRST_RUN_ITEM_LIMIT`, and `ACQUISITION_DAILY_ITEM_LIMIT`.
 
 ### 3. Contracts
 
-- Parse a bounded raw discovery window, merge duplicate blank-image/text anchors, preserve source
-  ordering, and apply title relevance before every detail request.
-- `ai-title-v1` uses NFKC/case/whitespace/dash normalization and conservative Chinese/English
-  terms. AI policy is eligible only when policy wording appears with a direct AI/intelligent-
-  technology term. Ambiguous `agent`, `BCI`, `UAS`, generic educational `深度学习`, and compounds
-  such as `智能体检` do not pass without the required technical context.
-- Accept at most the configured relevant-item limit; never fill the quota with unrelated items.
-  A zero-match source succeeds with `outcome=no_relevant_items`, stores `filtered_count`, advances
-  the raw-list cursor, and performs no detail request.
-- Accepted candidates persist `matched_title_terms` and `relevance_rule_version`, cleaned full
-  text, original/canonical URL, publication/fetch time, source/version IDs, immutable snapshot, and
-  observations.
+- Parse a bounded raw discovery window and merge duplicate blank-image/text anchors. Evaluate
+  bilingual title relevance and product fit without trusting page instructions.
+- Eligibility requires an explicit science/AI-education phrase or both a science/AI topic and an
+  education/learner/teacher/practice context. Generic AI, generic science, and generic education
+  remain out of scope. Title/body evaluation is deterministic, NFKC-normalized, and bounded to
+  6000 normalized body characters.
+- Order eligible title matches by science/AI-education score, product-fit score, publication time,
+  original source order, and stable item ID. Fill only the remainder of the existing item-limit
+  window with title-neutral records in source order. Product fit never changes eligibility.
+- Re-evaluate title plus extracted body and freshness after each bounded detail request. Persist
+  only fresh, eligible candidates. A zero-match source succeeds with
+  `outcome=no_relevant_items`; unrelated detail responses remain auditable filtered observations.
+- Accepted candidates persist both rule versions, eligibility/score/reason codes, title/body
+  terms, product direction IDs, character-bound/truncation metadata, cleaned text,
+  original/canonical URL, publication/fetch time, source/version IDs, immutable snapshot, and
+  observations. Historical `ai-title-v1` and `moe-science-v1` source versions remain executable.
 - Candidate lists expose source/title/time/original+canonical URL/candidate ID/rule version. Later
   LangGraph nodes read candidate detail and stored text/snapshot; they do not normally re-crawl the
   original URL.
@@ -100,33 +108,37 @@ generation.
 
 | Condition | Required result |
 |---|---|
-| Title directly names AI/model/robotics/intelligent technology | Accept and record matched terms |
-| AI regulation/plan/standard title includes direct AI term | Accept as authoritative policy evidence |
-| General policy, culture, education, or frontier-science title lacks AI context | Filter before detail fetch |
-| Bounded window contains no relevant title | Successful zero-item job with filtered count and raw cursor |
+| Title/body explicitly names science education or AI education | Eligible; record exact rule metadata |
+| Science/AI topic also has education, learner, teacher, or practice context | Eligible |
+| Generic AI, generic science, or generic education lacks the conjunction | Filter after bounded evaluation |
+| Product fit is high while editorial scope is false | Remains ineligible; product signal cannot rescue it |
+| Bounded window has only neutral titles and no body match | Successful zero-item job with filtered/probe counts and raw cursor |
 | List/detail host, resolved IP, redirect, type, size, or timeout violates policy | Typed failure; no unsafe fallback |
 | Fake-IP resolver returns `198.18.0.0/15` | `non_public_address`; fix DNS layer, never weaken SSRF |
 | Source HTML changes and required article data disappears | Typed parse failure and connector/parser version update |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: the 2026-07-29 report run `a174ed10-0ef1-4983-b81f-7f8d2bed84d2` completed 8/8 jobs,
-  accepted six AI-centered items, and filtered 263 unrelated titles.
-- Base: China Government and CAS had no relevant title in their bounded windows; both jobs
-  succeeded with zero candidates instead of selecting unrelated policy/research.
+- Good: eligible science-education titles precede neutral items; product direction breadth orders
+  equal-relevance items, then body evaluation confirms scope before persistence.
+- Base: a bounded source window with no eligible title/body completes successfully with zero
+  candidates and auditable filter/probe metadata.
 - Bad: fetch the first headline per site, treat any HTTP 200 as useful evidence, accept ambiguous
-  abbreviations, or let a downstream LLM independently browse the link.
+  terms, let product fit override scope, or let a downstream LLM independently browse the link.
 
 ### 6. Tests Required
 
-- [`test_title_relevance.py`](../../../backend/tests/unit/test_title_relevance.py) covers positive,
-  negative, Unicode, English-boundary, policy, and ambiguous-compound cases.
-- Connector contracts cover all nine source fixtures, ordering, article-path restrictions,
-  duplicate anchor merging, parser drift, and source-specific selectors.
+- [`test_editorial_relevance.py`](../../../backend/tests/unit/test_editorial_relevance.py) covers
+  bilingual positives, conjunction/negative cases, body bounds, all six product directions, caps,
+  and the eligibility/product separation.
+- Connector contracts cover all ten active and two pending source fixtures, ordering, exact
+  article-path restrictions, duplicate anchor merging, sponsored/API/external/HTTP exclusion,
+  parser drift, and source-specific selectors.
 - Real PostgreSQL/MinIO tests assert no unrelated detail fetch, zero-match success/cursor behavior,
-  filtered counts across retries, immutable snapshots, provenance, and no-refetch downstream use.
-- Opt-in live acceptance uses production-safe fetching, one accepted item per source, and records
-  run/job/title/URL results; deterministic fixture tests remain authoritative.
+  body-probe/filter metadata, immutable snapshots, provenance, and no-refetch downstream use.
+- Opt-in activation uses production-safe fetching, one entry and at most one detail per proposed
+  source, and records only status/count/title/URL results. A failure omits that source from
+  `SOURCE_SEEDS`; fixtures do not override the live gate.
 
 ### 7. Wrong vs Correct
 
@@ -141,10 +153,14 @@ detail = await fetcher.fetch(items[0].url, profile)
 
 ```python
 discovered = connector.discover(list_response, profile, limit=scan_limit)
-evaluated = [(item, evaluate_title_relevance(item.title)) for item in discovered]
-accepted = [(item, result) for item, result in evaluated if result.is_relevant][:item_limit]
-for item in accepted:
-    detail = await fetcher.fetch(item[0].url, profile)
+evaluated = [(item, evaluate_science_ai_education_relevance(item.title)) for item in discovered]
+ordered = sorted((row for row in evaluated if row[1].is_eligible), key=editorial_key)
+window = [*ordered, *(row for row in evaluated if not row[1].is_eligible)][:item_limit]
+for item, _title_result in window:
+    detail = await fetcher.fetch(item.url, profile)
+    result = evaluate_science_ai_education_relevance(detail.title, detail.clean_text)
+    if result.is_eligible:
+        await persist(detail, result)
 ```
 
 Discovery depth and accepted evidence count are separate contracts.
@@ -196,10 +212,12 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.4-science-policy-priority` keeps numeric ranges, weights, penalties, the threshold,
-veto version, and tie-break order in an immutable persisted configuration. It has controlled tests
-and a real-event demonstration, but remains a preview profile until a later labeled calibration
-and explicit product approval create a new production configuration.
+The implemented `scoring-v1-preview.5-science-education-product-fit` gives 0.30 to explicit
+science/AI-education relevance, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source
+diversity, freshness, and communication potential. `outside_science_ai_education_scope` is a hard
+veto; no numeric feature, including product fit, can rescue it. The profile retains the 0.62
+threshold, penalties, and stable tie-break, and disables absolute source priority. Historical
+`.4` configurations keep their legacy feature map and Ministry priority semantics on replay.
 
 Select Top 1 only from eligible candidates with `total >= threshold`. Stable tie-breakers must be
 documented (for example source tier, publication time, then stable ID). If none qualifies, persist
@@ -249,6 +267,14 @@ Every `external_fact` claim requires one or more eligible evidence IDs. The bind
 accepted artifact includes source URL, tier, publication time, and exact supporting passage or
 offsets. A free-form source note is for readers and does not replace machine-readable bindings.
 Brand chunks can support tone or brand statements, not external facts.
+
+For English evidence, generator and auditor prompts receive both the exact English quote and an
+optional Chinese governed fact/summary. The Chinese statement may support deterministic Chinese
+copy checks, while the original evidence ID, URL, passage binding, and exact English quote remain
+the provenance record. Never label the Chinese statement as an original quote, and never use
+product-fit metadata or brand context as factual evidence. This prompt/data change uses
+`copy-pipeline-v18-english-evidence`, `moments-generator-v17-english-evidence`, and
+`moments-auditor-v17-english-evidence`.
 
 ## Validation and audit
 

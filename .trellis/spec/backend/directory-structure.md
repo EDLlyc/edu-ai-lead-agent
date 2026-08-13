@@ -37,6 +37,7 @@ backend/
 │   │   ├── enums.py
 │   │   ├── state.py
 │   │   ├── title_relevance.py
+│   │   ├── editorial_relevance.py
 │   │   └── value_objects.py
 │   ├── infrastructure/
 │   │   ├── ai/

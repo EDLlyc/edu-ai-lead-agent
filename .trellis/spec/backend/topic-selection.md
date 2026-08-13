@@ -10,9 +10,10 @@ produces at most one locked topic for a business date and scoring profile. It do
 re-summarize, retrieve brand knowledge, call a model for the numeric score, generate copy/images,
 or publish content.
 
-The implemented preview is `scoring-v1-preview.4-science-policy-priority`. It is safe for the functional MVP and internal
-demonstration, but its numeric weights and threshold remain subject to a later labeled calibration
-task before a production scoring profile is activated.
+The current implemented preview is `scoring-v1-preview.5-science-education-product-fit`. Its
+numeric weights and threshold remain subject to later labeled calibration. Historical
+`scoring-v1-preview.4-science-policy-priority` snapshots remain deserializable and replayable with
+their original feature keys and source-priority behavior.
 
 ### 2. Signatures
 
@@ -39,19 +40,23 @@ task before a production scoring profile is activated.
   HTTP 409 and creates no topic-selection run.
 - A scoring config is immutable by `(profile, version)` and stores its canonical JSON snapshot and
   SHA-256 fingerprint. Historical responses read the run snapshot, not current process settings.
-- `scoring-v1-preview.4-science-policy-priority` normalizes source trust/diversity, AI relevance,
-  parent relevance, freshness, and communication potential; theme repetition, controversy, and
-  marketing risk are explicit penalties. Positive weights sum to one. After veto and threshold
-  checks, `science-policy-priority-v2` places an eligible `moe-science-top1-v1` event before
-  ordinary eligible events only when its title/summary directly concerns science education,
-  science/technology innovation education, AI education, or robotics education and also carries
-  a policy/action/deployment signal. Textbooks and meeting/news items remain ordinary candidates.
-  The score explanation persists `science_policy` or the non-priority reason. Historical
-  `source-priority-v1` snapshots retain their source-only semantics.
+- `scoring-v1-preview.5-science-education-product-fit` uses positive weights of 0.30
+  science/AI-education relevance, 0.25 product-matrix fit, 0.15 source trust, 0.10 source diversity,
+  0.10 freshness, and 0.10 communication potential. Theme repetition, controversy, and marketing
+  risk remain explicit penalties; the threshold remains 0.62.
+- The `.5` immutable config snapshot records `science-ai-education-v1` and
+  `product-matrix-fit-v1` and uses `topic-veto-v2-science-ai-education`. Its explanation stores relevance reasons, product direction IDs, raw
+  feature values/components, and `source_priority_disabled_for_config`. Ministry occurrence
+  metadata has no absolute priority under `.5`.
+- `.4` uses its stored legacy `ai_relevance`/`parent_relevance` feature map and
+  `topic-veto-v1`/`science-policy-priority-v2` semantics. Config deserialization branches on the stored feature
+  keys and never reinterprets a historical value as a new editorial signal.
 - Hard vetoes are independent of the numeric total: unresolved governance, ineligible evidence,
   Tier-C-only evidence, unverified information, unsuitable negative incidents, privacy/legal/safety
   uncertainty, prohibited marketing claims, a selection inside the seven-day business-date
-  window, and an event older than the configured 10-day freshness window.
+  window, an event older than the configured 10-day freshness window, and
+  `outside_science_ai_education_scope`. Product fit, source tier, or any high numeric total cannot
+  rescue any veto.
 - Stable ordering is eligible group, total, source trust, event time, then UUID. Every considered
   event receives a persisted rank even when vetoed or below threshold.
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database
@@ -79,6 +84,9 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 | Same date/profile and different config | Typed 409 conflict before scoring or locking |
 | No governed events at the run cutoff | Persist `no_topic/no_candidates` |
 | Every candidate has a hard veto | Persist `no_topic/all_vetoed`; total cannot rescue it |
+| Product fit is 1.0 but science/AI-education scope is false | Add `outside_science_ai_education_scope`; remain vetoed |
+| Eligible Ministry event and eligible non-Ministry event under `.5` | Rank by score/tie-break only; no source override |
+| Historical `.4` config is loaded | Preserve old feature map and Ministry policy-priority semantics |
 | Some candidates have no veto but all totals are below threshold | Persist `no_topic/below_threshold` |
 | Selected event/version do not belong together | Reject through application validation or database FK |
 | Lease is lost before persistence/completion | Do not overwrite the decision; let durable retry converge |
@@ -87,8 +95,8 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 
 ### 5. Good / Base / Bad Cases
 
-- Good: the 2026-07-30 preview run `e513be83-6318-423c-bda3-91c37e3da601` considered two governed
-  events and selected the current robot world-model event at `0.7479107` with threshold `0.62`.
+- Good: a `.5` run uses the exact 30/25/15/10/10/10 weights, selects only from in-scope governed
+  events, and retains every feature, reason, direction, penalty, veto, and tie-break input.
 - Base: an empty or entirely vetoed governed pool creates an inspectable `no_topic` daily row and
   performs no downstream provider call.
 - Bad: ask an LLM for an unexplained final score, read the live event projection instead of the
@@ -97,9 +105,9 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 
 ### 6. Tests Required
 
-- [`test_topic_selection.py`](../../../backend/tests/unit/test_topic_selection.py): feature ranges,
-  weights, threshold, every veto, stale-event cutoff, seven-day boundary, tie-break, and all
-  `no_topic` branches.
+- [`test_topic_selection.py`](../../../backend/tests/unit/test_topic_selection.py): exact `.5`
+  weights, all vetoes, product-fit non-rescue, Ministry non-priority, historical `.4` replay,
+  stale-event cutoff, seven-day boundary, tie-break, and all `no_topic` branches.
 - [`test_topic_selection_delivery.py`](../../../backend/tests/unit/test_topic_selection_delivery.py):
   scheduler/worker behavior, heartbeat/lease loss, bounded attempts, projection boundaries, and
   safe response mapping.

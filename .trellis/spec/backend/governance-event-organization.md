@@ -10,7 +10,8 @@ relations, LangGraph execution, event assignment, governance persistence, or the
 governance APIs.
 
 This capability starts from acquisition-owned PostgreSQL records. It does not fetch an article URL,
-change the nine approved source profiles or `ai-title-v1`, score/select a topic, retrieve brand
+change the ten active approved source profiles (or activate the two pending profiles), change
+`science-ai-education-v1`, score/select a topic, retrieve brand
 knowledge, generate copy/images, expose a product UI, or publish content.
 
 The controlling implementation lives in:
@@ -139,6 +140,10 @@ new derivation and never rewrites the previous result.
   `ai_industry_application`, and `ai_governance_safety`.
 - Classification is multi-label with an optional primary category. Summary and facts are factual
   Chinese, brand-neutral, bounded, and evidence-bound.
+- For English candidates, normalization and passage offsets remain in the original language.
+  Chinese summaries/facts bind to those original passage IDs; source language, URL, snapshot,
+  passage ID, and exact English quote remain traceable. A Chinese governed fact is not represented
+  as an original quote.
 - One configured corrective regeneration is allowed for deterministically invalid model output.
   Repeated invalid output becomes a typed, visible terminal/review outcome; it is never silently
   accepted.
