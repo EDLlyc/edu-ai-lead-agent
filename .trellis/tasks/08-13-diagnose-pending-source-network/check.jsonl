@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify the operational fix preserves SSRF/Fake-IP rejection and satisfies WSL, container, application, and bounded live-smoke contracts."}
+{"file":"backend/tests/contract/test_safe_fetcher.py","reason":"Verify non-global DNS answers remain rejected before requests after the network-layer change."}
+{"file":"backend/tests/contract/test_live_smoke.py","reason":"Verify typed live failures remain isolated and do not weaken per-source safety behavior."}
+{"file":"backend/tests/contract/test_source_connectors.py","reason":"Verify both pending profiles retain exact safe paths and parser/fixture behavior."}

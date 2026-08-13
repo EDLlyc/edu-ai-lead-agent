@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines live source verification behind Fake-IP DNS, public-address invariants, bounded pending-source activation gates, and the required Clash/Mihomo network-layer fix."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Defines the 10-active/2-pending source boundary and forbids activating CAST/EdSurge before independent production-safe live gates."}
+{"file":"backend/app/core/security.py","reason":"Owns the production system resolver and non-global DNS rejection semantics that must remain unchanged."}
+{"file":"backend/app/infrastructure/ingestion/source_profiles.py","reason":"Contains the exact CAST and EdSurge pending profiles, entry URLs, host/path allowlists, language, and rate limits."}
