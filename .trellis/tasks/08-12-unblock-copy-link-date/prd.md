@@ -17,6 +17,10 @@ Prevent source-link date tokens and legacy date checks from turning current dail
   behavior is unchanged.
 - R5: Production must reprocess only the current Shanghai-business-day run that was falsely held
   for this condition; historical runs remain untouched.
+- R6: Automatic Enterprise WeChat delivery must create at most one formal delivery job per
+  Shanghai business date. A same-day regenerated package remains available but must not be sent
+  after any formal delivery job for that date already exists; the first job retains its normal
+  bounded retry behavior.
 
 ## Acceptance Criteria
 
@@ -28,6 +32,8 @@ Prevent source-link date tokens and legacy date checks from turning current dail
 - [ ] Unit tests cover both the URL false positive and policy-specific warning behavior.
 - [ ] Focused tests, static checks for changed modules, and a production check verify that today's
   previously blocked run can proceed without creating duplicate or historical work.
+- [ ] The automatic-delivery candidate query excludes a ready current-day package when another
+  formal delivery job already exists for that business date.
 
 ## Confirmed Facts
 
@@ -40,10 +46,15 @@ Prevent source-link date tokens and legacy date checks from turning current dail
   treats copy quality and several editorial/content issues as warnings.
 - The user has explicitly requested that format and other editorial checks not stop material
   generation or sending.
+- After deployment on 2026-08-13, the new versioned package was correctly generated but auto
+  delivery sent it after the already delivered 07:30 package because its old candidate query
+  deduplicated only by material-package ID. Both messages were delivered; future sends must be
+  limited by business date.
 
 ## Out of Scope
 
-- Changing topic selection, historical-run reconciliation, image generation, or WeCom transport.
+- Changing topic selection, historical-run reconciliation, image generation, or WeCom transport
+  semantics beyond the automatic same-day delivery boundary.
 - Deleting durable production records or weakening hard evidence/output-integrity checks.
 - Rewriting content that is already accepted and delivered.
 

@@ -15,6 +15,7 @@ from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 from sqlalchemy.sql import Select
 
 from app.application.ports.wecom import (
@@ -642,6 +643,25 @@ def _auto_delivery_candidate_statement(
     typed business date prevents old valid packages from being re-sent after a deployment.
     """
 
+    delivered_package = aliased(MaterialPackageModel)
+    delivered_run = aliased(CopyGenerationRunModel)
+    formal_delivery_exists = (
+        select(1)
+        .select_from(WeComDeliveryJobModel)
+        .join(
+            delivered_package,
+            delivered_package.id == WeComDeliveryJobModel.material_package_id,
+        )
+        .join(
+            delivered_run,
+            delivered_run.id == delivered_package.run_id,
+        )
+        .where(
+            delivered_run.business_date == business_date,
+            WeComDeliveryJobModel.mode == "formal",
+        )
+        .exists()
+    )
     statement = (
         select(MaterialPackageModel)
         .join(
@@ -652,6 +672,7 @@ def _auto_delivery_candidate_statement(
             CopyGenerationRunModel.business_date == business_date,
             MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
             ~exists().where(WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id),
+            ~formal_delivery_exists,
         )
     )
     if settings.wecom_require_review_before_send:

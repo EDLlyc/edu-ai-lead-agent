@@ -358,6 +358,9 @@ async def test_direct_auto_reconciliation_queries_pending_manual_use_packages(
     assert "rejected" in compiled.params.values()
     assert "NOT (EXISTS" in sql
     assert "wecom_delivery_jobs.material_package_id" in sql
+    assert "wecom_delivery_jobs.mode" in sql
+    assert "material_packages AS material_packages_1" in sql
+    assert "copy_generation_runs AS copy_generation_runs_1" in sql
     assert "copy_generation_runs.business_date" in sql
     assert date(2026, 8, 8) in compiled.params.values()
     assert "image_artifacts.validation_snapshot" in sql
@@ -384,6 +387,7 @@ def test_auto_delivery_candidate_query_uses_typed_business_date() -> None:
 
     assert "JOIN copy_generation_runs" in str(compiled)
     assert date(2026, 8, 7) in compiled.params.values()
+    assert "formal" in compiled.params.values()
 
 
 @pytest.mark.asyncio

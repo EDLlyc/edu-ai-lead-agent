@@ -127,9 +127,12 @@ validation to pass, and any configured image audit to be accepted before a job i
 
 Automatic reconciliation is a candidate scan, not a broad package-status retry loop. It excludes
 any package that already has a durable delivery job, restricts the scan to the current business
-date, applies the persisted direct-mode quality and immutable-image predicates before the enqueue
-attempt, and retains the enqueue guard as the final race-safe authority. The current business date
-is computed from the dispatcher clock in `Settings.business_timezone`; the candidate query joins
+date, and permits at most one formal delivery job across all packages for that business date. This
+prevents a same-day policy revision or regenerated package from producing a second message while
+the original formal job remains durable and retains its own bounded retry state. It applies the
+persisted direct-mode quality and immutable-image predicates before the enqueue attempt, and
+retains the enqueue guard as the final race-safe authority. The current business date is computed
+from the dispatcher clock in `Settings.business_timezone`; the candidate query joins
 `material_packages.run_id` to the typed `copy_generation_runs.business_date` column. It must not
 use package creation time or a mutable topic snapshot to decide whether a package is today's
 package. PostgreSQL candidate predicates compare JSONB fields by literal value (for example, JSON
@@ -153,6 +156,7 @@ API responses, or durable delivery rows.
 | Unsupported recipient ID or mode | Stable conflict/validation result; no provider call |
 | Package missing or not eligible for the configured delivery policy | Not found/conflict; no job is created |
 | Eligible package belongs to another business date | Candidate scan excludes it; no job is created or sent automatically |
+| A formal delivery job already exists for the current business date | Candidate scan excludes later regenerated packages; the existing job alone retries or reaches its terminal state |
 | Review-required package is not approved, or direct package is explicitly rejected | Conflict; no job is created |
 | Direct package copy validation/audit or configured image quality gate fails | Conflict; no job is created |
 | Image requested but artifact is not succeeded or metadata is invalid | Conflict; no provider call |
@@ -193,9 +197,10 @@ API responses, or durable delivery rows.
 - Dispatcher/service tests must assert text-before-image ordering, persistence before the second
   child, partial failure, bounded retry, unknown timeout terminal state, lease heartbeat, and
   idempotent enqueue.
-- Automatic-reconciliation tests assert the PostgreSQL candidate query's durable-job exclusion,
-  current-business-date join, direct quality predicates, malformed/missing JSONB snapshots, and
-  bounded race-skip logging. Include a timezone-boundary test with a fixed UTC clock.
+- Automatic-reconciliation tests assert the PostgreSQL candidate query's package- and
+  business-date-level formal-job exclusions, current-business-date join, direct quality predicates,
+  malformed/missing JSONB snapshots, and bounded race-skip logging. Include a timezone-boundary
+  test with a fixed UTC clock.
 - Compose checks run `docker compose config --quiet` and build the `wecom-dispatcher` image without
   credentials. A real provider send is opt-in and must never be part of the default test suite.
 - `scripts/doctor.sh` and migration-head assertions must be updated whenever the Alembic head moves.
