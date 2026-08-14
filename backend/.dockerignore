@@ -1,7 +1,29 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+# The backend directory is the image-context boundary. Keep this list defensive in case local
+# credentials or private materials are accidentally created below it.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/build/
+**/dist/
+**/*.egg-info/
+.env
+.env.*
+!.env.example
+.git/
+.trellis/
+.venv/
+venv/
 tests/
 openapi.json
+private/
+reports/
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*
+*secret*

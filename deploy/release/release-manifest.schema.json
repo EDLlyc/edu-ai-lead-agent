@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edu-ai.invalid/schemas/release-manifest-v1.json",
+  "title": "Edu AI immutable release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "image", "build", "bundle", "database", "gates"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "release_marker", "url"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "release_marker": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+        "url": {"type": "string", "format": "uri"}
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "repository", "digest", "readable_tag"],
+      "properties": {
+        "reference": {"type": "string", "pattern": "^[^@]+@sha256:[0-9a-f]{64}$"},
+        "repository": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "readable_tag": {"type": "string", "pattern": "^git-[0-9a-f]{12}$"}
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created", "dockerfile_sha256", "python_base", "runtime_lock_sha256", "dev_lock_sha256"],
+      "properties": {
+        "created": {"type": "string", "format": "date-time"},
+        "dockerfile_sha256": {"$ref": "#/$defs/sha256"},
+        "python_base": {"type": "string", "pattern": "@sha256:[0-9a-f]{64}$"},
+        "runtime_lock_sha256": {"$ref": "#/$defs/sha256"},
+        "dev_lock_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256", "member_manifest_sha256"],
+      "properties": {
+        "file": {"type": "string", "pattern": "^release-bundle-[0-9a-f]{40}\\.tar\\.gz$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "member_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alembic_head", "compatibility_declaration_sha256", "compatibility_reviewed", "previous_application_compatible"],
+      "properties": {
+        "alembic_head": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "compatibility_declaration_sha256": {"$ref": "#/$defs/sha256"},
+        "compatibility_reviewed": {"type": "boolean"},
+        "previous_application_compatible": {"type": "boolean"}
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "result_id"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+          "result_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

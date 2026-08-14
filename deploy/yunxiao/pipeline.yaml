@@ -1,0 +1,309 @@
+# Repository contract for the project-specific Yunxiao Flow pipeline. The three *_ENABLED
+# variables stay false until their documented external activation gates pass. Runtime overrides
+# may be used for a reviewed candidate push, but production deployment must remain false until the
+# Tencent Runner, pull-only ACR identity, and previous-release manifest have been verified.
+name: edu-ai-lead-agent-digest-release
+
+concurrencyConfig:
+  maxRunningPipelineInstances: 10
+  pipelineMaxRunningBehavior: rejectNew
+  maxRunningJobInstances: 1
+
+variables:
+  - key: CODEUP_SERVICE_CONNECTION_ID
+    value: ADMIN_REQUIRED_CODEUP_SERVICE_CONNECTION_ID
+  - key: SOURCE_URL
+    value: https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
+  - key: ACR_REGISTRY
+    value: ADMIN_REQUIRED_ACR_REGISTRY
+  - key: ACR_IMAGE_REPOSITORY
+    value: ADMIN_REQUIRED_ACR_REGISTRY/ADMIN_REQUIRED_NAMESPACE/edu-ai-lead-agent
+  - key: ACR_REGION
+    value: ADMIN_REQUIRED_ACR_REGION
+  - key: ACR_PUBLISH_ENABLED
+    type: Boolean
+    value: false
+  - key: GITHUB_BACKUP_ENABLED
+    type: Boolean
+    value: false
+  - key: GITHUB_BACKUP_SSH_URL
+    value: git@github.com:EDLlyc/edu-ai-lead-agent.git
+  - key: PRODUCTION_DEPLOY_ENABLED
+    type: Boolean
+    value: false
+  - key: PRODUCTION_MACHINE_GROUP_ID
+    value: ADMIN_REQUIRED_TENCENT_MACHINE_GROUP_ID
+  - key: PRODUCTION_RUNNER_ID
+    value: ADMIN_REQUIRED_TENCENT_RUNNER_ID
+
+sources:
+  source:
+    type: codeup
+    name: edu-ai-authoritative
+    endpoint: ${SOURCE_URL}
+    branch: main
+    branchesFilter: .*
+    cloneDepth: 0
+    triggerEvents:
+      - push
+    certificate:
+      type: serviceConnection
+      serviceConnection: ${CODEUP_SERVICE_CONNECTION_ID}
+
+defaultWorkspace: source
+
+stages:
+  quality_stage:
+    name: Quality gates
+    jobs:
+      quality_job:
+        name: Branch-safe quality
+        runsOn: public/cn-beijing
+        timeoutMinutes: 90
+        steps:
+          source_identity:
+            name: Verify source identity
+            step: Command
+            with:
+              run: |
+                set -Eeuo pipefail
+                commit="$(git rev-parse HEAD)"
+                test "$(printf %s "$commit" | wc -c)" -eq 40
+                python3.11 -m venv .ci-venv
+                . .ci-venv/bin/activate
+                python -m pip install --require-hashes -r backend/requirements/dev.lock
+                python -m pip install --no-deps --no-build-isolation -e backend
+                npm ci --prefix frontend
+                python deploy/release/release_tool.py verify-source --commit "$commit"
+          quality_checks:
+            name: Run complete quality gates
+            step: Command
+            with:
+              run: |
+                set -Eeuo pipefail
+                . .ci-venv/bin/activate
+                trap 'docker compose down >/dev/null 2>&1 || true' EXIT
+                make python-lock-check
+                make PY_RUN= backend-check
+                make PY_RUN= release-tool-check
+                make PY_RUN= frontend-check
+                docker compose up -d postgres minio minio-init
+                make PY_RUN= migrate seed-sources
+                DOCTOR_PYTHON="$PWD/.ci-venv/bin/python" make doctor
+                docker compose --profile governance --profile content --profile wecom config --quiet
+                bash -n scripts/*.sh
+                git diff --check
+                python deploy/release/release_tool.py scan-committed-secrets \
+                  --commit "$(git rev-parse HEAD)"
+
+  image_stage:
+    name: Branch-safe image build
+    jobs:
+      image_job:
+        name: Build local candidate
+        needs: quality_job
+        runsOn: public/cn-beijing
+        timeoutMinutes: 60
+        steps:
+          local_image:
+            name: Build and probe local image
+            step: Command
+            with:
+              run: |
+                set -Eeuo pipefail
+                commit="$(git rev-parse HEAD)"
+                created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                image="edu-ai-lead-agent:ci-$commit"
+                docker build --pull \
+                  --build-arg "CODEUP_COMMIT=$commit" \
+                  --build-arg "SOURCE_URL=${SOURCE_URL}" \
+                  --build-arg "BUILD_CREATED=$created" \
+                  --tag "$image" backend
+                docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+                  --user app "$image" python -m pip check
+                docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+                  --user app "$image" python -c \
+                  'import alembic, fastapi, minio, sqlalchemy; import app.api_main'
+
+  publish_stage:
+    name: Immutable publication
+    jobs:
+      acr_publish_job:
+        name: Publish ACR digest
+        needs: image_job
+        condition: |
+          "${CI_COMMIT_REF_NAME}" == "main" && "${ACR_PUBLISH_ENABLED}" == "true"
+        runsOn: public/cn-beijing
+        timeoutMinutes: 60
+        steps:
+          acr_login:
+            name: Login to project ACR
+            step: DockerLogin
+            with:
+              dockerRepository: ${ACR_REGISTRY}
+              serviceConnection: 79934
+          publish_digest:
+            name: Push and resolve digest
+            step: Command
+            with:
+              run: |
+                set -Eeuo pipefail
+                commit="$(git rev-parse HEAD)"
+                marker="$(printf %.12s "$commit")"
+                created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                tag="${ACR_IMAGE_REPOSITORY}:git-$marker"
+                docker build --pull \
+                  --build-arg "CODEUP_COMMIT=$commit" \
+                  --build-arg "SOURCE_URL=${SOURCE_URL}" \
+                  --build-arg "BUILD_CREATED=$created" \
+                  --tag "$tag" backend
+                docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+                  --user app "$tag" python -m pip check
+                docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+                  --user app "$tag" python -c \
+                  'import alembic, fastapi, minio, sqlalchemy; import app.api_main'
+                docker push "$tag"
+                docker pull "$tag" >/dev/null
+                image="$(docker image inspect "$tag" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+                  | awk -v prefix="${ACR_IMAGE_REPOSITORY}@" 'index($0,prefix)==1 {print; exit}')"
+                case "$image" in
+                  "${ACR_IMAGE_REPOSITORY}@sha256:"????????????????????????????????????????????????????????????????) ;;
+                  *) printf 'acr_digest_resolution_failed\n' >&2; exit 1 ;;
+                esac
+                mkdir -p dist/release
+                python deploy/release/release_tool.py build-bundle \
+                  --commit "$commit" --output-dir dist/release
+                bundle="dist/release/release-bundle-$commit.tar.gz"
+                gate_id="flow-$PIPELINE_ID-$BUILD_NUMBER"
+                python deploy/release/release_tool.py create-manifest \
+                  --commit "$commit" \
+                  --image "$image" \
+                  --source-url "${SOURCE_URL}" \
+                  --build-timestamp "$created" \
+                  --bundle "$bundle" \
+                  --gate "api-contract=$gate_id" \
+                  --gate "backend=$gate_id" \
+                  --gate "compose=$gate_id" \
+                  --gate "doctor=$gate_id" \
+                  --gate "frontend=$gate_id" \
+                  --gate "image-runtime=$gate_id" \
+                  --gate "lock-drift=$gate_id" \
+                  --gate "secret-scan=$gate_id" \
+                  --gate "shell-syntax=$gate_id" \
+                  --output dist/release/release-manifest.json
+                python deploy/release/release_tool.py verify-bundle \
+                  --manifest dist/release/release-manifest.json \
+                  --bundle "$bundle" \
+                  --expected-commit "$commit"
+          upload_release:
+            name: Upload release artifacts
+            step: ArtifactUpload
+            with:
+              uploadType: flowPublic
+              artifact: edu_ai_digest_release
+              filePath:
+                - dist/release/
+
+  backup_stage:
+    name: One-way GitHub backup
+    jobs:
+      github_backup_job:
+        name: Backup exact SHA
+        needs: acr_publish_job
+        condition: |
+          "${CI_COMMIT_REF_NAME}" == "main" && "${GITHUB_BACKUP_ENABLED}" == "true"
+        continueOnFail: true
+        runsOn: public/cn-beijing
+        timeoutMinutes: 15
+        steps:
+          github_backup:
+            name: Push commit and release tags
+            step: Command
+            with:
+              run: |
+                set -Eeuo pipefail
+                test -n "$GITHUB_BACKUP_KEY_FILE"
+                test -n "$GITHUB_KNOWN_HOSTS_FILE"
+                test "$(stat -c %a "$GITHUB_BACKUP_KEY_FILE")" = 600
+                commit="$(git rev-parse HEAD)"
+                export GIT_SSH_COMMAND="ssh -i $GITHUB_BACKUP_KEY_FILE -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_KNOWN_HOSTS_FILE"
+                git push --porcelain "${GITHUB_BACKUP_SSH_URL}" \
+                  "$commit:refs/heads/main"
+                while IFS= read -r tag; do
+                  test -z "$tag" || git push --porcelain "${GITHUB_BACKUP_SSH_URL}" \
+                    "refs/tags/$tag:refs/tags/$tag"
+                done < <(git tag --points-at "$commit" 'release-*')
+
+  deploy_stage:
+    name: Tencent production deploy
+    jobs:
+      production_deploy_job:
+        name: Deploy verified digest
+        needs: acr_publish_job
+        condition: |
+          "${CI_COMMIT_REF_NAME}" == "main" && "${PRODUCTION_DEPLOY_ENABLED}" == "true"
+        driven: auto
+        timeoutMinutes: 90
+        steps:
+          deploy_release:
+            name: Run root deploy entrypoint
+            step: VMDeploy
+            with:
+              artifact: $[stages.publish_stage.acr_publish_job.upload_release.artifacts.edu_ai_digest_release]
+              downloadArtifact: true
+              artifactDownloadPath: /var/lib/edu-ai/incoming/release-${BUILD_NUMBER}.tgz
+              useEncodeBase64: false
+              machineGroup: ${PRODUCTION_MACHINE_GROUP_ID}
+              executeUser: root
+              batchNumber: 1
+              run: |
+                set -Eeuo pipefail
+                incoming="/var/lib/edu-ai/incoming/release-${BUILD_NUMBER}.tgz"
+                staging="$(mktemp -d /var/lib/edu-ai/incoming/extract.XXXXXX)"
+                trap 'rm -rf -- "$staging"' EXIT
+                python3 - "$incoming" "$staging" <<'PY'
+                import pathlib
+                import sys
+                import tarfile
+
+                incoming = pathlib.Path(sys.argv[1])
+                staging = pathlib.Path(sys.argv[2])
+                total = 0
+                with tarfile.open(incoming, "r:gz") as archive:
+                    members = archive.getmembers()
+                    if len(members) > 32:
+                        raise SystemExit("artifact_member_limit_exceeded")
+                    for member in members:
+                        path = pathlib.PurePosixPath(member.name)
+                        if path.is_absolute() or any(
+                            part in {"", ".", ".."} for part in path.parts
+                        ):
+                            raise SystemExit("artifact_path_rejected")
+                        if member.isdir():
+                            continue
+                        if not member.isfile() or member.size > 134217728:
+                            raise SystemExit("artifact_member_type_or_size_rejected")
+                        total += member.size
+                        if total > 268435456:
+                            raise SystemExit("artifact_size_limit_exceeded")
+                        source = archive.extractfile(member)
+                        if source is None:
+                            raise SystemExit("artifact_member_unreadable")
+                        content = source.read(member.size + 1)
+                        if len(content) != member.size:
+                            raise SystemExit("artifact_member_size_mismatch")
+                        destination = staging.joinpath(*path.parts)
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        destination.write_bytes(content)
+                PY
+                mapfile -t manifests < <(find "$staging" -type f -name release-manifest.json -print)
+                mapfile -t bundles < <(find "$staging" -type f -name 'release-bundle-*.tar.gz' -print)
+                test "${#manifests[@]}" -eq 1
+                test "${#bundles[@]}" -eq 1
+                manifest="${manifests[0]}"
+                bundle="${bundles[0]}"
+                /usr/local/sbin/edu-ai-deploy \
+                  --manifest "$manifest" \
+                  --bundle "$bundle" \
+                  --expected-commit "${CI_COMMIT_SHA}" \
+                  --runner-id "${PRODUCTION_RUNNER_ID}"

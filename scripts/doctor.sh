@@ -5,6 +5,7 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
 conda_env_name="${CONDA_ENV:-edu-ai}"
+doctor_python="${DOCTOR_PYTHON:-}"
 
 pass() { printf '  [ok] %s\n' "$1"; }
 fail() { printf '  [error] %s\n' "$1" >&2; exit 1; }
@@ -36,12 +37,21 @@ require_healthy_service() {
 }
 
 printf 'Edu AI development environment doctor\n'
-for command_name in conda docker node npm make curl; do
+required_commands=(docker node npm make curl)
+if [[ -z "${doctor_python}" ]]; then
+  required_commands+=(conda)
+fi
+for command_name in "${required_commands[@]}"; do
   require_command "$command_name"
 done
 
 printf '\nTool versions\n'
-print_version "Conda" conda --version
+if [[ -n "${doctor_python}" ]]; then
+  [[ -x "${doctor_python}" ]] || fail "DOCTOR_PYTHON is not executable"
+  print_version "Python" "${doctor_python}" --version
+else
+  print_version "Conda" conda --version
+fi
 print_version "Docker" docker --version
 print_version "Docker Compose" docker compose version
 print_version "Node.js" node --version
@@ -52,17 +62,28 @@ print_version "curl" curl --version
 docker info >/dev/null 2>&1 || fail "Docker daemon is unavailable; start Docker and retry"
 pass "Docker daemon is available"
 
-python_version="$(conda run --name "$conda_env_name" python --version 2>&1)" \
-  || fail "Conda environment '$conda_env_name' is unavailable"
-pass "Conda environment '$conda_env_name' is available ($python_version)"
+if [[ -n "${doctor_python}" ]]; then
+  python_command=("${doctor_python}")
+  python_version="$("${python_command[@]}" --version 2>&1)" \
+    || fail "DOCTOR_PYTHON is unavailable"
+  pass "Explicit Python environment is available ($python_version)"
+else
+  # Conda captures subprocess streams by default, which prevents Compose JSON pipelines from
+  # reaching Python stdin. Live output preserves the same interpreter while keeping pipelines
+  # byte-for-byte intact.
+  python_command=(conda run --no-capture-output --name "${conda_env_name}" python)
+  python_version="$("${python_command[@]}" --version 2>&1)" \
+    || fail "Conda environment '$conda_env_name' is unavailable"
+  pass "Conda environment '$conda_env_name' is available ($python_version)"
+fi
 
-conda run --name "$conda_env_name" python -c \
+"${python_command[@]}" -c \
   'import alembic, fastapi, langgraph, minio, pgvector, psycopg, pydantic, sqlalchemy; from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver' \
   >/dev/null \
   || fail "Backend dependencies are not installed; run 'make setup-backend'"
 pass "Backend dependencies import successfully"
 
-conda run --name "$conda_env_name" python -c \
+"${python_command[@]}" -c \
   'import asyncio; from app.api_main import healthz; response = asyncio.run(healthz()); assert response.status == "ok"' \
   >/dev/null || fail "Backend health shell failed; run 'make backend-check'"
 pass "Backend health shell responds successfully"
@@ -75,8 +96,67 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
+docker compose --profile governance --profile content --profile wecom config --format json | \
+  "${python_command[@]}" -c '
+import json
+import re
+import sys
+
+services = json.load(sys.stdin)["services"]
+names = (
+    "backend-migrate",
+    "acquisition-api",
+    "acquisition-scheduler",
+    "acquisition-worker",
+    "governance-scheduler",
+    "governance-worker",
+    "content-scheduler",
+    "content-worker",
+    "wecom-dispatcher",
+)
+images = [services[name].get("image") for name in names]
+if any(not image for image in images) or len(set(images)) != 1:
+    raise SystemExit("all application and migration services must share one APP_IMAGE")
+image = images[0]
+if image != "edu-ai-lead-agent-backend:local" and not re.fullmatch(
+    r"[^@\s]+@sha256:[0-9a-f]{64}", image
+):
+    raise SystemExit("non-local APP_IMAGE must be a digest-only reference")
+' >/dev/null || fail "Application services do not share the local-or-digest APP_IMAGE contract"
+pass "All nine application and migration services share one APP_IMAGE contract"
+
+[[ -s backend/requirements/runtime.lock && -s backend/requirements/dev.lock ]] \
+  || fail "Python hash lockfiles are missing; run 'make python-lock'"
+grep -q -- '--hash=sha256:' backend/requirements/runtime.lock \
+  || fail "Runtime Python lock does not contain hashes"
+grep -q '@sha256:' backend/Dockerfile \
+  || fail "Backend Python base image is not digest-pinned"
+grep -q -- '--require-hashes' backend/Dockerfile \
+  || fail "Backend image does not enforce the runtime hash lock"
+pass "Python locks and digest-pinned Docker build contract are present"
+
+"${python_command[@]}" - <<'PY' >/dev/null \
+  || fail "Migration compatibility declaration does not match the repository head"
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "deploy/release")
+from contract import alembic_head_from_blobs, load_compatibility_declaration
+
+migrations = {
+    str(path): path.read_bytes()
+    for path in Path("backend/alembic/versions").glob("*.py")
+    if not path.name.startswith("__")
+}
+head = alembic_head_from_blobs(migrations)
+declaration = Path("deploy/release/migration-compatibility.json").read_bytes()
+load_compatibility_declaration(declaration, head)
+PY
+pass "Migration compatibility declaration matches the single Alembic head"
+
 docker compose --profile content config --format json | \
-  conda run --no-capture-output --name "$conda_env_name" python -c '
+  "${python_command[@]}" -c '
 import json
 import sys
 
@@ -89,7 +169,7 @@ if any(value in (None, "") for value in values) or len(set(values)) != 1:
 pass "Image retry attempt limit is shared by API and content worker"
 
 docker compose --profile governance --profile content --profile wecom config --format json | \
-  conda run --no-capture-output --name "$conda_env_name" python -c '
+  "${python_command[@]}" -c '
 import json
 import sys
 

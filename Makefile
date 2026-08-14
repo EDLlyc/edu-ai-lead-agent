@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 CONDA_ENV ?= edu-ai
-PY_RUN := conda run --name $(CONDA_ENV)
+PY_RUN ?= conda run --name $(CONDA_ENV)
 
 .PHONY: env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
@@ -11,6 +11,7 @@ PY_RUN := conda run --name $(CONDA_ENV)
 	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
 	backend-integration-test backend-check \
+	python-lock python-lock-check release-tool-check release-bundle \
 	frontend-format frontend-format-check frontend-lint frontend-typecheck frontend-test \
 	frontend-build frontend-check \
 	check doctor
@@ -22,7 +23,15 @@ env-init:
 setup: setup-backend setup-frontend
 
 setup-backend:
-	$(PY_RUN) python -m pip install -e "./backend[dev]"
+	$(PY_RUN) python -m pip install --require-hashes -r backend/requirements/dev.lock
+	$(PY_RUN) python -m pip install --no-deps --no-build-isolation -e ./backend
+
+python-lock:
+	cd backend && CUSTOM_COMPILE_COMMAND="make python-lock" \
+		../scripts/compile-python-locks.sh
+
+python-lock-check:
+	bash scripts/check-python-locks.sh
 
 setup-frontend:
 	npm ci --prefix frontend
@@ -98,16 +107,21 @@ infra-logs:
 	docker compose logs --tail=100 postgres minio minio-init
 
 backend-format:
-	$(PY_RUN) ruff format backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+	$(PY_RUN) ruff format backend deploy/release \
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-format-check:
-	$(PY_RUN) ruff format --check backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+	$(PY_RUN) ruff format --check backend deploy/release \
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-lint:
-	$(PY_RUN) ruff check backend scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+	$(PY_RUN) ruff check backend deploy/release \
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-typecheck:
-	$(PY_RUN) mypy backend/app backend/scripts scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+	$(PY_RUN) mypy backend/app backend/scripts deploy/release/contract.py \
+		deploy/release/deploy.py deploy/release/release_tool.py \
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
 
 backend-test:
 	$(PY_RUN) pytest backend
@@ -140,5 +154,13 @@ frontend-check: api-contract-check frontend-format-check frontend-lint frontend-
 
 check: backend-check frontend-check
 
+release-tool-check:
+	$(PY_RUN) pytest deploy/release/tests -q --no-cov
+
+release-bundle:
+	@test -n "$(COMMIT)" || { echo "COMMIT is required" >&2; exit 2; }
+	$(PY_RUN) python deploy/release/release_tool.py build-bundle \
+		--commit "$(COMMIT)" --output-dir "$${OUTPUT_DIR:-dist/release}"
+
 doctor:
-	bash scripts/doctor.sh
+	DOCTOR_PYTHON="$(DOCTOR_PYTHON)" bash scripts/doctor.sh

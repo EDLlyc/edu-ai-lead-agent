@@ -1,5 +1,12 @@
 name: edu-ai-lead-agent
 
+x-app-runtime: &app-runtime
+  # Local development builds and tags this image. Production sets APP_IMAGE to a validated
+  # registry/repository@sha256 digest and always invokes Compose with --no-build.
+  image: ${APP_IMAGE:-edu-ai-lead-agent-backend:local}
+  build:
+    context: ./backend
+
 services:
   postgres:
     image: pgvector/pgvector:0.8.1-pg16
@@ -65,8 +72,7 @@ services:
         /usr/bin/mc anonymous set none "local/$${MINIO_BUCKET}"
 
   backend-migrate:
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: "no"
     depends_on:
       postgres:
@@ -187,8 +193,7 @@ services:
       - alembic -c alembic.ini upgrade head && python -m app.seed_sources
 
   acquisition-api:
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     volumes:
       - ./private/brand-materials:/app/private/brand-materials:ro
@@ -253,8 +258,7 @@ services:
       start_period: 10s
 
   acquisition-scheduler:
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     depends_on:
       backend-migrate:
@@ -264,8 +268,7 @@ services:
     command: ["python", "-m", "app.scheduler_main"]
 
   acquisition-worker:
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     depends_on:
       backend-migrate:
@@ -276,8 +279,7 @@ services:
 
   governance-scheduler:
     profiles: ["governance"]
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     depends_on:
       backend-migrate:
@@ -289,8 +291,7 @@ services:
 
   governance-worker:
     profiles: ["governance"]
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     depends_on:
       backend-migrate:
@@ -303,8 +304,7 @@ services:
 
   content-scheduler:
     profiles: ["content"]
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     depends_on:
       backend-migrate:
@@ -316,8 +316,7 @@ services:
 
   content-worker:
     profiles: ["content"]
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     volumes:
       - ./private/brand-materials:/app/private/brand-materials:ro
@@ -357,8 +356,7 @@ services:
 
   wecom-dispatcher:
     profiles: ["wecom"]
-    build:
-      context: ./backend
+    <<: *app-runtime
     restart: unless-stopped
     volumes:
       - ./private/brand-materials:/app/private/brand-materials:ro
