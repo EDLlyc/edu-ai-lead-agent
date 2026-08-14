@@ -32,6 +32,32 @@ conda activate edu-ai
 make setup
 ```
 
+## 依赖锁与固定 Digest 发布
+
+`backend/pyproject.toml` 是 Python 依赖的人类维护源；运行时和开发环境分别由带哈希的
+`backend/requirements/runtime.lock`、`backend/requirements/dev.lock` 固定。修改依赖后必须
+重新生成并检查漂移：
+
+```bash
+make python-lock
+make python-lock-check
+```
+
+本地 Compose 仍可使用 `docker compose up -d --build`，九个应用/迁移服务会共享本地默认
+镜像 `edu-ai-lead-agent-backend:local`。生产发布则只接受
+`registry/namespace/repository@sha256:<digest>` 形式的 `APP_IMAGE`，九个服务使用同一 digest，
+并始终以 `--no-build` 启动；生产机不解析 Python 依赖，也不访问 PyPI 构建应用镜像。
+前端只用于本地开发和 CI 的格式、类型、测试、Vite build 与 API contract 门禁；本流水线不
+构建或上传生产前端镜像，不把 `frontend/dist` 放入 release bundle，也不部署或修改生产前端。
+
+Codeup `marketingUseOnly/edu-ai-lead-agent` 是权威写入源，日常分支和 `main` 推送到
+`origin`；GitHub `EDLlyc/edu-ai-lead-agent` 仅接收单向备份，不能反向覆盖 Codeup 或触发
+生产。仓库内 Flow 的 ACR 发布、GitHub 备份和生产部署开关默认全部关闭，必须在对应外部
+连接、隔离、Runner、上一 digest 基线和 dry-run 门禁完成后由管理员逐项启用。
+
+完整的发布清单/bundle 契约、凭据轮换、激活门、Runner 停用、部署阶段和兼容性回退规则见
+[固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)。
+
 ## 本地服务
 
 | 服务 | 默认地址 |
@@ -163,6 +189,9 @@ make infra-logs        # 查看基础设施日志
 make infra-down        # 停止服务但保留数据卷
 make api-generate      # 导出 FastAPI OpenAPI 并生成前端类型
 make backend-check     # Ruff format/lint + mypy + pytest
+make python-lock       # 由 pyproject 重新生成 runtime/dev hash locks
+make python-lock-check # 重新解析并检查依赖锁漂移
+make release-tool-check # 发布清单、bundle、部署状态机与 Flow 静态契约测试
 make backend-integration-test # 真实 PostgreSQL/MinIO 集成测试
 make frontend-check    # Prettier + ESLint + TypeScript + Vitest + Vite build
 make check             # 全部质量检查

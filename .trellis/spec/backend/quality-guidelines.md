@@ -504,6 +504,104 @@ print(f"image_smoke_output_host={hostname}")
 
 The correct form exposes only the minimum hostname needed to diagnose public DNS resolution.
 
+## Scenario: Reproducible application image and immutable release
+
+### 1. Scope / Trigger
+
+This contract applies when Python dependencies, the backend image, Compose application services,
+release artifacts, or production deployment automation change.
+
+### 2. Signatures
+
+- Human dependency source: `backend/pyproject.toml`.
+- Generated inputs: `backend/requirements/runtime.lock` and `dev.lock`.
+- Drift gates: `make python-lock` and `make python-lock-check`, using `pip-tools==7.6.1` under
+  Python 3.11.
+- Local image input: `APP_IMAGE` defaults to `edu-ai-lead-agent-backend:local`.
+- Production image input: `registry/namespace/repository@sha256:<64-lowercase-hex>`.
+- Artifact tools: `deploy/release/release_tool.py`; root deployment entrypoint:
+  `scripts/edu-ai-deploy.sh`.
+
+### 3. Contracts
+
+- Both Python locks contain hashes and are regenerated together. Do not hand-edit them or install
+  unlocked dependencies in CI/image builds.
+- `backend/Dockerfile` pins its Python base by digest, installs the runtime lock with
+  `--require-hashes`, records OCI created/revision/source/base metadata, and runs as non-root.
+- `.dockerignore` excludes Git/Trellis state, tests, reports, local environments, credentials,
+  private materials, and secret-shaped paths from the backend context.
+- Exactly nine application/migration Compose services inherit one shared `APP_IMAGE`. Local
+  development retains `build:`; production sets a digest and always uses `--no-build`.
+- Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
+  the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
+  reviewed migration compatibility.
+- Deployment is root-owned and serialized with `flock`. It verifies/pulls while production is
+  active, then quiesces, backs up, snapshots, activates, migrates, restarts in phases, verifies,
+  and persists safe evidence.
+- Treat quiesce as mutating from the first stop command: a partial quiesce failure restarts and
+  verifies the complete previous service set. Health-gated services receive a bounded readiness
+  wait rather than failing merely because Docker reports `starting` during their start period.
+- The scheduled and deployment backup paths share a backup lock. Backup evidence is strict and
+  binds the previous commit/image to PostgreSQL, MinIO, and brand backup checksums before runtime
+  activation; credentials never appear as Docker CLI `KEY=value` arguments.
+- Automatic rollback restores only the previous application runtime/digest when no migration was
+  attempted, the Alembic head is unchanged, or backward compatibility was explicitly reviewed.
+  It never restores a database or runs Alembic downgrade.
+- Provider and WeCom calls are absent from release tests and deployment verification.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Lock recompilation changes either committed lock | Lock drift gate fails |
+| Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
+| Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
+| Lock is already held | Typed preflight failure; concurrent release is rejected |
+| Failure after quiesce but before activation | Previous digest is restarted and verified |
+| Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
+| Migration attempt fails or schema is not rollback-compatible | Writers remain stopped for incident response; no database restore/downgrade |
+| Post-activation failure with eligible compatibility | Previous runtime/digest is restored and health-verified |
+
+### 5. Good / Base / Bad Cases
+
+- Good: branch checks pass, one commit produces one verified digest and checksum-bound bundle, and
+  all nine production services recreate from it without production PyPI access.
+- Base: local development builds the shared local image while the three external Flow activation
+  flags remain false.
+- Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
+  release bundle includes workspace files, or rollback downgrades/restores the database
+  automatically.
+
+### 6. Tests Required
+
+- `deploy/release/tests` covers strict manifests, tag rejection, bundle checksum/traversal and
+  migration cross-checks, phase order, pre/post activation failures, lock exclusion, rollback
+  eligibility/failure, redaction, inactive Flow gates, and the nine-service Compose anchor.
+- `make backend-check`, `make frontend-check`, `make python-lock-check`, full-profile Compose config,
+  `make doctor`, `bash -n scripts/*.sh`, a Docker build, and network-none/read-only image probes
+  pass before activation.
+- A live Flow import, branch run, ACR tag-to-digest resolution, Runner dry run, and production
+  evidence are external acceptance gates; repository tests must not claim they occurred.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+~~~bash
+docker compose up -d --build
+~~~
+
+Using this command in production may rebuild from mutable inputs and contact package indexes.
+
+#### Correct
+
+~~~bash
+docker compose --env-file .env --env-file .release.env up -d --no-build
+~~~
+
+The mode-600 release environment supplies the single verified digest used by all application and
+migration services.
+
 ## Review checklist
 
 - Is the change in the correct API/application/domain/infrastructure layer?

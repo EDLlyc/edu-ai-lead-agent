@@ -1,13 +1,16 @@
 # Production Server Migration Runbook
 
-This runbook deploys the pinned Compose services on one production host. It assumes a reviewed
-release bundle, a protected secret store, persistent PostgreSQL and MinIO storage, and an operator
-who can stop the workers during maintenance. It does not publish to Moments or any other social
-platform.
+This runbook describes the host and application migration details behind the automated release.
+Use the [Immutable Digest Release Runbook](./digest-release-runbook.md) as the authority for Flow,
+release artifacts, dry runs, serialized deployment, and rollback. Production uses a reviewed
+digest-bound release bundle, a protected secret store, persistent PostgreSQL and MinIO storage,
+and an operator who can stop workers during maintenance. It does not publish to Moments or any
+other social platform.
 
 ## Operating boundaries
 
-- Expose only the frontend and API through the host reverse proxy on HTTPS.
+- Expose only the API through the reviewed host reverse-proxy HTTPS route. Frontend/static hosting
+  is outside this backend release and remains unchanged.
 - Keep PostgreSQL, MinIO API, MinIO Console, schedulers, and workers on the private host/network.
 - The official Enterprise WeChat group webhook is outbound-only HTTPS. It needs no inbound
   callback URL, trusted domain, trusted recipient API, or self-built-app IP allowlist.
@@ -23,9 +26,10 @@ platform.
    the configured business timezone available, and enough disk for PostgreSQL, MinIO, logs, and
    at least one complete backup set.
 2. Install a host reverse proxy with a certificate renewal mechanism. The proxy must forward
-   `/api` and `/healthz` to the loopback API port and serve the built frontend assets.
-3. Prepare a release directory containing the pinned repository commit, `compose.yaml`, backend and
-   frontend lockfiles, `private/brand-materials/`, and the approved production configuration.
+   `/api` and `/healthz` to the loopback API port. This runbook does not publish frontend assets.
+3. Prepare the checksum-verified release runtime containing `compose.yaml`, migration files,
+   root-owned release scripts and a mode-600 `.release.env` whose `APP_IMAGE` is the approved ACR
+   digest. Keep `private/brand-materials/` and the production `.env` outside the release bundle.
    The brand directory is bind-mounted read-only into containers that run as the non-root `app`
    user. Preserve the operator as the host owner, but make the directory and files readable by
    that container user (for example, directories `0755` and files `0644`, with no write bit for
@@ -83,13 +87,20 @@ checks to make a package deliverable.
 Run commands from the release directory. Save command summaries and safe status values, never
 environment dumps or credential-bearing command output.
 
-1. Verify the release and configuration without starting application workers:
+1. Verify the release manifest, exact Flow commit, bundle, digest environment, and configuration
+   without starting application workers:
 
    ```bash
-   git rev-parse --verify HEAD
-   docker compose config --quiet
-   docker compose config --services
+   python deploy/release/release_tool.py verify-bundle \
+     --manifest <release-manifest.json> \
+     --bundle <release-bundle.tar.gz> \
+     --expected-commit <40-character-flow-commit>
+   docker compose --env-file .env --env-file .release.env config --quiet
+   docker compose --env-file .env --env-file .release.env config --services
    ```
+
+   Do not use a Git checkout, mutable image tag, or locally built image as production release
+   identity.
 
 2. Take the pre-deployment PostgreSQL and MinIO backups described below. Confirm their checksums
    and that the restore destination is available.
@@ -97,8 +108,8 @@ environment dumps or credential-bearing command output.
 3. Start durable infrastructure and wait for health checks:
 
    ```bash
-   docker compose up -d postgres minio
-   docker compose ps --all postgres minio
+   docker compose --env-file .env --env-file .release.env up -d postgres minio
+   docker compose --env-file .env --env-file .release.env ps --all postgres minio
    ```
 
 4. Initialize the private bucket, then run the one-shot migration/seed service. The service's
@@ -106,10 +117,11 @@ environment dumps or credential-bearing command output.
    `python -m app.seed_sources`; do not seed before a successful migration:
 
    ```bash
-   docker compose up -d minio-init
-   docker compose wait minio-init
-   docker compose run --rm backend-migrate
-   docker compose ps --all backend-migrate
+   docker compose --env-file .env --env-file .release.env up -d --no-build minio-init
+   docker compose --env-file .env --env-file .release.env wait minio-init
+   docker compose --env-file .env --env-file .release.env \
+     run --rm --no-deps backend-migrate
+   docker compose --env-file .env --env-file .release.env ps --all backend-migrate
    ```
 
    Verify the expected Alembic revision and active source count before starting workers:
@@ -125,35 +137,31 @@ environment dumps or credential-bearing command output.
    than assuming a future revision. Do not mutate business rows or repair historical packages by
    hand during migration.
 
-5. Build the frontend in the release workspace with the public HTTPS API origin, then publish the
-   resulting `frontend/dist/` directory atomically to the reverse-proxy document root:
+5. Start the API and acquisition processes after migration succeeds. Frontend validation has
+   already completed in CI and produces no production artifact:
 
    ```bash
-   npm ci --prefix frontend
-   npm run build --prefix frontend
+   docker compose --env-file .env --env-file .release.env up -d --no-build \
+     acquisition-api acquisition-scheduler acquisition-worker
    ```
 
-6. Start the API and acquisition processes after migration succeeds:
-
-   ```bash
-   docker compose up -d --build acquisition-api acquisition-scheduler acquisition-worker
-   ```
-
-7. Start the governance profile explicitly. A clean host does not start this profile unless it is
+6. Start the governance profile explicitly. A clean host does not start this profile unless it is
    named:
 
    ```bash
-   docker compose --profile governance up -d --build governance-scheduler governance-worker
+   docker compose --env-file .env --env-file .release.env --profile governance \
+     up -d --no-build governance-scheduler governance-worker
    ```
 
    Enable the corresponding `GOVERNANCE_*` settings before this step and verify scheduler/worker
    liveness. If governance is intentionally disabled, leave its profile stopped and record the
    domain result as disabled rather than calling it an infrastructure failure.
 
-8. Start the content profile after the upstream acquisition/governance state is healthy:
+7. Start the content profile after the upstream acquisition/governance state is healthy:
 
    ```bash
-   docker compose --profile content up -d --build content-scheduler content-worker
+   docker compose --env-file .env --env-file .release.env --profile content \
+     up -d --no-build content-scheduler content-worker
    ```
 
    Enable the `CONTENT_*` and `IMAGE_*` settings before this step and verify the content scheduler
@@ -199,28 +207,28 @@ delivery job is running and no delivery window remains open. Stop automatic deli
 on an unknown result; `delivery_unknown` and expired jobs are audit records and must never be
 automatically resent.
 
-9. Start the WeCom dispatcher only after the upstream stages are healthy and the delivery policy has
+8. Start the WeCom dispatcher only after the upstream stages are healthy and the delivery policy has
    been reviewed:
 
    ```bash
-   docker compose --profile wecom up -d --build wecom-dispatcher
+   docker compose --env-file .env --env-file .release.env --profile wecom \
+     up -d --no-build wecom-dispatcher
    ```
 
    Enable the `WECOM_*` settings before this step. Verify that automatic reconciliation is enabled
    only for the approved policy; otherwise leave the dispatcher stopped or record it as disabled.
 
-10. Configure/reload the reverse proxy only after the API health check succeeds. Expose HTTPS and,
-    if required, redirect HTTP to HTTPS. Do not expose host ports `5432`, `9000`, `9001`, `8000`,
-    `5173`, scheduler ports, or worker ports to the public network.
+9. Configure/reload the reverse proxy only after the API health check succeeds. Expose HTTPS and,
+   if required, redirect HTTP to HTTPS. Do not expose host ports `5432`, `9000`, `9001`, `8000`,
+   `5173`, scheduler ports, or worker ports to the public network.
 
 ## Reverse proxy and TLS
 
-The proxy should serve the static frontend and forward `/api/` and `/healthz` to the API's
-loopback binding. Preserve the original host/proto headers, enforce request/body/time limits
-appropriate for the API, and require the deployment's authentication/access-control policy. TLS
-private keys remain in the proxy's protected certificate store. Renew certificates before expiry
-and alert on renewal failure. The browser must use an HTTPS `VITE_API_BASE_URL`; do not mix an HTTPS
-page with an HTTP API or expose a development Vite server.
+The proxy should forward `/api/` and `/healthz` to the API's loopback binding. Preserve the original
+host/proto headers, enforce request/body/time limits appropriate for the API, and require the
+deployment's authentication/access-control policy. TLS private keys remain in the proxy's
+protected certificate store. Renew certificates before expiry and alert on renewal failure. This
+backend release neither publishes static frontend assets nor exposes a development Vite server.
 
 The proxy is not an Enterprise WeChat callback endpoint. The group webhook provider only makes
 outbound requests from the dispatcher to the official HTTPS webhook host.
@@ -294,10 +302,10 @@ or other typed terminal domain result must be reported separately from service u
    the current API available only as the maintenance policy allows.
 4. Deploy the new pinned images/configuration, run `docker compose config --quiet`, then run the
    migration/seed order above. Never use floating image tags.
-5. Start API, health-check it, publish the frontend, then start acquisition, governance, content,
-   and WeCom profiles in the documented order, waiting for upstream health before starting the next
-   profile. Verify that `IMAGE_MAX_ATTEMPTS` is identical in API/content-worker configuration before
-   accepting an image retry.
+5. Start API, health-check it, then start acquisition, governance, content, and WeCom profiles in
+   the documented order, waiting for upstream health before starting the next profile. Do not
+   publish frontend artifacts. Verify that `IMAGE_MAX_ATTEMPTS` is identical in API/content-worker
+   configuration before accepting an image retry.
 6. Perform first-day verification and retain safe evidence. Do not run a real provider delivery
    as part of an ordinary upgrade unless the production checklist has authorized one visible
    `mode=test` request and the fingerprint has not already been delivered.

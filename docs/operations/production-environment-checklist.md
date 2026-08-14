@@ -6,7 +6,10 @@ values into task logs.
 
 ## Release and host
 
-- [ ] Release commit/image digests: `______________________________`
+- [ ] Codeup release commit: `______________________________`
+- [ ] ACR digest-only `APP_IMAGE`: `______________________________`
+- [ ] Release manifest/bundle SHA-256 values: `______________________________`
+- [ ] Flow run/gate IDs and verified Runner ID: `______________________________`
 - [ ] Operator and maintenance window: `______________________________`
 - [ ] Host OS/Docker/Compose versions recorded: `______________________________`
 - [ ] System clock/NTP and `BUSINESS_TIMEZONE` verified: `______________________________`
@@ -14,6 +17,10 @@ values into task logs.
 - [ ] Firewall allows only required HTTPS and restricted administrator access.
 - [ ] `docker compose config --quiet` passes for the exact release configuration.
 - [ ] No floating image tags are used.
+- [ ] All nine application/migration services render the same `APP_IMAGE` digest.
+- [ ] `.env`, `.release.env`, release markers, and current manifest agree and have root-only modes.
+- [ ] The host's project ACR identity is pull-only and a previous successful digest remains
+      available for compatibility-gated application rollback.
 
 ## Production configuration
 
@@ -74,11 +81,11 @@ Use this section only when the approved recipient is the official group webhook.
 - [ ] PostgreSQL `5432`, MinIO API `9000`, MinIO Console `9001`, API development port `8000`,
       Vite `5173`, schedulers, and workers are private or loopback-only.
 - [ ] MinIO bucket is private; anonymous access is disabled; administrative console is not public.
-- [ ] Reverse proxy serves the built `frontend/dist/` assets and forwards `/api/` and `/healthz`
-      to the API over the private host/network.
+- [ ] Reverse proxy forwards `/api/` and `/healthz` to the API over the private host/network;
+      frontend/static hosting is not changed by this backend release.
 - [ ] TLS certificate chain, renewal timer, expiry alert, HSTS/access policy, request limits, and
       forwarded host/proto handling are verified.
-- [ ] HTTPS frontend and API origins match; no mixed-content or development Vite process remains.
+- [ ] No development Vite process or frontend artifact is deployed by this release.
 
 ## Startup and migration
 
@@ -88,28 +95,30 @@ Use this section only when the approved recipient is the official group webhook.
 - [ ] `backend-migrate` completed successfully.
 - [ ] Alembic head: `________________`.
 - [ ] Seed source count and active versions verified without direct row edits.
-- [ ] Frontend dependencies installed from `package-lock.json` and the production build published
-      atomically.
+- [ ] Frontend checks passed in local/CI only; no frontend image or `frontend/dist` was promoted.
 - [ ] Base API, acquisition scheduler, and acquisition worker started after migration.
 - [ ] `governance` profile was explicitly enabled where approved, and its scheduler/worker are
       healthy before starting content:
 
   ```bash
-  docker compose --profile governance up -d --build governance-scheduler governance-worker
+  docker compose --env-file .env --env-file .release.env --profile governance \
+    up -d --no-build governance-scheduler governance-worker
   ```
 
 - [ ] `content` profile was explicitly enabled where approved, after upstream health/liveness was
       verified:
 
   ```bash
-  docker compose --profile content up -d --build content-scheduler content-worker
+  docker compose --env-file .env --env-file .release.env --profile content \
+    up -d --no-build content-scheduler content-worker
   ```
 
 - [ ] `wecom` profile was explicitly enabled only after upstream stages and the delivery policy were
       verified:
 
   ```bash
-  docker compose --profile wecom up -d --build wecom-dispatcher
+  docker compose --env-file .env --env-file .release.env --profile wecom \
+    up -d --no-build wecom-dispatcher
   ```
 
 - [ ] API, scheduler, worker, and dispatcher health/liveness is recorded; disabled domain stages
@@ -132,6 +141,8 @@ Use this section only when the approved recipient is the official group webhook.
 ## Upgrade and rollback gate
 
 - [ ] Previous image/configuration bundle and migration compatibility are available.
+- [ ] `/var/lib/edu-ai/releases/current.json` matches active release markers and `.release.env`.
+- [ ] The root deployment dry run passed for the exact manifest, bundle, commit, digest, and Runner.
 - [ ] Rollback owner and stop order are recorded: workers/schedulers/dispatcher first, durable
       volumes preserved.
 - [ ] Rollback does not rely on an unreviewed Alembic downgrade or direct business-row edits.
@@ -139,3 +150,7 @@ Use this section only when the approved recipient is the official group webhook.
       delivery, preserve queued/unknown jobs, and never resend an unknown provider outcome blindly.
 - [ ] First-day verification evidence directory: `________________`.
 - [ ] Final operator sign-off: `________________` / date `________________`.
+
+Use [Immutable Digest Release Runbook](./digest-release-runbook.md) for Flow activation,
+credential rotation, serialized deployment, evidence, and failure handling. Production must not
+build the application image or install Python packages from PyPI.
