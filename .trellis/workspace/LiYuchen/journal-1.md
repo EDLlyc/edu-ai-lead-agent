@@ -899,3 +899,24 @@ Restored real public DNS for CAST and EdSurge through the scoped Clash Fake-IP f
 ### Status
 
 [OK] **Completed**
+
+
+## Session 41: Deploy science and technology priority release
+
+**Date**: 2026-08-14
+**Task**: Deploy science and technology priority release
+**Branch**: `main`
+
+### Summary
+
+Deployed pinned runtime 0a0988c to production with verified offline image provenance, fresh backups and rollback tags, 10 active sources with CAST/EdSurge pending, safe same-day reconciliation, zero duplicate WeCom delivery, and independent quality review.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f54be2` | (see git log) |
+
+### Status
+
+[OK] **Completed**
