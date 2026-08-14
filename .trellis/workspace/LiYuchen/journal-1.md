@@ -920,3 +920,24 @@ Deployed pinned runtime 0a0988c to production with verified offline image proven
 ### Status
 
 [OK] **Completed**
+
+
+## Session 42: Three-slot independent news production
+
+**Date**: 2026-08-14
+**Task**: Three-slot independent news production
+**Branch**: `main`
+
+### Summary
+
+Implemented default-off morning/noon/evening acquisition, post-eligibility multi-selection, independent copy/image/package lineage, durable WeCom delivery windows, additive API/frontend review board, migration 0020, operations checks, and historical compatibility. Independent review fixed seven-day slot history, expired projection, composite lineage constraints, max-nine enforcement, and unknown-result no-resend safety.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c045f17` | (see git log) |
+
+### Status
+
+[OK] **Completed**

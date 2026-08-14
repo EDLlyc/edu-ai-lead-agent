@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 41
+- **Total Sessions**: 42
 - **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~922 | Active |
+| `journal-1.md` | ~943 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 42 | 2026-08-14 | Three-slot independent news production | `c045f17` | `main` |
 | 41 | 2026-08-14 | Deploy science and technology priority release | `3f54be2` | `main` |
 | 40 | 2026-08-13 | Restore CAST and EdSurge production DNS | `4992988` | `main` |
 | 39 | 2026-08-13 | Restore tiered science and technology news priority | `6bd7a17`, `af2b652` | `main` |
