@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build a private manifest for visual assets without ingesting them into text RAG."""
 
 from __future__ import annotations

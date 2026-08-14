@@ -2,6 +2,12 @@
 set -Eeuo pipefail
 
 readonly PIP_TOOLS_VERSION="7.6.1"
+readonly PYTHON_PACKAGE_INDEX="https://mirrors.aliyun.com/pypi/simple/"
+
+export PIP_CONFIG_FILE=/dev/null
+export PIP_INDEX_URL="${PYTHON_PACKAGE_INDEX}"
+unset PIP_CONSTRAINT PIP_EXTRA_INDEX_URL PIP_FIND_LINKS PIP_NO_INDEX PIP_REQUIREMENT
+unset PIP_TRUSTED_HOST
 
 python - <<'PY'
 from importlib.metadata import version
@@ -18,6 +24,8 @@ export CUSTOM_COMPILE_COMMAND="${CUSTOM_COMPILE_COMMAND:-make python-lock}"
 
 python -m piptools compile \
     --generate-hashes \
+    --index-url="${PYTHON_PACKAGE_INDEX}" \
+    --quiet \
     --resolver=backtracking \
     --strip-extras \
     --output-file=requirements/runtime.lock \
@@ -26,6 +34,8 @@ python -m piptools compile \
 python -m piptools compile \
     --extra=dev \
     --generate-hashes \
+    --index-url="${PYTHON_PACKAGE_INDEX}" \
+    --quiet \
     --resolver=backtracking \
     --strip-extras \
     --output-file=requirements/dev.lock \

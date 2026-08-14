@@ -517,6 +517,10 @@ release artifacts, or production deployment automation change.
 - Generated inputs: `backend/requirements/runtime.lock` and `dev.lock`.
 - Drift gates: `make python-lock` and `make python-lock-check`, using `pip-tools==7.6.1` under
   Python 3.11.
+- Flow Python runtime: `backend/Dockerfile.ci` plus `scripts/ci-python.sh`, tagged locally as
+  `edu-ai-lead-agent-ci-python:git-<12-hex>` and never published.
+- Flow Node runtime: `scripts/ci-node.sh` with the exact digest-pinned Node 20 image declared in
+  `deploy/yunxiao/pipeline.yaml`; frontend quality only.
 - Local image input: `APP_IMAGE` defaults to `edu-ai-lead-agent-backend:local`.
 - Production image input: `registry/namespace/repository@sha256:<64-lowercase-hex>`.
 - Artifact tools: `deploy/release/release_tool.py`; root deployment entrypoint:
@@ -526,6 +530,21 @@ release artifacts, or production deployment automation change.
 
 - Both Python locks contain hashes and are regenerated together. Do not hand-edit them or install
   unlocked dependencies in CI/image builds.
+- Lock generation explicitly supplies the project package index instead of inheriting host pip
+  configuration. Keep Alembic below 1.19 until named-check-constraint autogeneration and the
+  migration drift test are intentionally migrated together.
+- Managed-runner language binaries are not a CI input. Python and Node commands run in their
+  versioned containers as the checkout UID/GID with isolated HOME/tmp, allowlisted command names,
+  existing regular Pydantic/Vite environment files masked by `/dev/null`, and no host/Flow
+  environment pass-through. Missing environment files stay missing; symlinks and non-regular
+  mask targets fail closed.
+- Start healthy Compose PostgreSQL/MinIO before backend tests, then run the one-shot MinIO
+  initializer synchronously. Resolve the project
+  network from the running PostgreSQL container; only the Python tool container joins it and only
+  fixed non-production DB/MinIO plus provider-disabled values are injected. Do not use host
+  networking or mount the Docker socket into either tool container.
+- The Node quality container may use normal registry egress for `npm ci`, but it receives no host
+  secrets. Its Vite output remains ignored local/CI output and is never published or deployed.
 - `backend/Dockerfile` pins its Python base by digest, installs the runtime lock with
   `--require-hashes`, records OCI created/revision/source/base metadata, and runs as non-root.
 - `.dockerignore` excludes Git/Trellis state, tests, reports, local environments, credentials,
@@ -554,6 +573,12 @@ release artifacts, or production deployment automation change.
 | Condition | Required result |
 |---|---|
 | Lock recompilation changes either committed lock | Lock drift gate fails |
+| Managed builder lacks Python 3.11/Node 20 or exposes an older host binary | Containerized toolchain is used; host language version is irrelevant |
+| Checkout environment file or Flow secret exists | Wrapper masks existing regular environment files and passes no inherited/env-file secret |
+| Environment mask target is absent | Do not create it and do not add a bind mount |
+| Environment mask target is a symlink or non-regular file | Wrapper exits 2 before `docker run` |
+| PostgreSQL/MinIO is absent or Python container cannot resolve service DNS | Quality fails before/in integration tests; start/wait infra and validate the resolved project network |
+| CI network name or tool command is malformed/unallowlisted | Wrapper exits 2 before `docker run` |
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
@@ -566,20 +591,24 @@ release artifacts, or production deployment automation change.
 
 - Good: branch checks pass, one commit produces one verified digest and checksum-bound bundle, and
   all nine production services recreate from it without production PyPI access.
-- Base: local development builds the shared local image while the three external Flow activation
-  flags remain false.
+- Base: local development builds the shared local image while Flow quality uses local-only Python
+  and Node tool containers and the three external activation flags remain false.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
-  release bundle includes workspace files, or rollback downgrades/restores the database
-  automatically.
+  release bundle includes workspace files, CI calls host `python3`, a wrapper inherits Flow
+  secrets, or rollback downgrades/restores the database automatically.
 
 ### 6. Tests Required
 
 - `deploy/release/tests` covers strict manifests, tag rejection, bundle checksum/traversal and
   migration cross-checks, phase order, pre/post activation failures, lock exclusion, rollback
-  eligibility/failure, redaction, inactive Flow gates, and the nine-service Compose anchor.
+  eligibility/failure, redaction, inactive Flow gates, the nine-service Compose anchor, pinned CI
+  images, command wrappers, environment isolation, and infra-before-backend ordering.
 - `make backend-check`, `make frontend-check`, `make python-lock-check`, full-profile Compose config,
   `make doctor`, `bash -n scripts/*.sh`, a Docker build, and network-none/read-only image probes
   pass before activation.
+- A real local Docker gate builds `backend/Dockerfile.ci`, proves its Python container can query
+  Compose PostgreSQL and MinIO by service DNS, runs the MinIO integration fixture, and proves
+  Node-container `npm ci` writes `node_modules` with the checkout UID/GID.
 - A live Flow import, branch run, ACR tag-to-digest resolution, Runner dry run, and production
   evidence are external acceptance gates; repository tests must not claim they occurred.
 
@@ -588,12 +617,34 @@ release artifacts, or production deployment automation change.
 #### Wrong
 
 ~~~bash
+python3 -m venv .ci-venv
+source .env
+make check
+~~~
+
+This trusts mutable runner tools and exposes checkout/Flow configuration to every quality command.
+
+#### Correct
+
+~~~bash
+docker compose up -d --wait --wait-timeout 120 postgres minio
+docker compose run --rm --no-deps minio-init
+CI_PYTHON_IMAGE=edu-ai-lead-agent-ci-python:git-<12-hex> \
+  CI_COMPOSE_NETWORK=<validated-project-network> scripts/ci-python.sh pytest backend
+~~~
+
+The checked-in pipeline derives the image/network values and uses fixed test-only environment
+values; operators must not copy credentials into this command.
+
+#### Wrong: production build
+
+~~~bash
 docker compose up -d --build
 ~~~
 
 Using this command in production may rebuild from mutable inputs and contact package indexes.
 
-#### Correct
+#### Correct: production digest
 
 ~~~bash
 docker compose --env-file .env --env-file .release.env up -d --no-build

@@ -41,7 +41,26 @@ make python-lock-check
 ```
 
 Review all version changes before committing both locks. `pip-tools==7.6.1` is the lock compiler
-contract. Do not hand-edit a lock or bypass `--require-hashes` to make a build pass.
+contract, and the compiler index URL is explicit so host pip configuration cannot alter generated
+headers. Alembic remains below 1.19 until the named-check-constraint autogenerate behavior and
+existing migration drift contract are deliberately migrated together. Do not hand-edit a lock or
+bypass `--require-hashes` to make a build pass.
+
+Flow must not call the managed runner's preinstalled `python3`, `node`, or a host-created virtual
+environment. It builds the non-published `backend/Dockerfile.ci` Python 3.11 image from `dev.lock`
+and runs Python tools through `scripts/ci-python.sh`; frontend quality uses the digest-pinned Node
+20 image through `scripts/ci-node.sh`. The wrappers use the checkout UID/GID, isolated HOME/tmp,
+and an allowlisted command name. Existing regular Pydantic/Vite environment files receive a
+read-only `/dev/null` overlay; absent files remain absent, while symlink/non-regular mask targets
+fail closed. The wrappers do not pass an env-file, host environment, Docker socket, or privileged
+mode.
+
+Before `backend-check`, Flow waits for healthy `postgres` and `minio`, then runs `minio-init`
+synchronously, resolves the Compose project network, and supplies only fixed
+development-placeholder DB/MinIO and provider-disabled variables to the Python quality container.
+Node receives ordinary registry egress only for `npm ci`; later frontend checks run with no network.
+Neither quality container receives Flow secrets, and neither quality image is tagged for ACR,
+added to the release bundle, or deployed.
 
 Local Compose keeps its existing developer workflow:
 

@@ -54,6 +54,11 @@ Codeup `marketingUseOnly/edu-ai-lead-agent` 是权威写入源，日常分支和
 `origin`；GitHub `EDLlyc/edu-ai-lead-agent` 仅接收单向备份，不能反向覆盖 Codeup 或触发
 生产。仓库内 Flow 的 ACR 发布、GitHub 备份和生产部署开关默认全部关闭，必须在对应外部
 连接、隔离、Runner、上一 digest 基线和 dry-run 门禁完成后由管理员逐项启用。
+Flow 质量门不使用托管机自带的语言版本：后端/发布检查由仓库构建的 Python 3.11
+dev-lock 工具镜像执行，前端门禁使用 digest 固定的 Node 20 镜像。CI 容器不继承宿主/Flow
+秘密环境，已有的 Pydantic/Vite 环境文件会被只读遮蔽；真实 PostgreSQL/MinIO 测试在
+Compose 基础设施健康且 MinIO 初始化完成后通过项目网络运行。Node 仅在 `npm ci` 时联网，
+后续前端门禁离线执行。这两个工具镜像都不会上传 ACR 或部署到生产。
 
 完整的发布清单/bundle 契约、凭据轮换、激活门、Runner 停用、部署阶段和兼容性回退规则见
 [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)。

@@ -1,0 +1,19 @@
+ARG PYTHON_BASE=python:3.11.15-slim-bookworm@sha256:d29f48a31a8b408ed19272ca1e7b10ebae13b240a27e862d3d4217c528e2e0c3
+
+FROM ${PYTHON_BASE}
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Git is required by the committed-object release checks. Application dependencies remain fully
+# hash locked; this image is a CI toolchain and is never published or deployed.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/dev.lock /tmp/dev.lock
+RUN python -m pip install --require-hashes --no-deps -r /tmp/dev.lock \
+    && python -m pip check
+
+WORKDIR /workspace

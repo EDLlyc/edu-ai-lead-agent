@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Annotate private PNG assets with bounded Zhipu vision suggestions.
 
 This is an offline catalog-preparation command. The daily content worker consumes the generated

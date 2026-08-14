@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import asyncpg
@@ -54,11 +55,12 @@ async def integration_context() -> AsyncIterator[IntegrationContext]:
         engine = create_engine(settings)
         yield IntegrationContext(settings, engine, create_session_factory(engine))
         await engine.dispose()
+        minio_endpoint = urlsplit(settings.minio_endpoint)
         minio_client = Minio(
-            "127.0.0.1:9000",
+            minio_endpoint.netloc,
             access_key=settings.minio_access_key.get_secret_value(),
             secret_key=settings.minio_secret_key.get_secret_value(),
-            secure=False,
+            secure=minio_endpoint.scheme == "https",
         )
 
         def remove_test_bucket() -> None:

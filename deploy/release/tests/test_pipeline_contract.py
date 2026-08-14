@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -7,12 +11,31 @@ from contract import BUNDLE_ALLOWED_PREFIXES
 
 from deploy import APPLICATION_SERVICES
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ENV_MASK_PATHS = (
+    ".env",
+    ".env.local",
+    "backend/.env",
+    "frontend/.env",
+    "frontend/.env.local",
+    "frontend/.env.development",
+    "frontend/.env.development.local",
+    "frontend/.env.production",
+    "frontend/.env.production.local",
+    "frontend/.env.test",
+    "frontend/.env.test.local",
+)
+
 
 def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     pipeline = Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
     parsed = yaml.safe_load(pipeline)
     source = parsed["sources"]["source"]
     assert source["type"] == "codeup"
+    assert source["endpoint"] == (
+        "https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/"
+        "edu-ai-lead-agent.git"
+    )
     assert source["certificate"] == {
         "type": "serviceConnection",
         "serviceConnection": "w4de9kbiwbdh3ncn",
@@ -27,19 +50,28 @@ def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     assert "GITHUB_BACKUP_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert "PRODUCTION_DEPLOY_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert pipeline.count('"${CI_COMMIT_REF_NAME}" == "main"') == 3
-    assert "make PY_RUN= release-tool-check" in pipeline
-    assert "needs: quality_job" in pipeline
-    assert "needs: image_job" in pipeline
-    assert pipeline.count("needs: acr_publish_job") == 2
-    assert "needs: quality_stage.quality_job" not in pipeline
-    assert "needs: image_stage.image_job" not in pipeline
-    assert "needs: publish_stage.acr_publish_job" not in pipeline
-    assert "serviceConnection: 79934" in pipeline
+    assert 'make PY_RUN="$PWD/scripts/ci-python.sh" release-tool-check' in pipeline
+    assert "needs:" not in pipeline
+    acr_login = parsed["stages"]["publish_stage"]["jobs"]["acr_publish_job"]["steps"][
+        "acr_login"
+    ]
+    assert acr_login["with"]["serviceConnection"] == "c8jknt8rkk1w7tc1"
+    assert "79934" not in pipeline
     assert "ADMIN_REQUIRED_CODEUP_SERVICE_CONNECTION_ID" not in pipeline
     assert pipeline.count("docker build --pull \\") == 2
+    assert "python3 -c" not in pipeline
+    assert ".ci-venv" not in pipeline
+    assert "--file backend/Dockerfile.ci" in pipeline
+    assert (
+        "node:20.20.2-bookworm-slim@sha256:"
+        "2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0" in pipeline
+    )
     assert pipeline.count("import app.api_main") == 2
     assert "--provenance" not in pipeline
     deploy_job = pipeline.split("production_deploy_job:", 1)[1]
+    deploy_config = parsed["stages"]["deploy_stage"]["jobs"]["production_deploy_job"]
+    assert deploy_config["component"] == "VMDeploy"
+    assert "steps" not in deploy_config
     assert "tar --extract" not in deploy_job
     assert "artifact_path_rejected" in deploy_job
     assert 'test "${#manifests[@]}" -eq 1' in deploy_job
@@ -87,6 +119,197 @@ def test_frontend_is_a_ci_gate_only() -> None:
     assert all(not path.startswith("frontend") for path in BUNDLE_ALLOWED_PREFIXES)
     assert len(APPLICATION_SERVICES) == 9
     assert all("frontend" not in service for service in APPLICATION_SERVICES)
+
+
+def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:
+    dockerfile = Path("backend/Dockerfile.ci").read_text(encoding="utf-8")
+    lock_script = Path("scripts/compile-python-locks.sh").read_text(encoding="utf-8")
+    python_wrapper = Path("scripts/ci-python.sh").read_text(encoding="utf-8")
+    node_wrapper = Path("scripts/ci-node.sh").read_text(encoding="utf-8")
+    assert "python:3.11.15-slim-bookworm@sha256:" in dockerfile
+    assert "--require-hashes --no-deps -r /tmp/dev.lock" in dockerfile
+    assert "COPY requirements/dev.lock" in dockerfile
+    assert 'readonly PIP_TOOLS_VERSION="7.6.1"' in lock_script
+    assert (
+        'readonly PYTHON_PACKAGE_INDEX="https://mirrors.aliyun.com/pypi/simple/"'
+        in lock_script
+    )
+    assert lock_script.count('--index-url="${PYTHON_PACKAGE_INDEX}"') == 2
+    assert "export PIP_CONFIG_FILE=/dev/null" in lock_script
+    assert "unset PIP_CONSTRAINT PIP_EXTRA_INDEX_URL PIP_FIND_LINKS" in lock_script
+    assert "CI_PYTHON_IMAGE is required" in python_wrapper
+    assert "CI_NODE_IMAGE is required" in node_wrapper
+    for wrapper in (python_wrapper, node_wrapper):
+        assert '--volume "${PROJECT_ROOT}:/workspace"' in wrapper
+        assert "source=/dev/null,target=/workspace/${env_path},readonly" in wrapper
+        assert '[[ -f "${host_env_path}" ]]' in wrapper
+        assert "reason=invalid_env_mask_target" in wrapper
+        assert "--env HOME=/tmp/ci-home" in wrapper
+        assert "--env-file" not in wrapper
+        assert "docker.sock" not in wrapper
+        assert "--network host" not in wrapper
+        assert "--privileged" not in wrapper
+    assert 'readonly COMPOSE_NETWORK="${CI_COMPOSE_NETWORK:-}"' in python_wrapper
+    assert '--network "${COMPOSE_NETWORK}"' in python_wrapper
+    assert "docker_args+=(--network none)" in python_wrapper
+    assert "--env DATABASE_URL=postgresql+asyncpg://edu_ai:" in python_wrapper
+    assert "--env MINIO_ENDPOINT=http://minio:9000" in python_wrapper
+    assert "--env AI_PROVIDER_MODE=disabled" in python_wrapper
+    assert "--env-file" not in python_wrapper
+    assert 'readonly NETWORK="${CI_NODE_NETWORK:-none}"' in node_wrapper
+    assert '--network "${NETWORK}"' in node_wrapper
+    assert "CI_NODE_NETWORK=bridge npm ci --prefix frontend" in pipeline_text()
+    assert "docker compose wait minio-init" not in pipeline_text()
+    assert pipeline_starts_infra_before_backend_check()
+
+
+def pipeline_text() -> str:
+    return Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
+
+
+def capture_wrapper_arguments(
+    wrapper: str,
+    command: str,
+    environment: dict[str, str],
+    *,
+    env_files_exist: bool = True,
+) -> tuple[list[str], bool]:
+    with tempfile.TemporaryDirectory(
+        prefix=".ci-wrapper-test-", dir=PROJECT_ROOT
+    ) as sandbox_name:
+        sandbox = Path(sandbox_name)
+        sandbox_scripts = sandbox / "scripts"
+        fake_bin = sandbox / "fake-bin"
+        sandbox_scripts.mkdir()
+        fake_bin.mkdir()
+        sandbox_wrapper = sandbox / wrapper
+        shutil.copy2(PROJECT_ROOT / wrapper, sandbox_wrapper)
+        if env_files_exist:
+            for env_path in ENV_MASK_PATHS:
+                target = sandbox / env_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("must-be-masked", encoding="utf-8")
+        fake_docker = fake_bin / "docker"
+        capture = sandbox / "docker-arguments"
+        fake_docker.write_text(
+            '#!/usr/bin/env bash\nprintf \'%s\\n\' "$@" > "${CI_CAPTURE_FILE}"\n',
+            encoding="utf-8",
+        )
+        fake_docker.chmod(0o755)
+        process_environment = os.environ.copy()
+        process_environment.update(environment)
+        process_environment.update(
+            {
+                "CI_CAPTURE_FILE": str(capture),
+                "PATH": f"{fake_bin}:{process_environment['PATH']}",
+                "UNRELATED_HOST_SECRET": "must-not-reach-container",
+            }
+        )
+        subprocess.run(
+            ["bash", str(sandbox_wrapper), command, "--version"],
+            check=True,
+            cwd=sandbox,
+            env=process_environment,
+        )
+        arguments = capture.read_text(encoding="utf-8").splitlines()
+        env_target_created = any(
+            (sandbox / env_path).exists() for env_path in ENV_MASK_PATHS
+        )
+        return arguments, env_target_created
+
+
+def assert_common_wrapper_isolation(arguments: list[str]) -> None:
+    assert "--env-file" not in arguments
+    assert "--privileged" not in arguments
+    assert "must-not-reach-container" not in arguments
+    mounts = {
+        arguments[index + 1]
+        for index, argument in enumerate(arguments[:-1])
+        if argument == "--mount"
+    }
+    for env_path in ENV_MASK_PATHS:
+        assert (
+            f"type=bind,source=/dev/null,target=/workspace/{env_path},readonly"
+            in mounts
+        )
+
+
+def test_ci_wrapper_runtime_arguments_are_isolated() -> None:
+    python_image = "edu-ai-lead-agent-ci-python:git-0123456789ab"
+    node_image = (
+        "node:20.20.2-bookworm-slim@sha256:"
+        "2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0"
+    )
+
+    python_arguments, _ = capture_wrapper_arguments(
+        "scripts/ci-python.sh",
+        "python",
+        {"CI_PYTHON_IMAGE": python_image, "CI_COMPOSE_NETWORK": ""},
+    )
+    assert_common_wrapper_isolation(python_arguments)
+    assert python_arguments[python_arguments.index("--network") + 1] == "none"
+
+    compose_arguments, _ = capture_wrapper_arguments(
+        "scripts/ci-python.sh",
+        "pytest",
+        {
+            "CI_PYTHON_IMAGE": python_image,
+            "CI_COMPOSE_NETWORK": "edu_ai_default",
+        },
+    )
+    assert_common_wrapper_isolation(compose_arguments)
+    assert compose_arguments[compose_arguments.index("--network") + 1] == (
+        "edu_ai_default"
+    )
+    assert "AI_PROVIDER_MODE=disabled" in compose_arguments
+    assert "WECOM_ENABLED=false" in compose_arguments
+
+    node_arguments, _ = capture_wrapper_arguments(
+        "scripts/ci-node.sh",
+        "node",
+        {"CI_NODE_IMAGE": node_image},
+    )
+    assert_common_wrapper_isolation(node_arguments)
+    assert node_arguments[node_arguments.index("--network") + 1] == "none"
+
+    online_node_arguments, _ = capture_wrapper_arguments(
+        "scripts/ci-node.sh",
+        "npm",
+        {"CI_NODE_IMAGE": node_image, "CI_NODE_NETWORK": "bridge"},
+    )
+    assert_common_wrapper_isolation(online_node_arguments)
+    assert online_node_arguments[online_node_arguments.index("--network") + 1] == (
+        "bridge"
+    )
+
+    clean_python_arguments, clean_python_env_target_created = capture_wrapper_arguments(
+        "scripts/ci-python.sh",
+        "python",
+        {"CI_PYTHON_IMAGE": python_image, "CI_COMPOSE_NETWORK": ""},
+        env_files_exist=False,
+    )
+    assert "--mount" not in clean_python_arguments
+    assert not clean_python_env_target_created
+
+    clean_node_arguments, clean_node_env_target_created = capture_wrapper_arguments(
+        "scripts/ci-node.sh",
+        "npx",
+        {"CI_NODE_IMAGE": node_image},
+        env_files_exist=False,
+    )
+    assert "--mount" not in clean_node_arguments
+    assert not clean_node_env_target_created
+
+
+def pipeline_starts_infra_before_backend_check() -> bool:
+    pipeline = Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
+    quality = pipeline.split("quality_checks:", 1)[1].split("image_stage:", 1)[0]
+    infra = quality.index(
+        "docker compose up -d --wait --wait-timeout 120 postgres minio"
+    )
+    init = quality.index("docker compose run --rm --no-deps minio-init")
+    backend = quality.index('make PY_RUN="$PWD/scripts/ci-python.sh" backend-check')
+    return infra < init < backend
 
 
 def test_external_side_effect_flags_default_closed() -> None:

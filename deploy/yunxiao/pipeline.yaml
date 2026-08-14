@@ -12,6 +12,8 @@ concurrencyConfig:
 variables:
   - key: SOURCE_URL
     value: https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
+  - key: CI_NODE_IMAGE
+    value: node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
   - key: ACR_REGISTRY
     value: ADMIN_REQUIRED_ACR_REGISTRY
   - key: ACR_IMAGE_REPOSITORY
@@ -38,7 +40,7 @@ sources:
   source:
     type: codeup
     name: edu-ai-authoritative
-    endpoint: ${SOURCE_URL}
+    endpoint: https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
     branch: main
     branchesFilter: .*
     cloneDepth: 0
@@ -60,18 +62,27 @@ stages:
         timeoutMinutes: 90
         steps:
           source_identity:
-            name: Verify source identity
+            name: Prepare pinned CI runtimes
             step: Command
             with:
               run: |
                 set -Eeuo pipefail
                 commit="$(git rev-parse HEAD)"
                 test "$(printf %s "$commit" | wc -c)" -eq 40
-                python3.11 -m venv .ci-venv
-                . .ci-venv/bin/activate
-                python -m pip install --require-hashes -r backend/requirements/dev.lock
-                python -m pip install --no-deps --no-build-isolation -e backend
-                npm ci --prefix frontend
+                marker="$(printf %.12s "$commit")"
+                export CI_PYTHON_IMAGE="edu-ai-lead-agent-ci-python:git-$marker"
+                docker build --pull --file backend/Dockerfile.ci \
+                  --tag "$CI_PYTHON_IMAGE" backend
+                rm -rf .ci-bin
+                mkdir -p .ci-bin
+                trap 'rm -rf .ci-bin' EXIT
+                ln -s ../scripts/ci-python.sh .ci-bin/python
+                ln -s ../scripts/ci-node.sh .ci-bin/node
+                ln -s ../scripts/ci-node.sh .ci-bin/npm
+                export PATH="$PWD/.ci-bin:$PATH"
+                python -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
+                node -e 'if (process.versions.node !== "20.20.2") process.exit(1)'
+                CI_NODE_NETWORK=bridge npm ci --prefix frontend
                 python deploy/release/release_tool.py verify-source --commit "$commit"
           quality_checks:
             name: Run complete quality gates
@@ -79,15 +90,31 @@ stages:
             with:
               run: |
                 set -Eeuo pipefail
-                . .ci-venv/bin/activate
-                trap 'docker compose down >/dev/null 2>&1 || true' EXIT
-                make python-lock-check
-                make PY_RUN= backend-check
-                make PY_RUN= release-tool-check
-                make PY_RUN= frontend-check
-                docker compose up -d postgres minio minio-init
-                make PY_RUN= migrate seed-sources
-                DOCTOR_PYTHON="$PWD/.ci-venv/bin/python" make doctor
+                commit="$(git rev-parse HEAD)"
+                marker="$(printf %.12s "$commit")"
+                export CI_PYTHON_IMAGE="edu-ai-lead-agent-ci-python:git-$marker"
+                rm -rf .ci-bin
+                mkdir -p .ci-bin
+                ln -s ../scripts/ci-python.sh .ci-bin/python
+                ln -s ../scripts/ci-node.sh .ci-bin/node
+                ln -s ../scripts/ci-node.sh .ci-bin/npm
+                export PATH="$PWD/.ci-bin:$PATH"
+                trap 'docker compose down >/dev/null 2>&1 || true; rm -rf .ci-bin' EXIT
+                docker compose up -d --wait --wait-timeout 120 postgres minio
+                docker compose run --rm --no-deps minio-init
+                postgres_id="$(docker compose ps -q postgres)"
+                test -n "$postgres_id"
+                export CI_COMPOSE_NETWORK="$(docker inspect --format \
+                  '{{range $network, $_ := .NetworkSettings.Networks}}{{$network}}{{end}}' \
+                  "$postgres_id")"
+                test -n "$CI_COMPOSE_NETWORK"
+                "$PWD/scripts/ci-python.sh" bash scripts/check-python-locks.sh
+                make PY_RUN="$PWD/scripts/ci-python.sh" backend-check
+                make PY_RUN="$PWD/scripts/ci-python.sh" release-tool-check
+                make PY_RUN="$PWD/scripts/ci-python.sh" frontend-check
+                docker compose build --pull backend-migrate
+                docker compose run --rm backend-migrate
+                DOCTOR_PYTHON="$PWD/.ci-bin/python" make doctor
                 docker compose --profile governance --profile content --profile wecom config --quiet
                 bash -n scripts/*.sh
                 git diff --check
@@ -99,7 +126,6 @@ stages:
     jobs:
       image_job:
         name: Build local candidate
-        needs: quality_job
         runsOn: public/cn-beijing
         timeoutMinutes: 60
         steps:
@@ -128,7 +154,6 @@ stages:
     jobs:
       acr_publish_job:
         name: Publish ACR digest
-        needs: image_job
         condition: |
           "${CI_COMMIT_REF_NAME}" == "main" && "${ACR_PUBLISH_ENABLED}" == "true"
         runsOn: public/cn-beijing
@@ -139,7 +164,7 @@ stages:
             step: DockerLogin
             with:
               dockerRepository: ${ACR_REGISTRY}
-              serviceConnection: 79934
+              serviceConnection: c8jknt8rkk1w7tc1
           publish_digest:
             name: Push and resolve digest
             step: Command
@@ -207,7 +232,6 @@ stages:
     jobs:
       github_backup_job:
         name: Backup exact SHA
-        needs: acr_publish_job
         condition: |
           "${CI_COMMIT_REF_NAME}" == "main" && "${GITHUB_BACKUP_ENABLED}" == "true"
         continueOnFail: true
@@ -237,16 +261,12 @@ stages:
     jobs:
       production_deploy_job:
         name: Deploy verified digest
-        needs: acr_publish_job
         condition: |
           "${CI_COMMIT_REF_NAME}" == "main" && "${PRODUCTION_DEPLOY_ENABLED}" == "true"
         driven: auto
         timeoutMinutes: 90
-        steps:
-          deploy_release:
-            name: Run root deploy entrypoint
-            step: VMDeploy
-            with:
+        component: VMDeploy
+        with:
               artifact: $[stages.publish_stage.acr_publish_job.upload_release.artifacts.edu_ai_digest_release]
               downloadArtifact: true
               artifactDownloadPath: /var/lib/edu-ai/incoming/release-${BUILD_NUMBER}.tgz
