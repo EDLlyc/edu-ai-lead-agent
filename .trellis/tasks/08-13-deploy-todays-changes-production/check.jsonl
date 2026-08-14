@@ -1,0 +1,6 @@
+{"file":"docs/operations/production-server-migration-runbook.md","reason":"Independently verify protected inputs, backups, migration/start order, health, first-day evidence, and rollback safety."}
+{"file":"docs/operations/production-environment-checklist.md","reason":"Review the complete production host/configuration/profile/network/monitoring gate without exposing secrets."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify final tests, deterministic source behavior, Compose consistency, security boundaries, and release evidence."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify target versions, 10 active/2 pending semantics, historical replay, and no unsafe source activation."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify no duplicate/historical/unknown delivery side effect and safe dispatcher restart behavior."}
+{"file":".trellis/tasks/archive/2026-08/08-10-deploy-backend-server/design.md","reason":"Cross-check existing-host volume identity, maintenance sequencing, source seeding, image rollback, and durable-state preservation."}

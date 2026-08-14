@@ -1,0 +1,6 @@
+{"file":"docs/operations/production-server-migration-runbook.md","reason":"Production release transfer, protected configuration, backup, startup order, first-day verification, and rollback contract."}
+{"file":"docs/operations/production-environment-checklist.md","reason":"Host, profile, migration, source, secret, network, delivery, backup, and rollback acceptance gates."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Final quality gate, Compose/runtime consistency, source activation safety, and no-secret production validation."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Ten-active/two-pending acquisition, tiered scoring, historical compatibility, and source safety contracts deployed by this release."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Current-date reconciliation, idempotency, unknown delivery, dispatcher startup, and provider-side-effect safety."}
+{"file":".trellis/tasks/archive/2026-08/08-11-deploy-backend-automation-server/design.md","reason":"Established archive-based runtime layout, filtered transfer, active-profile continuity, production evidence, and rollback pattern for this exact host."}
