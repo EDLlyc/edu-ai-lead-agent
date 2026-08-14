@@ -10,6 +10,19 @@ from deploy import APPLICATION_SERVICES
 
 def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     pipeline = Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
+    parsed = yaml.safe_load(pipeline)
+    source = parsed["sources"]["source"]
+    assert source["type"] == "codeup"
+    assert source["certificate"] == {
+        "type": "serviceConnection",
+        "serviceConnection": "w4de9kbiwbdh3ncn",
+    }
+    assert all(
+        variable["key"] != "CODEUP_SERVICE_CONNECTION_ID"
+        for variable in parsed["variables"]
+    )
+    assert pipeline.count("w4de9kbiwbdh3ncn") == 1
+    assert "934667" not in pipeline
     assert "ACR_PUBLISH_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert "GITHUB_BACKUP_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert "PRODUCTION_DEPLOY_ENABLED\n    type: Boolean\n    value: false" in pipeline
@@ -22,6 +35,7 @@ def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     assert "needs: image_stage.image_job" not in pipeline
     assert "needs: publish_stage.acr_publish_job" not in pipeline
     assert "serviceConnection: 79934" in pipeline
+    assert "ADMIN_REQUIRED_CODEUP_SERVICE_CONNECTION_ID" not in pipeline
     assert pipeline.count("docker build --pull \\") == 2
     assert pipeline.count("import app.api_main") == 2
     assert "--provenance" not in pipeline

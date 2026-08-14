@@ -10,8 +10,6 @@ concurrencyConfig:
   maxRunningJobInstances: 1
 
 variables:
-  - key: CODEUP_SERVICE_CONNECTION_ID
-    value: ADMIN_REQUIRED_CODEUP_SERVICE_CONNECTION_ID
   - key: SOURCE_URL
     value: https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
   - key: ACR_REGISTRY
@@ -48,7 +46,7 @@ sources:
       - push
     certificate:
       type: serviceConnection
-      serviceConnection: ${CODEUP_SERVICE_CONNECTION_ID}
+      serviceConnection: w4de9kbiwbdh3ncn
 
 defaultWorkspace: source
 
