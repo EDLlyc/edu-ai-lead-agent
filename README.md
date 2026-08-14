@@ -50,6 +50,28 @@ make python-lock-check
 前端只用于本地开发和 CI 的格式、类型、测试、Vite build 与 API contract 门禁；本流水线不
 构建或上传生产前端镜像，不把 `frontend/dist` 放入 release bundle，也不部署或修改生产前端。
 
+当前支持的生产激活路径是从开发机显式执行一次本地不可变发布。先在开发机的 Docker
+credential store 中登录目标 OCI/ACR repository，并配置一个能通过已知主机严格校验的 SSH
+host alias；不要把 registry/SSH 密码、token 或私钥写入命令、环境变量或仓库。入口只接受
+非秘密的 repository 和 host alias：
+
+```bash
+RELEASE_IMAGE_REPOSITORY=registry.example/namespace/edu-ai-lead-agent \
+RELEASE_SSH_HOST=edu-ai-production RELEASE_DRY_RUN=true make release-prod
+
+RELEASE_IMAGE_REPOSITORY=registry.example/namespace/edu-ai-lead-agent \
+RELEASE_SSH_HOST=edu-ai-production make release-prod
+```
+
+`RELEASE_DRY_RUN=true` 只检查本机 Unix-socket Docker/Compose、缓存的 Codeup `origin/main`
+身份，以及本地 SSH alias/`known_hosts`，并输出无秘密计划；不 fetch、构建、push、建立 SSH
+连接或修改生产。真实模式用无交互认证获取 Codeup `main`，要求当前发布脚本与该提交一致，
+在一次性 detached worktree 中以固定本地 DB/MinIO 和关闭的 provider/WeCom 配置执行门禁与
+缓存构建。候选镜像在 push 前和解析完整 digest 后均通过 migration/doctor；三件套会保留在
+本地 Git common directory 供审计，只传输已验证的 bundle/checksum/manifest，最后调用服务器
+已有的 root-owned deploy 入口。调用者的 dirty worktree 永远不是发布输入；前端仍只参加质量
+门，不生成生产镜像。首次真实发布仍要求生产机已有可信 previous-digest/current-manifest 基线。
+
 Codeup `marketingUseOnly/edu-ai-lead-agent` 是权威写入源，日常分支和 `main` 推送到
 `origin`；GitHub `EDLlyc/edu-ai-lead-agent` 仅接收单向备份，不能反向覆盖 Codeup 或触发
 生产。仓库内 Flow 的 ACR 发布、GitHub 备份和生产部署开关默认全部关闭，必须在对应外部
@@ -63,7 +85,11 @@ dev-lock 工具镜像执行，前端门禁使用 digest 固定的 Node 20 镜像
 
 `quality_job` 与本地候选镜像 `image_job` 的外层执行环境同样固定到云效官方 alinux3 的
 linux/amd64 manifest digest；启动时以 `docker info` 和 `docker compose version` 实测 daemon
-与 Compose 能力。镜像中是否声明某个工具不能替代这两个 live probe。
+与 Compose 能力。镜像中是否声明某个工具不能替代这两个 live probe。云效公共构建集群的
+指定容器已实测只有 Docker CLI/Compose、没有可连接的 daemon，不能承担本项目的完整
+PostgreSQL/MinIO Compose 门禁。自动化 Flow 发布若未来启用，仍必须使用独立的非生产 Docker
+构建节点，不得把生产服务器兼作 CI 构建机。当前不创建私有/VPC 构建集群，Flow 仅保留为
+失败关闭的可移植性路径，本地不可变发布不以该集群为前置条件。
 
 完整的发布清单/bundle 契约、凭据轮换、激活门、Runner 停用、部署阶段和兼容性回退规则见
 [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)。

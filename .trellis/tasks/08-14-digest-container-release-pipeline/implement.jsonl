@@ -1,0 +1,6 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Release identity crosses Codeup, Flow, ACR, Compose and server evidence; define one commit/digest/manifest contract."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse and extend existing backup/evidence/Compose mechanisms instead of duplicating deployment safety logic."}
+{"file":".trellis/spec/backend/index.md","reason":"Preserve repository-wide backend process, provider-side-effect and documentation boundaries while changing deployment infrastructure."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Owns the backend static, type, test, migration and security gates that the Flow pipeline must preserve."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Pipeline and deployment output must remain structured, auditable and secret-safe."}
+{"file":".trellis/tasks/08-14-digest-container-release-pipeline/research/yunxiao-codeup-flow-acr-preflight.md","reason":"Records verified organization resources, permissions, official Runner/ACR boundaries and external activation gates."}

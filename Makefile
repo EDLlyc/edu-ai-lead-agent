@@ -12,6 +12,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
 	backend-integration-test backend-check \
 	python-lock python-lock-check release-tool-check release-bundle \
+	release-prod \
 	frontend-format frontend-format-check frontend-lint frontend-typecheck frontend-test \
 	frontend-build frontend-check \
 	check doctor
@@ -161,6 +162,9 @@ release-bundle:
 	@test -n "$(COMMIT)" || { echo "COMMIT is required" >&2; exit 2; }
 	$(PY_RUN) python deploy/release/release_tool.py build-bundle \
 		--commit "$(COMMIT)" --output-dir "$${OUTPUT_DIR:-dist/release}"
+
+release-prod:
+	@bash scripts/release-prod.sh
 
 doctor:
 	DOCTOR_PYTHON="$(DOCTOR_PYTHON)" bash scripts/doctor.sh

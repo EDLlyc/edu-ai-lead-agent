@@ -525,6 +525,8 @@ release artifacts, or production deployment automation change.
   `quality_job` and `image_job`; it supplies the Docker client shell, not application dependencies.
 - Local image input: `APP_IMAGE` defaults to `edu-ai-lead-agent-backend:local`.
 - Production image input: `registry/namespace/repository@sha256:<64-lowercase-hex>`.
+- Current release entrypoint: `make release-prod`, with non-secret
+  `RELEASE_IMAGE_REPOSITORY`, `RELEASE_SSH_HOST`, and optional boolean `RELEASE_DRY_RUN` inputs.
 - Artifact tools: `deploy/release/release_tool.py`; root deployment entrypoint:
   `scripts/edu-ai-deploy.sh`.
 
@@ -563,6 +565,33 @@ release artifacts, or production deployment automation change.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
+- The developer-PC release is the current activation path. Its dry run uses only cached
+  `origin/main` identity and local capability/config probes and performs no fetch, build, push,
+  SSH connection, artifact transfer, or production call. A real release fetches authoritative
+  Codeup `main`, takes a non-blocking local lock, and does all quality/build/artifact work in a clean
+  detached temporary worktree; caller workspace content is never a release input.
+- Accept only the exact project Codeup HTTPS/SSH remote or the reviewed `codeup-edu-ai` alias when
+  that alias resolves to user `git` at `codeup.aliyun.com:22`. Fetch the explicit
+  `refs/heads/main:refs/remotes/origin/main` refspec with terminal/askpass authentication disabled,
+  and require the running release orchestrator to match the fetched committed copy.
+- The local release accepts only a repository name and strict SSH host alias as non-secret
+  configuration. It relies on the existing Docker credential store and OpenSSH config/agent plus
+  known-host entry. Positional arguments and registry/SSH password, token, private-key, or secret
+  environment inputs are rejected. SSH is batch-only with strict host checking, a bounded connect
+  timeout, and keepalive failure bound.
+- Local release Docker work is allowed only through a Unix-socket context. Ignore ambient Git/Make
+  overrides, pin the worktree Compose file, disable Compose dotenv loading, replace inherited
+  database/storage values with fixed local placeholders, blank provider/WeCom credentials, and
+  force every external-effect flag false before starting containers.
+- A cached mutable tag may accelerate the backend build, but deployment identity never comes from
+  it. Exercise migration and doctor against the local candidate before push; then push the commit
+  tag, resolve and pull the repository digest, verify OCI source/commit/created labels, and repeat
+  migration and doctor using that digest as `APP_IMAGE` before updating the optional cache tag.
+  Cross-check the external member manifest, retain the three mode-0600 verified artifacts under
+  the repository Git common directory, and transfer only those files over SSH. The existing root
+  deployer alone owns backup, activation, migration, restart, evidence, and rollback. If SSH
+  transport or interruption leaves deploy status unknown, retain the mode-0700 remote inbox rather
+  than racing a possibly running deploy; normal/pre-deploy failures and completed deploys clean it.
 - Deployment is root-owned and serialized with `flock`. It verifies/pulls while production is
   active, then quiesces, backs up, snapshots, activates, migrates, restarts in phases, verifies,
   and persists safe evidence.
@@ -589,6 +618,16 @@ release artifacts, or production deployment automation change.
 | Environment mask target is a symlink or non-regular file | Wrapper exits 2 before `docker run` |
 | PostgreSQL/MinIO is absent or Python container cannot resolve service DNS | Quality fails before/in integration tests; start/wait infra and validate the resolved project network |
 | CI network name or tool command is malformed/unallowlisted | Wrapper exits 2 before `docker run` |
+| Local release repository/SSH alias is missing or malformed, or a secret/positional input is supplied | Entrypoint exits 2 before Docker, Git, SSH, registry, or production work |
+| Local release dry run is requested | Report cached commit and planned stages after read-only local probes; no fetch/build/push/SSH connection/transfer/deploy |
+| Codeup origin is a lookalike URL, the dedicated alias resolves elsewhere, or fetch would prompt | Typed failure before worktree/build/push; never accept wildcard host identity or interactive Git authentication |
+| Docker context is non-local, Compose points outside the worktree, or host provider/WeCom secrets are set | Reject the non-local daemon and replace Compose inputs with fixed side-effect-disabled local values |
+| Caller worktree is dirty or differs from Codeup `main` | Ignore it as release input; fetch and use the clean detached `origin/main` worktree |
+| Running release orchestrator differs from fetched Codeup `main` | Stop before toolchain/build work; local uncommitted release logic is not authoritative |
+| Cache pull misses | Continue with a clean backend build; do not weaken locks or digest verification |
+| Registry returns no matching full digest or immutable labels differ | Stop before manifest creation, SSH transfer, or deployment |
+| SSH host verification, batch auth, timeout, or root-deployer preflight fails | Stop before fetch/build/push; never prompt for a password or change SSH configuration |
+| Candidate push succeeds but transfer/deploy later fails | Keep the verified local artifact attempt for audit/retry; if SSH status is unknown, also retain the remote inbox until reconciled |
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
@@ -599,20 +638,27 @@ release artifacts, or production deployment automation change.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: branch checks pass, one commit produces one verified digest and checksum-bound bundle, and
-  all nine production services recreate from it without production PyPI access.
-- Base: local development builds the shared local image while Flow quality uses local-only Python
-  and Node tool containers and the three external activation flags remain false.
+- Good: the local entrypoint fetches one Codeup `main` commit into an isolated worktree, reuses
+  cache, resolves one verified digest and checksum-bound bundle, and the root deployer recreates
+  all nine production services without production PyPI access.
+- Base: local development builds the shared local image, the local release dry run performs only
+  read-only probes, and Flow quality/production activation flags remain false as a later path.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
   release bundle includes workspace files, CI calls host `python3`, a wrapper inherits Flow
-  secrets, or rollback downgrades/restores the database automatically.
+  secrets, a local release consumes a dirty checkout or password argument, migration/doctor use
+  the mutable commit tag, or rollback downgrades/restores the database automatically.
 
 ### 6. Tests Required
 
 - `deploy/release/tests` covers strict manifests, tag rejection, bundle checksum/traversal and
   migration cross-checks, phase order, pre/post activation failures, lock exclusion, rollback
   eligibility/failure, redaction, inactive Flow gates, the nine-service Compose anchor, pinned CI
-  images, command wrappers, environment isolation, and infra-before-backend ordering.
+  images, command wrappers, environment isolation, infra-before-backend ordering, the local release
+  Make contract, source isolation, immutable migration/doctor ordering, strict SSH options,
+  forbidden secret inputs, and dry-run non-mutation in a fake-command sandbox.
+- Local-release behavior tests also cover exact Codeup alias resolution, non-local Docker rejection,
+  ambient Compose/provider/WeCom secret neutralization, persistent artifact evidence, pre-push and
+  digest-only image exercise ordering, and interruption-safe remote cleanup.
 - Static Flow tests require mapping-form `runsOn` with the exact official amd64 manifest digest for
   both CI jobs and require the Docker/Compose probes before any source/toolchain work.
 - `make backend-check`, `make frontend-check`, `make python-lock-check`, full-profile Compose config,
@@ -623,6 +669,8 @@ release artifacts, or production deployment automation change.
   Node-container `npm ci` writes `node_modules` with the checkout UID/GID.
 - A live Flow import, branch run, ACR tag-to-digest resolution, Runner dry run, and production
   evidence are external acceptance gates; repository tests must not claim they occurred.
+- A controlled developer-PC release against a provisioned OCI repository and host remains an
+  external acceptance gate; unit tests must not connect, push, deploy, or claim production evidence.
 
 ### 7. Wrong vs Correct
 
@@ -664,6 +712,30 @@ docker compose --env-file .env --env-file .release.env up -d --no-build
 
 The mode-600 release environment supplies the single verified digest used by all application and
 migration services.
+
+#### Wrong: local release from workspace or argv credentials
+
+~~~bash
+docker login registry.example --password "$PASSWORD"
+docker build -t registry.example/team/app:latest backend
+scp -o StrictHostKeyChecking=no ./dist/* root@server:/tmp/
+~~~
+
+This exposes credentials, trusts mutable workspace/tag state, broadens the transferred artifact
+set, and bypasses the existing deployment state machine.
+
+#### Correct: reviewed local immutable release
+
+~~~bash
+RELEASE_IMAGE_REPOSITORY=registry.example/team/app \
+RELEASE_SSH_HOST=edu-ai-production RELEASE_DRY_RUN=true make release-prod
+RELEASE_IMAGE_REPOSITORY=registry.example/team/app \
+RELEASE_SSH_HOST=edu-ai-production make release-prod
+~~~
+
+Docker and SSH credentials remain in their existing local stores. The entrypoint fetches Codeup
+`main`, verifies the registry digest and fixed artifacts, and delegates all production mutation to
+the root-owned deployer.
 
 ## Review checklist
 

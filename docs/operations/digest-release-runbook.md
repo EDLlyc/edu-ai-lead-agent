@@ -1,8 +1,10 @@
 # Immutable Digest Release Runbook
 
-This runbook covers the repository contract for Codeup-triggered, ACR-backed releases. It is not
-an activation record. The checked-in Flow definition keeps registry publication, GitHub backup,
-and production deployment disabled until an administrator verifies every external gate.
+This runbook covers the repository contract for Codeup-authoritative, OCI/ACR-backed releases. The
+current supported activation path is an explicit developer-PC immutable release; the developer PC
+only needs to be online for that release. It is not an activation record. The checked-in Flow
+definition remains a later portability path and keeps registry publication, GitHub backup, and
+production deployment disabled until an administrator verifies every external gate.
 
 ## Authority and daily development
 
@@ -62,6 +64,21 @@ lack Docker entirely even when checkout succeeds. `source_identity` therefore ru
 official image inventory is useful review evidence, but these live probes are authoritative for
 daemon and Compose availability; do not download an unpinned Compose plugin inside the job.
 
+Run 6 proved the public specified-container boundary more precisely: Docker CLI and Compose v2
+were present, but the injected `DOCKER_HOST` had no reachable daemon. Yunxiao's native
+`DockerBuildPush` step receives a temporary BuildKit sidecar for an image-build task and always
+pushes its result; it does not provide a documented reusable daemon for later ordinary Command
+steps. It therefore cannot replace the repository's PostgreSQL/MinIO Compose quality gate.
+
+If automated Flow release is enabled later, assign both Docker-dependent CI jobs to a separate
+non-production build-cluster node in default VM mode with a healthy Docker daemon and Compose
+plugin. The current activation path does not require or create that cluster. The node must not be
+the Tencent production host: CI image builds, test containers, caches, and cleanup are outside the
+production trust boundary. Creating a managed VPC build cluster may incur charges and requires an
+explicit administrator choice; never create one as an automatic fallback. A private Runner
+enrollment command is generated only in the Yunxiao console and is short-lived, so neither the
+command nor its token belongs in this repository or pipeline output.
+
 Before `backend-check`, Flow waits for healthy `postgres` and `minio`, then runs `minio-init`
 synchronously, resolves the Compose project network, and supplies only fixed
 development-placeholder DB/MinIO and provider-disabled variables to the Python quality container.
@@ -81,9 +98,68 @@ and migration services must render that exact value, and production commands alw
 `--no-build`. The pinned Python base digest and the runtime hash lock make the application image
 independent of production PyPI access.
 
+## Developer-PC one-command release
+
+Use this path only after the target OCI repository and production host are separately provisioned.
+The command does not accept positional arguments. Configure the developer Docker credential store
+for push access and an OpenSSH host alias whose normal config/agent and `known_hosts` entry are
+already correct; do not pass a password, token, private-key path, or authenticated URL.
+
+First perform the orchestration dry run:
+
+```bash
+RELEASE_IMAGE_REPOSITORY=registry.example/namespace/edu-ai-lead-agent \
+RELEASE_SSH_HOST=edu-ai-production RELEASE_DRY_RUN=true make release-prod
+```
+
+This checks required commands, a local Unix-socket Docker daemon, Compose, the cached authoritative
+`origin/main` commit, and strict local SSH alias plus `known_hosts` resolution. The Codeup remote
+must be the exact project HTTPS/SSH URL or the dedicated `codeup-edu-ai` alias resolving to
+`git@codeup.aliyun.com:22`; lookalike hostnames are rejected. The dry run does not fetch, create a
+worktree, build, push, call `scp`, establish an SSH connection, or invoke the production deployer.
+A missing repository/host, tag-shaped repository, inline auth environment, unknown `RELEASE_*`
+input, missing capability, non-local Docker context, or non-Codeup origin is a typed failure.
+
+After reviewing that plan, run the real release with the same two non-secret inputs:
+
+```bash
+RELEASE_IMAGE_REPOSITORY=registry.example/namespace/edu-ai-lead-agent \
+RELEASE_SSH_HOST=edu-ai-production make release-prod
+```
+
+The entrypoint takes a local release lock, proves strict batch SSH and the installed root-owned
+deployer, then fetches the explicit Codeup main refspec with terminal/askpass authentication
+disabled. It creates a clean detached worktree at that exact commit and requires the running
+orchestrator to match the committed copy. Ambient Git/Make overrides are removed; Compose is pinned
+to the worktree, dotenv loading is disabled, local DB/MinIO placeholders replace host values, all
+provider/WeCom credentials are blank, and every external-effect flag is forced off. The release
+starts isolated PostgreSQL/MinIO, runs lock/backend/release/frontend/Compose/shell/source/secret
+gates, reuses a repository-scoped `build-cache` image when available, and builds only `backend/`.
+The local candidate passes migration and doctor before any push. After pushing the readable commit
+tag, the entrypoint resolves and pulls the registry's full digest, verifies OCI
+source/commit/created labels, and repeats migration plus doctor with that digest as the shared
+nine-service `APP_IMAGE`; only then is the optional cache tag updated.
+
+Only then does it use the existing release tool to build and verify exactly three non-secret
+artifacts: bundle, member-checksum file, and manifest. The external member file is cross-checked
+against the manifest, and each attempt is retained mode 0700/0600 under the local Git common
+directory for audit and safe retry after a post-push failure. It copies only those files into a
+mode-0700 remote temporary directory and invokes `/usr/local/sbin/edu-ai-deploy`. SSH/SCP use a bounded
+10-second connection timeout plus 30-second keepalives with three missed replies allowed, so a bad
+endpoint fails promptly while a valid long deployment retains liveness checks. The root-owned
+state machine remains the sole owner of production preflight, backup, activation, migration,
+phased restart, evidence, and rollback. Local tool containers/worktree and Compose volumes are
+cleaned on exit; retained local evidence is not removed. The remote inbox is cleaned after
+pre-deploy failures and completed deploy commands. If SSH transport fails or the client is
+interrupted after deploy starts, status is unknown and the remote inbox is deliberately retained
+until the root deployment lock/state is reconciled. A failed candidate may leave its immutable
+commit tag/cache in the registry, but no production deployment can occur without the verified
+digest artifacts and root entrypoint.
+
 ## Release artifacts
 
-Flow builds artifacts from the exact committed Git object, never from uncommitted workspace files.
+Release tooling builds artifacts from the exact committed Codeup Git object, never from
+uncommitted workspace files.
 The backend release consists of:
 
 - `release-bundle-<40-character-commit>.tar.gz`;
@@ -108,8 +184,9 @@ python deploy/release/release_tool.py verify-bundle \
   --expected-commit <40-character-commit>
 ```
 
-Manifest creation also requires all nine named gate IDs. Flow owns those arguments; operators must
-not invent successful IDs manually.
+Manifest creation also requires all nine named gate IDs. The checked-in release entrypoint or Flow
+job derives those arguments from its completed gates; operators must not invent successful IDs
+manually.
 
 ## External activation gates
 
@@ -134,6 +211,8 @@ known. A candidate ACR push must not imply permission to deploy it.
 | Identity | Minimum scope | Storage and rotation rule |
 | --- | --- | --- |
 | Developer Codeup SSH key | This Codeup workflow only; expiring | Local SSH agent/config outside Git; remove at expiry and issue a distinct replacement |
+| Developer OCI publisher | Push only the isolated project repository | Local Docker credential store/helper; never a command argument or repository environment file; rotate independently |
+| Developer production SSH | Host alias plus root deploy invocation only | Local OpenSSH config/agent and strict known-host entry; batch mode rejects password prompts |
 | Flow Codeup source | Read the project repository | Yunxiao protected service connection; rotate without putting key material in YAML |
 | Flow ACR publisher | Push only the isolated project repository | Connection inventory `79934` / YAML-facing `c8jknt8rkk1w7tc1` only after resource isolation is proven; administrator rotates it |
 | Production ACR identity | Pull only the isolated project repository | Root-only credential store on the host; verify it cannot push before and after rotation |
@@ -172,14 +251,16 @@ systemctl enable --now edu-ai-backup.timer
 ```
 
 Read back `ExecStart`, wrapper ownership/mode, timer state, and wrapper/runtime checksums before
-enabling Flow. The backup script takes its own non-blocking lock, so a timer run and deployment
-backup cannot write the same timestamped evidence concurrently.
+the first local release or any later Flow activation. The backup script takes its own non-blocking
+lock, so a timer run and deployment backup cannot write the same timestamped evidence concurrently.
 
 Establishing that baseline is an administrator-controlled migration step, not an automatic
 bootstrap shortcut. Do not fabricate a prior manifest for a locally built or unknown image.
 
-Once the candidate digest, manifest, bundle, Runner ID, and baseline are verified, invoke the
-root-owned wrapper with `--dry-run`. The dry run verifies the bundle, lock, prior-release markers,
+Once a candidate digest, manifest, bundle, operator runner ID, and baseline are verified, invoke
+the root-owned wrapper with `--dry-run`. This is separate from the local orchestration dry run
+because it validates actual candidate artifacts and host state. It verifies the bundle, lock,
+prior-release markers,
 queues, image labels, non-root image identity, offline imports, `pip check`, and the full Compose
 digest rendering. It does not quiesce, back up, migrate, restart services, enqueue work, contact an
 AI provider, or send WeCom messages.
@@ -188,8 +269,8 @@ AI provider, or send WeCom messages.
 /usr/local/sbin/edu-ai-deploy \
   --manifest <release-manifest.json> \
   --bundle <release-bundle.tar.gz> \
-  --expected-commit <40-character-flow-commit> \
-  --runner-id <verified-runner-id> \
+  --expected-commit <40-character-codeup-commit> \
+  --runner-id developer-pc \
   --dry-run
 ```
 
@@ -254,12 +335,17 @@ is active. Do not guess a package or service name.
 
 ## Final activation checklist
 
-- Branch-safe Flow run passes without ACR, GitHub, Runner, provider, or WeCom side effects.
-- Candidate image builds, resolves to one ACR digest, and passes offline/read-only probes.
-- GitHub backup identity passes the exact-SHA dry run with strict host verification.
-- Runner scope/concurrency, pull-only ACR identity, and recorded stop/uninstall procedure pass.
+- Reviewed Codeup `main` is the intended source, and the local orchestration dry run reports its
+  cached commit with `mutation=false`.
+- Developer push scope, production pull-only scope, strict SSH alias/known host, and the root-owned
+  deploy entrypoint are independently verified without recording credentials.
 - Prior digest release and rollback snapshot prerequisites pass.
-- Root entrypoint dry run passes against the exact candidate artifacts.
-- Codeup protected `main` binds the verified pipeline ID.
-- Only then may an administrator enable the relevant flags in order; production deployment remains
-  last.
+- Candidate image resolves to one OCI/ACR digest and passes offline/read-only probes; the root
+  entrypoint dry run passes against the exact candidate artifacts. A genuine prior digest/current
+  manifest and root-owned deployment baseline remain mandatory; `make release-prod` does not
+  create or guess them.
+- Only then may an administrator execute the real `make release-prod` and verify safe evidence for
+  the nine backend services. Frontend remains local/CI-only.
+- If Flow automation is later resumed, independently obtain a green branch-safe run, strict
+  GitHub exact-SHA backup proof, scoped Runner proof, and Codeup protected-main binding before
+  enabling any corresponding flag. Production activation remains last.
