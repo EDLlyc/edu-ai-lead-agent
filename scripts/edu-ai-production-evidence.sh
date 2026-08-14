@@ -16,6 +16,11 @@ psql_scalar() {
         | tr -d '\r'
 }
 
+safe_env_value() {
+    local key="$1"
+    awk -F= -v key="${key}" '$1 == key { value = substr($0, index($0, "=") + 1) } END { print value }' .env
+}
+
 tmp_file="$(mktemp "${EVIDENCE_FILE}.XXXXXX")"
 trap 'rm -f "${tmp_file}"' EXIT
 
@@ -25,6 +30,15 @@ trap 'rm -f "${tmp_file}"' EXIT
     printf 'migration_version=%s\n' "$(psql_scalar 'SELECT version_num FROM alembic_version')"
     printf 'active_sources=%s\n' "$(psql_scalar 'SELECT count(*) FROM sources WHERE active_version_id IS NOT NULL')"
     printf 'daily_topic_selections=%s\n' "$(psql_scalar 'SELECT count(*) FROM daily_topic_selections')"
+    printf 'content_slot_mode_enabled=%s\n' "$(safe_env_value CONTENT_SLOT_MODE_ENABLED)"
+    printf 'content_morning_enabled=%s\n' "$(safe_env_value CONTENT_MORNING_ENABLED)"
+    printf 'content_noon_enabled=%s\n' "$(safe_env_value CONTENT_NOON_ENABLED)"
+    printf 'content_evening_enabled=%s\n' "$(safe_env_value CONTENT_EVENING_ENABLED)"
+    printf 'wecom_slot_package_gap_seconds=%s\n' "$(safe_env_value WECOM_SLOT_PACKAGE_GAP_SECONDS)"
+    printf 'content_slot_runs=%s\n' "$(psql_scalar 'SELECT count(*) FROM content_slot_runs')"
+    printf 'content_slot_job_status_counts=%s\n' "$(psql_scalar 'SELECT jsonb_object_agg(status, count) FROM (SELECT status, count(*) AS count FROM content_slot_jobs GROUP BY status) AS counts')"
+    printf 'wecom_delivery_windows=%s\n' "$(psql_scalar 'SELECT count(*) FROM wecom_delivery_windows')"
+    printf 'wecom_window_gap_range=%s\n' "$(psql_scalar 'SELECT min(package_gap_seconds)::text || chr(58) || max(package_gap_seconds)::text FROM wecom_delivery_windows')"
     printf 'material_packages=%s\n' "$(psql_scalar 'SELECT count(*) FROM material_packages')"
     printf 'wecom_delivery_jobs=%s\n' "$(psql_scalar 'SELECT count(*) FROM wecom_delivery_jobs')"
     printf 'running_services=%s\n' "$(docker compose ps --format '{{.Service}}={{.State}}' | tr '\n' ',')"

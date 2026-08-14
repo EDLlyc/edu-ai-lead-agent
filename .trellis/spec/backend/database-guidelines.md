@@ -8,7 +8,7 @@ acquisition, factual-governance, material-package, and Enterprise WeChat deliver
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260807_0019`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260814_0020`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -37,6 +37,20 @@ config/run/job/score/daily-lock schema, immutable same-day revisions, and event/
 constraints are in
 [`topic-selection.md`](./topic-selection.md). Brand document/version/job/chunk/vector constraints
 are in [`brand-knowledge-rag.md`](./brand-knowledge-rag.md).
+
+Slot production uses separate `content_slot_runs`, `content_slot_jobs`, `content_slot_scores`, and
+`content_slot_selections` tables. Same-day event uniqueness is relational, copy runs enforce a
+legacy-daily/content-slot origin XOR, and formal slot delivery jobs reference typed
+`wecom_delivery_windows`. Preserve null slot fields on historical rows and keep the legacy partial
+indexes. A downgrade must refuse while slot-origin copy or delivery artifacts exist; it must never
+delete live provenance to restore the old non-null shape.
+
+Duplicated slot audit columns are relational identities, not denormalized hints. Composite foreign
+keys bind a slot run to the acquisition date/timezone/slot and the governance run's acquisition;
+bind a selection to its run plus selected score/event/version/ordinal; bind a slot-origin copy run
+to the selection's date/timezone/event/version; and bind a formal slot delivery to its selection
+ordinal and window recipient/mode/target/expiry. Keep the named target unique constraints in both
+the Alembic revision and `Base.metadata`, and exercise them against real PostgreSQL.
 
 ## SQLAlchemy 2 async pattern
 
@@ -154,8 +168,9 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260807_0019` (adds bounded image-provider-rejection recovery after reviewed material-package
-  delivery jobs and attempts, source-scoped
+  `20260814_0020` (adds independent three-slot production and durable delivery windows after
+  bounded image-provider-rejection recovery, reviewed material-package delivery jobs and attempts,
+  source-scoped
   HTTP fallback and topic-priority metadata, immutable
   ordered visual-reference rows and image visual-brief metadata, brand-document OCR metadata,
   source request pacing, freshness policy metadata, and immutable

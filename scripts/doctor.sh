@@ -88,6 +88,37 @@ if any(value in (None, "") for value in values) or len(set(values)) != 1:
 ' >/dev/null || fail "Image retry attempt limit is not shared by API and content worker"
 pass "Image retry attempt limit is shared by API and content worker"
 
+docker compose --profile governance --profile content --profile wecom config --format json | \
+  conda run --no-capture-output --name "$conda_env_name" python -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
+names = ("acquisition-api", "acquisition-scheduler", "content-scheduler", "content-worker", "wecom-dispatcher")
+keys = (
+    "CONTENT_SLOT_MODE_ENABLED",
+    "CONTENT_MORNING_ENABLED",
+    "CONTENT_NOON_ENABLED",
+    "CONTENT_EVENING_ENABLED",
+    "CONTENT_MORNING_TARGET_HOUR",
+    "CONTENT_MORNING_TARGET_MINUTE",
+    "CONTENT_NOON_TARGET_HOUR",
+    "CONTENT_NOON_TARGET_MINUTE",
+    "CONTENT_EVENING_TARGET_HOUR",
+    "CONTENT_EVENING_TARGET_MINUTE",
+    "CONTENT_SLOT_PREPARE_LEAD_MINUTES",
+    "CONTENT_SLOT_DELIVERY_LATE_MINUTES",
+    "CONTENT_SLOT_MAX_ITEMS",
+    "CONTENT_SLOT_RANKING_VERSION",
+    "WECOM_SLOT_PACKAGE_GAP_SECONDS",
+)
+for key in keys:
+    values = [services[name].get("environment", {}).get(key) for name in names]
+    if any(value in (None, "") for value in values) or len(set(values)) != 1:
+        raise SystemExit(f"slot setting {key} must be present and identical across services")
+' >/dev/null || fail "Content-slot settings are not shared across API and workers"
+pass "Content-slot feature, window, ranking, and gap settings are shared across services"
+
 require_healthy_service postgres
 require_healthy_service minio
 
@@ -103,7 +134,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260807_0019" ]] \
+[[ "$migration_revision" == "20260814_0020" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -122,6 +153,24 @@ topic_selection_table_count="$(
 [[ "$topic_selection_table_count" == "5" ]] \
   || fail "Topic-selection schema is incomplete; run 'make migrate'"
 pass "Topic-selection tables are installed"
+
+content_slot_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''content_slot_runs'\'','\''content_slot_jobs'\'','\''content_slot_scores'\'','\''content_slot_selections'\'','\''wecom_delivery_windows'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$content_slot_table_count" == "5" ]] \
+  || fail "Content-slot and delivery-window schema is incomplete; run 'make migrate'"
+pass "Content-slot and delivery-window tables are installed"
+
+content_slot_queue_counts="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT coalesce(string_agg(status || '\''='\'' || count, '\'','\'' ORDER BY status), '\''empty'\'') FROM (SELECT status, count(*) FROM content_slot_jobs GROUP BY status) AS counts;"'
+)"
+delivery_window_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM wecom_delivery_windows;"'
+)"
+pass "Content-slot queue counters are readable ($content_slot_queue_counts; windows=$delivery_window_count)"
 
 brand_knowledge_table_count="$(
   docker compose exec -T postgres sh -c \

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.domain.content_slots import ContentSlot
 from app.domain.entities import (
     ExtractedDocument,
     FetchedResponse,
@@ -45,6 +46,7 @@ class AcquisitionRepository(Protocol):
         timezone: str,
         acquisition_version: str,
         business_date: date | None = None,
+        content_slot: ContentSlot | None = None,
         manual_idempotency_key: str | None = None,
         source_ids: list[UUID] | None = None,
     ) -> tuple[UUID, bool]: ...

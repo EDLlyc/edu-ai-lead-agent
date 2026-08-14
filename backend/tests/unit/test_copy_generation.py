@@ -29,10 +29,13 @@ from app.core.errors import (
     ProviderRejectedError,
     ProviderValidationIssue,
 )
+from app.domain.content_slots import ContentSlot
 from app.domain.copy_generation import (
     ActiveBrandContext,
+    ContentSlotTopicOrigin,
     CopyVersionBundle,
     EligibleEvidence,
+    LegacyDailyTopicOrigin,
     LockedTopicContext,
     apply_copy_audit_policy,
     validate_material_draft,
@@ -62,11 +65,15 @@ EVIDENCE_ID = UUID("11111111-1111-4111-8111-111111111111")
 BRAND_CHUNK_ID = UUID("22222222-2222-4222-8222-222222222222")
 
 
-def _topic(*, no_topic: bool = False) -> LockedTopicContext:
+def _topic(
+    *, no_topic: bool = False, content_slot: ContentSlot | None = None
+) -> LockedTopicContext:
     if no_topic:
         return LockedTopicContext(
-            daily_topic_selection_id=uuid4(),
-            topic_selection_run_id=uuid4(),
+            origin=LegacyDailyTopicOrigin(
+                daily_topic_selection_id=uuid4(),
+                topic_selection_run_id=uuid4(),
+            ),
             business_date=date(2026, 7, 30),
             timezone="Asia/Shanghai",
             scoring_profile="preview",
@@ -78,9 +85,22 @@ def _topic(*, no_topic: bool = False) -> LockedTopicContext:
             summary=None,
             evidence=(),
         )
+    origin = (
+        ContentSlotTopicOrigin(
+            content_slot_selection_id=uuid4(),
+            content_slot=content_slot,
+            ordinal=1,
+            target_at=datetime(2026, 7, 30, 7, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+            expires_at=datetime(2026, 7, 30, 8, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+        )
+        if content_slot is not None
+        else LegacyDailyTopicOrigin(
+            daily_topic_selection_id=uuid4(),
+            topic_selection_run_id=uuid4(),
+        )
+    )
     return LockedTopicContext(
-        daily_topic_selection_id=uuid4(),
-        topic_selection_run_id=uuid4(),
+        origin=origin,
         business_date=date(2026, 7, 30),
         timezone="Asia/Shanghai",
         scoring_profile="preview",
@@ -626,8 +646,11 @@ def test_langgraph_checkpoint_state_contains_only_ids_status_and_issue_codes() -
 
 
 @pytest.mark.asyncio
-async def test_valid_topic_generates_audits_and_accepts_one_draft() -> None:
-    repository = FakeCopyRepository(_topic())
+@pytest.mark.parametrize("content_slot", [None, *ContentSlot])
+async def test_valid_topic_generates_audits_and_accepts_one_draft(
+    content_slot: ContentSlot | None,
+) -> None:
+    repository = FakeCopyRepository(_topic(content_slot=content_slot))
     generator = CountingGenerator()
     auditor = CountingAuditor()
     executor = CopyGenerationExecutor(

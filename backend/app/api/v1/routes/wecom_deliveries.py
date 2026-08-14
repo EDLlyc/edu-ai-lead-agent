@@ -91,6 +91,11 @@ def _response(job: WeComDeliveryJobModel) -> WeComDeliveryResponse:
     return WeComDeliveryResponse(
         id=job.id,
         material_package_id=job.material_package_id,
+        delivery_window_id=job.delivery_window_id,
+        content_slot_selection_id=job.content_slot_selection_id,
+        sequence_ordinal=job.sequence_ordinal,
+        not_before=job.not_before,
+        expires_at=job.expires_at,
         recipient_id=job.recipient_id,
         mode=cast(Any, job.mode),
         package_version=job.package_version,

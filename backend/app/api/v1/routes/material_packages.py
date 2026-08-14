@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, cast
 from uuid import UUID
 
@@ -236,15 +237,35 @@ def _media_extension(media_type: str) -> str:
 
 def _summary_response(package: MaterialPackageModel) -> MaterialPackageSummaryResponse:
     business_date = package.topic_snapshot.get("business_date")
+    content_slot = package.topic_snapshot.get("content_slot")
+    ordinal = package.topic_snapshot.get("ordinal")
+    target_at = package.topic_snapshot.get("target_at")
+    expires_at = package.topic_snapshot.get("expires_at")
     return MaterialPackageSummaryResponse(
         id=package.id,
         copy_generation_run_id=package.run_id,
         status=cast(Any, package.status),
         review_status=cast(Any, package.review_status),
         business_date=business_date if isinstance(business_date, str) else "unknown",
+        content_slot=(
+            cast(Any, content_slot) if content_slot in {"morning", "noon", "evening"} else None
+        ),
+        ordinal=ordinal if isinstance(ordinal, int) and 1 <= ordinal <= 3 else None,
+        target_at=_safe_datetime(target_at),
+        expires_at=_safe_datetime(expires_at),
         created_at=package.created_at,
         detail_url=f"/api/v1/material-packages/{package.id}",
     )
+
+
+def _safe_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _detail_response(

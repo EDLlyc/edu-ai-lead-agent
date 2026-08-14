@@ -69,6 +69,9 @@ from app.infrastructure.db.models import (
     BrandChunkModel,
     BrandDocumentModel,
     BrandDocumentVersionModel,
+    ContentSlotRunModel,
+    ContentSlotScoreModel,
+    ContentSlotSelectionModel,
     CopyAuditModel,
     CopyClaimBrandBindingModel,
     CopyClaimEvidenceBindingModel,
@@ -2076,26 +2079,65 @@ async def _load_accepted_input(
         if draft is None or not draft.validation_passed or draft.audit_accepted is not True:
             raise ConflictError("accepted draft is unavailable for image generation")
 
-        selection = await session.get(DailyTopicSelectionModel, run.daily_topic_selection_id)
+        has_daily_origin = run.daily_topic_selection_id is not None
+        has_slot_origin = run.content_slot_selection_id is not None
+        if has_daily_origin == has_slot_origin:
+            raise ConflictError("copy generation run has an invalid content origin")
+        daily_selection = (
+            await session.get(DailyTopicSelectionModel, run.daily_topic_selection_id)
+            if run.daily_topic_selection_id is not None
+            else None
+        )
+        slot_selection = (
+            await session.get(ContentSlotSelectionModel, run.content_slot_selection_id)
+            if run.content_slot_selection_id is not None
+            else None
+        )
+        slot_run = (
+            await session.get(ContentSlotRunModel, slot_selection.run_id)
+            if slot_selection is not None
+            else None
+        )
+        if has_daily_origin and daily_selection is None:
+            raise ConflictError("legacy topic selection is unavailable")
+        if has_slot_origin and (slot_selection is None or slot_run is None):
+            raise ConflictError("content slot selection is unavailable")
         event_version = (
             await session.get(EventClusterVersionModel, run.selected_event_version_id)
             if run.selected_event_version_id is not None
             else None
         )
-        score = (
+        legacy_score = (
             await session.scalar(
                 select(TopicScoreModel).where(
-                    TopicScoreModel.run_id == selection.run_id,
+                    TopicScoreModel.run_id == daily_selection.run_id,
                     TopicScoreModel.event_id == run.selected_event_id,
                 )
             )
-            if selection is not None and run.selected_event_id is not None
+            if daily_selection is not None and run.selected_event_id is not None
+            else None
+        )
+        slot_score = (
+            await session.get(ContentSlotScoreModel, slot_selection.score_id)
+            if slot_selection is not None
             else None
         )
         summary_value = event_version.summary_projection.get("summary") if event_version else None
         topic_snapshot: dict[str, Any] = {
-            "topic_selection_id": str(run.daily_topic_selection_id),
-            "topic_selection_run_id": str(run.topic_selection_run_id),
+            "origin_kind": "legacy_daily" if has_daily_origin else "content_slot",
+            "topic_selection_id": (
+                str(run.daily_topic_selection_id) if run.daily_topic_selection_id else None
+            ),
+            "topic_selection_run_id": (
+                str(run.topic_selection_run_id) if run.topic_selection_run_id else None
+            ),
+            "content_slot_selection_id": (
+                str(run.content_slot_selection_id) if run.content_slot_selection_id else None
+            ),
+            "content_slot": slot_selection.content_slot if slot_selection is not None else None,
+            "ordinal": slot_selection.ordinal if slot_selection is not None else None,
+            "target_at": slot_run.target_at.isoformat() if slot_run is not None else None,
+            "expires_at": slot_run.expires_at.isoformat() if slot_run is not None else None,
             "business_date": run.business_date.isoformat(),
             "timezone": run.timezone,
             "scoring_profile": run.scoring_profile,
@@ -2106,9 +2148,17 @@ async def _load_accepted_input(
             ),
             "title": event_version.representative_title if event_version else None,
             "summary": summary_value if isinstance(summary_value, str) else None,
-            "selection_revision": selection.revision if selection is not None else None,
-            "config_fingerprint": selection.config_fingerprint if selection is not None else None,
-            "score": _score_snapshot(score),
+            "selection_revision": (
+                daily_selection.revision if daily_selection is not None else None
+            ),
+            "config_fingerprint": (
+                daily_selection.config_fingerprint
+                if daily_selection is not None
+                else slot_run.config_fingerprint
+                if slot_run is not None
+                else None
+            ),
+            "score": _score_snapshot(slot_score or legacy_score),
         }
 
         audit = await session.scalar(
@@ -2357,10 +2407,12 @@ def _issue_snapshot(issue: CopyIssueModel) -> dict[str, Any]:
     }
 
 
-def _score_snapshot(score: TopicScoreModel | None) -> dict[str, Any] | None:
+def _score_snapshot(
+    score: TopicScoreModel | ContentSlotScoreModel | None,
+) -> dict[str, Any] | None:
     if score is None:
         return None
-    return {
+    snapshot: dict[str, Any] = {
         "total": score.total,
         "threshold": score.threshold,
         "passes_threshold": score.passes_threshold,
@@ -2369,3 +2421,13 @@ def _score_snapshot(score: TopicScoreModel | None) -> dict[str, Any] | None:
         "veto_codes": list(score.veto_codes),
         "explanation": score.explanation,
     }
+    if isinstance(score, ContentSlotScoreModel):
+        snapshot.update(
+            {
+                "slot_affinity": score.slot_affinity,
+                "slot_affinity_reasons": list(score.slot_affinity_reasons),
+                "selected_ordinal": score.selected_ordinal,
+                "final_ordering_value": score.final_ordering_value,
+            }
+        )
+    return snapshot

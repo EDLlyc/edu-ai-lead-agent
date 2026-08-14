@@ -314,7 +314,9 @@ class CopyDraftResponse(BaseModel):
 
 class CopyGenerationRunResponse(BaseModel):
     id: UUID
-    daily_topic_selection_id: UUID
+    origin_kind: Literal["legacy_daily", "content_slot"]
+    daily_topic_selection_id: UUID | None
+    content_slot_selection_id: UUID | None
     business_date: date
     timezone: str
     scoring_profile: str

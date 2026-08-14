@@ -137,6 +137,10 @@ class MaterialPackageSummaryResponse(BaseModel):
     status: Literal["queued", "ready", "awaiting_manual_use", "completed", "rejected", "failed"]
     review_status: Literal["pending", "approved", "rejected"]
     business_date: str
+    content_slot: Literal["morning", "noon", "evening"] | None = None
+    ordinal: int | None = Field(default=None, ge=1, le=3)
+    target_at: datetime | None = None
+    expires_at: datetime | None = None
     created_at: datetime
     detail_url: str
 

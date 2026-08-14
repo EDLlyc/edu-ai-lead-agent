@@ -38,6 +38,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
         )
         try:
+            slot_acquisition_id = uuid4()
             await populated.execute(
                 """
                 INSERT INTO governance_runs (
@@ -49,8 +50,36 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
                 f"downgrade-guard-{uuid4()}",
                 uuid4().hex + uuid4().hex,
             )
+            await populated.execute(
+                """
+                INSERT INTO acquisition_runs (
+                    id, trigger, business_date, timezone, acquisition_version,
+                    content_slot, status
+                ) VALUES (
+                    $1, 'scheduled', DATE '2093-08-14', 'Asia/Shanghai',
+                    'downgrade-slot-v1', 'morning', 'succeeded'
+                )
+                """,
+                slot_acquisition_id,
+            )
         finally:
             await populated.close()
+        with pytest.raises(RuntimeError, match="content-slot artifacts exist"):
+            await asyncio.to_thread(command.downgrade, config, "20260807_0019")
+        populated = await asyncpg.connect(
+            make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
+        )
+        try:
+            revision_after_slot_refusal = await populated.fetchval(
+                "SELECT version_num FROM alembic_version"
+            )
+            await populated.execute(
+                "DELETE FROM acquisition_runs WHERE id = $1",
+                slot_acquisition_id,
+            )
+        finally:
+            await populated.close()
+        assert revision_after_slot_refusal == "20260814_0020"
         with pytest.raises(RuntimeError, match="governance or checkpoint data exists"):
             await asyncio.to_thread(command.downgrade, config, "20260729_0003")
         populated = await asyncpg.connect(
@@ -63,7 +92,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             await populated.execute("DELETE FROM governance_runs")
         finally:
             await populated.close()
-        assert revision_after_refusal == "20260807_0019"
+        assert revision_after_refusal == "20260814_0020"
         await asyncio.to_thread(command.downgrade, config, "20260729_0003")
 
         downgraded_url = make_url(test_url)

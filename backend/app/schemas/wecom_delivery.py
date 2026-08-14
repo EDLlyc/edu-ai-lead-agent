@@ -14,6 +14,7 @@ WeComDeliveryStatus = Literal[
     "delivered",
     "failed",
     "cancelled",
+    "delivery_window_expired",
 ]
 WeComMessageStatus = Literal["pending", "running", "delivered", "failed", "unknown", "skipped"]
 
@@ -43,6 +44,11 @@ class WeComDeliveryResponse(BaseModel):
 
     id: UUID
     material_package_id: UUID
+    delivery_window_id: UUID | None
+    content_slot_selection_id: UUID | None
+    sequence_ordinal: int | None = Field(default=None, ge=1, le=3)
+    not_before: datetime | None
+    expires_at: datetime | None
     recipient_id: str
     mode: Literal["test", "formal"]
     package_version: int

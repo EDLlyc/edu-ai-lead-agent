@@ -1052,3 +1052,19 @@ posting the package.
 - Prompt-injection text in a snapshot remains quoted data and cannot alter stage instructions.
 - Audit retry exhaustion preserves issues and artifacts for internal review.
 - The final OpenAPI contract exposes no automated publishing operation.
+
+## Three-slot independent production
+
+The legacy daily Top 1 pipeline remains the default compatibility path. When the separately gated
+slot mode is enabled, each `morning`, `noon`, or `evening` selection is an independent aggregate
+with exact acquisition/governance lineage and 0--3 ordered selections. Each selection creates its
+own discriminated copy origin, copy run, image artifact and material package; never combine sibling
+topics in one prompt, draft or image. Operational slot/ordinal/target/expiry metadata may enter
+safe provenance snapshots and fingerprints but may not add factual claims or replace evidence.
+The database origin XOR and composite identity foreign keys must reject a copy, selection, or
+delivery row cross-wired to another slot event, ordinal, acquisition lineage, or delivery window.
+
+One sibling's `no_topic`, failure, review requirement, image fallback or delivery result must not
+cancel, duplicate or retry another sibling. The upper bound is nine distinct package identities per
+business date. Fake-provider acceptance must cover 0--3 results, exact replay, sibling isolation and
+the existing full-length evidence-bound copy/image policy without external calls.

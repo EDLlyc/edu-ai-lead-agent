@@ -168,6 +168,22 @@
             ],
             "title": "Completed At"
           },
+          "content_slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "morning",
+                  "noon",
+                  "evening"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -241,6 +257,7 @@
           "business_date",
           "timezone",
           "acquisition_version",
+          "content_slot",
           "status",
           "total_jobs",
           "succeeded_jobs",
@@ -1557,6 +1574,759 @@
         "title": "CandidateAnalysisSummaryResponse",
         "type": "object"
       },
+      "ContentEditionResponse": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "slot_mode_enabled": {
+            "title": "Slot Mode Enabled",
+            "type": "boolean"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/ContentEditionSlotResponse"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "business_date",
+          "timezone",
+          "scoring_profile",
+          "slot_mode_enabled",
+          "slots"
+        ],
+        "title": "ContentEditionResponse",
+        "type": "object"
+      },
+      "ContentEditionSelectionResponse": {
+        "properties": {
+          "copy_generation_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Generation Run Id"
+          },
+          "copy_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Status"
+          },
+          "copy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Url"
+          },
+          "delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Id"
+          },
+          "delivery_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Status"
+          },
+          "delivery_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Url"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "event_version_id": {
+            "format": "uuid",
+            "title": "Event Version Id",
+            "type": "string"
+          },
+          "material_package_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Package Id"
+          },
+          "material_package_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Package Status"
+          },
+          "material_package_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Package Url"
+          },
+          "ordinal": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          },
+          "source_links": {
+            "items": {
+              "$ref": "#/components/schemas/ContentEditionSourceResponse"
+            },
+            "title": "Source Links",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "preparing",
+              "ready",
+              "failed",
+              "expired",
+              "delivered",
+              "delivery_unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selection_id",
+          "ordinal",
+          "event_id",
+          "event_version_id",
+          "title",
+          "event_time",
+          "source_links",
+          "copy_generation_run_id",
+          "copy_status",
+          "material_package_id",
+          "material_package_status",
+          "delivery_id",
+          "delivery_status",
+          "state",
+          "copy_url",
+          "material_package_url",
+          "delivery_url"
+        ],
+        "title": "ContentEditionSelectionResponse",
+        "type": "object"
+      },
+      "ContentEditionSlotResponse": {
+        "properties": {
+          "content_slot": {
+            "enum": [
+              "morning",
+              "noon",
+              "evening"
+            ],
+            "title": "Content Slot",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "item_limit": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Item Limit",
+            "type": "integer"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Status"
+          },
+          "run_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Url"
+          },
+          "selected_count": {
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/ContentEditionSelectionResponse"
+            },
+            "title": "Selections",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "disabled",
+              "missing",
+              "preparing",
+              "ready",
+              "failed",
+              "expired"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target_at": {
+            "format": "date-time",
+            "title": "Target At",
+            "type": "string"
+          },
+          "unfilled_count": {
+            "title": "Unfilled Count",
+            "type": "integer"
+          },
+          "unfilled_reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unfilled Reason Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_slot",
+          "display_name",
+          "enabled",
+          "target_at",
+          "expires_at",
+          "state",
+          "run_id",
+          "run_status",
+          "item_limit",
+          "selected_count",
+          "unfilled_count",
+          "unfilled_reason_codes",
+          "error_code",
+          "selections",
+          "run_url"
+        ],
+        "title": "ContentEditionSlotResponse",
+        "type": "object"
+      },
+      "ContentEditionSourceResponse": {
+        "properties": {
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_name",
+          "title",
+          "url"
+        ],
+        "title": "ContentEditionSourceResponse",
+        "type": "object"
+      },
+      "ContentSlotRunResponse": {
+        "properties": {
+          "acquisition_run_id": {
+            "format": "uuid",
+            "title": "Acquisition Run Id",
+            "type": "string"
+          },
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "config_fingerprint": {
+            "title": "Config Fingerprint",
+            "type": "string"
+          },
+          "content_slot": {
+            "enum": [
+              "morning",
+              "noon",
+              "evening"
+            ],
+            "title": "Content Slot",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "eligible_scores": {
+            "title": "Eligible Scores",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "governance_run_id": {
+            "format": "uuid",
+            "title": "Governance Run Id",
+            "type": "string"
+          },
+          "governed_event_cutoff": {
+            "format": "date-time",
+            "title": "Governed Event Cutoff",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_limit": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Item Limit",
+            "type": "integer"
+          },
+          "preparation_at": {
+            "format": "date-time",
+            "title": "Preparation At",
+            "type": "string"
+          },
+          "scores_url": {
+            "title": "Scores Url",
+            "type": "string"
+          },
+          "scoring_profile": {
+            "title": "Scoring Profile",
+            "type": "string"
+          },
+          "selected_count": {
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "slot_policy_fingerprint": {
+            "title": "Slot Policy Fingerprint",
+            "type": "string"
+          },
+          "slot_policy_version": {
+            "title": "Slot Policy Version",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          },
+          "target_at": {
+            "format": "date-time",
+            "title": "Target At",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "total_scores": {
+            "title": "Total Scores",
+            "type": "integer"
+          },
+          "trigger": {
+            "enum": [
+              "manual",
+              "scheduled"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          },
+          "unfilled_count": {
+            "title": "Unfilled Count",
+            "type": "integer"
+          },
+          "unfilled_reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unfilled Reason Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "business_date",
+          "timezone",
+          "content_slot",
+          "display_name",
+          "scoring_profile",
+          "acquisition_run_id",
+          "governance_run_id",
+          "governed_event_cutoff",
+          "config_fingerprint",
+          "slot_policy_version",
+          "slot_policy_fingerprint",
+          "preparation_at",
+          "target_at",
+          "expires_at",
+          "item_limit",
+          "status",
+          "total_scores",
+          "eligible_scores",
+          "selected_count",
+          "unfilled_count",
+          "unfilled_reason_codes",
+          "error_code",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "status_url",
+          "scores_url"
+        ],
+        "title": "ContentSlotRunResponse",
+        "type": "object"
+      },
+      "ContentSlotScoreListResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContentSlotScoreResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "ContentSlotScoreListResponse",
+        "type": "object"
+      },
+      "ContentSlotScoreResponse": {
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "event_title": {
+            "title": "Event Title",
+            "type": "string"
+          },
+          "event_version_id": {
+            "format": "uuid",
+            "title": "Event Version Id",
+            "type": "string"
+          },
+          "explanation": {
+            "additionalProperties": true,
+            "title": "Explanation",
+            "type": "object"
+          },
+          "final_ordering_key": {
+            "title": "Final Ordering Key",
+            "type": "string"
+          },
+          "final_ordering_value": {
+            "title": "Final Ordering Value",
+            "type": "number"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "passes_threshold": {
+            "title": "Passes Threshold",
+            "type": "boolean"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "same_day_excluded": {
+            "title": "Same Day Excluded",
+            "type": "boolean"
+          },
+          "same_day_exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Same Day Exclusion Reason"
+          },
+          "selected_ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Ordinal"
+          },
+          "slot_affinity": {
+            "title": "Slot Affinity",
+            "type": "number"
+          },
+          "slot_affinity_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Slot Affinity Reasons",
+            "type": "array"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "veto_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Veto Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "event_id",
+          "event_version_id",
+          "event_title",
+          "event_time",
+          "total",
+          "threshold",
+          "passes_threshold",
+          "eligible",
+          "veto_codes",
+          "slot_affinity",
+          "slot_affinity_reasons",
+          "same_day_excluded",
+          "same_day_exclusion_reason",
+          "final_ordering_value",
+          "final_ordering_key",
+          "rank",
+          "explanation"
+        ],
+        "title": "ContentSlotScoreResponse",
+        "type": "object"
+      },
       "CopyClaimResponse": {
         "properties": {
           "brand_chunk_ids": {
@@ -1730,15 +2500,34 @@
             ],
             "title": "Completed At"
           },
+          "content_slot_selection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot Selection Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
           "daily_topic_selection_id": {
-            "format": "uuid",
-            "title": "Daily Topic Selection Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Topic Selection Id"
           },
           "decision_kind": {
             "enum": [
@@ -1785,6 +2574,14 @@
               }
             ],
             "title": "No Topic Code"
+          },
+          "origin_kind": {
+            "enum": [
+              "legacy_daily",
+              "content_slot"
+            ],
+            "title": "Origin Kind",
+            "type": "string"
           },
           "repair_count": {
             "title": "Repair Count",
@@ -1853,7 +2650,9 @@
         },
         "required": [
           "id",
+          "origin_kind",
           "daily_topic_selection_id",
+          "content_slot_selection_id",
           "business_date",
           "timezone",
           "scoring_profile",
@@ -1906,15 +2705,34 @@
             ],
             "title": "Completed At"
           },
+          "content_slot_selection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot Selection Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
           "daily_topic_selection_id": {
-            "format": "uuid",
-            "title": "Daily Topic Selection Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Topic Selection Id"
           },
           "decision_kind": {
             "enum": [
@@ -1954,6 +2772,14 @@
               }
             ],
             "title": "No Topic Code"
+          },
+          "origin_kind": {
+            "enum": [
+              "legacy_daily",
+              "content_slot"
+            ],
+            "title": "Origin Kind",
+            "type": "string"
           },
           "repair_count": {
             "title": "Repair Count",
@@ -2022,7 +2848,9 @@
         },
         "required": [
           "id",
+          "origin_kind",
           "daily_topic_selection_id",
+          "content_slot_selection_id",
           "business_date",
           "timezone",
           "scoring_profile",
@@ -2133,6 +2961,36 @@
           }
         },
         "title": "CreateAcquisitionRunRequest",
+        "type": "object"
+      },
+      "CreateContentSlotRunRequest": {
+        "properties": {
+          "business_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Date"
+          },
+          "content_slot": {
+            "enum": [
+              "morning",
+              "noon",
+              "evening"
+            ],
+            "title": "Content Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_slot"
+        ],
+        "title": "CreateContentSlotRunRequest",
         "type": "object"
       },
       "CreateCopyGenerationRunRequest": {
@@ -4454,6 +5312,22 @@
             "title": "Business Date",
             "type": "string"
           },
+          "content_slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "morning",
+                  "noon",
+                  "evening"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot"
+          },
           "copy": {
             "additionalProperties": true,
             "title": "Copy",
@@ -4483,6 +5357,18 @@
             "title": "Download Url",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -4490,6 +5376,19 @@
           },
           "image": {
             "$ref": "#/components/schemas/ImageArtifactResponse"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
           },
           "package_version": {
             "title": "Package Version",
@@ -4550,6 +5449,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
           },
           "topic": {
             "additionalProperties": true,
@@ -4632,6 +5543,22 @@
             "title": "Business Date",
             "type": "string"
           },
+          "content_slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "morning",
+                  "noon",
+                  "evening"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot"
+          },
           "copy": {
             "additionalProperties": true,
             "title": "Copy",
@@ -4655,6 +5582,18 @@
             "title": "Download Url",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -4662,6 +5601,19 @@
           },
           "image": {
             "$ref": "#/components/schemas/ImageArtifactResponse"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
           },
           "package_version": {
             "title": "Package Version",
@@ -4723,6 +5675,18 @@
             "title": "Status",
             "type": "string"
           },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
+          },
           "topic": {
             "additionalProperties": true,
             "title": "Topic",
@@ -4770,6 +5734,22 @@
             "title": "Business Date",
             "type": "string"
           },
+          "content_slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "morning",
+                  "noon",
+                  "evening"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot"
+          },
           "copy_generation_run_id": {
             "format": "uuid",
             "title": "Copy Generation Run Id",
@@ -4784,10 +5764,35 @@
             "title": "Detail Url",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
           },
           "review_status": {
             "enum": [
@@ -4809,6 +5814,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "target_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target At"
           }
         },
         "required": [
@@ -5720,10 +6737,46 @@
             ],
             "title": "Completed At"
           },
+          "content_slot_selection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot Selection Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "delivery_window_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Window Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
           },
           "id": {
             "format": "uuid",
@@ -5774,6 +6827,18 @@
             "title": "Mode",
             "type": "string"
           },
+          "not_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Before"
+          },
           "package_version": {
             "title": "Package Version",
             "type": "integer"
@@ -5785,6 +6850,19 @@
           "retry_url": {
             "title": "Retry Url",
             "type": "string"
+          },
+          "sequence_ordinal": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Ordinal"
           },
           "started_at": {
             "anyOf": [
@@ -5806,7 +6884,8 @@
               "delivery_unknown",
               "delivered",
               "failed",
-              "cancelled"
+              "cancelled",
+              "delivery_window_expired"
             ],
             "title": "Status",
             "type": "string"
@@ -5827,6 +6906,10 @@
         "required": [
           "id",
           "material_package_id",
+          "delivery_window_id",
+          "content_slot_selection_id",
+          "not_before",
+          "expires_at",
           "recipient_id",
           "mode",
           "package_version",
@@ -6431,6 +7514,188 @@
         "summary": "Get Candidate Analysis",
         "tags": [
           "governance"
+        ]
+      }
+    },
+    "/api/v1/content-editions/{business_date}": {
+      "get": {
+        "operationId": "read_content_edition_api_v1_content_editions__business_date__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "business_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Business Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "default": "preview",
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentEditionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Content Edition",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-runs": {
+      "post": {
+        "operationId": "create_content_slot_run_api_v1_content_slot_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContentSlotRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentSlotRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Content Slot Run",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-runs/{run_id}": {
+      "get": {
+        "operationId": "read_content_slot_run_api_v1_content_slot_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentSlotRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Content Slot Run",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-runs/{run_id}/scores": {
+      "get": {
+        "operationId": "read_content_slot_scores_api_v1_content_slot_runs__run_id__scores_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentSlotScoreListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Content Slot Scores",
+        "tags": [
+          "content-slots"
         ]
       }
     },

@@ -26,13 +26,16 @@ from app.core.errors import (
     ProviderValidationIssue,
     provider_validation_issues_metadata,
 )
+from app.domain.content_slots import ContentSlot
 from app.domain.copy_generation import (
     ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION,
     ActiveBrandContext,
+    ContentSlotTopicOrigin,
     CopyJobStatus,
     CopyRunStatus,
     CopyVersionBundle,
     EligibleEvidence,
+    LegacyDailyTopicOrigin,
     LockedTopicContext,
 )
 from app.domain.value_objects import stable_key
@@ -43,6 +46,8 @@ from app.infrastructure.db.models import (
     BrandDocumentModel,
     BrandDocumentVersionModel,
     CandidateAnalysisModel,
+    ContentSlotRunModel,
+    ContentSlotSelectionModel,
     CopyAuditModel,
     CopyClaimBrandBindingModel,
     CopyClaimEvidenceBindingModel,
@@ -153,6 +158,61 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                     continue
         return created
 
+    async def reconcile_ready_slot_topics(
+        self,
+        *,
+        business_date: date,
+        timezone: str,
+        scoring_profile: str,
+        version_bundle: CopyVersionBundle,
+        limit: int = 20,
+        max_attempts: int = 3,
+    ) -> int:
+        async with self._session_factory() as session:
+            selections = tuple(
+                (
+                    await session.scalars(
+                        select(ContentSlotSelectionModel)
+                        .join(
+                            ContentSlotRunModel,
+                            ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                        )
+                        .outerjoin(
+                            CopyGenerationRunModel,
+                            and_(
+                                CopyGenerationRunModel.content_slot_selection_id
+                                == ContentSlotSelectionModel.id,
+                                CopyGenerationRunModel.version_fingerprint
+                                == version_bundle.fingerprint,
+                            ),
+                        )
+                        .where(
+                            ContentSlotSelectionModel.business_date == business_date,
+                            ContentSlotSelectionModel.timezone == timezone,
+                            ContentSlotRunModel.scoring_profile == scoring_profile,
+                            ContentSlotRunModel.status == "succeeded",
+                            CopyGenerationRunModel.id.is_(None),
+                        )
+                        .order_by(ContentSlotRunModel.target_at, ContentSlotSelectionModel.ordinal)
+                        .limit(limit)
+                    )
+                ).all()
+            )
+        created = 0
+        for selection in selections:
+            async with self._session_factory() as session:
+                try:
+                    await _enqueue_slot_selection(
+                        session,
+                        selection=selection,
+                        version_bundle=version_bundle,
+                        max_attempts=max_attempts,
+                    )
+                    created += 1
+                except ConflictError:
+                    continue
+        return created
+
     async def claim(
         self,
         *,
@@ -202,10 +262,10 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             run = await session.get(CopyGenerationRunModel, claimed.run_id)
             if run is None:
                 raise NotFoundError("copy generation run")
+            origin = await _load_locked_topic_origin(session, run)
             if run.decision_kind == "no_topic":
                 return LockedTopicContext(
-                    daily_topic_selection_id=run.daily_topic_selection_id,
-                    topic_selection_run_id=run.topic_selection_run_id,
+                    origin=origin,
                     business_date=run.business_date,
                     timezone=run.timezone,
                     scoring_profile=run.scoring_profile,
@@ -232,8 +292,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             )
             raw_summary = version.summary_projection.get("summary")
             return LockedTopicContext(
-                daily_topic_selection_id=run.daily_topic_selection_id,
-                topic_selection_run_id=run.topic_selection_run_id,
+                origin=origin,
                 business_date=run.business_date,
                 timezone=run.timezone,
                 scoring_profile=run.scoring_profile,
@@ -761,6 +820,45 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             return True
 
 
+async def _load_locked_topic_origin(
+    session: AsyncSession, run: CopyGenerationRunModel
+) -> LegacyDailyTopicOrigin | ContentSlotTopicOrigin:
+    has_daily = run.daily_topic_selection_id is not None
+    has_slot = run.content_slot_selection_id is not None
+    if has_daily == has_slot:
+        raise RuntimeError("copy generation run must have exactly one typed origin")
+    if has_daily:
+        if run.daily_topic_selection_id is None or run.topic_selection_run_id is None:
+            raise RuntimeError("legacy copy origin is incomplete")
+        return LegacyDailyTopicOrigin(
+            daily_topic_selection_id=run.daily_topic_selection_id,
+            topic_selection_run_id=run.topic_selection_run_id,
+        )
+    if run.content_slot_selection_id is None or run.topic_selection_run_id is not None:
+        raise RuntimeError("content slot copy origin is incomplete")
+    selection = await session.get(ContentSlotSelectionModel, run.content_slot_selection_id)
+    if selection is None:
+        raise RuntimeError("content slot copy selection is unavailable")
+    slot_run = await session.get(ContentSlotRunModel, selection.run_id)
+    if slot_run is None:
+        raise RuntimeError("content slot selection run is unavailable")
+    if (
+        selection.business_date != run.business_date
+        or selection.timezone != run.timezone
+        or slot_run.scoring_profile != run.scoring_profile
+        or selection.selected_event_id != run.selected_event_id
+        or selection.selected_event_version_id != run.selected_event_version_id
+    ):
+        raise RuntimeError("content slot copy origin lineage is inconsistent")
+    return ContentSlotTopicOrigin(
+        content_slot_selection_id=selection.id,
+        content_slot=ContentSlot(selection.content_slot),
+        ordinal=selection.ordinal,
+        target_at=slot_run.target_at,
+        expires_at=slot_run.expires_at,
+    )
+
+
 async def _enqueue_selection(
     session: AsyncSession,
     *,
@@ -869,6 +967,117 @@ async def _enqueue_selection(
         if existing is not None:
             return cast(UUID, existing.id)
         raise ConflictError("copy generation run changed concurrently; retry") from None
+
+
+async def _enqueue_slot_selection(
+    session: AsyncSession,
+    *,
+    selection: ContentSlotSelectionModel,
+    version_bundle: CopyVersionBundle,
+    max_attempts: int = 3,
+) -> UUID:
+    selection_id = selection.id
+    existing = await session.scalar(
+        select(CopyGenerationRunModel).where(
+            CopyGenerationRunModel.content_slot_selection_id == selection_id,
+            CopyGenerationRunModel.version_fingerprint == version_bundle.fingerprint,
+        )
+    )
+    if existing is not None:
+        if (
+            existing.status == CopyRunStatus.REVIEW_REQUIRED.value
+            and existing.error_code == "missing_brand_context"
+            and existing.active_draft_version_id is None
+        ):
+            job = await session.scalar(
+                select(CopyGenerationJobModel)
+                .where(CopyGenerationJobModel.run_id == existing.id)
+                .with_for_update()
+            )
+            if job is not None and job.attempt_count < max_attempts:
+                now = datetime.now(UTC)
+                existing.status = CopyRunStatus.QUEUED.value
+                existing.error_code = None
+                existing.started_at = None
+                existing.completed_at = None
+                job.status = CopyJobStatus.QUEUED.value
+                job.available_at = now
+                job.error_code = None
+                job.started_at = None
+                job.completed_at = None
+                _clear_lease(job)
+                await _upsert_checkpoint(
+                    session,
+                    run_id=existing.id,
+                    stage="queued",
+                    draft_version_id=None,
+                    issue_codes=(),
+                )
+                await session.commit()
+        return cast(UUID, existing.id)
+    slot_run = await session.get(ContentSlotRunModel, selection.run_id)
+    if slot_run is None or slot_run.status != "succeeded":
+        raise ConflictError("content slot selection is not ready for copy generation")
+    if (
+        selection.business_date != slot_run.business_date
+        or selection.timezone != slot_run.timezone
+        or selection.content_slot != slot_run.content_slot
+    ):
+        raise ConflictError("content slot selection lineage is inconsistent")
+    run_id = uuid4()
+    try:
+        session.add(
+            CopyGenerationRunModel(
+                id=run_id,
+                daily_topic_selection_id=None,
+                content_slot_selection_id=selection_id,
+                topic_selection_run_id=None,
+                business_date=selection.business_date,
+                timezone=selection.timezone,
+                scoring_profile=slot_run.scoring_profile,
+                decision_kind="selected",
+                selected_event_id=selection.selected_event_id,
+                selected_event_version_id=selection.selected_event_version_id,
+                no_topic_code=None,
+                status=CopyRunStatus.QUEUED.value,
+                pipeline_version=version_bundle.pipeline_version,
+                version_fingerprint=version_bundle.fingerprint,
+                version_bundle=version_bundle.as_metadata(),
+                active_draft_version_id=None,
+                repair_count=0,
+                error_code=None,
+            )
+        )
+        await session.flush()
+        session.add(
+            CopyGenerationJobModel(
+                id=uuid4(),
+                run_id=run_id,
+                status=CopyJobStatus.QUEUED.value,
+                attempt_count=0,
+            )
+        )
+        session.add(
+            CopyGenerationCheckpointModel(
+                run_id=run_id,
+                stage="queued",
+                draft_version_id=None,
+                issue_codes=[],
+            )
+        )
+        await session.commit()
+        return run_id
+    except IntegrityError:
+        await session.rollback()
+        concurrent = await session.scalar(
+            select(CopyGenerationRunModel).where(
+                CopyGenerationRunModel.content_slot_selection_id == selection_id,
+                CopyGenerationRunModel.version_fingerprint == version_bundle.fingerprint,
+            )
+        )
+        if concurrent is not None:
+            return cast(UUID, concurrent.id)
+        raise ConflictError("slot copy generation run changed concurrently; retry") from None
 
 
 async def _claim(

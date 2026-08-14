@@ -9,6 +9,7 @@ from app.application.services.wecom_delivery import (
     WeComDeliveryExecutor,
     _auto_delivery_candidate_statement,
     _delivery_fingerprint_namespace,
+    _slot_auto_delivery_candidate_statement,
     _validate_wecom_image_body,
     build_wecom_text,
     enqueue_wecom_delivery,
@@ -16,7 +17,11 @@ from app.application.services.wecom_delivery import (
 from app.core.config import Settings
 from app.core.errors import ConflictError
 from app.domain.image_generation import image_checksum, image_content_key
-from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
+from app.infrastructure.db.models import (
+    CopyGenerationRunModel,
+    ImageArtifactModel,
+    MaterialPackageModel,
+)
 from pydantic import SecretStr
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import Select
@@ -56,8 +61,10 @@ def _delivery_package(
         audit_snapshot={"configured": False, "passed": None},
         storage_metadata={"access": "private", "immutable": True, "content_addressed": True},
     )
+    run_id = uuid4()
     package = SimpleNamespace(
         id=uuid4(),
+        run_id=run_id,
         status=status,
         review_status=review_status,
         image_artifact_id=image.id,
@@ -73,6 +80,11 @@ class _DeliverySession:
     def __init__(self, package: SimpleNamespace, image: SimpleNamespace) -> None:
         self.package = package
         self.image = image
+        self.copy_run = SimpleNamespace(
+            id=package.run_id,
+            daily_topic_selection_id=uuid4(),
+            content_slot_selection_id=None,
+        )
         self.added: list[object] = []
         self.commits = 0
 
@@ -81,6 +93,8 @@ class _DeliverySession:
             return self.package
         if model is ImageArtifactModel:
             return self.image
+        if model is CopyGenerationRunModel:
+            return self.copy_run
         raise AssertionError(f"unexpected model: {model!r}")
 
     async def scalar(self, _statement: object) -> object | None:
@@ -388,6 +402,30 @@ def test_auto_delivery_candidate_query_uses_typed_business_date() -> None:
     assert "JOIN copy_generation_runs" in str(compiled)
     assert date(2026, 8, 7) in compiled.params.values()
     assert "formal" in compiled.params.values()
+
+
+def test_slot_auto_delivery_query_includes_only_enabled_slots() -> None:
+    settings = _settings(require_review=False).model_copy(
+        update={
+            "content_enabled": True,
+            "content_slot_mode_enabled": True,
+            "content_morning_enabled": True,
+            "content_noon_enabled": False,
+            "content_evening_enabled": False,
+        }
+    )
+
+    statement = _slot_auto_delivery_candidate_statement(
+        settings=settings,
+        business_date=date(2026, 8, 7),
+        now=datetime(2026, 8, 6, 23, 30, tzinfo=UTC),
+        limit=5,
+    )
+    compiled = statement.compile(dialect=postgresql.dialect())
+
+    assert ["morning"] in compiled.params.values()
+    assert ["noon"] not in compiled.params.values()
+    assert ["evening"] not in compiled.params.values()
 
 
 @pytest.mark.asyncio

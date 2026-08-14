@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+ContentSlotValue = Literal["morning", "noon", "evening"]
 
 
 class SourceResponse(BaseModel):
@@ -47,6 +50,7 @@ class AcquisitionRunResponse(BaseModel):
     business_date: date | None
     timezone: str
     acquisition_version: str
+    content_slot: ContentSlotValue | None
     status: str
     total_jobs: int
     succeeded_jobs: int

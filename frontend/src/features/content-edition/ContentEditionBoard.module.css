@@ -1,0 +1,292 @@
+.board {
+  padding: clamp(2rem, 5vw, 5rem);
+  overflow: hidden;
+  border-block-end: 1px solid var(--border-strong);
+  background:
+    linear-gradient(100deg, rgb(39 222 203 / 4%), transparent 34%),
+    var(--surface-base);
+}
+
+.heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.heading p,
+.slotHeader p,
+.errorCode {
+  margin: 0 0 var(--space-2);
+  color: var(--accent);
+  font: 0.66rem var(--font-mono);
+  letter-spacing: 0.14em;
+}
+
+.heading h2 {
+  margin: 0;
+  font: clamp(2rem, 4vw, 4rem) var(--font-display);
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+.dateControl {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 14rem;
+}
+
+.dateControl label,
+.stateBadge,
+.slotMeta dt,
+.eventTime,
+.storyLinks,
+.notice {
+  color: var(--text-faint);
+  font: 0.68rem var(--font-mono);
+}
+
+.dateControl input {
+  min-height: 2.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  padding-inline: var(--space-3);
+  color-scheme: dark;
+}
+
+.dateControl input:focus-visible,
+.storyLinks a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.guardrail {
+  max-width: 58rem;
+  margin: var(--space-5) 0 0;
+  color: var(--text-muted);
+}
+
+.notice {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4);
+  border-inline-start: 0.25rem solid var(--accent);
+  background: var(--surface-sunken);
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-block-start: var(--space-6);
+}
+
+.slot {
+  position: relative;
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-inset);
+}
+
+.slot::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0.25rem;
+  background: var(--signal-cyan);
+  content: "";
+  transform: scaleX(0.34);
+  transform-origin: left;
+  transition: transform 280ms linear;
+}
+
+.slot:hover::before,
+.slot:focus-within::before {
+  transform: scaleX(1);
+}
+
+.slot[data-state="failed"]::before,
+.slot[data-state="expired"]::before {
+  background: var(--accent);
+}
+
+.slotHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding-block: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.slotIndex {
+  color: var(--text-faint);
+  font: 1.65rem var(--font-display);
+}
+
+.slotHeader h3 {
+  margin: 0;
+  font: 1.5rem var(--font-display);
+}
+
+.stateBadge {
+  border: 1px solid var(--signal-cyan);
+  padding: 0.35rem 0.5rem;
+  color: var(--signal-cyan);
+  white-space: nowrap;
+}
+
+.slotMeta,
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.slotMeta div,
+.pipeline div {
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+}
+
+.slotMeta dd,
+.pipeline dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  font: 0.78rem var(--font-mono);
+}
+
+.storyStack {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.story {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  background: rgb(7 10 12 / 48%);
+  transition:
+    border-color 180ms linear,
+    transform 180ms linear;
+}
+
+.story:hover,
+.story:focus-within {
+  transform: translateY(-0.18rem);
+  border-color: var(--signal-cyan);
+}
+
+.storyTopline {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--signal-cyan);
+  font: 0.62rem var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.storyTopline [data-state="failed"],
+.storyTopline [data-state="expired"],
+.storyTopline [data-state="delivery_unknown"] {
+  color: var(--accent);
+}
+
+.story h4 {
+  margin: var(--space-3) 0 var(--space-2);
+  font: 1.05rem/1.4 var(--font-display);
+}
+
+.eventTime {
+  margin: 0;
+}
+
+.pipeline {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-block: var(--space-3);
+}
+
+.pipeline dt {
+  color: var(--text-faint);
+  font: 0.62rem var(--font-mono);
+}
+
+.storyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.storyLinks a {
+  color: var(--signal-cyan);
+  text-underline-offset: 0.25rem;
+}
+
+.emptyState,
+.unfilled {
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+}
+
+.emptyState strong,
+.unfilled strong {
+  color: var(--text-primary);
+  font: 0.9rem var(--font-display);
+}
+
+.emptyState p,
+.unfilled ul {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+}
+
+.unfilled {
+  margin-block-start: var(--space-3);
+  border-style: solid;
+  border-inline-start: 0.2rem solid var(--accent);
+}
+
+.unfilled ul {
+  padding-inline-start: 1.1rem;
+}
+
+.errorCode {
+  margin-block-start: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+@media (width <= 72rem) {
+  .slotGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (width <= 42rem) {
+  .heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dateControl {
+    min-width: 0;
+  }
+
+  .slotHeader {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .stateBadge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot::before,
+  .story {
+    transition: none;
+  }
+}

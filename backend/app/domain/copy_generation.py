@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Literal, cast
 from uuid import UUID
 
+from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
     AuditVerdict,
@@ -96,9 +97,50 @@ class ActiveBrandContext:
 
 
 @dataclass(frozen=True, slots=True)
-class LockedTopicContext:
+class LegacyDailyTopicOrigin:
     daily_topic_selection_id: UUID
     topic_selection_run_id: UUID
+
+    @property
+    def kind(self) -> Literal["legacy_daily"]:
+        return "legacy_daily"
+
+    @property
+    def identity(self) -> UUID:
+        return self.daily_topic_selection_id
+
+
+@dataclass(frozen=True, slots=True)
+class ContentSlotTopicOrigin:
+    content_slot_selection_id: UUID
+    content_slot: ContentSlot
+    ordinal: int
+    target_at: datetime
+    expires_at: datetime
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.ordinal <= 3:
+            raise ValueError("content slot ordinal must be between one and three")
+        if self.target_at.tzinfo is None or self.expires_at.tzinfo is None:
+            raise ValueError("content slot delivery instants must be timezone-aware")
+        if self.expires_at < self.target_at:
+            raise ValueError("content slot expiry cannot precede its target")
+
+    @property
+    def kind(self) -> Literal["content_slot"]:
+        return "content_slot"
+
+    @property
+    def identity(self) -> UUID:
+        return self.content_slot_selection_id
+
+
+LockedTopicOrigin = LegacyDailyTopicOrigin | ContentSlotTopicOrigin
+
+
+@dataclass(frozen=True, slots=True)
+class LockedTopicContext:
+    origin: LockedTopicOrigin
     business_date: date
     timezone: str
     scoring_profile: str

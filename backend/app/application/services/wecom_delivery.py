@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy import and_, exists, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -28,11 +29,14 @@ from app.core.errors import AppError, ConflictError, NotFoundError
 from app.domain.image_generation import image_checksum, image_content_key
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
+    ContentSlotRunModel,
+    ContentSlotSelectionModel,
     CopyGenerationRunModel,
     ImageArtifactModel,
     MaterialPackageModel,
     WeComDeliveryAttemptModel,
     WeComDeliveryJobModel,
+    WeComDeliveryWindowModel,
 )
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 
@@ -70,7 +74,11 @@ async def enqueue_wecom_delivery(
     include_copy: bool,
     include_image: bool,
     settings: Settings,
+    now: datetime | None = None,
 ) -> WeComDeliveryJobModel:
+    resolved_now = now or datetime.now(UTC)
+    if resolved_now.tzinfo is None:
+        raise ValueError("WeCom enqueue time must be timezone-aware")
     _ensure_delivery_configured(settings)
     if recipient_id != "default":
         raise ConflictError("recipient is not configured")
@@ -101,6 +109,44 @@ async def enqueue_wecom_delivery(
             settings=settings,
         )
 
+    slot_window: WeComDeliveryWindowModel | None = None
+    slot_selection: ContentSlotSelectionModel | None = None
+    if mode == "formal":
+        copy_run = await session.get(CopyGenerationRunModel, package.run_id)
+        if copy_run is None:
+            raise ConflictError("material package copy lineage is unavailable")
+        if copy_run.content_slot_selection_id is not None:
+            slot_selection = await session.get(
+                ContentSlotSelectionModel, copy_run.content_slot_selection_id
+            )
+            if slot_selection is None:
+                raise ConflictError("material package slot lineage is unavailable")
+            enabled_slots = {
+                schedule.slot.value
+                for schedule in settings.content_slot_schedules()
+                if schedule.enabled
+            }
+            if (
+                not settings.content_enabled
+                or not settings.content_slot_mode_enabled
+                or slot_selection.content_slot not in enabled_slots
+            ):
+                raise ConflictError("content slot delivery is disabled")
+            slot_run = await session.get(ContentSlotRunModel, slot_selection.run_id)
+            if slot_run is None or (
+                slot_run.business_date != copy_run.business_date
+                or slot_run.timezone != copy_run.timezone
+                or slot_run.content_slot != slot_selection.content_slot
+            ):
+                raise ConflictError("material package slot lineage is inconsistent")
+            slot_window = await _ensure_slot_delivery_window(
+                session,
+                run=slot_run,
+                recipient_id=recipient_id,
+                provider=settings.wecom_delivery_provider,
+                gap_seconds=settings.wecom_slot_package_gap_seconds,
+            )
+
     content_fingerprint = package.request_fingerprint
     request_fingerprint = stable_key(
         _delivery_fingerprint_namespace(settings),
@@ -123,6 +169,11 @@ async def enqueue_wecom_delivery(
     job = WeComDeliveryJobModel(
         id=uuid4(),
         material_package_id=package.id,
+        delivery_window_id=slot_window.id if slot_window is not None else None,
+        content_slot_selection_id=(slot_selection.id if slot_selection is not None else None),
+        sequence_ordinal=slot_selection.ordinal if slot_selection is not None else None,
+        not_before=slot_window.target_at if slot_window is not None else None,
+        expires_at=slot_window.expires_at if slot_window is not None else None,
         recipient_id=recipient_id,
         mode=mode,
         package_version=package.package_version,
@@ -130,11 +181,27 @@ async def enqueue_wecom_delivery(
         request_fingerprint=request_fingerprint,
         include_copy=include_copy,
         include_image=include_image,
-        status="queued",
+        status=(
+            "delivery_window_expired"
+            if slot_window is not None and resolved_now >= slot_window.expires_at
+            else "queued"
+        ),
         text_status=_PENDING if include_copy else _SKIPPED,
         image_status=_PENDING if include_image else _SKIPPED,
         attempt_count=0,
-        next_attempt_at=datetime.now(UTC),
+        next_attempt_at=(
+            max(resolved_now, slot_window.target_at) if slot_window is not None else resolved_now
+        ),
+        last_error_code=(
+            "delivery_window_expired"
+            if slot_window is not None and resolved_now >= slot_window.expires_at
+            else None
+        ),
+        completed_at=(
+            resolved_now
+            if slot_window is not None and resolved_now >= slot_window.expires_at
+            else None
+        ),
     )
     session.add(job)
     try:
@@ -156,6 +223,64 @@ async def enqueue_wecom_delivery(
     return job
 
 
+async def _ensure_slot_delivery_window(
+    session: AsyncSession,
+    *,
+    run: ContentSlotRunModel,
+    recipient_id: str,
+    provider: str,
+    gap_seconds: int,
+) -> WeComDeliveryWindowModel:
+    values = {
+        "id": uuid4(),
+        "business_date": run.business_date,
+        "timezone": run.timezone,
+        "content_slot": run.content_slot,
+        "recipient_id": recipient_id,
+        "provider": provider,
+        "mode": "formal",
+        "target_at": run.target_at,
+        "expires_at": run.expires_at,
+        "package_gap_seconds": gap_seconds,
+        "next_allowed_at": run.target_at,
+    }
+    await session.execute(
+        insert(WeComDeliveryWindowModel)
+        .values(**values)
+        .on_conflict_do_nothing(
+            index_elements=(
+                "business_date",
+                "timezone",
+                "content_slot",
+                "recipient_id",
+                "provider",
+                "mode",
+            )
+        )
+    )
+    window = await session.scalar(
+        select(WeComDeliveryWindowModel)
+        .where(
+            WeComDeliveryWindowModel.business_date == run.business_date,
+            WeComDeliveryWindowModel.timezone == run.timezone,
+            WeComDeliveryWindowModel.content_slot == run.content_slot,
+            WeComDeliveryWindowModel.recipient_id == recipient_id,
+            WeComDeliveryWindowModel.provider == provider,
+            WeComDeliveryWindowModel.mode == "formal",
+        )
+        .with_for_update()
+    )
+    if window is None:
+        raise ConflictError("content slot delivery window changed concurrently; retry")
+    if (
+        window.target_at != run.target_at
+        or window.expires_at != run.expires_at
+        or window.package_gap_seconds != gap_seconds
+    ):
+        raise ConflictError("content slot delivery window configuration is immutable")
+    return window
+
+
 async def retry_wecom_delivery(
     *, session: AsyncSession, delivery_id: UUID, settings: Settings
 ) -> WeComDeliveryJobModel:
@@ -170,13 +295,17 @@ async def retry_wecom_delivery(
     if job.status not in {"failed", "partial", "delivery_unknown"}:
         raise ConflictError("only failed or unknown WeCom deliveries can be retried")
 
+    now = datetime.now(UTC)
+    if job.expires_at is not None and now >= job.expires_at:
+        raise ConflictError("content slot delivery window has expired")
+
     if job.include_copy and job.text_status != _DELIVERED:
         job.text_status = _PENDING
     if job.include_image and job.image_status != _DELIVERED:
         job.image_status = _PENDING
     job.status = "queued"
     job.attempt_count = 0
-    job.next_attempt_at = datetime.now(UTC)
+    job.next_attempt_at = max(now, job.not_before) if job.not_before is not None else now
     job.last_error_code = None
     job.lease_owner = None
     job.lease_token = None
@@ -223,15 +352,25 @@ class WeComDeliveryExecutor:
     async def reconcile_auto_deliveries(self, *, limit: int = 20) -> int:
         if not self._settings.wecom_auto_delivery_enabled:
             return 0
-        business_date = self._clock().astimezone(ZoneInfo(self._settings.business_timezone)).date()
+        now = self._clock()
+        business_date = now.astimezone(ZoneInfo(self._settings.business_timezone)).date()
         async with self._session_factory() as session:
             packages = tuple(
                 (
                     await session.scalars(
-                        _auto_delivery_candidate_statement(
-                            settings=self._settings,
-                            business_date=business_date,
-                            limit=limit,
+                        (
+                            _slot_auto_delivery_candidate_statement(
+                                settings=self._settings,
+                                business_date=business_date,
+                                now=now,
+                                limit=limit,
+                            )
+                            if self._settings.content_slot_mode_enabled
+                            else _auto_delivery_candidate_statement(
+                                settings=self._settings,
+                                business_date=business_date,
+                                limit=limit,
+                            )
                         )
                     )
                 ).all()
@@ -248,6 +387,7 @@ class WeComDeliveryExecutor:
                         include_copy=True,
                         include_image=True,
                         settings=self._settings,
+                        now=now,
                     )
                 except (ConflictError, NotFoundError) as error:
                     self._log_auto_delivery_skip(package, error)
@@ -377,31 +517,174 @@ class WeComDeliveryExecutor:
         )
 
     async def _claim(self, worker_id: str) -> ClaimedWeComDelivery | None:
-        now = datetime.now(UTC)
+        now = self._clock()
+        if now.tzinfo is None:
+            raise ValueError("WeCom delivery clock must be timezone-aware")
         async with self._session_factory() as session:
-            job = await session.scalar(
-                select(WeComDeliveryJobModel)
-                .where(
-                    or_(
-                        and_(
+            expired_queued = tuple(
+                (
+                    await session.scalars(
+                        select(WeComDeliveryJobModel)
+                        .where(
+                            WeComDeliveryJobModel.delivery_window_id.is_not(None),
                             WeComDeliveryJobModel.status == "queued",
-                            WeComDeliveryJobModel.next_attempt_at <= now,
-                        ),
-                        and_(
+                            WeComDeliveryJobModel.expires_at <= now,
+                        )
+                        .with_for_update(skip_locked=True)
+                        .limit(100)
+                    )
+                ).all()
+            )
+            for expired in expired_queued:
+                expired.status = "delivery_window_expired"
+                expired.last_error_code = "delivery_window_expired"
+                expired.completed_at = now
+                _clear_lease(expired)
+            abandoned_slot_running = tuple(
+                (
+                    await session.scalars(
+                        select(WeComDeliveryJobModel)
+                        .where(
+                            WeComDeliveryJobModel.delivery_window_id.is_not(None),
                             WeComDeliveryJobModel.status == "running",
                             or_(
                                 WeComDeliveryJobModel.lease_expires_at.is_(None),
                                 WeComDeliveryJobModel.lease_expires_at <= now,
                             ),
-                        ),
+                        )
+                        .with_for_update(skip_locked=True)
+                        .limit(100)
                     )
+                ).all()
+            )
+            for abandoned in abandoned_slot_running:
+                error_code = (
+                    "delivery_window_expired_after_start"
+                    if abandoned.expires_at is not None and abandoned.expires_at <= now
+                    else "delivery_lease_expired_after_start"
                 )
-                .order_by(WeComDeliveryJobModel.created_at)
+                message_kind = _current_message_kind(abandoned)
+                if message_kind is not None:
+                    session.add(
+                        WeComDeliveryAttemptModel(
+                            id=uuid4(),
+                            job_id=abandoned.id,
+                            message_kind=message_kind,
+                            attempt_number=max(1, abandoned.attempt_count),
+                            request_fingerprint=_child_request_fingerprint(
+                                abandoned.id, message_kind
+                            ),
+                            provider_request_id=None,
+                            safe_response_code=error_code,
+                            result_state="unknown",
+                            latency_ms=0,
+                        )
+                    )
+                    if message_kind == "text":
+                        abandoned.text_status = _UNKNOWN
+                    else:
+                        abandoned.image_status = _UNKNOWN
+                abandoned.status = "delivery_unknown"
+                abandoned.last_error_code = error_code
+                abandoned.completed_at = now
+                _clear_lease(abandoned)
+            if expired_queued or abandoned_slot_running:
+                # Session factories disable autoflush. Make terminal transitions
+                # visible to the claim queries in this same transaction so a
+                # stale slot job cannot be selected again before commit.
+                await session.flush()
+            claimable_status = or_(
+                and_(
+                    WeComDeliveryJobModel.status == "queued",
+                    WeComDeliveryJobModel.next_attempt_at <= now,
+                ),
+                and_(
+                    WeComDeliveryJobModel.status == "running",
+                    or_(
+                        WeComDeliveryJobModel.lease_expires_at.is_(None),
+                        WeComDeliveryJobModel.lease_expires_at <= now,
+                    ),
+                ),
+            )
+            window_job = aliased(WeComDeliveryJobModel)
+            window_has_claimable_job = exists().where(
+                window_job.delivery_window_id == WeComDeliveryWindowModel.id,
+                or_(
+                    and_(
+                        window_job.status == "queued",
+                        window_job.next_attempt_at <= now,
+                    ),
+                    and_(
+                        window_job.status == "running",
+                        or_(
+                            window_job.lease_expires_at.is_(None),
+                            window_job.lease_expires_at <= now,
+                        ),
+                    ),
+                ),
+                window_job.not_before <= now,
+                window_job.expires_at > now,
+            )
+            # The delivery window is the concurrency boundary. Lock it before a
+            # child job so two dispatchers cannot lock different ordinals and
+            # let the higher ordinal win the race for the same lane.
+            window = await session.scalar(
+                select(WeComDeliveryWindowModel)
+                .where(
+                    WeComDeliveryWindowModel.next_allowed_at <= now,
+                    WeComDeliveryWindowModel.expires_at > now,
+                    window_has_claimable_job,
+                )
+                .order_by(
+                    WeComDeliveryWindowModel.target_at,
+                    WeComDeliveryWindowModel.created_at,
+                )
                 .limit(1)
                 .with_for_update(skip_locked=True)
             )
+            if window is not None:
+                job = await session.scalar(
+                    select(WeComDeliveryJobModel)
+                    .where(
+                        WeComDeliveryJobModel.delivery_window_id == window.id,
+                        claimable_status,
+                        WeComDeliveryJobModel.not_before <= now,
+                        WeComDeliveryJobModel.expires_at > now,
+                    )
+                    .order_by(
+                        WeComDeliveryJobModel.sequence_ordinal,
+                        WeComDeliveryJobModel.created_at,
+                    )
+                    .limit(1)
+                    .with_for_update()
+                )
+            else:
+                job = await session.scalar(
+                    select(WeComDeliveryJobModel)
+                    .where(
+                        WeComDeliveryJobModel.delivery_window_id.is_(None),
+                        claimable_status,
+                    )
+                    .order_by(WeComDeliveryJobModel.created_at)
+                    .limit(1)
+                    .with_for_update(skip_locked=True)
+                )
             if job is None:
+                if expired_queued or abandoned_slot_running:
+                    await session.commit()
                 return None
+            if job.delivery_window_id is not None:
+                if window is None:
+                    raise RuntimeError("slot delivery job has no delivery window")
+                if (
+                    job.not_before is None
+                    or job.expires_at is None
+                    or now < job.not_before
+                    or now >= job.expires_at
+                    or now < window.next_allowed_at
+                ):
+                    await session.rollback()
+                    return None
             if job.attempt_count >= self._settings.wecom_max_attempts:
                 job.status = "failed"
                 job.last_error_code = "wecom_max_attempts_exhausted"
@@ -418,6 +701,9 @@ class WeComDeliveryExecutor:
             job.heartbeat_at = now
             job.started_at = job.started_at or now
             job.last_error_code = None
+            if window is not None:
+                window.next_allowed_at = now + timedelta(seconds=window.package_gap_seconds)
+                window.updated_at = now
             await session.commit()
             return ClaimedWeComDelivery(
                 job_id=job.id,
@@ -658,6 +944,7 @@ def _auto_delivery_candidate_statement(
         )
         .where(
             delivered_run.business_date == business_date,
+            delivered_run.daily_topic_selection_id.is_not(None),
             WeComDeliveryJobModel.mode == "formal",
         )
         .exists()
@@ -670,6 +957,7 @@ def _auto_delivery_candidate_statement(
         )
         .where(
             CopyGenerationRunModel.business_date == business_date,
+            CopyGenerationRunModel.daily_topic_selection_id.is_not(None),
             MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
             ~exists().where(WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id),
             ~formal_delivery_exists,
@@ -740,6 +1028,104 @@ def _auto_delivery_candidate_statement(
         ),
     )
     return statement.order_by(MaterialPackageModel.created_at).limit(limit)
+
+
+def _slot_auto_delivery_candidate_statement(
+    *, settings: Settings, business_date: date, now: datetime, limit: int
+) -> Select[tuple[MaterialPackageModel]]:
+    enabled_slots = tuple(
+        schedule.slot.value for schedule in settings.content_slot_schedules() if schedule.enabled
+    )
+    statement = (
+        select(MaterialPackageModel)
+        .join(
+            CopyGenerationRunModel,
+            CopyGenerationRunModel.id == MaterialPackageModel.run_id,
+        )
+        .join(
+            ContentSlotSelectionModel,
+            ContentSlotSelectionModel.id == CopyGenerationRunModel.content_slot_selection_id,
+        )
+        .join(
+            ContentSlotRunModel,
+            ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+        )
+        .where(
+            ContentSlotSelectionModel.business_date == business_date,
+            ContentSlotRunModel.content_slot.in_(enabled_slots),
+            ContentSlotRunModel.status == "succeeded",
+            ContentSlotRunModel.expires_at > now,
+            MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
+            ~exists().where(
+                WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id,
+                WeComDeliveryJobModel.mode == "formal",
+            ),
+        )
+    )
+    if settings.wecom_require_review_before_send:
+        return (
+            statement.where(MaterialPackageModel.review_status == "approved")
+            .order_by(ContentSlotRunModel.target_at, ContentSlotSelectionModel.ordinal)
+            .limit(limit)
+        )
+
+    image_sha256 = ImageArtifactModel.sha256
+    expected_png_key = func.concat(
+        "generated-images/sha256/",
+        func.substr(image_sha256, 1, 2),
+        "/",
+        image_sha256,
+        ".png",
+    )
+    expected_jpeg_key = func.concat(
+        "generated-images/sha256/",
+        func.substr(image_sha256, 1, 2),
+        "/",
+        image_sha256,
+        ".jpg",
+    )
+    image_audit_ready = or_(
+        ImageArtifactModel.audit_snapshot.contains({"configured": False}),
+        and_(
+            ImageArtifactModel.audit_snapshot.contains({"configured": True}),
+            ImageArtifactModel.audit_snapshot.contains({"passed": True}),
+        ),
+    )
+    return (
+        statement.join(
+            ImageArtifactModel,
+            ImageArtifactModel.id == MaterialPackageModel.image_artifact_id,
+        )
+        .where(
+            MaterialPackageModel.review_status != "rejected",
+            MaterialPackageModel.validation_snapshot.contains({"passed": True}),
+            MaterialPackageModel.audit_snapshot.contains({"accepted": True}),
+            ImageArtifactModel.status == "succeeded",
+            ImageArtifactModel.validation_snapshot.contains({"configured": True}),
+            ImageArtifactModel.validation_snapshot.contains({"passed": True}),
+            image_audit_ready,
+            ImageArtifactModel.bucket == settings.minio_bucket,
+            ImageArtifactModel.media_type.in_(("image/png", "image/jpeg")),
+            ImageArtifactModel.byte_size >= WECOM_MIN_IMAGE_BYTES,
+            ImageArtifactModel.byte_size <= settings.wecom_max_image_bytes,
+            image_sha256.op("~")(r"^[0-9a-f]{64}$"),
+            ImageArtifactModel.storage_metadata.contains(
+                {"access": "private", "immutable": True, "content_addressed": True}
+            ),
+            or_(
+                and_(
+                    ImageArtifactModel.media_type == "image/png",
+                    ImageArtifactModel.object_key == expected_png_key,
+                ),
+                and_(
+                    ImageArtifactModel.media_type == "image/jpeg",
+                    ImageArtifactModel.object_key == expected_jpeg_key,
+                ),
+            ),
+        )
+        .order_by(ContentSlotRunModel.target_at, ContentSlotSelectionModel.ordinal)
+        .limit(limit)
+    )
 
 
 def _auto_delivery_readiness_state(package: MaterialPackageModel) -> tuple[str, ...]:

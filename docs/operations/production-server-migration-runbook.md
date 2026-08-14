@@ -160,6 +160,45 @@ environment dumps or credential-bearing command output.
    and worker liveness. A disabled content stage is a recorded domain configuration result, not an
    infrastructure failure.
 
+### Three-slot preparation and staged rollout
+
+The legacy daily Top 1 path remains active while `CONTENT_SLOT_MODE_ENABLED=false`. A slot target is
+the earliest delivery time, not generation start: acquisition is scheduled at target minus
+`CONTENT_SLOT_PREPARE_LEAD_MINUTES` (default 90), and delivery closes after
+`CONTENT_SLOT_DELIVERY_LATE_MINUTES` (default 60). Keep the mode and all three slot switches false
+during an ordinary upgrade.
+
+Before enabling a slot, use read-only checks to confirm the exact scheduled acquisition and its
+terminal governance lineage, then inspect the edition without exposing content or object keys:
+
+```bash
+curl -fsS 'https://<public-host>/api/v1/content-editions/<yyyy-mm-dd>?profile=preview'
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
+  "SELECT business_date, content_slot, status, selected_count, unfilled_count, error_code
+     FROM content_slot_runs ORDER BY created_at DESC LIMIT 12;"
+```
+
+An authorized operator may enqueue a bounded replay only after readiness is verified:
+
+```bash
+curl -fsS -X POST 'https://<public-host>/api/v1/content-slot-runs' \
+  -H 'Content-Type: application/json' \
+  --data '{"business_date":"<yyyy-mm-dd>","content_slot":"morning"}'
+```
+
+Roll out one switch at a time. Enable morning first and require two completed windows with no
+duplicate event, incorrect send, or `delivery_unknown`. Then enable noon and require two completed
+morning+noon days with cross-slot deduplication. Enable evening only after the same evidence passes.
+At every stage verify one package per selected item, `not_before`/`expires_at`, and the persisted
+window `next_allowed_at` gap; never infer delivery from log timing alone.
+
+To stop new slot scheduling, set `CONTENT_SLOT_MODE_ENABLED=false` (or the affected slot switch
+false) and restart schedulers/workers. Do not delete slot rows or move late packages into another
+slot. Before reverting to legacy daily scheduling, verify no slot selection, copy, image, or
+delivery job is running and no delivery window remains open. Stop automatic delivery immediately
+on an unknown result; `delivery_unknown` and expired jobs are audit records and must never be
+automatically resent.
+
 9. Start the WeCom dispatcher only after the upstream stages are healthy and the delivery policy has
    been reviewed:
 

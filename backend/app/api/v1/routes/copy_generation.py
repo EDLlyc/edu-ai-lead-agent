@@ -115,7 +115,11 @@ async def read_copy_generation_detail(
 def _run_response(run: CopyGenerationRunModel) -> CopyGenerationRunResponse:
     return CopyGenerationRunResponse(
         id=run.id,
+        origin_kind=(
+            "content_slot" if run.content_slot_selection_id is not None else "legacy_daily"
+        ),
         daily_topic_selection_id=run.daily_topic_selection_id,
+        content_slot_selection_id=run.content_slot_selection_id,
         business_date=run.business_date,
         timezone=run.timezone,
         scoring_profile=run.scoring_profile,

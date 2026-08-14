@@ -73,6 +73,16 @@ class TopicSelectionLeaseLostError(AppError):
         )
 
 
+class ContentSlotLeaseLostError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "content_slot_lease_lost",
+            "content slot lease ownership was lost",
+            503,
+            True,
+        )
+
+
 class BrandIngestionLeaseLostError(AppError):
     def __init__(self) -> None:
         super().__init__(

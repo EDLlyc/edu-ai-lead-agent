@@ -126,6 +126,17 @@ class CopyGenerationRepository(Protocol):
         max_attempts: int = 3,
     ) -> int: ...
 
+    async def reconcile_ready_slot_topics(
+        self,
+        *,
+        business_date: date,
+        timezone: str,
+        scoring_profile: str,
+        version_bundle: CopyVersionBundle,
+        limit: int = 20,
+        max_attempts: int = 3,
+    ) -> int: ...
+
     async def claim(
         self,
         *,

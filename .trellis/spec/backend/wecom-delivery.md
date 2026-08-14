@@ -166,7 +166,8 @@ API responses, or durable delivery rows.
 | Send timeout or ambiguous transport result | Mark child and job `unknown`/`delivery_unknown`; never auto-resend |
 | Invalid recipient, invalid credentials, unsupported media, or malformed provider response | Terminal safe error; no raw provider text in API/logs |
 | Text succeeds and image fails | Persist text success and mark job `partial` or queued for an eligible retry |
-| Dispatcher lease expires | Reclaim with `FOR UPDATE SKIP LOCKED`; skip already delivered children |
+| Legacy dispatcher lease expires | Reclaim with `FOR UPDATE SKIP LOCKED`; skip already delivered children |
+| Slot dispatcher lease expires after package start | Persist the unresolved child and job as unknown; never auto-reclaim it |
 
 ## 5. Good / Base / Bad Cases
 
@@ -192,7 +193,7 @@ API responses, or durable delivery rows.
 - Service tests assert text composition, UTF-8 byte limits, strict approval, direct-mode package
   eligibility and quality vetoes, image descriptor checksum/signature validation, and safe default
   settings.
-- PostgreSQL integration tests upgrade a clean database to `20260807_0019`, assert both delivery
+- PostgreSQL integration tests upgrade a clean database to `20260814_0020`, assert both delivery
   tables and constraints, and compare `Base.metadata` without SQLite.
 - Dispatcher/service tests must assert text-before-image ordering, persistence before the second
   child, partial failure, bounded retry, unknown timeout terminal state, lease heartbeat, and
@@ -358,3 +359,23 @@ The group webhook has no access-token message API and its image contract is inli
 await group_client.send_text("default", None, markdown, text_fingerprint)
 await group_client.send_image_bytes("default", None, body, "image/png", filename, image_fingerprint)
 ```
+
+## Slot delivery windows and durable package gap
+
+Legacy-origin formal packages retain the date-wide guard documented above. A slot-origin formal
+package instead requires relational `delivery_window_id`, `content_slot_selection_id`, ordinal,
+`not_before`, and `expires_at` fields. Never infer a slot or delivery window from JSON snapshots or
+row creation time.
+
+Each date/timezone/slot/logical-recipient/provider/formal-mode lane has one durable delivery-window
+row. Claim only jobs whose target has arrived and expiry has not, lock the window in the same short
+transaction, select the lowest ordinal among currently ready jobs, and advance `next_allowed_at` by
+the bounded `WECOM_SLOT_PACKAGE_GAP_SECONDS` before making any provider call. This is the package
+start gap; text-before-image and child-result persistence remain unchanged inside the package.
+
+An unready, failed, expired, or unknown lower ordinal does not block a ready sibling. A queued job
+that expires becomes `delivery_window_expired` without a provider call. Any slot job whose running
+lease is lost after package start is conservatively persisted as `delivery_unknown`, including the
+unresolved child attempt, even if the delivery window is still open; it is never automatically
+reclaimed. This slot rule does not reinterpret the legacy lease-recovery path. `delivery_unknown`
+remains terminal for automatic reconciliation, and no expired package moves to a later slot or day.

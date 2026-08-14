@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response, status
@@ -18,6 +18,7 @@ from app.schemas.acquisition import (
     AcquisitionJobListResponse,
     AcquisitionJobResponse,
     AcquisitionRunResponse,
+    ContentSlotValue,
     CreateAcquisitionRunRequest,
 )
 
@@ -34,6 +35,7 @@ def _run_response(run: object) -> AcquisitionRunResponse:
         business_date=run.business_date,
         timezone=run.timezone,
         acquisition_version=run.acquisition_version,
+        content_slot=cast(ContentSlotValue | None, run.content_slot),
         status=run.status,
         total_jobs=run.total_jobs,
         succeeded_jobs=run.succeeded_jobs,

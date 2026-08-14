@@ -2,7 +2,7 @@
 
 面向家长的每日科学与 AI 教育内容素材 Agent。采集层当前从十个活动来源增量采集科学教育、AI 教育、科学素养、STEM 与青少年科创实践等公开资料，并保存不可变快照与完整来源证据；新华教育已通过新增来源激活门，另有两个已批准的连接器等待独立实时激活门，目标来源数为十二。治理层从已存储候选中做版本化规范化、事实结构化分析、精确/语义去重和可审计事件组织。
 
-第二层使用 PostgreSQL/pgvector 和可恢复的 LangGraph checkpoint，支持离线 fake provider 与显式启用的智谱模型。当前仍不包含选题评分、Top 1、品牌 RAG、文案/图片生成、产品前端页面或自动发布。
+第二层使用 PostgreSQL/pgvector 和可恢复的 LangGraph checkpoint，支持确定性选题、品牌 RAG、证据绑定文案、独立图片/素材包、内部审核台，以及离线 fake provider 与显式启用的智谱模型。默认仍运行兼容的每日 Top 1；另有默认关闭的早、中、晚三时段模式，每个栏目可独立选择 0--3 条并生产、验证和投递独立素材。系统不提供公开社交平台自动发布。
 
 ## 前置条件
 
@@ -62,6 +62,11 @@ make stack-up
 API、Scheduler 和 Worker 是独立进程。Scheduler 默认每天 `06:30 Asia/Shanghai` 创建一次持久任务；若服务器在当天计划时间后恢复，并且仍处于 12 小时补偿窗口内，会补建当天任务。数据库唯一约束确保多个 Scheduler 副本不会重复创建同一天的运行记录。
 
 治理 Scheduler/Worker 也是独立进程，并且默认关闭。Compose 使用 `governance` profile，普通 `make stack-up` 不会启动模型流程。准备好配置后可运行 `make governance-stack-up`；治理模型故障不会阻塞采集 API、采集 Scheduler 或采集 Worker。
+
+三时段模式由 `CONTENT_SLOT_MODE_ENABLED` 和三个栏目开关共同控制，全部默认关闭。
+默认目标为 07:30、12:30、18:30（`Asia/Shanghai`），上游提前 90 分钟准备，投递窗口为目标后 60 分钟；同一栏目相邻素材包的开始时间通过数据库窗口保持至少 60 秒。只读查看接口为
+`GET /api/v1/content-editions/<yyyy-mm-dd>?profile=preview`。旧
+`GET /api/v1/daily-topics/<yyyy-mm-dd>` 继续保留每日 Top 1 的历史语义。
 
 ## 首批权威来源
 

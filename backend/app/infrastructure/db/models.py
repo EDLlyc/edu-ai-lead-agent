@@ -150,6 +150,7 @@ class AcquisitionRunModel(Base):
     business_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     timezone: Mapped[str] = mapped_column(String(80), nullable=False)
     acquisition_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_slot: Mapped[str | None] = mapped_column(String(20), nullable=True)
     manual_idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     total_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -168,9 +169,20 @@ class AcquisitionRunModel(Base):
     __table_args__ = (
         CheckConstraint("trigger IN ('scheduled', 'manual')", name="ck_acquisition_runs_trigger"),
         CheckConstraint(
+            "content_slot IS NULL OR content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_acquisition_runs_content_slot",
+        ),
+        CheckConstraint(
             "status IN ('queued', 'running', 'succeeded', "
             "'partially_succeeded', 'failed', 'cancelled')",
             name="ck_acquisition_runs_status",
+        ),
+        UniqueConstraint(
+            "id",
+            "business_date",
+            "timezone",
+            "content_slot",
+            name="uq_acquisition_runs_id_slot_identity",
         ),
         Index(
             "uq_acquisition_runs_scheduled_business_key",
@@ -178,7 +190,16 @@ class AcquisitionRunModel(Base):
             "timezone",
             "acquisition_version",
             unique=True,
-            postgresql_where=text("trigger = 'scheduled'"),
+            postgresql_where=text("trigger = 'scheduled' AND content_slot IS NULL"),
+        ),
+        Index(
+            "uq_acquisition_runs_scheduled_slot_business_key",
+            "business_date",
+            "timezone",
+            "acquisition_version",
+            "content_slot",
+            unique=True,
+            postgresql_where=text("trigger = 'scheduled' AND content_slot IS NOT NULL"),
         ),
         Index(
             "uq_acquisition_runs_manual_idempotency",
@@ -474,6 +495,7 @@ class GovernanceRunModel(Base):
             "'failed', 'cancelled')",
             name="ck_governance_runs_status",
         ),
+        UniqueConstraint("id", "acquisition_run_id", name="uq_governance_runs_id_acquisition"),
         Index(
             "uq_governance_runs_acquisition_profile",
             "acquisition_run_id",
@@ -1638,6 +1660,377 @@ class DailyTopicSelectionModel(Base):
     )
 
 
+class ContentSlotRunModel(Base):
+    __tablename__ = "content_slot_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(20), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    content_slot: Mapped[str] = mapped_column(String(20), nullable=False)
+    scoring_profile: Mapped[str] = mapped_column(String(40), nullable=False)
+    acquisition_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "acquisition_runs.id",
+            name="fk_content_slot_runs_acquisition_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    governance_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "governance_runs.id",
+            name="fk_content_slot_runs_governance_run_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    governed_event_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    config_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_scoring_configs.id",
+            name="fk_content_slot_runs_config_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    slot_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    slot_policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    slot_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    preparation_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    target_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    item_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    total_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    eligible_scores: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    unfilled_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    unfilled_reason_codes: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("trigger IN ('manual', 'scheduled')", name="ck_content_slot_runs_trigger"),
+        CheckConstraint(
+            "content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_content_slot_runs_content_slot",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_content_slot_runs_status",
+        ),
+        CheckConstraint(
+            "preparation_at < target_at AND target_at <= expires_at",
+            name="ck_content_slot_runs_window",
+        ),
+        CheckConstraint("item_limit BETWEEN 1 AND 3", name="ck_content_slot_runs_item_limit"),
+        CheckConstraint(
+            "total_scores >= 0 AND eligible_scores >= 0 AND selected_count >= 0 "
+            "AND unfilled_count >= 0 AND selected_count <= item_limit "
+            "AND unfilled_count = item_limit - selected_count",
+            name="ck_content_slot_runs_counts",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(unfilled_reason_codes) = 'array'",
+            name="ck_content_slot_runs_unfilled_reasons_array",
+        ),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "content_slot",
+            "scoring_profile",
+            "slot_policy_fingerprint",
+            name="uq_content_slot_runs_business_policy",
+        ),
+        UniqueConstraint(
+            "acquisition_run_id",
+            "governance_run_id",
+            "scoring_profile",
+            "slot_policy_fingerprint",
+            name="uq_content_slot_runs_lineage_policy",
+        ),
+        UniqueConstraint(
+            "id",
+            "business_date",
+            "timezone",
+            "content_slot",
+            name="uq_content_slot_runs_id_slot_identity",
+        ),
+        ForeignKeyConstraint(
+            ["acquisition_run_id", "business_date", "timezone", "content_slot"],
+            [
+                "acquisition_runs.id",
+                "acquisition_runs.business_date",
+                "acquisition_runs.timezone",
+                "acquisition_runs.content_slot",
+            ],
+            name="fk_content_slot_runs_acquisition_identity",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["governance_run_id", "acquisition_run_id"],
+            ["governance_runs.id", "governance_runs.acquisition_run_id"],
+            name="fk_content_slot_runs_governance_lineage",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_content_slot_runs_status_created", "status", "created_at"),
+        Index("ix_content_slot_runs_business_slot", "business_date", "content_slot"),
+    )
+
+
+class ContentSlotJobModel(Base):
+    __tablename__ = "content_slot_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("content_slot_runs.id", name="fk_content_slot_jobs_run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_content_slot_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_content_slot_jobs_attempt_count"),
+        UniqueConstraint("run_id", name="uq_content_slot_jobs_run_id"),
+        Index("ix_content_slot_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class ContentSlotScoreModel(Base):
+    __tablename__ = "content_slot_scores"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_runs.id", name="fk_content_slot_scores_run_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id", name="fk_content_slot_scores_event_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    event_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_content_slot_scores_event_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    raw_features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    normalized_features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    weights: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    penalty_weights: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    positive_components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    penalty_components: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    total: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    passes_threshold: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    veto_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    explanation: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    slot_affinity: Mapped[float] = mapped_column(Float, nullable=False)
+    slot_affinity_reasons: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    same_day_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    same_day_exclusion_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    final_ordering_value: Mapped[float] = mapped_column(Float, nullable=False)
+    final_ordering_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("rank >= 1", name="ck_content_slot_scores_rank"),
+        CheckConstraint(
+            "selected_ordinal IS NULL OR selected_ordinal BETWEEN 1 AND 3",
+            name="ck_content_slot_scores_selected_ordinal",
+        ),
+        CheckConstraint(
+            "slot_affinity >= 0 AND slot_affinity <= 0.25",
+            name="ck_content_slot_scores_affinity",
+        ),
+        CheckConstraint(
+            "same_day_excluded = (same_day_exclusion_reason IS NOT NULL)",
+            name="ck_content_slot_scores_exclusion",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(veto_codes) = 'array' AND jsonb_typeof(slot_affinity_reasons) = 'array'",
+            name="ck_content_slot_scores_arrays",
+        ),
+        UniqueConstraint("run_id", "event_id", name="uq_content_slot_scores_run_event"),
+        UniqueConstraint("run_id", "rank", name="uq_content_slot_scores_run_rank"),
+        UniqueConstraint(
+            "run_id", "selected_ordinal", name="uq_content_slot_scores_run_selected_ordinal"
+        ),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "event_id",
+            "event_version_id",
+            "selected_ordinal",
+            name="uq_content_slot_scores_selection_identity",
+        ),
+        ForeignKeyConstraint(
+            ["event_version_id", "event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_content_slot_scores_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_content_slot_scores_run_order", "run_id", "rank"),
+    )
+
+
+class ContentSlotSelectionModel(Base):
+    __tablename__ = "content_slot_selections"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_runs.id", name="fk_content_slot_selections_run_id", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    score_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_scores.id",
+            name="fk_content_slot_selections_score_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    content_slot: Mapped[str] = mapped_column(String(20), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_event_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_clusters.id",
+            name="fk_content_slot_selections_selected_event_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    selected_event_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "event_cluster_versions.id",
+            name="fk_content_slot_selections_selected_event_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_content_slot_selections_content_slot",
+        ),
+        CheckConstraint("ordinal BETWEEN 1 AND 3", name="ck_content_slot_selections_ordinal"),
+        UniqueConstraint("run_id", "ordinal", name="uq_content_slot_selections_run_ordinal"),
+        UniqueConstraint(
+            "run_id", "selected_event_id", name="uq_content_slot_selections_run_event"
+        ),
+        UniqueConstraint("score_id", name="uq_content_slot_selections_score_id"),
+        UniqueConstraint(
+            "id",
+            "business_date",
+            "timezone",
+            "selected_event_id",
+            "selected_event_version_id",
+            name="uq_content_slot_selections_copy_origin_identity",
+        ),
+        UniqueConstraint("id", "ordinal", name="uq_content_slot_selections_delivery_ordinal"),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "selected_event_id",
+            name="uq_content_slot_selections_daily_event",
+        ),
+        ForeignKeyConstraint(
+            ["selected_event_version_id", "selected_event_id"],
+            ["event_cluster_versions.id", "event_cluster_versions.event_id"],
+            name="fk_content_slot_selections_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["run_id", "business_date", "timezone", "content_slot"],
+            [
+                "content_slot_runs.id",
+                "content_slot_runs.business_date",
+                "content_slot_runs.timezone",
+                "content_slot_runs.content_slot",
+            ],
+            name="fk_content_slot_selections_run_identity",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "score_id",
+                "run_id",
+                "selected_event_id",
+                "selected_event_version_id",
+                "ordinal",
+            ],
+            [
+                "content_slot_scores.id",
+                "content_slot_scores.run_id",
+                "content_slot_scores.event_id",
+                "content_slot_scores.event_version_id",
+                "content_slot_scores.selected_ordinal",
+            ],
+            name="fk_content_slot_selections_score_identity",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_content_slot_selections_business_slot", "business_date", "content_slot"),
+    )
+
+
 class BrandDocumentModel(Base):
     __tablename__ = "brand_documents"
 
@@ -1978,23 +2371,32 @@ class CopyGenerationRunModel(Base):
     __tablename__ = "copy_generation_runs"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    daily_topic_selection_id: Mapped[UUID] = mapped_column(
+    daily_topic_selection_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
             "daily_topic_selections.id",
             name="fk_copy_generation_runs_daily_topic_selection_id",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
     )
-    topic_selection_run_id: Mapped[UUID] = mapped_column(
+    content_slot_selection_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_selections.id",
+            name="fk_copy_generation_runs_content_slot_selection_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    topic_selection_run_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
             "topic_selection_runs.id",
             name="fk_copy_generation_runs_topic_selection_run_id",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
     )
     business_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -2025,6 +2427,13 @@ class CopyGenerationRunModel(Base):
             "decision_kind IN ('selected', 'no_topic')", name="ck_copy_generation_runs_decision"
         ),
         CheckConstraint(
+            "(daily_topic_selection_id IS NOT NULL AND content_slot_selection_id IS NULL "
+            "AND topic_selection_run_id IS NOT NULL) OR "
+            "(daily_topic_selection_id IS NULL AND content_slot_selection_id IS NOT NULL "
+            "AND topic_selection_run_id IS NULL AND decision_kind = 'selected')",
+            name="ck_copy_generation_runs_origin_xor",
+        ),
+        CheckConstraint(
             "status IN ('queued', 'running', 'no_topic', 'accepted', 'review_required', 'failed')",
             name="ck_copy_generation_runs_status",
         ),
@@ -2041,10 +2450,33 @@ class CopyGenerationRunModel(Base):
             "version_fingerprint",
             name="uq_copy_generation_runs_topic_version",
         ),
+        UniqueConstraint(
+            "content_slot_selection_id",
+            "version_fingerprint",
+            name="uq_copy_generation_runs_slot_version",
+        ),
         ForeignKeyConstraint(
             ["selected_event_version_id", "selected_event_id"],
             ["event_cluster_versions.id", "event_cluster_versions.event_id"],
             name="fk_copy_generation_runs_event_version_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "content_slot_selection_id",
+                "business_date",
+                "timezone",
+                "selected_event_id",
+                "selected_event_version_id",
+            ],
+            [
+                "content_slot_selections.id",
+                "content_slot_selections.business_date",
+                "content_slot_selections.timezone",
+                "content_slot_selections.selected_event_id",
+                "content_slot_selections.selected_event_version_id",
+            ],
+            name="fk_copy_generation_runs_slot_origin_identity",
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
@@ -2736,6 +3168,63 @@ class MaterialReviewModel(Base):
     )
 
 
+class WeComDeliveryWindowModel(Base):
+    __tablename__ = "wecom_delivery_windows"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    content_slot: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    package_gap_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_wecom_delivery_windows_content_slot",
+        ),
+        CheckConstraint(
+            "provider IN ('self_built_app', 'group_webhook')",
+            name="ck_wecom_delivery_windows_provider",
+        ),
+        CheckConstraint("mode = 'formal'", name="ck_wecom_delivery_windows_mode"),
+        CheckConstraint("target_at <= expires_at", name="ck_wecom_delivery_windows_interval"),
+        CheckConstraint(
+            "package_gap_seconds BETWEEN 1 AND 600",
+            name="ck_wecom_delivery_windows_gap",
+        ),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "content_slot",
+            "recipient_id",
+            "provider",
+            "mode",
+            name="uq_wecom_delivery_windows_lane",
+        ),
+        UniqueConstraint(
+            "id",
+            "recipient_id",
+            "mode",
+            "target_at",
+            "expires_at",
+            name="uq_wecom_delivery_windows_job_identity",
+        ),
+        Index("ix_wecom_delivery_windows_next_allowed", "next_allowed_at", "expires_at"),
+    )
+
+
 class WeComDeliveryJobModel(Base):
     __tablename__ = "wecom_delivery_jobs"
 
@@ -2749,6 +3238,27 @@ class WeComDeliveryJobModel(Base):
         ),
         nullable=False,
     )
+    delivery_window_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "wecom_delivery_windows.id",
+            name="fk_wecom_delivery_jobs_delivery_window_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    content_slot_selection_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_selections.id",
+            name="fk_wecom_delivery_jobs_content_slot_selection_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    sequence_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recipient_id: Mapped[str] = mapped_column(String(80), nullable=False)
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     package_version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -2786,7 +3296,7 @@ class WeComDeliveryJobModel(Base):
         CheckConstraint("mode IN ('test', 'formal')", name="ck_wecom_delivery_jobs_mode"),
         CheckConstraint(
             "status IN ('queued', 'running', 'partial', 'delivery_unknown', 'delivered', "
-            "'failed', 'cancelled')",
+            "'failed', 'cancelled', 'delivery_window_expired')",
             name="ck_wecom_delivery_jobs_status",
         ),
         CheckConstraint(
@@ -2802,6 +3312,14 @@ class WeComDeliveryJobModel(Base):
         CheckConstraint(
             "include_copy OR include_image", name="ck_wecom_delivery_jobs_message_kind"
         ),
+        CheckConstraint(
+            "(delivery_window_id IS NULL AND content_slot_selection_id IS NULL "
+            "AND sequence_ordinal IS NULL AND not_before IS NULL AND expires_at IS NULL) OR "
+            "(delivery_window_id IS NOT NULL AND content_slot_selection_id IS NOT NULL "
+            "AND sequence_ordinal BETWEEN 1 AND 3 AND not_before IS NOT NULL "
+            "AND expires_at IS NOT NULL AND not_before <= expires_at)",
+            name="ck_wecom_delivery_jobs_slot_shape",
+        ),
         UniqueConstraint("request_fingerprint", name="uq_wecom_delivery_jobs_request"),
         Index(
             "ix_wecom_delivery_jobs_claim",
@@ -2810,6 +3328,37 @@ class WeComDeliveryJobModel(Base):
             "lease_expires_at",
         ),
         Index("ix_wecom_delivery_jobs_package", "material_package_id"),
+        UniqueConstraint(
+            "delivery_window_id",
+            "sequence_ordinal",
+            "material_package_id",
+            name="uq_wecom_delivery_jobs_window_package",
+        ),
+        ForeignKeyConstraint(
+            ["content_slot_selection_id", "sequence_ordinal"],
+            ["content_slot_selections.id", "content_slot_selections.ordinal"],
+            name="fk_wecom_delivery_jobs_slot_ordinal",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["delivery_window_id", "recipient_id", "mode", "not_before", "expires_at"],
+            [
+                "wecom_delivery_windows.id",
+                "wecom_delivery_windows.recipient_id",
+                "wecom_delivery_windows.mode",
+                "wecom_delivery_windows.target_at",
+                "wecom_delivery_windows.expires_at",
+            ],
+            name="fk_wecom_delivery_jobs_window_identity",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_wecom_delivery_jobs_slot_claim",
+            "delivery_window_id",
+            "sequence_ordinal",
+            "not_before",
+            "expires_at",
+        ),
     )
 
 

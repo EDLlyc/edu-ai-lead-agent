@@ -90,6 +90,27 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 `CONTENT_SCORING_VERSION`, `CONTENT_SCORING_PROFILE`, and
 `CONTENT_SELECTION_PRIORITY_RULE_VERSION`.
 
+## Parallel content-slot selection
+
+“Daily Top 1” in this document is the legacy compatibility path. The optional parallel aggregate
+uses the exhaustive `ContentSlot` keys `morning`, `noon`, and `evening`; all slot-mode and per-slot
+feature switches default to false. Each enabled slot owns an exact scheduled acquisition and
+terminal governance lineage, immutable governed cutoff, 1--3 item limit, and independently computed
+preparation/target/expiry instants in the configured IANA timezone.
+
+`slot-ranking-v1` composes after the current `.6` selector. It may add only a bounded affinity from
+stored governed/editorial/product projections when ordering already eligible candidates. It cannot
+change the base total, threshold, eligibility, Ministry priority, seven-day repeat decision, or any
+veto. Persist every considered score, affinity reason, same-day exclusion, stable ordering key and
+explicit unfilled reason. Hold the business-date advisory lock while persisting and rely on the
+relational daily-event unique constraint for cross-slot convergence.
+
+The seven-day projection for a slot run merges prior `daily_topic_selections` and prior
+`content_slot_selections` for the same timezone/profile before computing
+`days_since_last_selection`; the most recent business date wins. This merge is opt-in at the slot
+repository boundary. The legacy `load_topic_candidates` path remains daily-history-only so `.4`,
+`.5`, and `.6` daily replays are not reinterpreted by rows created by the parallel slot aggregate.
+
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |

@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, ContentSlotSchedule
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 
@@ -89,6 +90,20 @@ class Settings(BaseSettings):
     content_scoring_version: str = "scoring-v1-preview.6-tiered-science-tech-priority"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = "ministry-education-priority-v3"
+    content_slot_mode_enabled: bool = False
+    content_morning_enabled: bool = False
+    content_noon_enabled: bool = False
+    content_evening_enabled: bool = False
+    content_morning_target_hour: int = Field(default=7, ge=0, le=23)
+    content_morning_target_minute: int = Field(default=30, ge=0, le=59)
+    content_noon_target_hour: int = Field(default=12, ge=0, le=23)
+    content_noon_target_minute: int = Field(default=30, ge=0, le=59)
+    content_evening_target_hour: int = Field(default=18, ge=0, le=23)
+    content_evening_target_minute: int = Field(default=30, ge=0, le=59)
+    content_slot_prepare_lead_minutes: int = Field(default=90, ge=30, le=180)
+    content_slot_delivery_late_minutes: int = Field(default=60, ge=0, le=120)
+    content_slot_max_items: int = Field(default=3, ge=1, le=3)
+    content_slot_ranking_version: Literal["slot-ranking-v1"] = DEFAULT_SLOT_RANKING_VERSION
 
     wecom_enabled: bool = False
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com"
@@ -111,6 +126,7 @@ class Settings(BaseSettings):
     wecom_max_text_bytes: int = Field(default=2048, ge=1, le=2048)
     wecom_group_max_image_bytes: int = Field(default=2 * 1024 * 1024, ge=6, le=2 * 1024 * 1024)
     wecom_group_max_text_bytes: int = Field(default=4096, ge=1, le=4096)
+    wecom_slot_package_gap_seconds: int = Field(default=60, ge=1, le=600)
 
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
@@ -206,6 +222,45 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
     )
 
+    def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
+        def schedule(
+            slot: ContentSlot,
+            *,
+            enabled: bool,
+            target_hour: int,
+            target_minute: int,
+        ) -> ContentSlotSchedule:
+            return ContentSlotSchedule(
+                slot=slot,
+                enabled=enabled,
+                target_hour=target_hour,
+                target_minute=target_minute,
+                prepare_lead_minutes=self.content_slot_prepare_lead_minutes,
+                delivery_late_minutes=self.content_slot_delivery_late_minutes,
+                max_items=self.content_slot_max_items,
+            )
+
+        return (
+            schedule(
+                ContentSlot.MORNING,
+                enabled=self.content_morning_enabled,
+                target_hour=self.content_morning_target_hour,
+                target_minute=self.content_morning_target_minute,
+            ),
+            schedule(
+                ContentSlot.NOON,
+                enabled=self.content_noon_enabled,
+                target_hour=self.content_noon_target_hour,
+                target_minute=self.content_noon_target_minute,
+            ),
+            schedule(
+                ContentSlot.EVENING,
+                enabled=self.content_evening_enabled,
+                target_hour=self.content_evening_target_hour,
+                target_minute=self.content_evening_target_minute,
+            ),
+        )
+
     @model_validator(mode="after")
     def validate_runtime_invariants(self) -> "Settings":
         if self.acquisition_heartbeat_seconds >= self.acquisition_lease_seconds:
@@ -226,6 +281,8 @@ class Settings(BaseSettings):
             self.content_scheduler_enabled or self.content_worker_enabled
         ) and not self.content_enabled:
             raise ValueError("content processes require content to be enabled")
+        if self.content_slot_mode_enabled and not self.content_enabled:
+            raise ValueError("content slot mode requires content to be enabled")
         if self.acquisition_total_timeout_seconds < self.acquisition_read_timeout_seconds:
             raise ValueError("acquisition total timeout must cover the read timeout")
         if (
@@ -387,6 +444,7 @@ class Settings(BaseSettings):
             self.content_scoring_version,
             self.content_scoring_profile,
             self.content_selection_priority_rule_version,
+            self.content_slot_ranking_version,
             self.acquisition_version,
             self.brand_parser_version,
             self.brand_chunk_version,

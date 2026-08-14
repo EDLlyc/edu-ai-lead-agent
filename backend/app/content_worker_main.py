@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.services.brand_knowledge import BrandIngestionExecutor
+from app.application.services.content_slots import ContentSlotExecutor
 from app.application.services.copy_generation import (
     BrandRagContextRetriever,
     CopyGenerationExecutor,
@@ -39,6 +40,7 @@ from app.infrastructure.ai.factory import (
 )
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
+from app.infrastructure.db.content_slots import PostgresContentSlotRepository
 from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
 from app.infrastructure.db.governance_checkpointer import PostgresGovernanceCheckpointer
 from app.infrastructure.db.session import create_engine, create_session_factory
@@ -77,6 +79,9 @@ async def run_content_worker() -> None:
         copy_saver = await exit_stack.enter_async_context(copy_checkpointer.saver())
         repository = PostgresTopicSelectionRepository(session_factory)
         executor = TopicSelectionExecutor(repository, settings)
+        slot_executor = ContentSlotExecutor(
+            PostgresContentSlotRepository(session_factory), settings
+        )
         brand_executor: BrandIngestionExecutor | None = None
         copy_repository = PostgresCopyGenerationRepository(session_factory)
         copy_executor = CopyGenerationExecutor(
@@ -187,6 +192,7 @@ async def run_content_worker() -> None:
                     worker_id=f"{worker_prefix}:{index + 1}",
                     stop=stop,
                     executor=executor,
+                    slot_executor=slot_executor,
                     brand_executor=brand_executor,
                     copy_executor=copy_executor,
                     material_executor=material_executor,
@@ -225,6 +231,7 @@ async def _worker_loop(
     worker_id: str,
     stop: asyncio.Event,
     executor: TopicSelectionExecutor,
+    slot_executor: ContentSlotExecutor,
     brand_executor: BrandIngestionExecutor | None,
     copy_executor: CopyGenerationExecutor,
     material_executor: MaterialPackageExecutor | None,
@@ -234,8 +241,14 @@ async def _worker_loop(
 ) -> None:
     cursor = 0
     while not stop.is_set():
-        await copy_repository.reconcile_ready_topics(
-            business_date=datetime.now(UTC).astimezone(ZoneInfo(settings.business_timezone)).date(),
+        business_date = datetime.now(UTC).astimezone(ZoneInfo(settings.business_timezone)).date()
+        reconciliation = (
+            copy_repository.reconcile_ready_slot_topics
+            if settings.content_slot_mode_enabled
+            else copy_repository.reconcile_ready_topics
+        )
+        await reconciliation(
+            business_date=business_date,
             timezone=settings.business_timezone,
             scoring_profile=settings.content_scoring_profile,
             version_bundle=build_copy_version_bundle(settings),
@@ -245,7 +258,12 @@ async def _worker_loop(
             created = await material_executor.reconcile_ready_packages()
             if created:
                 logger.info("material_packages_reconciled", created_count=created)
-        work = [executor.execute_next, copy_executor.execute_next]
+        topic_work = (
+            slot_executor.execute_next
+            if settings.content_slot_mode_enabled
+            else executor.execute_next
+        )
+        work = [topic_work, copy_executor.execute_next]
         if brand_executor is not None:
             work.insert(1, brand_executor.execute_next)
         if material_executor is not None:

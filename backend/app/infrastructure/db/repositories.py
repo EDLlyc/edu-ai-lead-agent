@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.acquisition import ClaimedJob, CursorState, PersistedCandidate
 from app.core.errors import ConflictError, LeaseLostError, NotFoundError
+from app.domain.content_slots import ContentSlot
 from app.domain.entities import (
     ExtractedDocument,
     FetchedResponse,
@@ -120,11 +121,13 @@ async def create_run(
     timezone: str,
     acquisition_version: str,
     business_date: date | None = None,
+    content_slot: ContentSlot | None = None,
     manual_idempotency_key: str | None = None,
     source_ids: list[UUID] | None = None,
 ) -> tuple[AcquisitionRunModel, bool]:
     if trigger is RunTrigger.SCHEDULED and business_date is None:
         raise ValueError("scheduled runs require a business date")
+    slot_value = content_slot.value if content_slot is not None else None
 
     if trigger is RunTrigger.SCHEDULED:
         existing = await session.scalar(
@@ -133,6 +136,7 @@ async def create_run(
                 AcquisitionRunModel.business_date == business_date,
                 AcquisitionRunModel.timezone == timezone,
                 AcquisitionRunModel.acquisition_version == acquisition_version,
+                AcquisitionRunModel.content_slot == slot_value,
             )
         )
     elif manual_idempotency_key:
@@ -166,6 +170,7 @@ async def create_run(
         business_date=business_date,
         timezone=timezone,
         acquisition_version=acquisition_version,
+        content_slot=slot_value,
         manual_idempotency_key=manual_idempotency_key,
         status=RunStatus.QUEUED.value,
         total_jobs=len(rows),
@@ -193,6 +198,7 @@ async def create_run(
                     AcquisitionRunModel.business_date == business_date,
                     AcquisitionRunModel.timezone == timezone,
                     AcquisitionRunModel.acquisition_version == acquisition_version,
+                    AcquisitionRunModel.content_slot == slot_value,
                 )
             )
         elif manual_idempotency_key:
@@ -942,6 +948,7 @@ class PostgresAcquisitionRepository:
         timezone: str,
         acquisition_version: str,
         business_date: date | None = None,
+        content_slot: ContentSlot | None = None,
         manual_idempotency_key: str | None = None,
         source_ids: list[UUID] | None = None,
     ) -> tuple[UUID, bool]:
@@ -952,6 +959,7 @@ class PostgresAcquisitionRepository:
                 timezone=timezone,
                 acquisition_version=acquisition_version,
                 business_date=business_date,
+                content_slot=content_slot,
                 manual_idempotency_key=manual_idempotency_key,
                 source_ids=source_ids,
             )

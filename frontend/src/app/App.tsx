@@ -1,4 +1,5 @@
 import { BrandKnowledgePanel } from "@/features/brand/BrandKnowledgePanel";
+import { ContentEditionBoard } from "@/features/content-edition/ContentEditionBoard";
 import { MaterialPackagePanel } from "@/features/material/MaterialPackagePanel";
 import { PreviewPanel } from "@/features/preview/PreviewPanel";
 
@@ -57,6 +58,7 @@ export function App() {
 
         <BrandKnowledgePanel />
         <PreviewPanel />
+        <ContentEditionBoard />
         <MaterialPackagePanel />
 
         <section className={styles.safetyRail} aria-labelledby="safety-title">

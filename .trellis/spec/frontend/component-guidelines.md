@@ -95,6 +95,15 @@ behavior. Loading indicators have accessible text. Errors show a safe user actio
 request/run ID for support. Do not render stale package content as if it belonged to a newly
 selected run.
 
+For the three-slot board, render all three stable columns even when a column is disabled or has no
+items. Keep each 0--3 selection in its own card with its own copy/package/delivery status and source
+links; a sibling failure must remain visually local. Show target/expiry and explicit unfilled
+reasons in text, preserve logical heading order, and ensure date input and resource links work by
+keyboard. Once the immutable delivery expiry is reached, a queued/running run that never completed
+and a selection without a started delivery must project `expired`, not remain indefinitely
+`preparing`; confirmed failed, delivered, or unknown results retain their explicit state. Reuse the
+material-package visual vocabulary without adding a publish action.
+
 ## Avoid
 
 - One component that fetches, transforms, renders, copies, downloads, and polls.

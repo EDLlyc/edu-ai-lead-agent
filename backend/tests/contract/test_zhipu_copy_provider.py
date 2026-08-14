@@ -15,7 +15,12 @@ from app.core.errors import (
     ProviderAuthenticationError,
     provider_validation_issues_metadata,
 )
-from app.domain.copy_generation import ActiveBrandContext, EligibleEvidence, LockedTopicContext
+from app.domain.copy_generation import (
+    ActiveBrandContext,
+    EligibleEvidence,
+    LegacyDailyTopicOrigin,
+    LockedTopicContext,
+)
 from app.infrastructure.ai.copy_generation import (
     ProviderJsonEnvelopeError,
     create_zhipu_copy_models,
@@ -28,8 +33,10 @@ from pydantic import SecretStr, ValidationError
 def _request() -> DraftGenerationRequest:
     evidence_id = uuid4()
     topic = LockedTopicContext(
-        daily_topic_selection_id=uuid4(),
-        topic_selection_run_id=uuid4(),
+        origin=LegacyDailyTopicOrigin(
+            daily_topic_selection_id=uuid4(),
+            topic_selection_run_id=uuid4(),
+        ),
         business_date=date(2026, 7, 30),
         timezone="Asia/Shanghai",
         scoring_profile="preview",

@@ -15,6 +15,7 @@ from app.api.v1.routes import (
     acquisition_runs,
     brand_knowledge,
     candidate_analyses,
+    content_slots,
     copy_generation,
     events,
     evidence_candidates,
@@ -100,6 +101,7 @@ app.include_router(governance_runs.router, prefix="/api/v1")
 app.include_router(candidate_analyses.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(topic_selection_runs.router, prefix="/api/v1")
+app.include_router(content_slots.router, prefix="/api/v1")
 app.include_router(brand_knowledge.router, prefix="/api/v1")
 app.include_router(copy_generation.router, prefix="/api/v1")
 app.include_router(material_packages.router, prefix="/api/v1")

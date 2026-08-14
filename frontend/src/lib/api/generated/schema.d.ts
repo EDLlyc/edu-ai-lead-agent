@@ -195,6 +195,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/content-editions/{business_date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Content Edition */
+        get: operations["read_content_edition_api_v1_content_editions__business_date__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Content Slot Run */
+        post: operations["create_content_slot_run_api_v1_content_slot_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Content Slot Run */
+        get: operations["read_content_slot_run_api_v1_content_slot_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/content-slot-runs/{run_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Content Slot Scores */
+        get: operations["read_content_slot_scores_api_v1_content_slot_runs__run_id__scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/copy-generation-runs": {
         parameters: {
             query?: never;
@@ -702,6 +770,8 @@ export interface components {
             business_date: string | null;
             /** Completed At */
             completed_at: string | null;
+            /** Content Slot */
+            content_slot: ("morning" | "noon" | "evening") | null;
             /**
              * Created At
              * Format: date-time
@@ -1213,6 +1283,286 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ContentEditionResponse */
+        ContentEditionResponse: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Slot Mode Enabled */
+            slot_mode_enabled: boolean;
+            /** Slots */
+            slots: components["schemas"]["ContentEditionSlotResponse"][];
+            /** Timezone */
+            timezone: string;
+        };
+        /** ContentEditionSelectionResponse */
+        ContentEditionSelectionResponse: {
+            /** Copy Generation Run Id */
+            copy_generation_run_id: string | null;
+            /** Copy Status */
+            copy_status: string | null;
+            /** Copy Url */
+            copy_url: string | null;
+            /** Delivery Id */
+            delivery_id: string | null;
+            /** Delivery Status */
+            delivery_status: string | null;
+            /** Delivery Url */
+            delivery_url: string | null;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Time */
+            event_time: string | null;
+            /**
+             * Event Version Id
+             * Format: uuid
+             */
+            event_version_id: string;
+            /** Material Package Id */
+            material_package_id: string | null;
+            /** Material Package Status */
+            material_package_status: string | null;
+            /** Material Package Url */
+            material_package_url: string | null;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Selection Id
+             * Format: uuid
+             */
+            selection_id: string;
+            /** Source Links */
+            source_links: components["schemas"]["ContentEditionSourceResponse"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "preparing" | "ready" | "failed" | "expired" | "delivered" | "delivery_unknown";
+            /** Title */
+            title: string;
+        };
+        /** ContentEditionSlotResponse */
+        ContentEditionSlotResponse: {
+            /**
+             * Content Slot
+             * @enum {string}
+             */
+            content_slot: "morning" | "noon" | "evening";
+            /** Display Name */
+            display_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Item Limit */
+            item_limit: number;
+            /** Run Id */
+            run_id: string | null;
+            /** Run Status */
+            run_status: string | null;
+            /** Run Url */
+            run_url: string | null;
+            /** Selected Count */
+            selected_count: number;
+            /** Selections */
+            selections: components["schemas"]["ContentEditionSelectionResponse"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "disabled" | "missing" | "preparing" | "ready" | "failed" | "expired";
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Unfilled Count */
+            unfilled_count: number;
+            /** Unfilled Reason Codes */
+            unfilled_reason_codes: string[];
+        };
+        /** ContentEditionSourceResponse */
+        ContentEditionSourceResponse: {
+            /** Source Name */
+            source_name: string;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string;
+        };
+        /** ContentSlotRunResponse */
+        ContentSlotRunResponse: {
+            /**
+             * Acquisition Run Id
+             * Format: uuid
+             */
+            acquisition_run_id: string;
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Completed At */
+            completed_at: string | null;
+            /** Config Fingerprint */
+            config_fingerprint: string;
+            /**
+             * Content Slot
+             * @enum {string}
+             */
+            content_slot: "morning" | "noon" | "evening";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /** Eligible Scores */
+            eligible_scores: number;
+            /** Error Code */
+            error_code: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Governance Run Id
+             * Format: uuid
+             */
+            governance_run_id: string;
+            /**
+             * Governed Event Cutoff
+             * Format: date-time
+             */
+            governed_event_cutoff: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Item Limit */
+            item_limit: number;
+            /**
+             * Preparation At
+             * Format: date-time
+             */
+            preparation_at: string;
+            /** Scores Url */
+            scores_url: string;
+            /** Scoring Profile */
+            scoring_profile: string;
+            /** Selected Count */
+            selected_count: number;
+            /** Slot Policy Fingerprint */
+            slot_policy_fingerprint: string;
+            /** Slot Policy Version */
+            slot_policy_version: string;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed";
+            /** Status Url */
+            status_url: string;
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Timezone */
+            timezone: string;
+            /** Total Scores */
+            total_scores: number;
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "manual" | "scheduled";
+            /** Unfilled Count */
+            unfilled_count: number;
+            /** Unfilled Reason Codes */
+            unfilled_reason_codes: string[];
+        };
+        /** ContentSlotScoreListResponse */
+        ContentSlotScoreListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["ContentSlotScoreResponse"][];
+        };
+        /** ContentSlotScoreResponse */
+        ContentSlotScoreResponse: {
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Event Time */
+            event_time: string | null;
+            /** Event Title */
+            event_title: string;
+            /**
+             * Event Version Id
+             * Format: uuid
+             */
+            event_version_id: string;
+            /** Explanation */
+            explanation: {
+                [key: string]: unknown;
+            };
+            /** Final Ordering Key */
+            final_ordering_key: string;
+            /** Final Ordering Value */
+            final_ordering_value: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Passes Threshold */
+            passes_threshold: boolean;
+            /** Rank */
+            rank: number;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Same Day Excluded */
+            same_day_excluded: boolean;
+            /** Same Day Exclusion Reason */
+            same_day_exclusion_reason: string | null;
+            /** Selected Ordinal */
+            selected_ordinal?: number | null;
+            /** Slot Affinity */
+            slot_affinity: number;
+            /** Slot Affinity Reasons */
+            slot_affinity_reasons: string[];
+            /** Threshold */
+            threshold: number;
+            /** Total */
+            total: number;
+            /** Veto Codes */
+            veto_codes: string[];
+        };
         /** CopyClaimResponse */
         CopyClaimResponse: {
             /** Brand Chunk Ids */
@@ -1275,16 +1625,15 @@ export interface components {
             business_date: string;
             /** Completed At */
             completed_at: string | null;
+            /** Content Slot Selection Id */
+            content_slot_selection_id: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Daily Topic Selection Id
-             * Format: uuid
-             */
-            daily_topic_selection_id: string;
+            /** Daily Topic Selection Id */
+            daily_topic_selection_id: string | null;
             /**
              * Decision Kind
              * @enum {string}
@@ -1303,6 +1652,11 @@ export interface components {
             id: string;
             /** No Topic Code */
             no_topic_code: string | null;
+            /**
+             * Origin Kind
+             * @enum {string}
+             */
+            origin_kind: "legacy_daily" | "content_slot";
             /** Repair Count */
             repair_count: number;
             /** Scoring Profile */
@@ -1334,16 +1688,15 @@ export interface components {
             business_date: string;
             /** Completed At */
             completed_at: string | null;
+            /** Content Slot Selection Id */
+            content_slot_selection_id: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Daily Topic Selection Id
-             * Format: uuid
-             */
-            daily_topic_selection_id: string;
+            /** Daily Topic Selection Id */
+            daily_topic_selection_id: string | null;
             /**
              * Decision Kind
              * @enum {string}
@@ -1360,6 +1713,11 @@ export interface components {
             id: string;
             /** No Topic Code */
             no_topic_code: string | null;
+            /**
+             * Origin Kind
+             * @enum {string}
+             */
+            origin_kind: "legacy_daily" | "content_slot";
             /** Repair Count */
             repair_count: number;
             /** Scoring Profile */
@@ -1406,6 +1764,16 @@ export interface components {
             business_date?: string | null;
             /** Source Ids */
             source_ids?: string[] | null;
+        };
+        /** CreateContentSlotRunRequest */
+        CreateContentSlotRunRequest: {
+            /** Business Date */
+            business_date?: string | null;
+            /**
+             * Content Slot
+             * @enum {string}
+             */
+            content_slot: "morning" | "noon" | "evening";
         };
         /** CreateCopyGenerationRunRequest */
         CreateCopyGenerationRunRequest: {
@@ -2320,6 +2688,8 @@ export interface components {
             }[];
             /** Business Date */
             business_date: string;
+            /** Content Slot */
+            content_slot?: ("morning" | "noon" | "evening") | null;
             /** Copy */
             copy: {
                 [key: string]: unknown;
@@ -2344,12 +2714,16 @@ export interface components {
             download_kind: "material_package_json";
             /** Download Url */
             download_url: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             image: components["schemas"]["ImageArtifactResponse"];
+            /** Ordinal */
+            ordinal?: number | null;
             /** Package Version */
             package_version: number;
             /** Review Note */
@@ -2372,6 +2746,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+            /** Target At */
+            target_at?: string | null;
             /** Topic */
             topic: {
                 [key: string]: unknown;
@@ -2404,6 +2780,8 @@ export interface components {
             }[];
             /** Business Date */
             business_date: string;
+            /** Content Slot */
+            content_slot?: ("morning" | "noon" | "evening") | null;
             /** Copy */
             copy: {
                 [key: string]: unknown;
@@ -2422,12 +2800,16 @@ export interface components {
             detail_url: string;
             /** Download Url */
             download_url: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             image: components["schemas"]["ImageArtifactResponse"];
+            /** Ordinal */
+            ordinal?: number | null;
             /** Package Version */
             package_version: number;
             /** Review Note */
@@ -2450,6 +2832,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+            /** Target At */
+            target_at?: string | null;
             /** Topic */
             topic: {
                 [key: string]: unknown;
@@ -2467,6 +2851,8 @@ export interface components {
         MaterialPackageSummaryResponse: {
             /** Business Date */
             business_date: string;
+            /** Content Slot */
+            content_slot?: ("morning" | "noon" | "evening") | null;
             /**
              * Copy Generation Run Id
              * Format: uuid
@@ -2479,11 +2865,15 @@ export interface components {
             created_at: string;
             /** Detail Url */
             detail_url: string;
+            /** Expires At */
+            expires_at?: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Ordinal */
+            ordinal?: number | null;
             /**
              * Review Status
              * @enum {string}
@@ -2494,6 +2884,8 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "ready" | "awaiting_manual_use" | "completed" | "rejected" | "failed";
+            /** Target At */
+            target_at?: string | null;
         };
         /** MaterialReviewRequest */
         MaterialReviewRequest: {
@@ -2848,11 +3240,17 @@ export interface components {
             attempt_count: number;
             /** Completed At */
             completed_at: string | null;
+            /** Content Slot Selection Id */
+            content_slot_selection_id: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Delivery Window Id */
+            delivery_window_id: string | null;
+            /** Expires At */
+            expires_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -2879,19 +3277,23 @@ export interface components {
              * @enum {string}
              */
             mode: "test" | "formal";
+            /** Not Before */
+            not_before: string | null;
             /** Package Version */
             package_version: number;
             /** Recipient Id */
             recipient_id: string;
             /** Retry Url */
             retry_url: string;
+            /** Sequence Ordinal */
+            sequence_ordinal?: number | null;
             /** Started At */
             started_at: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "partial" | "delivery_unknown" | "delivered" | "failed" | "cancelled";
+            status: "queued" | "running" | "partial" | "delivery_unknown" | "delivered" | "failed" | "cancelled" | "delivery_window_expired";
             /**
              * Text Status
              * @enum {string}
@@ -3281,6 +3683,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandidateAnalysisDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_content_edition_api_v1_content_editions__business_date__get: {
+        parameters: {
+            query?: {
+                profile?: string;
+            };
+            header?: never;
+            path: {
+                business_date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentEditionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_content_slot_run_api_v1_content_slot_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateContentSlotRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentSlotRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_content_slot_run_api_v1_content_slot_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentSlotRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_content_slot_scores_api_v1_content_slot_runs__run_id__scores_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentSlotScoreListResponse"];
                 };
             };
             /** @description Validation Error */

@@ -30,6 +30,8 @@ from app.domain.topic_selection import (
 from app.infrastructure.db.models import (
     AcquisitionRunModel,
     ArticleOccurrenceModel,
+    ContentSlotRunModel,
+    ContentSlotSelectionModel,
     DailyTopicSelectionModel,
     EventAssignmentDecisionModel,
     EventClusterModel,
@@ -119,21 +121,10 @@ def source_trust_projection(tiers_by_source: dict[UUID, set[str]]) -> tuple[floa
     return sum(per_source_trust) / len(per_source_trust), tier_c_only, eligible_evidence
 
 
-async def enqueue_topic_selection_run(
+async def ensure_topic_scoring_config(
     session: AsyncSession,
-    *,
-    business_date: date,
-    timezone: str,
     config: TopicScoringConfig,
-    governed_event_cutoff: datetime,
-    trigger: str = "manual",
-) -> tuple[TopicSelectionRunModel, bool]:
-    if governed_event_cutoff.tzinfo is None:
-        raise ValueError("governed event cutoff must be timezone-aware")
-    if not timezone.strip() or len(timezone) > 80:
-        raise ValueError("topic selection timezone must be non-blank and bounded")
-    if trigger not in {"manual", "scheduled"}:
-        raise ValueError("topic selection trigger must be manual or scheduled")
+) -> TopicScoringConfigModel:
     snapshot = config.as_metadata()
     fingerprint = topic_scoring_config_fingerprint(config)
     config_id = uuid4()
@@ -161,7 +152,32 @@ async def enqueue_topic_selection_run(
         if stored_config.fingerprint != fingerprint or stored_config.config_snapshot != snapshot:
             await session.rollback()
             raise ConflictError("topic scoring config version is immutable")
-        config_id = stored_config.id
+        return stored_config
+    stored_config = await session.get(TopicScoringConfigModel, config_id)
+    if stored_config is None:
+        raise RuntimeError("created topic scoring config could not be loaded")
+    return stored_config
+
+
+async def enqueue_topic_selection_run(
+    session: AsyncSession,
+    *,
+    business_date: date,
+    timezone: str,
+    config: TopicScoringConfig,
+    governed_event_cutoff: datetime,
+    trigger: str = "manual",
+) -> tuple[TopicSelectionRunModel, bool]:
+    if governed_event_cutoff.tzinfo is None:
+        raise ValueError("governed event cutoff must be timezone-aware")
+    if not timezone.strip() or len(timezone) > 80:
+        raise ValueError("topic selection timezone must be non-blank and bounded")
+    if trigger not in {"manual", "scheduled"}:
+        raise ValueError("topic selection trigger must be manual or scheduled")
+    stored_config = await ensure_topic_scoring_config(session, config)
+    snapshot = config.as_metadata()
+    fingerprint = stored_config.fingerprint
+    config_id = stored_config.id
 
     current = await session.scalar(
         select(TopicSelectionRunModel)
@@ -391,14 +407,41 @@ async def load_topic_candidates(
     run = await session.get(TopicSelectionRunModel, run_id)
     if run is None:
         raise NotFoundError("topic selection run")
-    recent_days_value = run.config_snapshot.get("recent_selection_window_days", 7)
+    return await load_governed_topic_candidates(
+        session,
+        business_date=run.business_date,
+        timezone=run.timezone,
+        scoring_profile=run.scoring_profile,
+        governed_event_cutoff=run.governed_event_cutoff,
+        config_snapshot=run.config_snapshot,
+    )
+
+
+async def load_governed_topic_candidates(
+    session: AsyncSession,
+    *,
+    business_date: date,
+    timezone: str,
+    scoring_profile: str,
+    governed_event_cutoff: datetime,
+    config_snapshot: dict[str, object],
+    include_content_slot_history: bool = False,
+) -> tuple[TopicCandidate, ...]:
+    """Project immutable governed candidates without reinterpreting legacy history.
+
+    Legacy daily runs intentionally keep their historical daily-only repetition projection.
+    New content-slot runs additionally merge prior slot selections so the same seven-day veto
+    continues across slot-produced editions.
+    """
+
+    recent_days_value = config_snapshot.get("recent_selection_window_days", 7)
     recent_days = int(recent_days_value) if isinstance(recent_days_value, int) else 7
 
     latest_version_id = (
         select(EventClusterVersionModel.id)
         .where(
             EventClusterVersionModel.event_id == EventClusterModel.id,
-            EventClusterVersionModel.created_at <= run.governed_event_cutoff,
+            EventClusterVersionModel.created_at <= governed_event_cutoff,
         )
         .order_by(EventClusterVersionModel.version.desc(), EventClusterVersionModel.id.desc())
         .limit(1)
@@ -514,13 +557,13 @@ async def load_topic_candidates(
                 .where(
                     EventAssignmentDecisionModel.selected_event_id.in_(event_ids),
                     EventAssignmentDecisionModel.outcome == "review_required",
-                    EventAssignmentDecisionModel.created_at <= run.governed_event_cutoff,
+                    EventAssignmentDecisionModel.created_at <= governed_event_cutoff,
                 )
                 .distinct()
             )
         ).all()
     )
-    prior_rows = tuple(
+    daily_prior_rows = tuple(
         (
             await session.execute(
                 select(
@@ -529,18 +572,45 @@ async def load_topic_candidates(
                     DailyTopicSelectionModel.business_date,
                 ).where(
                     DailyTopicSelectionModel.decision_kind == "selected",
-                    DailyTopicSelectionModel.business_date < run.business_date,
+                    DailyTopicSelectionModel.business_date < business_date,
                     DailyTopicSelectionModel.business_date
-                    >= run.business_date - timedelta(days=max(recent_days, 30)),
-                    DailyTopicSelectionModel.timezone == run.timezone,
-                    DailyTopicSelectionModel.scoring_profile == run.scoring_profile,
+                    >= business_date - timedelta(days=max(recent_days, 30)),
+                    DailyTopicSelectionModel.timezone == timezone,
+                    DailyTopicSelectionModel.scoring_profile == scoring_profile,
                 )
             )
         ).tuples()
     )
+    slot_prior_rows: tuple[tuple[UUID, UUID, date], ...] = ()
+    if include_content_slot_history:
+        slot_prior_rows = tuple(
+            (
+                await session.execute(
+                    select(
+                        ContentSlotSelectionModel.selected_event_id,
+                        ContentSlotSelectionModel.selected_event_version_id,
+                        ContentSlotSelectionModel.business_date,
+                    )
+                    .join(
+                        ContentSlotRunModel,
+                        ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                    )
+                    .where(
+                        ContentSlotSelectionModel.business_date < business_date,
+                        ContentSlotSelectionModel.business_date
+                        >= business_date - timedelta(days=max(recent_days, 30)),
+                        ContentSlotSelectionModel.timezone == timezone,
+                        ContentSlotRunModel.scoring_profile == scoring_profile,
+                    )
+                )
+            ).tuples()
+        )
     last_selected: dict[UUID, date] = {}
     prior_version_ids: list[UUID] = []
-    for selected_event_id, selected_version_id, selected_business_date in prior_rows:
+    for selected_event_id, selected_version_id, selected_business_date in (
+        *daily_prior_rows,
+        *slot_prior_rows,
+    ):
         if selected_event_id is not None:
             previous = last_selected.get(selected_event_id)
             if previous is None or selected_business_date > previous:
@@ -671,7 +741,7 @@ async def load_topic_candidates(
                 ),
                 prohibited_marketing_risk=marketing_hits > 0,
                 days_since_last_selection=(
-                    (run.business_date - last_selected[version.event_id]).days
+                    (business_date - last_selected[version.event_id]).days
                     if version.event_id in last_selected
                     else None
                 ),

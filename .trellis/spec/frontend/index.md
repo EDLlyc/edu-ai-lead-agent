@@ -17,6 +17,12 @@ preserves the version 0.2 starting decisions as historical context; version 0.3 
 control where the old report differs. Material packages are implemented as a manual-use workflow;
 automated social publishing remains prohibited.
 
+The SPA also contains a date-oriented three-slot content-edition board. It consumes only the
+generated `ContentEditionResponse`, always renders morning/noon/evening in stable order, and shows
+disabled, missing, preparing, empty/unfilled, ready, failed, expired, delivered and unknown states
+per independent item. It links to safe source and material-package resources, keeps polling in the
+server-state hook only while enabled slots are incomplete, and provides no publishing controls.
+
 React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types are implemented.
 
 ## Guidelines index
