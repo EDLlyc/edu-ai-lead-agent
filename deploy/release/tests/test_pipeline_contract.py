@@ -25,6 +25,14 @@ ENV_MASK_PATHS = (
     "frontend/.env.test",
     "frontend/.env.test.local",
 )
+FLOW_CI_RUNS_ON = {
+    "group": "public/cn-beijing",
+    "container": (
+        "build-steps-public-registry.cn-beijing.cr.aliyuncs.com/"
+        "build-steps/alinux3@sha256:"
+        "876efc938a207d8d1d0bc1c3305a1d849995ea34a769ef28715f8414dbae7bf1"
+    ),
+}
 
 
 def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
@@ -96,6 +104,23 @@ def test_flow_display_names_fit_documented_limits() -> None:
             assert len(job["name"]) <= 30
             for step in job.get("steps", {}).values():
                 assert len(step["name"]) <= 30
+
+
+def test_ci_jobs_use_pinned_specified_container_and_probe_docker() -> None:
+    pipeline = yaml.safe_load(pipeline_text())
+    stages = pipeline["stages"]
+    quality_job = stages["quality_stage"]["jobs"]["quality_job"]
+    image_job = stages["image_stage"]["jobs"]["image_job"]
+    for job in (quality_job, image_job):
+        assert isinstance(job["runsOn"], dict)
+        assert job["runsOn"] == FLOW_CI_RUNS_ON
+    source_identity = quality_job["steps"]["source_identity"]["with"]["run"]
+    commands = [line.strip() for line in source_identity.splitlines() if line.strip()]
+    assert commands[:3] == [
+        "set -Eeuo pipefail",
+        "docker info --format 'docker_daemon_ready server_version={{.ServerVersion}}'",
+        "docker compose version",
+    ]
 
 
 def test_compose_uses_one_application_image_variable() -> None:

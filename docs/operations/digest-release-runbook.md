@@ -55,12 +55,19 @@ read-only `/dev/null` overlay; absent files remain absent, while symlink/non-reg
 fail closed. The wrappers do not pass an env-file, host environment, Docker socket, or privileged
 mode.
 
+The Flow `quality_job` and local-candidate `image_job` run in the official Yunxiao alinux3
+linux/amd64 manifest pinned by digest. Run 4 proved that the deprecated/default environment may
+lack Docker entirely even when checkout succeeds. `source_identity` therefore runs a redacted
+`docker info` server-version probe followed by `docker compose version` before any build. The
+official image inventory is useful review evidence, but these live probes are authoritative for
+daemon and Compose availability; do not download an unpinned Compose plugin inside the job.
+
 Before `backend-check`, Flow waits for healthy `postgres` and `minio`, then runs `minio-init`
 synchronously, resolves the Compose project network, and supplies only fixed
 development-placeholder DB/MinIO and provider-disabled variables to the Python quality container.
-Node receives ordinary registry egress only for `npm ci`; later frontend checks run with no network.
-Neither quality container receives Flow secrets, and neither quality image is tagged for ACR,
-added to the release bundle, or deployed.
+The Python wrapper otherwise uses no network. Node receives ordinary registry egress only for
+`npm ci`; later frontend checks run with no network. Neither quality container receives Flow
+secrets, and neither quality image is tagged for ACR, added to the release bundle, or deployed.
 
 Local Compose keeps its existing developer workflow:
 
@@ -111,7 +118,7 @@ The following values are deliberately inactive or placeholders in `deploy/yunxia
 | Gate | Required administrator evidence before activation |
 | --- | --- |
 | Codeup source connection | Project-scoped connection ID, normalized Flow read-back, branch CI success, and pipeline ID available for protected `main` |
-| `ACR_PUBLISH_ENABLED` | Project-isolated repository, service connection `79934` authorized only as intended, builder network access, tag-to-digest resolution, and pull-by-digest/offline probes |
+| `ACR_PUBLISH_ENABLED` | Project-isolated repository, connection inventory `79934` / YAML-facing ID `c8jknt8rkk1w7tc1` authorized only as intended, builder network access, tag-to-digest resolution, and pull-by-digest/offline probes |
 | `GITHUB_BACKUP_ENABLED` | Repository-scoped write identity, strict known-host verification, exact-SHA no-op test, and no reverse synchronization |
 | `PRODUCTION_DEPLOY_ENABLED` | Tencent Runner identity and machine group, concurrency one, root-owned entrypoint, pull-only project ACR identity, successful dry run, and verified prior digest release |
 
@@ -128,7 +135,7 @@ known. A candidate ACR push must not imply permission to deploy it.
 | --- | --- | --- |
 | Developer Codeup SSH key | This Codeup workflow only; expiring | Local SSH agent/config outside Git; remove at expiry and issue a distinct replacement |
 | Flow Codeup source | Read the project repository | Yunxiao protected service connection; rotate without putting key material in YAML |
-| Flow ACR publisher | Push only the isolated project repository | Service connection `79934` only after resource isolation is proven; administrator rotates it |
+| Flow ACR publisher | Push only the isolated project repository | Connection inventory `79934` / YAML-facing `c8jknt8rkk1w7tc1` only after resource isolation is proven; administrator rotates it |
 | Production ACR identity | Pull only the isolated project repository | Root-only credential store on the host; verify it cannot push before and after rotation |
 | GitHub backup key | Write only `EDLlyc/edu-ai-lead-agent` | Protected Flow file/credential plus pinned official known-host entry; rotate independently of Codeup |
 | Tencent Runner token | One-time registration only | Never store the install command or token; reissue from the official UI when reenrolling |

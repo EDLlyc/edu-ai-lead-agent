@@ -521,6 +521,8 @@ release artifacts, or production deployment automation change.
   `edu-ai-lead-agent-ci-python:git-<12-hex>` and never published.
 - Flow Node runtime: `scripts/ci-node.sh` with the exact digest-pinned Node 20 image declared in
   `deploy/yunxiao/pipeline.yaml`; frontend quality only.
+- Flow outer CI runtime: the official Yunxiao alinux3 linux/amd64 manifest digest declared in
+  `quality_job` and `image_job`; it supplies the Docker client shell, not application dependencies.
 - Local image input: `APP_IMAGE` defaults to `edu-ai-lead-agent-backend:local`.
 - Production image input: `registry/namespace/repository@sha256:<64-lowercase-hex>`.
 - Artifact tools: `deploy/release/release_tool.py`; root deployment entrypoint:
@@ -538,13 +540,20 @@ release artifacts, or production deployment automation change.
   existing regular Pydantic/Vite environment files masked by `/dev/null`, and no host/Flow
   environment pass-through. Missing environment files stay missing; symlinks and non-regular
   mask targets fail closed.
+- Do not use the deprecated/default Flow environment for Docker jobs. Pin `quality_job` and
+  `image_job` to the reviewed official specified-container manifest. Before building, emit only the
+  Docker daemon server-version summary and Compose version; `docker info` and
+  `docker compose version` are authoritative even when the outer image inventory lists Docker CLI.
+  Do not install an unpinned Compose plugin during a run.
 - Start healthy Compose PostgreSQL/MinIO before backend tests, then run the one-shot MinIO
   initializer synchronously. Resolve the project
   network from the running PostgreSQL container; only the Python tool container joins it and only
   fixed non-production DB/MinIO plus provider-disabled values are injected. Do not use host
-  networking or mount the Docker socket into either tool container.
-- The Node quality container may use normal registry egress for `npm ci`, but it receives no host
-  secrets. Its Vite output remains ignored local/CI output and is never published or deployed.
+  networking or mount the Docker socket into either tool container. Without a validated Compose
+  network the Python wrapper explicitly uses `--network none`.
+- The Node quality container defaults to `--network none`; only `npm ci` may use normal registry
+  egress, and it receives no host secrets. Its Vite output remains ignored local/CI output and is
+  never published or deployed.
 - `backend/Dockerfile` pins its Python base by digest, installs the runtime lock with
   `--require-hashes`, records OCI created/revision/source/base metadata, and runs as non-root.
 - `.dockerignore` excludes Git/Trellis state, tests, reports, local environments, credentials,
@@ -574,6 +583,7 @@ release artifacts, or production deployment automation change.
 |---|---|
 | Lock recompilation changes either committed lock | Lock drift gate fails |
 | Managed builder lacks Python 3.11/Node 20 or exposes an older host binary | Containerized toolchain is used; host language version is irrelevant |
+| Flow job has no Docker client/daemon or Compose plugin | Pinned specified-container job fails in the initial capability probes before dependency installation or tests |
 | Checkout environment file or Flow secret exists | Wrapper masks existing regular environment files and passes no inherited/env-file secret |
 | Environment mask target is absent | Do not create it and do not add a bind mount |
 | Environment mask target is a symlink or non-regular file | Wrapper exits 2 before `docker run` |
@@ -603,6 +613,8 @@ release artifacts, or production deployment automation change.
   migration cross-checks, phase order, pre/post activation failures, lock exclusion, rollback
   eligibility/failure, redaction, inactive Flow gates, the nine-service Compose anchor, pinned CI
   images, command wrappers, environment isolation, and infra-before-backend ordering.
+- Static Flow tests require mapping-form `runsOn` with the exact official amd64 manifest digest for
+  both CI jobs and require the Docker/Compose probes before any source/toolchain work.
 - `make backend-check`, `make frontend-check`, `make python-lock-check`, full-profile Compose config,
   `make doctor`, `bash -n scripts/*.sh`, a Docker build, and network-none/read-only image probes
   pass before activation.

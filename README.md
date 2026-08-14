@@ -56,9 +56,14 @@ Codeup `marketingUseOnly/edu-ai-lead-agent` 是权威写入源，日常分支和
 连接、隔离、Runner、上一 digest 基线和 dry-run 门禁完成后由管理员逐项启用。
 Flow 质量门不使用托管机自带的语言版本：后端/发布检查由仓库构建的 Python 3.11
 dev-lock 工具镜像执行，前端门禁使用 digest 固定的 Node 20 镜像。CI 容器不继承宿主/Flow
-秘密环境，已有的 Pydantic/Vite 环境文件会被只读遮蔽；真实 PostgreSQL/MinIO 测试在
-Compose 基础设施健康且 MinIO 初始化完成后通过项目网络运行。Node 仅在 `npm ci` 时联网，
-后续前端门禁离线执行。这两个工具镜像都不会上传 ACR 或部署到生产。
+秘密环境；已有的普通 Pydantic/Vite 环境文件会被只读遮蔽，缺失文件不会被创建，符号链接
+或非普通文件会被拒绝。Python 默认无网络，只在 Compose 基础设施健康且 MinIO 初始化完成
+后加入项目网络。Node 仅在 `npm ci` 时联网，后续前端门禁离线执行。这两个工具镜像都不会
+上传 ACR 或部署到生产。
+
+`quality_job` 与本地候选镜像 `image_job` 的外层执行环境同样固定到云效官方 alinux3 的
+linux/amd64 manifest digest；启动时以 `docker info` 和 `docker compose version` 实测 daemon
+与 Compose 能力。镜像中是否声明某个工具不能替代这两个 live probe。
 
 完整的发布清单/bundle 契约、凭据轮换、激活门、Runner 停用、部署阶段和兼容性回退规则见
 [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)。

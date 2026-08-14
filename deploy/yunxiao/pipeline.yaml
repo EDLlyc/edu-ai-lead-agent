@@ -58,7 +58,9 @@ stages:
     jobs:
       quality_job:
         name: Branch-safe quality
-        runsOn: public/cn-beijing
+        runsOn:
+          group: public/cn-beijing
+          container: build-steps-public-registry.cn-beijing.cr.aliyuncs.com/build-steps/alinux3@sha256:876efc938a207d8d1d0bc1c3305a1d849995ea34a769ef28715f8414dbae7bf1
         timeoutMinutes: 90
         steps:
           source_identity:
@@ -67,6 +69,8 @@ stages:
             with:
               run: |
                 set -Eeuo pipefail
+                docker info --format 'docker_daemon_ready server_version={{.ServerVersion}}'
+                docker compose version
                 commit="$(git rev-parse HEAD)"
                 test "$(printf %s "$commit" | wc -c)" -eq 40
                 marker="$(printf %.12s "$commit")"
@@ -126,7 +130,9 @@ stages:
     jobs:
       image_job:
         name: Build local candidate
-        runsOn: public/cn-beijing
+        runsOn:
+          group: public/cn-beijing
+          container: build-steps-public-registry.cn-beijing.cr.aliyuncs.com/build-steps/alinux3@sha256:876efc938a207d8d1d0bc1c3305a1d849995ea34a769ef28715f8414dbae7bf1
         timeoutMinutes: 60
         steps:
           local_image:
