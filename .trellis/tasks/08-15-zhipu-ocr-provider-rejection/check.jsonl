@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/visual-diversity.md","reason":"Independently verify exact OCR ordering, retry budgets, compatibility and activation gates."}
+{"file":".trellis/spec/backend/index.md","reason":"Audit the change against backend-wide ownership, provider and production boundaries."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Audit typed provider errors, redaction, retryability and fail-closed behavior."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Trace provider-to-worker-to-storage data flow and confirm no delivery side effects."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run full-scope lint, type, tests, Compose, Doctor, API, migration and secret checks."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Confirm no migration drift and isolated acceptance does not cross production persistence boundaries."}
+{"file":".trellis/tasks/08-15-zhipu-ocr-provider-rejection/research/root-cause.md","reason":"Challenge the proposed fix against the primary-source capability evidence."}
+{"file":".trellis/tasks/archive/2026-08/08-15-visual-diversity-production-activation/research/production-baseline.md","reason":"Reconcile final service, flag, counter and cleanup evidence against the last failed acceptance."}
+{"file":".trellis/tasks/08-15-zhipu-ocr-provider-rejection/research/offline-deployment.md","reason":"Verify release, rollback, no-frontend and no-production-CI constraints."}

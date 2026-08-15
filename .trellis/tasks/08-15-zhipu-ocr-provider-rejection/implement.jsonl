@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/visual-diversity.md","reason":"Controlled visual version bundle, exact ordered text, OCR-before-similarity, bounded retry and rollout contract."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend source-of-truth boundaries and links to all affected provider, pipeline and quality specifications."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Provider error classification, retry boundaries, safe diagnostics and terminal-state requirements."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Image generation, OCR, storage, worker ownership and end-to-end pipeline boundaries."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Required backend, contract, Compose, Doctor, secret and full quality gates."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Provider adapter, Settings, worker and script ownership conventions."}
+{"file":".trellis/tasks/08-15-zhipu-ocr-provider-rejection/research/root-cause.md","reason":"Repository, production and official provider evidence establishing the model-capability mismatch."}
+{"file":".trellis/tasks/archive/2026-08/08-15-visual-diversity-production-activation/research/production-baseline.md","reason":"Previous production baseline and bounded isolation constraints that this retry must preserve."}
+{"file":".trellis/tasks/08-15-zhipu-ocr-provider-rejection/research/offline-deployment.md","reason":"Reviewed no-registry backend image deployment constraints while ACR remains unavailable."}
