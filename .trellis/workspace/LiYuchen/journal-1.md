@@ -941,3 +941,25 @@ Implemented default-off morning/noon/evening acquisition, post-eligibility multi
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: Deploy controlled visual diversity v2
+
+**Date**: 2026-08-15
+**Task**: Deploy controlled visual diversity v2
+**Branch**: `main`
+
+### Summary
+
+Implemented and independently checked controlled 3D visual diversity with exact branded text/OCR gates, fixed strict Compose env parsing, deployed the default-off release to production at migration 0021, and verified backups, service health, durable counters, no provider/WeCom activity, and 30-second stability.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8b55533` | (see git log) |
+| `7d8a914` | (see git log) |
+
+### Status
+
+[OK] **Completed**
