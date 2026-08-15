@@ -30,3 +30,27 @@ The rejection is explained by a deterministic capability mismatch, not by OCR te
 the application sent a multimodal `image_url` request to the text-only `glm-5.2` model. The
 smallest provider-aligned fix is a separate image OCR model/adapter using `glm-ocr` and
 `/layout_parsing`; text generation remains on GLM-5.2.
+
+## Second iteration after the one-call live fixture
+
+The first bounded fixture used the corrected `glm-ocr` capability and reached one HTTP provider
+attempt, but the adapter returned `invalid_provider_output`. No raw response body was captured, so
+the diagnosis is based only on official contract evidence and the deployed parser's deterministic
+schema:
+
+- The official document-parsing response defines `layout_details` as `object[][]`: outer pages,
+  then elements. The deployed `_ImageOcrResponse` expected a flat element list.
+- Official `data_info.num_pages` is an integer, while `data_info.pages` is an array of page objects
+  with positive `width` and `height`. The deployed page-count helper treated `pages` as another
+  integer alias and rejected the documented array.
+- Official layout elements include page `height` and `width`; the deployed element model used
+  `extra="forbid"` without those fields, making the documented example invalid locally.
+- Official `image` elements may carry bounded content such as an image reference. The deployed
+  projection rejected any non-empty non-text content even though it was neither projected nor
+  needed for the exact-text gate.
+
+These are sufficient independent offline causes for the observed generic terminal. The corrected
+boundary must accept only one nested page, type and cross-check page metadata/dimensions, ignore
+bounded `image` content, reject `table`/`formula`, and retain the exact ordered text gate. Stable,
+content-free parsing-stage issue codes are added so a future bounded gate can distinguish envelope,
+page-metadata, layout, and unsupported-structure failures without exposing provider data.

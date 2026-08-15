@@ -8,7 +8,7 @@ import re
 import zlib
 from collections.abc import Awaitable, Callable
 from time import perf_counter_ns
-from typing import Any
+from typing import Annotated, Any, TypeAlias
 from urllib.parse import urlsplit
 
 import httpx
@@ -65,7 +65,14 @@ _IMAGE_OCR_MAX_RESPONSE_BYTES = 1024 * 1024
 _IMAGE_OCR_MAX_LAYOUT_ELEMENTS = 256
 _IMAGE_OCR_MAX_CONTENT_CHARACTERS = 1_600
 _IMAGE_OCR_MAX_LINES = 8
-_IMAGE_OCR_LAYOUT_LABELS = frozenset({"formula", "image", "table", "text", "title"})
+_IMAGE_OCR_MAX_PAGES = 100
+_IMAGE_OCR_MAX_DIMENSION = 100_000
+_IMAGE_OCR_LAYOUT_LABELS = frozenset({"formula", "image", "table", "text"})
+_IMAGE_OCR_UNSUPPORTED_LAYOUT_LABELS = frozenset({"formula", "table"})
+_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE = "image_ocr_response_envelope_invalid"
+_IMAGE_OCR_PAGE_METADATA_ISSUE = "image_ocr_page_metadata_invalid"
+_IMAGE_OCR_LAYOUT_ISSUE = "image_ocr_layout_invalid"
+_IMAGE_OCR_UNSUPPORTED_LAYOUT_ISSUE = "image_ocr_unsupported_layout"
 
 
 class _ProviderModel(BaseModel):
@@ -133,15 +140,53 @@ class _ImageOcrLayoutElement(BaseModel):
     index: int = Field(gt=0, le=1_000_000, strict=True)
     label: str = Field(min_length=1, max_length=40, strict=True)
     bbox_2d: list[Any] = Field(min_length=4, max_length=4)
-    content: str = Field(max_length=_IMAGE_OCR_MAX_CONTENT_CHARACTERS, strict=True)
+    content: str = Field(default="", max_length=_IMAGE_OCR_MAX_CONTENT_CHARACTERS, strict=True)
+    height: int | None = Field(
+        default=None,
+        gt=0,
+        le=_IMAGE_OCR_MAX_DIMENSION,
+        strict=True,
+    )
+    width: int | None = Field(
+        default=None,
+        gt=0,
+        le=_IMAGE_OCR_MAX_DIMENSION,
+        strict=True,
+    )
+
+
+_ImageOcrLayoutPage: TypeAlias = Annotated[
+    list[_ImageOcrLayoutElement],
+    Field(max_length=_IMAGE_OCR_MAX_LAYOUT_ELEMENTS),
+]
+
+
+class _ImageOcrPageInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    width: int = Field(gt=0, le=_IMAGE_OCR_MAX_DIMENSION, strict=True)
+    height: int = Field(gt=0, le=_IMAGE_OCR_MAX_DIMENSION, strict=True)
+
+
+class _ImageOcrDataInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    num_pages: int = Field(gt=0, le=_IMAGE_OCR_MAX_PAGES, strict=True)
+    pages: list[_ImageOcrPageInfo] | None = Field(
+        default=None,
+        max_length=_IMAGE_OCR_MAX_PAGES,
+    )
 
 
 class _ImageOcrResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
 
     model: str = Field(min_length=1, max_length=120, strict=True)
-    layout_details: list[_ImageOcrLayoutElement] = Field(max_length=_IMAGE_OCR_MAX_LAYOUT_ELEMENTS)
-    data_info: dict[str, Any]
+    layout_details: list[_ImageOcrLayoutPage] = Field(
+        min_length=1,
+        max_length=_IMAGE_OCR_MAX_PAGES,
+    )
+    data_info: _ImageOcrDataInfo
 
 
 class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
@@ -407,15 +452,18 @@ class ZhipuImageTextRecognizer:
             max_response_bytes=self._max_response_bytes,
         )
         try:
-            parsed = _ImageOcrResponse.model_validate(response.json())
-        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValidationError, ValueError):
-            raise InvalidProviderOutputError(("invalid_schema",)) from None
+            response_payload = response.json()
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
+            raise InvalidProviderOutputError((_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE,)) from None
+        try:
+            parsed = _ImageOcrResponse.model_validate(response_payload)
+        except ValidationError as error:
+            raise InvalidProviderOutputError((_image_ocr_schema_issue(error),)) from None
         if parsed.model.casefold() != self._model.casefold():
             raise ProviderIdentityMismatchError()
-        if _required_image_ocr_page_count(parsed.data_info) != 1:
-            raise InvalidProviderOutputError(("invalid_schema",))
 
-        recognized_lines = _project_image_ocr_lines(parsed.layout_details)
+        page = _sole_image_ocr_layout_page(parsed)
+        recognized_lines = _project_image_ocr_lines(page)
         text_validation = validate_exact_visual_text(
             recognized_lines,
             request.expected_text,
@@ -431,21 +479,58 @@ class ZhipuImageTextRecognizer:
                 request_fingerprint=request.request_fingerprint,
             )
         except ValueError:
-            raise InvalidProviderOutputError(("invalid_schema",)) from None
+            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,)) from None
 
 
-def _required_image_ocr_page_count(data_info: dict[str, Any]) -> int:
-    page_counts: list[int] = []
-    for key in ("page_count", "num_pages", "pages"):
-        if key not in data_info:
+def _image_ocr_schema_issue(error: ValidationError) -> str:
+    stages: set[str] = set()
+    for issue in error.errors(include_url=False, include_context=False, include_input=False):
+        location = issue.get("loc")
+        if not isinstance(location, tuple) or not location:
             continue
-        value = data_info[key]
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise InvalidProviderOutputError(("invalid_schema",))
-        page_counts.append(value)
-    if not page_counts or len(set(page_counts)) != 1:
-        raise InvalidProviderOutputError(("invalid_schema",))
-    return page_counts[0]
+        if location[0] == "layout_details":
+            stages.add(_IMAGE_OCR_LAYOUT_ISSUE)
+        elif location[0] == "data_info":
+            stages.add(_IMAGE_OCR_PAGE_METADATA_ISSUE)
+        else:
+            stages.add(_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE)
+    if len(stages) == 1:
+        return stages.pop()
+    return _IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE
+
+
+def _sole_image_ocr_layout_page(
+    response: _ImageOcrResponse,
+) -> _ImageOcrLayoutPage:
+    if response.data_info.num_pages != 1 or len(response.layout_details) != 1:
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+    pages = response.data_info.pages
+    if "pages" in response.data_info.model_fields_set and (pages is None or len(pages) != 1):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+
+    page = response.layout_details[0]
+    page_info = pages[0] if pages is not None else None
+    element_page_dimensions: set[tuple[int, int]] = set()
+    for element in page:
+        dimension_fields = element.model_fields_set.intersection({"height", "width"})
+        if dimension_fields and (
+            dimension_fields != {"height", "width"}
+            or element.height is None
+            or element.width is None
+        ):
+            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+        if element.height is not None and element.width is not None:
+            element_page_dimensions.add((element.height, element.width))
+        if (
+            page_info is not None
+            and element.height is not None
+            and element.width is not None
+            and (element.height != page_info.height or element.width != page_info.width)
+        ):
+            raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+    if len(element_page_dimensions) > 1:
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+    return page
 
 
 def _project_image_ocr_lines(
@@ -455,17 +540,17 @@ def _project_image_ocr_lines(
     text_elements: list[tuple[float, float, int, str]] = []
     for element in elements:
         if element.index in indexed:
-            raise InvalidProviderOutputError(("invalid_schema",))
+            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
         indexed.add(element.index)
-        label = element.label.strip().casefold()
+        label = element.label
         if label not in _IMAGE_OCR_LAYOUT_LABELS:
-            raise InvalidProviderOutputError(("invalid_schema",))
+            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
         x1, y1, _x2, _y2 = _normalized_image_ocr_bbox(element.bbox_2d)
         _validate_image_ocr_content(element.content)
+        if label in _IMAGE_OCR_UNSUPPORTED_LAYOUT_LABELS:
+            raise InvalidProviderOutputError((_IMAGE_OCR_UNSUPPORTED_LAYOUT_ISSUE,))
         if label == "text":
             text_elements.append((y1, x1, element.index, element.content))
-        elif element.content.strip():
-            raise InvalidProviderOutputError(("invalid_schema",))
 
     lines: list[str] = []
     for _y1, _x1, _index, content in sorted(text_elements):
@@ -474,10 +559,10 @@ def _project_image_ocr_lines(
             if not normalized:
                 continue
             if len(normalized) > 200:
-                raise InvalidProviderOutputError(("invalid_schema",))
+                raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
             lines.append(normalized)
             if len(lines) > _IMAGE_OCR_MAX_LINES:
-                raise InvalidProviderOutputError(("invalid_schema",))
+                raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
     return tuple(lines)
 
 
@@ -490,11 +575,11 @@ def _normalized_image_ocr_bbox(value: list[Any]) -> tuple[float, float, float, f
             or not math.isfinite(coordinate)
             or not 0 <= coordinate <= 1
         ):
-            raise InvalidProviderOutputError(("invalid_schema",))
+            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
         coordinates.append(float(coordinate))
     x1, y1, x2, y2 = coordinates
     if x1 >= x2 or y1 >= y2:
-        raise InvalidProviderOutputError(("invalid_schema",))
+        raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
     return x1, y1, x2, y2
 
 
@@ -503,7 +588,7 @@ def _validate_image_ocr_content(value: str) -> None:
         (ord(character) < 32 and character not in "\t\r\n") or ord(character) == 127
         for character in value
     ):
-        raise InvalidProviderOutputError(("invalid_schema",))
+        raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
 
 
 def _normalize_ocr_markdown(value: str) -> str:

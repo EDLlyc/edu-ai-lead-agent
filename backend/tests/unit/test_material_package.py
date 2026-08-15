@@ -1419,6 +1419,67 @@ async def test_material_worker_repairs_provider_validated_exact_text_failure(
     assert package.status == "queued"
 
 
+@pytest.mark.parametrize(
+    "issue_codes",
+    (
+        ("image_ocr_response_envelope_invalid",),
+        ("image_ocr_page_metadata_invalid",),
+        ("image_ocr_layout_invalid",),
+        ("image_ocr_unsupported_layout",),
+        ("missing_visual_text", "image_ocr_layout_invalid"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_material_worker_keeps_malformed_ocr_output_terminal_before_downstream_work(
+    monkeypatch: pytest.MonkeyPatch,
+    issue_codes: tuple[str, ...],
+) -> None:
+    claimed = _claimed_material_package(visual_brief=_quality_visual_brief())
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _RecordingImageGenerator()
+    recognizer = _InvalidTextImageTextRecognizer(issue_codes)
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_ocr_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+    )
+    similarity_calls = 0
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_similarity(
+        value: ClaimedMaterialPackage,
+        *,
+        image_bytes: bytes,
+    ) -> tuple[bool, None]:
+        nonlocal similarity_calls
+        del value, image_bytes
+        similarity_calls += 1
+        return True, None
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_assess_image_similarity", fake_similarity)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert len(recognizer.requests) == 1
+    assert similarity_calls == 0
+    assert store.calls == 0
+    assert image.status == "failed"
+    assert image.repair_count == 0
+    assert image.error_code == "invalid_provider_output"
+    assert image.validation_snapshot["passed"] is False
+    assert image.validation_snapshot["stage"] == "image_ocr_provider_output"
+    assert image.validation_snapshot["issue_codes"] == list(issue_codes)
+    assert package.status == "failed"
+
+
 @pytest.mark.asyncio
 async def test_material_worker_second_quality_failure_uses_brand_catalog_fallback(
     monkeypatch: pytest.MonkeyPatch,

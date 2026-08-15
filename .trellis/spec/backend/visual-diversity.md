@@ -45,12 +45,21 @@ reference set. It does not combine sibling news items or authorize a new publish
   API and content worker receive identical OCR enablement, model, 10 MiB input, 1 MiB response,
   and 120-second timeout settings. Only media-gated PNG/JPEG bytes are accepted; the adapter sends
   a private Base64 data URL and never a public image URL.
-- Image OCR accepts one bounded page of unique positive-index layout elements with allowlisted
-  labels and finite ordered `[0,1]` boxes. It rejects content on non-text elements, projects only
-  `text` content, normalizes line endings and Unicode whitespace, sorts by `(y1, x1, index)`, caps
-  output at eight lines, and then applies the existing exact ordered signature/title/subtitle gate.
-  Raw response bodies, Base64, prompts, object keys, private paths, and image bytes never enter logs
-  or durable output.
+- Image OCR accepts the official nested `layout_details` page array only when it contains exactly
+  one bounded page of unique positive-index elements with official allowlisted labels, finite
+  ordered `[0,1]` boxes, bounded content, and optional paired positive `height`/`width`. Typed
+  `data_info.num_pages` must equal one; when `data_info.pages` is present it must contain exactly
+  one positive-dimension page consistent with element page dimensions. The adapter flattens only
+  that sole page, ignores bounded `image` content, rejects unsupported `table`/`formula`, projects
+  only `text` content, normalizes line endings and Unicode whitespace, sorts by `(y1, x1, index)`,
+  caps output at eight lines, and then applies the existing exact ordered
+  signature/title/subtitle gate. Invalid response envelope, page metadata, layout, and unsupported
+  layout use stable content-free issue codes. The material worker routes only missing, unexpected,
+  duplicate, and misordered exact-text codes through the one-repair quality path; a parser-stage
+  code, including any tuple mixed with a text code, is terminal before similarity or storage and
+  may enter only the existing safe validation snapshot. Raw response bodies, Base64, provider
+  content/URLs, prompts, object keys, private paths, and image bytes never enter logs or durable
+  output.
 - Fixed numeric bounds exposed through Compose are tested through their real string environment
   representation. In particular, `IMAGE_DIVERSITY_MAX_REGENERATIONS="1"` must normalize to the
   reviewed literal value `1`, while any other value still fails Settings validation.
@@ -84,7 +93,9 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Controlled prompt has a missing, reordered, unapproved, or extra text line | Fail before provider use when detectable from the brief; otherwise OCR repair/failure remains authoritative |
 | Empty/PDF/WebP/oversized/malformed OCR input | Typed provider-input failure before any HTTP call |
 | OCR authentication, rejection, rate limit, timeout, or temporary provider failure | Existing bounded typed provider failure; never consume the similarity repair budget |
-| Wrong OCR model/page identity or malformed index/label/bbox/content/line count | Terminal invalid-output or identity-mismatch failure before similarity/storage |
+| Wrong OCR model identity | Terminal identity-mismatch failure before similarity/storage |
+| Flat/multi-page OCR envelope, invalid/conflicting page metadata, malformed element, or unsupported table/formula | Stage-classified terminal invalid-output before similarity/storage |
+| Bounded non-text `image` content | Ignore without projection/logging/persistence; exact text remains authoritative |
 | Safety/OCR/identity/media/audit failure | Existing typed failure/recovery path; similarity cannot override it |
 | Provider/network failure | Existing bounded provider retry classification; does not consume the diversity retry |
 | Unknown version bundle or regeneration count other than one | Startup validation fails closed |
@@ -104,6 +115,9 @@ reference set. It does not combine sibling news items or authorize a new publish
 - Domain tests cover the full controlled vocabulary, invalid combinations, deterministic ranking,
   relaxation, primary/alternate difference, prompt isolation, the exact three-line text allowlist,
   provider-rejection recovery, and v1 dispatch/metadata compatibility.
+- Provider contract tests mirror the official nested page/data-info/element dimensions and cover
+  flat or multi-page envelopes, page-count/dimension conflicts, malformed elements, ignored image
+  content, rejected table/formula content, safe stage issue codes, and exact text projection.
 - Fixture similarity tests cover exact, near, distinct, threshold boundary, bounded reference
   count, and invalid thresholds without provider access.
 - Real PostgreSQL tests cover clean upgrade/metadata drift/guarded downgrade, exact composite FKs,

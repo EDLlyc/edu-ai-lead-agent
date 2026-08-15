@@ -10,6 +10,12 @@
 `AI_CHAT_MODEL=glm-5.2` 注入包含 `image_url` 的 OCR chat request。新设计用独立
 `IMAGE_OCR_MODEL=glm-ocr` 调用智谱 `/layout_parsing`，不再让图片 OCR 经过文本模型。
 
+第一次单次 live fixture 已证明 capability routing 修复生效，但 provider 的成功响应被
+本地 parser 以 `invalid_provider_output` 拒绝。第二轮离线根因是 response envelope drift：
+官方 `layout_details` 是 pages-to-elements 的 `object[][]`，`data_info.pages` 是页面对象数组，
+而已部署 parser 分别按 flat elements 和整数解释；同时它因 `extra="forbid"` 拒绝官方
+element `height`/`width`，并把有内容的 `image` element 错判为 schema failure。
+
 ## 2. Components and ownership
 
 ### 2.1 Settings and deployment contract
@@ -51,14 +57,25 @@
 
 响应：
 
-- 要求单页 `layout_details`；每个元素必须具有唯一正整数 index、允许的 label、有限且在
-  `[0,1]` 内的四元 `bbox_2d` 和有界 content。
+- `layout_details` 必须是严格的 pages-to-elements 二维数组且仅有一页；只 flatten 这唯一
+  一页。flat legacy shape、空/多页 outer array 或超限 page elements 均 fail closed。
+- `data_info` 使用 typed `num_pages` 和可选 `pages`：`num_pages` 必须为 1；`pages` 存在时
+  必须恰有一个包含正整数有限尺寸的页面，并与 element 页面尺寸一致。
+- 每个元素必须具有唯一正整数 index、官方 allowlisted label、有限且在 `[0,1]` 内的四元
+  `bbox_2d`、有界 content，以及可选但成对出现的正整数 `height`/`width`。
 - 只投影 `label=text`。按 `(y1, x1, index)` 确定排序，对每个 content 仅做 CRLF/Unicode
-  空白规范化并拆分非空行；不使用 `md_results`，避免 Markdown 标记污染精确文字。
+  空白规范化并拆分非空行；有界 `image` content 被忽略且不记录/持久化，`table` 和
+  `formula` 作为未支持的结构 fail closed；不使用 `md_results`，避免 Markdown 标记污染
+  精确文字。
 - 最多输出 8 行；重复、缺失、额外或乱序继续交给
   `validate_exact_visual_text(..., require_order=True)` 判定。
 - provider model 允许大小写规范化后精确匹配 `glm-ocr`，持久化仍使用配置中的规范值；
   不接受其他模型或多页/异常布局。
+- 解析失败只暴露稳定 allowlisted stage issue：response envelope、page metadata、layout 或
+  unsupported layout；不携带 provider content、URL、Base64、请求体或原始异常。
+- `material_package` 只把 missing/unexpected/duplicate/misordered 四类 exact-text code 送入
+  既有一次质量修复；任何 parser-stage code（包括与 text code 混合的 tuple）均在
+  similarity/storage 前终止，只能进入既有安全 validation snapshot。
 
 ### 2.3 Factory routing
 
@@ -94,7 +111,10 @@ the public API, durable metadata, or logs.
 | 400/422 unsupported request | `provider_request_rejected`, no raw body |
 | 401/403 | `provider_authentication_failed` |
 | 429/timeout/5xx | Existing bounded retryable classification |
-| Wrong provider model, multi-page, invalid bbox/index/content | Terminal invalid-output or identity mismatch |
+| Wrong provider model | Terminal identity mismatch |
+| Flat/multi-page envelope or invalid/conflicting page metadata | Stage-classified terminal invalid-output |
+| Invalid index/bbox/content/dimensions or unsupported table/formula | Stage-classified terminal invalid-output |
+| Bounded `image` element content | Ignored without projection, logging or persistence |
 | Missing/extra/duplicate/misordered text | Existing exact OCR quality failure/recovery path |
 | OCR passes | Continue to similarity and storage; OCR never directly creates delivery eligibility |
 
@@ -104,7 +124,8 @@ return to planning rather than expanding scope.
 ## 5. Test design
 
 - Unit/contract tests use `httpx.MockTransport` for exact URL, headers, Base64 bytes, model,
-  disabled visualization fields, response bounds, layout sorting and every error row above.
+  disabled visualization fields, response bounds, official nested layout/page shape, element/page
+  dimensions, layout sorting, non-text policy, stage classification and every error row above.
 - Factory/config tests prove `AI_CHAT_MODEL=glm-5.2` and `IMAGE_OCR_MODEL=glm-ocr` remain separate,
   and quality auditor routing is unchanged.
 - Material worker fake-provider tests prove exact ordered OCR precedes similarity/storage and no

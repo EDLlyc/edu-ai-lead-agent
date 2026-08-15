@@ -123,12 +123,16 @@ def _layout_element(
     *,
     bbox: object,
     label: object = "text",
+    height: object = 1024,
+    width: object = 1024,
 ) -> dict[str, object]:
     return {
         "index": index,
         "label": label,
         "bbox_2d": bbox,
         "content": content,
+        "height": height,
+        "width": width,
     }
 
 
@@ -140,17 +144,30 @@ def _response(
 ) -> dict[str, object]:
     return {
         "id": "private-provider-request-id",
+        "created": 1_727_156_815,
         "model": model,
         "layout_details": layout_details
         if layout_details is not None
         else [
-            _layout_element(3, EXPECTED_TEXT[2], bbox=[0.1, 0.7, 0.9, 0.8]),
-            _layout_element(4, "", bbox=[0.2, 0.4, 0.8, 0.6], label="image"),
-            _layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2]),
-            _layout_element(2, EXPECTED_TEXT[1], bbox=[0.1, 0.4, 0.9, 0.5]),
+            [
+                _layout_element(3, EXPECTED_TEXT[2], bbox=[0.1, 0.7, 0.9, 0.8]),
+                _layout_element(
+                    4,
+                    "https://private-provider.invalid/crops/private-image.png",
+                    bbox=[0.2, 0.4, 0.8, 0.6],
+                    label="image",
+                ),
+                _layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2]),
+                _layout_element(2, EXPECTED_TEXT[1], bbox=[0.1, 0.4, 0.9, 0.5]),
+            ]
         ],
-        "data_info": data_info if data_info is not None else {"num_pages": 1},
+        "data_info": data_info
+        if data_info is not None
+        else {"num_pages": 1, "pages": [{"width": 1024, "height": 1024}]},
         "md_results": "provider markdown must not be projected",
+        "layout_visualization": [],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 3, "total_tokens": 6},
+        "request_id": "private-provider-request-id",
     }
 
 
@@ -198,11 +215,13 @@ async def test_image_layout_parsing_uses_private_bounded_raster_and_ordered_text
     assert result.model == "glm-ocr"
     assert result.request_fingerprint == "controlled-image-ocr-fingerprint"
     assert "local-contract-secret" not in repr(result)
+    assert "private-provider-request-id" not in repr(result)
     assert "provider markdown" not in repr(result)
+    assert "private-provider.invalid" not in repr(result)
 
 
 @pytest.mark.parametrize(
-    "layout_details",
+    "page",
     (
         [_layout_element(0, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2])],
         [_layout_element("1", EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2])],
@@ -215,8 +234,20 @@ async def test_image_layout_parsing_uses_private_bounded_raster_and_ordered_text
         [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, True, 0.9, 0.2])],
         [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.2, 0.9])],
         [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], label="unknown")],
-        [_layout_element(1, "unprojected text", bbox=[0.1, 0.1, 0.9, 0.2], label="title")],
+        [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], label="Text")],
+        [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], label=" text ")],
+        [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], height=0)],
+        [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], height=100_001)],
+        [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2], width="1024")],
         [_layout_element(1, "bad\x00text", bbox=[0.1, 0.1, 0.9, 0.2])],
+        [
+            _layout_element(
+                1,
+                "x" * 1_601,
+                bbox=[0.1, 0.1, 0.9, 0.2],
+                label="image",
+            )
+        ],
         [
             _layout_element(
                 1,
@@ -228,18 +259,59 @@ async def test_image_layout_parsing_uses_private_bounded_raster_and_ordered_text
 )
 @pytest.mark.asyncio
 async def test_image_ocr_rejects_malformed_layout_without_exposing_body(
-    layout_details: object,
+    page: object,
 ) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_response(layout_details=layout_details))
+        return httpx.Response(200, json=_response(layout_details=[page]))
 
     adapter, client = _adapter(handler)
     async with client:
         with pytest.raises(InvalidProviderOutputError) as raised:
             await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
 
-    assert raised.value.issue_codes == ("invalid_schema",)
+    assert raised.value.issue_codes == ("image_ocr_layout_invalid",)
     assert "bad\x00text" not in str(raised.value)
+
+
+@pytest.mark.parametrize("label", ("formula", "table"))
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_unsupported_structured_layout(label: str) -> None:
+    page = [
+        _layout_element(
+            1,
+            "private unsupported provider content",
+            bbox=[0.1, 0.1, 0.9, 0.2],
+            label=label,
+        )
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == ("image_ocr_unsupported_layout",)
+    assert "private unsupported provider content" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_flat_legacy_layout_shape() -> None:
+    flat_layout = [
+        _layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2]),
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=flat_layout))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == ("image_ocr_layout_invalid",)
 
 
 @pytest.mark.parametrize(
@@ -250,6 +322,27 @@ async def test_image_ocr_rejects_malformed_layout_without_exposing_body(
         {"num_pages": 2},
         {"pages": True},
         {"num_pages": 1, "page_count": 2},
+        {"num_pages": 1, "pages": None},
+        {"num_pages": 1, "pages": []},
+        {
+            "num_pages": 1,
+            "pages": [
+                {"width": 1024, "height": 1024},
+                {"width": 1024, "height": 1024},
+            ],
+        },
+        {"num_pages": 1, "pages": [{"width": 0, "height": 1024}]},
+        {"num_pages": 1, "pages": [{"width": 100_001, "height": 1024}]},
+        {
+            "num_pages": 1,
+            "pages": [
+                {
+                    "width": 1024,
+                    "height": 1024,
+                    "private_page_reference": "https://private-provider.invalid/page.png",
+                }
+            ],
+        },
     ),
 )
 @pytest.mark.asyncio
@@ -259,8 +352,140 @@ async def test_image_ocr_requires_exactly_one_page(data_info: object) -> None:
 
     adapter, client = _adapter(handler)
     async with client:
-        with pytest.raises(InvalidProviderOutputError):
+        with pytest.raises(InvalidProviderOutputError) as raised:
             await adapter.recognize(_request())
+    assert raised.value.issue_codes == ("image_ocr_page_metadata_invalid",)
+    assert "private-provider.invalid" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_accepts_omitted_optional_page_dimensions() -> None:
+    layout = _response()["layout_details"]
+    assert isinstance(layout, list)
+    page = layout[0]
+    assert isinstance(page, list)
+    for element in page:
+        assert isinstance(element, dict)
+        element.pop("height")
+        element.pop("width")
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_response(layout_details=[page], data_info={"num_pages": 1}),
+        )
+
+    adapter, client = _adapter(handler)
+    async with client:
+        result = await adapter.recognize(_request())
+
+    assert result.recognized_lines == EXPECTED_TEXT
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_conflicting_page_and_element_dimensions() -> None:
+    page = [
+        _layout_element(
+            1,
+            EXPECTED_TEXT[0],
+            bbox=[0.1, 0.1, 0.9, 0.2],
+            height=800,
+            width=600,
+        )
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_response(
+                layout_details=[page],
+                data_info={"num_pages": 1, "pages": [{"width": 601, "height": 800}]},
+            ),
+        )
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == ("image_ocr_page_metadata_invalid",)
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_conflicting_dimensions_between_elements() -> None:
+    page = [
+        _layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2]),
+        _layout_element(
+            2,
+            EXPECTED_TEXT[1],
+            bbox=[0.1, 0.4, 0.9, 0.5],
+            height=800,
+            width=600,
+        ),
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_response(layout_details=[page], data_info={"num_pages": 1}),
+        )
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=EXPECTED_TEXT[:2]))
+
+    assert raised.value.issue_codes == ("image_ocr_page_metadata_invalid",)
+
+
+@pytest.mark.parametrize("missing_dimension", ("height", "width", "both_null"))
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_partial_or_null_element_dimensions(
+    missing_dimension: str,
+) -> None:
+    element = _layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2])
+    if missing_dimension == "both_null":
+        element["height"] = None
+        element["width"] = None
+    else:
+        element.pop(missing_dimension)
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[[element]]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == ("image_ocr_layout_invalid",)
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_multiple_nested_layout_pages() -> None:
+    page = [_layout_element(1, EXPECTED_TEXT[0], bbox=[0.1, 0.1, 0.9, 0.2])]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_response(
+                layout_details=[page, page],
+                data_info={
+                    "num_pages": 2,
+                    "pages": [
+                        {"width": 1024, "height": 1024},
+                        {"width": 1024, "height": 1024},
+                    ],
+                },
+            ),
+        )
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == ("image_ocr_page_metadata_invalid",)
 
 
 @pytest.mark.parametrize(
@@ -291,7 +516,7 @@ async def test_image_ocr_preserves_existing_exact_text_gate(
     ]
 
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_response(layout_details=layout))
+        return httpx.Response(200, json=_response(layout_details=[layout]))
 
     adapter, client = _adapter(handler)
     async with client:
@@ -322,7 +547,7 @@ async def test_image_ocr_rejects_malformed_response_envelopes(body: bytes) -> No
     async with client:
         with pytest.raises(InvalidProviderOutputError) as raised:
             await adapter.recognize(_request())
-    assert raised.value.issue_codes == ("invalid_schema",)
+    assert raised.value.issue_codes == ("image_ocr_response_envelope_invalid",)
     assert body.decode("utf-8") not in str(raised.value)
 
 

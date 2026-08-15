@@ -1549,6 +1549,13 @@ class MaterialPackageExecutor:
                     )
                 except InvalidProviderOutputError as error:
                     if not _is_recoverable_image_text_failure(error):
+                        validation_snapshot = {
+                            **validation_snapshot,
+                            "configured": True,
+                            "passed": False,
+                            "stage": "image_ocr_provider_output",
+                            "issue_codes": list(_safe_image_issue_codes(error.issue_codes)),
+                        }
                         raise
                     await self._finish_generated_quality_attempt(
                         claimed,

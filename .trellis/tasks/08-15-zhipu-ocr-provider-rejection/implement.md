@@ -2,7 +2,7 @@
 
 ## Phase 0 — Baseline and contract freeze
 
-- [ ] Reconfirm clean task scope, production commit/image/Alembic, flags false, service health and
+- [x] Reconfirm clean task scope, production commit/image/Alembic, flags false, service health and
   zero running content/image/delivery work with bounded read-only probes.
 - [x] Record official `glm-5.2` text-only and `glm-ocr` image-layout contracts in task evidence;
   do not call a provider in this phase.
@@ -30,25 +30,45 @@
 - [x] Run affected Ruff/strict mypy/tests, API contract, Compose render, Doctor, shell syntax,
   lock/release checks and `git diff --check`; then run full backend/frontend quality gates.
 
+## Phase 2.1 — Official response-envelope correction after the first live gate
+
+- [x] Record the second offline root cause from the official response contract: nested
+  `layout_details`, typed `data_info.num_pages`/`pages`, and documented element `height`/`width`.
+- [x] Replace the flat image-only decoder with a strict exactly-one-page nested decoder; preserve
+  the legacy brand/PDF OCR response and all factory/material interfaces.
+- [x] Ignore bounded `image` content without projection, reject table/formula and malformed or
+  conflicting metadata before similarity/storage, and add content-free parsing-stage issue codes.
+- [x] Mirror the official response in contract tests, including page and element dimensions,
+  multi-page/conflict/malformed/non-text cases; focused OCR pytest, Ruff and file-level strict mypy
+  pass.
+- [x] Run project Ruff and strict mypy plus the broader provider/material focused tests; record the
+  local-only outcome in `result.md` without any live/SSH/deployment/WeCom action.
+
 ## Phase 3 — Independent check and release preparation
 
 - [x] Dispatch independent `trellis-check`; fix findings and repeat full-scope gates.
 - [x] Verify no Alembic/OpenAPI/generated frontend drift and no secrets/private paths/provider bodies.
-- [ ] Main session prepares one coherent code/spec/task commit, pushes the approved Codeup main
+- [x] Main session prepares one coherent code/spec/task commit, pushes the approved Codeup main
   commit (GitHub remains backup only), and builds the immutable offline source-overlay image.
-- [ ] Validate image labels, source manifest, imports, non-root user, exact file set, dependency
+- [x] Validate image labels, source manifest, imports, non-root user, exact file set, dependency
   health and rollback image IDs before production quiesce.
 
 ## Phase 4 — Deploy with flags still false
 
-- [ ] Capture fresh production DB/MinIO/brand/env/code/image rollback artifacts and checksums.
-- [ ] Quiesce dispatcher, content, governance and acquisition writers in order; require infra-only
+- [x] Capture fresh production DB/MinIO/brand/env/code/image rollback artifacts and checksums.
+- [x] Quiesce dispatcher, content, governance and acquisition writers in order; require infra-only
   state and zero running work.
-- [ ] Deploy the exact verified backend image through the existing offline source-overlay path;
+- [x] Deploy the exact verified backend image through the existing offline source-overlay path;
   run migration (expected head remains 0021), seed/Doctor/runtime probes, then restore upstream,
   governance and content while both flags remain false. Keep dispatcher stopped for live gates.
-- [ ] Require protected inputs, durable business counters and historical queued work unchanged,
+- [x] Require protected inputs, durable business counters and historical queued work unchanged,
   aside from explicitly explained ordinary current-date scheduler reconciliation.
+
+Post-deployment marker audit: the canonical short marker was resolved as a regular mode-0600
+`ubuntu:ubuntu` file and read as the target value before reconciliation. The separately authorized
+same-filesystem atomic replacement changed only that file and preserved its path, owner and mode.
+A repeated 30-second flags/service/counter/protected/log gate passed without restart or durable
+delta; the dispatcher remained stopped.
 
 ## Phase 5 — Bounded live OCR and isolated news
 
@@ -64,6 +84,23 @@
   topic fit, title hierarchy, occlusion, pseudo/extra text, watermark and QR.
 - [ ] On any failure, stop immediately: no second news, manual retry, enqueue or resend; keep
   production flags false and follow failure cleanup/recovery.
+
+The first Phase 5 gate was attempted exactly once and failed closed with the typed
+`invalid_provider_output` code. The deployed adapter used the reviewed `layout_parsing` capability
+and `glm-ocr` model with `AI_MAX_ATTEMPTS=1`; the observed provider-attempt count was exactly one,
+but no exact ordered three-line result was accepted. No retry or second OCR call was made, so this
+checkbox remains incomplete and the isolated-news/Comfly and activation steps were not started.
+The generated local and protected-stage fixture child directories were removed and confirmed
+absent. Production flags remained false, the dispatcher remained stopped immediately after
+fixture cleanup, and all durable provider, image, package and delivery counters remained at their
+pre-call values. The subsequent authorized fail-closed recovery started only the already-created
+candidate dispatcher. After more than two
+poll intervals and a final 30-second gate, all eight application services were running the exact
+candidate at restart zero, infrastructure was healthy, both flags and exact release markers were
+unchanged, and WeCom job/attempt/status/duplicate/provider-send deltas and safe log findings were
+zero. No provider call, enqueue, retry, resend, environment/data edit, fixture, acceptance
+database, or bucket was created during recovery; the verified stage and rollback artifacts remain
+retained for diagnosis.
 
 ## Phase 6 — Activation or fail-closed recovery
 
