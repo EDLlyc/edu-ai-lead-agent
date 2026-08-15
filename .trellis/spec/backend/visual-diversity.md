@@ -39,6 +39,18 @@ reference set. It does not combine sibling news items or authorize a new publish
   `IMAGE_SIMILARITY_POLICY_VERSION`, `IMAGE_SIMILARITY_THRESHOLD`, and bounded history settings.
   Doctor enforces equality. The master flag defaults to false and requires image generation, the
   approved selector, and exact OCR validation; startup fails closed if OCR is disabled.
+- Controlled image OCR is capability-routed independently from text generation. It uses
+  `IMAGE_OCR_MODEL=glm-ocr` on Zhipu `/layout_parsing`, while `AI_CHAT_MODEL=glm-5.2` remains the
+  text model and the disabled image-quality auditor retains its existing OpenAI-compatible route.
+  API and content worker receive identical OCR enablement, model, 10 MiB input, 1 MiB response,
+  and 120-second timeout settings. Only media-gated PNG/JPEG bytes are accepted; the adapter sends
+  a private Base64 data URL and never a public image URL.
+- Image OCR accepts one bounded page of unique positive-index layout elements with allowlisted
+  labels and finite ordered `[0,1]` boxes. It rejects content on non-text elements, projects only
+  `text` content, normalizes line endings and Unicode whitespace, sorts by `(y1, x1, index)`, caps
+  output at eight lines, and then applies the existing exact ordered signature/title/subtitle gate.
+  Raw response bodies, Base64, prompts, object keys, private paths, and image bytes never enter logs
+  or durable output.
 - Fixed numeric bounds exposed through Compose are tested through their real string environment
   representation. In particular, `IMAGE_DIVERSITY_MAX_REGENERATIONS="1"` must normalize to the
   reviewed literal value `1`, while any other value still fails Settings validation.
@@ -70,6 +82,9 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Exact SHA or perceptual distance at/below threshold on attempt 1 | Persist `regenerate`, discard transient raster, activate ordinal 2 |
 | Attempt 2 remains near duplicate and all other gates pass | One stored image, succeeded package, `accepted_with_warning`, no third call |
 | Controlled prompt has a missing, reordered, unapproved, or extra text line | Fail before provider use when detectable from the brief; otherwise OCR repair/failure remains authoritative |
+| Empty/PDF/WebP/oversized/malformed OCR input | Typed provider-input failure before any HTTP call |
+| OCR authentication, rejection, rate limit, timeout, or temporary provider failure | Existing bounded typed provider failure; never consume the similarity repair budget |
+| Wrong OCR model/page identity or malformed index/label/bbox/content/line count | Terminal invalid-output or identity-mismatch failure before similarity/storage |
 | Safety/OCR/identity/media/audit failure | Existing typed failure/recovery path; similarity cannot override it |
 | Provider/network failure | Existing bounded provider retry classification; does not consume the diversity retry |
 | Unknown version bundle or regeneration count other than one | Startup validation fails closed |

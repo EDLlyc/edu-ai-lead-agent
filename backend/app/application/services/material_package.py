@@ -31,6 +31,7 @@ from app.core.errors import (
     ConflictError,
     ImageOutputValidationError,
     ImageProviderRejectedError,
+    InvalidProviderOutputError,
     NotFoundError,
     ProviderIdentityMismatchError,
 )
@@ -53,6 +54,7 @@ from app.domain.image_similarity import (
     evaluate_image_similarity,
 )
 from app.domain.image_validation import (
+    ImageValidationCode,
     build_image_repair_prompt,
     image_repair_fingerprint,
     validate_exact_visual_text,
@@ -1535,15 +1537,32 @@ class MaterialPackageExecutor:
                     return True
                 expected_text = _expected_visual_text(claimed.visual_brief)
                 require_text_order = claimed.visual_brief.version == VISUAL_BRIEF_V2_VERSION
-                ocr_result = await self._image_text_recognizer.recognize(
-                    ImageTextRecognitionRequest(
-                        request_fingerprint=claimed.request_fingerprint,
-                        image_bytes=result.image_bytes,
-                        expected_text=expected_text,
-                        media_type=result.media_type,
-                        require_order=require_text_order,
+                try:
+                    ocr_result = await self._image_text_recognizer.recognize(
+                        ImageTextRecognitionRequest(
+                            request_fingerprint=claimed.request_fingerprint,
+                            image_bytes=result.image_bytes,
+                            expected_text=expected_text,
+                            media_type=result.media_type,
+                            require_order=require_text_order,
+                        )
                     )
-                )
+                except InvalidProviderOutputError as error:
+                    if not _is_recoverable_image_text_failure(error):
+                        raise
+                    await self._finish_generated_quality_attempt(
+                        claimed,
+                        references=references,
+                        validation_snapshot={
+                            **validation_snapshot,
+                            "configured": True,
+                            "passed": False,
+                            "issue_codes": list(dict.fromkeys(error.issue_codes)),
+                        },
+                        audit_snapshot=audit_snapshot,
+                        error_code="image_text_validation_failed",
+                    )
+                    return True
                 if (
                     ocr_result.request_fingerprint != claimed.request_fingerprint
                     or not ocr_result.provider.strip()
@@ -2793,6 +2812,23 @@ def _clear_image_lease(image: ImageArtifactModel) -> None:
 
 def _expected_visual_text(brief: VisualBrief) -> tuple[str, ...]:
     return expected_visual_text(brief)
+
+
+_RECOVERABLE_IMAGE_TEXT_ISSUES = frozenset(
+    {
+        ImageValidationCode.MISSING_VISUAL_TEXT.value,
+        ImageValidationCode.UNEXPECTED_VISUAL_TEXT.value,
+        ImageValidationCode.DUPLICATE_VISUAL_TEXT.value,
+        ImageValidationCode.MISORDERED_VISUAL_TEXT.value,
+    }
+)
+
+
+def _is_recoverable_image_text_failure(error: InvalidProviderOutputError) -> bool:
+    issue_codes = tuple(dict.fromkeys(error.issue_codes))
+    return bool(issue_codes) and all(
+        issue_code in _RECOVERABLE_IMAGE_TEXT_ISSUES for issue_code in issue_codes
+    )
 
 
 def _image_validation_snapshot(

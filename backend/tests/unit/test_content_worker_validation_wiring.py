@@ -67,7 +67,7 @@ def test_validation_adapters_share_the_supplied_ai_client(
         def __init__(self, **kwargs: object) -> None:
             calls.append((self.__class__.__name__, kwargs))
 
-    class OpenAICompatibleImageTextRecognizer(_Provider):
+    class ZhipuImageTextRecognizer(_Provider):
         pass
 
     class OpenAICompatibleImageQualityAuditor(_Provider):
@@ -75,8 +75,8 @@ def test_validation_adapters_share_the_supplied_ai_client(
 
     monkeypatch.setattr(
         factory,
-        "OpenAICompatibleImageTextRecognizer",
-        OpenAICompatibleImageTextRecognizer,
+        "ZhipuImageTextRecognizer",
+        ZhipuImageTextRecognizer,
     )
     monkeypatch.setattr(
         factory,
@@ -88,19 +88,28 @@ def test_validation_adapters_share_the_supplied_ai_client(
         _env_file=None,
         image_ocr_enabled=True,
         image_quality_audit_enabled=True,
+        image_provider_mode="comfly",
+        comfly_api_key=SecretStr("image-test-key"),
         ai_provider_mode="zhipu",
         ai_platform_base_url="https://ai.example.test/v1",
         ai_platform_api_key=SecretStr("test-key"),
+        ai_chat_model="glm-5.2",
+        image_ocr_model="glm-ocr",
     )
     client = object()
 
     recognizer = factory.create_image_text_recognizer(settings, client=client)  # type: ignore[arg-type]
     auditor = factory.create_image_quality_auditor(settings, client=client)  # type: ignore[arg-type]
 
-    assert isinstance(recognizer, OpenAICompatibleImageTextRecognizer)
+    assert isinstance(recognizer, ZhipuImageTextRecognizer)
     assert isinstance(auditor, OpenAICompatibleImageQualityAuditor)
     assert calls[0][1]["client"] is client
     assert calls[1][1]["client"] is client
     api_key = calls[0][1]["api_key"]
     assert isinstance(api_key, SecretStr)
     assert api_key.get_secret_value() == "test-key"
+    assert calls[0][1]["model"] == "glm-ocr"
+    assert calls[0][1]["max_input_bytes"] == 10 * 1024 * 1024
+    assert calls[0][1]["max_response_bytes"] == 1024 * 1024
+    assert calls[1][1]["model"] == "glm-5.2"
+    assert calls[1][1]["max_request_bytes"] == settings.image_max_request_bytes

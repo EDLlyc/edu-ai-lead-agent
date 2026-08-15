@@ -41,6 +41,8 @@ from app.core.errors import (
     ImageOutputValidationError,
     ImageProviderRejectedError,
     ImageProviderTimeoutError,
+    InvalidProviderOutputError,
+    ProviderRejectedError,
 )
 from app.domain.content_slots import ContentSlot
 from app.domain.visual_brief import (
@@ -807,6 +809,25 @@ class _RecordingImageTextRecognizer:
         )
 
 
+class _RejectingImageTextRecognizer:
+    def __init__(self) -> None:
+        self.requests: list[ImageTextRecognitionRequest] = []
+
+    async def recognize(self, request: ImageTextRecognitionRequest) -> ImageTextRecognitionResult:
+        self.requests.append(request)
+        raise ProviderRejectedError()
+
+
+class _InvalidTextImageTextRecognizer:
+    def __init__(self, issue_codes: tuple[str, ...]) -> None:
+        self._issue_codes = issue_codes
+        self.requests: list[ImageTextRecognitionRequest] = []
+
+    async def recognize(self, request: ImageTextRecognitionRequest) -> ImageTextRecognitionResult:
+        self.requests.append(request)
+        raise InvalidProviderOutputError(self._issue_codes)
+
+
 class _RecordingImageQualityAuditor:
     def __init__(self) -> None:
         self.requests: list[ImageQualityAuditRequest] = []
@@ -1300,6 +1321,102 @@ async def test_material_worker_ocr_missing_and_unexpected_text_queues_one_repair
     assert package.version_snapshot["image"]["validation"] == image.validation_snapshot
     assert package.version_snapshot["image"]["audit"] == image.audit_snapshot
     assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_material_worker_stops_before_similarity_and_storage_on_typed_ocr_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = _claimed_material_package(visual_brief=_quality_visual_brief())
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _RecordingImageGenerator()
+    recognizer = _RejectingImageTextRecognizer()
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_ocr_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+    )
+    similarity_calls = 0
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_similarity(
+        value: ClaimedMaterialPackage,
+        *,
+        image_bytes: bytes,
+    ) -> tuple[bool, None]:
+        nonlocal similarity_calls
+        del value, image_bytes
+        similarity_calls += 1
+        return True, None
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_assess_image_similarity", fake_similarity)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert len(recognizer.requests) == 1
+    assert similarity_calls == 0
+    assert store.calls == 0
+    assert image.error_code == "provider_request_rejected"
+    assert package.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_material_worker_repairs_provider_validated_exact_text_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = _claimed_material_package(visual_brief=_quality_visual_brief())
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _RecordingImageGenerator()
+    recognizer = _InvalidTextImageTextRecognizer(("missing_visual_text", "unexpected_visual_text"))
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_ocr_enabled=True),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+    )
+    similarity_calls = 0
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_similarity(
+        value: ClaimedMaterialPackage,
+        *,
+        image_bytes: bytes,
+    ) -> tuple[bool, None]:
+        nonlocal similarity_calls
+        del value, image_bytes
+        similarity_calls += 1
+        return True, None
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_assess_image_similarity", fake_similarity)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert len(recognizer.requests) == 1
+    assert similarity_calls == 0
+    assert store.calls == 0
+    assert image.status == "queued"
+    assert image.repair_count == 1
+    assert image.error_code == "image_text_validation_failed"
+    assert image.validation_snapshot["issue_codes"] == [
+        "missing_visual_text",
+        "unexpected_visual_text",
+    ]
+    assert package.status == "queued"
 
 
 @pytest.mark.asyncio

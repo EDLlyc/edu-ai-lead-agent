@@ -203,6 +203,10 @@ class Settings(BaseSettings):
     image_selector_enabled: bool = True
     image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
     image_ocr_enabled: bool = False
+    image_ocr_model: str = Field(default="glm-ocr", min_length=1, max_length=120)
+    image_ocr_max_input_bytes: int = Field(default=10 * 1024 * 1024, ge=1, le=10 * 1024 * 1024)
+    image_ocr_max_response_bytes: int = Field(default=1024 * 1024, ge=1, le=1024 * 1024)
+    image_ocr_timeout_seconds: float = Field(default=120.0, gt=0, le=360)
     image_quality_audit_enabled: bool = False
     image_diversity_enabled: bool = False
     image_diversity_policy_version: str = VISUAL_DIVERSITY_POLICY_VERSION
@@ -415,6 +419,8 @@ class Settings(BaseSettings):
                 raise ValueError("image diversity requires image generation to be enabled")
             if not self.image_ocr_enabled:
                 raise ValueError("image diversity requires exact image OCR validation")
+            if self.image_ocr_model != "glm-ocr":
+                raise ValueError("image diversity requires the reviewed glm-ocr image OCR model")
             if not self.image_selector_enabled:
                 raise ValueError("image diversity requires approved visual asset selection")
             reviewed_versions = {
@@ -500,6 +506,12 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "brand OCR model identifier must be non-blank and contain no whitespace"
+            )
+        if not self.image_ocr_model.strip() or any(
+            character.isspace() for character in self.image_ocr_model
+        ):
+            raise ValueError(
+                "image OCR model identifier must be non-blank and contain no whitespace"
             )
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")

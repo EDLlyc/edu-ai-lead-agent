@@ -212,7 +212,10 @@ automatically resent.
 Keep `IMAGE_DIVERSITY_ENABLED=false` during the 0021 migration and ordinary deployment. Confirm
 Doctor reports the two diversity tables and that acquisition API/content worker resolve the same
 reviewed version bundle, seven-day lookback, threshold, history bound, and exactly one
-regeneration. Historical v1 rows require no backfill.
+regeneration. They must also resolve identical `IMAGE_OCR_ENABLED`, `IMAGE_OCR_MODEL`, input and
+response byte bounds, and timeout values. The reviewed route keeps `AI_CHAT_MODEL=glm-5.2` for text
+generation and uses `IMAGE_OCR_MODEL=glm-ocr` only through Zhipu `/layout_parsing`; image quality
+audit remains separately routed and disabled. Historical v1 rows require no backfill.
 
 Before enablement, record the read-only baseline and keep its output server-local:
 
@@ -237,6 +240,14 @@ A live acceptance is separate authorization: use one approved news item, one pro
 Enterprise WeChat send. Inspect character identity, topic fit, dimensions, selected plan, and
 similarity outcome without printing prompts, hashes, reference paths, object keys, or provider
 bodies.
+
+Before any live gate, require `IMAGE_OCR_MAX_INPUT_BYTES=10485760`,
+`IMAGE_OCR_MAX_RESPONSE_BYTES=1048576`, and `IMAGE_OCR_TIMEOUT_SECONDS=120` in both acquisition API
+and content worker. The adapter accepts only media-gated PNG/JPEG bytes, sends them as a private
+Base64 data URL to `/layout_parsing`, and derives ordered lines only from bounded layout elements.
+PDF, WebP, malformed raster, wrong model/page identity, malformed layout, or response overflow is
+a typed failure before similarity or storage. Do not print the request, Base64, provider body,
+private path, object key, or credential while diagnosing a failure.
 
 After approval, set both `IMAGE_DIVERSITY_ENABLED=true` and `IMAGE_OCR_ENABLED=true` in the same
 configuration for acquisition API and content worker; settings validation rejects diversity

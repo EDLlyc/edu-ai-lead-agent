@@ -25,6 +25,10 @@ from app.application.ports.governance import (
     FactualAnalysisRequest,
     FactualAnalysisResult,
 )
+from app.application.ports.image_validation import (
+    ImageTextRecognitionRequest,
+    ImageTextRecognitionResult,
+)
 from app.application.services.governance_analysis import build_factual_analysis_prompt
 from app.core.errors import (
     BrandOcrAuthenticationError,
@@ -38,6 +42,7 @@ from app.core.errors import (
     InvalidProviderOutputError,
     ProviderAuthenticationError,
     ProviderDimensionMismatchError,
+    ProviderIdentityMismatchError,
     ProviderInputLimitError,
     ProviderRateLimitError,
     ProviderRejectedError,
@@ -45,6 +50,7 @@ from app.core.errors import (
     ProviderUnavailableError,
 )
 from app.domain.governance_enums import AnalysisValidationCode
+from app.domain.image_validation import validate_exact_visual_text, validate_image_output
 from app.domain.value_objects import sha256_bytes, stable_key
 from app.schemas.governance_analysis import FactualAnalysisOutput
 
@@ -53,6 +59,13 @@ _TEMPERATURE = 0.0
 _ACCEPT_ENCODING = "gzip"
 _SAFE_PROVIDER_REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}")
 _MAX_EMBEDDING_RESPONSE_BYTES = 256 * 1024
+_IMAGE_OCR_PROVIDER = "zhipu"
+_IMAGE_OCR_MAX_INPUT_BYTES = 10 * 1024 * 1024
+_IMAGE_OCR_MAX_RESPONSE_BYTES = 1024 * 1024
+_IMAGE_OCR_MAX_LAYOUT_ELEMENTS = 256
+_IMAGE_OCR_MAX_CONTENT_CHARACTERS = 1_600
+_IMAGE_OCR_MAX_LINES = 8
+_IMAGE_OCR_LAYOUT_LABELS = frozenset({"formula", "image", "table", "text", "title"})
 
 
 class _ProviderModel(BaseModel):
@@ -112,6 +125,23 @@ class _OcrResponse(_ProviderModel):
     md_results: str = Field(min_length=1)
     data_info: dict[str, Any]
     usage: _OcrUsage
+
+
+class _ImageOcrLayoutElement(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    index: int = Field(gt=0, le=1_000_000, strict=True)
+    label: str = Field(min_length=1, max_length=40, strict=True)
+    bbox_2d: list[Any] = Field(min_length=4, max_length=4)
+    content: str = Field(max_length=_IMAGE_OCR_MAX_CONTENT_CHARACTERS, strict=True)
+
+
+class _ImageOcrResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    model: str = Field(min_length=1, max_length=120, strict=True)
+    layout_details: list[_ImageOcrLayoutElement] = Field(max_length=_IMAGE_OCR_MAX_LAYOUT_ELEMENTS)
+    data_info: dict[str, Any]
 
 
 class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
@@ -256,6 +286,224 @@ class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
             completion_tokens=parsed.usage.completion_tokens,
             latency_ms=max(0, (perf_counter_ns() - started) // 1_000_000),
         )
+
+
+class ZhipuImageTextRecognizer:
+    """Bounded image OCR adapter for Zhipu's dedicated layout-parsing capability."""
+
+    def __init__(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        base_url: str,
+        api_key: SecretStr,
+        model: str,
+        connect_timeout_seconds: float,
+        read_timeout_seconds: float,
+        total_timeout_seconds: float,
+        concurrency: int,
+        max_attempts: int,
+        max_input_bytes: int,
+        max_response_bytes: int,
+        sleep: _Sleep = asyncio.sleep,
+    ) -> None:
+        normalized_base_url = base_url.strip().rstrip("/")
+        try:
+            parsed_base_url = urlsplit(normalized_base_url)
+            port = parsed_base_url.port
+        except ValueError as exc:
+            raise ValueError("image OCR base URL must be a valid HTTPS origin/path") from exc
+        if (
+            parsed_base_url.scheme != "https"
+            or not parsed_base_url.hostname
+            or parsed_base_url.username is not None
+            or parsed_base_url.password is not None
+            or parsed_base_url.query
+            or parsed_base_url.fragment
+            or (port is not None and not 1 <= port <= 65_535)
+            or any(character.isspace() for character in normalized_base_url)
+        ):
+            raise ValueError("image OCR base URL must be an HTTPS origin/path without credentials")
+        api_key_value = api_key.get_secret_value().strip()
+        if not api_key_value or any(character in api_key_value for character in "\r\n"):
+            raise ValueError("image OCR API key must not be blank or contain line breaks")
+        normalized_model = model.strip()
+        if (
+            not normalized_model
+            or len(normalized_model) > 120
+            or any(character.isspace() for character in normalized_model)
+        ):
+            raise ValueError("image OCR model must be a bounded identifier without whitespace")
+        if concurrency < 1 or max_attempts < 1:
+            raise ValueError("image OCR concurrency and attempts must be positive")
+        if not 1 <= max_input_bytes <= _IMAGE_OCR_MAX_INPUT_BYTES:
+            raise ValueError("image OCR input limit must be between 1 byte and 10 MiB")
+        if not 1 <= max_response_bytes <= _IMAGE_OCR_MAX_RESPONSE_BYTES:
+            raise ValueError("image OCR response limit must be between 1 byte and 1 MiB")
+        if (
+            connect_timeout_seconds <= 0
+            or read_timeout_seconds <= 0
+            or total_timeout_seconds <= 0
+            or total_timeout_seconds < read_timeout_seconds
+        ):
+            raise ValueError("image OCR timeouts must be positive and total must cover read")
+
+        self._client = client
+        self._url = f"{normalized_base_url}/layout_parsing"
+        self._api_key = SecretStr(api_key_value)
+        self._model = normalized_model
+        self._max_input_bytes = max_input_bytes
+        self._max_request_bytes = 4 * ((max_input_bytes + 2) // 3) + 1_024
+        self._max_response_bytes = max_response_bytes
+        self._timeout = httpx.Timeout(
+            connect=connect_timeout_seconds,
+            read=read_timeout_seconds,
+            write=read_timeout_seconds,
+            pool=connect_timeout_seconds,
+        )
+        self._total_timeout_seconds = total_timeout_seconds
+        self._semaphore = asyncio.Semaphore(concurrency)
+        self._max_attempts = max_attempts
+        self._sleep = sleep
+
+    async def recognize(self, request: ImageTextRecognitionRequest) -> ImageTextRecognitionResult:
+        media_type = request.media_type.casefold()
+        if media_type not in {"image/png", "image/jpeg"}:
+            raise ProviderInputLimitError()
+        validation = validate_image_output(
+            request.image_bytes,
+            media_type,
+            expected_dimensions=None,
+            max_bytes=self._max_input_bytes,
+        )
+        if not validation.passed:
+            raise ProviderInputLimitError()
+        encoded = base64.b64encode(request.image_bytes).decode("ascii")
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "file": f"data:{media_type};base64,{encoded}",
+            "return_crop_images": False,
+            "need_layout_visualization": False,
+        }
+        try:
+            request_bytes = len(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            )
+        except (TypeError, UnicodeError):
+            raise ProviderInputLimitError() from None
+        if request_bytes > self._max_request_bytes:
+            raise ProviderInputLimitError()
+
+        response = await _post_json_with_retries(
+            client=self._client,
+            url=self._url,
+            api_key=self._api_key,
+            http_timeout=self._timeout,
+            total_timeout_seconds=self._total_timeout_seconds,
+            semaphore=self._semaphore,
+            max_attempts=self._max_attempts,
+            sleep=self._sleep,
+            payload=payload,
+            max_response_bytes=self._max_response_bytes,
+        )
+        try:
+            parsed = _ImageOcrResponse.model_validate(response.json())
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValidationError, ValueError):
+            raise InvalidProviderOutputError(("invalid_schema",)) from None
+        if parsed.model.casefold() != self._model.casefold():
+            raise ProviderIdentityMismatchError()
+        if _required_image_ocr_page_count(parsed.data_info) != 1:
+            raise InvalidProviderOutputError(("invalid_schema",))
+
+        recognized_lines = _project_image_ocr_lines(parsed.layout_details)
+        text_validation = validate_exact_visual_text(
+            recognized_lines,
+            request.expected_text,
+            require_order=request.require_order,
+        )
+        if not text_validation.passed:
+            raise InvalidProviderOutputError(text_validation.issue_codes)
+        try:
+            return ImageTextRecognitionResult(
+                recognized_lines=recognized_lines,
+                provider=_IMAGE_OCR_PROVIDER,
+                model=self._model,
+                request_fingerprint=request.request_fingerprint,
+            )
+        except ValueError:
+            raise InvalidProviderOutputError(("invalid_schema",)) from None
+
+
+def _required_image_ocr_page_count(data_info: dict[str, Any]) -> int:
+    page_counts: list[int] = []
+    for key in ("page_count", "num_pages", "pages"):
+        if key not in data_info:
+            continue
+        value = data_info[key]
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise InvalidProviderOutputError(("invalid_schema",))
+        page_counts.append(value)
+    if not page_counts or len(set(page_counts)) != 1:
+        raise InvalidProviderOutputError(("invalid_schema",))
+    return page_counts[0]
+
+
+def _project_image_ocr_lines(
+    elements: list[_ImageOcrLayoutElement],
+) -> tuple[str, ...]:
+    indexed: set[int] = set()
+    text_elements: list[tuple[float, float, int, str]] = []
+    for element in elements:
+        if element.index in indexed:
+            raise InvalidProviderOutputError(("invalid_schema",))
+        indexed.add(element.index)
+        label = element.label.strip().casefold()
+        if label not in _IMAGE_OCR_LAYOUT_LABELS:
+            raise InvalidProviderOutputError(("invalid_schema",))
+        x1, y1, _x2, _y2 = _normalized_image_ocr_bbox(element.bbox_2d)
+        _validate_image_ocr_content(element.content)
+        if label == "text":
+            text_elements.append((y1, x1, element.index, element.content))
+        elif element.content.strip():
+            raise InvalidProviderOutputError(("invalid_schema",))
+
+    lines: list[str] = []
+    for _y1, _x1, _index, content in sorted(text_elements):
+        for raw_line in content.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            normalized = " ".join(raw_line.strip().split())
+            if not normalized:
+                continue
+            if len(normalized) > 200:
+                raise InvalidProviderOutputError(("invalid_schema",))
+            lines.append(normalized)
+            if len(lines) > _IMAGE_OCR_MAX_LINES:
+                raise InvalidProviderOutputError(("invalid_schema",))
+    return tuple(lines)
+
+
+def _normalized_image_ocr_bbox(value: list[Any]) -> tuple[float, float, float, float]:
+    coordinates: list[float] = []
+    for coordinate in value:
+        if (
+            isinstance(coordinate, bool)
+            or not isinstance(coordinate, (int, float))
+            or not math.isfinite(coordinate)
+            or not 0 <= coordinate <= 1
+        ):
+            raise InvalidProviderOutputError(("invalid_schema",))
+        coordinates.append(float(coordinate))
+    x1, y1, x2, y2 = coordinates
+    if x1 >= x2 or y1 >= y2:
+        raise InvalidProviderOutputError(("invalid_schema",))
+    return x1, y1, x2, y2
+
+
+def _validate_image_ocr_content(value: str) -> None:
+    if any(
+        (ord(character) < 32 and character not in "\t\r\n") or ord(character) == 127
+        for character in value
+    ):
+        raise InvalidProviderOutputError(("invalid_schema",))
 
 
 def _normalize_ocr_markdown(value: str) -> str:

@@ -44,6 +44,39 @@ def test_brand_ocr_model_is_a_bounded_identifier() -> None:
         Settings(_env_file=None, brand_ocr_model=" ")
 
 
+def test_image_ocr_settings_are_bounded_and_separate_from_text_generation() -> None:
+    settings = Settings(_env_file=None, ai_chat_model="glm-5.2")
+
+    assert settings.ai_chat_model == "glm-5.2"
+    assert settings.image_ocr_model == "glm-ocr"
+    assert settings.image_ocr_max_input_bytes == 10 * 1024 * 1024
+    assert settings.image_ocr_max_response_bytes == 1024 * 1024
+    assert settings.image_ocr_timeout_seconds == 120.0
+
+    with pytest.raises(ValidationError, match="image OCR model identifier"):
+        Settings(_env_file=None, image_ocr_model="glm ocr")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, image_ocr_max_input_bytes=10 * 1024 * 1024 + 1)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, image_ocr_max_response_bytes=1024 * 1024 + 1)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, image_ocr_timeout_seconds=361)
+
+
+def test_image_ocr_numeric_bounds_parse_from_environment_strings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMAGE_OCR_MAX_INPUT_BYTES", "10485760")
+    monkeypatch.setenv("IMAGE_OCR_MAX_RESPONSE_BYTES", "1048576")
+    monkeypatch.setenv("IMAGE_OCR_TIMEOUT_SECONDS", "120")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.image_ocr_max_input_bytes == 10 * 1024 * 1024
+    assert settings.image_ocr_max_response_bytes == 1024 * 1024
+    assert settings.image_ocr_timeout_seconds == 120.0
+
+
 def test_state_transitions_are_explicit() -> None:
     validate_run_transition(RunStatus.QUEUED, RunStatus.RUNNING)
     validate_job_transition(JobStatus.RUNNING, JobStatus.RETRY_SCHEDULED)

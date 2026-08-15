@@ -188,6 +188,11 @@ keys = (
     "IMAGE_DIVERSITY_HISTORY_LIMIT",
     "IMAGE_SIMILARITY_THRESHOLD",
     "IMAGE_DIVERSITY_MAX_REGENERATIONS",
+    "IMAGE_OCR_ENABLED",
+    "IMAGE_OCR_MODEL",
+    "IMAGE_OCR_MAX_INPUT_BYTES",
+    "IMAGE_OCR_MAX_RESPONSE_BYTES",
+    "IMAGE_OCR_TIMEOUT_SECONDS",
 )
 for key in keys:
     values = [services[name].get("environment", {}).get(key) for name in names]
@@ -195,8 +200,10 @@ for key in keys:
         raise SystemExit(f"image diversity setting {key} must be present and identical")
 if services["acquisition-api"]["environment"]["IMAGE_DIVERSITY_MAX_REGENERATIONS"] != "1":
     raise SystemExit("image diversity permits exactly one regeneration")
+if services["acquisition-api"]["environment"]["IMAGE_OCR_MODEL"] != "glm-ocr":
+    raise SystemExit("controlled image OCR must use the reviewed glm-ocr model")
 ' >/dev/null || fail "Image-diversity settings are not shared by API and content worker"
-pass "Image-diversity versions, lookback, threshold, and one-retry bound are shared"
+pass "Image-diversity and bounded image-OCR settings are shared"
 
 docker compose --profile governance --profile content --profile wecom config --format json | \
   "${python_command[@]}" -c '

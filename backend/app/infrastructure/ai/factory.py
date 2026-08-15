@@ -30,12 +30,12 @@ from app.infrastructure.ai.image_generation import (
 )
 from app.infrastructure.ai.image_validation import (
     OpenAICompatibleImageQualityAuditor,
-    OpenAICompatibleImageTextRecognizer,
 )
 from app.infrastructure.ai.zhipu import (
     ZhipuBrandDocumentOcrModel,
     ZhipuEmbeddingModel,
     ZhipuFactualAnalysisModel,
+    ZhipuImageTextRecognizer,
 )
 
 _ImageValidationProvider = TypeVar("_ImageValidationProvider")
@@ -100,12 +100,29 @@ def create_image_text_recognizer(
 ) -> ImageTextRecognizer | None:
     """Create the optional worker-only image OCR adapter when its capability is usable."""
 
-    if not settings.image_ocr_enabled:
+    if (
+        not settings.image_ocr_enabled
+        or settings.image_provider_mode not in {"toapis", "comfly"}
+        or settings.ai_provider_mode != "zhipu"
+    ):
         return None
-    return _create_image_validation_provider(
-        settings,
+    base_url = (settings.ai_platform_base_url or "").strip()
+    api_key = settings.ai_platform_api_key
+    api_key_value = api_key.get_secret_value().strip() if api_key is not None else ""
+    if client is None or not base_url or not api_key_value:
+        return None
+    return ZhipuImageTextRecognizer(
         client=client,
-        provider_class=OpenAICompatibleImageTextRecognizer,
+        base_url=base_url,
+        api_key=SecretStr(api_key_value),
+        model=settings.image_ocr_model,
+        connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+        read_timeout_seconds=settings.image_ocr_timeout_seconds,
+        total_timeout_seconds=settings.image_ocr_timeout_seconds,
+        concurrency=settings.ai_provider_concurrency,
+        max_attempts=settings.ai_max_attempts,
+        max_input_bytes=settings.image_ocr_max_input_bytes,
+        max_response_bytes=settings.image_ocr_max_response_bytes,
     )
 
 

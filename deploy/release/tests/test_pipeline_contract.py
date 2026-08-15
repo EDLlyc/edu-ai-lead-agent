@@ -154,6 +154,40 @@ def test_production_evidence_queries_the_bounded_diversity_warning_code() -> Non
     assert "diversity_warning IS TRUE" not in evidence_script
 
 
+def test_production_evidence_projects_only_safe_image_ocr_configuration() -> None:
+    evidence_script = Path("scripts/edu-ai-production-evidence.sh").read_text(
+        encoding="utf-8"
+    )
+    for key in (
+        "image_ocr_enabled",
+        "image_ocr_model",
+        "image_ocr_max_input_bytes",
+        "image_ocr_max_response_bytes",
+        "image_ocr_timeout_seconds",
+    ):
+        assert f"printf '{key}=%s\\n'" in evidence_script
+    assert "AI_PLATFORM_API_KEY" not in evidence_script
+    assert "base64" not in evidence_script.casefold()
+    assert "provider_body" not in evidence_script
+
+
+def test_compose_and_doctor_share_the_bounded_image_ocr_contract() -> None:
+    compose = Path("compose.yaml").read_text(encoding="utf-8")
+    doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")
+    defaults = {
+        "IMAGE_OCR_MODEL": "glm-ocr",
+        "IMAGE_OCR_MAX_INPUT_BYTES": "10485760",
+        "IMAGE_OCR_MAX_RESPONSE_BYTES": "1048576",
+        "IMAGE_OCR_TIMEOUT_SECONDS": "120",
+    }
+    for key, value in defaults.items():
+        assert compose.count(f"{key}: ${{{key}:-{value}}}") == 2
+        assert f'"{key}"' in doctor
+    assert compose.count("IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-false}") == 2
+    assert '"IMAGE_OCR_ENABLED"' in doctor
+    assert "controlled image OCR must use the reviewed glm-ocr model" in doctor
+
+
 def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:
     dockerfile = Path("backend/Dockerfile.ci").read_text(encoding="utf-8")
     lock_script = Path("scripts/compile-python-locks.sh").read_text(encoding="utf-8")

@@ -867,6 +867,11 @@ manifest_asset = canonical
   private; object keys and signed URLs do not cross the API boundary.
 - `content-worker` must receive image provider settings and a read-only brand reference mount.
   `IMAGE_ENABLED=true` with a disabled provider fails closed at settings validation.
+- Image OCR and image quality audit are separate provider capabilities. When controlled OCR is
+  enabled with a real image provider and Zhipu AI mode, the worker uses dedicated `glm-ocr`
+  `/layout_parsing` with bounded PNG/JPEG Base64 input and strict layout projection. It does not
+  send an image to the text-only `AI_CHAT_MODEL`, and it does not change the disabled
+  OpenAI-compatible image-quality auditor route.
 - The API and `content-worker` must receive the same `IMAGE_MAX_ATTEMPTS` Compose value. The API
   uses it to decide whether terminal image retry is admissible; the worker uses it to claim and
   exhaust the same image artifact. Divergent values are a deployment defect that can turn an
