@@ -331,6 +331,7 @@ function ImageSection({
       </dl>
       <ImageRecoverySummary fallback={image.fallback} />
       <ImageQualitySummary image={image} />
+      <ImageDiversitySummary diversity={image.diversity} />
       <VisualIntent image={image} />
     </section>
   );
@@ -360,6 +361,57 @@ function ImageRecoverySummary({
           />
         </dl>
       ) : null}
+    </div>
+  );
+}
+
+function ImageDiversitySummary({
+  diversity,
+}: Readonly<{ diversity: ImageViewModel["diversity"] }>) {
+  if (diversity === null) return null;
+
+  const status = diversity.warning
+    ? "第二张安全图片仍与近七日相似，已保留并继续自动交付。"
+    : diversity.decision === "regenerate"
+      ? "首张图片与近七日相似，已切换备用构图并重生成一次。"
+      : diversity.decision === "accepted"
+        ? "与近七日图片未发现近重复。"
+        : "正在执行七日视觉多样性检查。";
+
+  return (
+    <div
+      className={styles.imageQuality}
+      aria-labelledby="image-diversity-title"
+    >
+      <div className={styles.visualIntentHeader}>
+        <h5 id="image-diversity-title">配图变化方案</h5>
+        <span className={styles.evidenceMeta}>
+          {diversity.warning
+            ? "多样性告警（不阻断交付）"
+            : `生成方案 ${diversity.activePlanOrdinal}/2`}
+        </span>
+      </div>
+      <p className={styles.evidenceMeta}>{status}</p>
+      <dl className={styles.metadataGrid}>
+        <MetadataItem label="时段氛围" value={diversity.plan.slotToneLabel} />
+        <MetadataItem label="场景" value={diversity.plan.sceneLabel} />
+        <MetadataItem label="构图" value={diversity.plan.compositionLabel} />
+        <MetadataItem label="镜头" value={diversity.plan.cameraLabel} />
+        <MetadataItem label="角色" value={diversity.plan.castLabel} />
+        <MetadataItem label="主题物件" value={diversity.plan.subjectLabel} />
+        <MetadataItem
+          label="相似重生成"
+          value={`${diversity.retryCount}/1 次`}
+        />
+        <MetadataItem
+          label="七日对比样本"
+          value={
+            diversity.candidateCount === null
+              ? "尚未完成"
+              : `${diversity.candidateCount} 张`
+          }
+        />
+      </dl>
     </div>
   );
 }

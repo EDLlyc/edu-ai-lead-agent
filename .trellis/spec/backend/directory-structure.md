@@ -102,6 +102,12 @@ SDK, or object-storage clients.
 
 ### Infrastructure layer
 
+Controlled image variation keeps pure vocabulary/planning/fingerprints in
+`domain/visual_diversity.py` and pure perceptual hashing/comparison in
+`domain/image_similarity.py`. SQLAlchemy reservation/history queries and provider/MinIO work stay
+in application/infrastructure owners; these domain modules must not import FastAPI, SQLAlchemy, or
+provider SDKs.
+
 `app/infrastructure/` implements outbound ports. Keep provider-specific request/response models
 inside the adapter. Convert them to domain/application types before returning. Separate evidence
 repositories and brand-knowledge repositories even if both use PostgreSQL and pgvector.

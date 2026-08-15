@@ -48,6 +48,7 @@ class ImageValidationCode(StrEnum):
     MISSING_VISUAL_TEXT = "missing_visual_text"
     UNEXPECTED_VISUAL_TEXT = "unexpected_visual_text"
     DUPLICATE_VISUAL_TEXT = "duplicate_visual_text"
+    MISORDERED_VISUAL_TEXT = "misordered_visual_text"
 
 
 class ImageQualityIssueSeverity(StrEnum):
@@ -249,12 +250,15 @@ def validate_image_output(
 def validate_exact_visual_text(
     recognized_lines: Sequence[str],
     expected_text: str | Sequence[str],
+    *,
+    require_order: bool = False,
 ) -> ImageValidationResult:
     """Require OCR output to contain exactly the bounded allowlisted text set.
 
-    Blank OCR lines are ignored.  Text order is intentionally not authoritative because OCR
-    engines can return blocks in different reading orders; missing, unexpected, and duplicated
-    non-blank lines remain hard failures.
+    Blank OCR lines are ignored. Historical callers retain order-insensitive set comparison because
+    OCR engines can return blocks in different reading orders. Controlled visual-text callers can
+    additionally require the approved signature/title/subtitle hierarchy in exact reading order.
+    Missing, unexpected, duplicated, and (when requested) reordered non-blank lines are failures.
     """
 
     try:
@@ -281,6 +285,8 @@ def validate_exact_visual_text(
         issues.append(ImageValidationCode.MISSING_VISUAL_TEXT.value)
     if observed_set - expected_set:
         issues.append(ImageValidationCode.UNEXPECTED_VISUAL_TEXT.value)
+    if require_order and not issues and observed != expected:
+        issues.append(ImageValidationCode.MISORDERED_VISUAL_TEXT.value)
     return ImageValidationResult(
         passed=not issues,
         issue_codes=tuple(dict.fromkeys(issues)),

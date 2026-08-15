@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 import structlog
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -34,6 +34,7 @@ from app.core.errors import (
     NotFoundError,
     ProviderIdentityMismatchError,
 )
+from app.domain.content_slots import ContentSlot
 from app.domain.image_fallback import (
     IMAGE_CATALOG_FALLBACK_RENDERER_VERSION,
     build_provider_rejection_retry_prompt,
@@ -44,6 +45,12 @@ from app.domain.image_generation import (
     IMAGE_REFERENCE_BUDGET_BYTES,
     image_checksum,
     image_request_fingerprint,
+    validate_image_prompt,
+)
+from app.domain.image_similarity import (
+    ImageSimilarityReference,
+    ImageSimilarityResult,
+    evaluate_image_similarity,
 )
 from app.domain.image_validation import (
     build_image_repair_prompt,
@@ -51,16 +58,37 @@ from app.domain.image_validation import (
     validate_exact_visual_text,
     validate_image_output,
 )
+from app.domain.value_objects import stable_key
 from app.domain.visual_assets import AssetSelectionRequest, SelectedVisualAsset, VisualAssetRole
 from app.domain.visual_brief import (
     AcceptedVisualContext,
     VisualBrief,
     VisualReferenceDescriptor,
     VisualReferenceRole,
+    VisualRenderTextMode,
     build_visual_brief,
     build_visual_prompt_bundle,
+    build_visual_text_layer,
+    expected_visual_text,
+)
+from app.domain.visual_diversity import (
+    IMAGE_PERCEPTUAL_HASH_VERSION,
+    IMAGE_SIMILARITY_POLICY_VERSION,
+    VISUAL_BRIEF_V2_VERSION,
+    VISUAL_DIVERSITY_POLICY_VERSION,
+    VISUAL_PIPELINE_V3_VERSION,
+    VISUAL_PROMPT_V3_VERSION,
+    VISUAL_SELECTOR_V2_VERSION,
+    ControlledVisualPlan,
+    RecentVisualPlan,
+    build_controlled_visual_prompt_bundle,
+    build_visual_plan_bundle,
+    controlled_image_request_fingerprint,
+    controlled_plan_prompt_lines,
+    diversity_retry_request_fingerprint,
 )
 from app.infrastructure.brand.visual_catalog import (
+    LoadedVisualCatalog,
     load_visual_catalog,
     read_selected_reference,
     select_visual_assets,
@@ -84,6 +112,8 @@ from app.infrastructure.db.models import (
     EventClusterVersionModel,
     ImageArtifactModel,
     ImageArtifactReferenceModel,
+    ImageSimilarityAttemptModel,
+    ImageVisualPlanReservationModel,
     MaterialPackageModel,
     MaterialReviewModel,
     TopicScoreModel,
@@ -154,6 +184,29 @@ class PreparedImageInput:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedControlledPlanInput:
+    attempt_ordinal: int
+    plan: ControlledVisualPlan
+    prompt: str
+    prompt_fingerprint: str
+    reserved_references: tuple[ReservedVisualReference, ...]
+    reference_mode: str
+    reference_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedControlledImageInput:
+    brief: VisualBrief
+    plans: tuple[PreparedControlledPlanInput, PreparedControlledPlanInput]
+    history_digest: str
+    catalog_version: str
+    selector_version: str
+    content_slot: str | None
+    business_date: date
+    timezone: str
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimedMaterialPackage:
     package_id: UUID
     image_id: UUID
@@ -174,7 +227,22 @@ class ClaimedMaterialPackage:
     selector_version: str = "no-selector"
     repair_count: int = 0
     provider_rejection_retry_count: int = 0
+    diversity_retry_count: int = 0
+    active_plan_ordinal: int = 1
+    controlled_plan: ControlledVisualPlan | None = None
+    plan_reservation_id: UUID | None = None
+    prompt_fingerprint: str | None = None
     visual_brief: VisualBrief | None = None
+
+    @property
+    def network_attempt_number(self) -> int:
+        return max(
+            1,
+            self.attempt_number
+            - self.repair_count
+            - self.provider_rejection_retry_count
+            - self.diversity_retry_count,
+        )
 
 
 async def enqueue_material_package(
@@ -191,8 +259,43 @@ async def enqueue_material_package(
     image_selector_enabled: bool = True,
     image_max_reference_images: int = 3,
     image_reference_budget_bytes: int = IMAGE_REFERENCE_BUDGET_BYTES,
+    image_diversity_enabled: bool = False,
+    image_diversity_policy_version: str = VISUAL_DIVERSITY_POLICY_VERSION,
+    image_visual_brief_version: str = VISUAL_BRIEF_V2_VERSION,
+    image_diversity_selector_version: str = VISUAL_SELECTOR_V2_VERSION,
+    image_diversity_prompt_version: str = VISUAL_PROMPT_V3_VERSION,
+    image_diversity_pipeline_version: str = VISUAL_PIPELINE_V3_VERSION,
+    image_perceptual_hash_version: str = IMAGE_PERCEPTUAL_HASH_VERSION,
+    image_similarity_policy_version: str = IMAGE_SIMILARITY_POLICY_VERSION,
+    image_diversity_history_days: int = 7,
+    image_diversity_history_limit: int = 400,
 ) -> MaterialPackageResult:
     accepted = await _load_accepted_input(session_factory, run_id)
+    if image_diversity_enabled:
+        if image_asset_manifest is None or accepted.visual_brief is None:
+            raise ConflictError("controlled visual diversity requires an approved visual catalog")
+        try:
+            loaded_catalog = await asyncio.to_thread(load_visual_catalog, image_asset_manifest)
+        except (OSError, ValueError) as error:
+            raise ConflictError("approved visual asset catalog is invalid") from error
+        return await _enqueue_controlled_material_package(
+            session_factory=session_factory,
+            accepted=accepted,
+            loaded_catalog=loaded_catalog,
+            image_provider=image_provider,
+            image_model=image_model,
+            image_max_reference_images=image_max_reference_images,
+            image_reference_budget_bytes=image_reference_budget_bytes,
+            policy_version=image_diversity_policy_version,
+            brief_version=image_visual_brief_version,
+            selector_version=image_diversity_selector_version,
+            prompt_version=image_diversity_prompt_version,
+            pipeline_version=image_diversity_pipeline_version,
+            hash_version=image_perceptual_hash_version,
+            similarity_policy_version=image_similarity_policy_version,
+            history_days=image_diversity_history_days,
+            history_limit=image_diversity_history_limit,
+        )
     prepared = await asyncio.to_thread(
         _prepare_image_input,
         accepted,
@@ -369,6 +472,491 @@ async def enqueue_material_package(
         if loaded_image is None or loaded_package is None:
             raise ConflictError("image reservation disappeared")
         return MaterialPackageResult(package=loaded_package, image=loaded_image)
+
+
+def _controlled_visual_brief(accepted: AcceptedMaterialInput, *, version: str) -> VisualBrief:
+    brief = accepted.visual_brief
+    if brief is None:
+        raise ConflictError("controlled visual diversity requires an approved visual brief")
+    return VisualBrief(
+        category=brief.category,
+        learning_goal=brief.learning_goal,
+        scene=brief.scene,
+        main_action=brief.main_action,
+        characters=brief.characters,
+        asset_tags=brief.asset_tags,
+        text_layer=build_visual_text_layer(brief.category, version=version),
+        version=version,
+        reference_roles=brief.reference_roles,
+        render_text_mode=VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE,
+    )
+
+
+def _prepare_controlled_plan_input(
+    *,
+    brief: VisualBrief,
+    plan: ControlledVisualPlan,
+    attempt_ordinal: int,
+    loaded_catalog: LoadedVisualCatalog,
+    image_provider: str,
+    selector_version: str,
+    prompt_version: str,
+    pipeline_version: str,
+    image_max_reference_images: int,
+    image_reference_budget_bytes: int,
+    recent_action_asset_ids: tuple[str, ...],
+    recent_style_asset_ids: tuple[str, ...],
+    recent_variant_groups: tuple[str, ...],
+    selection_seed: str,
+) -> PreparedControlledPlanInput:
+    selection = select_visual_assets(
+        loaded_catalog,
+        AssetSelectionRequest(
+            category=brief.category.value,
+            topic=brief.text_layer.title,
+            asset_tags=brief.asset_tags,
+            characters=plan.characters,
+            main_action=plan.subject.value,
+            poses=(plan.composition.value, plan.camera.value),
+            scene=plan.scene.value,
+            subject=plan.subject.value,
+            cast=plan.cast.value,
+            reference_roles=tuple(VisualAssetRole(role.value) for role in brief.reference_roles),
+            max_references=image_max_reference_images,
+            max_reference_bytes=image_reference_budget_bytes,
+            selection_seed=selection_seed,
+            recent_action_asset_ids=recent_action_asset_ids,
+            recent_style_asset_ids=recent_style_asset_ids,
+            recent_variant_groups=recent_variant_groups,
+        ),
+        selector_version=selector_version,
+        max_references=image_max_reference_images,
+        max_reference_bytes=image_reference_budget_bytes,
+    )
+    provider_single_reference = image_provider == "toapis" and len(selection.selected_assets) > 1
+    reserved_references = tuple(
+        ReservedVisualReference(
+            role=selected.role.value,
+            asset_id=selected.asset_id,
+            filename=selected.filename,
+            sha256=selected.asset.checksum,
+            selection_reason=selected.reason,
+            fallback=selected.fallback or provider_single_reference,
+        )
+        for selected in selection.selected_assets
+    )
+    descriptors = tuple(
+        VisualReferenceDescriptor(
+            asset_id=reference.asset_id,
+            role=VisualReferenceRole(reference.role),
+            filename=reference.filename,
+            checksum=reference.sha256,
+        )
+        for reference in reserved_references
+    )
+    prompt_bundle = build_controlled_visual_prompt_bundle(
+        brief,
+        plan,
+        descriptors,
+        prompt_version=prompt_version,
+        pipeline_version=pipeline_version,
+    )
+    reference_mode = (
+        "single_fallback" if provider_single_reference else selection.reference_mode.value
+    )
+    return PreparedControlledPlanInput(
+        attempt_ordinal=attempt_ordinal,
+        plan=plan,
+        prompt=prompt_bundle.prompt,
+        prompt_fingerprint=prompt_bundle.request_fingerprint,
+        reserved_references=reserved_references,
+        reference_mode=reference_mode,
+        reference_fingerprint=stable_key(
+            "controlled-visual-references",
+            selector_version,
+            plan.fingerprint,
+            *(
+                part
+                for reference in reserved_references
+                for part in (reference.role, reference.asset_id, reference.sha256)
+            ),
+        ),
+    )
+
+
+async def _enqueue_controlled_material_package(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    accepted: AcceptedMaterialInput,
+    loaded_catalog: LoadedVisualCatalog,
+    image_provider: str,
+    image_model: str,
+    image_max_reference_images: int,
+    image_reference_budget_bytes: int,
+    policy_version: str,
+    brief_version: str,
+    selector_version: str,
+    prompt_version: str,
+    pipeline_version: str,
+    hash_version: str,
+    similarity_policy_version: str,
+    history_days: int,
+    history_limit: int,
+) -> MaterialPackageResult:
+    reviewed_versions = (
+        (policy_version, VISUAL_DIVERSITY_POLICY_VERSION),
+        (brief_version, VISUAL_BRIEF_V2_VERSION),
+        (selector_version, VISUAL_SELECTOR_V2_VERSION),
+        (prompt_version, VISUAL_PROMPT_V3_VERSION),
+        (pipeline_version, VISUAL_PIPELINE_V3_VERSION),
+        (hash_version, IMAGE_PERCEPTUAL_HASH_VERSION),
+        (similarity_policy_version, IMAGE_SIMILARITY_POLICY_VERSION),
+    )
+    if any(actual != expected for actual, expected in reviewed_versions):
+        raise ConflictError("controlled visual diversity version bundle is not supported")
+    if not 1 <= history_days <= 30 or not 1 <= history_limit <= 1_000:
+        raise ConflictError("controlled visual diversity history bounds are invalid")
+    try:
+        content_slot_value = accepted.topic_snapshot.get("content_slot")
+        content_slot = (
+            ContentSlot(content_slot_value) if isinstance(content_slot_value, str) else None
+        )
+        brief = _controlled_visual_brief(accepted, version=brief_version)
+    except ValueError as error:
+        raise ConflictError("controlled visual diversity input is invalid") from error
+
+    business_date = accepted.run.business_date
+    timezone = accepted.run.timezone
+    cutoff = business_date - timedelta(days=history_days - 1)
+    async with session_factory() as session:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {"lock_key": f"image-visual-plan:{business_date.isoformat()}:{timezone}"},
+        )
+        existing = await session.scalar(
+            select(ImageArtifactModel)
+            .where(
+                ImageArtifactModel.run_id == accepted.run.id,
+                ImageArtifactModel.draft_version_id == accepted.draft.id,
+            )
+            .with_for_update()
+        )
+        if existing is not None:
+            package = await session.scalar(
+                select(MaterialPackageModel).where(
+                    MaterialPackageModel.image_artifact_id == existing.id
+                )
+            )
+            if package is None:
+                raise ConflictError("image reservation is incomplete; no retry was attempted")
+            return MaterialPackageResult(package=package, image=existing)
+
+        history_rows = tuple(
+            (
+                await session.scalars(
+                    select(ImageVisualPlanReservationModel)
+                    .where(
+                        ImageVisualPlanReservationModel.business_date >= cutoff,
+                        ImageVisualPlanReservationModel.business_date <= business_date,
+                        ImageVisualPlanReservationModel.timezone == timezone,
+                    )
+                    .order_by(
+                        ImageVisualPlanReservationModel.business_date.desc(),
+                        ImageVisualPlanReservationModel.created_at.desc(),
+                        ImageVisualPlanReservationModel.id,
+                    )
+                    .limit(history_limit)
+                )
+            ).all()
+        )
+        try:
+            parsed_history = tuple(
+                (row, ControlledVisualPlan.from_metadata(row.plan_snapshot)) for row in history_rows
+            )
+            recent_plans = tuple(
+                RecentVisualPlan(
+                    business_date=row.business_date,
+                    content_slot=ContentSlot(row.content_slot) if row.content_slot else None,
+                    plan_fingerprint=row.plan_fingerprint,
+                    scene=plan.scene,
+                    composition=plan.composition,
+                    camera=plan.camera,
+                    cast=plan.cast,
+                    subject=plan.subject,
+                )
+                for row, plan in parsed_history
+            )
+        except ValueError as error:
+            raise ConflictError("stored controlled visual history is invalid") from error
+        history_ids = tuple(row.id for row in history_rows)
+        historical_references = (
+            tuple(
+                (
+                    await session.scalars(
+                        select(ImageArtifactReferenceModel)
+                        .where(ImageArtifactReferenceModel.plan_reservation_id.in_(history_ids))
+                        .order_by(ImageArtifactReferenceModel.created_at)
+                    )
+                ).all()
+            )
+            if history_ids
+            else ()
+        )
+        recent_action_asset_ids = tuple(
+            row.asset_id
+            for row in historical_references
+            if row.reference_role == VisualReferenceRole.ACTION_REFERENCE.value
+        )
+        recent_style_asset_ids = tuple(
+            row.asset_id
+            for row in historical_references
+            if row.reference_role == VisualReferenceRole.STYLE_REFERENCE.value
+        )
+        recent_variant_groups = tuple(
+            asset.variant_group
+            for row in historical_references
+            if (asset := loaded_catalog.catalog.asset_by_id.get(row.asset_id)) is not None
+            and asset.variant_group is not None
+            and row.reference_role
+            in {
+                VisualReferenceRole.ACTION_REFERENCE.value,
+                VisualReferenceRole.STYLE_REFERENCE.value,
+            }
+        )
+        bundle = build_visual_plan_bundle(
+            category=brief.category,
+            business_date=business_date,
+            content_slot=content_slot,
+            stable_seed=str(accepted.run.selected_event_version_id or accepted.run.id),
+            recent=recent_plans,
+            history_days=history_days,
+        )
+        try:
+            primary = _prepare_controlled_plan_input(
+                brief=brief,
+                plan=bundle.primary,
+                attempt_ordinal=1,
+                loaded_catalog=loaded_catalog,
+                image_provider=image_provider,
+                selector_version=selector_version,
+                prompt_version=prompt_version,
+                pipeline_version=pipeline_version,
+                image_max_reference_images=image_max_reference_images,
+                image_reference_budget_bytes=image_reference_budget_bytes,
+                recent_action_asset_ids=recent_action_asset_ids,
+                recent_style_asset_ids=recent_style_asset_ids,
+                recent_variant_groups=recent_variant_groups,
+                selection_seed=f"{accepted.run.id}:primary:{bundle.primary.fingerprint}",
+            )
+            alternate = _prepare_controlled_plan_input(
+                brief=brief,
+                plan=bundle.alternate,
+                attempt_ordinal=2,
+                loaded_catalog=loaded_catalog,
+                image_provider=image_provider,
+                selector_version=selector_version,
+                prompt_version=prompt_version,
+                pipeline_version=pipeline_version,
+                image_max_reference_images=image_max_reference_images,
+                image_reference_budget_bytes=image_reference_budget_bytes,
+                recent_action_asset_ids=recent_action_asset_ids,
+                recent_style_asset_ids=recent_style_asset_ids,
+                recent_variant_groups=recent_variant_groups,
+                selection_seed=f"{accepted.run.id}:alternate:{bundle.alternate.fingerprint}",
+            )
+        except (OSError, ValueError) as error:
+            raise ConflictError("controlled visual reference selection is invalid") from error
+        prepared = PreparedControlledImageInput(
+            brief=brief,
+            plans=(primary, alternate),
+            history_digest=bundle.history_digest,
+            catalog_version=loaded_catalog.catalog.catalog_version,
+            selector_version=selector_version,
+            content_slot=content_slot.value if content_slot else None,
+            business_date=business_date,
+            timezone=timezone,
+        )
+        fingerprint = controlled_image_request_fingerprint(
+            run_id=accepted.run.id,
+            draft_version_id=accepted.draft.id,
+            provider=image_provider,
+            model=image_model,
+            primary_prompt_fingerprint=primary.prompt_fingerprint,
+            alternate_prompt_fingerprint=alternate.prompt_fingerprint,
+            primary_reference_sha256s=tuple(
+                reference.sha256 for reference in primary.reserved_references
+            ),
+            alternate_reference_sha256s=tuple(
+                reference.sha256 for reference in alternate.reserved_references
+            ),
+            history_digest=bundle.history_digest,
+            policy_version=policy_version,
+            prompt_version=prompt_version,
+            pipeline_version=pipeline_version,
+            selector_version=selector_version,
+            hash_version=hash_version,
+            similarity_policy_version=similarity_policy_version,
+        )
+        image_id = uuid4()
+        package_id = uuid4()
+        reservation_ids = (uuid4(), uuid4())
+        image = ImageArtifactModel(
+            id=image_id,
+            run_id=accepted.run.id,
+            draft_version_id=accepted.draft.id,
+            request_fingerprint=fingerprint,
+            provider=image_provider,
+            model=image_model,
+            prompt_version=prompt_version,
+            pipeline_version=pipeline_version,
+            reference_sha256=(
+                primary.reserved_references[0].sha256 if primary.reserved_references else None
+            ),
+            reference_mode=primary.reference_mode,
+            visual_brief_snapshot={
+                **brief.as_metadata(),
+                "controlled_plan": primary.plan.as_metadata(),
+            },
+            status="queued",
+            available_at=datetime.now(UTC),
+            attempt_count=0,
+            repair_count=0,
+            provider_rejection_retry_count=0,
+            diversity_policy_version=policy_version,
+            perceptual_hash_version=hash_version,
+            similarity_policy_version=similarity_policy_version,
+            diversity_retry_count=0,
+            active_plan_ordinal=1,
+            final_plan_ordinal=None,
+            similarity_snapshot={},
+            validation_snapshot={},
+            audit_snapshot={},
+            storage_metadata=dict(_PRIVATE_STORAGE_METADATA),
+        )
+        plan_metadata = [
+            {
+                "attempt_ordinal": plan_input.attempt_ordinal,
+                "plan": plan_input.plan.as_metadata(),
+                "prompt_fingerprint": plan_input.prompt_fingerprint,
+                "reference_mode": plan_input.reference_mode,
+                "reference_fingerprint": plan_input.reference_fingerprint,
+                "references": [
+                    {
+                        "role": reference.role,
+                        "asset_id": reference.asset_id,
+                        "filename": reference.filename,
+                        "sha256": reference.sha256,
+                        "selection_reason": reference.selection_reason,
+                        "fallback": reference.fallback,
+                    }
+                    for reference in plan_input.reserved_references
+                ],
+            }
+            for plan_input in prepared.plans
+        ]
+        package = MaterialPackageModel(
+            id=package_id,
+            run_id=accepted.run.id,
+            draft_version_id=accepted.draft.id,
+            image_artifact_id=image_id,
+            package_version=1,
+            request_fingerprint=fingerprint,
+            status="queued",
+            topic_snapshot=accepted.topic_snapshot,
+            copy_snapshot=accepted.copy_snapshot,
+            source_snapshot=accepted.source_snapshot,
+            brand_snapshot=accepted.brand_snapshot,
+            validation_snapshot=accepted.validation_snapshot,
+            audit_snapshot=accepted.audit_snapshot,
+            version_snapshot={
+                **accepted.version_snapshot,
+                "image": {
+                    "provider": image_provider,
+                    "model": image_model,
+                    "prompt_version": prompt_version,
+                    "pipeline_version": pipeline_version,
+                    "visual_brief_version": brief_version,
+                    "diversity_policy_version": policy_version,
+                    "similarity_policy_version": similarity_policy_version,
+                    "perceptual_hash_version": hash_version,
+                    "catalog_version": prepared.catalog_version,
+                    "selector_version": prepared.selector_version,
+                    "history_digest": prepared.history_digest,
+                    "plans": plan_metadata,
+                    "fallback": _image_fallback_snapshot(
+                        state="not_used",
+                        provider_rejection_retry_count=0,
+                    ),
+                },
+            },
+            review_status="pending",
+        )
+        reservation_rows = tuple(
+            ImageVisualPlanReservationModel(
+                id=reservation_ids[index],
+                image_artifact_id=image_id,
+                attempt_ordinal=plan_input.attempt_ordinal,
+                business_date=prepared.business_date,
+                timezone=prepared.timezone,
+                content_slot=prepared.content_slot,
+                plan_fingerprint=plan_input.plan.fingerprint,
+                plan_snapshot=plan_input.plan.as_metadata(),
+                prompt_fingerprint=plan_input.prompt_fingerprint,
+                reference_fingerprint=plan_input.reference_fingerprint,
+                history_digest=prepared.history_digest,
+                policy_version=policy_version,
+                selector_version=selector_version,
+                reference_mode=plan_input.reference_mode,
+            )
+            for index, plan_input in enumerate(prepared.plans)
+        )
+        reference_rows = tuple(
+            ImageArtifactReferenceModel(
+                id=uuid4(),
+                image_artifact_id=image_id,
+                asset_id=reference.asset_id,
+                reference_role=reference.role,
+                ordinal=ordinal,
+                asset_sha256=reference.sha256,
+                filename=reference.filename,
+                catalog_version=prepared.catalog_version,
+                selector_version=prepared.selector_version,
+                selection_reason=reference.selection_reason,
+                fallback_used=reference.fallback,
+                attempt_ordinal=plan_input.attempt_ordinal,
+                plan_reservation_id=reservation_ids[index],
+            )
+            for index, plan_input in enumerate(prepared.plans)
+            for ordinal, reference in enumerate(plan_input.reserved_references)
+        )
+        session.add_all((image, package, *reservation_rows))
+        try:
+            # The ORM models intentionally avoid relationships. Flush the referenced plan rows
+            # before their composite-FK reference children while keeping one short transaction.
+            await session.flush()
+            session.add_all(reference_rows)
+            await session.commit()
+        except IntegrityError as error:
+            await session.rollback()
+            existing = await session.scalar(
+                select(ImageArtifactModel).where(
+                    ImageArtifactModel.run_id == accepted.run.id,
+                    ImageArtifactModel.draft_version_id == accepted.draft.id,
+                )
+            )
+            if existing is None:
+                raise ConflictError("controlled visual plan reservation conflicted") from error
+            package = await session.scalar(
+                select(MaterialPackageModel).where(
+                    MaterialPackageModel.image_artifact_id == existing.id
+                )
+            )
+            if package is None:
+                raise ConflictError(
+                    "image reservation is incomplete; no retry was attempted"
+                ) from error
+            return MaterialPackageResult(package=package, image=existing)
+        return MaterialPackageResult(package=package, image=image)
 
 
 async def create_material_package(
@@ -608,6 +1196,7 @@ def _claim_prompt(
     draft: CopyDraftVersionModel,
     image: ImageArtifactModel,
     references: tuple[ReservedVisualReference, ...],
+    controlled_plan: ControlledVisualPlan | None = None,
 ) -> tuple[str, dict[str, Any] | None, VisualBrief | None]:
     provider_rejection_retry_count = getattr(image, "provider_rejection_retry_count", 0)
     if image.reference_mode == "legacy_single":
@@ -656,14 +1245,29 @@ def _claim_prompt(
         )
         for reference in references
     )
-    prompt = build_visual_prompt_bundle(
-        brief,
-        descriptors,
-        prompt_version=image.prompt_version,
-        pipeline_version=image.pipeline_version,
-    ).prompt
+    if image.diversity_policy_version is not None:
+        if controlled_plan is None:
+            raise ValueError("controlled visual plan is unavailable")
+        prompt = build_controlled_visual_prompt_bundle(
+            brief,
+            controlled_plan,
+            descriptors,
+            prompt_version=image.prompt_version,
+            pipeline_version=image.pipeline_version,
+        ).prompt
+    else:
+        prompt = build_visual_prompt_bundle(
+            brief,
+            descriptors,
+            prompt_version=image.prompt_version,
+            pipeline_version=image.pipeline_version,
+        ).prompt
     if provider_rejection_retry_count > 0:
         prompt = build_provider_rejection_retry_prompt(brief, descriptors)
+        if controlled_plan is not None:
+            prompt = validate_image_prompt(
+                "\n".join((prompt, *controlled_plan_prompt_lines(controlled_plan)))
+            )
     elif getattr(image, "repair_count", 0) > 0:
         prompt = build_image_repair_prompt(
             prompt,
@@ -671,7 +1275,77 @@ def _claim_prompt(
                 getattr(image, "validation_snapshot", {}), getattr(image, "audit_snapshot", {})
             ),
         )
-    return prompt, brief.as_metadata(), brief
+    brief_snapshot = brief.as_metadata()
+    if controlled_plan is not None:
+        brief_snapshot = {
+            **brief_snapshot,
+            "controlled_plan": controlled_plan.as_metadata(),
+        }
+    return prompt, brief_snapshot, brief
+
+
+def _provider_request_fingerprint(claimed: ClaimedMaterialPackage) -> str | None:
+    diversity_fingerprint: str | None = None
+    if claimed.diversity_retry_count:
+        if claimed.controlled_plan is None or claimed.prompt_fingerprint is None:
+            raise ConflictError("controlled visual retry identity is unavailable")
+        diversity_fingerprint = diversity_retry_request_fingerprint(
+            claimed.request_fingerprint,
+            plan_fingerprint=claimed.controlled_plan.fingerprint,
+            prompt_fingerprint=claimed.prompt_fingerprint,
+        )
+    recovery_base = diversity_fingerprint or claimed.request_fingerprint
+    if claimed.provider_rejection_retry_count:
+        return provider_rejection_retry_fingerprint(recovery_base, claimed.prompt)
+    if claimed.repair_count:
+        return image_repair_fingerprint(
+            recovery_base,
+            claimed.repair_count,
+            claimed.prompt,
+        )
+    return diversity_fingerprint
+
+
+def _validate_controlled_claim_identity(
+    *,
+    reservation: ImageVisualPlanReservationModel,
+    image: ImageArtifactModel,
+    plan: ControlledVisualPlan,
+    brief: VisualBrief,
+    references: tuple[ReservedVisualReference, ...],
+) -> None:
+    if reservation.plan_fingerprint != plan.fingerprint:
+        raise ValueError("controlled visual plan fingerprint does not match its snapshot")
+    reference_fingerprint = stable_key(
+        "controlled-visual-references",
+        reservation.selector_version,
+        plan.fingerprint,
+        *(
+            part
+            for reference in references
+            for part in (reference.role, reference.asset_id, reference.sha256)
+        ),
+    )
+    if reservation.reference_fingerprint != reference_fingerprint:
+        raise ValueError("controlled visual reference fingerprint does not match its rows")
+    descriptors = tuple(
+        VisualReferenceDescriptor(
+            asset_id=reference.asset_id,
+            role=VisualReferenceRole(reference.role),
+            filename=reference.filename,
+            checksum=reference.sha256,
+        )
+        for reference in references
+    )
+    prompt_fingerprint = build_controlled_visual_prompt_bundle(
+        brief,
+        plan,
+        descriptors,
+        prompt_version=image.prompt_version,
+        pipeline_version=image.pipeline_version,
+    ).request_fingerprint
+    if reservation.prompt_fingerprint != prompt_fingerprint:
+        raise ValueError("controlled visual prompt fingerprint does not match its reservation")
 
 
 class MaterialPackageExecutor:
@@ -735,6 +1409,22 @@ class MaterialPackageExecutor:
                     image_selector_enabled=self._settings.image_selector_enabled,
                     image_max_reference_images=self._settings.image_max_reference_images,
                     image_reference_budget_bytes=self._settings.image_reference_budget_bytes,
+                    image_diversity_enabled=self._settings.image_diversity_enabled,
+                    image_diversity_policy_version=(self._settings.image_diversity_policy_version),
+                    image_visual_brief_version=self._settings.image_visual_brief_version,
+                    image_diversity_selector_version=(
+                        self._settings.image_diversity_selector_version
+                    ),
+                    image_diversity_prompt_version=(self._settings.image_diversity_prompt_version),
+                    image_diversity_pipeline_version=(
+                        self._settings.image_diversity_pipeline_version
+                    ),
+                    image_perceptual_hash_version=(self._settings.image_perceptual_hash_version),
+                    image_similarity_policy_version=(
+                        self._settings.image_similarity_policy_version
+                    ),
+                    image_diversity_history_days=(self._settings.image_diversity_history_days),
+                    image_diversity_history_limit=(self._settings.image_diversity_history_limit),
                 )
             except ConflictError as error:
                 # Another API request or worker may have won the same idempotency race.
@@ -768,6 +1458,7 @@ class MaterialPackageExecutor:
         self._lease_events[claimed.image_id] = lease_lost
         validation_snapshot: dict[str, Any] = {}
         audit_snapshot = _image_audit_not_run_snapshot()
+        similarity_result: ImageSimilarityResult | None = None
         references: tuple[ImageReference, ...] = ()
         try:
             self._ensure_lease(lease_lost)
@@ -787,17 +1478,7 @@ class MaterialPackageExecutor:
             ):
                 raise ConflictError("approved image reference changed after reservation")
             self._ensure_lease(lease_lost)
-            provider_request_fingerprint = None
-            if claimed.provider_rejection_retry_count:
-                provider_request_fingerprint = provider_rejection_retry_fingerprint(
-                    claimed.request_fingerprint, claimed.prompt
-                )
-            elif claimed.repair_count:
-                provider_request_fingerprint = image_repair_fingerprint(
-                    claimed.request_fingerprint,
-                    claimed.repair_count,
-                    claimed.prompt,
-                )
+            provider_request_fingerprint = _provider_request_fingerprint(claimed)
             result = await self._image_generator.generate(
                 ImageGenerationRequest(
                     run_id=claimed.run_id,
@@ -853,12 +1534,14 @@ class MaterialPackageExecutor:
                     )
                     return True
                 expected_text = _expected_visual_text(claimed.visual_brief)
+                require_text_order = claimed.visual_brief.version == VISUAL_BRIEF_V2_VERSION
                 ocr_result = await self._image_text_recognizer.recognize(
                     ImageTextRecognitionRequest(
                         request_fingerprint=claimed.request_fingerprint,
                         image_bytes=result.image_bytes,
                         expected_text=expected_text,
                         media_type=result.media_type,
+                        require_order=require_text_order,
                     )
                 )
                 if (
@@ -868,7 +1551,9 @@ class MaterialPackageExecutor:
                 ):
                     raise ProviderIdentityMismatchError()
                 text_validation = validate_exact_visual_text(
-                    ocr_result.recognized_lines, expected_text
+                    ocr_result.recognized_lines,
+                    expected_text,
+                    require_order=require_text_order,
                 )
                 validation_snapshot = _image_validation_snapshot(
                     text_validation,
@@ -943,17 +1628,34 @@ class MaterialPackageExecutor:
                             error_code="image_quality_audit_failed",
                         )
                     return True
+            continue_with_image, similarity_result = await self._assess_image_similarity(
+                claimed,
+                image_bytes=result.image_bytes,
+            )
+            if not continue_with_image:
+                return True
             self._ensure_lease(lease_lost)
             descriptor = await self._image_store.put_immutable(
                 result.image_bytes, media_type=result.media_type
             )
-            if not await self._persist_success(
-                claimed,
-                result,
-                descriptor,
-                validation_snapshot=validation_snapshot,
-                audit_snapshot=audit_snapshot,
-            ):
+            if similarity_result is None:
+                persisted = await self._persist_success(
+                    claimed,
+                    result,
+                    descriptor,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=audit_snapshot,
+                )
+            else:
+                persisted = await self._persist_success(
+                    claimed,
+                    result,
+                    descriptor,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=audit_snapshot,
+                    similarity_result=similarity_result,
+                )
+            if not persisted:
                 logger.warning(
                     "material_package_image_lease_lost",
                     package_id=str(claimed.package_id),
@@ -1042,7 +1744,7 @@ class MaterialPackageExecutor:
         validation_snapshot: dict[str, Any] | None = None,
         audit_snapshot: dict[str, Any] | None = None,
     ) -> None:
-        if retryable and claimed.attempt_number >= self._settings.image_max_attempts:
+        if retryable and claimed.network_attempt_number >= self._settings.image_max_attempts:
             await self._persist_catalog_fallback(
                 claimed,
                 references=references,
@@ -1097,6 +1799,7 @@ class MaterialPackageExecutor:
             self._settings.image_max_attempts
             + ImageArtifactModel.repair_count
             + ImageArtifactModel.provider_rejection_retry_count
+            + ImageArtifactModel.diversity_retry_count
         )
         async with self._session_factory() as session:
             exhausted_images = tuple(
@@ -1186,17 +1889,29 @@ class MaterialPackageExecutor:
             if package is None:
                 return None
             reserved_references: tuple[ReservedVisualReference, ...] = ()
+            active_plan_ordinal = getattr(image, "active_plan_ordinal", 1)
+            plan_reservation: ImageVisualPlanReservationModel | None = None
             if getattr(image, "reference_mode", "legacy_single") != "legacy_single":
                 reference_rows = tuple(
                     (
                         await session.scalars(
                             select(ImageArtifactReferenceModel)
-                            .where(ImageArtifactReferenceModel.image_artifact_id == image.id)
+                            .where(
+                                ImageArtifactReferenceModel.image_artifact_id == image.id,
+                                ImageArtifactReferenceModel.attempt_ordinal == active_plan_ordinal,
+                            )
                             .order_by(ImageArtifactReferenceModel.ordinal)
                         )
                     ).all()
                 )
                 reserved_references = _reserved_references_from_rows(reference_rows)
+            if image.diversity_policy_version is not None:
+                plan_reservation = await session.scalar(
+                    select(ImageVisualPlanReservationModel).where(
+                        ImageVisualPlanReservationModel.image_artifact_id == image.id,
+                        ImageVisualPlanReservationModel.attempt_ordinal == active_plan_ordinal,
+                    )
+                )
             run = await session.get(CopyGenerationRunModel, image.run_id)
             draft = await session.get(CopyDraftVersionModel, image.draft_version_id)
             if (
@@ -1227,12 +1942,28 @@ class MaterialPackageExecutor:
                     eligible=False,
                 )
             try:
+                controlled_plan = (
+                    ControlledVisualPlan.from_metadata(plan_reservation.plan_snapshot)
+                    if plan_reservation is not None
+                    else None
+                )
                 claim_prompt, claim_brief_snapshot, claim_brief = _claim_prompt(
                     package=package,
                     draft=draft,
                     image=image,
                     references=reserved_references,
+                    controlled_plan=controlled_plan,
                 )
+                if plan_reservation is not None:
+                    if controlled_plan is None or claim_brief is None:
+                        raise ValueError("controlled visual claim identity is incomplete")
+                    _validate_controlled_claim_identity(
+                        reservation=plan_reservation,
+                        image=image,
+                        plan=controlled_plan,
+                        brief=claim_brief,
+                        references=reserved_references,
+                    )
             except (OSError, ValueError):
                 image.status = "review_required"
                 image.error_code = "visual_input_invalid"
@@ -1269,6 +2000,13 @@ class MaterialPackageExecutor:
                         if isinstance(package.version_snapshot.get("image", {}), dict)
                         else "no-selector"
                     ),
+                    diversity_retry_count=getattr(image, "diversity_retry_count", 0),
+                    active_plan_ordinal=active_plan_ordinal,
+                    controlled_plan=None,
+                    plan_reservation_id=(plan_reservation.id if plan_reservation else None),
+                    prompt_fingerprint=(
+                        plan_reservation.prompt_fingerprint if plan_reservation else None
+                    ),
                 )
             lease_token = uuid4()
             image.status = "running"
@@ -1289,7 +2027,9 @@ class MaterialPackageExecutor:
                 provider=image.provider,
                 model=image.model,
                 prompt=claim_prompt,
-                reference_sha256=image.reference_sha256,
+                reference_sha256=(
+                    reserved_references[0].sha256 if reserved_references else image.reference_sha256
+                ),
                 lease_token=lease_token,
                 attempt_number=image.attempt_count,
                 references=reserved_references,
@@ -1297,6 +2037,13 @@ class MaterialPackageExecutor:
                 visual_brief_snapshot=claim_brief_snapshot,
                 repair_count=getattr(image, "repair_count", 0),
                 provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
+                diversity_retry_count=getattr(image, "diversity_retry_count", 0),
+                active_plan_ordinal=active_plan_ordinal,
+                controlled_plan=controlled_plan,
+                plan_reservation_id=(plan_reservation.id if plan_reservation else None),
+                prompt_fingerprint=(
+                    plan_reservation.prompt_fingerprint if plan_reservation else None
+                ),
                 visual_brief=claim_brief,
                 catalog_version=(
                     package.version_snapshot.get("image", {}).get("catalog_version", "no-catalog")
@@ -1566,6 +2313,193 @@ class MaterialPackageExecutor:
             error_code=error_code,
         )
 
+    async def _assess_image_similarity(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        image_bytes: bytes,
+    ) -> tuple[bool, ImageSimilarityResult | None]:
+        """Compare one quality-passing v2 raster and reserve the alternate at most once."""
+
+        if claimed.controlled_plan is None or claimed.plan_reservation_id is None:
+            return True, None
+        async with self._session_factory() as session:
+            reservation = await session.get(
+                ImageVisualPlanReservationModel, claimed.plan_reservation_id
+            )
+            if reservation is None:
+                raise ConflictError("controlled visual plan reservation is unavailable")
+            cutoff = reservation.business_date - timedelta(
+                days=self._settings.image_diversity_history_days - 1
+            )
+            historical_images = tuple(
+                (
+                    await session.scalars(
+                        select(ImageArtifactModel)
+                        .join(
+                            CopyGenerationRunModel,
+                            CopyGenerationRunModel.id == ImageArtifactModel.run_id,
+                        )
+                        .where(
+                            ImageArtifactModel.status == "succeeded",
+                            ImageArtifactModel.id != claimed.image_id,
+                            CopyGenerationRunModel.business_date >= cutoff,
+                            CopyGenerationRunModel.business_date <= reservation.business_date,
+                            CopyGenerationRunModel.timezone == reservation.timezone,
+                        )
+                        .order_by(
+                            ImageArtifactModel.completed_at.desc(),
+                            ImageArtifactModel.id,
+                        )
+                        .limit(self._settings.image_diversity_history_limit)
+                    )
+                ).all()
+            )
+            prior_attempts = tuple(
+                (
+                    await session.scalars(
+                        select(ImageSimilarityAttemptModel)
+                        .where(
+                            ImageSimilarityAttemptModel.image_artifact_id == claimed.image_id,
+                            ImageSimilarityAttemptModel.attempt_ordinal
+                            < claimed.active_plan_ordinal,
+                        )
+                        .order_by(ImageSimilarityAttemptModel.attempt_ordinal)
+                    )
+                ).all()
+            )
+        references = tuple(
+            ImageSimilarityReference(
+                artifact_id=str(image.id),
+                sha256=image.sha256,
+                perceptual_hash=image.perceptual_hash,
+            )
+            for image in historical_images
+            if image.sha256 is not None
+        ) + tuple(
+            ImageSimilarityReference(
+                artifact_id=str(attempt.image_artifact_id),
+                sha256=attempt.output_sha256,
+                perceptual_hash=attempt.perceptual_hash,
+            )
+            for attempt in prior_attempts
+        )
+        result = await asyncio.to_thread(
+            evaluate_image_similarity,
+            image_bytes,
+            references=references,
+            threshold=self._settings.image_similarity_threshold,
+        )
+        if (
+            result.near_duplicate
+            and claimed.active_plan_ordinal == 1
+            and claimed.diversity_retry_count == 0
+        ):
+            scheduled = await self._schedule_diversity_retry(
+                claimed,
+                similarity_result=result,
+                candidate_count=len(references),
+            )
+            return False, None if scheduled else result
+        return True, result
+
+    async def _schedule_diversity_retry(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        similarity_result: ImageSimilarityResult,
+        candidate_count: int,
+    ) -> bool:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            image = await session.scalar(
+                select(ImageArtifactModel)
+                .where(
+                    ImageArtifactModel.id == claimed.image_id,
+                    ImageArtifactModel.lease_token == claimed.lease_token,
+                    ImageArtifactModel.status == "running",
+                    ImageArtifactModel.lease_expires_at >= now,
+                )
+                .with_for_update()
+            )
+            package = await session.get(MaterialPackageModel, claimed.package_id)
+            alternate = await session.scalar(
+                select(ImageVisualPlanReservationModel).where(
+                    ImageVisualPlanReservationModel.image_artifact_id == claimed.image_id,
+                    ImageVisualPlanReservationModel.attempt_ordinal == 2,
+                )
+            )
+            if image is None or package is None:
+                return False
+            if image.diversity_retry_count >= 1 or alternate is None:
+                raise ConflictError("controlled visual alternate plan is unavailable")
+            session.add(
+                ImageSimilarityAttemptModel(
+                    id=uuid4(),
+                    image_artifact_id=image.id,
+                    attempt_ordinal=1,
+                    output_sha256=similarity_result.sha256,
+                    perceptual_hash=similarity_result.perceptual_hash,
+                    nearest_artifact_id=(
+                        UUID(similarity_result.nearest_artifact_id)
+                        if similarity_result.nearest_artifact_id
+                        else None
+                    ),
+                    nearest_distance=similarity_result.nearest_distance,
+                    exact_duplicate=similarity_result.exact_duplicate,
+                    near_duplicate=similarity_result.near_duplicate,
+                    threshold=similarity_result.threshold,
+                    hash_version=similarity_result.hash_version,
+                    policy_version=similarity_result.policy_version,
+                    decision="regenerate",
+                )
+            )
+            image.diversity_retry_count = 1
+            image.active_plan_ordinal = 2
+            image.reference_mode = alternate.reference_mode
+            image.visual_brief_snapshot = {
+                **{
+                    key: value
+                    for key, value in image.visual_brief_snapshot.items()
+                    if key != "controlled_plan"
+                },
+                "controlled_plan": alternate.plan_snapshot,
+            }
+            image.similarity_snapshot = {
+                **similarity_result.as_metadata(),
+                "candidate_count": candidate_count,
+                "attempt_ordinal": 1,
+                "decision": "regenerate",
+            }
+            image.status = "queued"
+            image.available_at = now
+            image.error_code = "image_near_duplicate_retry"
+            image.completed_at = None
+            _clear_image_lease(image)
+            package.status = "queued"
+            _set_package_diversity_status(
+                package,
+                retry_count=1,
+                warning=None,
+                final_plan_ordinal=None,
+                similarity_result=similarity_result,
+                candidate_count=candidate_count,
+                decision="regenerate",
+            )
+            await session.commit()
+        logger.info(
+            "material_package_image_diversity_retry_scheduled",
+            package_id=str(claimed.package_id),
+            image_id=str(claimed.image_id),
+            attempt_ordinal=1,
+            next_plan_ordinal=2,
+            exact_duplicate=similarity_result.exact_duplicate,
+            nearest_distance=similarity_result.nearest_distance,
+            threshold=similarity_result.threshold,
+            candidate_count=candidate_count,
+        )
+        return True
+
     async def _persist_success(
         self,
         claimed: ClaimedMaterialPackage,
@@ -1574,6 +2508,7 @@ class MaterialPackageExecutor:
         *,
         validation_snapshot: dict[str, Any],
         audit_snapshot: dict[str, Any],
+        similarity_result: ImageSimilarityResult | None = None,
     ) -> bool:
         now = datetime.now(UTC)
         async with self._session_factory() as session:
@@ -1590,6 +2525,53 @@ class MaterialPackageExecutor:
             package = await session.get(MaterialPackageModel, claimed.package_id)
             if image is None or package is None:
                 return False
+            if image.diversity_policy_version is not None and similarity_result is None:
+                raise ConflictError("controlled visual similarity result is unavailable")
+            if similarity_result is not None:
+                warning = (
+                    "near_duplicate_after_retry"
+                    if similarity_result.near_duplicate and claimed.active_plan_ordinal == 2
+                    else None
+                )
+                decision = "accepted_with_warning" if warning else "accepted"
+                session.add(
+                    ImageSimilarityAttemptModel(
+                        id=uuid4(),
+                        image_artifact_id=image.id,
+                        attempt_ordinal=claimed.active_plan_ordinal,
+                        output_sha256=similarity_result.sha256,
+                        perceptual_hash=similarity_result.perceptual_hash,
+                        nearest_artifact_id=(
+                            UUID(similarity_result.nearest_artifact_id)
+                            if similarity_result.nearest_artifact_id
+                            else None
+                        ),
+                        nearest_distance=similarity_result.nearest_distance,
+                        exact_duplicate=similarity_result.exact_duplicate,
+                        near_duplicate=similarity_result.near_duplicate,
+                        threshold=similarity_result.threshold,
+                        hash_version=similarity_result.hash_version,
+                        policy_version=similarity_result.policy_version,
+                        decision=decision,
+                    )
+                )
+                image.perceptual_hash = similarity_result.perceptual_hash
+                image.final_plan_ordinal = claimed.active_plan_ordinal
+                image.diversity_warning = warning
+                image.similarity_snapshot = {
+                    **similarity_result.as_metadata(),
+                    "attempt_ordinal": claimed.active_plan_ordinal,
+                    "decision": decision,
+                }
+                _set_package_diversity_status(
+                    package,
+                    retry_count=claimed.diversity_retry_count,
+                    warning=warning,
+                    final_plan_ordinal=claimed.active_plan_ordinal,
+                    similarity_result=similarity_result,
+                    candidate_count=similarity_result.candidate_count,
+                    decision=decision,
+                )
             image.provider_task_id = result.provider_task_id
             image.provider_upload_id = result.provider_upload_id
             image.status = "succeeded"
@@ -1605,6 +2587,9 @@ class MaterialPackageExecutor:
             image.audit_snapshot = audit_snapshot
             image.repair_count = claimed.repair_count
             image.provider_rejection_retry_count = claimed.provider_rejection_retry_count
+            image.diversity_retry_count = claimed.diversity_retry_count
+            if claimed.reference_sha256 is not None:
+                image.reference_sha256 = claimed.reference_sha256
             _set_package_image_quality(
                 package,
                 validation_snapshot=validation_snapshot,
@@ -1690,9 +2675,9 @@ class MaterialPackageExecutor:
         audit_snapshot: dict[str, Any] | None = None,
     ) -> None:
         now = datetime.now(UTC)
-        retry = retryable and claimed.attempt_number < self._settings.image_max_attempts
+        retry = retryable and claimed.network_attempt_number < self._settings.image_max_attempts
         retry_at = (
-            now + timedelta(seconds=min(30 * 2 ** (claimed.attempt_number - 1), 300))
+            now + timedelta(seconds=min(30 * 2 ** (claimed.network_attempt_number - 1), 300))
             if retry
             else None
         )
@@ -1807,16 +2792,7 @@ def _clear_image_lease(image: ImageArtifactModel) -> None:
 
 
 def _expected_visual_text(brief: VisualBrief) -> tuple[str, ...]:
-    return tuple(
-        value
-        for value in (
-            brief.text_layer.title,
-            brief.text_layer.learning_line,
-            *brief.text_layer.keywords,
-            *brief.text_layer.brand_values,
-        )
-        if value
-    )
+    return expected_visual_text(brief)
 
 
 def _image_validation_snapshot(
@@ -2028,6 +3004,36 @@ def _set_package_image_quality(
             "provider_rejection_retry_count": max(0, min(provider_rejection_retry_count, 1)),
         }
     )
+    package.version_snapshot = {**current, "image": image_values}
+
+
+def _set_package_diversity_status(
+    package: MaterialPackageModel,
+    *,
+    retry_count: int,
+    warning: str | None,
+    final_plan_ordinal: int | None,
+    similarity_result: ImageSimilarityResult,
+    candidate_count: int,
+    decision: str,
+) -> None:
+    current = package.version_snapshot if isinstance(package.version_snapshot, dict) else {}
+    image_snapshot = current.get("image", {})
+    image_values = dict(image_snapshot) if isinstance(image_snapshot, dict) else {}
+    image_values["diversity"] = {
+        "policy_version": VISUAL_DIVERSITY_POLICY_VERSION,
+        "similarity_policy_version": similarity_result.policy_version,
+        "hash_version": similarity_result.hash_version,
+        "retry_count": max(0, min(retry_count, 1)),
+        "warning": warning,
+        "final_plan_ordinal": final_plan_ordinal,
+        "near_duplicate": similarity_result.near_duplicate,
+        "exact_duplicate": similarity_result.exact_duplicate,
+        "nearest_distance": similarity_result.nearest_distance,
+        "threshold": similarity_result.threshold,
+        "candidate_count": max(0, min(candidate_count, 1_000)),
+        "decision": decision,
+    }
     package.version_snapshot = {**current, "image": image_values}
 
 

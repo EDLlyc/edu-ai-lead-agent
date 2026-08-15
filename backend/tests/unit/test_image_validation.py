@@ -128,6 +128,20 @@ def test_validate_exact_visual_text_requires_the_exact_allowlist() -> None:
     assert empty_allowlist.issue_codes == (ImageValidationCode.INVALID_EXPECTED_VISUAL_TEXT.value,)
 
 
+def test_validate_exact_visual_text_can_require_controlled_hierarchy_order() -> None:
+    expected = ("赛先生科学", "人工智能", "理解智能如何学习与反馈")
+
+    legacy_compatible = validate_exact_visual_text(tuple(reversed(expected)), expected)
+    controlled = validate_exact_visual_text(
+        tuple(reversed(expected)),
+        expected,
+        require_order=True,
+    )
+
+    assert legacy_compatible.passed is True
+    assert controlled.issue_codes == (ImageValidationCode.MISORDERED_VISUAL_TEXT.value,)
+
+
 def test_repair_helpers_are_bounded_and_deterministic() -> None:
     prompt = "具身智能 educational scene"
     repaired = build_image_repair_prompt(
@@ -162,6 +176,7 @@ def test_validation_ports_are_typed_and_keep_audit_results_content_free() -> Non
         expected_text=expected,
     )
     assert ocr_request.expected_text == expected
+    assert ocr_request.require_order is False
     ocr_result = ImageTextRecognitionResult(
         recognized_lines=expected,
         provider="fake",

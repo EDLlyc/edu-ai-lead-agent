@@ -130,6 +130,19 @@ API、Scheduler 和 Worker 是独立进程。Scheduler 默认每天 `06:30 Asia/
 `GET /api/v1/content-editions/<yyyy-mm-dd>?profile=preview`。旧
 `GET /api/v1/daily-topics/<yyyy-mm-dd>` 继续保留每日 Top 1 的历史语义。
 
+配图受控多样性由 `IMAGE_DIVERSITY_ENABLED` 控制，默认关闭。启用后仍保持赛先生、小赛的
+统一 3D 卡通形象和蓝白橙品牌语言，只在受控的场景、构图、镜头、角色组合、时段气质与主题
+物件中变化，并优先避开最近七天已经使用的完整组合。首张安全图片若与七日历史近似，只使用
+预留的备用方案重生成一次；第二张仍近似但其他质量门通过时继续使用，素材包记录
+`near_duplicate_after_retry` 告警且不阻断原有自动投递。API/worker 必须共享全部版本、七日窗口、
+阈值和固定一次重生成上限；启用受控多样性还必须同时设置 `IMAGE_OCR_ENABLED=true`，否则配置
+校验会拒绝启动。`make doctor` 会检查跨服务配置一致性。前端详情页仅供本地检查这些安全标签，
+不进入生产部署。生产启用步骤见
+[生产服务器迁移运行手册](./docs/operations/production-server-migration-runbook.md#controlled-visual-diversity-rollout)。
+受控 v2/v3 配图同时固定使用一个深蓝圆角三层标题卡：品牌签名 `赛先生科学`、有限类别主标题、
+对应短副标题。不得把原始新闻标题、完整文案、自由生成口号或伪文字画进图片；OCR 必须只识别
+这三行，且标题卡不能遮挡角色面部、科学物体或主体动作。历史 v1 文字模式保持不变。
+
 ## 首批权威来源
 
 | 状态 | 层级 | 来源 |

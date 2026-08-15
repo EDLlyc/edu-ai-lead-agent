@@ -1239,3 +1239,34 @@ def test_settings_accept_the_300_second_comfly_timeout_bounds() -> None:
 
     assert settings.image_provider_timeout_seconds == 300.0
     assert settings.image_provider_window_seconds == 300.0
+
+
+def test_visual_diversity_defaults_are_bounded_and_disabled() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.image_diversity_enabled is False
+    assert settings.image_diversity_history_days == 7
+    assert settings.image_diversity_history_limit == 400
+    assert settings.image_similarity_threshold == 6
+    assert settings.image_diversity_max_regenerations == 1
+
+
+def test_visual_diversity_requires_the_reviewed_image_bundle() -> None:
+    with pytest.raises(ValueError, match="image generation"):
+        Settings(_env_file=None, image_diversity_enabled=True)
+    with pytest.raises(ValueError, match="exact image OCR"):
+        Settings(
+            _env_file=None,
+            image_enabled=True,
+            image_provider_mode="fake",
+            image_diversity_enabled=True,
+        )
+    with pytest.raises(ValueError, match="reviewed bundle"):
+        Settings(
+            _env_file=None,
+            image_enabled=True,
+            image_provider_mode="fake",
+            image_diversity_enabled=True,
+            image_ocr_enabled=True,
+            image_diversity_prompt_version="unreviewed-prompt",
+        )

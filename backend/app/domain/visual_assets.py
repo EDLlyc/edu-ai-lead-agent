@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Self
 
+from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
+
 VISUAL_ASSET_SCHEMA_VERSION = "brand-visual-assets-v2"
 VISUAL_ASSET_CATALOG_VERSION = "brand-visual-catalog-v1"
 VISUAL_ASSET_SELECTOR_VERSION = "visual-asset-selector-v1"
@@ -573,6 +575,12 @@ class AssetSelectionRequest:
     max_references: int = DEFAULT_MAX_REFERENCE_ASSETS
     max_reference_bytes: int = DEFAULT_MAX_REFERENCE_BYTES
     selection_seed: str = ""
+    scene: str = ""
+    subject: str = ""
+    cast: str = ""
+    recent_action_asset_ids: tuple[str, ...] = ()
+    recent_style_asset_ids: tuple[str, ...] = ()
+    recent_variant_groups: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_references < 1 or self.max_references > 3:
@@ -593,6 +601,22 @@ class AssetSelectionRequest:
             _text_tuple(self.characters, field_name="characters") or ("xiao-sai", "sai-xiansheng"),
         )
         object.__setattr__(self, "poses", _text_tuple(self.poses, field_name="poses"))
+        for field_name in (
+            "recent_action_asset_ids",
+            "recent_style_asset_ids",
+            "recent_variant_groups",
+        ):
+            maximum_item_length = 128 if field_name.endswith("asset_ids") else 80
+            object.__setattr__(
+                self,
+                field_name,
+                _text_tuple(
+                    getattr(self, field_name),
+                    field_name=field_name,
+                    maximum_items=100,
+                    maximum_item_length=maximum_item_length,
+                ),
+            )
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, object]) -> Self:
@@ -637,6 +661,12 @@ class AssetSelectionRequest:
                 maximum=100 * 1024 * 1024,
             ),
             selection_seed=_normalize_selection_seed(raw.get("selection_seed")),
+            scene=text_value("scene"),
+            subject=text_value("subject"),
+            cast=text_value("cast"),
+            recent_action_asset_ids=_object_string_tuple(raw.get("recent_action_asset_ids")),
+            recent_style_asset_ids=_object_string_tuple(raw.get("recent_style_asset_ids")),
+            recent_variant_groups=_object_string_tuple(raw.get("recent_variant_groups")),
         )
 
 
@@ -731,6 +761,7 @@ class _RankedCandidate:
     asset: VisualAsset
     score: int
     matched_tags: tuple[str, ...]
+    novelty_repeated: bool = False
 
 
 _ACTION_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -905,6 +936,12 @@ class AssetSelector:
                 "poses": request.poses,
                 "reference_roles": request.reference_roles,
                 "selection_seed": request.selection_seed,
+                "scene": request.scene,
+                "subject": request.subject,
+                "cast": request.cast,
+                "recent_action_asset_ids": request.recent_action_asset_ids,
+                "recent_style_asset_ids": request.recent_style_asset_ids,
+                "recent_variant_groups": request.recent_variant_groups,
             }
             raw.update(overrides)
             return AssetSelectionRequest.from_mapping(raw)
@@ -924,6 +961,12 @@ class AssetSelector:
                 "poses",
                 "reference_roles",
                 "selection_seed",
+                "scene",
+                "subject",
+                "cast",
+                "recent_action_asset_ids",
+                "recent_style_asset_ids",
+                "recent_variant_groups",
             )
             if hasattr(request, key)
         }
@@ -990,7 +1033,24 @@ class AssetSelector:
             elif role == VisualAssetRole.STYLE_REFERENCE:
                 if request.category and request.category in asset.scene_tags:
                     score += 120
-            candidates.append(_RankedCandidate(asset=asset, score=score, matched_tags=matched_tags))
+            novelty_repeated = False
+            if self._selector_version == VISUAL_SELECTOR_V2_VERSION:
+                if role == VisualAssetRole.ACTION_REFERENCE:
+                    novelty_repeated = asset.asset_id in request.recent_action_asset_ids
+                elif role == VisualAssetRole.STYLE_REFERENCE:
+                    novelty_repeated = asset.asset_id in request.recent_style_asset_ids
+                if asset.variant_group and asset.variant_group in request.recent_variant_groups:
+                    novelty_repeated = True
+                if novelty_repeated:
+                    score -= 20_000
+            candidates.append(
+                _RankedCandidate(
+                    asset=asset,
+                    score=score,
+                    matched_tags=matched_tags,
+                    novelty_repeated=novelty_repeated,
+                )
+            )
         return tuple(
             sorted(
                 candidates,
@@ -1042,6 +1102,8 @@ class AssetSelector:
             reason_parts.append("combined-character preference")
         if fallback:
             reason_parts.append("controlled fallback")
+        if candidate.novelty_repeated:
+            reason_parts.append("novelty exhausted; controlled repeat")
         return SelectedVisualAsset(
             asset=candidate.asset,
             role=role,
@@ -1062,6 +1124,7 @@ class AssetSelector:
             if marker in request.main_action:
                 tags.update(aliases)
         tags.update(request.poses)
+        tags.update(value for value in (request.scene, request.subject, request.cast) if value)
         return tags
 
     @staticmethod

@@ -22,12 +22,15 @@ class ImageTextRecognitionRequest:
     expected_text: tuple[str, ...] = ()
     media_type: str = "image/png"
     language: str = "zh-CN"
+    require_order: bool = False
 
     def __post_init__(self) -> None:
         _validate_image_input(self.image_bytes, self.media_type)
         _validate_fingerprint(self.request_fingerprint)
         _validate_lines(self.expected_text, field_name="expected text")
         _validate_text(self.language, field_name="OCR language", maximum=40)
+        if not isinstance(self.require_order, bool):
+            raise ValueError("OCR order requirement must be a boolean")
         object.__setattr__(self, "media_type", normalize_image_media_type(self.media_type))
         object.__setattr__(self, "expected_text", tuple(self.expected_text))
 

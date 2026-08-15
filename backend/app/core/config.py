@@ -8,6 +8,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, ContentSlotSchedule
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
+from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
+from app.domain.visual_diversity import (
+    IMAGE_PERCEPTUAL_HASH_VERSION,
+    IMAGE_SIMILARITY_POLICY_VERSION,
+    VISUAL_BRIEF_V2_VERSION,
+    VISUAL_DIVERSITY_POLICY_VERSION,
+    VISUAL_PIPELINE_V3_VERSION,
+    VISUAL_PROMPT_V3_VERSION,
+    VISUAL_SELECTOR_V2_VERSION,
+)
 
 
 class Settings(BaseSettings):
@@ -194,6 +204,18 @@ class Settings(BaseSettings):
     image_reference_asset: str = "private/brand-materials/05-visual-assets/赛先生-显微镜.png"
     image_ocr_enabled: bool = False
     image_quality_audit_enabled: bool = False
+    image_diversity_enabled: bool = False
+    image_diversity_policy_version: str = VISUAL_DIVERSITY_POLICY_VERSION
+    image_visual_brief_version: str = VISUAL_BRIEF_V2_VERSION
+    image_diversity_selector_version: str = VISUAL_SELECTOR_V2_VERSION
+    image_diversity_prompt_version: str = VISUAL_PROMPT_V3_VERSION
+    image_diversity_pipeline_version: str = VISUAL_PIPELINE_V3_VERSION
+    image_perceptual_hash_version: str = IMAGE_PERCEPTUAL_HASH_VERSION
+    image_similarity_policy_version: str = IMAGE_SIMILARITY_POLICY_VERSION
+    image_diversity_history_days: int = Field(default=7, ge=1, le=30)
+    image_diversity_history_limit: int = Field(default=400, ge=1, le=1_000)
+    image_similarity_threshold: int = Field(default=DEFAULT_IMAGE_SIMILARITY_THRESHOLD, ge=0, le=64)
+    image_diversity_max_regenerations: Literal[1] = 1
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
@@ -383,6 +405,51 @@ class Settings(BaseSettings):
                 raise ValueError("Zhipu base URL must be an HTTPS origin/path without credentials")
         if self.image_enabled and self.image_provider_mode == "disabled":
             raise ValueError("image provider must be enabled when image generation is enabled")
+        if self.image_diversity_enabled:
+            if not self.image_enabled:
+                raise ValueError("image diversity requires image generation to be enabled")
+            if not self.image_ocr_enabled:
+                raise ValueError("image diversity requires exact image OCR validation")
+            if not self.image_selector_enabled:
+                raise ValueError("image diversity requires approved visual asset selection")
+            reviewed_versions = {
+                "image_diversity_policy_version": (
+                    self.image_diversity_policy_version,
+                    VISUAL_DIVERSITY_POLICY_VERSION,
+                ),
+                "image_visual_brief_version": (
+                    self.image_visual_brief_version,
+                    VISUAL_BRIEF_V2_VERSION,
+                ),
+                "image_diversity_selector_version": (
+                    self.image_diversity_selector_version,
+                    VISUAL_SELECTOR_V2_VERSION,
+                ),
+                "image_diversity_prompt_version": (
+                    self.image_diversity_prompt_version,
+                    VISUAL_PROMPT_V3_VERSION,
+                ),
+                "image_diversity_pipeline_version": (
+                    self.image_diversity_pipeline_version,
+                    VISUAL_PIPELINE_V3_VERSION,
+                ),
+                "image_perceptual_hash_version": (
+                    self.image_perceptual_hash_version,
+                    IMAGE_PERCEPTUAL_HASH_VERSION,
+                ),
+                "image_similarity_policy_version": (
+                    self.image_similarity_policy_version,
+                    IMAGE_SIMILARITY_POLICY_VERSION,
+                ),
+            }
+            mismatched = [
+                name for name, (actual, expected) in reviewed_versions.items() if actual != expected
+            ]
+            if mismatched:
+                raise ValueError(
+                    "image diversity versions must match the reviewed bundle: "
+                    + ", ".join(mismatched)
+                )
         if self.image_provider_mode == "toapis":
             key = self.toapis_api_key.get_secret_value().strip() if self.toapis_api_key else ""
             if not key:
@@ -459,6 +526,13 @@ class Settings(BaseSettings):
             self.copy_preview_policy_version,
             self.image_prompt_version,
             self.image_pipeline_version,
+            self.image_diversity_policy_version,
+            self.image_visual_brief_version,
+            self.image_diversity_selector_version,
+            self.image_diversity_prompt_version,
+            self.image_diversity_pipeline_version,
+            self.image_perceptual_hash_version,
+            self.image_similarity_policy_version,
         }
         version_values.discard(None)
         bounded_version_values = {value for value in version_values if value is not None}

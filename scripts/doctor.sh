@@ -168,6 +168,36 @@ if any(value in (None, "") for value in values) or len(set(values)) != 1:
 ' >/dev/null || fail "Image retry attempt limit is not shared by API and content worker"
 pass "Image retry attempt limit is shared by API and content worker"
 
+docker compose --profile content config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
+names = ("acquisition-api", "content-worker")
+keys = (
+    "IMAGE_DIVERSITY_ENABLED",
+    "IMAGE_DIVERSITY_POLICY_VERSION",
+    "IMAGE_VISUAL_BRIEF_VERSION",
+    "IMAGE_DIVERSITY_SELECTOR_VERSION",
+    "IMAGE_DIVERSITY_PROMPT_VERSION",
+    "IMAGE_DIVERSITY_PIPELINE_VERSION",
+    "IMAGE_PERCEPTUAL_HASH_VERSION",
+    "IMAGE_SIMILARITY_POLICY_VERSION",
+    "IMAGE_DIVERSITY_HISTORY_DAYS",
+    "IMAGE_DIVERSITY_HISTORY_LIMIT",
+    "IMAGE_SIMILARITY_THRESHOLD",
+    "IMAGE_DIVERSITY_MAX_REGENERATIONS",
+)
+for key in keys:
+    values = [services[name].get("environment", {}).get(key) for name in names]
+    if any(value in (None, "") for value in values) or len(set(values)) != 1:
+        raise SystemExit(f"image diversity setting {key} must be present and identical")
+if services["acquisition-api"]["environment"]["IMAGE_DIVERSITY_MAX_REGENERATIONS"] != "1":
+    raise SystemExit("image diversity permits exactly one regeneration")
+' >/dev/null || fail "Image-diversity settings are not shared by API and content worker"
+pass "Image-diversity versions, lookback, threshold, and one-retry bound are shared"
+
 docker compose --profile governance --profile content --profile wecom config --format json | \
   "${python_command[@]}" -c '
 import json
@@ -214,7 +244,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260814_0020" ]] \
+[[ "$migration_revision" == "20260815_0021" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -241,6 +271,14 @@ content_slot_table_count="$(
 [[ "$content_slot_table_count" == "5" ]] \
   || fail "Content-slot and delivery-window schema is incomplete; run 'make migrate'"
 pass "Content-slot and delivery-window tables are installed"
+
+visual_diversity_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''image_visual_plan_reservations'\'','\''image_similarity_attempts'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$visual_diversity_table_count" == "2" ]] \
+  || fail "Visual-diversity schema is incomplete; run 'make migrate'"
+pass "Visual-diversity reservation and similarity-attempt tables are installed"
 
 content_slot_queue_counts="$(
   docker compose exec -T postgres sh -c \

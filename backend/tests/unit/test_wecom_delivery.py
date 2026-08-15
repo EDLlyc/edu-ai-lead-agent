@@ -248,6 +248,31 @@ async def test_direct_mode_enqueues_pending_manual_use_package_after_quality_che
 
 
 @pytest.mark.asyncio
+async def test_direct_mode_keeps_safe_second_near_duplicate_delivery_eligible() -> None:
+    package, image = _delivery_package()
+    image.diversity_retry_count = 1
+    image.diversity_warning = "near_duplicate_after_retry"
+    image.similarity_snapshot = {
+        "near_duplicate": True,
+        "decision": "accepted_with_warning",
+    }
+    session = _DeliverySession(package, image)
+
+    job = await enqueue_wecom_delivery(
+        session=session,  # type: ignore[arg-type]
+        package_id=package.id,
+        recipient_id="default",
+        mode="formal",
+        include_copy=True,
+        include_image=True,
+        settings=_settings(require_review=False),
+    )
+
+    assert job.status == "queued"
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
 async def test_direct_mode_rejects_explicit_review_rejection() -> None:
     package, image = _delivery_package(review_status="rejected")
 

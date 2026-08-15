@@ -153,7 +153,9 @@ async def test_vision_ocr_sends_a_bounded_data_url_and_returns_typed_result() ->
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["temperature"] == 0.0
     content = payload["messages"][1]["content"]
-    assert json.loads(content[0]["text"])["request_fingerprint"] == "ocr-fingerprint"
+    prompt_context = json.loads(content[0]["text"])
+    assert prompt_context["request_fingerprint"] == "ocr-fingerprint"
+    assert prompt_context["require_order"] is False
     assert _data_url_bytes(content[1]["image_url"]["url"]) == IMAGE_BYTES
     assert result.recognized_lines == ("科学", "探索")
     assert result.provider == "openai-compatible"
@@ -210,6 +212,33 @@ async def test_vision_ocr_rejects_unexpected_text_even_when_json_is_valid() -> N
             )
 
     assert raised.value.issue_codes == ("unexpected_visual_text",)
+
+
+@pytest.mark.asyncio
+async def test_vision_ocr_rejects_reordered_controlled_text() -> None:
+    expected = ("赛先生科学", "人工智能", "理解智能如何学习与反馈")
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_completion(
+                json.dumps({"recognized_lines": list(reversed(expected))}, ensure_ascii=False)
+            ),
+        )
+
+    adapter, client = _recognizer(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(
+                ImageTextRecognitionRequest(
+                    image_bytes=IMAGE_BYTES,
+                    request_fingerprint="controlled-ocr-fingerprint",
+                    expected_text=expected,
+                    require_order=True,
+                )
+            )
+
+    assert raised.value.issue_codes == ("misordered_visual_text",)
 
 
 @pytest.mark.asyncio

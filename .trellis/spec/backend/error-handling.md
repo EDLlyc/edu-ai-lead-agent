@@ -119,6 +119,13 @@ validated and stored through the normal private immutable path, records a typed 
 never makes a third provider request. Missing/invalid references or storage failure remain
 `review_required`/failed terminal states.
 
+Perceptual similarity repair is a separate one-use budget, not a provider/network retry, an OCR or
+quality repair, or provider-rejection neutralization. A near duplicate on the first controlled
+plan schedules the pre-reserved alternate. A safe near duplicate on the alternate succeeds with
+`near_duplicate_after_retry`; it must not be converted into `review_required`, retried a third
+time, or allowed to override a safety/integrity failure. See
+[`visual-diversity.md`](./visual-diversity.md).
+
 ## Scenario: Direct Comfly raster generation response
 
 ### 1. Scope / Trigger

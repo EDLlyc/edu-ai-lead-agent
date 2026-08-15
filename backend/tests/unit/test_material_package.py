@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -26,7 +27,11 @@ from app.application.services.material_package import (
     MaterialPackageExecutor,
     MaterialPackageResult,
     ReservedVisualReference,
+    _claim_prompt,
+    _expected_visual_text,
     _prepare_image_input,
+    _provider_request_fingerprint,
+    _validate_controlled_claim_identity,
     enqueue_material_package,
     retry_material_package_image,
 )
@@ -37,7 +42,14 @@ from app.core.errors import (
     ImageProviderRejectedError,
     ImageProviderTimeoutError,
 )
-from app.domain.visual_brief import AcceptedVisualContext, VisualBrief, build_visual_brief
+from app.domain.content_slots import ContentSlot
+from app.domain.visual_brief import (
+    CONTROLLED_VISUAL_BRIEF_VERSION,
+    AcceptedVisualContext,
+    VisualBrief,
+    build_visual_brief,
+)
+from app.domain.visual_diversity import build_visual_plan_bundle
 from app.infrastructure.ai.image_generation import _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
@@ -426,6 +438,113 @@ def test_material_package_image_projection_defaults_and_redacts_fallback_provena
     assert "private.example.test" not in json.dumps(payload)
 
 
+def test_material_package_projects_safe_second_plan_diversity_warning() -> None:
+    package, image = _package_and_image()
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title="人工智能教育"),
+        version="visual-brief-v2-controlled-diversity",
+    )
+    plans = build_visual_plan_bundle(
+        category=brief.category,
+        business_date=date(2026, 8, 15),
+        content_slot=ContentSlot.EVENING,
+        stable_seed="api-warning",
+    )
+    package.version_snapshot = {
+        "package_schema_version": "material-package-v2",
+        "image": {
+            "prompt_version": "image-prompt-v3-controlled-diversity",
+            "pipeline_version": "image-pipeline-v3-controlled-diversity",
+            "visual_brief_version": "visual-brief-v2-controlled-diversity",
+            "diversity_policy_version": "visual-diversity-policy-v1",
+            "similarity_policy_version": "image-similarity-policy-v1",
+            "perceptual_hash_version": "image-perceptual-hash-v1",
+            "catalog_version": "catalog-v1",
+            "selector_version": "brand-visual-selector-v2-novelty",
+            "history_digest": "private-history-digest",
+            "plans": [
+                {
+                    "attempt_ordinal": ordinal,
+                    "plan": plan.as_metadata(),
+                    "prompt_fingerprint": f"private-prompt-{ordinal}",
+                    "reference_fingerprint": f"private-reference-{ordinal}",
+                    "reference_mode": "single_reference",
+                    "references": [
+                        {
+                            "role": "identity_reference",
+                            "asset_id": f"approved-{ordinal}",
+                            "filename": f"approved-{ordinal}.png",
+                            "sha256": f"{ordinal:064x}",
+                            "selection_reason": "approved identity coverage",
+                            "fallback": False,
+                        }
+                    ],
+                }
+                for ordinal, plan in ((1, plans.primary), (2, plans.alternate))
+            ],
+            "diversity": {
+                "near_duplicate": True,
+                "exact_duplicate": False,
+                "nearest_distance": 3,
+                "threshold": 6,
+                "candidate_count": 12,
+                "decision": "accepted_with_warning",
+            },
+        },
+    }
+    image.visual_brief_snapshot = {
+        **brief.as_metadata(),
+        "controlled_plan": plans.alternate.as_metadata(),
+    }
+    image.reference_mode = "single_reference"
+    image.repair_count = 0
+    image.provider_rejection_retry_count = 0
+    image.diversity_retry_count = 1
+    image.active_plan_ordinal = 2
+    image.final_plan_ordinal = 2
+    image.diversity_warning = "near_duplicate_after_retry"
+    image.validation_snapshot = {}
+    image.audit_snapshot = {}
+
+    payload = material_package_routes._detail_response(package, image).model_dump(mode="json")
+
+    assert payload["image"]["diversity"]["plan"]["scene"] == plans.alternate.scene.value
+    assert payload["image"]["diversity"]["retry_count"] == 1
+    assert payload["image"]["diversity"]["warning"] is True
+    assert payload["image"]["diversity"]["decision"] == "accepted_with_warning"
+    assert payload["image"]["references"][0]["asset_id"] == "approved-2"
+    encoded = json.dumps(payload, ensure_ascii=False)
+    assert "private-history-digest" not in encoded
+    assert "private-prompt" not in encoded
+    assert "private-reference" not in encoded
+
+    package.version_snapshot["image"]["diversity"] = {
+        "near_duplicate": False,
+        "exact_duplicate": False,
+        "nearest_distance": 15,
+        "threshold": 6,
+        "candidate_count": 12,
+        "decision": "accepted",
+    }
+    image.diversity_retry_count = 0
+    image.active_plan_ordinal = 1
+    image.final_plan_ordinal = 1
+    image.diversity_warning = None
+    distinct = material_package_routes._detail_response(package, image).model_dump(mode="json")
+    assert distinct["image"]["diversity"]["plan"]["scene"] == plans.primary.scene.value
+    assert distinct["image"]["diversity"]["retry_count"] == 0
+    assert distinct["image"]["diversity"]["warning"] is False
+    assert distinct["image"]["diversity"]["decision"] == "accepted"
+
+    image.diversity_retry_count = 1
+    image.active_plan_ordinal = 2
+    image.final_plan_ordinal = 2
+    repaired = material_package_routes._detail_response(package, image).model_dump(mode="json")
+    assert repaired["image"]["diversity"]["plan"]["scene"] == plans.alternate.scene.value
+    assert repaired["image"]["diversity"]["retry_count"] == 1
+    assert repaired["image"]["diversity"]["warning"] is False
+
+
 def _claimed_material_package(
     *,
     eligible: bool = True,
@@ -452,6 +571,131 @@ def _claimed_material_package(
         provider_rejection_retry_count=provider_rejection_retry_count,
         visual_brief=visual_brief,
     )
+
+
+def test_controlled_alternate_recovery_fingerprints_remain_distinct() -> None:
+    plan = build_visual_plan_bundle(
+        category=build_visual_brief(
+            AcceptedVisualContext(topic_title="机器人教育"),
+            version="visual-brief-v2-controlled-diversity",
+        ).category,
+        business_date=date(2026, 8, 15),
+        content_slot=ContentSlot.NOON,
+        stable_seed="alternate-recovery",
+    ).alternate
+    base = _claimed_material_package()
+    alternate = replace(
+        base,
+        prompt="controlled alternate prompt",
+        diversity_retry_count=1,
+        active_plan_ordinal=2,
+        controlled_plan=plan,
+        prompt_fingerprint="d" * 64,
+    )
+    repaired = replace(
+        alternate,
+        prompt="controlled alternate repair prompt",
+        repair_count=1,
+    )
+    neutralized = replace(
+        alternate,
+        prompt="controlled alternate neutralized prompt",
+        provider_rejection_retry_count=1,
+    )
+
+    fingerprints = {
+        _provider_request_fingerprint(alternate),
+        _provider_request_fingerprint(repaired),
+        _provider_request_fingerprint(neutralized),
+    }
+    assert None not in fingerprints
+    assert len(fingerprints) == 3
+
+
+def test_controlled_alternate_provider_recovery_keeps_reserved_plan() -> None:
+    package, image = _package_and_image()
+    package.topic_snapshot["title"] = "人工智能教育"
+    plan = build_visual_plan_bundle(
+        category=build_visual_brief(
+            AcceptedVisualContext(topic_title="人工智能教育"),
+            version="visual-brief-v2-controlled-diversity",
+        ).category,
+        business_date=date(2026, 8, 15),
+        content_slot=ContentSlot.EVENING,
+        stable_seed="alternate-provider-recovery",
+    ).alternate
+    image.reference_mode = "single_reference"
+    image.diversity_policy_version = "visual-diversity-policy-v1"
+    image.provider_rejection_retry_count = 1
+    image.diversity_retry_count = 1
+    image.prompt_version = "image-prompt-v3-controlled-diversity"
+    image.pipeline_version = "image-pipeline-v3-controlled-diversity"
+    image.visual_brief_snapshot = {"version": "visual-brief-v2-controlled-diversity"}
+    draft = SimpleNamespace(
+        copywriting="不应进入提示词的家长文案",
+        image_prompt="不应复用的原始提示词",
+    )
+
+    prompt, snapshot, _brief = _claim_prompt(
+        package=package,
+        draft=draft,
+        image=image,
+        references=(),
+        controlled_plan=plan,
+    )
+
+    assert "Recovery prompt version: image-provider-rejection-retry-v1" in prompt
+    assert "Controlled composition:" in prompt
+    assert "Controlled camera:" in prompt
+    assert "不应进入提示词" not in prompt
+    assert "不应复用" not in prompt
+    assert snapshot is not None
+    assert snapshot["controlled_plan"]["fingerprint"] == plan.fingerprint
+
+
+def test_controlled_visual_ocr_allowlist_is_exactly_signature_title_subtitle() -> None:
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title="人工智能教育"),
+        version="visual-brief-v2-controlled-diversity",
+    )
+
+    assert _expected_visual_text(brief) == (
+        "赛先生科学",
+        "人工智能",
+        "理解智能如何学习与反馈",
+    )
+
+
+def test_controlled_claim_rejects_snapshot_fingerprint_drift() -> None:
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title="人工智能教育"),
+        version="visual-brief-v2-controlled-diversity",
+    )
+    plan = build_visual_plan_bundle(
+        category=brief.category,
+        business_date=date(2026, 8, 15),
+        content_slot=ContentSlot.NOON,
+        stable_seed="claim-integrity",
+    ).primary
+    image = SimpleNamespace(
+        prompt_version="image-prompt-v3-controlled-diversity",
+        pipeline_version="image-pipeline-v3-controlled-diversity",
+    )
+    reservation = SimpleNamespace(
+        plan_fingerprint="0" * 64,
+        selector_version="brand-visual-selector-v2-novelty",
+        reference_fingerprint="0" * 64,
+        prompt_fingerprint="0" * 64,
+    )
+
+    with pytest.raises(ValueError, match="plan fingerprint"):
+        _validate_controlled_claim_identity(
+            reservation=reservation,
+            image=image,
+            plan=plan,
+            brief=brief,
+            references=(),
+        )
 
 
 class _RecordingImageGenerator:
@@ -1198,11 +1442,20 @@ async def test_material_worker_exhausted_transient_provider_uses_catalog_fallbac
     )
 
 
+@pytest.mark.parametrize("controlled", (False, True))
 @pytest.mark.asyncio
 async def test_material_worker_persists_configured_ocr_and_audit_snapshots(
     monkeypatch: pytest.MonkeyPatch,
+    controlled: bool,
 ) -> None:
-    brief = _quality_visual_brief()
+    brief = (
+        build_visual_brief(
+            AcceptedVisualContext(topic_title="机器人如何学会调整动作"),
+            version=CONTROLLED_VISUAL_BRIEF_VERSION,
+        )
+        if controlled
+        else _quality_visual_brief()
+    )
     claimed = _claimed_material_package(visual_brief=brief)
     generator = _RecordingImageGenerator()
     store = _RecordingImageStore()
@@ -1249,12 +1502,8 @@ async def test_material_worker_persists_configured_ocr_and_audit_snapshots(
     assert generator.calls == 1
     assert store.calls == 1
     assert len(recognizer.requests) == 1
-    assert recognizer.requests[0].expected_text == (
-        brief.text_layer.title,
-        brief.text_layer.learning_line,
-        *brief.text_layer.keywords,
-        *brief.text_layer.brand_values,
-    )
+    assert recognizer.requests[0].expected_text == _expected_visual_text(brief)
+    assert recognizer.requests[0].require_order is controlled
     assert len(auditor.requests) == 1
     assert auditor.requests[0].visual_brief == brief
     assert len(persisted) == 1

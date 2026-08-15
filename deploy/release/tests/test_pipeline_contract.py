@@ -146,6 +146,14 @@ def test_frontend_is_a_ci_gate_only() -> None:
     assert all("frontend" not in service for service in APPLICATION_SERVICES)
 
 
+def test_production_evidence_queries_the_bounded_diversity_warning_code() -> None:
+    evidence_script = Path("scripts/edu-ai-production-evidence.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "diversity_warning = 'near_duplicate_after_retry'" in evidence_script
+    assert "diversity_warning IS TRUE" not in evidence_script
+
+
 def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:
     dockerfile = Path("backend/Dockerfile.ci").read_text(encoding="utf-8")
     lock_script = Path("scripts/compile-python-locks.sh").read_text(encoding="utf-8")

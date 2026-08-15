@@ -18,6 +18,7 @@ from app.domain.visual_assets import (
     VisualAssetRole,
     VisualAssetSelectionError,
 )
+from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
 
 
 def _png(*, width: int = 2, height: int = 3) -> bytes:
@@ -229,6 +230,87 @@ def test_topic_selection_is_content_driven(
     )
 
     assert selection.selected_assets[0].filename == expected
+
+
+def test_v2_avoids_recent_action_asset_while_v1_replays_existing_ranking() -> None:
+    identity = _asset(
+        "duo-identity",
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+        priority=100,
+    )
+    dominant = _asset(
+        "dominant-action",
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
+        topics=("robotics", "experiment"),
+        priority=100,
+        variant_group="robot-action-dominant",
+    )
+    alternate = _asset(
+        "alternate-action",
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
+        topics=("robotics", "experiment"),
+        priority=10,
+        variant_group="robot-action-alternate",
+    )
+    request = AssetSelectionRequest(
+        category="robotics",
+        asset_tags=("robotics", "experiment"),
+        reference_roles=(
+            VisualAssetRole.IDENTITY_REFERENCE,
+            VisualAssetRole.ACTION_REFERENCE,
+        ),
+        max_references=2,
+        recent_action_asset_ids=(dominant.asset_id,),
+        recent_variant_groups=("robot-action-dominant",),
+    )
+
+    v1 = AssetSelector(_catalog(identity, dominant, alternate)).select(request)
+    v2 = AssetSelector(
+        _catalog(identity, dominant, alternate), selector_version=VISUAL_SELECTOR_V2_VERSION
+    ).select(request)
+
+    assert v1.selected_assets[1].asset_id == dominant.asset_id
+    assert v2.selected_assets[1].asset_id == alternate.asset_id
+    assert "novelty exhausted" not in v2.selected_assets[1].reason
+
+
+def test_v2_records_controlled_repeat_when_novelty_candidates_are_exhausted() -> None:
+    identity = _asset(
+        "solo-identity",
+        characters=("xiao-sai",),
+        roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        asset_kind=VisualAssetKind.IDENTITY,
+    )
+    action = _asset(
+        "only-action",
+        characters=("xiao-sai",),
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
+        topics=("science",),
+    )
+    selection = AssetSelector(
+        _catalog(identity, action), selector_version=VISUAL_SELECTOR_V2_VERSION
+    ).select(
+        AssetSelectionRequest(
+            category="science",
+            characters=("xiao-sai",),
+            reference_roles=(
+                VisualAssetRole.IDENTITY_REFERENCE,
+                VisualAssetRole.ACTION_REFERENCE,
+            ),
+            max_references=2,
+            recent_action_asset_ids=(action.asset_id,),
+        )
+    )
+
+    assert [item.role for item in selection.selected_assets] == [
+        VisualAssetRole.IDENTITY_REFERENCE,
+        VisualAssetRole.ACTION_REFERENCE,
+    ]
+    assert "novelty exhausted; controlled repeat" in selection.selected_assets[1].reason
 
 
 def test_selector_tie_breaks_by_asset_id_after_score_and_priority() -> None:

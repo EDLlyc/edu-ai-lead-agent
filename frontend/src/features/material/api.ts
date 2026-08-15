@@ -147,6 +147,37 @@ export type ImageFallbackViewModel = Readonly<{
   }> | null;
 }>;
 
+export type ControlledVisualPlanViewModel = Readonly<{
+  scene: string;
+  sceneLabel: string;
+  composition: string;
+  compositionLabel: string;
+  camera: string;
+  cameraLabel: string;
+  cast: string;
+  castLabel: string;
+  slotTone: string;
+  slotToneLabel: string;
+  subject: string;
+  subjectLabel: string;
+  relaxationCodes: readonly string[];
+}>;
+
+export type ImageDiversityViewModel = Readonly<{
+  plan: ControlledVisualPlanViewModel;
+  retryCount: number;
+  activePlanOrdinal: number;
+  finalPlanOrdinal: number | null;
+  warning: boolean;
+  warningCode: "near_duplicate_after_retry" | null;
+  nearDuplicate: boolean | null;
+  exactDuplicate: boolean | null;
+  nearestDistance: number | null;
+  threshold: number | null;
+  candidateCount: number | null;
+  decision: "accepted" | "regenerate" | "accepted_with_warning" | null;
+}>;
+
 export type ImageViewModel = Readonly<{
   id: string;
   status: ImageArtifactStatus;
@@ -165,6 +196,7 @@ export type ImageViewModel = Readonly<{
   fallback: ImageFallbackViewModel;
   validation: ImageValidationViewModel;
   audit: ImageAuditViewModel;
+  diversity: ImageDiversityViewModel | null;
   visualBrief: VisualBriefViewModel | null;
   references: readonly VisualReferenceViewModel[];
 }>;
@@ -733,6 +765,7 @@ function parseImage(image: MaterialPackageResponse["image"]): ImageViewModel {
       provider: image.audit.provider,
       model: image.audit.model,
     },
+    diversity: parseImageDiversity(image.diversity),
     visualBrief: parseVisualBrief(image.visual_brief),
     references: (image.references ?? []).map((reference) => ({
       role: reference.role,
@@ -754,6 +787,112 @@ const visualReferenceRoleLabels: Readonly<
   style_reference: "风格素材",
   legacy: "兼容素材",
 };
+
+type ImageDiversityResponse = NonNullable<
+  MaterialPackageResponse["image"]["diversity"]
+>;
+
+const sceneLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["scene"], string>
+> = {
+  science_lab: "科学实验室",
+  robotics_workshop: "机器人工作坊",
+  ai_studio: "人工智能创作室",
+  space_observatory: "太空观测站",
+  science_library: "科学图书馆",
+  innovation_exhibition: "科技创新展",
+  campus_maker_space: "校园创客空间",
+  field_observation_station: "野外观察站",
+  engineering_test_field: "工程测试场",
+  future_classroom: "未来课堂",
+};
+
+const compositionLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["composition"], string>
+> = {
+  central_hero: "中心主角",
+  left_right_dialogue: "左右对话",
+  over_shoulder: "越肩视角",
+  diagonal_action: "对角线动作",
+  foreground_object: "前景物体",
+  split_depth: "前后景分层",
+  top_down_workbench: "俯拍工作台",
+  wide_environment: "宽幅环境",
+};
+
+const cameraLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["camera"], string>
+> = {
+  eye_level_medium: "平视中景",
+  low_angle_wide: "低机位广角",
+  high_angle: "高机位俯视",
+  close_up_detail: "细节特写",
+  wide_establishing: "远景全貌",
+};
+
+const castLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["cast"], string>
+> = {
+  xiaosai_solo: "小赛单人",
+  sai_xiansheng_solo: "赛先生单人",
+  duo: "小赛与赛先生",
+};
+
+const slotToneLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["slot_tone"], string>
+> = {
+  fresh_start: "清晨启发",
+  analytical_focus: "午间聚焦",
+  reflective_discovery: "晚间探索",
+};
+
+const subjectLabels: Readonly<
+  Record<ImageDiversityResponse["plan"]["subject"], string>
+> = {
+  robot_arm: "机械臂",
+  ai_sensor_console: "AI 传感控制台",
+  telescope_star_map: "望远镜与星图",
+  microscope_sample: "显微镜样本",
+  experiment_apparatus: "科学实验装置",
+  science_book_model: "科学书籍与模型",
+  rocket_satellite_model: "火箭与卫星模型",
+  competition_prototype: "科技竞赛原型",
+};
+
+function parseImageDiversity(
+  diversity: MaterialPackageResponse["image"]["diversity"],
+): ImageDiversityViewModel | null {
+  if (diversity === null || diversity === undefined) return null;
+  const plan = diversity.plan;
+  return {
+    plan: {
+      scene: plan.scene,
+      sceneLabel: sceneLabels[plan.scene],
+      composition: plan.composition,
+      compositionLabel: compositionLabels[plan.composition],
+      camera: plan.camera,
+      cameraLabel: cameraLabels[plan.camera],
+      cast: plan.cast,
+      castLabel: castLabels[plan.cast],
+      slotTone: plan.slot_tone,
+      slotToneLabel: slotToneLabels[plan.slot_tone],
+      subject: plan.subject,
+      subjectLabel: subjectLabels[plan.subject],
+      relaxationCodes: plan.relaxation_codes ?? [],
+    },
+    retryCount: diversity.retry_count,
+    activePlanOrdinal: diversity.active_plan_ordinal,
+    finalPlanOrdinal: diversity.final_plan_ordinal ?? null,
+    warning: diversity.warning,
+    warningCode: diversity.warning_code,
+    nearDuplicate: diversity.near_duplicate,
+    exactDuplicate: diversity.exact_duplicate,
+    nearestDistance: diversity.nearest_distance ?? null,
+    threshold: diversity.threshold ?? null,
+    candidateCount: diversity.candidate_count ?? null,
+    decision: diversity.decision,
+  };
+}
 
 function parseVisualBrief(
   brief: MaterialPackageResponse["image"]["visual_brief"],

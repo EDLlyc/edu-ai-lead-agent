@@ -26,6 +26,12 @@ and [`api.test.ts`](../../../frontend/src/features/material/api.test.ts); it ass
 queued/failed states, copy/download actions, evidence and audit display, and absence of publishing
 controls.
 
+The material detail's local-only visual-variation panel consumes the generated optional
+`image.diversity` contract. Mapper/component tests must cover absent historical data, primary and
+alternate plans, one-retry state, and the non-blocking `near_duplicate_after_retry` warning. The
+view may display controlled labels/counts/decisions only; never add prompt, seed, perceptual hash,
+nearest object identity, private reference path, or a publishing control.
+
 CI must run, in a deterministic order where dependencies require it:
 
 1. generate or verify the checked-in FastAPI OpenAPI document;

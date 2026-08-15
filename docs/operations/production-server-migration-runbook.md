@@ -207,6 +207,50 @@ delivery job is running and no delivery window remains open. Stop automatic deli
 on an unknown result; `delivery_unknown` and expired jobs are audit records and must never be
 automatically resent.
 
+### Controlled visual diversity rollout
+
+Keep `IMAGE_DIVERSITY_ENABLED=false` during the 0021 migration and ordinary deployment. Confirm
+Doctor reports the two diversity tables and that acquisition API/content worker resolve the same
+reviewed version bundle, seven-day lookback, threshold, history bound, and exactly one
+regeneration. Historical v1 rows require no backfill.
+
+Before enablement, record the read-only baseline and keep its output server-local:
+
+```sql
+SELECT count(*) AS successful_images,
+       count(DISTINCT sha256) AS distinct_sha256
+  FROM image_artifacts WHERE status = 'succeeded';
+SELECT count(*) AS plans FROM image_visual_plan_reservations;
+SELECT decision, count(*) FROM image_similarity_attempts GROUP BY decision ORDER BY decision;
+SELECT count(*) AS retried FROM image_artifacts WHERE diversity_retry_count = 1;
+SELECT count(*) AS warnings
+FROM image_artifacts
+WHERE diversity_warning = 'near_duplicate_after_retry';
+```
+
+First pass fixture, fake-provider, replay, concurrent-reservation, API, Doctor, and Compose gates.
+A controlled-v2 candidate must contain exactly one readable three-level title card with brand
+signature `赛先生科学`, the allowlisted category title, and its matching short subtitle. Reject
+extra/pseudo text, the historical long slogan, raw headline/copy, or a card covering a face,
+scientific object, or main action; the OCR snapshot must match those three lines in order.
+A live acceptance is separate authorization: use one approved news item, one provider path, and no
+Enterprise WeChat send. Inspect character identity, topic fit, dimensions, selected plan, and
+similarity outcome without printing prompts, hashes, reference paths, object keys, or provider
+bodies.
+
+After approval, set both `IMAGE_DIVERSITY_ENABLED=true` and `IMAGE_OCR_ENABLED=true` in the same
+configuration for acquisition API and content worker; settings validation rejects diversity
+without the exact OCR gate. Restart only those affected services and observe seven business days.
+Review full-plan distinctness,
+non-identity reference dominance, `regenerate`/`accepted_with_warning` counts, provider call and
+latency/cost deltas, image success, and delivery terminal outcomes. A warning on the alternate is
+expected non-blocking degradation; a third provider call, duplicate sibling plan, unbounded
+history, or any warning that bypasses safety/OCR/identity/media gates is a rollout failure.
+
+Rollback sets `IMAGE_DIVERSITY_ENABLED=false` and restarts the affected services. Keep 0021 and all
+v2 plans/attempts/artifacts immutable for audit; do not delete or rewrite delivered history. The
+disabled path resumes exact v1 reservation behavior.
+
 8. Start the WeCom dispatcher only after the upstream stages are healthy and the delivery policy has
    been reviewed:
 

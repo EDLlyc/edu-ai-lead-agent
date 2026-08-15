@@ -9,7 +9,11 @@ from app.domain.image_fallback import (
     provider_rejection_retry_fingerprint,
     render_catalog_fallback_image,
 )
-from app.domain.visual_brief import AcceptedVisualContext, build_visual_brief
+from app.domain.visual_brief import (
+    CONTROLLED_VISUAL_BRIEF_VERSION,
+    AcceptedVisualContext,
+    build_visual_brief,
+)
 from PIL import Image
 
 
@@ -28,6 +32,23 @@ def test_provider_rejection_prompt_uses_only_allowlisted_visual_brief_values() -
     assert IMAGE_PROVIDER_REJECTION_PROMPT_VERSION in prompt
     assert "不应回传" not in prompt
     assert provider_rejection_retry_fingerprint("a" * 64, prompt) != "a" * 64
+
+
+def test_controlled_provider_rejection_prompt_preserves_exact_text_hierarchy() -> None:
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title="人工智能教育中的不应回传标题"),
+        version=CONTROLLED_VISUAL_BRIEF_VERSION,
+    )
+
+    prompt = build_provider_rejection_retry_prompt(brief, ())
+
+    assert "Brand signature (exact, smallest): 赛先生科学" in prompt
+    assert "Main title (exact, largest): 人工智能" in prompt
+    assert "Subtitle (exact, secondary): 理解智能如何学习与反馈" in prompt
+    assert "Render exactly those three Chinese text lines" in prompt
+    assert "Optional keywords" not in prompt
+    assert "守护好奇心" not in prompt
+    assert "不应回传" not in prompt
 
 
 def test_catalog_fallback_renderer_preserves_asset_aspect_ratio_on_square_canvas() -> None:

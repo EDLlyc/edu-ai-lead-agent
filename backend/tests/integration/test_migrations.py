@@ -26,6 +26,9 @@ async def test_clean_database_is_at_alembic_head(
                     "acquisition_jobs",
                     "brand_document_versions",
                     "image_artifacts",
+                    "image_artifact_references",
+                    "image_visual_plan_reservations",
+                    "image_similarity_attempts",
                     "material_packages",
                     "copy_generation_runs",
                     "wecom_delivery_jobs",
@@ -39,7 +42,12 @@ async def test_clean_database_is_at_alembic_head(
         foreign_keys = await connection.run_sync(
             lambda sync: {
                 table: {item["name"] for item in inspect(sync).get_foreign_keys(table)}
-                for table in ("copy_draft_versions", "copy_claim_evidence_bindings")
+                for table in (
+                    "copy_draft_versions",
+                    "copy_claim_evidence_bindings",
+                    "image_artifact_references",
+                    "image_similarity_attempts",
+                )
             }
         )
         checks = await connection.run_sync(
@@ -95,8 +103,18 @@ async def test_clean_database_is_at_alembic_head(
                 item["name"]: item for item in inspect(sync).get_indexes("acquisition_runs")
             }
         )
+        diversity_uniques = await connection.run_sync(
+            lambda sync: {
+                table: {item["name"] for item in inspect(sync).get_unique_constraints(table)}
+                for table in (
+                    "image_artifact_references",
+                    "image_visual_plan_reservations",
+                    "image_similarity_attempts",
+                )
+            }
+        )
 
-    assert revision == "20260814_0020"
+    assert revision == "20260815_0021"
     assert {
         "sources",
         "source_versions",
@@ -131,6 +149,9 @@ async def test_clean_database_is_at_alembic_head(
         "copy_issues",
         "copy_generation_checkpoints",
         "image_artifacts",
+        "image_artifact_references",
+        "image_visual_plan_reservations",
+        "image_similarity_attempts",
         "material_packages",
         "material_reviews",
         "content_slot_runs",
@@ -184,6 +205,27 @@ async def test_clean_database_is_at_alembic_head(
     assert columns["image_artifacts"]["validation_snapshot"]["nullable"] is False
     assert columns["image_artifacts"]["audit_snapshot"]["nullable"] is False
     for column_name in (
+        "diversity_policy_version",
+        "perceptual_hash_version",
+        "similarity_policy_version",
+        "final_plan_ordinal",
+        "perceptual_hash",
+        "diversity_warning",
+    ):
+        assert columns["image_artifacts"][column_name]["nullable"] is True
+    for column_name in (
+        "diversity_retry_count",
+        "active_plan_ordinal",
+        "similarity_snapshot",
+    ):
+        assert columns["image_artifacts"][column_name]["nullable"] is False
+    assert str(columns["image_artifacts"]["diversity_retry_count"]["default"]) == "0"
+    assert str(columns["image_artifacts"]["active_plan_ordinal"]["default"]) == "1"
+    assert columns["image_artifact_references"]["attempt_ordinal"]["nullable"] is False
+    assert columns["image_artifact_references"]["plan_reservation_id"]["nullable"] is True
+    assert columns["image_visual_plan_reservations"]["plan_snapshot"]["nullable"] is False
+    assert columns["image_similarity_attempts"]["perceptual_hash"]["nullable"] is False
+    for column_name in (
         "lease_owner",
         "lease_token",
         "lease_expires_at",
@@ -195,6 +237,27 @@ async def test_clean_database_is_at_alembic_head(
     assert "fk_copy_draft_versions_repair_same_run" in foreign_keys["copy_draft_versions"]
     assert (
         "fk_copy_claim_evidence_bindings_provenance" in foreign_keys["copy_claim_evidence_bindings"]
+    )
+    assert (
+        "fk_image_artifact_references_plan_reservation_id"
+        in foreign_keys["image_artifact_references"]
+    )
+    assert "fk_image_similarity_attempts_plan_attempt" in foreign_keys["image_similarity_attempts"]
+    assert (
+        "uq_image_artifact_references_attempt_ordinal"
+        in diversity_uniques["image_artifact_references"]
+    )
+    assert (
+        "uq_image_visual_plan_reservations_reference_identity"
+        in diversity_uniques["image_visual_plan_reservations"]
+    )
+    assert (
+        "uq_image_visual_plan_reservations_day_plan"
+        in diversity_uniques["image_visual_plan_reservations"]
+    )
+    assert (
+        "uq_image_similarity_attempts_artifact_attempt"
+        in diversity_uniques["image_similarity_attempts"]
     )
     assert any(name.endswith("ck_copy_issues_stage_audit_shape") for name in checks)
     for table, expected in (

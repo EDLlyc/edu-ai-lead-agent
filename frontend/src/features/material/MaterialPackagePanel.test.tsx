@@ -152,6 +152,7 @@ const materialPackage: MaterialPackageViewModel = {
       provider: "fake",
       model: "fake-audit",
     },
+    diversity: null,
     visualBrief: {
       version: "visual-brief-v1",
       category: "robotics",
@@ -316,6 +317,60 @@ describe("MaterialPackagePanel", () => {
     createObjectUrl.mockRestore();
     revokeObjectUrl.mockRestore();
     click.mockRestore();
+  });
+
+  it("shows the non-blocking diversity warning for the accepted alternate image", async () => {
+    const user = userEvent.setup();
+    const warningPackage: MaterialPackageViewModel = {
+      ...materialPackage,
+      image: {
+        ...materialPackage.image,
+        diversity: {
+          plan: {
+            scene: "robotics_workshop",
+            sceneLabel: "机器人工作坊",
+            composition: "diagonal_action",
+            compositionLabel: "对角线动作",
+            camera: "low_angle_wide",
+            cameraLabel: "低机位广角",
+            cast: "duo",
+            castLabel: "小赛与赛先生",
+            slotTone: "reflective_discovery",
+            slotToneLabel: "晚间探索",
+            subject: "competition_prototype",
+            subjectLabel: "科技竞赛原型",
+            relaxationCodes: [],
+          },
+          retryCount: 1,
+          activePlanOrdinal: 2,
+          finalPlanOrdinal: 2,
+          warning: true,
+          warningCode: "near_duplicate_after_retry",
+          nearDuplicate: true,
+          exactDuplicate: false,
+          nearestDistance: 5,
+          threshold: 6,
+          candidateCount: 9,
+          decision: "accepted_with_warning",
+        },
+      },
+    };
+    renderPanel(warningPackage);
+
+    await user.click(
+      await screen.findByRole("button", { name: "查看素材包详情" }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "配图变化方案" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("第二张安全图片仍与近七日相似，已保留并继续自动交付。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("多样性告警（不阻断交付）")).toBeInTheDocument();
+    expect(screen.getByText("对角线动作")).toBeInTheDocument();
+    expect(screen.getByText("晚间探索")).toBeInTheDocument();
+    expect(screen.getByText("1/1 次")).toBeInTheDocument();
   });
 
   it("shows an explicit empty state for packages without evidence or brand bindings", async () => {

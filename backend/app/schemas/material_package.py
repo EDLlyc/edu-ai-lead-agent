@@ -57,6 +57,73 @@ class VisualReferenceResponse(BaseModel):
     fallback: bool
 
 
+class ControlledVisualPlanResponse(BaseModel):
+    scene: Literal[
+        "science_lab",
+        "robotics_workshop",
+        "ai_studio",
+        "space_observatory",
+        "science_library",
+        "innovation_exhibition",
+        "campus_maker_space",
+        "field_observation_station",
+        "engineering_test_field",
+        "future_classroom",
+    ]
+    composition: Literal[
+        "central_hero",
+        "left_right_dialogue",
+        "over_shoulder",
+        "diagonal_action",
+        "foreground_object",
+        "split_depth",
+        "top_down_workbench",
+        "wide_environment",
+    ]
+    camera: Literal[
+        "eye_level_medium",
+        "low_angle_wide",
+        "high_angle",
+        "close_up_detail",
+        "wide_establishing",
+    ]
+    cast: Literal["xiaosai_solo", "sai_xiansheng_solo", "duo"]
+    slot_tone: Literal["fresh_start", "analytical_focus", "reflective_discovery"]
+    subject: Literal[
+        "robot_arm",
+        "ai_sensor_console",
+        "telescope_star_map",
+        "microscope_sample",
+        "experiment_apparatus",
+        "science_book_model",
+        "rocket_satellite_model",
+        "competition_prototype",
+    ]
+    relaxation_codes: list[str] = Field(default_factory=list, max_length=8)
+
+
+class ImageDiversityResponse(BaseModel):
+    policy_version: str
+    brief_version: str
+    selector_version: str
+    prompt_version: str
+    pipeline_version: str
+    similarity_policy_version: str
+    hash_version: str
+    plan: ControlledVisualPlanResponse
+    retry_count: int = Field(ge=0, le=1)
+    active_plan_ordinal: int = Field(ge=1, le=2)
+    final_plan_ordinal: int | None = Field(default=None, ge=1, le=2)
+    warning: bool
+    warning_code: Literal["near_duplicate_after_retry"] | None
+    near_duplicate: bool | None
+    exact_duplicate: bool | None
+    nearest_distance: int | None = Field(default=None, ge=0, le=64)
+    threshold: int | None = Field(default=None, ge=0, le=64)
+    candidate_count: int | None = Field(default=None, ge=0, le=1_000)
+    decision: Literal["accepted", "regenerate", "accepted_with_warning"] | None
+
+
 class ImageValidationResponse(BaseModel):
     version: str
     configured: bool
@@ -129,6 +196,7 @@ class ImageArtifactResponse(BaseModel):
     fallback: ImageFallbackResponse
     validation: ImageValidationResponse
     audit: ImageAuditResponse
+    diversity: ImageDiversityResponse | None = None
 
 
 class MaterialPackageSummaryResponse(BaseModel):

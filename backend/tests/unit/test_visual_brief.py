@@ -5,7 +5,9 @@ from dataclasses import replace
 
 import pytest
 from app.domain.visual_brief import (
+    APPROVED_BRAND_SIGNATURE,
     APPROVED_BRAND_VALUE_PHRASE,
+    CONTROLLED_VISUAL_BRIEF_VERSION,
     DEFAULT_CHARACTERS,
     DEFAULT_REFERENCE_ROLES,
     VISUAL_BRIEF_VERSION,
@@ -22,6 +24,7 @@ from app.domain.visual_brief import (
     build_visual_brief,
     build_visual_prompt,
     build_visual_prompt_bundle,
+    expected_visual_text,
 )
 
 
@@ -71,7 +74,53 @@ def test_robotics_brief_is_deterministic_and_contains_both_brand_characters() ->
     assert first.text_layer.title == "具身智能"
     assert first.text_layer.keywords == ("尝试", "调整", "进步")
     assert first.text_layer.brand_values == (APPROVED_BRAND_VALUE_PHRASE,)
+    assert first.text_layer.brand_signature == ""
+    assert "brand_signature" not in first.as_metadata()["text_layer"]
     assert first.version == VISUAL_BRIEF_VERSION
+
+
+@pytest.mark.parametrize(
+    ("title", "category", "main_title", "subtitle"),
+    (
+        ("机器人教育", VisualCategory.ROBOTICS, "具身智能", "看见机器人如何感知与行动"),
+        (
+            "人工智能教育",
+            VisualCategory.ARTIFICIAL_INTELLIGENCE,
+            "人工智能",
+            "理解智能如何学习与反馈",
+        ),
+        ("天文观测", VisualCategory.ASTRONOMY, "探索宇宙", "从仰望星空走向科学求证"),
+        ("科学阅读", VisualCategory.READING, "科学阅读", "在阅读中学会提问与思考"),
+        ("显微镜实验", VisualCategory.EXPERIMENT, "科学实验", "用观察与验证发现规律"),
+        ("科学教育", VisualCategory.SCIENCE, "科学探索", "从好奇出发探索科学答案"),
+    ),
+)
+def test_controlled_v2_uses_only_the_approved_three_level_text_hierarchy(
+    title: str,
+    category: VisualCategory,
+    main_title: str,
+    subtitle: str,
+) -> None:
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title=title),
+        version=CONTROLLED_VISUAL_BRIEF_VERSION,
+    )
+
+    assert brief.category is category
+    assert brief.render_text_mode is VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE
+    assert brief.text_layer.brand_signature == APPROVED_BRAND_SIGNATURE
+    assert brief.text_layer.title == main_title
+    assert brief.text_layer.learning_line == subtitle
+    assert brief.text_layer.keywords == ()
+    assert brief.text_layer.brand_values == ()
+    assert expected_visual_text(brief) == (APPROVED_BRAND_SIGNATURE, main_title, subtitle)
+    assert brief.as_metadata()["text_layer"] == {
+        "title": main_title,
+        "learning_line": subtitle,
+        "keywords": [],
+        "brand_values": [],
+        "brand_signature": APPROVED_BRAND_SIGNATURE,
+    }
 
 
 def test_builder_and_prompt_assembler_expose_mainline_integration_api() -> None:
@@ -139,6 +188,12 @@ def test_only_allowlisted_compact_text_is_accepted() -> None:
             title="具身智能",
             learning_line="在真实体验中学习，在不断调整中成长",
             brand_values=("保证孩子成绩提升",),
+        )
+    with pytest.raises(ValueError, match="brand_signature is not allowlisted"):
+        VisualTextLayer(
+            title="具身智能",
+            learning_line="看见机器人如何感知与行动",
+            brand_signature="某某科学",
         )
 
 

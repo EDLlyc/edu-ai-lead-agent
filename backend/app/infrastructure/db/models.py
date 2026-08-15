@@ -2929,6 +2929,21 @@ class ImageArtifactModel(Base):
     provider_rejection_retry_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    diversity_policy_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    perceptual_hash_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    similarity_policy_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    diversity_retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    active_plan_ordinal: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    final_plan_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    perceptual_hash: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    diversity_warning: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    similarity_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     validation_snapshot: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -2975,6 +2990,23 @@ class ImageArtifactModel(Base):
             name="ck_image_artifacts_provider_rejection_retry",
         ),
         CheckConstraint(
+            "diversity_retry_count BETWEEN 0 AND 1",
+            name="ck_image_artifacts_diversity_retry",
+        ),
+        CheckConstraint(
+            "active_plan_ordinal BETWEEN 1 AND 2 AND "
+            "(final_plan_ordinal IS NULL OR final_plan_ordinal BETWEEN 1 AND 2)",
+            name="ck_image_artifacts_plan_ordinals",
+        ),
+        CheckConstraint(
+            "perceptual_hash IS NULL OR perceptual_hash ~ '^[0-9a-f]{16}$'",
+            name="ck_image_artifacts_perceptual_hash",
+        ),
+        CheckConstraint(
+            "diversity_warning IS NULL OR diversity_warning = 'near_duplicate_after_retry'",
+            name="ck_image_artifacts_diversity_warning",
+        ),
+        CheckConstraint(
             "reference_mode IN ("
             "'legacy_single', 'single_reference', 'single_fallback', "
             "'budgeted_multi_reference', 'multi_reference'"
@@ -2996,6 +3028,10 @@ class ImageArtifactModel(Base):
         CheckConstraint(
             "jsonb_typeof(storage_metadata) = 'object'",
             name="ck_image_artifacts_storage_metadata_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(similarity_snapshot) = 'object'",
+            name="ck_image_artifacts_similarity_snapshot_object",
         ),
         CheckConstraint(
             "(status = 'succeeded' AND media_type IS NOT NULL AND width = 1024 AND height = 1024 "
@@ -3040,18 +3076,188 @@ class ImageArtifactReferenceModel(Base):
     fallback_used: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    attempt_ordinal: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    plan_reservation_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["plan_reservation_id", "image_artifact_id", "attempt_ordinal"],
+            [
+                "image_visual_plan_reservations.id",
+                "image_visual_plan_reservations.image_artifact_id",
+                "image_visual_plan_reservations.attempt_ordinal",
+            ],
+            name="fk_image_artifact_references_plan_reservation_id",
+            ondelete="CASCADE",
+        ),
         CheckConstraint("ordinal >= 0", name="ck_image_artifact_references_ordinal"),
         CheckConstraint("asset_id <> ''", name="ck_image_artifact_references_asset_id"),
         CheckConstraint("reference_role <> ''", name="ck_image_artifact_references_role"),
+        CheckConstraint(
+            "attempt_ordinal BETWEEN 1 AND 2",
+            name="ck_image_artifact_references_attempt_ordinal",
+        ),
         UniqueConstraint(
-            "image_artifact_id", "ordinal", name="uq_image_artifact_references_artifact_ordinal"
+            "image_artifact_id",
+            "attempt_ordinal",
+            "ordinal",
+            name="uq_image_artifact_references_attempt_ordinal",
         ),
         Index("ix_image_artifact_references_asset_id", "asset_id"),
+    )
+
+
+class ImageVisualPlanReservationModel(Base):
+    __tablename__ = "image_visual_plan_reservations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    image_artifact_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id",
+            name="fk_image_visual_plan_reservations_artifact_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    attempt_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    content_slot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    plan_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    prompt_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    reference_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    history_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    selector_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    reference_mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "attempt_ordinal BETWEEN 1 AND 2",
+            name="ck_image_visual_plan_reservations_attempt_ordinal",
+        ),
+        CheckConstraint(
+            "content_slot IS NULL OR content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_image_visual_plan_reservations_content_slot",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(plan_snapshot) = 'object'",
+            name="ck_image_visual_plan_reservations_snapshot_object",
+        ),
+        CheckConstraint(
+            "reference_mode IN ('single_reference', 'single_fallback', "
+            "'budgeted_multi_reference', 'multi_reference')",
+            name="ck_image_visual_plan_reservations_reference_mode",
+        ),
+        UniqueConstraint(
+            "image_artifact_id",
+            "attempt_ordinal",
+            name="uq_image_visual_plan_reservations_artifact_attempt",
+        ),
+        UniqueConstraint(
+            "id",
+            "image_artifact_id",
+            "attempt_ordinal",
+            name="uq_image_visual_plan_reservations_reference_identity",
+        ),
+        UniqueConstraint(
+            "business_date",
+            "timezone",
+            "plan_fingerprint",
+            name="uq_image_visual_plan_reservations_day_plan",
+        ),
+        Index(
+            "ix_image_visual_plan_reservations_history",
+            "business_date",
+            "timezone",
+            "content_slot",
+        ),
+    )
+
+
+class ImageSimilarityAttemptModel(Base):
+    __tablename__ = "image_similarity_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    image_artifact_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id",
+            name="fk_image_similarity_attempts_artifact_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    attempt_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    output_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    perceptual_hash: Mapped[str] = mapped_column(String(16), nullable=False)
+    nearest_artifact_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id",
+            name="fk_image_similarity_attempts_nearest_artifact_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    nearest_distance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exact_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    near_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    hash_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    decision: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["image_artifact_id", "attempt_ordinal"],
+            [
+                "image_visual_plan_reservations.image_artifact_id",
+                "image_visual_plan_reservations.attempt_ordinal",
+            ],
+            name="fk_image_similarity_attempts_plan_attempt",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "attempt_ordinal BETWEEN 1 AND 2",
+            name="ck_image_similarity_attempts_attempt_ordinal",
+        ),
+        CheckConstraint(
+            "perceptual_hash ~ '^[0-9a-f]{16}$'",
+            name="ck_image_similarity_attempts_perceptual_hash",
+        ),
+        CheckConstraint(
+            "nearest_distance IS NULL OR nearest_distance BETWEEN 0 AND 64",
+            name="ck_image_similarity_attempts_distance",
+        ),
+        CheckConstraint(
+            "threshold BETWEEN 0 AND 64",
+            name="ck_image_similarity_attempts_threshold",
+        ),
+        CheckConstraint(
+            "decision IN ('accepted', 'regenerate', 'accepted_with_warning')",
+            name="ck_image_similarity_attempts_decision",
+        ),
+        UniqueConstraint(
+            "image_artifact_id",
+            "attempt_ordinal",
+            name="uq_image_similarity_attempts_artifact_attempt",
+        ),
+        Index("ix_image_similarity_attempts_hash", "perceptual_hash", "created_at"),
     )
 
 

@@ -17,11 +17,22 @@ from app.application.services.material_package import (
 )
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
+from app.domain.visual_diversity import (
+    IMAGE_PERCEPTUAL_HASH_VERSION,
+    IMAGE_SIMILARITY_POLICY_VERSION,
+    VISUAL_BRIEF_V2_VERSION,
+    VISUAL_DIVERSITY_POLICY_VERSION,
+    VISUAL_PIPELINE_V3_VERSION,
+    VISUAL_PROMPT_V3_VERSION,
+    VISUAL_SELECTOR_V2_VERSION,
+)
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 from app.schemas.material_package import (
+    ControlledVisualPlanResponse,
     ImageArtifactResponse,
     ImageAuditResponse,
+    ImageDiversityResponse,
     ImageFallbackAssetResponse,
     ImageFallbackResponse,
     ImageStorageMetadataResponse,
@@ -73,6 +84,36 @@ async def generate_material_package(
         image_reference_budget_bytes=getattr(
             settings, "image_reference_budget_bytes", IMAGE_REFERENCE_BUDGET_BYTES
         ),
+        image_diversity_enabled=getattr(settings, "image_diversity_enabled", False),
+        image_diversity_policy_version=getattr(
+            settings, "image_diversity_policy_version", VISUAL_DIVERSITY_POLICY_VERSION
+        ),
+        image_visual_brief_version=getattr(
+            settings, "image_visual_brief_version", VISUAL_BRIEF_V2_VERSION
+        ),
+        image_diversity_selector_version=getattr(
+            settings,
+            "image_diversity_selector_version",
+            VISUAL_SELECTOR_V2_VERSION,
+        ),
+        image_diversity_prompt_version=getattr(
+            settings,
+            "image_diversity_prompt_version",
+            VISUAL_PROMPT_V3_VERSION,
+        ),
+        image_diversity_pipeline_version=getattr(
+            settings,
+            "image_diversity_pipeline_version",
+            VISUAL_PIPELINE_V3_VERSION,
+        ),
+        image_perceptual_hash_version=getattr(
+            settings, "image_perceptual_hash_version", IMAGE_PERCEPTUAL_HASH_VERSION
+        ),
+        image_similarity_policy_version=getattr(
+            settings, "image_similarity_policy_version", IMAGE_SIMILARITY_POLICY_VERSION
+        ),
+        image_diversity_history_days=getattr(settings, "image_diversity_history_days", 7),
+        image_diversity_history_limit=getattr(settings, "image_diversity_history_limit", 400),
     )
     response.headers["Location"] = f"/api/v1/material-packages/{result.package.id}"
     return _detail_response(result.package, result.image)
@@ -279,6 +320,11 @@ def _detail_response(
     reference_mode = safe_image_snapshot.get(
         "reference_mode", getattr(image, "reference_mode", "legacy_single")
     )
+    controlled_entry = _selected_controlled_plan_entry(safe_image_snapshot, image)
+    if controlled_entry is not None:
+        visual_brief = getattr(image, "visual_brief_snapshot", {})
+        references = controlled_entry.get("references", [])
+        reference_mode = controlled_entry.get("reference_mode", reference_mode)
     fallback = _safe_image_fallback(
         safe_image_snapshot.get("fallback"),
         provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
@@ -328,6 +374,11 @@ def _detail_response(
             fallback=fallback,
             validation=_safe_image_validation(getattr(image, "validation_snapshot", {})),
             audit=_safe_image_audit(getattr(image, "audit_snapshot", {})),
+            diversity=_safe_image_diversity(
+                safe_image_snapshot,
+                controlled_entry=controlled_entry,
+                image=image,
+            ),
         ),
         review_note=package.review_note,
         reviewed_at=package.reviewed_at,
@@ -357,6 +408,87 @@ def _safe_visual_references(value: object) -> list[VisualReferenceResponse]:
         except ValidationError:
             continue
     return safe_values
+
+
+def _selected_controlled_plan_entry(
+    image_snapshot: dict[str, object], image: ImageArtifactModel
+) -> dict[str, object] | None:
+    plans = image_snapshot.get("plans")
+    if not isinstance(plans, list):
+        return None
+    final_ordinal = getattr(image, "final_plan_ordinal", None)
+    active_ordinal = getattr(image, "active_plan_ordinal", 1)
+    selected_ordinal = final_ordinal if final_ordinal in {1, 2} else active_ordinal
+    for item in plans:
+        if isinstance(item, dict) and item.get("attempt_ordinal") == selected_ordinal:
+            return item
+    return None
+
+
+def _safe_image_diversity(
+    image_snapshot: dict[str, object],
+    *,
+    controlled_entry: dict[str, object] | None,
+    image: ImageArtifactModel,
+) -> ImageDiversityResponse | None:
+    if controlled_entry is None:
+        return None
+    plan_value = controlled_entry.get("plan")
+    if not isinstance(plan_value, dict):
+        return None
+    status_value = image_snapshot.get("diversity")
+    status = status_value if isinstance(status_value, dict) else {}
+    warning_code = getattr(image, "diversity_warning", None)
+    try:
+        return ImageDiversityResponse(
+            policy_version=str(image_snapshot.get("diversity_policy_version", "")),
+            brief_version=str(image_snapshot.get("visual_brief_version", "")),
+            selector_version=str(image_snapshot.get("selector_version", "")),
+            prompt_version=str(image_snapshot.get("prompt_version", "")),
+            pipeline_version=str(image_snapshot.get("pipeline_version", "")),
+            similarity_policy_version=str(image_snapshot.get("similarity_policy_version", "")),
+            hash_version=str(image_snapshot.get("perceptual_hash_version", "")),
+            plan=ControlledVisualPlanResponse.model_validate(plan_value),
+            retry_count=max(0, min(int(getattr(image, "diversity_retry_count", 0)), 1)),
+            active_plan_ordinal=max(1, min(int(getattr(image, "active_plan_ordinal", 1)), 2)),
+            final_plan_ordinal=(
+                getattr(image, "final_plan_ordinal", None)
+                if getattr(image, "final_plan_ordinal", None) in {1, 2}
+                else None
+            ),
+            warning=warning_code == "near_duplicate_after_retry",
+            warning_code=(warning_code if warning_code == "near_duplicate_after_retry" else None),
+            near_duplicate=(
+                status.get("near_duplicate")
+                if isinstance(status.get("near_duplicate"), bool)
+                else None
+            ),
+            exact_duplicate=(
+                status.get("exact_duplicate")
+                if isinstance(status.get("exact_duplicate"), bool)
+                else None
+            ),
+            nearest_distance=(
+                status.get("nearest_distance")
+                if isinstance(status.get("nearest_distance"), int)
+                else None
+            ),
+            threshold=(
+                status.get("threshold") if isinstance(status.get("threshold"), int) else None
+            ),
+            candidate_count=(
+                status.get("candidate_count")
+                if isinstance(status.get("candidate_count"), int)
+                else None
+            ),
+            decision=(
+                cast(Any, status.get("decision"))
+                if status.get("decision") in {"accepted", "regenerate", "accepted_with_warning"}
+                else None
+            ),
+        )
+    except (TypeError, ValueError, ValidationError):
+        return None
 
 
 def _safe_image_validation(value: object) -> ImageValidationResponse:
@@ -438,6 +570,9 @@ def _safe_package_versions(value: object, *, fallback: ImageFallbackResponse) ->
     image = value.get("image")
     if isinstance(image, dict):
         safe_image = dict(image)
+        if isinstance(image.get("diversity_policy_version"), str):
+            for private_key in ("plans", "history_digest", "diversity"):
+                safe_image.pop(private_key, None)
         safe_image["fallback"] = fallback.model_dump(mode="json")
         safe_versions["image"] = safe_image
     return safe_versions

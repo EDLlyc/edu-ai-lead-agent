@@ -92,6 +92,13 @@ include prompts, source/copy text, provider payloads, URLs, object keys, filenam
 bytes, or secrets. Quality warnings and fallback use are degradation events, not silent success;
 the durable package snapshot remains the source of truth for the final state.
 
+Controlled visual diversity adds the bounded
+`material_package_image_diversity_retry_scheduled` event. It may contain package/image IDs, active
+plan ordinal, retry count, policy version, candidate count, threshold/distance, and the controlled
+decision code. It must not contain perceptual hashes, nearest object IDs, plan seeds, prompts,
+reference paths, image bytes, provider bodies, or content text. The final warning is durable
+artifact/package state; it is not inferred from log prose.
+
 ## Avoid
 
 - `print()` in application code.

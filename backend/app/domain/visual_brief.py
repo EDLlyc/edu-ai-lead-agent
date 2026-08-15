@@ -11,9 +11,11 @@ from typing import Final
 from app.domain.value_objects import is_sha256_hex, stable_key
 
 VISUAL_BRIEF_VERSION = "visual-brief-v1"
+CONTROLLED_VISUAL_BRIEF_VERSION = "visual-brief-v2-controlled-diversity"
 VISUAL_PROMPT_VERSION = "image-prompt-v2-brand-ip"
 VISUAL_PIPELINE_VERSION = "image-pipeline-v2-brand-ip"
 VISUAL_RENDER_TEXT_MODE = "editorial_keywords_and_brand_values"
+CONTROLLED_VISUAL_RENDER_TEXT_MODE = "brand_signature_title_subtitle"
 
 _SOURCE_TITLE_LIMIT = 240
 _SOURCE_SUMMARY_LIMIT = 800
@@ -40,6 +42,7 @@ class VisualReferenceRole(StrEnum):
 
 class VisualRenderTextMode(StrEnum):
     EDITORIAL_KEYWORDS_AND_BRAND_VALUES = VISUAL_RENDER_TEXT_MODE
+    BRAND_SIGNATURE_TITLE_SUBTITLE = CONTROLLED_VISUAL_RENDER_TEXT_MODE
 
 
 DEFAULT_CHARACTERS: Final[tuple[str, str]] = ("xiao-sai", "sai-xiansheng")
@@ -49,6 +52,7 @@ DEFAULT_REFERENCE_ROLES: Final[tuple[VisualReferenceRole, ...]] = (
     VisualReferenceRole.STYLE_REFERENCE,
 )
 APPROVED_BRAND_VALUE_PHRASE = "守护好奇心 · 锤炼思考力 · 培养创造力"
+APPROVED_BRAND_SIGNATURE = "赛先生科学"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,12 +123,22 @@ _VISUAL_PROFILES: Final[dict[VisualCategory, _VisualProfile]] = {
     ),
 }
 
+_CONTROLLED_VISUAL_SUBTITLES: Final[dict[VisualCategory, str]] = {
+    VisualCategory.ROBOTICS: "看见机器人如何感知与行动",
+    VisualCategory.ARTIFICIAL_INTELLIGENCE: "理解智能如何学习与反馈",
+    VisualCategory.ASTRONOMY: "从仰望星空走向科学求证",
+    VisualCategory.READING: "在阅读中学会提问与思考",
+    VisualCategory.EXPERIMENT: "用观察与验证发现规律",
+    VisualCategory.SCIENCE: "从好奇出发探索科学答案",
+}
+
 APPROVED_VISUAL_TITLES: Final[frozenset[str]] = frozenset(
     profile.title for profile in _VISUAL_PROFILES.values()
 )
 APPROVED_LEARNING_LINES: Final[frozenset[str]] = frozenset(
     profile.learning_line for profile in _VISUAL_PROFILES.values()
 )
+APPROVED_VISUAL_SUBTITLES: Final[frozenset[str]] = frozenset(_CONTROLLED_VISUAL_SUBTITLES.values())
 APPROVED_LEARNING_GOALS: Final[frozenset[str]] = frozenset(
     profile.learning_goal for profile in _VISUAL_PROFILES.values()
 )
@@ -350,6 +364,7 @@ class VisualTextLayer:
     learning_line: str
     keywords: tuple[str, ...] = ()
     brand_values: tuple[str, ...] = ()
+    brand_signature: str = ""
 
     def __post_init__(self) -> None:
         title = _normalize_compact_text(
@@ -363,7 +378,9 @@ class VisualTextLayer:
             limit=64,
             required=False,
         )
-        if learning_line and learning_line not in APPROVED_LEARNING_LINES:
+        if learning_line and learning_line not in (
+            APPROVED_LEARNING_LINES | APPROVED_VISUAL_SUBTITLES
+        ):
             raise ValueError("text_layer.learning_line is not allowlisted")
         keywords = _normalize_text_items(
             self.keywords,
@@ -381,10 +398,19 @@ class VisualTextLayer:
         )
         if any(value not in APPROVED_BRAND_VALUE_PHRASES for value in brand_values):
             raise ValueError("text_layer.brand_values contains a non-allowlisted value")
+        brand_signature = _normalize_compact_text(
+            self.brand_signature,
+            field="text_layer.brand_signature",
+            limit=12,
+            required=False,
+        )
+        if brand_signature and brand_signature != APPROVED_BRAND_SIGNATURE:
+            raise ValueError("text_layer.brand_signature is not allowlisted")
         object.__setattr__(self, "title", title)
         object.__setattr__(self, "learning_line", learning_line)
         object.__setattr__(self, "keywords", keywords)
         object.__setattr__(self, "brand_values", brand_values)
+        object.__setattr__(self, "brand_signature", brand_signature)
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +434,7 @@ class VisualBrief:
         except ValueError as exc:
             raise ValueError("visual brief category is not allowlisted") from exc
         profile = _VISUAL_PROFILES[category]
+        version = _normalize_version(self.version, field="visual_brief.version")
         learning_goal = _normalize_compact_text(
             self.learning_goal, field="learning_goal", limit=120, required=True
         )
@@ -447,13 +474,26 @@ class VisualBrief:
             render_text_mode = VisualRenderTextMode(self.render_text_mode)
         except ValueError as exc:
             raise ValueError("visual brief render_text_mode is not supported") from exc
-        version = _normalize_version(self.version, field="visual_brief.version")
         if not isinstance(self.text_layer, VisualTextLayer):
             raise ValueError("visual brief text_layer must be a VisualTextLayer")
-        if (
+        if version == CONTROLLED_VISUAL_BRIEF_VERSION:
+            if (
+                self.text_layer.title != profile.title
+                or self.text_layer.learning_line != _CONTROLLED_VISUAL_SUBTITLES[category]
+                or self.text_layer.keywords
+                or self.text_layer.brand_values
+                or self.text_layer.brand_signature != APPROVED_BRAND_SIGNATURE
+                or render_text_mode is not VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE
+            ):
+                raise ValueError(
+                    "controlled visual brief text hierarchy does not match its category"
+                )
+        elif (
             self.text_layer.title != profile.title
             or self.text_layer.learning_line != profile.learning_line
             or self.text_layer.keywords != profile.keywords
+            or self.text_layer.brand_signature
+            or render_text_mode is not VisualRenderTextMode.EDITORIAL_KEYWORDS_AND_BRAND_VALUES
         ):
             raise ValueError("visual brief text_layer does not match its category")
         object.__setattr__(self, "category", category)
@@ -488,6 +528,7 @@ class VisualBrief:
             self.text_layer.learning_line,
             *self.text_layer.keywords,
             *self.text_layer.brand_values,
+            *((self.text_layer.brand_signature,) if self.text_layer.brand_signature else ()),
             *(role.value for role in self.reference_roles),
             self.render_text_mode.value,
         )
@@ -508,8 +549,69 @@ class VisualBrief:
                 "learning_line": self.text_layer.learning_line,
                 "keywords": list(self.text_layer.keywords),
                 "brand_values": list(self.text_layer.brand_values),
+                **(
+                    {"brand_signature": self.text_layer.brand_signature}
+                    if self.text_layer.brand_signature
+                    else {}
+                ),
             },
         }
+
+
+def build_visual_text_layer(
+    category: VisualCategory,
+    *,
+    version: str = VISUAL_BRIEF_VERSION,
+) -> VisualTextLayer:
+    """Build the exact finite text layer for one versioned visual category."""
+
+    category = VisualCategory(category)
+    version = _normalize_version(version, field="visual_brief.version")
+    profile = _VISUAL_PROFILES[category]
+    if version == CONTROLLED_VISUAL_BRIEF_VERSION:
+        return VisualTextLayer(
+            title=profile.title,
+            learning_line=_CONTROLLED_VISUAL_SUBTITLES[category],
+            brand_signature=APPROVED_BRAND_SIGNATURE,
+        )
+    return VisualTextLayer(
+        title=profile.title,
+        learning_line=profile.learning_line,
+        keywords=profile.keywords,
+        brand_values=(APPROVED_BRAND_VALUE_PHRASE,),
+    )
+
+
+def controlled_visual_text_hierarchy(brief: VisualBrief) -> tuple[str, str, str]:
+    """Return the approved signature, main title, and subtitle for a controlled v2 brief."""
+
+    if (
+        brief.version != CONTROLLED_VISUAL_BRIEF_VERSION
+        or brief.render_text_mode is not VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE
+    ):
+        raise ValueError("visual brief does not use the controlled text hierarchy")
+    return (
+        brief.text_layer.brand_signature,
+        brief.text_layer.title,
+        brief.text_layer.learning_line,
+    )
+
+
+def expected_visual_text(brief: VisualBrief) -> tuple[str, ...]:
+    """Return the exact OCR allowlist without changing historical v1 ordering."""
+
+    if brief.version == CONTROLLED_VISUAL_BRIEF_VERSION:
+        return controlled_visual_text_hierarchy(brief)
+    return tuple(
+        value
+        for value in (
+            brief.text_layer.title,
+            brief.text_layer.learning_line,
+            *brief.text_layer.keywords,
+            *brief.text_layer.brand_values,
+        )
+        if value
+    )
 
 
 def _normalize_reference_roles(
@@ -554,6 +656,7 @@ def build_visual_brief(
         )
     category = _infer_category(context)
     profile = _VISUAL_PROFILES[category]
+    version = _normalize_version(version, field="visual_brief.version")
     return VisualBrief(
         category=category,
         learning_goal=profile.learning_goal,
@@ -561,15 +664,14 @@ def build_visual_brief(
         main_action=profile.main_action,
         characters=DEFAULT_CHARACTERS,
         asset_tags=profile.asset_tags,
-        text_layer=VisualTextLayer(
-            title=profile.title,
-            learning_line=profile.learning_line,
-            keywords=profile.keywords,
-            brand_values=(APPROVED_BRAND_VALUE_PHRASE,),
-        ),
+        text_layer=build_visual_text_layer(category, version=version),
         version=version,
         reference_roles=DEFAULT_REFERENCE_ROLES,
-        render_text_mode=VisualRenderTextMode.EDITORIAL_KEYWORDS_AND_BRAND_VALUES,
+        render_text_mode=(
+            VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE
+            if version == CONTROLLED_VISUAL_BRIEF_VERSION
+            else VisualRenderTextMode.EDITORIAL_KEYWORDS_AND_BRAND_VALUES
+        ),
     )
 
 

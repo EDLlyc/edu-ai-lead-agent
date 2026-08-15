@@ -580,6 +580,12 @@ deterministic validation as if it were a network timeout.
 
 ## Scenario: One-image generation through a configured image-provider contract
 
+Controlled v2 artifacts additionally follow
+[`visual-diversity.md`](./visual-diversity.md): two plans are reserved before the provider call,
+similarity is evaluated only after existing image quality gates, and a safe second near duplicate
+is accepted with a warning rather than becoming a hard veto. Historical v1 artifacts retain this
+scenario's exact behavior.
+
 ### 1. Scope / Trigger
 
 - Trigger: an accepted draft/image prompt must produce exactly one stored image. This is a

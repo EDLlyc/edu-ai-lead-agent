@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/08-15-visual-controlled-diversity-v2/research/current-visual-diversity-baseline.md", "reason": "Measured ten-day baseline, code-level causes, preserved constraints, and similarity calibration requirement"}
+{"file": ".trellis/spec/backend/agent-pipeline.md", "reason": "Image generation, visual brief, reference selection, material package, retry, idempotency, and provider safety contracts"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PostgreSQL authority, short transaction, lock, migration, provenance, and historical compatibility contracts"}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Independent morning/noon/evening lineage, sibling uniqueness, and delivery timing contracts"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed provider failures, bounded repair, warning versus hard-failure semantics, and safe diagnostics"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Safe structured image/provider observability and no-secret logging boundary"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required Ruff, mypy, PostgreSQL, migration, API, Compose, Doctor, and secret gates"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Layer ownership for domain planning, application orchestration, providers, repositories, routes, and workers"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Local internal material-package UI boundary, generated client ownership, and no production frontend deployment"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Local UI contract, accessibility, polling, schema drift, tests, and private-data boundary"}

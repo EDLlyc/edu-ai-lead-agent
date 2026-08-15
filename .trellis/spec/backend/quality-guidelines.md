@@ -337,6 +337,9 @@ At minimum, prove:
 - retryable failures back off and resume without duplicate side effects;
 - retry exhaustion produces a visible terminal state;
 - package output supports manual use and exposes no publishing endpoint.
+- controlled visual diversity reserves two different plans before provider work, compares safe
+  rasters against bounded seven-day history, calls the fake provider at most twice, stores only the
+  second safe raster on a double near-duplicate, and keeps the resulting warning delivery-eligible.
 
 ### Front-to-back flow
 

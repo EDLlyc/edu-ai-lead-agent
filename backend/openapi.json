@@ -2327,6 +2327,101 @@
         "title": "ContentSlotScoreResponse",
         "type": "object"
       },
+      "ControlledVisualPlanResponse": {
+        "properties": {
+          "camera": {
+            "enum": [
+              "eye_level_medium",
+              "low_angle_wide",
+              "high_angle",
+              "close_up_detail",
+              "wide_establishing"
+            ],
+            "title": "Camera",
+            "type": "string"
+          },
+          "cast": {
+            "enum": [
+              "xiaosai_solo",
+              "sai_xiansheng_solo",
+              "duo"
+            ],
+            "title": "Cast",
+            "type": "string"
+          },
+          "composition": {
+            "enum": [
+              "central_hero",
+              "left_right_dialogue",
+              "over_shoulder",
+              "diagonal_action",
+              "foreground_object",
+              "split_depth",
+              "top_down_workbench",
+              "wide_environment"
+            ],
+            "title": "Composition",
+            "type": "string"
+          },
+          "relaxation_codes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Relaxation Codes",
+            "type": "array"
+          },
+          "scene": {
+            "enum": [
+              "science_lab",
+              "robotics_workshop",
+              "ai_studio",
+              "space_observatory",
+              "science_library",
+              "innovation_exhibition",
+              "campus_maker_space",
+              "field_observation_station",
+              "engineering_test_field",
+              "future_classroom"
+            ],
+            "title": "Scene",
+            "type": "string"
+          },
+          "slot_tone": {
+            "enum": [
+              "fresh_start",
+              "analytical_focus",
+              "reflective_discovery"
+            ],
+            "title": "Slot Tone",
+            "type": "string"
+          },
+          "subject": {
+            "enum": [
+              "robot_arm",
+              "ai_sensor_console",
+              "telescope_star_map",
+              "microscope_sample",
+              "experiment_apparatus",
+              "science_book_model",
+              "rocket_satellite_model",
+              "competition_prototype"
+            ],
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scene",
+          "composition",
+          "camera",
+          "cast",
+          "slot_tone",
+          "subject"
+        ],
+        "title": "ControlledVisualPlanResponse",
+        "type": "object"
+      },
       "CopyClaimResponse": {
         "properties": {
           "brand_chunk_ids": {
@@ -4786,6 +4881,16 @@
             ],
             "title": "Byte Size"
           },
+          "diversity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageDiversityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "download_url": {
             "anyOf": [
               {
@@ -5017,6 +5122,178 @@
           "model"
         ],
         "title": "ImageAuditResponse",
+        "type": "object"
+      },
+      "ImageDiversityResponse": {
+        "properties": {
+          "active_plan_ordinal": {
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Active Plan Ordinal",
+            "type": "integer"
+          },
+          "brief_version": {
+            "title": "Brief Version",
+            "type": "string"
+          },
+          "candidate_count": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Count"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "accepted",
+                  "regenerate",
+                  "accepted_with_warning"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "exact_duplicate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exact Duplicate"
+          },
+          "final_plan_ordinal": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Plan Ordinal"
+          },
+          "hash_version": {
+            "title": "Hash Version",
+            "type": "string"
+          },
+          "near_duplicate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Near Duplicate"
+          },
+          "nearest_distance": {
+            "anyOf": [
+              {
+                "maximum": 64.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nearest Distance"
+          },
+          "pipeline_version": {
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ControlledVisualPlanResponse"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "retry_count": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "selector_version": {
+            "title": "Selector Version",
+            "type": "string"
+          },
+          "similarity_policy_version": {
+            "title": "Similarity Policy Version",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 64.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "boolean"
+          },
+          "warning_code": {
+            "anyOf": [
+              {
+                "const": "near_duplicate_after_retry",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Code"
+          }
+        },
+        "required": [
+          "policy_version",
+          "brief_version",
+          "selector_version",
+          "prompt_version",
+          "pipeline_version",
+          "similarity_policy_version",
+          "hash_version",
+          "plan",
+          "retry_count",
+          "active_plan_ordinal",
+          "warning",
+          "warning_code",
+          "near_duplicate",
+          "exact_duplicate",
+          "decision"
+        ],
+        "title": "ImageDiversityResponse",
         "type": "object"
       },
       "ImageFallbackAssetResponse": {

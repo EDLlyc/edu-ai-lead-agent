@@ -146,6 +146,35 @@ const response = {
       provider: "fake",
       model: "fake-audit",
     },
+    diversity: {
+      policy_version: "visual-diversity-policy-v1",
+      brief_version: "visual-brief-v2-controlled-diversity",
+      selector_version: "brand-visual-selector-v2-novelty",
+      prompt_version: "image-prompt-v3-controlled-diversity",
+      pipeline_version: "image-pipeline-v3-controlled-diversity",
+      similarity_policy_version: "image-similarity-policy-v1",
+      hash_version: "image-perceptual-hash-v1",
+      plan: {
+        scene: "robotics_workshop",
+        composition: "diagonal_action",
+        camera: "low_angle_wide",
+        cast: "duo",
+        slot_tone: "analytical_focus",
+        subject: "competition_prototype",
+        relaxation_codes: [],
+      },
+      retry_count: 1,
+      active_plan_ordinal: 2,
+      final_plan_ordinal: 2,
+      warning: true,
+      warning_code: "near_duplicate_after_retry",
+      near_duplicate: true,
+      exact_duplicate: false,
+      nearest_distance: 4,
+      threshold: 6,
+      candidate_count: 12,
+      decision: "accepted_with_warning",
+    },
     visual_brief: {
       version: "visual-brief-v1",
       category: "robotics",
@@ -229,6 +258,20 @@ describe("mapMaterialPackage", () => {
     });
     expect(materialPackage.image.validation.passed).toBe(true);
     expect(materialPackage.image.audit.status).toBe("accepted");
+    expect(materialPackage.image.diversity).toMatchObject({
+      retryCount: 1,
+      activePlanOrdinal: 2,
+      warning: true,
+      decision: "accepted_with_warning",
+      plan: {
+        sceneLabel: "机器人工作坊",
+        compositionLabel: "对角线动作",
+        cameraLabel: "低机位广角",
+        castLabel: "小赛与赛先生",
+        slotToneLabel: "午间聚焦",
+        subjectLabel: "科技竞赛原型",
+      },
+    });
     expect(materialPackage.image.references[0]?.filename).toBe(
       "小赛和赛先生讨论.png",
     );

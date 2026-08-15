@@ -1563,6 +1563,41 @@ export interface components {
             /** Veto Codes */
             veto_codes: string[];
         };
+        /** ControlledVisualPlanResponse */
+        ControlledVisualPlanResponse: {
+            /**
+             * Camera
+             * @enum {string}
+             */
+            camera: "eye_level_medium" | "low_angle_wide" | "high_angle" | "close_up_detail" | "wide_establishing";
+            /**
+             * Cast
+             * @enum {string}
+             */
+            cast: "xiaosai_solo" | "sai_xiansheng_solo" | "duo";
+            /**
+             * Composition
+             * @enum {string}
+             */
+            composition: "central_hero" | "left_right_dialogue" | "over_shoulder" | "diagonal_action" | "foreground_object" | "split_depth" | "top_down_workbench" | "wide_environment";
+            /** Relaxation Codes */
+            relaxation_codes?: string[];
+            /**
+             * Scene
+             * @enum {string}
+             */
+            scene: "science_lab" | "robotics_workshop" | "ai_studio" | "space_observatory" | "science_library" | "innovation_exhibition" | "campus_maker_space" | "field_observation_station" | "engineering_test_field" | "future_classroom";
+            /**
+             * Slot Tone
+             * @enum {string}
+             */
+            slot_tone: "fresh_start" | "analytical_focus" | "reflective_discovery";
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "robot_arm" | "ai_sensor_console" | "telescope_star_map" | "microscope_sample" | "experiment_apparatus" | "science_book_model" | "rocket_satellite_model" | "competition_prototype";
+        };
         /** CopyClaimResponse */
         CopyClaimResponse: {
             /** Brand Chunk Ids */
@@ -2522,6 +2557,7 @@ export interface components {
             audit: components["schemas"]["ImageAuditResponse"];
             /** Byte Size */
             byte_size: number | null;
+            diversity?: components["schemas"]["ImageDiversityResponse"] | null;
             /** Download Url */
             download_url: string | null;
             /** Error Code */
@@ -2587,6 +2623,46 @@ export interface components {
             status: "accepted" | "rejected" | "not_applicable" | "not_configured" | "unknown";
             /** Version */
             version: string;
+        };
+        /** ImageDiversityResponse */
+        ImageDiversityResponse: {
+            /** Active Plan Ordinal */
+            active_plan_ordinal: number;
+            /** Brief Version */
+            brief_version: string;
+            /** Candidate Count */
+            candidate_count?: number | null;
+            /** Decision */
+            decision: ("accepted" | "regenerate" | "accepted_with_warning") | null;
+            /** Exact Duplicate */
+            exact_duplicate: boolean | null;
+            /** Final Plan Ordinal */
+            final_plan_ordinal?: number | null;
+            /** Hash Version */
+            hash_version: string;
+            /** Near Duplicate */
+            near_duplicate: boolean | null;
+            /** Nearest Distance */
+            nearest_distance?: number | null;
+            /** Pipeline Version */
+            pipeline_version: string;
+            plan: components["schemas"]["ControlledVisualPlanResponse"];
+            /** Policy Version */
+            policy_version: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Retry Count */
+            retry_count: number;
+            /** Selector Version */
+            selector_version: string;
+            /** Similarity Policy Version */
+            similarity_policy_version: string;
+            /** Threshold */
+            threshold?: number | null;
+            /** Warning */
+            warning: boolean;
+            /** Warning Code */
+            warning_code: "near_duplicate_after_retry" | null;
         };
         /** ImageFallbackAssetResponse */
         ImageFallbackAssetResponse: {

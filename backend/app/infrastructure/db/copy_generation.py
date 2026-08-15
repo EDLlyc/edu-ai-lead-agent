@@ -1014,7 +1014,7 @@ async def _enqueue_slot_selection(
                     issue_codes=(),
                 )
                 await session.commit()
-        return cast(UUID, existing.id)
+        return existing.id
     slot_run = await session.get(ContentSlotRunModel, selection.run_id)
     if slot_run is None or slot_run.status != "succeeded":
         raise ConflictError("content slot selection is not ready for copy generation")
@@ -1076,7 +1076,7 @@ async def _enqueue_slot_selection(
             )
         )
         if concurrent is not None:
-            return cast(UUID, concurrent.id)
+            return concurrent.id
         raise ConflictError("slot copy generation run changed concurrently; retry") from None
 
 

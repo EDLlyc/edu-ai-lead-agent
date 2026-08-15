@@ -7,7 +7,12 @@ from PIL import Image, UnidentifiedImageError
 
 from app.domain.image_generation import validate_image_prompt
 from app.domain.value_objects import stable_key
-from app.domain.visual_brief import VisualBrief, VisualReferenceDescriptor
+from app.domain.visual_brief import (
+    VisualBrief,
+    VisualReferenceDescriptor,
+    VisualRenderTextMode,
+    controlled_visual_text_hierarchy,
+)
 
 IMAGE_PROVIDER_REJECTION_PROMPT_VERSION = "image-provider-rejection-retry-v1"
 IMAGE_CATALOG_FALLBACK_RENDERER_VERSION = "brand-catalog-square-v1"
@@ -35,6 +40,31 @@ def build_provider_rejection_retry_prompt(
         + ", ".join(f"{index}:{reference.role.value}" for index, reference in enumerate(ordered, 1))
         + "."
     )
+    if brief.render_text_mode is VisualRenderTextMode.BRAND_SIGNATURE_TITLE_SUBTITLE:
+        brand_signature, main_title, subtitle = controlled_visual_text_hierarchy(brief)
+        prompt = "\n".join(
+            (
+                f"Recovery prompt version: {IMAGE_PROVIDER_REJECTION_PROMPT_VERSION}",
+                "Create a square, parent-facing science education illustration.",
+                "Use only the supplied approved reference images for Sai Xiansheng and Xiaosai "
+                "visual identity. Preserve the unified polished 3D cartoon rendering.",
+                reference_lines,
+                f"Education category: {brief.category.value}.",
+                f"Learning goal: {brief.learning_goal}.",
+                f"Scene: {brief.scene}.",
+                f"Main action: {brief.main_action}.",
+                "Use a compact three-level text group in a restrained deep-science-blue rounded "
+                "title card with one small orange accent. Keep it readable in reserved editorial "
+                "space without covering a face, scientific object, or main action.",
+                f"Brand signature (exact, smallest): {brand_signature}",
+                f"Main title (exact, largest): {main_title}",
+                f"Subtitle (exact, secondary): {subtitle}",
+                "Render exactly those three Chinese text lines. Render no other text, pseudo-text, "
+                "decorative glyph strings, labels, letters, numbers, logos, watermarks, QR codes, "
+                "URLs, real children, product claims, or promotional promises.",
+            )
+        )
+        return validate_image_prompt(prompt)
     keywords = ", ".join(brief.text_layer.keywords) or "none"
     brand_values = ", ".join(brief.text_layer.brand_values) or "none"
     prompt = "\n".join(

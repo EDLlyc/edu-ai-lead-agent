@@ -44,6 +44,8 @@ the value column blank in this checklist.
 | `AI_PLATFORM_BASE_URL`                       | `________________`               | No              |
 | `AI_PLATFORM_API_KEY`                        | `________________`               | Yes             |
 | `IMAGE_PROVIDER_MODE` / image versions       | `________________`               | No              |
+| `IMAGE_DIVERSITY_ENABLED` / diversity versions | `________________`             | No              |
+| diversity lookback / threshold / max retry   | `________________`               | No              |
 | `TOAPIS_API_KEY` or `COMFLY_API_KEY`         | `________________`               | Yes             |
 
 - [ ] Every production credential differs from the local placeholders in `.env.example`.
@@ -51,6 +53,21 @@ the value column blank in this checklist.
       from container logs, crash reports, support tickets, and monitoring labels.
 - [ ] `VITE_API_BASE_URL` points to the HTTPS reverse-proxy origin, never a development port.
 - [ ] Provider/model/parser/scoring/policy versions are recorded with the release.
+
+## Controlled visual diversity
+
+- [ ] Alembic is at `20260815_0021`; plan-reservation and similarity-attempt tables are readable.
+- [ ] The master flag remains false until fixture, fake-provider, PostgreSQL replay/concurrency,
+      API contract, Doctor, and Compose gates pass.
+- [ ] API and content worker resolve the exact reviewed versions, seven-day lookback, bounded
+      history, calibrated threshold, and one regeneration.
+- [ ] Any separately authorized live acceptance uses one approved news item and performs no
+      Enterprise WeChat send.
+- [ ] Seven-day observation records plan coverage, dominant non-identity reference share,
+      retries/warnings, provider call/latency/cost, image success, and delivery outcomes.
+- [ ] A safe second near duplicate remains deliverable with `near_duplicate_after_retry`; no path
+      performs a third generation or lets similarity override safety, OCR, identity, or integrity.
+- [ ] Rollback disables the flag without deleting 0021 rows or rewriting v2/delivered history.
 
 ## Enterprise WeChat group-webhook route
 
