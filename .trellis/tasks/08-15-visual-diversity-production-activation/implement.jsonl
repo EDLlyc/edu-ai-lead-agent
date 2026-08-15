@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/visual-diversity.md", "reason": "Controlled visual versions, OCR ordering, retry budget, persistence, and rollback contract."}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Production slot and delivery isolation boundaries while content services are quiesced."}
+{"file": ".trellis/spec/backend/wecom-delivery.md", "reason": "No-send, dispatcher recovery, idempotency, and unknown-outcome safety requirements."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed provider/OCR/image failures and bounded retry semantics."}
+{"file": ".trellis/tasks/08-15-visual-diversity-production-activation/research/production-baseline.md", "reason": "Verified production baseline and the isolated acceptance seam."}

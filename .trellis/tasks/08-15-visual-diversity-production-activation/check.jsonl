@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/visual-diversity.md", "reason": "Independently verify exact v2 machine/visual acceptance gates and v1 compatibility."}
+{"file": ".trellis/spec/backend/wecom-delivery.md", "reason": "Independently prove zero delivery activity and safe dispatcher restoration."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Ensure acceptance evidence and logs expose no prompts, hashes, paths, or credentials."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Apply production-shaped database, Compose, secret, and check gates."}
+{"file": ".trellis/tasks/08-15-visual-diversity-production-activation/research/production-baseline.md", "reason": "Cross-check the live isolation design against verified current behavior."}
