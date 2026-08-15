@@ -86,10 +86,34 @@ silently skip this gate.
 
 ## Safety and rollout state
 
-- `IMAGE_DIVERSITY_ENABLED` remains false by default. Migration and code are ready, but no live
-  image-provider smoke, Enterprise WeChat send, ACR operation, remote deployment, or production
-  configuration change was performed.
+- The reviewed release was deployed to production at commit
+  `7d8a9142d3195ce5d0df8e62252a74d99229a1bc` using the offline source-overlay path and immutable
+  local image ID `sha256:3ce0e573da86726ffb3ba59da7fa16b3e16903649ad6a62213944c698a7b2c64`.
+  Alembic is at the single head `20260815_0021`; ten sources remain active and the two pending
+  source rows remain absent.
+- The acquisition API, acquisition scheduler/worker, governance scheduler/worker, content
+  scheduler/worker, and WeCom dispatcher were recreated in dependency order. All eight services
+  were running on the target image with restart count zero, PostgreSQL and MinIO were healthy,
+  and the backend migration container exited zero. The loopback API health response remained
+  production/Asia-Shanghai.
+- The production environment checksum, 256 private brand files, manifest checksum, and both named
+  volumes were unchanged. The pre-release PostgreSQL, MinIO, brand-material, code, and old-image
+  rollback artifacts from `20260815T062634Z` all passed checksum/digest verification.
+- Durable business counts stayed at 33 acquisition runs, 176 evidence candidates, 33 governance
+  runs, 13 daily selections, 52 copy runs, 28 packages, and 18 WeCom jobs. There were zero running
+  jobs, zero current-date nonterminal copy jobs, and no new provider or delivery activity; WeCom
+  remained 17 delivered and one failed. A final 30-second sample kept all restart and delivery
+  counters unchanged.
+- `CONTENT_ENABLED`, slot mode, and the morning/noon/evening slot switches are active in
+  production. `IMAGE_DIVERSITY_ENABLED` and `IMAGE_OCR_ENABLED` remain false, so this deployment
+  did not authorize or execute a paid live image-provider acceptance. Controlled diversity can be
+  enabled later only together with OCR under the documented bounded observation gate.
+- The repository Doctor had already passed in the local/CI release environment. The production
+  host intentionally has no Node/frontend toolchain because frontend deployment is out of scope,
+  so the development Doctor stops at its Node prerequisite there; production health was instead
+  verified through the target-image runtime probe, full Compose/service inspection, database
+  invariants, backup checksums, bounded log scan, and stability sample.
 - Existing unrelated dirty `.agents/skills/trellis-break-loop/SKILL.md` and `reports/**` were not
   modified or reverted.
-- Production enablement and any bounded live acceptance require separate authorization and the
-  documented backup/baseline/observation gates.
+- Enabling controlled diversity and any bounded live provider acceptance still require separate
+  authorization and the documented backup/baseline/observation gates.
