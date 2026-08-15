@@ -81,6 +81,8 @@
       production evidence, README, and the image/material package runbook.
 - [x] Require the relevant services to resolve identical diversity versions, lookback, threshold,
       and retry bounds, and fail startup when diversity is enabled without exact image OCR.
+- [x] Validate the fixed regeneration bound through the actual Compose string environment path;
+      accept only `"1"` and reject every other configured value.
 - [x] Add safe baseline/observation queries for plan coverage, reference dominance, similarity
       retries/warnings, success/latency/cost, and zero unintended delivery/provider activity.
 - [x] Update backend Agent Pipeline, database, error, logging, quality, directory, and slot specs

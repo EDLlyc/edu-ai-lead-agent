@@ -59,6 +59,10 @@ silently skip this gate.
    `misordered_visual_text`; v1 retains its historical order-insensitive semantics.
 5. The diversity flag could previously start while OCR was disabled. Settings now fail closed
    unless exact OCR is enabled, and the PostgreSQL/fake-provider integration exercises that gate.
+6. The first production pre-start probe found that strict `Literal[1]` validation rejected
+   Compose's string value `IMAGE_DIVERSITY_MAX_REGENERATIONS="1"`. A narrow field validator now
+   normalizes only the exact string `"1"`; the real environment path is covered and `"2"` remains
+   rejected. The finding occurred before any long-lived application service was started.
 
 ## Verification
 

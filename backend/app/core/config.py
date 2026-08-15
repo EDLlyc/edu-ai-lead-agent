@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, ContentSlotSchedule
@@ -243,6 +243,11 @@ class Settings(BaseSettings):
         case_sensitive=False,
         env_ignore_empty=True,
     )
+
+    @field_validator("image_diversity_max_regenerations", mode="before")
+    @classmethod
+    def parse_fixed_diversity_regeneration_count(cls, value: object) -> object:
+        return 1 if value == "1" else value
 
     def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
         def schedule(

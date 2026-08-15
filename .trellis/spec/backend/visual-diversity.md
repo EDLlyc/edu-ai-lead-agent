@@ -39,6 +39,9 @@ reference set. It does not combine sibling news items or authorize a new publish
   `IMAGE_SIMILARITY_POLICY_VERSION`, `IMAGE_SIMILARITY_THRESHOLD`, and bounded history settings.
   Doctor enforces equality. The master flag defaults to false and requires image generation, the
   approved selector, and exact OCR validation; startup fails closed if OCR is disabled.
+- Fixed numeric bounds exposed through Compose are tested through their real string environment
+  representation. In particular, `IMAGE_DIVERSITY_MAX_REGENERATIONS="1"` must normalize to the
+  reviewed literal value `1`, while any other value still fails Settings validation.
 - Planning reads at most the configured rows from the last seven local business dates. A short
   PostgreSQL advisory-lock transaction reads history and reserves two different plans and their
   references. Manifest parsing precedes the lock; provider and MinIO calls follow commit.

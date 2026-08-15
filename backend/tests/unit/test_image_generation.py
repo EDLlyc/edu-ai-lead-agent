@@ -25,7 +25,7 @@ from app.infrastructure.ai.image_generation import (
     _solid_png,
 )
 from PIL import Image
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 
 @pytest.mark.asyncio
@@ -1249,6 +1249,17 @@ def test_visual_diversity_defaults_are_bounded_and_disabled() -> None:
     assert settings.image_diversity_history_limit == 400
     assert settings.image_similarity_threshold == 6
     assert settings.image_diversity_max_regenerations == 1
+
+
+def test_visual_diversity_max_regenerations_accepts_only_one_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMAGE_DIVERSITY_MAX_REGENERATIONS", "1")
+    assert Settings(_env_file=None).image_diversity_max_regenerations == 1
+
+    monkeypatch.setenv("IMAGE_DIVERSITY_MAX_REGENERATIONS", "2")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_visual_diversity_requires_the_reviewed_image_bundle() -> None:
