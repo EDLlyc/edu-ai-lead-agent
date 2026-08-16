@@ -44,6 +44,40 @@
 - [x] Run project Ruff and strict mypy plus the broader provider/material focused tests; record the
   local-only outcome in `result.md` without any live/SSH/deployment/WeCom action.
 
+## Phase 2.2 — Raw MaaS representation compatibility after the second live gate
+
+- [x] Review pinned official BigModel raw schema and `zai-org/GLM-OCR` converter/tests; record the
+  Bayesian limit of the broad `image_ocr_layout_invalid` observation without inferring a private
+  response body or making another provider call.
+- [x] Keep one explicit raw MaaS decoder and strict nested single-page/model/data-info boundary;
+  accept bounded unique nonnegative zero-/one-origin indices without a continuity assumption.
+- [x] Accept documented unit bboxes and page-bounded raw pixel bboxes only when positive page axes
+  permit deterministic normalization. Never infer an unbound `0–1000` or other coordinate scale.
+- [x] Treat element dimensions as independently optional bounded vendor metadata, prefer page
+  dimensions for pixels, and use element axes only as an unambiguous fallback. Ignore optional
+  image content/bbox and bounded transport extensions without logging, projection, or persistence.
+- [x] Split parser failures into content-free schema/page/dimension/index/label/bbox/content/
+  unsupported-structure subcodes while retaining the exact three-line gate and terminal material
+  routing for every parser code or mixed parser/text tuple.
+- [x] Add mocked raw contract and material tests for both official bbox forms, index variants,
+  optional/extensions, missing/wrong scale/dimensions, unknown labels, malformed structures and
+  privacy; retain legacy PDF OCR behavior.
+- [x] Independent review: select bbox scale once per raw page so a tiny pixel bbox at/below one
+  cannot be mixed with ordinary pixel boxes; pin the official 2040x2640 full-page fixture.
+- [x] Independent review: keep only outer/data/page extensions ignorable, reject unknown element
+  keys and raw/normalized/error envelope conflicts with granular content-free codes, and require a
+  present compatibility `page_count` alias to agree with typed `num_pages`.
+- [x] Run focused provider/material/legacy OCR tests plus full-project Ruff format/lint and strict
+  mypy; record the offline-only result and remaining design drift before any release decision.
+
+Checkpoint after independent review: all 237 focused tests, 247-file Ruff format-check/lint,
+affected strict mypy, and 141-source backend application strict mypy pass. The explicit-config,
+no-incremental 147-source repository strict-mypy gate is still blocked only by the pre-existing
+untouched `scripts/annotate_brand_visual_assets.py:153` `no-any-return` finding outside this
+iteration's ownership. `make backend-typecheck` reports green because its repository-root command
+does not discover `backend/pyproject.toml`; the explicit config invocation is the authoritative
+strict result. No full backend suite or live/external action was run.
+
 ## Phase 3 — Independent check and release preparation
 
 - [x] Dispatch independent `trellis-check`; fix findings and repeat full-scope gates.
@@ -69,6 +103,36 @@ Post-deployment marker audit: the canonical short marker was resolved as a regul
 same-filesystem atomic replacement changed only that file and preserved its path, owner and mode.
 A repeated 30-second flags/service/counter/protected/log gate passed without restart or durable
 delta; the dispatcher remained stopped.
+
+### Phase 2.1 correction redeployment
+
+- [x] Freeze Codeup `origin/main` at exact correction commit
+  `331a4942a84b36811cbbc4abff68bca2abc71f0c`; rebuild and revalidate the retained 307-path offline
+  source overlay, immutable image provenance, non-root runtime, exact 165-file image source set,
+  OCR/parser contract, migration/OpenAPI drift, and transfer bundle checksums.
+- [x] Repeat strict read-only production preflight, dependency-ordered quiesce, and a fresh
+  checksum/catalog-verified PostgreSQL/MinIO/brand/env/code/prior-image rollback set before any
+  active tag, source, marker, one-shot, or service mutation.
+- [x] Transfer and remotely verify the exact source/image artifacts; load/retag only the backend
+  and nine application/migration tags, overlay only allowlisted source, preserve protected inputs
+  and volumes, update exact full/short markers, and run minio-init/migration without building.
+- [x] Restore API/acquisition, governance, content, then the dispatcher last with diversity/OCR
+  false. Require exact candidate/restart-zero service state and stable durable/provider/WeCom,
+  historical queue, protected-input, marker, migration, flags, and secret-safe log evidence across
+  a final 30-second sample.
+
+The correction redeployment used release/rollback ID `20260815T153208Z`, candidate
+`sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`,
+source archive SHA-256
+`ea13c86df5bea0cf9f860007708d66f115cc7afb401966d4b79741772bf51f1e`, and image-bundle SHA-256
+`7cb547773f9bb445fe635934d4447e6afcf7d5fd6cd2a2f296f390baecc58f63`.
+All eight long-running services are on the candidate at restart zero; infrastructure is healthy,
+both visual flags remain false, the durable vector remains
+`34:179:34:13:2:55:142:31:40:31:376:21:41:0:0`, and nonterminal/unknown WeCom remains zero. The
+protected final evidence SHA-256 is
+`e28defaba3de84946fa2bd0d96a52edefbf864cf22cf88f38ed2ff91a4da5211`.
+No provider call, fixture, enqueue, retry, resend, activation, frontend deploy, production build,
+commit, or push occurred. The next paid OCR fixture remains unchecked and separately gated.
 
 ## Phase 5 — Bounded live OCR and isolated news
 
@@ -101,6 +165,35 @@ unchanged, and WeCom job/attempt/status/duplicate/provider-send deltas and safe 
 zero. No provider call, enqueue, retry, resend, environment/data edit, fixture, acceptance
 database, or bucket was created during recovery; the verified stage and rollback artifacts remain
 retained for diagnosis.
+
+The separately authorized corrected-candidate fixture gate was then executed against release
+`331a4942a84b36811cbbc4abff68bca2abc71f0c` and image
+`sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`.
+The current business-day durable vector had advanced through ordinary terminal scheduler work to
+`35:179:35:13:3:58:154:34:43:34:382:24:47:0:0`; its delta was attributed to one acquisition run,
+one governance run, one slot run, and three completed copy/image/package/delivery paths before the
+gate, then remained stable with running/actionable/nonterminal/unknown counts zero. Three
+schedulers and the dispatcher were stopped before the paid boundary.
+
+Two preparation defects failed before HTTP and consumed zero provider attempts: `timeout` was
+initially applied to a shell function, and the immutable application image had no font files for
+in-container rendering. The first cleanup used Compose start and idempotently reran the declared
+MinIO-init/migration dependencies; both remained exited-zero with no schema or durable delta.
+The corrected path used the trusted local Noto Sans CJK font, transferred only a deterministic
+mode-0600 1024-by-1024 RGB PNG with the exact three approved lines, proved byte/hash identity and
+deployed-user readability, and used direct exact-container stop/start for final isolation and
+recovery.
+
+The deployed `ZhipuImageTextRecognizer` then made exactly one HTTP attempt with
+`AI_MAX_ATTEMPTS=1` and an explicit zero-retry HTTP transport. It failed closed as
+`invalid_provider_output`, with `exact_ordered=false`, zero accepted lines, parser code
+`image_ocr_layout_invalid`, and no quality issue code. No retry or second OCR call occurred, so the
+fixture checkbox remains incomplete and isolated-news/Comfly acceptance and activation remain
+prohibited. Both local/remote fixture copies and the exact child container were deleted and proved
+absent. Direct restoration started only the three previously running schedulers and then the
+dispatcher last. The final 30-second gate retained flags false, the current durable vector,
+restart-zero candidate services, zero queue/unknown/log findings, and no acceptance database,
+bucket, enqueue, resend, image generation, Comfly, or WeCom action.
 
 ## Phase 6 — Activation or fail-closed recovery
 

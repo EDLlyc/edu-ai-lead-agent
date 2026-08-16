@@ -16,6 +16,14 @@
 而已部署 parser 分别按 flat elements 和整数解释；同时它因 `extra="forbid"` 拒绝官方
 element `height`/`width`，并把有内容的 `image` element 错判为 schema failure。
 
+第二次单次 live fixture 进入修正后的 nested parser，但只留下 content-free
+`image_ocr_layout_invalid`。该信号无法在 zero-based index、raw pixel bbox、独立可选字段、
+label drift 与真正 malformed content 之间形成 Bayesian 区分。新的官方源码审查显示：
+OpenAPI 未规定 index base，官方 SDK examples/mocks 使用 0；API 文档描述 `[0,1]` bbox，
+但官方 MaaS converter/tests 明确把 raw bbox 当作 pixels，再依据 `data_info.pages` 归一化。
+因此本轮不是猜测实际 live body，而是实现同时覆盖两个官方 raw 表示、仍然 fail-closed 的
+兼容边界，并拆分 content-free parser subcodes。不得为验证猜测而重试 provider。
+
 ## 2. Components and ownership
 
 ### 2.1 Settings and deployment contract
@@ -60,19 +68,36 @@ element `height`/`width`，并把有内容的 `image` element 错判为 schema f
 - `layout_details` 必须是严格的 pages-to-elements 二维数组且仅有一页；只 flatten 这唯一
   一页。flat legacy shape、空/多页 outer array 或超限 page elements 均 fail closed。
 - `data_info` 使用 typed `num_pages` 和可选 `pages`：`num_pages` 必须为 1；`pages` 存在时
-  必须恰有一个包含正整数有限尺寸的页面，并与 element 页面尺寸一致。
-- 每个元素必须具有唯一正整数 index、官方 allowlisted label、有限且在 `[0,1]` 内的四元
-  `bbox_2d`、有界 content，以及可选但成对出现的正整数 `height`/`width`。
-- 只投影 `label=text`。按 `(y1, x1, index)` 确定排序，对每个 content 仅做 CRLF/Unicode
-  空白规范化并拆分非空行；有界 `image` content 被忽略且不记录/持久化，`table` 和
-  `formula` 作为未支持的结构 fail closed；不使用 `md_results`，避免 Markdown 标记污染
-  精确文字。
+  必须恰有一个包含正整数有限尺寸的页面，并作为 raw pixel normalization 的权威尺寸；
+  若兼容性 `page_count` alias 出现则必须同样为 1，不能静默忽略冲突。
+- 每个元素必须具有唯一、bounded、nonnegative integer index；允许 0/1 origin 与 gaps，
+  不把 index base 当成排序语义。raw labels 只允许 `text/image/table/formula`，unknown 或
+  case variant terminal。
+- `text` 必须有可用四元 bbox。scale 在整个 raw page 上只选择一次：所有 text 坐标均在
+  `[0,1]` 时按 API 文档解释；任一 text 坐标大于 1 时，全部 text bbox 都按 MaaS raw
+  pixels 解释，并且只有两个正页面轴都可确定且 x/y 未越界时才接受。这样同页一个恰好
+  `<=1` 的小 pixel bbox 不会被当成 unit bbox 而与其他 pixel bbox 混序；如果所有 bbox 都
+  `<=1`，两种解释只相差相同的正轴缩放，几何顺序不变。绝不猜测 unbound `0–1000` 或
+  其他 scale。element `height`/`width` 是 OpenAPI 明示的独立可选 page-axis metadata；
+  `data_info.pages` 缺失时，仅以无冲突的 element axis 作 fallback，不要求 element 与 page
+  metadata 相等。
+- 只投影 `label=text`。按 normalization 后的 `(y1, x1, index)` 排序，对 bounded string
+  content 仅做 CRLF/Unicode 空白规范化并拆分非空行；missing/null text content 投影为空并
+  进入既有 missing-text gate。`image` 的 optional/opaque content 与 bbox 被忽略且不记录/
+  持久化，`table` 和 `formula` 使用独立 unsupported code fail closed；不使用 `md_results`。
+- raw response/data/page 的普通 provider extension 在 1 MiB response ceiling 内丢弃；
+  element 只允许 OpenAPI 的六个键，未知 element key 以独立 content-free code terminal，
+  防止 alternate label/content 语义被 `extra="ignore"` 隐藏。`json_result` 或 `error` 与 raw
+  success envelope 共存时同样以 source-conflict terminal；单独的 normalized/error envelope
+  以 source-invalid terminal。所有 extension value 均不被投影、记录或持久化。
 - 最多输出 8 行；重复、缺失、额外或乱序继续交给
   `validate_exact_visual_text(..., require_order=True)` 判定。
 - provider model 允许大小写规范化后精确匹配 `glm-ocr`，持久化仍使用配置中的规范值；
   不接受其他模型或多页/异常布局。
-- 解析失败只暴露稳定 allowlisted stage issue：response envelope、page metadata、layout 或
-  unsupported layout；不携带 provider content、URL、Base64、请求体或原始异常。
+- 解析失败只暴露稳定 allowlisted stage issue，至少区分 source invalid/conflict、schema、
+  page count、dimension/conflict、index/duplicate、label、bbox shape/scale/range、content
+  type/limit、element extra、line limit 与 table/formula；不携带 provider content、URL、
+  Base64、请求体或原始异常。
 - `material_package` 只把 missing/unexpected/duplicate/misordered 四类 exact-text code 送入
   既有一次质量修复；任何 parser-stage code（包括与 text code 混合的 tuple）均在
   similarity/storage 前终止，只能进入既有安全 validation snapshot。
@@ -112,9 +137,12 @@ the public API, durable metadata, or logs.
 | 401/403 | `provider_authentication_failed` |
 | 429/timeout/5xx | Existing bounded retryable classification |
 | Wrong provider model | Terminal identity mismatch |
-| Flat/multi-page envelope or invalid/conflicting page metadata | Stage-classified terminal invalid-output |
-| Invalid index/bbox/content/dimensions or unsupported table/formula | Stage-classified terminal invalid-output |
-| Bounded `image` element content | Ignored without projection, logging or persistence |
+| Flat/multi-page/normalized-conflicting envelope or invalid page count/schema | Granular terminal invalid-output |
+| Invalid/duplicate index or unknown raw label | Granular terminal invalid-output |
+| Unit bbox or dimension-bounded raw pixel bbox | Deterministic normalization and geometric ordering |
+| Invalid bbox, unbound scale, out-of-page range or invalid/conflicting fallback dimensions | Granular terminal invalid-output |
+| Invalid text content or unsupported table/formula | Granular terminal invalid-output |
+| Optional/opaque `image` content/bbox and bounded outer provider extensions | Ignored without projection/logging/persistence; unknown element keys are terminal |
 | Missing/extra/duplicate/misordered text | Existing exact OCR quality failure/recovery path |
 | OCR passes | Continue to similarity and storage; OCR never directly creates delivery eligibility |
 
@@ -124,8 +152,10 @@ return to planning rather than expanding scope.
 ## 5. Test design
 
 - Unit/contract tests use `httpx.MockTransport` for exact URL, headers, Base64 bytes, model,
-  disabled visualization fields, response bounds, official nested layout/page shape, element/page
-  dimensions, layout sorting, non-text policy, stage classification and every error row above.
+  disabled visualization fields, response bounds, official normalized and MaaS pixel raw shapes,
+  zero-/one-origin indices, page-level scale selection for small pixel boxes, optional fields,
+  ignored outer/rejected element extensions, element/page dimensions, layout sorting, non-text
+  policy, granular stage classification and every error row above.
 - Factory/config tests prove `AI_CHAT_MODEL=glm-5.2` and `IMAGE_OCR_MODEL=glm-ocr` remain separate,
   and quality auditor routing is unchanged.
 - Material worker fake-provider tests prove exact ordered OCR precedes similarity/storage and no

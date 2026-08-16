@@ -45,21 +45,51 @@ reference set. It does not combine sibling news items or authorize a new publish
   API and content worker receive identical OCR enablement, model, 10 MiB input, 1 MiB response,
   and 120-second timeout settings. Only media-gated PNG/JPEG bytes are accepted; the adapter sends
   a private Base64 data URL and never a public image URL.
-- Image OCR accepts the official nested `layout_details` page array only when it contains exactly
-  one bounded page of unique positive-index elements with official allowlisted labels, finite
-  ordered `[0,1]` boxes, bounded content, and optional paired positive `height`/`width`. Typed
-  `data_info.num_pages` must equal one; when `data_info.pages` is present it must contain exactly
-  one positive-dimension page consistent with element page dimensions. The adapter flattens only
-  that sole page, ignores bounded `image` content, rejects unsupported `table`/`formula`, projects
-  only `text` content, normalizes line endings and Unicode whitespace, sorts by `(y1, x1, index)`,
-  caps output at eight lines, and then applies the existing exact ordered
-  signature/title/subtitle gate. Invalid response envelope, page metadata, layout, and unsupported
-  layout use stable content-free issue codes. The material worker routes only missing, unexpected,
-  duplicate, and misordered exact-text codes through the one-repair quality path; a parser-stage
-  code, including any tuple mixed with a text code, is terminal before similarity or storage and
-  may enter only the existing safe validation snapshot. Raw response bodies, Base64, provider
-  content/URLs, prompts, object keys, private paths, and image bytes never enter logs or durable
-  output.
+- The direct HTTP image-OCR adapter decodes only the raw MaaS envelope: the configured model must
+  match, `layout_details` must contain exactly one bounded nested page, and typed
+  `data_info.num_pages` must equal one. It does not auto-detect or fall back to the SDK-normalized
+  `json_result` envelope, because that shape has different provenance and coordinate semantics;
+  normalized/error and raw-success envelopes that co-occur are terminal source conflicts. A
+  present legacy `page_count` alias must agree with authoritative `num_pages` rather than being
+  silently discarded.
+  Raw indices are bounded, unique, nonnegative integers; zero- and one-origin and non-contiguous
+  sequences are valid because the provider publishes no base or continuity invariant. Index is
+  only the final geometric tie-breaker and its origin never changes ordering.
+- Raw text bboxes must be finite ordered four-number lists. Bbox scale is selected once for the
+  whole raw page: if every text coordinate is in `[0,1]`, the documented normalized form is used;
+  if any text coordinate is above one, every text bbox is treated as raw pixels. This prevents a
+  small pixel box whose coordinates happen to be at most one from being mixed with normalized
+  boxes and changing geometric order. The all-at-most-one case is harmlessly ambiguous because
+  either interpretation applies the same positive axis scaling and preserves `(y1, x1)` order.
+  Pixel coordinates require positive bounded page width and height, x/y bounds are checked against
+  the corresponding axes, and an unbound scale is never guessed. `data_info.pages`, when present,
+  is the authoritative dimension source. Element `height` and `width` are independently optional
+  page-axis metadata under the raw OpenAPI contract; each present value is type/range checked and
+  is used as a fallback only when the required axis is unambiguous. Element/page equality is not
+  required because the official executable converter uses `data_info.pages`, not element
+  metadata, for normalization.
+- The raw label mapping stays finite and explicit: `text` is visible text, `image` is ignored, and
+  `table`/`formula` are terminal unsupported structures. Unknown labels and case variants are
+  terminal. Image `content` and `bbox_2d` are optional and ignored even when their provider-owned
+  representation is not text-like; text content must be null/absent or a bounded string and text
+  must have a usable bbox before it can enter the exact gate. Null/absent text content projects no
+  line and therefore reaches the existing missing-text decision. The adapter sorts text by
+  normalized `(y1, x1, index)`, normalizes line endings and Unicode whitespace, caps output at
+  eight bounded lines, and applies the unchanged exact ordered signature/title/subtitle gate.
+- Bounded top-level, `data_info`, and page-info transport extensions are discarded at this private
+  boundary. Raw layout elements accept only the six documented keys (`index`, `label`, `bbox_2d`,
+  `content`, `height`, and `width`); an unknown element key is terminal because an alternate
+  label/content field could change exact-visible-text semantics if silently ignored. Ignored or
+  rejected extension values are never logged, projected, or persisted, and the 1 MiB response
+  ceiling bounds their resource/privacy exposure. The adapter emits only content-free allowlisted
+  parser codes that distinguish source invalid/conflict, schema, page count, dimensions/conflict,
+  index/duplicate, label, bbox shape/scale/range, content type/limit, element extra, line limit,
+  table, and formula.
+  The material worker routes only missing, unexpected, duplicate, and misordered exact-text codes
+  through the one-repair quality path; any parser-stage code, including a tuple mixed with a text
+  code, is terminal before repair, similarity, or storage and may enter only the existing safe
+  validation snapshot. Raw response bodies, Base64, provider content/URLs, prompts, object keys,
+  private paths, and image bytes never enter logs or durable output.
 - Fixed numeric bounds exposed through Compose are tested through their real string environment
   representation. In particular, `IMAGE_DIVERSITY_MAX_REGENERATIONS="1"` must normalize to the
   reviewed literal value `1`, while any other value still fails Settings validation.
@@ -94,8 +124,10 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Empty/PDF/WebP/oversized/malformed OCR input | Typed provider-input failure before any HTTP call |
 | OCR authentication, rejection, rate limit, timeout, or temporary provider failure | Existing bounded typed provider failure; never consume the similarity repair budget |
 | Wrong OCR model identity | Terminal identity-mismatch failure before similarity/storage |
-| Flat/multi-page OCR envelope, invalid/conflicting page metadata, malformed element, or unsupported table/formula | Stage-classified terminal invalid-output before similarity/storage |
-| Bounded non-text `image` content | Ignore without projection/logging/persistence; exact text remains authoritative |
+| Flat/multi-page/raw-normalized-conflicting OCR envelope, invalid page count/dimensions, unknown/extra element semantics, invalid index/content, or unsupported table/formula | Granular stage-classified terminal invalid-output before repair/similarity/storage |
+| Unit bbox or page-bounded raw pixel bbox | Normalize deterministically, then preserve geometric ordering |
+| Pixel bbox without both page axes, or outside a validated page | Terminal bbox scale/range code; never infer `0–1000` or another scale |
+| Optional/opaque non-text `image` content/bbox or outer transport extension | Ignore without projection/logging/persistence; unknown element keys remain terminal |
 | Safety/OCR/identity/media/audit failure | Existing typed failure/recovery path; similarity cannot override it |
 | Provider/network failure | Existing bounded provider retry classification; does not consume the diversity retry |
 | Unknown version bundle or regeneration count other than one | Startup validation fails closed |
@@ -115,9 +147,12 @@ reference set. It does not combine sibling news items or authorize a new publish
 - Domain tests cover the full controlled vocabulary, invalid combinations, deterministic ranking,
   relaxation, primary/alternate difference, prompt isolation, the exact three-line text allowlist,
   provider-rejection recovery, and v1 dispatch/metadata compatibility.
-- Provider contract tests mirror the official nested page/data-info/element dimensions and cover
-  flat or multi-page envelopes, page-count/dimension conflicts, malformed elements, ignored image
-  content, rejected table/formula content, safe stage issue codes, and exact text projection.
+- Provider contract tests mirror both official raw representations: documented normalized boxes
+  and the MaaS pixel boxes exercised by the official SDK converter/tests. They cover zero-/one-
+  origin and non-contiguous indices, flat/multi-page envelopes, optional and malformed dimensions,
+  missing or unbound scale, page-level scale selection including a small pixel bbox at/below one,
+  bbox range, explicit raw labels, ignored image/outer-extension values, rejected element extras,
+  malformed text content, table/formula, granular safe issue codes, and exact text projection.
 - Fixture similarity tests cover exact, near, distinct, threshold boundary, bounded reference
   count, and invalid thresholds without provider access.
 - Real PostgreSQL tests cover clean upgrade/metadata drift/guarded downgrade, exact composite FKs,
@@ -155,3 +190,19 @@ expected_text = ("赛先生科学", allowlisted_title, allowlisted_subtitle)
 assert prompt_renders_exactly(expected_text)
 assert ocr_result.recognized_lines == expected_text
 ```
+
+### 8. Break-loop prevention: raw provider contract drift
+
+- Root-cause categories are cross-layer contract, implicit assumption, and test-coverage gap. The
+  first decoder encoded the API prose/examples as stronger invariants (`index > 0`, mandatory
+  `[0,1]` bbox, paired/equal dimensions) even though the official executable SDK preserved index
+  zero and normalized raw pixel coordinates. Local fixtures repeated those assumptions, so they
+  could not discriminate the deployed provider representation.
+- A broad `image_ocr_layout_invalid` code had near-zero diagnostic value: zero index, pixel scale,
+  optional fields, unknown label, and genuinely malformed content all produced the same safe
+  observation. Retrying a paid/live request before splitting these offline classes is prohibited.
+- Future provider-boundary changes require a pinned primary-source matrix that distinguishes raw
+  HTTP and SDK-normalized envelopes, fixtures derived from both official prose and executable
+  examples, one content-free code per actionable parser class, and material tests proving every
+  parser code is terminal before repair/similarity/storage. Compatibility may relax only provider
+  metadata representation; the finite label mapping and exact visible three-line gate stay closed.

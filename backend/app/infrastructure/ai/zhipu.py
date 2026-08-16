@@ -68,11 +68,25 @@ _IMAGE_OCR_MAX_LINES = 8
 _IMAGE_OCR_MAX_PAGES = 100
 _IMAGE_OCR_MAX_DIMENSION = 100_000
 _IMAGE_OCR_LAYOUT_LABELS = frozenset({"formula", "image", "table", "text"})
-_IMAGE_OCR_UNSUPPORTED_LAYOUT_LABELS = frozenset({"formula", "table"})
 _IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE = "image_ocr_response_envelope_invalid"
-_IMAGE_OCR_PAGE_METADATA_ISSUE = "image_ocr_page_metadata_invalid"
-_IMAGE_OCR_LAYOUT_ISSUE = "image_ocr_layout_invalid"
-_IMAGE_OCR_UNSUPPORTED_LAYOUT_ISSUE = "image_ocr_unsupported_layout"
+_IMAGE_OCR_SOURCE_INVALID_ISSUE = "image_ocr_contract_source_invalid"
+_IMAGE_OCR_SOURCE_CONFLICT_ISSUE = "image_ocr_contract_source_conflict"
+_IMAGE_OCR_SCHEMA_ISSUE = "image_ocr_contract_schema_invalid"
+_IMAGE_OCR_PAGE_COUNT_ISSUE = "image_ocr_contract_page_count"
+_IMAGE_OCR_PAGE_DIMENSIONS_ISSUE = "image_ocr_contract_page_dimensions"
+_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE = "image_ocr_contract_page_dimensions_conflict"
+_IMAGE_OCR_INDEX_ISSUE = "image_ocr_contract_index_invalid"
+_IMAGE_OCR_DUPLICATE_INDEX_ISSUE = "image_ocr_contract_index_duplicate"
+_IMAGE_OCR_LABEL_ISSUE = "image_ocr_contract_label_unknown"
+_IMAGE_OCR_BBOX_SHAPE_ISSUE = "image_ocr_contract_bbox_shape"
+_IMAGE_OCR_BBOX_SCALE_ISSUE = "image_ocr_contract_bbox_scale"
+_IMAGE_OCR_BBOX_RANGE_ISSUE = "image_ocr_contract_bbox_range"
+_IMAGE_OCR_CONTENT_TYPE_ISSUE = "image_ocr_contract_content_type"
+_IMAGE_OCR_CONTENT_LIMIT_ISSUE = "image_ocr_contract_content_limit"
+_IMAGE_OCR_ELEMENT_EXTRA_ISSUE = "image_ocr_contract_element_extra"
+_IMAGE_OCR_TABLE_ISSUE = "image_ocr_contract_table_unsupported"
+_IMAGE_OCR_FORMULA_ISSUE = "image_ocr_contract_formula_unsupported"
+_IMAGE_OCR_LINE_LIMIT_ISSUE = "image_ocr_contract_line_limit"
 
 
 class _ProviderModel(BaseModel):
@@ -135,24 +149,17 @@ class _OcrResponse(_ProviderModel):
 
 
 class _ImageOcrLayoutElement(BaseModel):
+    # Region keys have semantic weight in the exact visible-text gate. Keep this
+    # allowlist aligned with the raw MaaS schema so a new alternate label/content
+    # field cannot be silently discarded.
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    index: int = Field(gt=0, le=1_000_000, strict=True)
-    label: str = Field(min_length=1, max_length=40, strict=True)
-    bbox_2d: list[Any] = Field(min_length=4, max_length=4)
-    content: str = Field(default="", max_length=_IMAGE_OCR_MAX_CONTENT_CHARACTERS, strict=True)
-    height: int | None = Field(
-        default=None,
-        gt=0,
-        le=_IMAGE_OCR_MAX_DIMENSION,
-        strict=True,
-    )
-    width: int | None = Field(
-        default=None,
-        gt=0,
-        le=_IMAGE_OCR_MAX_DIMENSION,
-        strict=True,
-    )
+    index: Any
+    label: Any
+    bbox_2d: Any = None
+    content: Any = None
+    height: Any = None
+    width: Any = None
 
 
 _ImageOcrLayoutPage: TypeAlias = Annotated[
@@ -162,16 +169,17 @@ _ImageOcrLayoutPage: TypeAlias = Annotated[
 
 
 class _ImageOcrPageInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="ignore", strict=True)
 
-    width: int = Field(gt=0, le=_IMAGE_OCR_MAX_DIMENSION, strict=True)
-    height: int = Field(gt=0, le=_IMAGE_OCR_MAX_DIMENSION, strict=True)
+    width: Any
+    height: Any
 
 
 class _ImageOcrDataInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="ignore", strict=True)
 
-    num_pages: int = Field(gt=0, le=_IMAGE_OCR_MAX_PAGES, strict=True)
+    num_pages: Any
+    page_count: Any = None
     pages: list[_ImageOcrPageInfo] | None = Field(
         default=None,
         max_length=_IMAGE_OCR_MAX_PAGES,
@@ -455,15 +463,24 @@ class ZhipuImageTextRecognizer:
             response_payload = response.json()
         except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
             raise InvalidProviderOutputError((_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE,)) from None
+        _validate_image_ocr_response_source(response_payload)
         try:
             parsed = _ImageOcrResponse.model_validate(response_payload)
         except ValidationError as error:
-            raise InvalidProviderOutputError((_image_ocr_schema_issue(error),)) from None
+            raise InvalidProviderOutputError(_image_ocr_schema_issues(error)) from None
         if parsed.model.casefold() != self._model.casefold():
             raise ProviderIdentityMismatchError()
 
-        page = _sole_image_ocr_layout_page(parsed)
-        recognized_lines = _project_image_ocr_lines(page)
+        page, page_width, page_height, element_widths, element_heights = (
+            _sole_image_ocr_layout_page(parsed)
+        )
+        recognized_lines = _project_image_ocr_lines(
+            page,
+            page_width=page_width,
+            page_height=page_height,
+            element_widths=element_widths,
+            element_heights=element_heights,
+        )
         text_validation = validate_exact_visual_text(
             recognized_lines,
             request.expected_text,
@@ -479,116 +496,233 @@ class ZhipuImageTextRecognizer:
                 request_fingerprint=request.request_fingerprint,
             )
         except ValueError:
-            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,)) from None
+            raise InvalidProviderOutputError((_IMAGE_OCR_SCHEMA_ISSUE,)) from None
 
 
-def _image_ocr_schema_issue(error: ValidationError) -> str:
-    stages: set[str] = set()
+def _image_ocr_schema_issues(error: ValidationError) -> tuple[str, ...]:
+    issues: set[str] = set()
     for issue in error.errors(include_url=False, include_context=False, include_input=False):
         location = issue.get("loc")
         if not isinstance(location, tuple) or not location:
             continue
-        if location[0] == "layout_details":
-            stages.add(_IMAGE_OCR_LAYOUT_ISSUE)
+        issue_type = issue.get("type")
+        if location[0] == "layout_details" and issue_type == "extra_forbidden":
+            issues.add(_IMAGE_OCR_ELEMENT_EXTRA_ISSUE)
+        elif "index" in location:
+            issues.add(_IMAGE_OCR_INDEX_ISSUE)
+        elif "label" in location:
+            issues.add(_IMAGE_OCR_LABEL_ISSUE)
+        elif location[0] == "data_info" and ("height" in location or "width" in location):
+            issues.add(_IMAGE_OCR_PAGE_DIMENSIONS_ISSUE)
         elif location[0] == "data_info":
-            stages.add(_IMAGE_OCR_PAGE_METADATA_ISSUE)
+            issues.add(_IMAGE_OCR_PAGE_COUNT_ISSUE)
         else:
-            stages.add(_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE)
-    if len(stages) == 1:
-        return stages.pop()
-    return _IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE
+            issues.add(_IMAGE_OCR_SCHEMA_ISSUE)
+    priority = (
+        _IMAGE_OCR_SCHEMA_ISSUE,
+        _IMAGE_OCR_PAGE_COUNT_ISSUE,
+        _IMAGE_OCR_PAGE_DIMENSIONS_ISSUE,
+        _IMAGE_OCR_INDEX_ISSUE,
+        _IMAGE_OCR_LABEL_ISSUE,
+        _IMAGE_OCR_ELEMENT_EXTRA_ISSUE,
+    )
+    return tuple(code for code in priority if code in issues)[:4] or (_IMAGE_OCR_SCHEMA_ISSUE,)
+
+
+def _validate_image_ocr_response_source(value: Any) -> None:
+    if not isinstance(value, dict):
+        return
+    has_raw_layout = "layout_details" in value
+    has_normalized_layout = "json_result" in value
+    has_error = "error" in value
+    if has_raw_layout and (has_normalized_layout or has_error):
+        raise InvalidProviderOutputError((_IMAGE_OCR_SOURCE_CONFLICT_ISSUE,))
+    if has_normalized_layout or has_error:
+        raise InvalidProviderOutputError((_IMAGE_OCR_SOURCE_INVALID_ISSUE,))
 
 
 def _sole_image_ocr_layout_page(
     response: _ImageOcrResponse,
-) -> _ImageOcrLayoutPage:
-    if response.data_info.num_pages != 1 or len(response.layout_details) != 1:
-        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+) -> tuple[
+    _ImageOcrLayoutPage,
+    int | None,
+    int | None,
+    frozenset[int],
+    frozenset[int],
+]:
+    num_pages = response.data_info.num_pages
+    if (
+        isinstance(num_pages, bool)
+        or not isinstance(num_pages, int)
+        or num_pages != 1
+        or len(response.layout_details) != 1
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
+    if "page_count" in response.data_info.model_fields_set:
+        page_count = response.data_info.page_count
+        if (
+            isinstance(page_count, bool)
+            or not isinstance(page_count, int)
+            or page_count != num_pages
+        ):
+            raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
     pages = response.data_info.pages
     if "pages" in response.data_info.model_fields_set and (pages is None or len(pages) != 1):
-        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
 
     page = response.layout_details[0]
     page_info = pages[0] if pages is not None else None
-    element_page_dimensions: set[tuple[int, int]] = set()
+    page_width = _image_ocr_dimension(page_info.width) if page_info is not None else None
+    page_height = _image_ocr_dimension(page_info.height) if page_info is not None else None
+    element_widths: set[int] = set()
+    element_heights: set[int] = set()
     for element in page:
-        dimension_fields = element.model_fields_set.intersection({"height", "width"})
-        if dimension_fields and (
-            dimension_fields != {"height", "width"}
-            or element.height is None
-            or element.width is None
-        ):
-            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
-        if element.height is not None and element.width is not None:
-            element_page_dimensions.add((element.height, element.width))
-        if (
-            page_info is not None
-            and element.height is not None
-            and element.width is not None
-            and (element.height != page_info.height or element.width != page_info.width)
-        ):
-            raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
-    if len(element_page_dimensions) > 1:
-        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_METADATA_ISSUE,))
-    return page
+        width = _image_ocr_dimension(element.width)
+        height = _image_ocr_dimension(element.height)
+        if width is not None:
+            element_widths.add(width)
+        if height is not None:
+            element_heights.add(height)
+    return (
+        page,
+        page_width,
+        page_height,
+        frozenset(element_widths),
+        frozenset(element_heights),
+    )
+
+
+def _image_ocr_dimension(value: Any) -> int | None:
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= _IMAGE_OCR_MAX_DIMENSION
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_ISSUE,))
+    return int(value)
 
 
 def _project_image_ocr_lines(
     elements: list[_ImageOcrLayoutElement],
+    *,
+    page_width: int | None,
+    page_height: int | None,
+    element_widths: frozenset[int],
+    element_heights: frozenset[int],
 ) -> tuple[str, ...]:
     indexed: set[int] = set()
-    text_elements: list[tuple[float, float, int, str]] = []
+    text_elements: list[tuple[tuple[float, float, float, float], int, str]] = []
     for element in elements:
-        if element.index in indexed:
-            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
-        indexed.add(element.index)
+        index = element.index
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index <= 1_000_000:
+            raise InvalidProviderOutputError((_IMAGE_OCR_INDEX_ISSUE,))
+        if index in indexed:
+            raise InvalidProviderOutputError((_IMAGE_OCR_DUPLICATE_INDEX_ISSUE,))
+        indexed.add(index)
         label = element.label
-        if label not in _IMAGE_OCR_LAYOUT_LABELS:
-            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
-        x1, y1, _x2, _y2 = _normalized_image_ocr_bbox(element.bbox_2d)
-        _validate_image_ocr_content(element.content)
-        if label in _IMAGE_OCR_UNSUPPORTED_LAYOUT_LABELS:
-            raise InvalidProviderOutputError((_IMAGE_OCR_UNSUPPORTED_LAYOUT_ISSUE,))
+        if not isinstance(label, str) or label not in _IMAGE_OCR_LAYOUT_LABELS:
+            raise InvalidProviderOutputError((_IMAGE_OCR_LABEL_ISSUE,))
+        if label == "table":
+            raise InvalidProviderOutputError((_IMAGE_OCR_TABLE_ISSUE,))
+        if label == "formula":
+            raise InvalidProviderOutputError((_IMAGE_OCR_FORMULA_ISSUE,))
         if label == "text":
-            text_elements.append((y1, x1, element.index, element.content))
+            content = _validated_image_ocr_text_content(element.content)
+            bbox = _image_ocr_bbox_shape(element.bbox_2d)
+            text_elements.append((bbox, index, content))
+
+    uses_pixel_bbox = any(max(bbox) > 1 for bbox, _index, _content in text_elements)
+    if uses_pixel_bbox:
+        if page_width is None:
+            if len(element_widths) > 1:
+                raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,))
+            page_width = next(iter(element_widths), None)
+        if page_height is None:
+            if len(element_heights) > 1:
+                raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,))
+            page_height = next(iter(element_heights), None)
+        if page_width is None or page_height is None:
+            raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SCALE_ISSUE,))
 
     lines: list[str] = []
-    for _y1, _x1, _index, content in sorted(text_elements):
+    ordered_text: list[tuple[float, float, int, str]] = []
+    for bbox, index, content in text_elements:
+        x1, y1, _x2, _y2 = _normalized_image_ocr_bbox(
+            bbox,
+            pixel_coordinates=uses_pixel_bbox,
+            page_width=page_width,
+            page_height=page_height,
+        )
+        ordered_text.append((y1, x1, index, content))
+    for _y1, _x1, _index, content in sorted(ordered_text):
         for raw_line in content.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
             normalized = " ".join(raw_line.strip().split())
             if not normalized:
                 continue
             if len(normalized) > 200:
-                raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+                raise InvalidProviderOutputError((_IMAGE_OCR_LINE_LIMIT_ISSUE,))
             lines.append(normalized)
             if len(lines) > _IMAGE_OCR_MAX_LINES:
-                raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+                raise InvalidProviderOutputError((_IMAGE_OCR_LINE_LIMIT_ISSUE,))
     return tuple(lines)
 
 
-def _normalized_image_ocr_bbox(value: list[Any]) -> tuple[float, float, float, float]:
+def _image_ocr_bbox_shape(value: Any) -> tuple[float, float, float, float]:
+    if not isinstance(value, list) or len(value) != 4:
+        raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SHAPE_ISSUE,))
     coordinates: list[float] = []
     for coordinate in value:
         if (
             isinstance(coordinate, bool)
             or not isinstance(coordinate, (int, float))
             or not math.isfinite(coordinate)
-            or not 0 <= coordinate <= 1
+            or coordinate < 0
         ):
-            raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+            raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SHAPE_ISSUE,))
         coordinates.append(float(coordinate))
     x1, y1, x2, y2 = coordinates
     if x1 >= x2 or y1 >= y2:
-        raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+        raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SHAPE_ISSUE,))
     return x1, y1, x2, y2
 
 
-def _validate_image_ocr_content(value: str) -> None:
+def _normalized_image_ocr_bbox(
+    value: tuple[float, float, float, float],
+    *,
+    pixel_coordinates: bool,
+    page_width: int | None,
+    page_height: int | None,
+) -> tuple[float, float, float, float]:
+    if not pixel_coordinates:
+        return value
+    if page_width is None or page_height is None:
+        raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SCALE_ISSUE,))
+    x1, y1, x2, y2 = value
+    if x2 > page_width or y2 > page_height:
+        raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_RANGE_ISSUE,))
+    return (
+        x1 / page_width,
+        y1 / page_height,
+        x2 / page_width,
+        y2 / page_height,
+    )
+
+
+def _validated_image_ocr_text_content(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_TYPE_ISSUE,))
+    if len(value) > _IMAGE_OCR_MAX_CONTENT_CHARACTERS:
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
     if any(
         (ord(character) < 32 and character not in "\t\r\n") or ord(character) == 127
         for character in value
     ):
-        raise InvalidProviderOutputError((_IMAGE_OCR_LAYOUT_ISSUE,))
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
+    return value
 
 
 def _normalize_ocr_markdown(value: str) -> str:

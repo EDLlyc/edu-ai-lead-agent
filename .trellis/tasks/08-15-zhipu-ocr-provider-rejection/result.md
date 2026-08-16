@@ -7,8 +7,12 @@ preparation, and the default-off Phase 4 production deployment are complete. The
 release marker was reconciled and an independent read-only recheck passed. The first separately
 authorized Phase 5 OCR fixture gate was attempted exactly once and failed closed with
 `invalid_provider_output`; the isolated-news/Comfly acceptance and activation were not started.
-The repository has now returned to Phase 2.1 for an offline-only response-envelope correction;
-that correction has not been deployed or exercised against a live provider.
+The repository then returned to Phase 2.1 for an offline-only response-envelope correction. The
+reviewed correction is now deployed from exact Codeup commit
+`331a4942a84b36811cbbc4abff68bca2abc71f0c` on a new immutable candidate while both visual flags
+remain false. A separately authorized corrected-candidate fixture then made exactly one provider
+HTTP attempt and failed closed with parser code `image_ocr_layout_invalid`; no retry, isolated-news
+acceptance, Comfly call, or activation followed.
 
 The release implementer used key-auth SSH for the reviewed backup, offline image transfer, source
 overlay, migration, and dependency-ordered restart. It did not call Zhipu, Comfly, or WeCom,
@@ -25,10 +29,11 @@ bounded fail-closed recovery gate.
 - Added `ZhipuImageTextRecognizer` on `/layout_parsing`. It accepts only validated PNG/JPEG bytes,
   sends a private Base64 data URL with crop/layout visualization disabled, and uses the existing
   bounded Zhipu HTTP transport and typed provider failures.
-- Enforced case-normalized model identity, the official exactly-one-page nested layout envelope,
-  typed and consistent page metadata/dimensions, bounded unique positive layout indices,
-  allowlisted labels, finite ordered `[0,1]` boxes, bounded content, at most eight lines,
-  deterministic `(y1, x1, index)` ordering, and the existing exact ordered visual-text gate.
+- Enforced case-normalized model identity and the official exactly-one-page nested raw envelope.
+  The latest offline compatibility layer accepts bounded unique nonnegative indices and either
+  documented `[0,1]` boxes or page-bounded raw MaaS pixel boxes with deterministic normalization;
+  it retains finite raw labels, bounded text, at most eight lines, geometric
+  `(y1, x1, index)` ordering, and the existing exact ordered visual-text gate.
 - Bounded `image` element content is ignored without projection, logging, or persistence;
   unsupported table/formula content and malformed envelope/page/layout structures fail closed with
   stable content-free parsing-stage issue codes.
@@ -340,13 +345,191 @@ acceptance and Phase 6 activation remain prohibited in this run.
 - Final local-only Phase 2.1 gate: 99 provider/factory/material/image-validation tests passed,
   including 56 image-OCR contract cases and the unchanged legacy brand/PDF OCR suite. Project Ruff
   format/lint passed across 247 files and strict mypy passed across 147 source files.
-- This correction made no live provider call and did not use SSH, production, deployment, MinIO,
-  Comfly, enqueue/retry/resend, or WeCom. Production flags and services were not read or changed.
+- This local implementation checkpoint made no live provider call and did not use SSH, production,
+  deployment, MinIO, Comfly, enqueue/retry/resend, or WeCom. Production flags and services were
+  not read or changed during that checkpoint; the later reviewed redeployment is recorded below.
+
+## Phase 2.1 release preparation and default-off redeployment
+
+- Codeup `origin/main` resolved exactly to
+  `331a4942a84b36811cbbc4abff68bca2abc71f0c`. The 823-file committed-source secret scan passed.
+  The retained 307-path source allowlist produced 307 regular files / 360 archive members without
+  a symlink, forbidden/private/frontend/task/report path, or secret-shaped filename. Its 818,067
+  byte archive SHA-256 is
+  `ea13c86df5bea0cf9f860007708d66f115cc7afb401966d4b79741772bf51f1e`;
+  only the reviewed two runtime and two test files changed from the prior release archive.
+- The offline source-overlay build reused the unchanged dependency base
+  `sha256:50fd2519fbc5aa204c45e76cb685d01aaea1656b998d3ed96c9ab6671b3b9374`
+  and produced exact candidate
+  `sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`.
+  Its 131,266,546 byte transfer bundle SHA-256 is
+  `7cb547773f9bb445fe635934d4447e6afcf7d5fd6cd2a2f296f390baecc58f63`.
+  Revision/source/base/pyproject labels, non-root `app:app` runtime, all 165 in-image source hashes,
+  exact file set, imports, `pip check`, OCR constants/route/parser behavior, Alembic `0021`, and the
+  byte-identical committed/runtime OpenAPI SHA-256
+  `003936b19e998f4e96865845531108535664947272e2b04d2fb83d95b9cab950` passed.
+- Strict production preflight found the previous candidate healthy on all eight long-running
+  services at restart zero, both visual flags false, Alembic `20260815_0021`, ten active sources,
+  zero running/actionable/provider/delivery work, and the exact durable vector
+  `34:179:34:13:2:55:142:31:40:31:376:21:41:0:0`. Seven historical queued copy jobs retained
+  aggregate attempt count zero; WeCom remained 20 delivered / one failed across 21 jobs and 41
+  attempts, with zero nonterminal/unknown or duplicate request fingerprints.
+- The first quiesced invocation of the standard backup wrapper rejected the deliberately local
+  offline `APP_IMAGE` tag because it accepts only a registry digest. Its fail-closed restoration
+  returned every old service to the exact prior image/restart-zero state with all counters stable.
+  The reviewed manual offline backup path was then used after a fresh dependency-ordered quiesce.
+- Fresh rollback ID `20260815T153208Z` contains a 9,446,535 byte PostgreSQL custom dump with
+  SHA-256 `30113ffc19c1a14c6998e8896b32fbc72de769684b9b27a0fd7a1cdaa03d3c72`
+  and a container-local `pg_restore --list` pass; a verified 658-object MinIO manifest with
+  SHA-256 `90c4a9231175749307a24f7cf59095ec3ad72f92184fa4bb702a88ee1194ae45`;
+  brand archive SHA-256
+  `5184e5ef669bd85261dde402c90ff0520d17cfd606c34a14185a1cd0aef710e7`;
+  environment SHA-256
+  `4ad88db853075ad8668a1c45bd2e1f4498256c2ece0903ab2fbe3ea40521efdc`;
+  code archive SHA-256
+  `9bab86056d3e446670f8bdbe0efbfde4d2d288c7ac9209ef5a3b9ed1f1daeeab`;
+  and nine immutable prior-image rollback tags whose inventory SHA-256 is
+  `73c6f8aa39371e84baee1c13d7be3af4b8349df9b5a69d9fe926aabdab6485da`.
+- The mode-0600 image/source artifacts matched their local hashes after transfer. Remote load,
+  label/runtime/source verification passed before the shared and all nine service tags were
+  moved to the exact candidate. The active overlay matched all 307 allowlisted files; `.env`,
+  `.release.env`, private brand inputs, named PostgreSQL/MinIO volumes, frontend, and unrelated
+  workspace artifacts were preserved. Canonical mode-0600 marker files now contain exact full/
+  short values `331a4942a84b36811cbbc4abff68bca2abc71f0c` / `331a494`.
+- `minio-init` and `backend-migrate` exited zero without a build; Alembic remained
+  `20260815_0021` and seeding changed no durable counter. API/acquisition, governance, and content
+  were restored in dependency order with both flags false. The dispatcher was recreated last on
+  the exact candidate only after nonterminal/unknown WeCom and all running work remained zero.
+- Two operator-only probe corrections failed closed without production drift. A composite remote
+  script was delivered on standard input and its `compose up` subprocess consumed the remaining
+  probe text after successfully recreating the dispatcher; the missing evidence was not promoted
+  to a pass. A later string assertion expected timeout `120` while runtime Settings represented the
+  same numeric value as `120.0`; its trap stopped the dispatcher. After direct bounded diagnosis,
+  the corrected numeric gate was rerun in full. Starting the already verified dispatcher through
+  Compose also idempotently reran its declared `minio-init`/migration dependencies; both exited
+  zero again with no schema, source, durable, provider, or delivery delta.
+- The final 35-second sample retained all eight long-running services on the exact candidate at
+  restart zero; API, PostgreSQL, and MinIO were healthy, and both one-shots were exited-zero.
+  API/content Settings were equal at `false:false:glm-ocr:10485760:1048576:120.0`; markers,
+  Alembic, ten sources, the exact durable vector, historical queued `7:0`, WeCom status, and all
+  running/actionable counts remained unchanged. The 256-file protected brand aggregate retained
+  SHA-256 `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24`.
+  Bounded severe/unknown/secret/provider-send log counts were `0:0:0:0`. Protected final evidence
+  and service-matrix SHA-256 values are
+  `e28defaba3de84946fa2bd0d96a52edefbf864cf22cf88f38ed2ff91a4da5211` and
+  `0e4abf38032d7e43c37ada23d4d7fc64ee1ef1be3e5a140e026eb0bf12b1d654`;
+  the mode-0700 transfer stage and rollback artifacts remain retained.
+- No Zhipu, Comfly, image-generation, or WeCom provider call occurred during this redeployment. No
+  fixture, acceptance database/bucket, enqueue, retry, resend, activation, frontend deployment,
+  production build, commit, or push occurred.
+
+## Corrected Phase 5 deterministic OCR fixture gate
+
+- The immediate gate reconfirmed canonical full/short release markers, the exact immutable
+  candidate, all eight restart-zero application services, API/content runtime equality, false
+  diversity/OCR flags, `glm-ocr`, the 10 MiB/1 MiB/120-second envelope, separate `glm-5.2` text
+  routing, disabled quality audit, Alembic `20260815_0021`, and ten active sources.
+- Ordinary 2026-08-16 scheduling had advanced the durable vector from the deployment snapshot to
+  `35:179:35:13:3:58:154:34:43:34:382:24:47:0:0`. The delta was fully attributed to one terminal
+  acquisition run, one terminal governance run, one succeeded content-slot run, and three accepted
+  copy / succeeded image / package / delivered WeCom paths. The vector was stable before isolation;
+  running/current-date actionable, nonterminal/unknown WeCom, unknown attempts, duplicate request
+  fingerprints, and diversity rows were zero, while the seven historical queued copy jobs retained
+  aggregate attempt count zero.
+- Three schedulers and the dispatcher were stopped before the paid boundary. A first wrapper
+  correction failed before child creation because `timeout` cannot directly execute a shell
+  function. A network-disabled candidate probe then established that the immutable application
+  image contains no font files, so in-container rendering also failed before adapter construction.
+  Both paths had provider-attempt count zero, removed their exact child resources, and passed
+  unchanged flag/vector/queue/log recovery gates. The first recovery used Compose start and
+  idempotently reran its declared MinIO-init/migration dependencies; both remained exited-zero with
+  no schema, source, durable, provider, or delivery delta. Final isolation/recovery used direct
+  exact-container stop/start instead.
+- The corrected fixture was rendered locally with the trusted root-owned, non-writable Noto Sans
+  CJK font and exactly `赛先生科学`, `人工智能`, and `理解智能如何学习与反馈`. It was deterministic,
+  mode 0600, 1024×1024 RGB PNG, 39,931 bytes, and had SHA-256
+  `05c2f259d6f14731f8b1cf2026efb3b490a599890409828e2199beaf195ce512`; the font SHA-256 was
+  `b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a`. PNG signature/chunks,
+  absence of text metadata, bounds, deterministic byte identity, remote byte identity, protected
+  modes, and deployed non-root user readability passed before HTTP.
+- The deployed factory returned `ZhipuImageTextRecognizer` using `layout_parsing`, provider
+  `zhipu`, model `glm-ocr`, one-off OCR true, `AI_MAX_ATTEMPTS=1`, and an explicit HTTP transport
+  with SDK retries zero. Exactly one provider HTTP attempt occurred. The safe terminal projection
+  was `invalid_provider_output`, `exact_ordered=false`, accepted line count zero, parser issue
+  `image_ocr_layout_invalid`, and no quality issue codes. No response body, Base64, credential,
+  unexpected recognized text, provider URL/content, private path, image content, prompt, object
+  key, or provider request identifier was printed or persisted.
+- No second OCR call or retry occurred. No Comfly/image-generation, real-news pipeline, database or
+  MinIO acceptance, enqueue/retry/resend, WeCom action, environment edit, acceptance DB/bucket, or
+  activation occurred. The exact local/remote fixture copies and child container were deleted and
+  proved absent.
+- Only the three previously running schedulers were started directly, followed by the dispatcher
+  last. The final 30-second gate retained all eight services on the candidate at restart zero,
+  flags `false:false`, the current durable vector, queue/unknown gate `0:0:0:0`, and zero bounded
+  severe/provider-send log findings.
+
+## Phase 2.2 raw MaaS compatibility correction — offline only
+
+- Pinned official-source review found that the second live code `image_ocr_layout_invalid` could
+  not discriminate zero-based index, raw pixel bbox, optional fields, label drift, or malformed
+  content. No private response was available, so the correction does not assert which hypothesis
+  occurred. The Bayesian record assigns high confidence to accepting both zero-/one-origin index
+  values and official raw pixel normalization, while leaving the actual live cause undetermined.
+- The direct adapter remains a raw MaaS decoder only: exact model identity, `layout_details`,
+  `data_info.num_pages == 1`, and one nested page stay mandatory. It does not add an SDK
+  `json_result` fallback or infer envelope type from coordinate magnitude.
+- Unique bounded indices now accept zero and gaps without relying on base. Text bboxes accept the
+  documented unit form or raw pixels only with positive deterministic page axes and x/y range
+  checks. Scale is selected once per text page, so a tiny pixel bbox whose coordinates happen to
+  be at most one cannot be mixed with ordinary pixel boxes and change geometric ordering. When
+  all text coordinates are at most one, unit/pixel interpretations preserve the same order under
+  positive axis scaling. `data_info.pages` is authoritative; independently optional bounded
+  element page axes are used only as an unambiguous fallback. An unexplained scale remains
+  terminal.
+- The raw semantic allowlist stays `text/image/table/formula`: only text is projected, image
+  content/bbox is optional and ignored, table/formula have distinct terminal codes, and unknown
+  labels fail closed. Bounded outer/data/page extensions are discarded at the private response
+  boundary, but raw elements accept only the six official keys so an alternate semantic field
+  cannot be silently hidden. Raw success mixed with `json_result`/`error`, a non-raw-only
+  envelope, an unknown element key, and a conflicting compatibility `page_count` alias all fail
+  with content-free codes. Extension values are never logged, projected, or persisted; the
+  response remains capped at 1 MiB.
+- Safe terminal subcodes now distinguish response/source/schema, page count,
+  dimensions/conflict, index/duplicate, label, bbox shape/scale/range, content type/limit, element
+  extra, line limit, table, and formula.
+  Material tests prove every parser class, including a mixed parser/text tuple, bypasses quality
+  repair and stops before similarity and storage. The application routing code required no change
+  because its exact-text allowlist already implements that invariant.
+- Offline mocked tests cover the official docs unit shape, the pinned official 2040x2640 full-page
+  MaaS pixel fixture, page-level small-pixel scale selection, zero-/one-origin and non-contiguous
+  indices, independently optional dimensions, extension-field privacy, source/page-count
+  conflicts, page-authoritative and element-fallback dimensions, missing/conflicting scale,
+  unknown labels, malformed indices/bboxes/content, unsupported structures, and the unchanged
+  exact-text gate. The focused image OCR, legacy PDF OCR, factory/config, image-generation, and
+  material suite passed all 237 collected tests. Affected strict mypy passed.
+- Full-project Ruff format-check passed for 247 files and lint passed. Explicit-config,
+  no-incremental strict mypy passed for all 141 backend application sources, but the requested
+  147-source repository gate remains red on one pre-existing, untouched ownership-external issue:
+  `scripts/annotate_brand_visual_assets.py:153` returns `Any` from `str | None`. The ordinary
+  `make backend-typecheck` command reports green because its repository-root invocation does not
+  discover `backend/pyproject.toml`; the explicit `--config-file backend/pyproject.toml` run exposes
+  the baseline finding. This iteration did not edit that unrelated script or the Makefile. Per
+  scope, no full backend pytest was run.
+- Design drift from the research recommendation was deliberate and recorded: no SDK-normalized
+  decoder was added for this fixed raw endpoint; text still requires usable geometry instead of an
+  index-only ordering fallback; bounded outer transport extensions are ignored, while unknown raw
+  element keys and normalized/error source conflicts are rejected because they can change or
+  obscure exact-text semantics. No Alembic, OpenAPI, public API, Settings, factory, legacy PDF OCR,
+  or durable schema change was required.
+- This checkpoint performed no live/provider call, SSH, production read/write, deployment, image
+  generation, MinIO, database, enqueue/retry/resend, or WeCom action. It does not authorize a new
+  fixture or activation; production state was not accessed.
 
 ## Remaining work
 
-- Complete the local Phase 2.1 quality gates and independent review before preparing a new immutable
-  release; this run permits no retry, second OCR call, real-news/Comfly acceptance, or activation.
-- Production flags remain false and the dispatcher is running only as the final dependency-ordered
-  failure-recovery step. The isolated-news and activation gates remain blocked until a future
-  separately authorized plan passes; the protected stage and rollback artifacts remain retained.
+- The corrected paid fixture failed at the bounded parser stage. The new offline correction and
+  granular tests require independent review/release before any separately authorized provider
+  call; this run permits no retry, real-news/Comfly acceptance, or activation.
+- Production flags remain false and the dispatcher is running as the final dependency-ordered
+  fail-closed restoration step. Isolated-news and activation remain blocked; the protected release
+  stage and both rollback generations remain retained.
