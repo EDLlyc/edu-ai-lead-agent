@@ -22,6 +22,11 @@ candidate release with both visual flags false. After the failed fixture was cle
 existing candidate WeCom dispatcher was restored without enqueue, retry, or resend and passed the
 bounded fail-closed recovery gate.
 
+The later Phase 2.2 default-off release attempt for `c66aa6217d137033118c552f3db11b2a1121d082`
+stopped before source overlay, marker update, migration, or candidate service creation. Production
+therefore still runs `331a4942a84b36811cbbc4abff68bca2abc71f0c` on the prior `aec802...` image
+with both flags false; its separately recorded 30-second recovery gate passed.
+
 ## Implemented contract
 
 - Added independent bounded image OCR settings: `IMAGE_OCR_MODEL=glm-ocr`, 10 MiB raw input,
@@ -525,11 +530,132 @@ acceptance and Phase 6 activation remain prohibited in this run.
   generation, MinIO, database, enqueue/retry/resend, or WeCom action. It does not authorize a new
   fixture or activation; production state was not accessed.
 
+## Phase 2.2 default-off release attempt — failed closed before overlay
+
+- Codeup `origin/main` was re-fetched and resolved exactly to
+  `c66aa6217d137033118c552f3db11b2a1121d082`. The committed-source scan covered 824 files without
+  a secret-shaped finding. The retained allowlist produced 307 regular files / 360 archive members,
+  with only `backend/app/infrastructure/ai/zhipu.py` and its two reviewed test files changing from
+  the prior runtime archive. The 821,122-byte source archive SHA-256 is
+  `e516184eebdeb9b98c09cc3fecd98369012d75aba5763fdb16ed836b2d3390f9`.
+- The network-disabled source-overlay build reused exact dependency base
+  `sha256:50fd2519fbc5aa204c45e76cb685d01aaea1656b998d3ed96c9ab6671b3b9374`
+  and produced candidate
+  `sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`
+  (132,064,594 bytes). Revision/source/base/pyproject labels, non-root `app:app` runtime, all 165
+  source hashes and exact file set, absence of stale application copies, imports, `pip check`, the
+  dedicated OCR route, unit and 2040-by-2640 pixel bbox projection, zero/gapped indices, OpenAPI
+  SHA-256 `003936b19e998f4e96865845531108535664947272e2b04d2fb83d95b9cab950`,
+  and Alembic `20260815_0021` all passed offline. The 131,268,412-byte image bundle SHA-256 is
+  `db1cab9cc975e08d46aa0d47e35f81100d02ea0eb5df90ce8677cc23378119c4`.
+- Strict read-only preflight found all eight prior-candidate services running at restart zero,
+  PostgreSQL/MinIO healthy, both visual flags false, `glm-ocr` isolated from `glm-5.2`, timeout
+  rendered as `120.0`, and exact prior release/image
+  `331a4942a84b36811cbbc4abff68bca2abc71f0c` /
+  `sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`.
+  The current 2026-08-16 ordinary automation baseline was stable for 15 seconds at
+  `35:179:35:13:3:58:154:34:43:34:382:24:47:0:0`; current-day acquisition/slot/copy run counts
+  were `1:1:3`. Running/current-date actionable work, nonterminal/unknown WeCom, duplicate request
+  fingerprints, diversity reservations and similarity attempts were zero. Seven historical queued
+  copy jobs retained aggregate attempt count zero; WeCom remained 23 delivered / one failed across
+  24 jobs and 47 attempts, with the unchanged one historical duplicate content fingerprint.
+- Production env/release-env SHA-256 values remained
+  `4ad88db853075ad8668a1c45bd2e1f4498256c2ece0903ab2fbe3ea40521efdc` /
+  `5b58077644a21764cc3521c6689d562c645c62f0fff117c07264f7285398e0c2`.
+  The 256-file brand aggregate remained
+  `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24`;
+  named volumes, backup timer, 61,419,168 KiB free space, 95% free inodes, and prior rollback
+  checksums passed. Bounded preflight log/provider counts were `0:0:0:0`.
+- A first quiesced backup attempt created a valid 9,726,989-byte PostgreSQL dump but invoked the
+  container-local catalog checker without interactive stdin. `pg_restore` therefore read EOF and
+  the attempt failed closed before MinIO/brand/image backup or transfer. Direct prior-container
+  restoration passed with unchanged durable/WeCom state. The incomplete `20260816T021431Z`
+  directory remains retained and is not an approved rollback set.
+- Fresh rollback ID `20260816T021614Z` passed catalog and checksum verification: PostgreSQL SHA-256
+  `1363341cac636e0dfa00900ab66df6cfcba6de1a48bca6a7b61821f82f2f3a29`, 685-object MinIO manifest
+  SHA-256 `1ea27f1ced8056ec39437665cf717a83dd3f59ff2323caeb67be15e56459a3bc`,
+  brand archive SHA-256
+  `5184e5ef669bd85261dde402c90ff0520d17cfd606c34a14185a1cd0aef710e7`,
+  active-code archive SHA-256
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`,
+  and nine prior-image tags with inventory SHA-256
+  `ad0d88b71a39a8f9afeaa6c0d0911f4e49d00e4bae71532051f301f8ff7886a7`.
+- The protected nine-file transfer stage matched the local image/source checksums. Remote image
+  load and provenance checks began while only infrastructure was running, but the no-network import
+  assertion rebound the imported FastAPI `app` name to the Python package before calling
+  `openapi()`. It failed locally inside the candidate without contacting any provider and before
+  active retag, source overlay, marker, one-shot, migration, environment, or data mutation.
+- The trap restored every prior service tag. Its service-start branch used relative Compose paths
+  after changing into the protected stage and therefore could not start the stopped containers.
+  Recovery then directly started only the existing prior containers in dependency order, with the
+  dispatcher last. A final 30-second gate retained all eight services on exact prior image at
+  restart zero, prior source/markers/env/release-env, flags false, the durable/WeCom baselines above,
+  zero actionable work, and bounded severe/unknown/secret/provider-send counts `0:0:0:0`. The
+  protected recovery evidence SHA-256 is
+  `bb5dbd36206b0da14b62381962eccdb31c46bf543557b06483d7ce04f9ccd208`.
+- No Zhipu, Comfly, image-generation, or WeCom provider call occurred. No fixture, acceptance
+  database/bucket, enqueue, retry, resend, activation, frontend deploy, production source/marker/
+  migration change, commit, or push occurred. The candidate image, transfer stage, valid rollback
+  set, incomplete first backup and safe failure evidence remain retained.
+- The corrected offline import probe avoids rebinding the FastAPI object:
+  `from app.api_main import app as api_app`, followed by named `app.*` module imports and
+  `api_app.openapi()`. It passed locally against the exact candidate with network disabled, a
+  read-only root filesystem, all capabilities dropped and `no-new-privileges`; the image ID remained
+  exact.
+- A subsequent production read-only audit did not run the candidate. It confirmed the candidate is
+  merely loaded, every active/shared service tag and all eight running restart-zero containers still
+  resolve to `aec802...`, the transfer source/image hashes remain
+  `e516184eebdeb9b98c09cc3fecd98369012d75aba5763fdb16ed836b2d3390f9` /
+  `db1cab9cc975e08d46aa0d47e35f81100d02ea0eb5df90ce8677cc23378119c4`,
+  and the valid rollback/protected/recovery hashes still verify. Durable vector, WeCom vector and
+  actionable work remained exactly
+  `35:179:35:13:3:58:154:34:43:34:382:24:47:0:0`, `24:47:0:0:0:1`, and `0:0:0:0:0:0`.
+- The protected candidate stage may be reused only after its full artifact manifest and loaded
+  image identity are rechecked. The `20260816T021614Z` rollback set is valid for the exact state at
+  the read-only audit, but it is not a fresh rollback point after writers resumed. A future retry
+  must repeat the strict preflight and take a new backup after quiescence; `20260816T021614Z` cannot
+  be substituted by an equality-only reuse approval.
+
+## Offline-only operator-driver hardening
+
+- Added the exact mode-0600 release driver
+  `research/default-off-release-driver.sh`, SHA-256
+  `2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd`. It requires absolute
+  `/opt/edu-ai-lead-agent` Compose/project/env context, exact absolute stage invocation with
+  `/dev/null` stdin, a ten-member mode-protected stage and self/archive/image/source hashes. It
+  rejects drift before quiescence.
+- The fresh backup lock is acquired before the first stop and held to completion/recovery. Fresh
+  generated backup/tag collisions fail closed. PostgreSQL uses a noninteractive dump and the one
+  intentional `docker exec -i ... pg_restore --list <dump` catalog stream; MinIO, brand, protected
+  env, release env, exact prior source/markers, nine rollback tags and their manifests must all pass
+  before `backup_ready=1`.
+- `backup_ready`, `tags_changed`, `overlay_changed`, and `completed` are explicit phase flags set
+  before their associated risk boundary. `ERR`, nonzero `EXIT`, `HUP`, `INT`, and `TERM` use one
+  recursion-disabled recovery path. Pre-backup failure consumes no partial backup; mid/late recovery
+  restores only changed layers and then starts captured prior services API-first, schedulers/workers
+  behind zero-work gates, and WeCom dispatcher last.
+- The candidate gate runs before retag with exact revision/base/pyproject/embedded-source labels,
+  source manifest/count, non-root/read-only/no-network probes, `pip check`, corrected
+  `from app.api_main import app as api_app` imports, `/layout_parsing`, OpenAPI, and Alembic checks.
+  Runtime gates require exact default-off `false:false:glm-ocr:10485760:1048576:120.0` equality,
+  the pinned 2026-08-16 durable/WeCom/historical baseline, zero current actionable/running/unknown/
+  duplicate work, an operator-reviewed scheduler-safe window, exact protected inputs/tags/markers,
+  secret-safe logs, dependency ordering, dispatcher last and final 30-second stability. There is no
+  build, fixture, provider call, flag enablement, enqueue, retry, or resend path.
+- The mode-0600 harness `research/test-default-off-release-driver.sh`, SHA-256
+  `bedc1922d455625fcf062623a48c20a8478210405a6057ee35570724856eec5a`, passed `bash -n`, static
+  gates, injected early/mid/late failures, TERM and incomplete recovery. Orders were `services`,
+  `tags -> services`, and `overlay -> tags -> services`; TERM returned 143 and an incomplete restore
+  returned fail-closed 125. ShellCheck was unavailable. No SSH, production, Docker service,
+  provider, or durable-state access occurred during this offline hardening, and no retry is
+  authorized by these artifacts alone.
+
 ## Remaining work
 
-- The corrected paid fixture failed at the bounded parser stage. The new offline correction and
-  granular tests require independent review/release before any separately authorized provider
-  call; this run permits no retry, real-news/Comfly acceptance, or activation.
-- Production flags remain false and the dispatcher is running as the final dependency-ordered
-  fail-closed restoration step. Isolated-news and activation remain blocked; the protected release
-  stage and both rollback generations remain retained.
+- Use the corrected import alias and the absolute-path/no-stdin command contract recorded in
+  `implement.md`. A retry is blocked until the exact generated operator script and its phase-aware
+  `ERR`/`EXIT`/signal recovery branches pass independent review and a new quiesced backup is planned.
+  This run is stopped and does not permit another transfer/load/overlay attempt.
+- Production remains on `331a494` / `aec802...`, both visual flags remain false, and the dispatcher
+  is running as the final dependency-ordered fail-closed restoration step. Paid OCR, isolated-news/
+  Comfly acceptance and activation remain prohibited without separate authorization.

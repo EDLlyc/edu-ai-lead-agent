@@ -134,6 +134,220 @@ protected final evidence SHA-256 is
 No provider call, fixture, enqueue, retry, resend, activation, frontend deploy, production build,
 commit, or push occurred. The next paid OCR fixture remains unchecked and separately gated.
 
+### Phase 2.2 correction default-off release attempt
+
+- [x] Re-fetch and freeze Codeup `origin/main` at exact bbox-compatibility commit
+  `c66aa6217d137033118c552f3db11b2a1121d082`; build and validate the retained 307-path offline
+  source overlay, immutable image provenance, non-root runtime, exact 165-file image source set,
+  unit/raw-pixel bbox contract, migration/OpenAPI drift, and transfer bundle checksums.
+- [x] Run strict read-only production preflight against the current 2026-08-16 ordinary automation
+  baseline, then quiesce writers and capture a fresh catalog/checksum-verified PostgreSQL/MinIO/
+  brand/env/code/prior-image rollback set.
+- [x] Transfer and checksum the protected candidate artifacts without changing active source,
+  markers, environment, volumes, migration, or flags.
+- [ ] Complete remote image validation, active retag/source overlay, one-shots, dependency-ordered
+  restore, and default-off 30-second candidate stability. The remote offline import probe failed
+  before overlay, so the release stopped and the prior candidate was restored.
+
+The local release archive contains 307 regular files / 360 members, is 821,122 bytes, and has
+SHA-256 `e516184eebdeb9b98c09cc3fecd98369012d75aba5763fdb16ed836b2d3390f9`.
+The immutable candidate is
+`sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`
+(132,064,594 bytes). Its 131,268,412-byte transfer bundle has SHA-256
+`db1cab9cc975e08d46aa0d47e35f81100d02ea0eb5df90ce8677cc23378119c4`.
+All local labels/source hashes/non-root/import/pip/unit-bbox/raw-pixel-bbox/OpenAPI/Alembic gates
+passed.
+
+Production preflight retained false diversity/OCR flags, exact prior release `331a494` and image
+`sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`,
+and stable ordinary baseline
+`35:179:35:13:3:58:154:34:43:34:382:24:47:0:0`. Running and current-date actionable work were
+zero, seven historical queued copy jobs retained aggregate attempt count zero, and WeCom was
+`24:47:0:0:0:1` across jobs, attempts, nonterminal, unknown, duplicate request fingerprints, and
+the unchanged historical duplicate content-fingerprint group.
+
+The first quiesced backup attempt used a valid 9,726,989-byte database dump but omitted `-i` from
+the container-local `pg_restore --list` validation. It therefore read EOF, failed closed before
+MinIO/brand/image backup and before transfer, and restored all prior services with unchanged
+counters. That incomplete rollback directory is retained as `20260816T021431Z` and is not used.
+The fresh reviewed rollback ID is `20260816T021614Z`: PostgreSQL SHA-256
+`1363341cac636e0dfa00900ab66df6cfcba6de1a48bca6a7b61821f82f2f3a29`, 685-object MinIO manifest
+SHA-256 `1ea27f1ced8056ec39437665cf717a83dd3f59ff2323caeb67be15e56459a3bc`,
+brand archive SHA-256 `5184e5ef669bd85261dde402c90ff0520d17cfd606c34a14185a1cd0aef710e7`,
+code archive SHA-256 `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`,
+unchanged env/release-env SHA-256 values, and nine prior-image tags with inventory SHA-256
+`ad0d88b71a39a8f9afeaa6c0d0911f4e49d00e4bae71532051f301f8ff7886a7`.
+
+After transfer and remote image load, the isolated no-network import probe failed because its
+one-line probe rebound the FastAPI `app` name to the Python package before calling `openapi()`.
+No active tag, source overlay, marker, one-shot, migration, environment, or data change followed.
+The failure trap restored the prior tags; its relative Compose paths could not start services from
+the protected stage directory, so recovery directly started only the existing prior containers in
+dependency order, dispatcher last. The final 30-second recovery gate passed with all eight services
+on the prior image at restart zero, exact prior source/markers/protected inputs, both flags false,
+the stable ordinary vector and WeCom state above, zero actionable work, and bounded log/provider
+counts `0:0:0:0`. Protected recovery evidence SHA-256 is
+`bb5dbd36206b0da14b62381962eccdb31c46bf543557b06483d7ce04f9ccd208`.
+
+This attempt made no Zhipu, Comfly, image-generation, or WeCom provider call and created no fixture,
+acceptance database/bucket, enqueue, retry, resend, activation, frontend deploy, commit, or push.
+Per the stop-on-failure boundary, no second release attempt is allowed in this run.
+
+#### Retry checklist after independent review — not executed
+
+The import-only defect is reproduced and corrected locally with this exact non-network probe:
+
+```bash
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --entrypoint python "$candidate" -c '
+from app.api_main import app as api_app
+import app.worker_main as acquisition_worker
+import app.governance_worker_main as governance_worker
+import app.content_worker_main as content_worker
+import app.wecom_dispatcher_main as wecom_dispatcher
+from app.infrastructure.ai.zhipu import ZhipuImageTextRecognizer, _ImageOcrResponse
+assert api_app.openapi()["openapi"]
+assert all(module.__name__.startswith("app.") for module in (
+    acquisition_worker, governance_worker, content_worker, wecom_dispatcher
+))
+' </dev/null
+```
+
+Any future operator script must be independently reviewed, copied as the sole tenth top-level file
+in the protected stage, checked against its locally reviewed SHA-256, and remain mode 0600. Invoke
+the fixed absolute remote path without local-variable expansion, for example
+`ssh ... 'sudo -n bash -- /tmp/edu-ai-zhipu-release-c66aa62-RELEASE_ID/retry-default-off.sh' </dev/null`;
+do not use a double-quoted `$script` command or stream the script through `ssh ... bash -s`. Its
+fixed prologue and Compose invocation are:
+
+```bash
+set -Eeuo pipefail
+umask 077
+readonly app=/opt/edu-ai-lead-agent
+readonly stage=/tmp/edu-ai-zhipu-release-c66aa62-RELEASE_ID
+readonly backup=/var/backups/edu-ai/releases/RELEASE_ID-zhipu-ocr-bbox
+readonly old_id=sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f
+readonly new_id=sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2
+compose=(docker compose --project-name edu-ai-lead-agent --project-directory "$app" \
+  --env-file "$app/.env" --env-file "$app/.release.env")
+"${compose[@]}" config --quiet </dev/null
+```
+
+Run the following sequence and stop on the first failed equality:
+
+1. Re-fetch Codeup and repeat the local archive/image/OpenAPI/Alembic gates. Before execution,
+   require the stage to contain exactly the original nine verified regular files plus the one
+   reviewed operator script, no symlink or subdirectory, mode 0700 on the stage and mode 0600 on
+   every file. On production, use
+   only the absolute `compose` array above for `config`, `ps`, `stop`, `up`, `wait`, `exec -T` and
+   `logs`, and redirect every Compose invocation from `/dev/null`. Never change the global working
+   directory to the stage; use `(cd "$stage" && sha256sum -c artifacts.sha256)`.
+2. Re-run the full read-only production preflight and stable baseline sample. Verify prior active
+   image/source/markers, all ten active/shared tags and eight running containers on `old_id`, the
+   loaded candidate absent from running containers, false flags, `120.0`, zero running/current
+   actionable/nonterminal/unknown/duplicate-request work, historical queued `7:0`, protected
+   env/release-env/brand/volume hashes, backup timer, capacity and secret-safe logs. Block if any
+   scheduler can cross a provider-capable due boundary during restoration or the final sample.
+3. Acquire the production backup lock before the first stop and hold it through the completed final
+   gate or recovery. Capture exact existing service container IDs and install phase-aware recovery before
+   the first stop. It must cover `ERR`, nonzero `EXIT`, `HUP`, `INT`, and `TERM`, preserve the first
+   failure code, disable recursive traps, and distinguish `backup_ready`, `tags_changed`,
+   `overlay_changed`, and `completed`. An early failure before `backup_ready` must only restart the
+   untouched prior IDs; it must not try to read a partial backup.
+   Quiesce exact IDs by direct `docker stop ... </dev/null`, dispatcher first and API last. The
+   post-backup recovery path must begin with `cd "$app"`, conditionally restore exact code and
+   markers only after host overlay began, restore the old shared and nine service tags only after
+   retagging began, and either directly start each still-existing prior ID or use the absolute
+   Compose array with `--no-build --no-deps --force-recreate </dev/null`. Verify restored source,
+   markers, tags, images, flags, container health and ordering; restore dispatcher last.
+4. Allocate a new release/backup ID and prove its release, PostgreSQL, MinIO, brand and nine rollback
+   tag targets do not exist. Take a new manual backup under the already-held backup lock; do not call
+   the registry-only standard wrapper or reuse `20260816T021614Z`.
+   Dump PostgreSQL with `docker exec "$pg" pg_dump ... </dev/null >"$dump"`, validate the nonempty
+   dump with the required stdin attachment
+   `docker exec -i "$pg" pg_restore --list <"$dump" >/dev/null`, mirror and checksum MinIO, archive
+   brand/env/release-env/markers/exact active code, and create nine unique prior-image tags. Mark
+   `backup_ready=1` only after every catalog, content, manifest, mode, ownership, image-ID and
+   protected checksum gate passes; retain but never consume a partial generation.
+5. Recheck the protected transfer manifest and loaded image ID. Run the corrected candidate probe
+   above before any active tag change. Verify labels, 165 exact image-source hashes, non-root user,
+   imports, `pip check`, OCR route/Settings, OpenAPI and Alembic. Re-prove all active/shared tags are
+   still `old_id`; only then set `tags_changed=1` and retag the shared and nine service tags, checking
+   every tag resolves to `new_id`. The stage check remains in a subshell so recovery never inherits
+   its directory.
+6. Extract the 307-file source archive into a generated mode-0700 child, reject symlinks/extras,
+   verify every source hash/path, then overlay only those files. Atomically write the full/short
+   markers in `$app`; set `overlay_changed=1` before the first host write and prove exact source,
+   marker modes/ownership, env/release-env/brand/volumes afterward. On any failure, the already
+   armed phase-aware recovery restores and re-verifies prior code, markers, tags and services.
+7. Run MinIO init and migration as isolated one-shots with `--no-build --no-deps`,
+   `--abort-on-container-exit`, and `</dev/null`; require exited-zero, exact candidate migration
+   image, Alembic `20260815_0021`, ten active sources and no durable delta.
+8. Recreate API, then acquisition, governance and content services, and dispatcher last. Every
+   `compose up` uses the absolute array,
+   `--no-build --no-deps --force-recreate`, and `</dev/null`. Gate zero actionable queues and stable
+   provider/delivery counters before and after each provider-capable worker or scheduler and before
+   the dispatcher. Do not enter this step unless the maintenance timing gate proves no scheduler is
+   due during the bounded restoration/final-sample window.
+9. Require API/content Settings equality at
+   `false:false:glm-ocr:10485760:1048576:120.0`, exact candidate/restart-zero services, protected
+   inputs and historical queues, then run the final 30-second durable/provider/WeCom/log sample.
+   Do not generate a fixture, enqueue, retry, resend, call any provider or enable either flag. Set
+   `completed=1`, disarm recovery, and release the backup lock only after this gate passes.
+
+Audit disposition: the corrected local probe passed. A production read-only audit confirmed the
+candidate is loaded but inactive, the prior release is active and healthy, the stage manifest and
+fresh rollback/protected/recovery hashes verify, and durable/WeCom/actionable vectors remain exact.
+The original nine-file protected stage is reusable only after revalidation and after the reviewed
+operator script becomes its sole tenth file. The `20260816T021614Z` rollback set remains valid
+recovery evidence for the failed attempt, but writers resumed afterward: a new quiesced backup is
+mandatory for a retry. The retry remains blocked until the exact generated script and every trap
+branch are independently reviewed against this contract. After that review and separate release
+authorization, one default-off retry may proceed; this audit authorizes neither execution nor a
+provider call. No command in this checklist was executed against production.
+
+### Offline-only exact retry driver
+
+The independently requested hardening is implemented as the mode-0600 operator artifact
+`research/default-off-release-driver.sh` (SHA-256
+`2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd`). Its only production
+entrypoint is `/usr/bin/bash "$stage/default-off-release-driver.sh" ... </dev/null` from the exact
+`/opt/edu-ai-lead-agent` working directory. The driver rejects any other stage basename,
+non-`/dev/null` stdin, extra/missing stage member, non-0600 member, non-0700 stage, self/archive/
+manifest/image mismatch, relative Compose context, or rendered non-local application image. Every
+Compose call supplies the fixed project name, project directory, compose file and both absolute env
+files, and redirects stdin from `/dev/null`; every ordinary `docker exec` does likewise. The sole
+stdin-attached exception is the required catalog proof
+`docker exec -i "$postgres_id" ... pg_restore --list <"$dump"`.
+
+The driver acquires `/var/lock/edu-ai-backup.lock` before the first exact-container stop and holds
+the descriptor through success or recovery. It generates a collision-free backup directory and
+nine rollback tags, completes/catalogs/checksums a fresh PostgreSQL/MinIO/brand/env/release-env/
+marker/code/image rollback set, then sets `backup_ready=1`. It sets `tags_changed` and
+`overlay_changed` before their first writes and `completed` only after the final stability gate.
+`ERR`, every nonzero `EXIT`, `HUP`, `INT`, and `TERM` share a non-recursive recovery path. A failure
+after the first stop but before `backup_ready` reads no partial backup and restarts only captured
+prior containers; mid/late failures restore tags and then code/markers only when their phase flags
+require it. API, scheduler and worker restoration is dependency ordered, with actionable/running/
+unknown/durable/provider/WeCom gates between provider-capable boundaries and the dispatcher last.
+
+Candidate validation occurs before active retag and includes exact labels/embedded source hash,
+165-file image manifest, non-root runtime, `pip check`, the corrected `api_app` import probe,
+default-off OCR Settings and `/layout_parsing` route, OpenAPI equality and Alembic head. Protected
+env/release-env/brand/volume/source/marker/tag checks, the pinned 2026-08-16 ordinary baseline,
+operator-supplied reviewed scheduler-safe window, active-source count, historical queued invariant,
+secret-safe bounded logs and final 30-second stability are mandatory. The script contains no build,
+SSH, fixture, provider, enqueue, retry, resend, or feature-enablement path.
+
+The mode-0600 local harness `research/test-default-off-release-driver.sh` (SHA-256
+`bedc1922d455625fcf062623a48c20a8478210405a6057ee35570724856eec5a`) passed `bash -n`, static
+forbidden-action/absolute-context gates, injected early/mid/late nonzero exits, TERM recovery, and
+incomplete-recovery fail-closed behavior. The observed recovery orders were respectively
+`services`, `tags -> services`, and `overlay -> tags -> services`; TERM preserved exit 143 and a
+failed restore converted the process to terminal exit 125. ShellCheck is not installed in the local
+environment. This work was entirely offline: it did not access SSH, production Docker, production
+files, services, providers, or durable state and does not authorize running the driver.
+
 ## Phase 5 — Bounded live OCR and isolated news
 
 - [ ] Create one protected deterministic 1024×1024 PNG with the exact approved three lines; call
