@@ -288,8 +288,8 @@ optional Chinese governed fact/summary. The Chinese statement may support determ
 copy checks, while the original evidence ID, URL, passage binding, and exact English quote remain
 the provenance record. Never label the Chinese statement as an original quote, and never use
 product-fit metadata or brand context as factual evidence. This prompt/data change uses
-`copy-pipeline-v18-english-evidence`, `moments-generator-v17-english-evidence`, and
-`moments-auditor-v17-english-evidence`.
+`copy-pipeline-v18-english-evidence`, `moments-generator-v18-xiaosai-insight`, and
+`moments-auditor-v18-xiaosai-insight`.
 
 ## Validation and audit
 
@@ -302,8 +302,9 @@ experience belongs at Sai Xiansheng using supplied brand context, target 180-240
 characters in the body, with a compression warning only above 260, and include 2-5 emoji excluding
 the source footer and trailing hashtag line. The body must contain two or three natural paragraphs,
 clearly separated for readability without a fixed blank-line count, and end with a separate line of two or three
-hashtags whose first tag is always `#赛先生科学`. The opening paragraph must identify the content
-as news-derived (for example, `今天看到一条新闻`). Immediately before the final hashtag line,
+hashtags whose first tag is always `#赛先生科学`. The copy body must start exactly with
+`小赛洞察：` and continue directly with the news fact; generic lead-ins such as
+`今天看到一条新闻` are no longer allowed. Immediately before the final hashtag line,
 the system appends `新闻来源：<bound source name>` and
 `原文链接：<bound HTTPS evidence URL>` from the first locked evidence item. The footer is
 deterministic, is excluded from body counts/format checks, and remains a hard integrity check even
@@ -337,6 +338,7 @@ class AuditVerdict(BaseModel):
 The copy-counting helpers are the single source of truth for this contract:
 
 ```python
+COPY_OPENING_PREFIX = "小赛洞察："
 extract_copy_body(text: str) -> str
 extract_copy_paragraphs(text: str) -> tuple[str, ...]
 has_copy_paragraph_format(text: str) -> bool
@@ -346,6 +348,11 @@ append_copy_news_source_footer(text: str, *, source_name: str, source_url: str) 
 count_hanzi(text: str) -> int
 count_emojis(text: str) -> int
 ```
+
+`COPY_OPENING_PREFIX` is shared by the generator prompt, deterministic fake generator, and
+validator. `has_copy_news_framing` retains its historical name and warning code for stored-result
+compatibility, but now means an exact prefix check at the first character of the copy body; whitespace,
+emoji, or a generic news lead-in before `小赛洞察：` does not pass.
 
 `extract_copy_body` removes the final hashtag-candidate line and a recognized source footer before
 counting. `count_hanzi` counts only CJK Unified Ideographs; punctuation, whitespace, digits, Latin
@@ -367,18 +374,18 @@ retained in the material package for inspection.
 | Body has fewer than 2 or more than 5 emoji sequences | `copy_emoji_count` warning; continue to audit and delivery when no hard issue exists |
 | Body has 2-5 emoji sequences | Emoji check passes when other checks pass |
 | Body does not have two or three natural paragraphs | `copy_paragraph_format` warning; continue to audit and delivery when no hard issue exists |
-| First paragraph does not identify a news item | `copy_news_framing` warning; continue to audit and delivery when no hard issue exists |
+| Copy body does not start exactly with `小赛洞察：` | `copy_news_framing` warning; continue to audit and delivery when no hard issue exists |
 | Footer source name or URL differs from the first locked evidence item | `copy_news_source_footer` error; do not accept or deliver |
 | Tags appear only on the final line | Tags are validated separately and excluded from the Hanzi count |
 
-Good: a two- or three-paragraph news-framed body with 180-240 Hanzi, 2-5 emoji, the deterministic
+Good: a two- or three-paragraph body starting with `小赛洞察：`, with 180-240 Hanzi, 2-5 emoji, the deterministic
 source footer, and `#赛先生科学 #科学思维` has no format or source warning. If a body exceeds 260
 Hanzi or misses a format target, those characters and layout defects remain visible as warnings;
 padding with punctuation, ASCII, emoji, or hashtag text cannot conceal the Hanzi count.
 
 Tests must assert the 260-character warning boundary, exclusion of punctuation/ASCII/emoji/trailing
 tags and source footer, common variation-selector and ZWJ sequences, paragraph/newline cases,
-news framing, evidence-bound footer replacement, prompt wording, WeCom text preservation, and
+the branded opening prefix, rejection of the retired generic lead-in, evidence-bound footer replacement, prompt wording, WeCom text preservation, and
 continuation through audit for a warning-only draft. `copy_length`, `copy_emoji_count`,
 `copy_paragraph_format`, and `copy_news_framing` remain advisory and can consume the existing
 single product repair; `copy_news_source_footer` remains hard. A repaired draft with only advisory
@@ -452,8 +459,8 @@ It also applies to every Zhipu generator, auditor, and schema-correction request
   historical behavior.
 - Strict profiles use `COPY_RULE_VERSION`, currently
   `moments-rules-v11-compact-warning-recovery`.
-- Current copy versions: generator `moments-generator-v16-compact-moments`, auditor
-  `moments-auditor-v16-compact-moments`, and pipeline `copy-pipeline-v17-compact-moments`.
+- Current copy versions: generator `moments-generator-v18-xiaosai-insight`, auditor
+  `moments-auditor-v18-xiaosai-insight`, and pipeline `copy-pipeline-v18-english-evidence`.
 - Zhipu structured payload includes `thinking={"type":"disabled"}` and
   `response_format={"type":"json_object"}` for initial and correction requests.
 

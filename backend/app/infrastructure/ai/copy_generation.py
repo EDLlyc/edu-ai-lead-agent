@@ -32,6 +32,7 @@ from app.core.errors import (
 )
 from app.infrastructure.ai.zhipu import _post_json_with_retries, _safe_provider_request_id
 from app.schemas.copy_generation import (
+    COPY_OPENING_PREFIX,
     AuditVerdict,
     CopyIssue,
     DraftClaim,
@@ -169,7 +170,7 @@ class DeterministicFakeMaterialDraftGenerator:
         brand_statement = "赛先生重视科学精神、好奇心、思考力和创造力。"
         opinion = "孩子学科学，不只是记住概念，更是在真实问题里学会观察、提问和动手想办法。"
         body = (
-            f"📰今天看到一条新闻：{fact}\n"
+            f"{COPY_OPENING_PREFIX}{fact}📰\n"
             f"{opinion}🔍\n\n"
             f"在赛先生，{brand_statement}老师不会急着给答案，而是陪孩子观察、实践、复盘，"
             "把好奇心慢慢变成解决问题的能力。🌱"

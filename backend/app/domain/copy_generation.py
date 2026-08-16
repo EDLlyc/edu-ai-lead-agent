@@ -12,6 +12,7 @@ from uuid import UUID
 from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
+    COPY_OPENING_PREFIX,
     AuditVerdict,
     CopyIssue,
     MaterialDraft,
@@ -597,7 +598,7 @@ def validate_material_draft(
         issues.append(
             _issue(
                 "copy_news_framing",
-                "朋友圈首段必须明确以一条新闻或新闻消息作为切入",
+                f"朋友圈正文必须以“{COPY_OPENING_PREFIX}”开头并直接进入核心事实",
                 field="copywriting",
                 severity="warning",
             )

@@ -45,6 +45,7 @@ from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftGenerator,
 )
 from app.schemas.copy_generation import (
+    COPY_OPENING_PREFIX,
     AuditVerdict,
     CopyIssue,
     DraftClaim,
@@ -163,7 +164,7 @@ def _contract_draft(
         emoji_slots[min(index, len(emoji_slots) - 1)] += emoji
     decoration_text = decorations.replace("\n", " ")
     body_prefix = (
-        f"{emoji_slots[0]}今天看到一条新闻：{fact}\n"
+        f"{COPY_OPENING_PREFIX}{fact}{emoji_slots[0]}\n"
         f"{opinion}{emoji_slots[1]}\n\n"
         f"{emoji_slots[2]}孩子会从观察、提问和动手验证里，慢慢理解人工智能与机器人。\n"
         f"把好奇心变成找证据和解决问题的能力{decoration_text}{emoji_slots[3]}\n\n"
@@ -690,6 +691,8 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
     )
 
     assert preview.rule_version == "preview-v11-compact-content-warning-recovery"
+    assert preview.generator_prompt_version == "moments-generator-v18-xiaosai-insight"
+    assert preview.auditor_prompt_version == "moments-auditor-v18-xiaosai-insight"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
     assert strict.rule_version == "moments-rules-v11-compact-warning-recovery"
@@ -1092,7 +1095,8 @@ def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
         assert "一个新闻核心事实" in prompt
         assert "一个面向家长的学习价值" in prompt
         assert "一次有限修复" in prompt
-        assert "今天看到一条新闻" in prompt
+        assert "小赛洞察：" in prompt
+        assert "不得再使用“今天看到一条新闻”" in prompt
         assert "新闻来源与原文链接由系统" in prompt
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[0]
     assert "不得仅因这些格式问题拒绝输出或阻断交付" in prompts[1]
@@ -1113,6 +1117,19 @@ def test_copy_news_footer_is_evidence_bound_and_excluded_from_body_format() -> N
     source = topic.evidence[0]
 
     assert has_copy_news_framing(draft.copywriting) is True
+    assert (
+        has_copy_news_framing(
+            draft.copywriting.replace(COPY_OPENING_PREFIX, "今天看到一条新闻：", 1)
+        )
+        is False
+    )
+    assert (
+        has_copy_news_framing(
+            draft.copywriting.replace(COPY_OPENING_PREFIX, f"📰{COPY_OPENING_PREFIX}", 1)
+        )
+        is False
+    )
+    assert has_copy_news_framing(f"\n{draft.copywriting}") is False
     assert (
         has_copy_news_source_footer(
             draft.copywriting,
@@ -1432,6 +1449,8 @@ async def test_repair_prompt_contains_bounded_issues_and_previous_draft() -> Non
             max_output_tokens=2048,
         )
     )
+    assert initial.draft.copywriting.startswith(COPY_OPENING_PREFIX)
+    assert "今天看到一条新闻" not in initial.draft.copywriting
     issues = tuple(
         CopyIssue(
             code=f"repair_issue_{index}",

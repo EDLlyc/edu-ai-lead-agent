@@ -158,7 +158,7 @@ def test_build_wecom_text_adds_only_test_marker_in_test_mode() -> None:
 
 def test_build_wecom_text_keeps_evidence_bound_news_source_footer() -> None:
     copywriting = (
-        "📰今天看到一条新闻\uff1a机器人研究有了新进展。\n"
+        "小赛洞察\uff1a机器人研究有了新进展。📰\n"
         "孩子能从真实问题里理解技术。🔎\n\n"
         "🤖科学学习从提问开始。\n"
         "一次次动手验证,让想法更清楚。💡\n\n"

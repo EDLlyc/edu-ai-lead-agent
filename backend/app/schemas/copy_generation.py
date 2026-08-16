@@ -30,6 +30,7 @@ _EMOJI_VARIATION_SELECTORS = frozenset({0xFE0E, 0xFE0F})
 _ZERO_WIDTH_JOINER = 0x200D
 _NEWS_SOURCE_PREFIX = "新闻来源\uff1a"
 _NEWS_LINK_PREFIX = "原文链接\uff1a"
+COPY_OPENING_PREFIX = "小赛洞察\uff1a"
 
 
 def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
@@ -91,12 +92,8 @@ def append_copy_news_source_footer(text: str, *, source_name: str, source_url: s
 
 
 def has_copy_news_framing(text: str) -> bool:
-    """Require the opening paragraph to identify the copy as news-derived."""
-    first_paragraph = "\n".join(extract_copy_paragraphs(text)[:2])
-    return any(
-        phrase in first_paragraph
-        for phrase in ("看到一条新闻", "一则新闻", "新闻消息", "这条新闻", "新闻报道")
-    )
+    """Require the branded opening prefix at the very start of the copy body."""
+    return extract_copy_body(text).startswith(COPY_OPENING_PREFIX)
 
 
 def has_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> bool:

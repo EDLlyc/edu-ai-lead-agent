@@ -53,6 +53,7 @@ from app.domain.copy_generation import (
 )
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
+    COPY_OPENING_PREFIX,
     AuditVerdict,
     CopyIssue,
     MaterialDraft,
@@ -607,7 +608,8 @@ def _copy_format_contract(rule_version: str) -> str:
         "仅作阅读点缀，不能替代解释。只保留一个新闻核心事实、一个面向家长的学习价值、一个结合赛先生"
         "真实教学方式的具体解释；不得堆叠课程年龄、课程体系、平台功能或多个卖点。长度、段落和emoji数量只是warning质量格式提示，"
         "最多触发一次有限修复，不能形成修复循环，最终不得仅因这些格式问题拒绝输出或阻断交付。"
-        "第一段必须明确以“今天看到一条新闻：”或同义新闻消息作为切入，说明下文来自新闻。"
+        f"第一段必须精确以“{COPY_OPENING_PREFIX}”开头，随后直接说明新闻核心事实；"
+        "不得再使用“今天看到一条新闻”或同义寒暄作为开场。"
         "你只输出2到3段正文和末尾标签；新闻来源与原文链接由系统从已绑定证据安全追加，"
         "不得自行编造、替换或输出来源链接。"
         "普通格式、家长可读性、语气、流畅度、学习价值说明、品牌价值说明和标签质量问题只能作为warning，"
