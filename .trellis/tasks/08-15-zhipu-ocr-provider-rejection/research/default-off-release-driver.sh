@@ -24,6 +24,9 @@ readonly EXPECTED_ACTIVE_SOURCES="10"
 readonly EXPECTED_BUSINESS_TIMEZONE="Asia/Shanghai"
 readonly MINIO_CLIENT_IMAGE="minio/mc:RELEASE.2025-04-16T18-13-26Z"
 readonly SAFE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+readonly SHARED_ACTIVE_TAG="${COMPOSE_PROJECT}-backend:local"
+readonly SERVICE_ACTIVE_TAG_SUFFIX="latest"
+readonly FORBIDDEN_SERVICE_TAG_SUFFIX="local"
 
 readonly -a APP_SERVICES=(
   acquisition-api
@@ -279,7 +282,7 @@ validate_args() {
   require_regex "$expected_historical_queued" '^[0-9]+:[0-9]+$' "historical queued vector"
   require_regex "$scheduler_safe_until_utc" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "scheduler safe-until timestamp"
   [[ "$business_date" == "2026-08-16" ]] || die "this exact release driver is pinned to the reviewed 2026-08-16 business baseline"
-  [[ "$candidate_tag" != "${COMPOSE_PROJECT}-backend:local" ]] || die "candidate tag must not be the active shared tag"
+  assert_candidate_tag_is_isolated
   ((minimum_safe_seconds >= 900)) || die "minimum safe window cannot be weakened below 900 seconds"
   ((preflight_sample_seconds >= 15)) || die "preflight sample cannot be weakened below 15 seconds"
   ((stability_seconds >= 30)) || die "stability sample cannot be weakened below 30 seconds"
@@ -287,6 +290,36 @@ validate_args() {
 
 docker_call() {
   env -i PATH="$SAFE_PATH" HOME=/root /usr/bin/docker "$@"
+}
+
+service_active_tag() {
+  printf '%s-%s:%s\n' "$COMPOSE_PROJECT" "$1" "$SERVICE_ACTIVE_TAG_SUFFIX"
+}
+
+service_forbidden_local_tag() {
+  printf '%s-%s:%s\n' "$COMPOSE_PROJECT" "$1" "$FORBIDDEN_SERVICE_TAG_SUFFIX"
+}
+
+rollback_tag_for_service() {
+  printf '%s-%s\n' "$rollback_tag_prefix" "$1"
+}
+
+assert_candidate_tag_is_isolated() {
+  local service
+  if [[ "$candidate_tag" == "$SHARED_ACTIVE_TAG" ]]; then
+    die "candidate tag must not be the active shared tag"
+    return 1
+  fi
+  for service in "${TAG_SERVICES[@]}"; do
+    if [[ "$candidate_tag" == "$(service_active_tag "$service")" ]]; then
+      die "candidate tag must not be a service active tag"
+      return 1
+    fi
+    if [[ "$candidate_tag" == "$(service_forbidden_local_tag "$service")" ]]; then
+      die "candidate tag must not be a forbidden service-local tag"
+      return 1
+    fi
+  done
 }
 
 compose_call() {
@@ -471,7 +504,7 @@ assert_protected_inputs() {
 
 assert_compose_contract() {
   local rendered
-  [[ "$(env_value "$RELEASE_ENV" APP_IMAGE)" == "${COMPOSE_PROJECT}-backend:local" ]] || die "release env does not select the reviewed local shared tag"
+  [[ "$(env_value "$RELEASE_ENV" APP_IMAGE)" == "$SHARED_ACTIVE_TAG" ]] || die "release env does not select the reviewed local shared tag"
   rendered=$(mktemp /tmp/edu-ai-release-driver-compose.XXXXXX)
   compose_call --profile governance --profile content --profile wecom config --format json >"$rendered"
   python3 - "$rendered" <<'PY'
@@ -582,14 +615,36 @@ assert_running_image_and_markers() {
 
 assert_active_tags() {
   local expected_id=$1
-  local service tag image
-  image=$(docker_call image inspect "${COMPOSE_PROJECT}-backend:local" --format '{{.Id}}' </dev/null)
+  local service tag forbidden_tag image
+  image=$(docker_call image inspect "$SHARED_ACTIVE_TAG" --format '{{.Id}}' </dev/null)
   [[ "$image" == "$expected_id" ]] || die "shared application tag mismatch"
   for service in "${TAG_SERVICES[@]}"; do
-    tag="${COMPOSE_PROJECT}-${service}:local"
+    tag=$(service_active_tag "$service")
     image=$(docker_call image inspect "$tag" --format '{{.Id}}' </dev/null)
     [[ "$image" == "$expected_id" ]] || die "${service} application tag mismatch"
+    forbidden_tag=$(service_forbidden_local_tag "$service")
+    if docker_call image inspect "$forbidden_tag" >/dev/null 2>&1; then
+      die "unexpected ${service} :local tag exists"
+    fi
   done
+}
+
+write_active_tag_inventory() {
+  local output=$1
+  local expected_id=$2
+  local service tag image
+  assert_active_tags "$expected_id"
+  : >"$output"
+  image=$(docker_call image inspect "$SHARED_ACTIVE_TAG" --format '{{.Id}}' </dev/null)
+  [[ "$image" == "$expected_id" ]] || die "shared prior tag identity mismatch"
+  printf 'shared %s %s\n' "$SHARED_ACTIVE_TAG" "$expected_id" >>"$output"
+  for service in "${TAG_SERVICES[@]}"; do
+    tag=$(service_active_tag "$service")
+    image=$(docker_call image inspect "$tag" --format '{{.Id}}' </dev/null)
+    [[ "$image" == "$expected_id" ]] || die "${service} prior tag identity mismatch"
+    printf '%s %s %s\n' "$service" "$tag" "$expected_id" >>"$output"
+  done
+  [[ "$(wc -l <"$output" | tr -d '[:space:]')" == "$((1 + ${#TAG_SERVICES[@]}))" ]] || die "active tag inventory count mismatch"
 }
 
 assert_stage_exact() {
@@ -833,7 +888,7 @@ prepare_fresh_backup() {
   rollback_tag_prefix="edu-ai-lead-agent-backend:rollback-${backup_id}"
   [[ ! -e "$backup_dir" ]] || die "generated backup directory already exists"
   for service in "${TAG_SERVICES[@]}"; do
-    tag="${rollback_tag_prefix}-${service}"
+    tag=$(rollback_tag_for_service "$service")
     if docker_call image inspect "$tag" >/dev/null 2>&1; then
       die "generated rollback tag already exists"
     fi
@@ -923,9 +978,10 @@ create_fresh_backup() {
   tar -C "$APP_DIR" -czf "${backup_dir}/code.tar.gz" -T "$code_list"
   tar -tzf "${backup_dir}/code.tar.gz" >/dev/null
 
+  write_active_tag_inventory "${backup_dir}/active-tag-inventory.txt" "$previous_image_id"
   : >"${backup_dir}/image-inventory.txt"
   for service in "${TAG_SERVICES[@]}"; do
-    tag="${rollback_tag_prefix}-${service}"
+    tag=$(rollback_tag_for_service "$service")
     docker_call image tag "$previous_image_id" "$tag" </dev/null
     printf '%s %s %s\n' "$service" "$tag" "$previous_image_id" >>"${backup_dir}/image-inventory.txt"
     [[ "$(docker_call image inspect "$tag" --format '{{.Id}}' </dev/null)" == "$previous_image_id" ]] || die "rollback tag identity mismatch"
@@ -943,6 +999,7 @@ create_fresh_backup() {
     "${backup_dir}/source-files.sha256" \
     "${backup_dir}/code.tar.gz" \
     "${backup_dir}/code-files.list" \
+    "${backup_dir}/active-tag-inventory.txt" \
     "${backup_dir}/image-inventory.txt" \
     "${backup_dir}/minio/SHA256SUMS" \
     >"${backup_dir}/protected.sha256"
@@ -959,6 +1016,7 @@ create_fresh_backup() {
   [[ "$(sha256sum "${backup_dir}/source-files.sha256" | awk '{print $1}')" == "$previous_source_manifest_sha256" ]] || die "backup source-manifest checksum mismatch"
   [[ "$(<"${backup_dir}/release-commit")" == "$previous_commit" ]] || die "backup full marker mismatch"
   [[ "$(<"${backup_dir}/RELEASE_COMMIT")" == "$previous_short" ]] || die "backup short marker mismatch"
+  [[ "$(wc -l <"${backup_dir}/active-tag-inventory.txt" | tr -d '[:space:]')" == "$((1 + ${#TAG_SERVICES[@]}))" ]] || die "backup active-tag inventory count mismatch"
   [[ "$(wc -l <"${backup_dir}/image-inventory.txt" | tr -d '[:space:]')" == "${#TAG_SERVICES[@]}" ]] || die "backup image inventory count mismatch"
 
   backup_verify_dir=$(mktemp -d /tmp/edu-ai-release-driver-backup-verify.XXXXXX)
@@ -1040,12 +1098,13 @@ PY
 }
 
 retag_candidate() {
-  local service
+  local service tag
   tags_changed=1
   for service in "${TAG_SERVICES[@]}"; do
-    docker_call image tag "$candidate_id" "${COMPOSE_PROJECT}-${service}:local" </dev/null
+    tag=$(service_active_tag "$service")
+    docker_call image tag "$candidate_id" "$tag" </dev/null
   done
-  docker_call image tag "$candidate_id" "${COMPOSE_PROJECT}-backend:local" </dev/null
+  docker_call image tag "$candidate_id" "$SHARED_ACTIVE_TAG" </dev/null
   assert_active_tags "$candidate_id"
 }
 
@@ -1200,11 +1259,13 @@ restore_overlay_for_recovery() {
 }
 
 restore_tags_for_recovery() {
-  local service
+  local service tag
   for service in "${TAG_SERVICES[@]}"; do
-    docker_call image tag "$previous_image_id" "${COMPOSE_PROJECT}-${service}:local" </dev/null
+    tag=$(service_active_tag "$service")
+    docker_call image tag "$previous_image_id" "$tag" </dev/null
   done
-  docker_call image tag "$previous_image_id" "${COMPOSE_PROJECT}-backend:local" </dev/null
+  docker_call image tag "$previous_image_id" "$SHARED_ACTIVE_TAG" </dev/null
+  assert_active_tags "$previous_image_id"
 }
 
 restore_old_service() {

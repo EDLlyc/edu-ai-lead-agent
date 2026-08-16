@@ -620,7 +620,7 @@ acceptance and Phase 6 activation remain prohibited in this run.
 
 - Added the exact mode-0600 release driver
   `research/default-off-release-driver.sh`, SHA-256
-  `2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd`. It requires absolute
+  `29ee24ae9f7a8ccb9a845c7bd473d1b175a70180c6dc5f4e2652065346641a9b`. It requires absolute
   `/opt/edu-ai-lead-agent` Compose/project/env context, exact absolute stage invocation with
   `/dev/null` stdin, a ten-member mode-protected stage and self/archive/image/source hashes. It
   rejects drift before quiescence.
@@ -643,7 +643,7 @@ acceptance and Phase 6 activation remain prohibited in this run.
   secret-safe logs, dependency ordering, dispatcher last and final 30-second stability. There is no
   build, fixture, provider call, flag enablement, enqueue, retry, or resend path.
 - The mode-0600 harness `research/test-default-off-release-driver.sh`, SHA-256
-  `bedc1922d455625fcf062623a48c20a8478210405a6057ee35570724856eec5a`, passed `bash -n`, static
+  `54620cfba8207f1968b9328ac2d96414ca03a820d45def939a81cb5b2ffb6283`, passed `bash -n`, static
   gates, injected early/mid/late failures, TERM and incomplete recovery. Orders were `services`,
   `tags -> services`, and `overlay -> tags -> services`; TERM returned 143 and an incomplete restore
   returned fail-closed 125. ShellCheck was unavailable. No SSH, production, Docker service,
@@ -659,3 +659,53 @@ acceptance and Phase 6 activation remain prohibited in this run.
 - Production remains on `331a494` / `aec802...`, both visual flags remain false, and the dispatcher
   is running as the final dependency-ordered fail-closed restoration step. Paid OCR, isolated-news/
   Comfly acceptance and activation remain prohibited without separate authorization.
+
+## Authorized default-off retry preflight — fail-closed before transfer
+
+The newly authorized single retry did not reach the transfer or driver boundary. A fresh read-only
+audit confirmed the exact candidate source/image archives, inactive candidate ID and provenance,
+prior active source/markers/image, eight restart-zero services, false flags, protected inputs,
+named volumes, migration/source state, timer/capacity and bounded safe logs. The protected stage
+remained its original nine pre-driver members; reviewed driver SHA-256
+`2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd` was not copied or invoked.
+
+The 15-second stable business baseline had advanced through ordinary automation to
+`36:182:36:13:4:59:157:35:44:35:391:25:47:0:0`, current-day `2:2:4`, provider/delivery tuple
+`391:47:35:44`, and historical queued `7:0`. Running and unknown work were zero, but actionable
+work was `0:0:0:0:0:1` and WeCom was `25:47:1:0:0:1`: one formal attempt-zero delivery was queued
+for 12:30 China time. This alone fails the driver's non-weakenable zero-actionable precondition.
+
+The read-only tag audit also found that production's nine retained per-service tags use `:latest`,
+whereas the exact reviewed driver requires and mutates nine `:local` service tags. Those `:local`
+tags do not exist; only the shared Compose tag `edu-ai-lead-agent-backend:local` does. Because the
+authorized driver checksum is immutable and hand-created compatibility tags are outside the
+reviewed procedure, execution stopped without improvisation. No fresh backup or release evidence
+hash exists for this non-attempt, and the earlier `20260816T021614Z` rollback remains evidence only.
+
+There was no Zhipu, Comfly, image-generation, OCR-fixture, or WeCom call caused by this preflight,
+and no driver transfer, service stop, backup lock, backup, tag/source/marker/environment/data edit,
+one-shot, enqueue, retry, resend, activation, or feature enablement. Production remains on exact
+`331a4942a84b36811cbbc4abff68bca2abc71f0c` /
+`sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`
+with both visual flags false.
+
+## Offline correction for the exact mixed tag contract
+
+The retained driver was corrected locally after the blocked preflight. Its tag model now preserves
+the one shared `edu-ai-lead-agent-backend:local` tag and the nine exact
+`edu-ai-lead-agent-<service>:latest` tags, while requiring every service-specific `:local` tag to be
+absent. The same explicit arrays/functions are used by active-tag validation, the new protected
+ten-entry prior-tag inventory, nine fresh rollback tags, candidate retagging, rollback retagging,
+mid/late recovery and final identity checks. The isolated bundle RepoTag validation and pre-load
+`tags_changed=1` arming remain intact. The candidate-tag input gate also rejects the shared active
+tag, every service `:latest` tag, and every forbidden service `:local` tag before image loading.
+
+The revised mode-0600 driver is SHA-256
+`29ee24ae9f7a8ccb9a845c7bd473d1b175a70180c6dc5f4e2652065346641a9b`; the revised mode-0600
+fake harness is SHA-256 `54620cfba8207f1968b9328ac2d96414ca03a820d45def939a81cb5b2ffb6283`.
+The harness passed static, signal/EXIT, lock-lifetime, bundle-arming, unsafe-manifest, mixed-tag,
+candidate-retag and exact mid/late old-ID recovery cases. This does not clear the separate live
+preflight blocker: the ordinary formal noon delivery was still queued/actionable in the last
+read-only evidence. No new authorization is inferred, and this correction performed no SSH,
+production, Docker-service, provider, transfer, quiesce, backup, retag, overlay, enqueue, retry,
+resend, delivery, or feature-enable action.

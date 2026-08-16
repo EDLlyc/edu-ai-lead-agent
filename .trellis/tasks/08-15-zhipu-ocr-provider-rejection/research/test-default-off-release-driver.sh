@@ -34,6 +34,13 @@ bash -n "$DRIVER"
 require_text 'readonly APP_DIR="/opt/edu-ai-lead-agent"'
 require_text 'readonly COMPOSE_PROJECT="edu-ai-lead-agent"'
 require_text 'readonly COMPOSE_FILE="\$\{APP_DIR\}/compose.yaml"'
+require_text 'readonly SHARED_ACTIVE_TAG="\$\{COMPOSE_PROJECT\}-backend:local"'
+require_text 'readonly SERVICE_ACTIVE_TAG_SUFFIX="latest"'
+require_text 'readonly FORBIDDEN_SERVICE_TAG_SUFFIX="local"'
+require_text 'service_active_tag\(\)'
+require_text 'service_forbidden_local_tag\(\)'
+require_text 'assert_candidate_tag_is_isolated\(\)'
+require_text 'write_active_tag_inventory\(\)'
 require_text '--project-directory "\$APP_DIR"'
 require_text '--env-file "\$PRIMARY_ENV"'
 require_text '--env-file "\$RELEASE_ENV"'
@@ -58,6 +65,7 @@ require_text 'expected_current_day_vector'
 require_text 'candidate and previous source path sets differ'
 require_text 'image bundle tag membership mismatch'
 require_text 'tags_changed=1'
+require_text 'active-tag-inventory.txt'
 require_text 'source_path="\$\{release_extract_dir\}/\$\{path\}"'
 require_text 'recreate_service wecom-dispatcher'
 reject_text '(^|[[:space:]])ssh([[:space:]]|$)'
@@ -68,6 +76,7 @@ reject_text '(^|[[:space:]])(curl|wget)([[:space:]]|$)'
 reject_text 'scripts/edu-ai-backup\.sh'
 reject_text 'runuser'
 reject_text 'source\.tar\.gz" -C "\$APP_DIR"'
+reject_text '\$\{COMPOSE_PROJECT\}-\$\{service\}:local'
 
 run_failure_case() {
   local name=$1
@@ -257,6 +266,120 @@ RELEASE_DRIVER_SOURCE_ONLY=1 bash -c '
   [[ "$tags_changed" == 1 ]]
 ' bash "$DRIVER" "$test_root" "$config_digest" >/dev/null 2>&1 || fail bundle_phase_arming
 
+tag_contract_root="${test_root}/tag-contract"
+mkdir -m 700 "$tag_contract_root"
+TAG_CONTRACT_ROOT="$tag_contract_root" RELEASE_DRIVER_SOURCE_ONLY=1 bash -c '
+  source "$1"
+  old_id="sha256:$(printf b%.0s {1..64})"
+  candidate_id="sha256:$(printf c%.0s {1..64})"
+  previous_image_id=$old_id
+  declare -A tag_ids=()
+  tag_ids["edu-ai-lead-agent-backend:local"]=$old_id
+  for service in "${TAG_SERVICES[@]}"; do
+    tag_ids["edu-ai-lead-agent-${service}:latest"]=$old_id
+  done
+  docker_call() {
+    local operation="${1-}:${2-}"
+    local source target
+    case "$operation" in
+      image:inspect)
+        target=$3
+        [[ -n "${tag_ids[$target]+present}" ]] || return 1
+        printf "%s\n" "${tag_ids[$target]}"
+        ;;
+      image:tag)
+        source=$3
+        target=$4
+        tag_ids["$target"]=$source
+        printf "%s %s\n" "$source" "$target" >>"${TAG_CONTRACT_ROOT}/tag-actions"
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  assert_active_tags "$old_id"
+  candidate_tag=edu-ai-lead-agent-backend:candidate
+  assert_candidate_tag_is_isolated
+  candidate_tag=edu-ai-lead-agent-content-worker:latest
+  if assert_candidate_tag_is_isolated >/dev/null 2>&1; then exit 41; fi
+  candidate_tag=edu-ai-lead-agent-content-worker:local
+  if assert_candidate_tag_is_isolated >/dev/null 2>&1; then exit 42; fi
+  candidate_tag=edu-ai-lead-agent-backend:candidate
+  write_active_tag_inventory "${TAG_CONTRACT_ROOT}/active-tags" "$old_id"
+  [[ "$(wc -l <"${TAG_CONTRACT_ROOT}/active-tags")" == 10 ]]
+  grep -Fx "shared edu-ai-lead-agent-backend:local $old_id" "${TAG_CONTRACT_ROOT}/active-tags" >/dev/null
+  for service in "${TAG_SERVICES[@]}"; do
+    grep -Fx "$service edu-ai-lead-agent-${service}:latest $old_id" "${TAG_CONTRACT_ROOT}/active-tags" >/dev/null
+    [[ -z "${tag_ids[edu-ai-lead-agent-${service}:local]+present}" ]]
+  done
+  retag_candidate
+  [[ "${tag_ids[edu-ai-lead-agent-backend:local]}" == "$candidate_id" ]]
+  for service in "${TAG_SERVICES[@]}"; do
+    [[ "${tag_ids[edu-ai-lead-agent-${service}:latest]}" == "$candidate_id" ]]
+    [[ -z "${tag_ids[edu-ai-lead-agent-${service}:local]+present}" ]]
+  done
+  restore_tags_for_recovery
+  assert_active_tags "$old_id"
+  [[ "$(wc -l <"${TAG_CONTRACT_ROOT}/tag-actions")" == 20 ]]
+' bash "$DRIVER" >/dev/null 2>&1 || fail mixed_active_tag_contract
+
+run_exact_tag_recovery_case() {
+  local name=$1
+  local overlay=$2
+  local expected_actions=$3
+  local action_log="${test_root}/${name}-exact-tag.actions"
+  ACTION_LOG="$action_log" OVERLAY_VALUE="$overlay" RELEASE_DRIVER_SOURCE_ONLY=1 bash -c '
+    source "$1"
+    old_id="sha256:$(printf b%.0s {1..64})"
+    new_id="sha256:$(printf c%.0s {1..64})"
+    previous_image_id=$old_id
+    declare -A tag_ids=()
+    tag_ids["edu-ai-lead-agent-backend:local"]=$new_id
+    for service in "${TAG_SERVICES[@]}"; do
+      tag_ids["edu-ai-lead-agent-${service}:latest"]=$new_id
+    done
+    docker_call() {
+      local operation="${1-}:${2-}"
+      local source target
+      case "$operation" in
+        image:inspect)
+          target=$3
+          [[ -n "${tag_ids[$target]+present}" ]] || return 1
+          printf "%s\n" "${tag_ids[$target]}"
+          ;;
+        image:tag)
+          source=$3
+          target=$4
+          tag_ids["$target"]=$source
+          ;;
+        *) return 1 ;;
+      esac
+    }
+    log() { :; }
+    enter_app_dir() { :; }
+    restore_overlay_for_recovery() { printf "overlay\n" >>"$ACTION_LOG"; }
+    restore_services_for_recovery() {
+      assert_active_tags "$previous_image_id"
+      for service in "${TAG_SERVICES[@]}"; do
+        [[ "${tag_ids[edu-ai-lead-agent-${service}:latest]}" == "$previous_image_id" ]]
+        [[ -z "${tag_ids[edu-ai-lead-agent-${service}:local]+present}" ]]
+      done
+      printf "services\n" >>"$ACTION_LOG"
+    }
+    backup_ready=1
+    tags_changed=1
+    overlay_changed=$OVERLAY_VALUE
+    services_quiesced=1
+    recovery_running=0
+    recover 77
+    [[ "$recovered" == 1 ]]
+    assert_active_tags "$previous_image_id"
+  ' bash "$DRIVER" >/dev/null 2>&1 || fail "${name}_exact_tag_recovery"
+  [[ "$(<"$action_log")" == "$expected_actions" ]] || fail "${name}_exact_tag_order"
+}
+
+run_exact_tag_recovery_case mid 0 'services'
+run_exact_tag_recovery_case late 1 $'overlay\nservices'
+
 unsafe_manifest="${test_root}/unsafe-source.sha256"
 printf '%064d  ../escape.py\n' 0 >"$unsafe_manifest"
 if RELEASE_DRIVER_SOURCE_ONLY=1 bash -c '
@@ -266,4 +389,4 @@ if RELEASE_DRIVER_SOURCE_ONLY=1 bash -c '
   fail unsafe_source_manifest_accepted
 fi
 
-printf 'test_passed cases=static,early,mid,late,hup,int,term,explicit-exit,incomplete-recovery,layer-failure,lock-lifetime,bundle-phase,unsafe-manifest\n'
+printf 'test_passed cases=static,early,mid,late,hup,int,term,explicit-exit,incomplete-recovery,layer-failure,lock-lifetime,bundle-phase,mixed-tags,mid-exact-tags,late-exact-tags,unsafe-manifest\n'

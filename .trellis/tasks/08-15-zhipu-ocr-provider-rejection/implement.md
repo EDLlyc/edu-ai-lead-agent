@@ -310,7 +310,7 @@ provider call. No command in this checklist was executed against production.
 
 The independently requested hardening is implemented as the mode-0600 operator artifact
 `research/default-off-release-driver.sh` (SHA-256
-`2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd`). Its only production
+`29ee24ae9f7a8ccb9a845c7bd473d1b175a70180c6dc5f4e2652065346641a9b`). Its only production
 entrypoint is `/usr/bin/bash "$stage/default-off-release-driver.sh" ... </dev/null` from the exact
 `/opt/edu-ai-lead-agent` working directory. The driver rejects any other stage basename,
 non-`/dev/null` stdin, extra/missing stage member, non-0600 member, non-0700 stage, self/archive/
@@ -340,7 +340,7 @@ secret-safe bounded logs and final 30-second stability are mandatory. The script
 SSH, fixture, provider, enqueue, retry, resend, or feature-enablement path.
 
 The mode-0600 local harness `research/test-default-off-release-driver.sh` (SHA-256
-`bedc1922d455625fcf062623a48c20a8478210405a6057ee35570724856eec5a`) passed `bash -n`, static
+`54620cfba8207f1968b9328ac2d96414ca03a820d45def939a81cb5b2ffb6283`) passed `bash -n`, static
 forbidden-action/absolute-context gates, injected early/mid/late nonzero exits, TERM recovery, and
 incomplete-recovery fail-closed behavior. The observed recovery orders were respectively
 `services`, `tags -> services`, and `overlay -> tags -> services`; TERM preserved exit 143 and a
@@ -456,3 +456,81 @@ coverage; frontend OpenAPI/format/lint/type/test/build with 39 tests; 52 release
 full-profile Compose, Doctor, shell syntax, diff, secret/log and migration/API/dependency/generated
 drift checks. No live provider, SSH, production, deployment, commit, push, enqueue, retry, resend,
 or WeCom action occurred.
+
+## Authorized Phase 2.2 default-off retry preflight — stopped before transfer
+
+- [x] Revalidated the untouched protected stage as mode 0700 with exactly nine pre-driver regular
+  mode-0600 members: the eight targets declared by `artifacts.sha256` plus the manifest itself.
+  The eight-target check, source/image sidecar checks, 307-file source manifest, 165-file image
+  manifest, 821,122-byte source archive SHA-256
+  `e516184eebdeb9b98c09cc3fecd98369012d75aba5763fdb16ed836b2d3390f9`, and 131,268,412-byte
+  image bundle SHA-256 `db1cab9cc975e08d46aa0d47e35f81100d02ea0eb5df90ce8677cc23378119c4`
+  all passed. The reviewed driver remained local and was not copied.
+- [x] Revalidated the inactive candidate
+  `sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`
+  under isolated tag `edu-ai-lead-agent:offline-c66aa62`, with exact revision
+  `c66aa6217d137033118c552f3db11b2a1121d082`, dependency base
+  `sha256:50fd2519fbc5aa204c45e76cb685d01aaea1656b998d3ed96c9ab6671b3b9374`,
+  and pyproject SHA-256 `d32d7b8c8dd90b2e455dbfbadde65e56e01ab2d7981f79e39358da8b5943cd0f`.
+  No running container used the candidate.
+- [x] Re-read production as exact prior release
+  `331a4942a84b36811cbbc4abff68bca2abc71f0c` / short `331a494` / image
+  `sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`.
+  All eight long-running services were running that image at restart zero, both flags remained
+  false, API/content Settings remained `glm-ocr`, 10 MiB/1 MiB/120.0 seconds with text model
+  `glm-5.2`, infrastructure was running, Alembic remained `20260815_0021`, and ten sources were
+  active. The active 307-file source manifest is
+  `/tmp/edu-ai-zhipu-release-331a494-20260815T153208Z/source-files.sha256`, SHA-256
+  `c0953ba579690f99b55050c816130b7d16137283d9bb169f483d000029ab8a38`.
+- [x] Re-read protected inputs without printing secrets: env/release-env SHA-256 values stayed
+  `4ad88db853075ad8668a1c45bd2e1f4498256c2ece0903ab2fbe3ea40521efdc` /
+  `5b58077644a21764cc3521c6689d562c645c62f0fff117c07264f7285398e0c2`, the 256-file brand
+  aggregate stayed `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24`,
+  and PostgreSQL/MinIO retained the expected named volumes. The backup timer was enabled/active,
+  more than 58 GiB was free, and the bounded secret/provider/send log gate was clean.
+- [ ] Do not transfer or invoke the exact reviewed driver. Fresh data was stable for 15 seconds at
+  durable vector `36:182:36:13:4:59:157:35:44:35:391:25:47:0:0`, current-day vector `2:2:4`,
+  provider/delivery tuple `391:47:35:44`, historical queued `7:0`, and zero running/unknown work,
+  but actionable work was `0:0:0:0:0:1` and WeCom was `25:47:1:0:0:1`. The sole nonterminal row
+  was an ordinary formal delivery queued with attempt zero for 12:30 China time and therefore
+  violated the driver's hard zero-actionable gate.
+- [ ] A second independent incompatibility also blocks the immutable driver: production retains
+  the nine per-service tags as `edu-ai-lead-agent-<service>:latest`, while reviewed driver SHA-256
+  `2190df29f7bbe59c903cd33237eae4068af633fd33c5010e2d2e890b3b0ecbfd` asserts, backs up,
+  retags, and restores `edu-ai-lead-agent-<service>:local`. Those nine `:local` tags are absent;
+  only shared Compose tag `edu-ai-lead-agent-backend:local` exists. Creating substitute tags by
+  hand or editing the reviewed artifact would cross the authorized boundary.
+
+The live slot schedules are 07:30, 12:30, and 18:30 China time with a 90-minute preparation lead,
+so the next acquisition/content cron boundary after the noon run is 17:00. If ordinary automation
+later makes the noon delivery terminal, any future attempt still requires a new stable baseline,
+current MinIO aggregate, independently reviewed driver revision matching the actual retained tag
+names, new exact SHA-256 authorization, and a safe-until timestamp before that boundary. This
+preflight made no stage write, driver invocation, lock acquisition, service stop, backup, retag,
+overlay, one-shot, provider call, enqueue/retry/resend, feature enablement, or delivery action.
+
+### Offline tag-contract correction after blocked preflight
+
+The driver was corrected offline to preserve the exact mixed production tag scheme: the shared
+Compose image is `edu-ai-lead-agent-backend:local`, all nine backend/migration service tags are
+`edu-ai-lead-agent-<service>:latest`, and every corresponding service `:local` tag must remain
+absent. `SHARED_ACTIVE_TAG`, the service suffix constants, `TAG_SERVICES`, and dedicated active,
+forbidden-local, and rollback tag functions now drive every preflight validation, protected prior
+tag inventory, candidate retag, recovery retag, and final equality check. The fresh backup records
+ten exact prior active tag identities separately from its nine generated rollback tags. Candidate
+bundle validation still requires its sole isolated RepoTag and arms `tags_changed=1` before
+`docker image load`, so a load failure cannot bypass tag recovery. The isolated candidate tag is
+also rejected if it aliases the shared active tag, any service `:latest` tag, or any forbidden
+service `:local` tag.
+
+The revised mode-0600 driver SHA-256 is
+`29ee24ae9f7a8ccb9a845c7bd473d1b175a70180c6dc5f4e2652065346641a9b`; the revised mode-0600
+harness SHA-256 is `54620cfba8207f1968b9328ac2d96414ca03a820d45def939a81cb5b2ffb6283`.
+The full fake harness proves mixed shared/local plus service/latest validation, absence of all nine
+service/local tags, ten-entry prior inventory, bundle phase arming, candidate retag, and exact old
+image restoration before services in both mid and late recovery. This correction resolves only the
+script/tag mismatch. The observed attempt-zero 12:30 China-time delivery remains actionable, so
+the hard zero-work preflight still blocks release. No checksum grants permission to transfer or
+deploy; a fresh stable baseline, independent review, new authorization and safe window remain
+mandatory. This correction used no SSH, production access, provider call, service action, or
+durable mutation.
