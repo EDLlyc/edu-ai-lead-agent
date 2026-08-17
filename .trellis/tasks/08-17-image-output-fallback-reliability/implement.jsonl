@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/error-handling.md","reason":"Provider adapter parsing, retry classification, and safe diagnostics contract."}
+{"file":".trellis/spec/backend/visual-diversity.md","reason":"Independent repair budgets, output validation, and catalog fallback constraints."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Direct-delivery package eligibility and duplicate-send prevention."}
+{"file":".trellis/tasks/08-17-image-output-fallback-reliability/research/provider-output-contract.md","reason":"Incident evidence, official provider contract, and chosen recovery boundary."}
+{"file":".trellis/tasks/08-17-image-output-fallback-reliability/research/implementation-contract-summary.md","reason":"Bounded image-pipeline and quality rules without truncated large-spec injection."}

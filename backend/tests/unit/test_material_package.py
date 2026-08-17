@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from app.api.v1.routes import material_packages as material_package_routes
 from app.application.ports.image_generation import (
@@ -30,6 +31,7 @@ from app.application.services.material_package import (
     _claim_prompt,
     _expected_visual_text,
     _prepare_image_input,
+    _provider_output_recovery_error_code,
     _provider_request_fingerprint,
     _validate_controlled_claim_identity,
     enqueue_material_package,
@@ -52,7 +54,7 @@ from app.domain.visual_brief import (
     build_visual_brief,
 )
 from app.domain.visual_diversity import build_visual_plan_bundle
-from app.infrastructure.ai.image_generation import _solid_png
+from app.infrastructure.ai.image_generation import OpenAICompatibleImageGenerator, _solid_png
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
 from app.schemas.material_package import (
@@ -60,6 +62,7 @@ from app.schemas.material_package import (
     MaterialPackageDownloadResponse,
 )
 from fastapi import Response
+from pydantic import SecretStr
 
 
 def _package_and_image() -> tuple[SimpleNamespace, SimpleNamespace]:
@@ -405,14 +408,20 @@ def test_material_package_image_projection_exposes_only_relative_download_url() 
     assert "generated-images/" not in encoded
 
 
-def test_material_package_image_projection_defaults_and_redacts_fallback_provenance() -> None:
+@pytest.mark.parametrize(
+    "initial_error_code",
+    ("image_provider_rejected", "image_output_invalid"),
+)
+def test_material_package_image_projection_defaults_and_redacts_fallback_provenance(
+    initial_error_code: str,
+) -> None:
     package, image = _package_and_image()
     image.provider_rejection_retry_count = 1
     package.version_snapshot["image"] = {
         "fallback": {
             "version": "image-fallback-v1",
             "state": "brand_catalog",
-            "initial_error_code": "image_provider_rejected",
+            "initial_error_code": initial_error_code,
             "primary_provider": "fake",
             "primary_model": "gpt-image-2",
             "asset": {
@@ -432,7 +441,7 @@ def test_material_package_image_projection_defaults_and_redacts_fallback_provena
         "version": "image-fallback-v1",
         "state": "brand_catalog",
         "provider_rejection_retry_count": 1,
-        "initial_error_code": "image_provider_rejected",
+        "initial_error_code": initial_error_code,
         "primary_provider": "fake",
         "primary_model": "gpt-image-2",
         "asset": None,
@@ -552,6 +561,7 @@ def _claimed_material_package(
     eligible: bool = True,
     repair_count: int = 0,
     provider_rejection_retry_count: int = 0,
+    provider_output_recovery_error_code: str | None = None,
     references: tuple[ReservedVisualReference, ...] = (),
     visual_brief: VisualBrief | None = None,
 ) -> ClaimedMaterialPackage:
@@ -571,6 +581,7 @@ def _claimed_material_package(
         references=references,
         repair_count=repair_count,
         provider_rejection_retry_count=provider_rejection_retry_count,
+        provider_output_recovery_error_code=provider_output_recovery_error_code,  # type: ignore[arg-type]
         visual_brief=visual_brief,
     )
 
@@ -603,15 +614,22 @@ def test_controlled_alternate_recovery_fingerprints_remain_distinct() -> None:
         alternate,
         prompt="controlled alternate neutralized prompt",
         provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_provider_rejected",
+    )
+    representation_recovery = replace(
+        alternate,
+        provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_output_invalid",
     )
 
     fingerprints = {
         _provider_request_fingerprint(alternate),
         _provider_request_fingerprint(repaired),
         _provider_request_fingerprint(neutralized),
+        _provider_request_fingerprint(representation_recovery),
     }
     assert None not in fingerprints
-    assert len(fingerprints) == 3
+    assert len(fingerprints) == 4
 
 
 def test_controlled_alternate_provider_recovery_keeps_reserved_plan() -> None:
@@ -653,6 +671,63 @@ def test_controlled_alternate_provider_recovery_keeps_reserved_plan() -> None:
     assert "不应复用" not in prompt
     assert snapshot is not None
     assert snapshot["controlled_plan"]["fingerprint"] == plan.fingerprint
+
+
+def test_representation_recovery_preserves_controlled_prompt_and_plan() -> None:
+    package, image = _package_and_image()
+    package.topic_snapshot["title"] = "人工智能教育"
+    plan = build_visual_plan_bundle(
+        category=build_visual_brief(
+            AcceptedVisualContext(topic_title="人工智能教育"),
+            version="visual-brief-v2-controlled-diversity",
+        ).category,
+        business_date=date(2026, 8, 17),
+        content_slot=ContentSlot.NOON,
+        stable_seed="representation-recovery",
+    ).primary
+    image.reference_mode = "single_reference"
+    image.diversity_policy_version = "visual-diversity-policy-v1"
+    image.provider_rejection_retry_count = 0
+    image.prompt_version = "image-prompt-v3-controlled-diversity"
+    image.pipeline_version = "image-pipeline-v3-controlled-diversity"
+    image.visual_brief_snapshot = {"version": "visual-brief-v2-controlled-diversity"}
+    draft = SimpleNamespace(copywriting="家长文案", image_prompt="受控原始提示词")
+
+    original_prompt, original_snapshot, _ = _claim_prompt(
+        package=package,
+        draft=draft,
+        image=image,
+        references=(),
+        controlled_plan=plan,
+    )
+    image.provider_rejection_retry_count = 1
+    package.version_snapshot["image"] = {
+        "fallback": {
+            "state": "neutralized_retry",
+            "provider_rejection_retry_count": 1,
+            "initial_error_code": "image_output_invalid",
+        }
+    }
+    recovery_prompt, recovery_snapshot, _ = _claim_prompt(
+        package=package,
+        draft=draft,
+        image=image,
+        references=(),
+        controlled_plan=plan,
+    )
+
+    assert recovery_prompt == original_prompt
+    assert recovery_snapshot == original_snapshot
+    assert recovery_snapshot is not None
+    assert recovery_snapshot["controlled_plan"]["fingerprint"] == plan.fingerprint
+    assert _provider_output_recovery_error_code(package, image) == "image_output_invalid"
+
+
+def test_legacy_recovery_snapshot_defaults_to_provider_rejection_neutralization() -> None:
+    package, image = _package_and_image()
+    image.provider_rejection_retry_count = 1
+
+    assert _provider_output_recovery_error_code(package, image) == "image_provider_rejected"
 
 
 def test_controlled_visual_ocr_allowlist_is_exactly_signature_title_subtitle() -> None:
@@ -734,13 +809,14 @@ class _RejectingImageGenerator:
 
 
 class _InvalidOutputImageGenerator:
-    def __init__(self) -> None:
+    def __init__(self, reason: str = "image_download_content_type_invalid") -> None:
         self.calls = 0
+        self.reason = reason
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         del request
         self.calls += 1
-        raise ImageOutputValidationError("image_download_content_type_invalid")
+        raise ImageOutputValidationError(self.reason)
 
 
 class _RecordingImageStore:
@@ -758,6 +834,18 @@ class _RecordingImageStore:
             byte_size=len(body),
             sha256="a" * 64,
         )
+
+
+class _FailingImageStore:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def put_immutable(
+        self, body: bytes, *, media_type: str = "image/png"
+    ) -> ImageObjectDescriptor:
+        del body, media_type
+        self.calls += 1
+        raise ConflictError("private image storage unavailable")
 
 
 class _QualityAttemptSession:
@@ -1002,6 +1090,177 @@ async def test_material_worker_provider_rejection_schedules_one_neutralized_retr
 
 
 @pytest.mark.asyncio
+async def test_representation_failure_persists_exactly_one_durable_output_recovery() -> None:
+    claimed = _claimed_material_package()
+    image, package, session = _quality_attempt_state(claimed)
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=object(),  # type: ignore[arg-type]
+        settings=Settings(),
+        reference_asset=None,
+    )
+
+    assert await executor._schedule_provider_rejection_retry(
+        claimed,
+        initial_error_code="image_output_invalid",
+        validation_snapshot={"stage": "provider_output", "issue_codes": ["safe-reason"]},
+    )
+    assert not await executor._schedule_provider_rejection_retry(
+        claimed,
+        initial_error_code="image_output_invalid",
+    )
+
+    assert session.commits == 1
+    assert image.status == "queued"
+    assert image.provider_rejection_retry_count == 1
+    assert image.error_code == "image_output_invalid"
+    assert image.validation_snapshot == {
+        "stage": "provider_output",
+        "issue_codes": ["safe-reason"],
+    }
+    assert image.lease_token is None
+    assert package.status == "queued"
+    assert package.version_snapshot["image"]["fallback"] == {
+        "version": "image-fallback-v1",
+        "state": "neutralized_retry",
+        "provider_rejection_retry_count": 1,
+        "initial_error_code": "image_output_invalid",
+        "primary_provider": "fake",
+        "primary_model": "gpt-image-2",
+    }
+
+
+@pytest.mark.asyncio
+async def test_material_worker_representation_failure_schedules_safe_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_marker = "PRIVATE-INVALID-REPRESENTATION"
+    provider_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal provider_calls
+        provider_calls += 1
+        return httpx.Response(
+            200,
+            request=request,
+            json={"data": [{"b64_json": raw_marker}]},
+        )
+
+    claimed = _claimed_material_package()
+    scheduled: list[tuple[ClaimedMaterialPackage, str]] = []
+    events: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_schedule(
+        value: ClaimedMaterialPackage,
+        *,
+        initial_error_code: str,
+        validation_snapshot: dict[str, object],
+    ) -> bool:
+        assert validation_snapshot["issue_codes"] == ["image_output_representation_invalid"]
+        scheduled.append((value, initial_error_code))
+        return True
+
+    class _SafeLogger:
+        def warning(self, event: str, **values: object) -> None:
+            events.append((event, values))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        generator = OpenAICompatibleImageGenerator(
+            client=client,
+            base_url="https://ai.comfly.org",
+            api_key=SecretStr("test-key"),
+            max_attempts=1,
+        )
+        executor = MaterialPackageExecutor(
+            session_factory=object(),  # type: ignore[arg-type]
+            image_generator=generator,
+            image_store=object(),  # type: ignore[arg-type]
+            settings=Settings(image_max_attempts=1),
+            reference_asset=None,
+        )
+        monkeypatch.setattr(executor, "_claim", fake_claim)
+        monkeypatch.setattr(executor, "_schedule_provider_rejection_retry", fake_schedule)
+        monkeypatch.setattr("app.application.services.material_package.logger", _SafeLogger())
+
+        assert await executor.execute_next("material-worker") is True
+
+    assert provider_calls == 1
+    assert scheduled == [(claimed, "image_output_invalid")]
+    assert events == [
+        (
+            "material_package_image_output_recovery",
+            {
+                "package_id": str(claimed.package_id),
+                "image_id": str(claimed.image_id),
+                "provider": "fake",
+                "model": "gpt-image-2",
+                "attempt": 1,
+                "repair_count": 0,
+                "provider_rejection_retry_count": 1,
+                "error_code": "image_output_invalid",
+                "reason": "image_output_representation_invalid",
+                "next_action": "neutralized_retry",
+            },
+        )
+    ]
+    assert raw_marker not in json.dumps(events)
+
+
+@pytest.mark.asyncio
+async def test_material_worker_representation_recovery_success_uses_distinct_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generator = _RecordingImageGenerator()
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+    claimed = _claimed_material_package(
+        provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_output_invalid",
+    )
+    persisted: list[ImageGenerationResult] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_persist(
+        value: ClaimedMaterialPackage,
+        result: ImageGenerationResult,
+        descriptor: ImageObjectDescriptor,
+        **_snapshots: object,
+    ) -> bool:
+        assert value == claimed
+        assert descriptor.sha256 == "a" * 64
+        persisted.append(result)
+        return True
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_persist_success", fake_persist)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert store.calls == 1
+    assert len(persisted) == 1
+    assert generator.requests[0].prompt == claimed.prompt
+    assert generator.requests[0].provider_request_fingerprint is not None
+    assert generator.requests[0].provider_request_fingerprint != claimed.request_fingerprint
+    assert generator.requests[0].provider_request_fingerprint == _provider_request_fingerprint(
+        claimed
+    )
+
+
+@pytest.mark.asyncio
 async def test_material_worker_logs_only_safe_provider_rejection_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1082,7 +1341,76 @@ async def test_material_worker_second_provider_rejection_uses_catalog_fallback(
 
 
 @pytest.mark.asyncio
-async def test_catalog_fallback_stores_a_validated_private_brand_image() -> None:
+async def test_second_representation_failure_uses_catalog_without_a_third_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-representation-action",
+        filename="representation-action.png",
+        sha256="e" * 64,
+        selection_reason="representation recovery action match",
+        fallback=False,
+    )
+    claimed = _claimed_material_package(
+        provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_output_invalid",
+        references=(reserved,),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    generator = _InvalidOutputImageGenerator("image_output_representation_invalid")
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,
+        settings=Settings(image_max_attempts=1),
+        reference_asset=None,
+    )
+    reference = ImageReference(
+        role=reserved.role,
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=_solid_png("representation-fallback", "approved"),
+        selection_reason=reserved.selection_reason,
+    )
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_read_references(
+        value: ClaimedMaterialPackage,
+    ) -> tuple[ImageReference, ...]:
+        assert value == claimed
+        return (reference,)
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_read_claimed_references", fake_read_references)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert store.calls == 1
+    assert image.status == "succeeded"
+    assert image.provider == "fake"
+    assert image.model == "gpt-image-2"
+    assert package.status == "awaiting_manual_use"
+    assert package.version_snapshot["image"]["fallback"]["state"] == "brand_catalog"
+    assert (
+        package.version_snapshot["image"]["fallback"]["initial_error_code"]
+        == "image_output_invalid"
+    )
+
+
+@pytest.mark.parametrize(
+    "initial_error_code",
+    ("image_provider_rejected", "image_output_invalid"),
+)
+@pytest.mark.asyncio
+async def test_catalog_fallback_stores_a_validated_private_brand_image(
+    initial_error_code: str,
+) -> None:
     reserved = ReservedVisualReference(
         role="action_reference",
         asset_id="asset-robot-action",
@@ -1118,6 +1446,7 @@ async def test_catalog_fallback_stores_a_validated_private_brand_image() -> None
         references=(reference,),
         validation_snapshot={},
         audit_snapshot={"status": "not_configured"},
+        initial_error_code=initial_error_code,
     )
 
     assert store.calls == 1
@@ -1132,7 +1461,7 @@ async def test_catalog_fallback_stores_a_validated_private_brand_image() -> None
         "version": "image-fallback-v1",
         "state": "brand_catalog",
         "provider_rejection_retry_count": 1,
-        "initial_error_code": "image_provider_rejected",
+        "initial_error_code": initial_error_code,
         "primary_provider": "fake",
         "primary_model": "gpt-image-2",
         "asset": {
@@ -1174,10 +1503,117 @@ async def test_catalog_fallback_without_a_reserved_asset_stays_reviewable() -> N
 
 
 @pytest.mark.asyncio
-async def test_material_worker_persists_a_safe_adapter_output_diagnostic(
+async def test_catalog_fallback_with_corrupt_reserved_asset_stays_reviewable() -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-corrupt-action",
+        filename="corrupt-action.png",
+        sha256="c" * 64,
+        selection_reason="robotics action match",
+        fallback=False,
+    )
+    claimed = _claimed_material_package(
+        provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_output_invalid",
+        references=(reserved,),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    store = _RecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=store,
+        settings=Settings(),
+        reference_asset=None,
+    )
+    reference = ImageReference(
+        role=reserved.role,
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=b"PRIVATE-CORRUPT-CATALOG-ASSET",
+        selection_reason=reserved.selection_reason,
+    )
+
+    await executor._persist_catalog_fallback(
+        claimed,
+        references=(reference,),
+        validation_snapshot={"issue_codes": ["image_output_representation_invalid"]},
+        audit_snapshot={"status": "not_configured"},
+        initial_error_code="image_output_invalid",
+    )
+
+    assert store.calls == 0
+    assert image.status == "review_required"
+    assert image.error_code == "brand_asset_fallback_invalid"
+    assert package.status == "failed"
+    assert "PRIVATE-CORRUPT-CATALOG-ASSET" not in json.dumps(package.version_snapshot)
+
+
+@pytest.mark.asyncio
+async def test_catalog_fallback_storage_failure_stays_reviewable() -> None:
+    reserved = ReservedVisualReference(
+        role="action_reference",
+        asset_id="asset-storage-action",
+        filename="storage-action.png",
+        sha256="d" * 64,
+        selection_reason="robotics action match",
+        fallback=False,
+    )
+    claimed = _claimed_material_package(
+        provider_rejection_retry_count=1,
+        provider_output_recovery_error_code="image_output_invalid",
+        references=(reserved,),
+    )
+    image, package, session = _quality_attempt_state(claimed)
+    store = _FailingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=_SequenceSessionFactory(session),  # type: ignore[arg-type]
+        image_generator=object(),  # type: ignore[arg-type]
+        image_store=store,
+        settings=Settings(),
+        reference_asset=None,
+    )
+    reference = ImageReference(
+        role=reserved.role,
+        asset_id=reserved.asset_id,
+        filename=reserved.filename,
+        sha256=reserved.sha256,
+        image_bytes=_solid_png("catalog-storage-failure", "approved"),
+        selection_reason=reserved.selection_reason,
+    )
+
+    await executor._persist_catalog_fallback(
+        claimed,
+        references=(reference,),
+        validation_snapshot={"issue_codes": ["image_output_representation_invalid"]},
+        audit_snapshot={"status": "not_configured"},
+        initial_error_code="image_output_invalid",
+    )
+
+    assert store.calls == 1
+    assert image.status == "review_required"
+    assert image.error_code == "brand_asset_fallback_storage_failed"
+    assert package.status == "failed"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    (
+        "image_download_url_invalid",
+        "image_download_address_invalid",
+        "image_download_content_type_invalid",
+        "image_download_too_large",
+        "image_raster_signature_invalid",
+        "image_dimensions_invalid",
+    ),
+)
+@pytest.mark.asyncio
+async def test_material_worker_keeps_security_and_raster_validation_failures_terminal(
     monkeypatch: pytest.MonkeyPatch,
+    reason: str,
 ) -> None:
-    generator = _InvalidOutputImageGenerator()
+    generator = _InvalidOutputImageGenerator(reason)
     executor = MaterialPackageExecutor(
         session_factory=object(),  # type: ignore[arg-type]
         image_generator=generator,
@@ -1227,7 +1663,7 @@ async def test_material_worker_persists_a_safe_adapter_output_diagnostic(
                 "configured": True,
                 "passed": False,
                 "stage": "provider_output",
-                "issue_codes": ["image_download_content_type_invalid"],
+                "issue_codes": [reason],
                 "provider": "fake",
                 "model": "gpt-image-2",
                 "media_type": None,

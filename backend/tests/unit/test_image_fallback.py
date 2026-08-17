@@ -4,8 +4,10 @@ from io import BytesIO
 
 import pytest
 from app.domain.image_fallback import (
+    IMAGE_OUTPUT_REPRESENTATION_RECOVERY_VERSION,
     IMAGE_PROVIDER_REJECTION_PROMPT_VERSION,
     build_provider_rejection_retry_prompt,
+    provider_output_recovery_fingerprint,
     provider_rejection_retry_fingerprint,
     render_catalog_fallback_image,
 )
@@ -32,6 +34,34 @@ def test_provider_rejection_prompt_uses_only_allowlisted_visual_brief_values() -
     assert IMAGE_PROVIDER_REJECTION_PROMPT_VERSION in prompt
     assert "不应回传" not in prompt
     assert provider_rejection_retry_fingerprint("a" * 64, prompt) != "a" * 64
+
+
+def test_representation_recovery_fingerprint_is_distinct_replay_stable_and_prompt_bound() -> None:
+    original = "面向家长的科学探索插画"
+
+    first = provider_output_recovery_fingerprint(
+        "a" * 64,
+        original,
+        "image_output_invalid",
+    )
+
+    assert IMAGE_OUTPUT_REPRESENTATION_RECOVERY_VERSION == "image-output-representation-retry-v1"
+    assert first != "a" * 64
+    assert first == provider_output_recovery_fingerprint(
+        "a" * 64,
+        original,
+        "image_output_invalid",
+    )
+    assert first != provider_output_recovery_fingerprint(
+        "a" * 64,
+        "不同但仍受控的提示词",
+        "image_output_invalid",
+    )
+    assert provider_output_recovery_fingerprint(
+        "a" * 64,
+        original,
+        "image_provider_rejected",
+    ) == provider_rejection_retry_fingerprint("a" * 64, original)
 
 
 def test_controlled_provider_rejection_prompt_preserves_exact_text_hierarchy() -> None:

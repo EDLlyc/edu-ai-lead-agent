@@ -608,7 +608,7 @@ scenario's exact behavior.
 - Active local provider origin: `https://ai.comfly.org`; the model remains configurable and is
   currently `gpt-image-2`. The old `toapis` adapter remains an explicit rollback mode.
 - Comfly generate: `POST /v1/images/generations` with `model`, a validated bounded `prompt`,
-  `size=1024x1024`, `response_format=b64_json`, and an optional ordered
+  `size=1024x1024`, `response_format=url`, and an optional ordered
   `image=[data:image/png;base64,...]`
   tuple containing approved local references. Each reference carries a role, asset ID, filename,
   checksum, and bytes in the provider-neutral request; private MinIO URLs and provider upload URLs
@@ -675,6 +675,7 @@ scenario's exact behavior.
 | 401/403 or an explicit invalid-token response | Raise non-retryable provider authentication error; do not retry |
 | 429 or bounded transient 5xx | Retry within the configured attempt/window bounds; stop with a typed rate-limit/unavailable error |
 | Synchronous response has multiple images, malformed JSON, or unknown task status | Reject the provider result; never choose an arbitrary image |
+| Non-empty `b64_json` cannot be decoded strictly | Persist the safe representation reason; queue one unchanged-prompt output recovery, then use the reserved catalog fallback |
 | 429/503 during polling | Honor `Retry-After`, retry within the configured provider window (300s by default) |
 | Provider window exceeded | Stop, classify as transient, retry up to `image_max_attempts` |
 | Selected references exceed count/byte bounds | Reject before the paid provider call; preserve the explicit fallback mode if a bounded single reference remains |
@@ -958,12 +959,12 @@ reservation = await enqueue_material_package(session_factory=factory, run_id=run
 await material_executor.execute_next(worker_id)
 ```
 
-## Scenario: Bounded image-provider rejection recovery
+## Scenario: Bounded image-provider output recovery
 
 ### 1. Scope / Trigger
 
-- Trigger: an accepted material package receives the typed non-retryable
-  `image_provider_rejected` response from its configured image provider.
+- Trigger: an accepted material package receives either typed non-retryable
+  `image_provider_rejected` or the exact adapter reason `image_output_representation_invalid`.
 - This recovery applies only after an accepted copy and durable image reservation exist. It does
   not weaken provider policy, output-download checks, private MinIO storage, or direct WeCom
   quality predicates.
@@ -983,6 +984,13 @@ await material_executor.execute_next(worker_id)
   and schedules exactly one prompt built only from allowlisted `VisualBrief` values and reference
   roles. It never includes raw title, summary, copy, prior prompt, private filename/path, URL, or
   reference bytes.
+- The first representation failure uses the same compatibility counter/wire state but persists
+  `initial_error_code=image_output_invalid`. It keeps the original controlled prompt, plan, and
+  reference order while deriving a distinct replay-stable provider request fingerprint. Its safe
+  `provider_output` validation snapshot contains only the allowlisted reason and provider/model.
+- A second representation failure uses the reserved catalog fallback without a third provider
+  request. URL/address, redirect, media/signature, size, dimensions, provider identity, OCR parser,
+  and other security/integrity failures remain terminal and never enter this recovery.
 - A second rejection, failed ordinary raster/text/audit quality gate after the single targeted
   repair, or unavailable quality adapter during that retry uses one pre-reserved catalog reference
   in role order: action, style, identity. Exhausted transient provider attempts use the same
@@ -1003,6 +1011,8 @@ await material_executor.execute_next(worker_id)
 | Condition | Required result |
 |---|---|
 | First provider rejection | One warning event with IDs, provider/model, attempt, typed code, and `neutralized_retry`; durable queued retry |
+| First invalid image representation | One safe warning/snapshot, unchanged prompt/plan, distinct stable fingerprint, and one durable queued retry |
+| Second invalid image representation with reserved asset | Private validated catalog fallback with `initial_error_code=image_output_invalid`; no third provider call |
 | Second rejection, second ordinary quality failure, or exhausted transient provider attempts with reserved asset | Private validated catalog fallback; package `awaiting_manual_use` |
 | No reserved/readable/valid catalog asset or MinIO write fails | Typed `brand_asset_fallback_*`, image `review_required`, package `failed` |
 | Replay, race, or expired lease | No duplicate provider call, fallback object, image artifact, or delivery job |
@@ -1019,9 +1029,11 @@ await material_executor.execute_next(worker_id)
 
 ### 6. Tests Required
 
-- `test_image_fallback.py` asserts neutral prompt isolation, retry fingerprint separation, square
+- `test_image_fallback.py` asserts neutral prompt isolation, rejection/representation fingerprint
+  separation and replay stability, square
   aspect-safe rendering, and invalid asset rejection.
-- `test_material_package.py` asserts one scheduled retry, second-rejection catalog persistence,
+- `test_material_package.py` asserts one scheduled retry, unchanged representation-recovery prompt
+  and plan, second-rejection/representation catalog persistence,
   unchanged requested provider identity, `not_applicable` audit, safe API/JSON fallback projection,
   and path/URL redaction.
 - `test_migrations.py`, `test_governance_migrations.py`, and

@@ -245,7 +245,7 @@ async def OpenAICompatibleImageGenerator.generate(
 ### 3. Contracts
 
 - The creation JSON contains `model`, `prompt`, `size`, optional ordered `image`, and explicit
-  `response_format="b64_json"`. Do not send `aspect_ratio`, which is not in the published
+  `response_format="url"`. Do not send `aspect_ratio`, which is not in the published
   `gpt-image-2` contract.
 - A completed documented task response is accepted only in this shape:
 
@@ -269,7 +269,9 @@ async def OpenAICompatibleImageGenerator.generate(
 
 | Condition | Result |
 | --- | --- |
-| Creation payload has documented fields and direct `data[0].b64_json` | Decode and validate the 1024x1024 raster |
+| Creation payload has documented fields and direct `data[0].url` | Safely download and validate the 1024x1024 raster |
+| Provider returns a valid `data[0].b64_json` compatibility response | Strictly decode and validate the same raster gates |
+| Non-empty Base64 is not a valid representation | `ImageOutputValidationError(reason="image_output_representation_invalid")`; one durable output recovery, then catalog fallback |
 | Task response has documented `data.data.data[0].b64_json` | Decode and validate the 1024x1024 raster |
 | Task is queued/pending and has no result | Continue bounded polling |
 | Completed task lacks one valid image representation | `ImageProviderRejectedError` with safe status/kind only |
@@ -277,16 +279,18 @@ async def OpenAICompatibleImageGenerator.generate(
 
 ### 5. Good / Base / Bad Cases
 
-- Good: the request explicitly asks for Base64, then a one-level direct or documented nested task
-  response decodes through the existing size/signature validation.
-- Base: a signed URL result follows the existing public-DNS and bounded-download rules.
+- Good: the request explicitly asks for URL output and a signed URL follows the existing
+  public-DNS and bounded-download rules.
+- Base: a valid Base64 compatibility response decodes through the same size/signature validation.
 - Bad: send an undocumented `aspect_ratio`, accept a result from arbitrary nested `data` objects,
   or expose the provider envelope while diagnosing a failure.
 
 ### 6. Tests Required
 
-- Assert the Comfly payload includes `response_format="b64_json"`, retains `size="1024x1024"`,
+- Assert the Comfly payload includes `response_format="url"`, retains `size="1024x1024"`,
   and omits `aspect_ratio`.
+- Assert invalid Base64 exposes only `image_output_representation_invalid`, never its raw value,
+  and that URL/raster/security reasons remain terminal rather than entering output recovery.
 - Mock the exact documented `data.task_id` and `data.data.data[0].b64_json` response; assert one
   task lookup produces a validated image with no URL download.
 - Keep malformed JSON-envelope tests proving only status and response kind escape the adapter.
@@ -309,7 +313,7 @@ payload = {
     "model": model,
     "prompt": prompt,
     "size": "1024x1024",
-    "response_format": "b64_json",
+    "response_format": "url",
 }
 task_id = first_value(created, "task_id", "id")
 result = extract_documented_task_image(completed)
@@ -317,6 +321,27 @@ result = extract_documented_task_image(completed)
 
 The decoder accepts only known direct or documented nested image representations, then reuses the
 normal bounded raster validation path.
+
+### 8. Break-loop prevention: representation failure bypassed compensation
+
+- **Root cause — cross-layer contract plus implicit assumption:** the adapter correctly classified
+  strict Base64 decode failure as `ImageOutputValidationError`, but material orchestration attached
+  its one-use compensation only to `ImageProviderRejectedError`. The recovery state machine
+  implicitly treated every output-validation failure as a hard raster/security failure even though
+  the adapter had already exposed a safe, discriminating representation reason.
+- **Coverage gap:** adapter tests proved strict decoding and worker tests proved provider-rejection
+  fallback independently, but no non-isomorphic test carried an invalid representation through the
+  provider-to-worker boundary. Repeating provider-rejection fixtures could not reveal the missing
+  classification edge.
+- **Structural prevention:** only the exact allowlisted reason
+  `image_output_representation_invalid` may consume the compatibility output-recovery counter. Its
+  durable snapshot rehydrates `initial_error_code=image_output_invalid`, keeps the prompt/plan
+  unchanged, and selects a distinct stable request fingerprint. All URL/address, redirect,
+  media/signature, size, dimensions, identity, OCR parser, and integrity reasons remain terminal.
+- **Regression prevention:** the required matrix pairs invalid Base64 with unsafe URL, bad address,
+  media mismatch, oversize, bad signature, and wrong dimensions; it asserts first recovery,
+  recovery success, second-failure catalog success, corrupt/missing/store terminal results, no raw
+  sentinel projection, and no third provider call.
 
 ## Catching and logging
 

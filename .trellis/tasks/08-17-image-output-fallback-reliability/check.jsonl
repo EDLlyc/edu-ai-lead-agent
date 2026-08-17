@@ -1,0 +1,6 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review complete provider-to-package-to-delivery flow and business-fact authority."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify safe error projection and exact retryability boundaries."}
+{"file":".trellis/spec/backend/visual-diversity.md","reason":"Verify recovery budgets remain independent and bounded."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify one deliverable package produces at most one formal job."}
+{"file":".trellis/tasks/08-17-image-output-fallback-reliability/research/provider-output-contract.md","reason":"Verify implementation against incident evidence and the official response contract."}
+{"file":".trellis/tasks/08-17-image-output-fallback-reliability/research/implementation-contract-summary.md","reason":"Verify bounded pipeline, idempotency, privacy, offline and final-gate requirements."}

@@ -86,6 +86,7 @@ class _DeliverySession:
             content_slot_selection_id=None,
         )
         self.added: list[object] = []
+        self.existing_delivery: object | None = None
         self.commits = 0
 
     async def get(self, model: object, _entity_id: object) -> object:
@@ -98,10 +99,11 @@ class _DeliverySession:
         raise AssertionError(f"unexpected model: {model!r}")
 
     async def scalar(self, _statement: object) -> object | None:
-        return None
+        return self.existing_delivery
 
     def add(self, entity: object) -> None:
         self.added.append(entity)
+        self.existing_delivery = entity
 
     async def commit(self) -> None:
         self.commits += 1
@@ -244,6 +246,50 @@ async def test_direct_mode_enqueues_pending_manual_use_package_after_quality_che
     assert job.material_package_id == package.id
     assert job.status == "queued"
     assert job.mode == "formal"
+    assert session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_direct_mode_catalog_fallback_is_delivery_eligible_and_idempotent() -> None:
+    package, image = _delivery_package()
+    package.version_snapshot = {
+        "image": {
+            "fallback": {
+                "version": "image-fallback-v1",
+                "state": "brand_catalog",
+                "provider_rejection_retry_count": 1,
+                "initial_error_code": "image_output_invalid",
+                "primary_provider": "comfly",
+                "primary_model": "gpt-image-2",
+            }
+        }
+    }
+    image.audit_snapshot = {
+        "version": "image-audit-v1",
+        "configured": False,
+        "status": "not_applicable",
+        "passed": None,
+        "issue_codes": [],
+        "provider": "brand_catalog",
+        "model": "approved-catalog-v1",
+    }
+    session = _DeliverySession(package, image)
+    arguments = {
+        "session": session,
+        "package_id": package.id,
+        "recipient_id": "default",
+        "mode": "formal",
+        "include_copy": True,
+        "include_image": True,
+        "settings": _settings(require_review=False),
+    }
+
+    first = await enqueue_wecom_delivery(**arguments)  # type: ignore[arg-type]
+    replay = await enqueue_wecom_delivery(**arguments)  # type: ignore[arg-type]
+
+    assert first.status == "queued"
+    assert replay is first
+    assert len(session.added) == 1
     assert session.commits == 1
 
 

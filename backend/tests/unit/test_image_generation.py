@@ -520,7 +520,7 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert seen_payload is not None
     assert seen_payload["model"] == "gpt-image-2"
     assert seen_payload["size"] == "1024x1024"
-    assert seen_payload["response_format"] == "b64_json"
+    assert seen_payload["response_format"] == "url"
     assert "aspect_ratio" not in seen_payload
     assert seen_payload["prompt"] == "parent-facing science illustration"
     image_values = seen_payload["image"]
@@ -776,6 +776,22 @@ async def test_comfly_direct_base64_response_is_normalized_without_provider_url(
 
     assert result.image_bytes == image
     assert result.media_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_comfly_invalid_base64_has_only_safe_representation_diagnostics() -> None:
+    raw_marker = "PRIVATE-COMFLY-BASE64-!"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [{"b64_json": raw_marker}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+
+    assert raised.value.reason == "image_output_representation_invalid"
+    assert raw_marker not in str(raised.value)
+    assert raw_marker not in repr(raised.value)
 
 
 @pytest.mark.asyncio

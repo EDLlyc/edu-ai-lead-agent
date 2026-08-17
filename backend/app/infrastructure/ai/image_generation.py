@@ -62,7 +62,7 @@ _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
 _COMFLY_IMAGE_SIZE = "1024x1024"
-_COMFLY_RESPONSE_FORMAT = "b64_json"
+_COMFLY_RESPONSE_FORMAT = "url"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
 
@@ -548,8 +548,8 @@ class OpenAICompatibleImageGenerator:
             "model": self._model,
             "prompt": prompt,
             "size": _COMFLY_IMAGE_SIZE,
-            # Comfly documents Base64 as the default. Sending it explicitly avoids a
-            # temporary CDN URL and keeps the result within this adapter boundary.
+            # GPT-Image-2 documents URL output as its current primary contract. The response
+            # decoder remains compatible with valid Base64, direct raster, and task results.
             "response_format": _COMFLY_RESPONSE_FORMAT,
         }
         references = _request_references(request)

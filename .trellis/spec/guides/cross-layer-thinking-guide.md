@@ -74,7 +74,41 @@ For each boundary:
 
 **Good**: Each layer only knows its neighbors
 
-### Mistake 4: Every Consumer Parses The Same Payload
+### Mistake 4: Treating One Provider Representation As The Business Result
+
+An external provider can report success through several transport representations while the
+business requirement is usually narrower: one validated, durable artifact that can continue the
+workflow. A provider changing its preferred representation must not silently weaken validation or
+strand downstream work when an already-approved deterministic fallback exists.
+
+Before changing a provider response contract:
+
+- [ ] Verify the provider's current primary representation from authoritative documentation
+- [ ] Keep a closed compatibility set for already-supported valid representations
+- [ ] Classify syntax/representation failure separately from URL, address, media, signature,
+      dimension, identity, and other security/integrity failures
+- [ ] Decide which exact failure classes may consume each retry/repair budget; never make every
+      output-validation failure retryable
+- [ ] Persist the retry cause and a replay-stable distinct idempotency fingerprint before another
+      paid call
+- [ ] Keep compensation inputs bound to the same durable business object (for example, only use
+      brand assets already reserved for the same artifact)
+- [ ] Test the proxy-positive/outcome-negative case: provider HTTP success plus unusable output,
+      followed by one recovery and then deterministic fallback
+- [ ] Prove fallback success reaches the real downstream eligibility query, while fallback failure
+      creates neither a durable artifact nor a delivery job
+- [ ] Keep raw response bodies, Base64, temporary URLs, prompts, credentials and private paths out
+      of errors, logs, snapshots and APIs
+
+**Real-world example**: An image gateway returned a non-empty `b64_json` value that failed strict
+Base64 decoding. The adapter correctly rejected the bytes, but the material workflow classified
+all image-output validation as terminal, so an accepted topic and copy produced no delivery job.
+The fix requested the provider's documented URL representation, retained strict URL/Base64/raster
+validation, allowed only the exact representation-syntax reason one durable recovery, and then used
+the artifact's pre-reserved approved catalog image. Unsafe URL, signature, size and dimension
+failures remained terminal.
+
+### Mistake 5: Every Consumer Parses The Same Payload
 
 **Bad**: A command reads JSONL events and casts fields inline:
 

@@ -390,6 +390,11 @@ signed image URL instead of inline base64 image data.
 - The API and content worker must receive the identical `IMAGE_MAX_ATTEMPTS` value.
   `make doctor` renders the content-profile Compose JSON and fails unless both service environments
   expose one non-empty shared value before a live retry is accepted.
+- Comfly requests URL output explicitly but continues to accept valid Base64, direct raster, and
+  documented task results. Only strict Base64 representation failure consumes one durable
+  provider-output recovery with an unchanged prompt and distinct fingerprint; a second failure may
+  render the reserved validated catalog asset. URL/address, redirect, media/signature, size, and
+  dimension failures remain terminal.
 
 ### 4. Validation & Error Matrix
 
@@ -399,6 +404,7 @@ signed image URL instead of inline base64 image data.
 | DNS fails or returns no/invalid addresses | ImageOutputValidationError; no download |
 | Redirect, invalid raster, explicit media/signature mismatch, oversized body, or non-1024x1024 image | typed validation failure; no storage result |
 | Provider timeout/rate limit/5xx | existing bounded typed retry behavior |
+| Invalid Base64 representation | One durable unchanged-prompt recovery, then validated catalog fallback with no third provider call |
 | Image retry targets a running/succeeded package or exhausted artifact | HTTP 409; no new artifact and no provider call |
 | API and worker have different image-attempt limits | Deployment defect; do not run a live retry until Compose injects one shared value |
 

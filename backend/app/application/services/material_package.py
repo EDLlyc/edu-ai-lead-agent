@@ -38,8 +38,9 @@ from app.core.errors import (
 from app.domain.content_slots import ContentSlot
 from app.domain.image_fallback import (
     IMAGE_CATALOG_FALLBACK_RENDERER_VERSION,
+    ProviderOutputRecoveryErrorCode,
     build_provider_rejection_retry_prompt,
-    provider_rejection_retry_fingerprint,
+    provider_output_recovery_fingerprint,
     render_catalog_fallback_image,
 )
 from app.domain.image_generation import (
@@ -229,6 +230,7 @@ class ClaimedMaterialPackage:
     selector_version: str = "no-selector"
     repair_count: int = 0
     provider_rejection_retry_count: int = 0
+    provider_output_recovery_error_code: ProviderOutputRecoveryErrorCode | None = None
     diversity_retry_count: int = 0
     active_plan_ordinal: int = 1
     controlled_plan: ControlledVisualPlan | None = None
@@ -1201,8 +1203,12 @@ def _claim_prompt(
     controlled_plan: ControlledVisualPlan | None = None,
 ) -> tuple[str, dict[str, Any] | None, VisualBrief | None]:
     provider_rejection_retry_count = getattr(image, "provider_rejection_retry_count", 0)
+    provider_output_recovery_error_code = _provider_output_recovery_error_code(package, image)
     if image.reference_mode == "legacy_single":
-        if provider_rejection_retry_count > 0:
+        if (
+            provider_rejection_retry_count > 0
+            and provider_output_recovery_error_code == "image_provider_rejected"
+        ):
             legacy_title = package.topic_snapshot.get("title")
             legacy_summary = package.topic_snapshot.get("summary")
             brief = build_visual_brief(
@@ -1264,7 +1270,10 @@ def _claim_prompt(
             prompt_version=image.prompt_version,
             pipeline_version=image.pipeline_version,
         ).prompt
-    if provider_rejection_retry_count > 0:
+    if (
+        provider_rejection_retry_count > 0
+        and provider_output_recovery_error_code == "image_provider_rejected"
+    ):
         prompt = build_provider_rejection_retry_prompt(brief, descriptors)
         if controlled_plan is not None:
             prompt = validate_image_prompt(
@@ -1298,7 +1307,11 @@ def _provider_request_fingerprint(claimed: ClaimedMaterialPackage) -> str | None
         )
     recovery_base = diversity_fingerprint or claimed.request_fingerprint
     if claimed.provider_rejection_retry_count:
-        return provider_rejection_retry_fingerprint(recovery_base, claimed.prompt)
+        return provider_output_recovery_fingerprint(
+            recovery_base,
+            claimed.prompt,
+            claimed.provider_output_recovery_error_code or "image_provider_rejected",
+        )
     if claimed.repair_count:
         return image_repair_fingerprint(
             recovery_base,
@@ -1306,6 +1319,30 @@ def _provider_request_fingerprint(claimed: ClaimedMaterialPackage) -> str | None
             claimed.prompt,
         )
     return diversity_fingerprint
+
+
+def _provider_output_recovery_error_code(
+    package: MaterialPackageModel,
+    image: ImageArtifactModel,
+) -> ProviderOutputRecoveryErrorCode | None:
+    """Rehydrate the allowlisted recovery cause from the migration-free package snapshot."""
+
+    if getattr(image, "provider_rejection_retry_count", 0) <= 0:
+        return None
+    package_snapshot = (
+        package.version_snapshot if isinstance(package.version_snapshot, dict) else {}
+    )
+    image_snapshot = package_snapshot.get("image")
+    fallback_snapshot = image_snapshot.get("fallback") if isinstance(image_snapshot, dict) else None
+    if (
+        isinstance(fallback_snapshot, dict)
+        and fallback_snapshot.get("initial_error_code") == "image_output_invalid"
+        and fallback_snapshot.get("state") == "neutralized_retry"
+        and fallback_snapshot.get("provider_rejection_retry_count") == 1
+    ):
+        return "image_output_invalid"
+    # Historical rows predate the recovery-cause projection and always used prompt neutralization.
+    return "image_provider_rejected"
 
 
 def _validate_controlled_claim_identity(
@@ -1719,21 +1756,53 @@ class MaterialPackageExecutor:
                     provider=claimed.provider,
                     model=claimed.model,
                 )
-            await self._finish_transient_or_finish(
-                claimed,
-                error_code=error.code,
-                retryable=error.retryable,
-                references=references,
-                validation_snapshot=validation_snapshot,
-                audit_snapshot=audit_snapshot,
-                review_required=isinstance(
-                    error,
-                    (
-                        ImageOutputValidationError,
-                        ProviderIdentityMismatchError,
+            if (
+                isinstance(error, ImageOutputValidationError)
+                and error.reason == "image_output_representation_invalid"
+            ):
+                if claimed.provider_rejection_retry_count == 0:
+                    if await self._schedule_provider_rejection_retry(
+                        claimed,
+                        initial_error_code="image_output_invalid",
+                        validation_snapshot=validation_snapshot,
+                    ):
+                        logger.warning(
+                            "material_package_image_output_recovery",
+                            package_id=str(claimed.package_id),
+                            image_id=str(claimed.image_id),
+                            provider=claimed.provider,
+                            model=claimed.model,
+                            attempt=claimed.attempt_number,
+                            repair_count=claimed.repair_count,
+                            provider_rejection_retry_count=1,
+                            error_code="image_output_invalid",
+                            reason=error.reason,
+                            next_action="neutralized_retry",
+                        )
+                else:
+                    await self._persist_catalog_fallback(
+                        claimed,
+                        references=references,
+                        validation_snapshot=validation_snapshot,
+                        audit_snapshot=audit_snapshot,
+                        initial_error_code="image_output_invalid",
+                    )
+            else:
+                await self._finish_transient_or_finish(
+                    claimed,
+                    error_code=error.code,
+                    retryable=error.retryable,
+                    references=references,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=audit_snapshot,
+                    review_required=isinstance(
+                        error,
+                        (
+                            ImageOutputValidationError,
+                            ProviderIdentityMismatchError,
+                        ),
                     ),
-                ),
-            )
+                )
         except ValueError:
             await self._finish_attempt(
                 claimed,
@@ -2063,6 +2132,10 @@ class MaterialPackageExecutor:
                 visual_brief_snapshot=claim_brief_snapshot,
                 repair_count=getattr(image, "repair_count", 0),
                 provider_rejection_retry_count=getattr(image, "provider_rejection_retry_count", 0),
+                provider_output_recovery_error_code=_provider_output_recovery_error_code(
+                    package,
+                    image,
+                ),
                 diversity_retry_count=getattr(image, "diversity_retry_count", 0),
                 active_plan_ordinal=active_plan_ordinal,
                 controlled_plan=controlled_plan,
@@ -2083,8 +2156,14 @@ class MaterialPackageExecutor:
                 ),
             )
 
-    async def _schedule_provider_rejection_retry(self, claimed: ClaimedMaterialPackage) -> bool:
-        """Persist the one provider-rejection recovery transition."""
+    async def _schedule_provider_rejection_retry(
+        self,
+        claimed: ClaimedMaterialPackage,
+        *,
+        initial_error_code: ProviderOutputRecoveryErrorCode = "image_provider_rejected",
+        validation_snapshot: dict[str, Any] | None = None,
+    ) -> bool:
+        """Persist the compatible one-use provider-output recovery transition."""
 
         now = datetime.now(UTC)
         async with self._session_factory() as session:
@@ -2106,13 +2185,22 @@ class MaterialPackageExecutor:
             image.provider_rejection_retry_count = 1
             image.status = "queued"
             image.available_at = now
-            image.error_code = "image_provider_rejected"
+            image.error_code = initial_error_code
             image.completed_at = None
+            if validation_snapshot is not None:
+                image.validation_snapshot = validation_snapshot
+                _set_package_image_quality(
+                    package,
+                    validation_snapshot=validation_snapshot,
+                    audit_snapshot=image.audit_snapshot,
+                    repair_count=image.repair_count,
+                    provider_rejection_retry_count=1,
+                )
             _set_package_image_fallback(
                 package,
                 state="neutralized_retry",
                 provider_rejection_retry_count=1,
-                initial_error_code="image_provider_rejected",
+                initial_error_code=initial_error_code,
                 primary_provider=claimed.provider,
                 primary_model=claimed.model,
             )

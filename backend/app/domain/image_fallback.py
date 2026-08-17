@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from io import BytesIO
+from typing import Literal
 
 from PIL import Image, UnidentifiedImageError
 
@@ -15,10 +16,16 @@ from app.domain.visual_brief import (
 )
 
 IMAGE_PROVIDER_REJECTION_PROMPT_VERSION = "image-provider-rejection-retry-v1"
+IMAGE_OUTPUT_REPRESENTATION_RECOVERY_VERSION = "image-output-representation-retry-v1"
 IMAGE_CATALOG_FALLBACK_RENDERER_VERSION = "brand-catalog-square-v1"
 _FALLBACK_CANVAS_SIZE = 1024
 _FALLBACK_SUBJECT_MAX_SIZE = 896
 _FALLBACK_BACKGROUND = (246, 250, 252, 255)
+
+ProviderOutputRecoveryErrorCode = Literal[
+    "image_provider_rejected",
+    "image_output_invalid",
+]
 
 
 def build_provider_rejection_retry_prompt(
@@ -98,6 +105,25 @@ def provider_rejection_retry_fingerprint(base_fingerprint: str, prompt: str) -> 
         "image-provider-rejection-retry",
         base_fingerprint,
         IMAGE_PROVIDER_REJECTION_PROMPT_VERSION,
+        validate_image_prompt(prompt),
+    )
+
+
+def provider_output_recovery_fingerprint(
+    base_fingerprint: str,
+    prompt: str,
+    initial_error_code: ProviderOutputRecoveryErrorCode,
+) -> str:
+    """Derive the replay-stable idempotency key for one provider-output recovery."""
+
+    if initial_error_code == "image_provider_rejected":
+        return provider_rejection_retry_fingerprint(base_fingerprint, prompt)
+    if initial_error_code != "image_output_invalid":
+        raise ValueError("unsupported provider-output recovery error code")
+    return stable_key(
+        "image-output-representation-retry",
+        base_fingerprint,
+        IMAGE_OUTPUT_REPRESENTATION_RECOVERY_VERSION,
         validate_image_prompt(prompt),
     )
 

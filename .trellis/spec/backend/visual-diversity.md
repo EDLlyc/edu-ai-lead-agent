@@ -107,6 +107,11 @@ reference set. It does not combine sibling news items or authorize a new publish
   reserved alternate exactly once with a distinct provider fingerprint. Attempt 2 that remains
   near-duplicate succeeds with `near_duplicate_after_retry`; it is not review-required and remains
   eligible for the existing delivery policy.
+- Provider-output representation recovery is a separate one-use budget carried by the compatibility
+  provider-rejection counter. It preserves the active controlled plan and prompt but derives a
+  distinct replay-stable provider request fingerprint. A second representation failure uses the
+  reserved catalog fallback; it does not activate the alternate diversity plan or permit a third
+  provider call. URL/raster/security/integrity failures remain terminal before similarity.
 - Raw prompt, plan seed, perceptual hash, nearest object identity, private path/object key, image
   bytes, and provider body never enter the API or logs. The local frontend is an inspection-only
   consumer and is not a production deployable.
@@ -130,6 +135,7 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Optional/opaque non-text `image` content/bbox or outer transport extension | Ignore without projection/logging/persistence; unknown element keys remain terminal |
 | Safety/OCR/identity/media/audit failure | Existing typed failure/recovery path; similarity cannot override it |
 | Provider/network failure | Existing bounded provider retry classification; does not consume the diversity retry |
+| Invalid image representation | One unchanged-plan output recovery, then catalog fallback; never consume or extend the diversity retry |
 | Unknown version bundle or regeneration count other than one | Startup validation fails closed |
 
 ### 5. Good / Base / Bad Cases
@@ -146,7 +152,7 @@ reference set. It does not combine sibling news items or authorize a new publish
 
 - Domain tests cover the full controlled vocabulary, invalid combinations, deterministic ranking,
   relaxation, primary/alternate difference, prompt isolation, the exact three-line text allowlist,
-  provider-rejection recovery, and v1 dispatch/metadata compatibility.
+  provider-rejection and representation recovery, and v1 dispatch/metadata compatibility.
 - Provider contract tests mirror both official raw representations: documented normalized boxes
   and the MaaS pixel boxes exercised by the official SDK converter/tests. They cover zero-/one-
   origin and non-contiguous indices, flat/multi-page envelopes, optional and malformed dimensions,

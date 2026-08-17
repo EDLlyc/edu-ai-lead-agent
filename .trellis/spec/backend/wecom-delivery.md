@@ -131,6 +131,11 @@ In review-required mode, enqueueing and automatic reconciliation require `comple
 In direct mode, they accept `awaiting_manual_use` or `completed` packages unless explicitly
 rejected. Direct mode still requires copy validation to pass, copy audit to be accepted, image
 validation to pass, and any configured image audit to be accepted before a job is created.
+A validated brand-catalog fallback produced after bounded image-representation recovery keeps this
+eligibility: its package is `awaiting_manual_use`, fallback provenance records
+`initial_error_code=image_output_invalid`, and deterministic catalog validation passes while the
+generative audit remains safely `not_applicable`. Existing package/date uniqueness still permits at
+most one formal delivery job; missing/corrupt assets or storage failures remain ineligible.
 
 Automatic reconciliation is a candidate scan, not a broad package-status retry loop. It excludes
 any package that already has a durable delivery job, restricts the scan to the current business
