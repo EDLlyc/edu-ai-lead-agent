@@ -1005,3 +1005,24 @@ Implemented and independently checked controlled 3D visual diversity with exact 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 46: Harden image provider output recovery
+
+**Date**: 2026-08-17
+**Task**: Harden image provider output recovery
+**Branch**: `main`
+
+### Summary
+
+Switched Comfly GPT-Image-2 to URL output, added one durable malformed-representation recovery followed by approved catalog fallback, preserved strict security validation and delivery idempotency, added cross-layer regressions/specs, and passed 154 focused plus 968 full backend tests without live calls or deployment.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cbc27b2` | (see git log) |
+
+### Status
+
+[OK] **Completed**
