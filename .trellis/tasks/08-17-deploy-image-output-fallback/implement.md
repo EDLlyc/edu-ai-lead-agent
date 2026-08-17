@@ -32,9 +32,9 @@
 
 ## Phase 5 — Verify and record
 
-- [ ] Verify exact cbc image/source/markers, eight services/restart0, API/PG/MinIO health, scoring
+- [x] Verify exact cbc image/source/markers, eight services/restart0, API/PG/MinIO health, scoring
       `.7`, OCR/diversity `true:true`, Alembic head and zero provider/WeCom delta.
 - [x] Record the failed activation, fresh backup, automatic recovery, independent 16-second prior
       runtime/vector verification and exact probe root cause in `result.md`.
-- [ ] Update task result with successful activation hashes and final acceptance evidence.
-- [ ] Commit/push evidence only after production actions have stopped; archive the task and journal.
+- [x] Update task result with successful activation hashes and final acceptance evidence.
+- [x] Commit/push evidence only after production actions have stopped; archive the task and journal.

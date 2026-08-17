@@ -2,11 +2,11 @@
 
 ## Current disposition
 
-The application fix is committed and pushed to Codeup, but it is **not active in production**.
-Production remains on exact commit `7ba25d3eeb290d3f784ae449a5b6ad360a8def58` and image
-`sha256:7627186cf1650a63bbe2e5e136e2364970a9383f756a62ed7db8c6e5cb50b21c` after the
-single authorized operator invocation exited 1 and completed automatic recovery. No second
-operator invocation was made.
+The application fix is committed, pushed to Codeup and active in production. Production runs exact
+commit `cbc27b2491e4ebd49e6cc58692b065268e2887db` and image
+`sha256:b9410598a50417b236eaa68ab1f5660c756269f0cbf258c429c95aaf7f5e7d31` across all
+eight application services. The first authorized invocation failed and recovered as recorded
+below; the user then explicitly authorized one `retry2` invocation, which completed successfully.
 
 ## Codeup and offline candidate
 
@@ -79,14 +79,45 @@ backend release quality spec now requires every non-default Settings assertion t
 allowlisted values and requires builder/operator parity coverage. There is no repository template
 copy of this project-specific backend spec to synchronize.
 
-Corrected local tooling hashes (not yet used for another production invocation):
+Corrected tooling hashes:
 
-- operator: `16672648171987adb001a5962985565c4789e9fe98b2746f452c4110a78e2c1b`;
-- operator harness: `5f108e46ae7eb787e1bfc5fb4a0d2284c1adf5cf3f42b080e4a2b419703985eb`;
+- retry2 operator: `608d132d3dc1f41dfb988776c2f78fdf507662911f80e3ed58990a054a7edf67`;
+- operator harness: `4ad70dd46bc2775ad4ced944130af89496c6ac16dab694e3e852de6235b332ec`;
 - builder: `5c56137a5fb0d16db8db38ff4185b367e1f7896d4af7af25a102c01407ae573d`;
 - builder harness: `771d850acdc1319c4aa2fd2a98512b2c439c37cd28c41ddc0325b617fbfaee97`;
 - validator: `0402dc9034711c087f9d50f4ffb4d27ede11a992150efd4090b2a63a937efacc`.
 
-The corrected operator requires a new committed/reviewed checksum-bound stage and explicit new
-authorization before any retry. The validated candidate application image itself does not need a
-code change.
+## Successful retry2 activation
+
+The user explicitly authorized a second and final invocation and allowed the current day's business
+services to be stopped. At `10:18:27Z`, the fresh retry preflight still showed the exact protected
+vectors above and zero actionable/nonterminal work, so no queued work needed to be cancelled or
+discarded. The prior invocation marker was retained; the committed retry operator used a distinct
+hard-coded `retry2` guard. Codeup authority for this operator was
+`b5cfaf4135f306b5c0760ad82e2dc25bacddf770`.
+
+To minimize delay and transfer risk, the new protected stage reused the eight byte-identical,
+already remotely validated image/source/validator artifacts. Only the corrected operator and new
+aggregate checksum manifest were transferred. The resulting exact ten-member stage passed hashes,
+mode/owner, Bash syntax and artifact checks. Aggregate stage manifest SHA-256:
+`5a6d1304203026945140697e536aaedc3b69d98bcdc7fca42acb1047eaa0c089`.
+
+The retry operator passed the previously failing candidate Settings probe, completed Alembic-only
+no-op migration, restored API first and dispatcher last, and passed its 30-second acceptance gate.
+It exited 0 with no fixture, provider or WeCom action. Fresh successful backup:
+`20260817T101955Z-image-fallback`; protected checksum manifest SHA-256:
+`dcece0a1158198fd647db24deada241cdd084a4d56f65045314ebeb596b21d20`.
+
+Independent post-release samples at `10:22:32Z` and `10:22:48Z` were identical:
+
+- durable: `40:40:13:8:64:40:40:430:25:49`;
+- provider: `430:40:49:25:49`;
+- sources: `10:38:10`;
+- actionable/nonterminal: `0:0:0:0:0:0:0`.
+
+All eight services use the exact cbc candidate image, are running with restart count zero, and no
+container runs the prior image. Candidate source/markers and all nine active tags are exact; API,
+PostgreSQL and MinIO are healthy; Alembic remains `20260815_0021`; scoring remains `.7`; image
+provider remains Comfly; OCR/diversity remain true; production OpenAPI still exposes no Agent
+Workbench route. Primary and release env hashes are unchanged. Release-caused model, image,
+provider, WeCom and business deltas are zero.
