@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/broad-release-scope.md","reason":"Verify every safe workspace path is accounted for and Git inclusion differs correctly from production payload."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/release-contract-summary.md","reason":"Review Codeup authority, offline activation, .6-to-.7 sequencing, side effects, and recovery."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/prior-fast-path-summary.md","reason":"Regress known archive, source, Compose, backup, checker, and one-recovery failure modes."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Prove no production Workbench route/service/runtime dependency/frontend while shared refactors remain safe."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify dispatcher-last ordering, nonterminal/unknown gates, and zero retry/resend/provider side effects."}

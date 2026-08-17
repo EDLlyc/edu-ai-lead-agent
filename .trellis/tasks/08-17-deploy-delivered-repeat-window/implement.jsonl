@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/broad-release-scope.md","reason":"Bounded inventory, repository inclusion, production effects, and authoritative broad-release decision."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/release-contract-summary.md","reason":"Executable offline deployment, config activation, no-side-effect, and recovery contract."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/prior-fast-path-summary.md","reason":"Bounded archive, source, Compose, backup, checker, and recovery pitfalls from prior production releases."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Defines the Workbench local-only boundary and shared production query/security obligations."}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Owns immutable .6/.7 identities, delivered-repeat semantics, replay compatibility, and runtime proof."}

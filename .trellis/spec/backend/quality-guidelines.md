@@ -568,6 +568,55 @@ release artifacts, or production deployment automation change.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
+- Validate an offline image archive before loading it by its declared format, never by assuming
+  the candidate image ID names the config file. A classic archive binds the candidate ID to the
+  config bytes. An OCI/containerd archive binds it to the `index.json` image-manifest descriptor,
+  then verifies that descriptor's media type, size and blob hash; the config and every ordered
+  layer descriptor must likewise match its blob and the exact `manifest.json` references. Bind the
+  containerd image-name and OCI ref-name annotations to that same isolated RepoTag, require strict
+  JSON and the reviewed `linux/amd64` config, and verify ordered `rootfs.diff_ids` against the
+  decompressed raw/gzip layers.
+  Require one exact RepoTag and image, safe unique regular members, and no extra/dangling blob,
+  conflicting format marker, path traversal, duplicate member, or symlink before `docker image
+  load`.
+- Define post-load source identity by an explicit path scope, not by an incidental recursive-find
+  root. For the backend candidate this is exactly root `alembic.ini` and `pyproject.toml` plus
+  regular `*.py`/`*.html` files below `app/` and `alembic/`. Collect NUL-delimited names under the
+  network-none/read-only/cap-drop probe, sort with the C locale, and compare a safe, unique,
+  deterministically ordered path/hash manifest exactly; reject missing roots, extra/replaced paths,
+  duplicate entries, whitespace/unsafe paths, hash drift and count drift.
+- Bind post-load import probes to the Compose entrypoint contract. The API module and every
+  long-lived scheduler/worker/dispatcher module must come from one reviewed constant list that
+  static tests compare with the current `compose.yaml` commands; do not invent service-prefixed
+  Python module names. Validate Alembic by its unique revision declaration and reported head, not
+  by a handwritten migration filename that can drift while the revision remains stable.
+- Normalize task-specific source archive regular-file modes in the artifact builder: non-executable
+  files become `0644` and executable files become `0755`, independent of workspace umask or group
+  write bits. The source-only overlay may accept legacy `0644/0664` as the non-executable class and
+  `0755/0775` as the executable class, but it must generate exact pre-quiesce mode evidence and
+  treat those values only as candidate semantic classes. An existing destination may be more
+  restrictive: accept only exact `0600/0644` for a non-executable candidate and `0700/0755` for an
+  executable candidate. Before quiesce, bind every candidate semantic mode, exact destination
+  mode, owner, group and path in one deterministically ordered evidence record; reject destination
+  group-write, world-write, special bits, unknown modes, ownership drift or executable-class drift.
+  Overlay must preserve each bound destination mode exactly, so `0600/0700` never broadens to
+  `0644/0755`. Reject all other candidate modes, special bits, world-write, non-regular members and
+  mode-evidence drift. Archive
+  directories, including an explicit root member, may be only `0755/0775`; validate them before
+  extraction but never include or copy them in file-mode evidence. Resolve every source and
+  destination file against its physical absolute root so a nested ancestor symlink cannot escape
+  the overlay. Revalidate the bound destination mode and ownership immediately before replacement.
+  After preserved-mode installation, recheck the same anchored regular path, exact mode,
+  owner/group, byte equality and final source hash. Use the fixed backup release root—not a parent
+  derived from the application path—as the atomic-install trust root. Before any stop, require that
+  exact root to be a physical non-symlink `root:root` mode-`0700` directory on the destination
+  filesystem. Scan fail-closed without emitting entry names and reject every direct child of any
+  type in the reserved temporary prefix namespace. Require generated child names to use the exact
+  six-alphanumeric suffix contract and each child to remain root-owned mode `0700`; EXIT cleanup
+  may remove only that exact physical direct-child shape and must not traverse a changed/symlink
+  root or match a backup ID. Use the preserved destination mode and an
+  atomic no-target-dereference replacement so a final-component symlink race cannot redirect the
+  copy; never preserve candidate group-write into production or relax a stricter active mode.
 - The developer-PC release is the current activation path. Its dry run uses only cached
   `origin/main` identity and local capability/config probes and performs no fetch, build, push,
   SSH connection, artifact transfer, or production call. A real release fetches authoritative
@@ -633,6 +682,12 @@ release artifacts, or production deployment automation change.
 | Candidate push succeeds but transfer/deploy later fails | Keep the verified local artifact attempt for audit/retry; if SSH status is unknown, also retain the remote inbox until reconciled |
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
+| OCI image archive treats its config digest as the candidate image ID, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before image load or active-tag mutation; retain the prior image and source |
+| Post-load source collection omits either backend root manifest input, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count |
+| Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
+| Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
+| Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
+| Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
@@ -659,6 +714,55 @@ release artifacts, or production deployment automation change.
   images, command wrappers, environment isolation, infra-before-backend ordering, the local release
   Make contract, source isolation, immutable migration/doctor ordering, strict SSH options,
   forbidden secret inputs, and dry-run non-mutation in a fake-command sandbox.
+- Shell wrappers must express a command split across source lines as an argv array expanded with
+  `"${args[@]}"` or place an explicit continuation on every continued line; indentation inside
+  `$()` does not continue an invocation. Fake `docker_call` or command-wrapper tests must reject
+  any exact argument-count or positional-order mismatch explicitly, without `$*` membership checks
+  or reliance on `errexit`. Before removing temporary failure artifacts, emit only a redacted
+  diagnostic containing the stable phase/action sequence plus byte counts and hashes; never delete
+  the only failure signal silently or print raw stderr/argv values.
+- Offline image-bundle tests use real OCI layout structure plus the supported classic structure.
+  They prove the OCI candidate manifest digest can differ from the config digest and reject
+  descriptor/config/layer hash or size drift, config diff-ID drift, non-standard JSON,
+  RepoTag/index-annotation/manifest conflicts, schema/media-type drift, reordered layer references,
+  extra/dangling blobs, unsafe or duplicate paths, and non-regular members. Before a production
+  retry, run the same validator-only contract against the exact engine-produced bundle without
+  loading it.
+- Post-load source-manifest tests execute the real collection/validation boundary instead of
+  stubbing the whole candidate gate. Fake runtime argument assertions must return nonzero
+  explicitly because `errexit` is suppressed when a function is called from a conditional. Prove
+  the former 163-entry partial scan fails through the real boundary, the exact 165-entry manifest
+  passes, transient output is EXIT-cleaned, and missing root, root hash drift, extra/replaced path,
+  duplicate, unsafe filename/hash/order and whitespace-path cases fail. Repeat both the positive
+  and old-command 163 rejection on the exact local candidate with network disabled, a read-only
+  filesystem, dropped capabilities and no image load.
+- Full post-load tests execute `assert_candidate_image` itself with strict fake-Docker arguments
+  and against the exact local inactive candidate. They cover image identity/labels, the full source
+  manifest, API plus all seven Compose module imports, non-root/default-off Settings, `pip check`,
+  OCR route construction, package shadowing, OpenAPI and Alembic. Every fake assertion returns
+  failure explicitly rather than relying on `errexit` inside command substitution or a conditional.
+  The static gate derives all eight Compose `*app-runtime` application services and compares them
+  with `APP_SERVICES` and the driver's entrypoint constants. Alembic checks consume the expected
+  head constant, require one exact revision declaration and reject any additional head by comparing
+  the complete output with one expected line.
+- Source-mode tests run the exact archive through the preflight-only validator, require canonical
+  evidence for all regular files, and cover `0644/0755` plus legacy `0664/0775` positives. They
+  reject regular and directory `0600/0700`, world-write, setuid/setgid/sticky, encoded type bits and
+  unknown modes in the candidate archive, including an unsafe explicit root directory. Separate
+  destination tests accept and preserve `0600/0644` for non-executable and `0700/0755` for
+  executable files, including a production-shaped 307-file `295x0600 + 12x0700` tree and a mixed
+  exact-mode tree. They reject destination `0664/0775`, world-write, special/unknown modes,
+  executable-class and ownership drift, malformed/duplicate/unsorted/escaping mode/owner/group
+  evidence, and mode or ownership changes after preflight. They prove a final-component symlink
+  replacement does not follow its target. A production-topology case places the application below
+  a non-root-owned mode-`0750` parent and uses a separate root-owned mode-`0700` backup root on the
+  same device; the old derived parent, missing/symlink/non-root/`0750`/`1777`/cross-device roots and
+  stale temporary directories/files/symlinks, longer reserved-prefix names and scan errors all
+  fail. Backup-ID directories must not collide with that prefix,
+  successful installs leave no temporary directory, and real 0664/0775 candidate bytes retain exact
+  restrictive destination modes. A recording wrapper must invoke the real local `install`, while a successful
+  no-op fake must fail post-install verification. Direct tests retain nested destination
+  ancestor-symlink and recovery coverage.
 - Local-release behavior tests also cover exact Codeup alias resolution, non-local Docker rejection,
   ambient Compose/provider/WeCom secret neutralization, persistent artifact evidence, pre-push and
   digest-only image exercise ordering, and interruption-safe remote cleanup.
