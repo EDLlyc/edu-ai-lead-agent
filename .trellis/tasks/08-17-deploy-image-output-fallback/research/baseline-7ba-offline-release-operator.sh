@@ -1270,8 +1270,13 @@ phase_migrate_and_probe() {
   after_sources=$(source_vector)
   [[ "$before_sources" == "$after_sources" && "$after_sources" == "$expected_source_vector" ]] || die "migration changed source metadata"
   docker_call run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-    --env "CONTENT_SCORING_VERSION=${SCORING_ACTIVE}" --entrypoint python "$candidate_id" -c \
-    'from app.core.config import Settings; from app.application.services.topic_selection import build_topic_scoring_config; s=Settings(); c=build_topic_scoring_config(s); assert c.version=="scoring-v1-preview.7-delivered-repeat-history" and c.effective_veto_rule_version=="topic-veto-v4-delivered-content" and s.image_ocr_enabled is True and s.image_diversity_enabled is True' </dev/null
+    --env "CONTENT_SCORING_VERSION=${SCORING_ACTIVE}" \
+    --env 'IMAGE_ENABLED=true' \
+    --env 'IMAGE_PROVIDER_MODE=fake' \
+    --env 'IMAGE_OCR_ENABLED=true' \
+    --env 'IMAGE_DIVERSITY_ENABLED=true' \
+    --entrypoint python "$candidate_id" -c \
+    'from app.core.config import Settings; from app.application.services.topic_selection import build_topic_scoring_config; s=Settings(); c=build_topic_scoring_config(s); assert c.version=="scoring-v1-preview.7-delivered-repeat-history" and c.effective_veto_rule_version=="topic-veto-v4-delivered-content" and s.image_enabled is True and s.image_provider_mode=="fake" and s.image_ocr_enabled is True and s.image_diversity_enabled is True' </dev/null
   [[ "$(sql_scalar 'SELECT version_num FROM alembic_version')" == "$EXPECTED_ALEMBIC_HEAD" ]] || die "Alembic head changed after candidate probe"
   [[ "$(durable_vector)" == "$expected_durable_vector" && "$(provider_vector)" == "$expected_provider_vector" && "$(source_vector)" == "$expected_source_vector" ]] || die "migration/probe changed a protected vector"
   [[ "$(zero_work_vector)" == "0:0:0:0:0:0:0" && "$(legacy_prompt_vector)" == "0:0:0" ]] || die "migration/probe created work before .7"

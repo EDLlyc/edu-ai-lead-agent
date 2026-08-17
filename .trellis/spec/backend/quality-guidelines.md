@@ -782,6 +782,12 @@ release artifacts, or production deployment automation change.
   with `APP_SERVICES` and the driver's entrypoint constants. Alembic checks consume the expected
   head constant, require one exact revision declaration and reject any additional head by comparing
   the complete output with one expected line.
+- A release probe must never assert a non-default `Settings` value while constructing `Settings()`
+  from defaults. Pass every asserted non-default value as an explicit, allowlisted environment
+  argument; use the side-effect-free fake provider plus disabled networking instead of production
+  credentials. The builder must execute the real candidate probe, and the production-operator
+  harness must bind its exact environment argv and independently reproduce the same probe contract,
+  so a locally repaired builder probe cannot leave a second stale copy in the activation path.
 - Source-mode tests run the exact archive through the preflight-only validator, require canonical
   evidence for all regular files, and cover `0644/0755` plus legacy `0664/0775` positives. They
   reject regular and directory `0600/0700`, world-write, setuid/setgid/sticky, encoded type bits and

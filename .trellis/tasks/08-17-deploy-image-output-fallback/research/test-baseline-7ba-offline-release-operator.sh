@@ -732,10 +732,68 @@ assert_static_contract() {
   require_text "$OPERATOR" 'unlink -- "$destination_evidence_file"'
   reject_text "$OPERATOR" 'cd /data && find'
   reject_text "$OPERATOR" 'CONTENT_SCORING_VERSION=scoring-v1-preview.6'
+  require_text "$OPERATOR" "--env 'IMAGE_ENABLED=true'"
+  require_text "$OPERATOR" "--env 'IMAGE_PROVIDER_MODE=fake'"
+  require_text "$OPERATOR" "--env 'IMAGE_OCR_ENABLED=true'"
+  require_text "$OPERATOR" "--env 'IMAGE_DIVERSITY_ENABLED=true'"
+  require_text "$OPERATOR" 's.image_enabled is True and s.image_provider_mode=="fake" and s.image_ocr_enabled is True and s.image_diversity_enabled is True'
   reject_text "$OPERATOR" 'compose_call up --no-build backend-migrate'
   reject_text "$OPERATOR" 'python -m app.seed_sources'
   reject_text "$OPERATOR" 'make release-prod'
 }
+
+assert_candidate_settings_probe_arguments() (
+  local calls="${test_root}/candidate-settings-probe.args"
+  local -a actual expected_prefix
+  expected_source_vector=10:38:10
+  expected_durable_vector=40:40
+  expected_provider_vector=30:30
+  candidate_id=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  : >"$calls"
+  source_vector() { printf '%s\n' "$expected_source_vector"; }
+  durable_vector() { printf '%s\n' "$expected_durable_vector"; }
+  provider_vector() { printf '%s\n' "$expected_provider_vector"; }
+  zero_work_vector() { printf '0:0:0:0:0:0:0\n'; }
+  legacy_prompt_vector() { printf '0:0:0\n'; }
+  remove_stale_migration_container() { :; }
+  compose_call() {
+    case "${1-}" in
+      run) return 0 ;;
+      ps) return 0 ;;
+      *) fail "unexpected compose call in candidate settings probe: ${1-}" ;;
+    esac
+  }
+  sql_scalar() {
+    [[ "$1" == 'SELECT version_num FROM alembic_version' ]] \
+      || fail "unexpected SQL in candidate settings probe"
+    printf '%s\n' "$EXPECTED_ALEMBIC_HEAD"
+  }
+  docker_call() { printf '%s\n' "$@" >"$calls"; }
+
+  phase_migrate_and_probe
+  mapfile -t actual <"$calls"
+  expected_prefix=(
+    run --rm --network none --read-only --cap-drop ALL
+    --security-opt no-new-privileges:true
+    --env "CONTENT_SCORING_VERSION=${SCORING_ACTIVE}"
+    --env IMAGE_ENABLED=true
+    --env IMAGE_PROVIDER_MODE=fake
+    --env IMAGE_OCR_ENABLED=true
+    --env IMAGE_DIVERSITY_ENABLED=true
+    --entrypoint python "$candidate_id" -c
+  )
+  ((${#actual[@]} == ${#expected_prefix[@]} + 1)) \
+    || fail "candidate settings probe argument count drifted"
+  for index in "${!expected_prefix[@]}"; do
+    [[ "${actual[$index]}" == "${expected_prefix[$index]}" ]] \
+      || fail "candidate settings probe argument order drifted at $index"
+  done
+  [[ "${actual[-1]}" == *'s.image_enabled is True'* \
+      && "${actual[-1]}" == *'s.image_provider_mode=="fake"'* \
+      && "${actual[-1]}" == *'s.image_ocr_enabled is True'* \
+      && "${actual[-1]}" == *'s.image_diversity_enabled is True'* ]] \
+    || fail "candidate settings assertion drifted"
+)
 
 assert_previous_source_metadata_contract() (
   local app_uid=4242 app_gid=4343
@@ -792,6 +850,7 @@ assert_exact_source_diff_contract() {
 bash -n "$OPERATOR" "$0"
 python3 -m py_compile "$VALIDATOR"
 assert_static_contract
+assert_candidate_settings_probe_arguments
 assert_previous_source_metadata_contract
 assert_exact_source_diff_contract
 assert_artifact_validator
