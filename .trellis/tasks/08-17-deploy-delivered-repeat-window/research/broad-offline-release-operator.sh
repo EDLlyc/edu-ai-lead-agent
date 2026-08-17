@@ -651,6 +651,32 @@ validate_source_transition() {
   done <"$additions_output"
 }
 
+previous_source_metadata_class() {
+  local semantic_mode=$1 destination_mode=$2 uid=$3 gid=$4 path=$5
+  local app_uid=$6 app_gid=$7
+  if [[ "$uid" == 0 && "$gid" == 0 ]]; then
+    case "${semantic_mode}:${destination_mode}" in
+      0644:600) printf 'root-nonexec\n'; return 0 ;;
+      0755:700) printf 'root-exec\n'; return 0 ;;
+      *) die "root-owned source mode differs from the f20 contract"; return 1 ;;
+    esac
+  fi
+  if [[ "$uid" == "$app_uid" && "$gid" == "$app_gid" \
+        && "$semantic_mode" == 0644 && "$destination_mode" == 664 ]]; then
+    case "$path" in
+      .gitattributes|.gitignore|AGENTS.md) printf 'app-metadata\n'; return 0 ;;
+    esac
+  fi
+  die "active source ownership or mode differs from the exact f20 contract"
+  return 1
+}
+
+assert_previous_source_metadata_distribution() {
+  local root_nonexec_count=$1 root_exec_count=$2 app_metadata_count=$3
+  [[ "$root_nonexec_count" == 292 && "$root_exec_count" == 12 && "$app_metadata_count" == 3 ]] \
+    || { die "f20 source metadata distribution differs from 292:12:3"; return 1; }
+}
+
 assert_exact_candidate_additions() {
   local additions=$1 expected
   expected=$(printf '%s\n' "${EXPECTED_SOURCE_ADDITIONS[@]}" | LC_ALL=C sort)
@@ -660,7 +686,8 @@ assert_exact_candidate_additions() {
 
 assert_previous_source() {
   local app_physical app_uid app_gid path destination semantic_mode
-  local destination_mode lifecycle
+  local destination_mode destination_uid destination_gid metadata_class lifecycle
+  local root_nonexec_count=0 root_exec_count=0 app_metadata_count=0
   [[ -f "$previous_source_manifest" && ! -L "$previous_source_manifest" ]] || die "previous source manifest is unsafe"
   [[ "$(stat -c '%a:%u:%g' "$previous_source_manifest")" == "600:0:0" ]] || die "previous source manifest ownership/mode mismatch"
   [[ "$(sha256sum "$previous_source_manifest" | awk '{print $1}')" == "$previous_source_manifest_sha256" ]] || die "previous source manifest checksum mismatch"
@@ -685,20 +712,29 @@ assert_previous_source() {
     if grep -Fxq -- "$path" "$previous_source_paths_file"; then
       lifecycle=existing
       [[ -f "$destination" && ! -L "$destination" && "$(realpath -e -- "$destination")" == "$destination" ]] || die "active source member is unsafe"
-      [[ "$(stat -c '%u:%g' "$destination")" == "${app_uid}:${app_gid}" ]] || die "active source ownership is non-uniform"
       destination_mode=$(stat -c '%a' "$destination")
-      case "${semantic_mode}:${destination_mode}" in
-        0644:600|0644:644|0755:700|0755:755) ;;
-        *) die "active source mode conflicts with candidate semantic mode" ;;
+      destination_uid=$(stat -c '%u' "$destination")
+      destination_gid=$(stat -c '%g' "$destination")
+      metadata_class=$(previous_source_metadata_class "$semantic_mode" "$destination_mode" \
+        "$destination_uid" "$destination_gid" "$path" "$app_uid" "$app_gid")
+      case "$metadata_class" in
+        root-nonexec) root_nonexec_count=$((root_nonexec_count + 1)) ;;
+        root-exec) root_exec_count=$((root_exec_count + 1)) ;;
+        app-metadata) app_metadata_count=$((app_metadata_count + 1)) ;;
+        *) die "unknown previous source metadata class" ;;
       esac
     else
       lifecycle=addition
       [[ ! -e "$destination" && ! -L "$destination" ]] || die "candidate-only source destination already exists"
       case "$semantic_mode" in 0644) destination_mode=600 ;; 0755) destination_mode=700 ;; *) die "candidate-only semantic mode is invalid" ;; esac
+      destination_uid=0
+      destination_gid=0
     fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$lifecycle" "$semantic_mode" "$destination_mode" "$app_uid" "$app_gid" "$path" >>"$destination_evidence_file"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$lifecycle" "$semantic_mode" "$destination_mode" "$destination_uid" "$destination_gid" "$path" >>"$destination_evidence_file"
   done <"$source_modes_file"
   [[ "$(wc -l <"$destination_evidence_file" | tr -d '[:space:]')" == "$expected_source_file_count" ]] || die "destination evidence count mismatch"
+  assert_previous_source_metadata_distribution \
+    "$root_nonexec_count" "$root_exec_count" "$app_metadata_count"
   (cd "$APP_DIR" && sha256sum -c "$previous_source_manifest") >/dev/null
 }
 

@@ -49,6 +49,13 @@
 - [x] Verify the retained seven queued copy rows are dated 2026-08-04 through 2026-08-11 and the
   retained legacy packages are before today; current-day actionable copy/package counts are zero.
   Gate current-day due copy work plus all running copy and nonterminal WeCom work, not inert history.
+- [x] Record that the first operator invocation failed closed during the previous-source metadata
+  check, before writer stop, candidate load, or backup; an independent read-only audit verified all
+  production services, source, tags, environment, database, and object state remained unchanged.
+- [x] Replace the invalid uniform-owner assumption with the exact observed f20 contract: 292
+  root-owned mode-0600 files, 12 root-owned mode-0700 files, and only `.gitattributes`, `.gitignore`,
+  and `AGENTS.md` app-owned mode-0664. Preserve actual per-file uid:gid evidence and reject any
+  aggregate, owner, mode, or path drift in the focused harness.
 - [ ] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
   candidate tag, revalidate hashes/image, and require candidate running count zero.
 - [ ] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret

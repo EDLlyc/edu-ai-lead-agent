@@ -593,6 +593,7 @@ assert_static_contract() {
   require_text "$OPERATOR" '"$(zero_work_vector)" == "0:0:0:0:0:0:0" && "$(legacy_prompt_vector)" == "0:0:0"'
   require_text "$OPERATOR" "r.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date"
   require_text "$OPERATOR" "j.available_at<=now()"
+  require_text "$OPERATOR" 'root_nonexec_count" == 292 && "$root_exec_count" == 12 && "$app_metadata_count" == 3'
   reject_text "$OPERATOR" 'assert_startup_projection_zero'
   require_text "$OPERATOR" 'rollback-tag-inventory.txt'
   require_text "$OPERATOR" 'assert_rollback_tags'
@@ -600,6 +601,40 @@ assert_static_contract() {
   reject_text "$OPERATOR" 'python -m app.seed_sources'
   reject_text "$OPERATOR" 'make release-prod'
 }
+
+assert_previous_source_metadata_contract() (
+  local app_uid=4242 app_gid=4343
+  export BROAD_OFFLINE_SOURCE_ONLY=1
+  # shellcheck source=broad-offline-release-operator.sh
+  source "$OPERATOR"
+  [[ "$(previous_source_metadata_class 0644 600 0 0 backend/app/api_main.py "$app_uid" "$app_gid")" == root-nonexec ]]
+  [[ "$(previous_source_metadata_class 0755 700 0 0 scripts/release-prod.sh "$app_uid" "$app_gid")" == root-exec ]]
+  [[ "$(previous_source_metadata_class 0644 664 "$app_uid" "$app_gid" .gitattributes "$app_uid" "$app_gid")" == app-metadata ]]
+  [[ "$(previous_source_metadata_class 0644 664 "$app_uid" "$app_gid" .gitignore "$app_uid" "$app_gid")" == app-metadata ]]
+  [[ "$(previous_source_metadata_class 0644 664 "$app_uid" "$app_gid" AGENTS.md "$app_uid" "$app_gid")" == app-metadata ]]
+  assert_previous_source_metadata_distribution 292 12 3
+  if previous_source_metadata_class 0644 664 "$app_uid" "$app_gid" backend/app/api_main.py "$app_uid" "$app_gid" >/dev/null 2>&1; then
+    fail "group-writable application source was accepted"
+  fi
+  if previous_source_metadata_class 0644 644 0 0 README.md "$app_uid" "$app_gid" >/dev/null 2>&1; then
+    fail "unreviewed root-owned source mode was accepted"
+  fi
+  if previous_source_metadata_class 0644 644 "$app_uid" "$app_gid" .gitattributes "$app_uid" "$app_gid" >/dev/null 2>&1; then
+    fail "app-owned metadata mode drift was accepted"
+  fi
+  if previous_source_metadata_class 0644 664 9999 "$app_gid" .gitattributes "$app_uid" "$app_gid" >/dev/null 2>&1; then
+    fail "app-owned metadata uid drift was accepted"
+  fi
+  if previous_source_metadata_class 0644 664 "$app_uid" 9999 .gitignore "$app_uid" "$app_gid" >/dev/null 2>&1; then
+    fail "app-owned metadata group drift was accepted"
+  fi
+  if assert_previous_source_metadata_distribution 291 13 3 >/dev/null 2>&1; then
+    fail "root source class distribution drift was accepted"
+  fi
+  if assert_previous_source_metadata_distribution 292 11 4 >/dev/null 2>&1; then
+    fail "app metadata distribution drift was accepted"
+  fi
+)
 
 assert_c66_allowlist() {
   local manifest="${test_root}/c66-paths" count
@@ -616,6 +651,7 @@ assert_c66_allowlist() {
 bash -n "$OPERATOR" "$0"
 python3 -m py_compile "$VALIDATOR"
 assert_static_contract
+assert_previous_source_metadata_contract
 assert_c66_allowlist
 assert_artifact_validator
 assert_fake_recovery

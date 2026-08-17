@@ -89,6 +89,23 @@ none is entered by hand.
    arguments with `sha256sum` and `stat -c '%u %g'`; do not assume root ownership. Durable/provider/
    source vectors and the safe-until time come only from the reviewed read-only preflight queries.
 
+## Pre-mutation fail-safe and source metadata contract
+
+The first checksum-bound operator invocation rejected the live f20 source tree because the earlier
+contract incorrectly required uniform app ownership. The rejection occurred in the previous-source
+check, before any writer was stopped, candidate image was loaded, or backup was created. An
+independent read-only audit then verified that production services, source, image tags, environment,
+database state, and object state were unchanged.
+
+The live previous-source distribution is now bound exactly: 292 regular non-executable files are
+root:root mode-0600, 12 executable files are root:root mode-0700, and exactly `.gitattributes`,
+`.gitignore`, and `AGENTS.md` are owned by the application uid:gid (observed as 1000:1001) mode-0664.
+The destination evidence records each file's actual uid:gid. The focused harness uses explicit
+non-root synthetic application IDs, accepts all three reviewed classes and only the 292:12:3
+aggregate, and rejects owner, mode, approved-path, and aggregate distribution drift.
+The backend release quality spec now records this as a one-time f20 bootstrap exception rather
+than weakening the repository-wide destination-mode contract.
+
 ## Remaining release work
 
 The initial clean Codeup candidate at `c387966...` was built and passed offline runtime validation.
@@ -118,8 +135,8 @@ the first stop and immediately before each scheduler/dispatcher, starts them seq
 rechecks the same vectors after each start; any post-`.7` creation/drift reaches the existing
 stop-all-eight incident disposition.
 
-- Operator SHA-256: `9586bc12968362b18ef6b4f0d5604111d1c79f63a38dc70624c9cda1d7d92a97`
-- Operator harness SHA-256: `80daf88fd585e6321a0e405757ce623b9edd2c33666c45c34883e30f0b7f0d0f`
+- Operator SHA-256: `29de23c7909c5ce02e9df42090c42a05475583849f7771928e0ea459c3069691`
+- Operator harness SHA-256: `ce5d3c0a426c46f45c8d5d3356903f2e64e167c49b73dfc2f7b975836b52a94a`
 - Validator SHA-256: `183db15c8938e9e235b0529d227ee6c0ed32bbb9460dc40d5bd2a06197e6515b`
 - Builder SHA-256: `873080ab8ba20e5073bfbaa327663062ce529c60ccc661bf96ec4a5ae99da7b1`
 - Builder harness SHA-256: `b6284cec4a66299b8b2c034a6c8e258e6e93df0e2c34cd6050e1e8cca0614963`

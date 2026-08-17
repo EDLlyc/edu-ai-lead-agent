@@ -599,6 +599,12 @@ release artifacts, or production deployment automation change.
   executable candidate. Before quiesce, bind every candidate semantic mode, exact destination
   mode, owner, group and path in one deterministically ordered evidence record; reject destination
   group-write, world-write, special bits, unknown modes, ownership drift or executable-class drift.
+  The one-time f20 local-tag bootstrap is the only reviewed exception: it may preserve mode-`0664`
+  at the application uid/gid for exactly `.gitattributes`, `.gitignore`, and `AGENTS.md`, only when
+  the complete previous-source distribution is exactly `292x root:root 0600 + 12x root:root 0700 +
+  3x app-owned 0664`. Bind every actual uid/gid/mode before the first stop and preserve the same
+  values through both candidate installation and rollback; any other group-writable path or
+  distribution drift fails closed. This exception is not a reusable destination-mode class.
   Overlay must preserve each bound destination mode exactly, so `0600/0700` never broadens to
   `0644/0755`. Reject all other candidate modes, special bits, world-write, non-regular members and
   mode-evidence drift. Archive
@@ -687,7 +693,7 @@ release artifacts, or production deployment automation change.
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
-| Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path |
+| Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path. The sole f20 bootstrap exception is the exact three named app-owned `0664` metadata files under the bound `292:12:3` distribution. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
@@ -762,7 +768,9 @@ release artifacts, or production deployment automation change.
   successful installs leave no temporary directory, and real 0664/0775 candidate bytes retain exact
   restrictive destination modes. A recording wrapper must invoke the real local `install`, while a successful
   no-op fake must fail post-install verification. Direct tests retain nested destination
-  ancestor-symlink and recovery coverage.
+  ancestor-symlink and recovery coverage. The f20 bootstrap harness separately accepts only the
+  three named app-owned metadata paths at `0664`, requires the exact `292:12:3` aggregate, and
+  rejects path, owner, group, mode, and aggregate drift.
 - Local-release behavior tests also cover exact Codeup alias resolution, non-local Docker rejection,
   ambient Compose/provider/WeCom secret neutralization, persistent artifact evidence, pre-push and
   digest-only image exercise ordering, and interruption-safe remote cleanup.
