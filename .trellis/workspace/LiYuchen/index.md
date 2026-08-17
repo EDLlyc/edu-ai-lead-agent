@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 46
+- **Total Sessions**: 47
 - **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1028 | Active |
+| `journal-1.md` | ~1055 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 47 | 2026-08-17 | 部署图片格式容错修复 | `f33b275`, `7d22c0b`, `35b5e38`, `97d7e4c`, `d05de72`, `b5cfaf4`, `2ed88b8` | `main` |
 | 46 | 2026-08-17 | Harden image provider output recovery | `cbc27b2` | `main` |
 | 45 | 2026-08-17 | 以最终成功推送作为重复窗口依据 | `3607c78` | `main` |
 | 44 | 2026-08-15 | 视觉多样性生产有界验收 | `f700a52` | `main` |

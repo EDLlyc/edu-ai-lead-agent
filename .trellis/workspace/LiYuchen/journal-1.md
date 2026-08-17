@@ -1026,3 +1026,30 @@ Switched Comfly GPT-Image-2 to URL output, added one durable malformed-represent
 ### Status
 
 [OK] **Completed**
+
+
+## Session 47: 部署图片格式容错修复
+
+**Date**: 2026-08-17
+**Task**: 部署图片格式容错修复
+**Branch**: `main`
+
+### Summary
+
+将 cbc27b2 图片供应商格式容错修复推送到 Codeup，构建并校验离线候选；首次发布因 Settings 探针未注入生产开关而自动恢复，修复并经 retry2 成功部署。生产现运行 cbc27b2，8 服务 restart0，Alembic 0021，.7/Comfly/OCR/多样性保持启用，provider/WeCom/业务向量零增量。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f33b275` | (see git log) |
+| `7d22c0b` | (see git log) |
+| `35b5e38` | (see git log) |
+| `97d7e4c` | (see git log) |
+| `d05de72` | (see git log) |
+| `b5cfaf4` | (see git log) |
+| `2ed88b8` | (see git log) |
+
+### Status
+
+[OK] **Completed**
