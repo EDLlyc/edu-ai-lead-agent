@@ -11,27 +11,30 @@
 
 ## Phase 2 — Commit and Codeup
 
-- [ ] Commit reviewed task-local tooling/docs without altering application commit `cbc27b2`.
-- [ ] Fetch Codeup, require no remote-only commit, and fast-forward push local `main`.
-- [ ] Verify remote main contains both `cbc27b2` and the operator commit; no force push.
+- [x] Commit reviewed task-local tooling/docs without altering application commit `cbc27b2`.
+- [x] Fetch Codeup, require no remote-only commit, and fast-forward push local `main`.
+- [x] Verify remote main contains both `cbc27b2` and the operator commit; no force push.
 
 ## Phase 3 — Build artifacts
 
-- [ ] Create a clean detached worktree at `cbc27b2` and build the offline candidate from the pinned
+- [x] Create a clean detached worktree at `cbc27b2` and build the offline candidate from the pinned
       dependency base.
-- [ ] Run full artifact/runtime/source/OpenAPI/Alembic/fallback gates; record exact hashes and sizes.
-- [ ] Assemble and independently validate the protected transfer stage.
+- [x] Run full artifact/runtime/source/OpenAPI/Alembic/fallback gates; record exact hashes and sizes.
+- [x] Assemble and independently validate the protected transfer stage.
 
 ## Phase 4 — Deploy once
 
-- [ ] Take fresh double-sample read-only production baseline and safe-window evidence.
-- [ ] Transfer exact stage, verify remote hashes/modes, then invoke the operator exactly once.
-- [ ] Do not interrupt after first stop/backup. If it exits nonzero, allow its single recovery and
+- [x] Take fresh double-sample read-only production baseline and safe-window evidence.
+- [x] Transfer exact stage, verify remote hashes/modes, then invoke the operator exactly once. The
+      unique invocation exited 1 at its post-migration Settings probe.
+- [x] Do not interrupt after first stop/backup. If it exits nonzero, allow its single recovery and
       perform only independent read-only recovery verification; do not rerun.
 
 ## Phase 5 — Verify and record
 
 - [ ] Verify exact cbc image/source/markers, eight services/restart0, API/PG/MinIO health, scoring
       `.7`, OCR/diversity `true:true`, Alembic head and zero provider/WeCom delta.
-- [ ] Update task result with backup/artifact/operator/result hashes and any recovery evidence.
+- [x] Record the failed activation, fresh backup, automatic recovery, independent 16-second prior
+      runtime/vector verification and exact probe root cause in `result.md`.
+- [ ] Update task result with successful activation hashes and final acceptance evidence.
 - [ ] Commit/push evidence only after production actions have stopped; archive the task and journal.
