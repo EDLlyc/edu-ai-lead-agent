@@ -172,6 +172,22 @@ services, recreate the nine backend/migration service tags from the same target 
 (expected no-op at Alembic 0021), then restore services in dependency order. No frontend artifact
 is built into or copied to production.
 
+The source archive's reviewed `0644/0664` and `0755/0775` classes describe candidate executable
+semantics, not permission widening for the active tree. Before quiesce, every exact existing path
+must be a regular anchored file owned by the reviewed application owner/group and use only
+`0600/0644` for non-executable content or `0700/0755` for executable content. The driver binds that
+exact destination mode to the candidate semantic evidence and preserves it through atomic overlay;
+a stricter `0600/0700` destination is never broadened to `0644/0755`. Group/world-write, special or
+unknown destination modes, class/ownership/path drift and preflight-to-overlay changes fail closed.
+
+Atomic payloads are staged only below fixed `/var/backups/edu-ai/releases`, never below a path
+derived from `/opt`. Before any stop, that exact root must be a physical non-symlink `root:root`
+mode-0700 directory on the application device with no stale reserved-prefix child. Generated
+children use an exact six-alphanumeric suffix, are root:root 0700, prefix-disjoint from rollback
+IDs, and are revalidated before `mv -T`. The stale scan propagates scan errors and rejects any
+reserved-prefix object without printing its name; trap cleanup deletes only an exact physical
+direct generated child and does not traverse a changed or symlink root.
+
 Live gates are sequential and stop on first failure:
 
 1. With production delivery/schedulers unable to act, generate a protected local 1024×1024 PNG
@@ -192,3 +208,72 @@ Live gates are sequential and stop on first failure:
 - Any failure after env edit: atomically restore the mode-600 env backup, recreate only affected
   services on the previous verified image, then restore dispatcher last.
 - Unknown provider/delivery state is failure; do not retry another item or manually send.
+
+## 8. User-authorized final fast-path release
+
+After the reviewed atomic driver repeatedly recovered safely at operator-only source-install
+guards, the user explicitly authorized one narrower final production path. This was an operational
+exception to the complex driver, not a weakening of its reusable contract: the exact inactive
+candidate, protected source archive and 307-entry checksum manifest remained the release inputs;
+both image-diversity and OCR flags remained false; and no fixture, provider call, enqueue, retry,
+resend or manual delivery was permitted.
+
+The fast path required a terminal ordinary business baseline before any stop. It then acquired the
+backup lock, quiesced the same eight application services, created a unique PostgreSQL/source/env/
+marker/tag rollback set, and retained the earlier full MinIO/brand rollback because this release
+neither migrated nor modified object data. The source archive was overlaid directly at the physical
+application root by root with `umask 077`, `tar --no-same-owner --no-same-permissions`, followed by
+all 307 checksum checks. Full/short markers and the shared plus nine service tags were advanced only
+after the backup completed. Migration remained an Alembic-0021 no-op, services were recreated in
+dependency order with the dispatcher last, and a 15-second stable counter gate closed the release.
+
+Any failure after quiesce was required to stop candidate services, restore source/env/release/
+markers and all active tags from the fast backup, recreate the previous services with the
+dispatcher last, verify counters, and stop without a second attempt. The path deliberately skipped
+another OCI/full-candidate/307-topology run and another MinIO/brand mirror because those inputs and
+gates were already independently frozen and the authorized mutation did not touch object storage.
+
+## 9. One-shot live OCR activation gate
+
+After the default-off release, the user separately authorized one paid `glm-ocr` fixture attempt
+and activation only after an exact three-line ordered PASS. The bounded runner used the exact active
+candidate image, a deterministic protected 1024-pixel PNG, `AI_MAX_ATTEMPTS=1`, and direct
+`ZhipuImageTextRecognizer` execution. It had no database, MinIO, Comfly, news or WeCom workflow and
+was not allowed to enqueue, retry, regenerate, resend or activate on an unknown result.
+
+The initial remote preparation stopped before Docker because its protected minimal environment had
+13 lines while the wrapper asserted 12; cleanup completed and no HTTP request was started. After
+that local assertion was corrected, the sole authorized Docker invocation returned only the safe
+cleanup marker and outer exit status 1. It emitted none of the required typed OCR fields. Because
+the wrapper removed its protected stderr and did not print the captured Docker status on that
+failure path, both the exact Docker exit code and whether an HTTP request crossed the provider
+boundary are unknown. Under the gate contract, unknown is failure: no second call is permitted and
+the production flags must remain `false:false`.
+
+Failure-state verification therefore replaces the activation branch. It requires exact fixture and
+container cleanup, two stable service samples, healthy API, unchanged candidate/restart counts,
+false API/worker flags, and zero durable/provider/WeCom aggregate deltas. A future attempt, if ever
+separately authorized, must first preserve a typed pre-request marker and always surface the Docker
+status and counted HTTP-attempt result without exposing provider bodies or credentials.
+
+## 10. User-authorized activation without another paid fixture
+
+The user subsequently lowered the activation acceptance boundary and explicitly authorized turning
+the feature on without another provider fixture. A fresh official-contract review confirmed that
+the c66 adapter's `/layout_parsing` endpoint, `glm-ocr` model, private data-URI request, 10 MiB
+input limit and raw `layout_details` pages-to-elements shape match the current provider contract.
+The prior unknown result remains a wrapper-observability failure and is not evidence of a provider
+or adapter rejection.
+
+The minimal activation contract allows no provider, fixture, queue or delivery action. Both feature
+keys must be absent from the primary and release env files and runtime must still resolve the safe
+Compose defaults. Activation then protects the exact primary env, appends only the two explicit
+`true` assignments, renders Compose, and recreates only acquisition API and content worker with
+`--no-build --no-deps`. The dispatcher is neither stopped nor recreated. Runtime must retain the
+exact candidate, restart zero, healthy API, `glm-ocr` limits, one regeneration and disabled quality
+audit. A 15-second gate requires unchanged provider and WeCom aggregates and zero running work.
+
+Any failure after the env move restores the protected original bytes atomically and recreates those
+same two services on their default `false:false` contract. The retained env backup is the activation
+rollback artifact; this exception does not authorize a paid test, manual enqueue, retry, resend or
+delivery.

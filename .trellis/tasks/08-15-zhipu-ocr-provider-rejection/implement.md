@@ -534,3 +534,651 @@ the hard zero-work preflight still blocks release. No checksum grants permission
 deploy; a fresh stable baseline, independent review, new authorization and safe window remain
 mandatory. This correction used no SSH, production access, provider call, service action, or
 durable mutation.
+
+## Authorized default-off retry — failed closed before image load
+
+- [x] After the ordinary noon delivery became terminal, a fresh 15-second gate passed at exact
+  durable vector `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`,
+  actionable/running/unknown all zero, WeCom `25:49:0:0:0:1`, historical queued `7:0`, and
+  provider/delivery tuple `391:49:35:44`. The exact reviewed driver was copied as the protected
+  stage's sole tenth member and invoked once through its absolute-path/root/cwd/null-stdin contract.
+- [x] The driver quiesced all eight application services and completed fresh rollback
+  `20260816T044848Z-zhipu-ocr-default-off`. Protected manifest SHA-256 is
+  `179c004951e911e5c435df92aa299608f1f488199ef397bca3e9d7df52d9371f`; PostgreSQL dump is
+  10,041,130 bytes / `c14ea603766ca1467b5c1e9602d99baf63fef13699230f47b451848927f23d66`;
+  the 708-file MinIO manifest is
+  `704a6937016a07c2fe843611afb3088efe85fa96d6b3bc5cabe391e385f2f4a8`; brand/code archives are
+  `4fb13a0ca7698adbd946a444a0bea8c18390c6397d6b6a33cbb6168034efe4dc` /
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`; active/rollback image
+  inventories are `aeb0397afd7771fc2d17e766b42a693910545be98f73072c9b47f566a765ed1a` /
+  `af320587843168bc565a6a3451aa3da9cde988dfb9b0866fc52183e64685bbc1`.
+- [ ] The next gate failed before `docker image load`: the OCI-style archive records Config as
+  `blobs/sha256/695d4b23d5cfa5a09ac156f9308b23d3e7615b342a00aad19c619bc62f30db0a`,
+  while the driver required `<candidate-image-id>.json`, producing
+  `image bundle config digest mismatch`. Recovery phase state was `backup_ready=1`,
+  `tags_changed=0`, `overlay_changed=0`; no candidate tag, source, marker, one-shot or migration
+  mutation began.
+- [x] Driver recovery completed and independent verification found exact prior release
+  `331a4942a84b36811cbbc4abff68bca2abc71f0c` /
+  `sha256:aec802ded8ffbcfec0e4bb89a0a46565355684869b5b4e1ceb48b4d789ff916f`,
+  all eight services running at restart zero, healthy infrastructure, prior markers/source, exact
+  shared-plus-service tags, forbidden service-local tags absent, candidate running count zero,
+  false flags, safe logs, and every fresh vector above unchanged. The mode-0600 safe driver log
+  SHA-256 is `bf8e2f0368c32a6b21addec150c0e13a3097b1fe2443b5848e6f7aa23d7534cd`.
+
+The single authorized invocation exited 1 and was not repeated. The protected ten-member stage and
+fresh rollback remain retained; `release-result.txt` is absent because no release completed. No
+OCR/Comfly/image-generation/WeCom provider call, fixture, enqueue/retry/resend, activation, commit
+or push occurred. Independent review must reconcile the OCI/containerd bundle Config semantics
+with the loaded candidate identity before any new execution authorization.
+
+### Offline OCI/containerd archive-validator correction
+
+The failed gate's identity semantics were reproduced without loading the image. The exact local
+bundle is an OCI layout even though it also carries Docker-compatible `manifest.json`: its sole
+`index.json` image-manifest descriptor and candidate ID are
+`sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`, while its config
+descriptor/blob is independently
+`sha256:695d4b23d5cfa5a09ac156f9308b23d3e7615b342a00aad19c619bc62f30db0a`. Treating the latter
+as the candidate identity was the exact format-assumption defect.
+
+The mode-0600 driver now exposes a load-before-mutation `validate_candidate_bundle` gate that
+selects OCI only from the explicit paired `oci-layout`/`index.json` markers and otherwise validates
+the supported classic form. OCI validation requires one exact index descriptor and RepoTag, binds
+the descriptor digest to the candidate ID, checks descriptor media type/size and manifest blob
+hash, binds both real containerd/OCI index annotations to that RepoTag, validates the config and
+every ordered layer descriptor/blob by hash and size, requires the reviewed `linux/amd64` platform,
+verifies ordered `rootfs.diff_ids` against the decompressed raw/gzip layers, and requires exact
+agreement with `manifest.json` Config/Layers.
+It rejects non-standard JSON, conflicting format markers, extra
+images, extra/dangling blobs, duplicate descriptors or tar members, path traversal, unsafe names,
+non-regular members, unexpected fields and member-count/size excess. The existing post-load image
+identity, provenance labels, embedded-source, non-root, import/OpenAPI/pip/Alembic and default-off
+gates remain unchanged; `tags_changed` is still armed before the actual load command.
+
+The current driver SHA-256 is
+`db4bc3b5d8ab9976392930f87f1ba6ac2b866f9c70fa8460e6d95a643fd28547`; the mode-0600 harness
+SHA-256 is `ac7257f200d6ed231f693173052de6f19dc1b8bbc724e941b5e6d0d64b6601b9`. `bash -n` passed for
+both. The full harness passed realistic two-layer OCI and supported-classic positives, the critical
+candidate-manifest-vs-config regression, bundle phase arming, and descriptor/config/layer
+hash/size/diff-ID, strict JSON/schema/media, exact index-annotation/RepoTag mapping,
+index/manifest ordering, dangling/unsafe/duplicate/non-regular negatives along with all existing
+signal, early/mid/late recovery and mixed-tag cases. The exact 126 MiB candidate
+bundle passed the same validator-only function with its isolated tag and manifest digest; no
+`docker load` occurred.
+ShellCheck and gitleaks were not installed in the offline environment; the static
+forbidden-action gates, full sandbox harness, targeted changed-shell secret scan and
+`git diff --check` remained the available checks.
+
+This was an offline-only correction: it did not access SSH, production, Docker services, providers
+or WeCom, and did not transfer, quiesce, back up, retag, overlay, restart, enqueue, retry, resend,
+build or enable either visual flag. The earlier ordinary attempt-zero noon delivery blocker and
+its later terminal progression remain historical preflight evidence; the one authorized retry
+still ended recovered before image load. Neither these new hashes nor the retained fresh rollback
+set authorize another attempt. Reuse still requires exact durable-state equivalence, a fresh
+independent review and explicit authorization; otherwise a new quiesced backup is mandatory.
+
+## Authorized OCI-corrected default-off retry — recovered exit 1
+
+- [x] Fresh 18-second production samples and the immediate invocation boundary retained durable
+  vector `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`, WeCom
+  `25:49:0:0:0:1`, historical queued `7:0`, provider/delivery tuple `391:49:35:44`, and zero
+  actionable/running/unknown work. Business date was `2026-08-16`; the reviewed
+  `2026-08-16T08:45:00Z` safe-until gate retained 10,242 seconds. Exact prior image/source/
+  markers/tags, eight restart-zero services, false flags, protected inputs, bounded logs and the
+  fresh 708-object MinIO aggregate all passed.
+- [x] Replaced only the old staged driver with the final mode-0600 artifact, SHA-256
+  `db4bc3b5d8ab9976392930f87f1ba6ac2b866f9c70fa8460e6d95a643fd28547`. The protected stage
+  remained mode 0700 with exactly ten mode-0600 regular members; source/image hashes and the
+  307/165-file manifests remained exact. The exact OCI bundle passed the production explicit-path
+  validator-only gate for isolated tag `edu-ai-lead-agent:offline-c66aa62` and candidate ID
+  `sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`. No harness was
+  transferred.
+- [x] Invoked the final driver exactly once as root from physical `/opt/edu-ai-lead-agent`, through
+  its absolute protected-stage path with stdin `/dev/null`. It quiesced writers and completed new
+  rollback `20260816T055519Z-zhipu-ocr-default-off` before advancing.
+- [x] The fresh backup verified with protected-manifest SHA-256
+  `0e1619252f8f8d7a88f42ef8f5ed4780f8f05c3c130b15320b571545dde4a13b`. PostgreSQL dump /
+  526-line catalog SHA-256 values are
+  `20062d931713c6c6bfbf6d79919ba9944c78f1ed3058dff0b2ce590fb777cb86` /
+  `a91f6b2c397218870fe87b92babc5c9636e684c7301d25019e9fb07bd34b9284`; the catalog matched
+  `pg_restore --list`. The 708-object MinIO manifest is
+  `704a6937016a07c2fe843611afb3088efe85fa96d6b3bc5cabe391e385f2f4a8`. Brand manifest,
+  brand archive and active-code archive hashes are
+  `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24`,
+  `4fb13a0ca7698adbd946a444a0bea8c18390c6397d6b6a33cbb6168034efe4dc`, and
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`; prior active-tag /
+  unique rollback-image inventory hashes are
+  `aeb0397afd7771fc2d17e766b42a693910545be98f73072c9b47f566a765ed1a` /
+  `a5f3c632ac065cb1c665b289799ee88b99abe8ede3c90f79b531675b2bd77ade`.
+- [ ] After bundle load armed `tags_changed=1`, the post-load image-source check failed as
+  `candidate image source manifest mismatch`. Exact root cause: the driver's runtime collection
+  produced 163 lines, while the frozen artifact contains 165; its collection omitted the exact
+  top-level `alembic.ini` and `pyproject.toml` entries. This is a driver manifest-scope defect, not
+  an OCI identity or candidate-content drift. Phase state was `backup_ready=1`,
+  `tags_changed=1`, `overlay_changed=0`, so no host overlay, one-shot, migration or candidate
+  service restoration occurred.
+- [x] Phase-aware recovery restored prior tags/services, logged `recovery completed`, and the one
+  invocation exited 1. Independent 16-second samples retained the exact baseline and provider/
+  delivery tuple, with zero actionable/running/unknown work. Prior source/markers/tags, all eight
+  restart-zero services, false flags, protected inputs, infrastructure and bounded logs passed;
+  candidate running count was zero. The protected stage and fresh rollback remain retained and
+  `release-result.txt` is absent. The driver was not run a second time.
+
+The target was not deployed. Model-invocation, image-attempt and WeCom-attempt counts had zero
+delta, so the retry caused no Zhipu OCR, Comfly, image-generation or Enterprise WeChat provider
+call. No fixture, enqueue, retry, resend, feature enablement, commit or push occurred. Execution is
+stopped pending the separately owned offline driver fix and a new explicit authorization.
+
+### Offline post-load 165-file manifest correction
+
+The post-load failure was reproduced locally without loading or modifying the image. The prior
+runtime command returned 163 entries and the frozen manifest returned 165; the exact set difference
+was only `alembic.ini` and `pyproject.toml`. Both root files already exist in candidate
+`sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2` and match their
+frozen hashes, so neither the candidate nor the reviewed expected count was changed.
+
+The driver now uses `assert_candidate_source_manifest` for the network-none, read-only,
+capability-dropped collection. It explicitly requires and emits the two non-symlink root files,
+adds regular `*.py`/`*.html` files below non-symlink `app/` and `alembic/`, and sorts their
+NUL-delimited names under an exported `LC_ALL=C` before empty-safe hashing. The extracted
+`validate_candidate_source_manifest` function parses both observed and frozen manifests as the
+exact safe scope, requiring 165 unique deterministically ordered entries, both roots and exact
+path/hash equality. Missing roots, replaced/extra paths, duplicates, unsafe or whitespace paths,
+hash drift and count drift fail before active retag or source overlay. The remaining post-load
+identity, provenance, non-root, import, pip, OCR route/Settings, OpenAPI and Alembic gates are
+unchanged.
+
+The final mode-0600 driver SHA-256 is
+`2430f8c1f54ad4db482e69b216b49eeb42df5bb630fe1603745d7358f485fefc`; the final mode-0600
+harness SHA-256 is `233c4b68f73639d1973f2eafb29d6ac109f2ac17ebeeeb01acd2275cbcbfb8bc`.
+Both passed `bash -n`. The complete fake harness now executes the real manifest collection branch
+with fake Docker output and fail-closed exact runtime-argument checks: the legacy 163-entry form
+fails through `assert_candidate_source_manifest`, exact 165 passes, the temporary observed
+manifest is EXIT-cleaned, and missing-root, root-hash, extra/replaced-path, whitespace/traversal/
+absolute/backslash/newline/scope/suffix/hash/order and duplicate cases fail. All existing OCI,
+rootfs-diff-ID, strict-JSON, annotation/tag, bundle-arming, signal/recovery and mixed-tag cases also
+pass. A local exact-candidate manifest-only positive passed with `--network none`, `--read-only`,
+`--cap-drop ALL` and `no-new-privileges`; the exact old command independently produced 163 entries
+and was rejected by the 165-entry validator. Neither probe performed a load.
+
+This correction was offline/local only. It did not access SSH or production and caused no image
+load, provider/WeCom call, transfer, service stop, backup, retag, overlay, restart, enqueue, retry,
+resend, build or flag change. The protected `20260816T055519Z-zhipu-ocr-default-off` rollback and
+its recovered production evidence remain recorded above, but these new hashes do not authorize a
+retry or establish current durable-state equivalence. A future execution requires a fresh
+independent review and explicit authorization.
+
+## Authorized final default-off retry — import probe recovered exit 1
+
+- [x] Verified final local driver/harness SHA-256 values
+  `2430f8c1f54ad4db482e69b216b49eeb42df5bb630fe1603745d7358f485fefc` /
+  `233c4b68f73639d1973f2eafb29d6ac109f2ac17ebeeeb01acd2275cbcbfb8bc`, mode 0600 and
+  `bash -n`. The exact local OCI bundle and loaded candidate passed the corrected 165-entry
+  manifest smoke including `alembic.ini` and `pyproject.toml`.
+- [x] Fresh production samples at `2026-08-16T06:17:13Z` and `06:17:31Z` retained durable vector
+  `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`, WeCom
+  `25:49:0:0:0:1`, historical queued `7:0`, provider/delivery tuple `391:49:35:44`, and zero
+  actionable/running/unknown work. Business date, exact prior services/source/markers/tags, false
+  flags, protected inputs, clean logs and fresh 708-object MinIO state all passed. The final
+  invocation sample retained 8,735 seconds before the `2026-08-16T08:45:00Z` safe-until boundary.
+- [x] Replaced only the staged driver. The stage remained mode 0700 with exactly ten mode-0600
+  files, exact source/image archives, 307/165-file manifests and artifact sidecars. The new remote
+  explicit-path OCI validator and network-none/read-only exact 165-entry manifest-only probe both
+  passed; candidate running count returned to zero before main invocation.
+- [x] Invoked the final driver exactly once as root from physical `/opt/edu-ai-lead-agent`, through
+  its absolute protected-stage path with stdin `/dev/null`. It quiesced writers and completed new
+  rollback `20260816T062022Z-zhipu-ocr-default-off`.
+- [x] The fresh backup verified with protected-manifest SHA-256
+  `6e301f7d3a0190e1192c744b520845b1956d0fd3034ea8099bf2fb34e3385c8f`. PostgreSQL dump /
+  526-line catalog hashes are
+  `dec08cf2b184785fbb84403d93f0a0878571a69d34d4fcf9f25463247e15a4b5` /
+  `e22c1c6b6614836c046b60fec118eab37f2802d3c643e7ac845d5183593f8751`; the catalog matched
+  `pg_restore --list`. MinIO manifest remained
+  `704a6937016a07c2fe843611afb3088efe85fa96d6b3bc5cabe391e385f2f4a8` for 708 objects. Brand
+  manifest/archive and active-code archive remained
+  `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24` /
+  `4fb13a0ca7698adbd946a444a0bea8c18390c6397d6b6a33cbb6168034efe4dc` /
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`. Prior active-tag /
+  unique rollback inventories are
+  `aeb0397afd7771fc2d17e766b42a693910545be98f73072c9b47f566a765ed1a` /
+  `3cd2d4a0d1f388e3156eed872506511be2201c92bf21bb0a5f47757b110419bf`.
+- [ ] After bundle load armed `tags_changed=1`, the post-load, pre-overlay import gate failed with
+  `ModuleNotFoundError: No module named 'app.acquisition_scheduler_main'`. The repository and exact
+  candidate manifest expose acquisition scheduler entrypoint `app.scheduler_main`; no
+  `app/acquisition_scheduler_main.py` exists. The driver probe therefore references a nonexistent
+  module. Phase state was `backup_ready=1`, `tags_changed=1`, `overlay_changed=0`; no host overlay,
+  one-shot, migration or candidate service restoration occurred.
+- [x] Phase-aware recovery restored prior tags/services, logged `recovery completed`, and the one
+  invocation exited 1. Independent samples at `06:22:32Z` and `06:22:49Z` retained every vector
+  and provider/delivery counter exactly. Prior release/image/source/markers/tags, eight restart-zero
+  services, false flags, protected inputs, infrastructure and bounded logs passed; candidate
+  running count was zero. `release-result.txt` is absent and the driver was not rerun.
+
+The target was not deployed. Model-invocation, image-attempt and WeCom-attempt counts had zero
+delta, so no Zhipu OCR, Comfly, image-generation or Enterprise WeChat provider call occurred. No
+fixture, enqueue, retry, resend, feature enablement, commit or push occurred. Execution is stopped
+pending a separately reviewed import-probe correction and new explicit authorization.
+
+### Offline Compose-bound import-probe correction
+
+The recovered failure was reproduced on the exact local candidate: importing the driver's stale
+`app.acquisition_scheduler_main` returned nonzero because no such module exists. Repository and
+Compose inspection binds the eight long-lived entrypoints to API `app.api_main:app` and seven
+modules `app.scheduler_main`, `app.worker_main`, `app.governance_scheduler_main`,
+`app.governance_worker_main`, `app.content_scheduler_main`, `app.content_worker_main` and
+`app.wecom_dispatcher_main`.
+
+The driver now defines `API_ENTRYPOINT_MODULE` and ordered `LONG_LIVED_ENTRYPOINT_MODULES` once.
+The candidate import probe receives those constants as arguments, uses `importlib`, and requires
+the imported names to equal the complete unique list; it also calls `openapi()` on the `app` object
+obtained from the exact API module. No service-name-derived alias remains. The harness derives all
+eight Compose `*app-runtime` application services and fails unless they equal `APP_SERVICES` and
+their API/seven module values equal the driver constants. It runs the complete
+`assert_candidate_image` path through fake image-inspect/run arguments whose every assertion
+returns nonzero explicitly, avoiding conditional/command-substitution `errexit` self-proof.
+
+The exact local full-gate smoke then found one further stale handwritten path: the driver named
+nonexistent migration `20260815_0021_add_image_ocr_delivery_fields.py`, while the candidate's valid
+revision lives in `20260815_0021_visual_controlled_diversity.py`. The gate now passes
+`EXPECTED_ALEMBIC_HEAD` into the candidate, requires exactly one matching declaration line and
+requires the complete `alembic heads` output to equal its one expected line. Filename drift and an
+additional head both fail.
+The corrected full smoke passed exact image/tag identity and provenance labels, the 165-file
+manifest, all eight entrypoints, non-root/default-off Settings, `pip check`, OCR route construction,
+package-shadow exclusion, OpenAPI equality and Alembic under network-none/read-only/cap-drop/
+no-new-privileges constraints. No image load occurred.
+
+The final mode-0600 driver SHA-256 is
+`c3f716bee66dcd64d328fc655bac26e3dfcdc1f052cb335451f4a411d9e74ad4`; the final mode-0600
+harness SHA-256 is `c01a63c5141bd49a9ebabfdcaa8cffd218a0dc0eded402fa1437758e21225aec`.
+Both pass `bash -n`; the full harness passes Compose-entrypoint binding, strict fake full-candidate
+gate, manifest/archive/tag/recovery and all prior failure-injection cases.
+
+This correction was offline/local only. It did not access SSH, production, providers or WeCom and
+performed no load, transfer, quiesce, backup, retag, overlay, restart, enqueue, retry, resend, build
+or feature change. The retained `20260816T062022Z-zhipu-ocr-default-off` backup/recovery evidence
+above remains unchanged. These hashes authorize no retry; current state gates, independent review
+and explicit authorization remain mandatory.
+
+## Authorized c3f716 default-off retry — source-mode recovered exit 1
+
+- [x] Verified final mode-0600 driver/harness SHA-256 values
+  `c3f716bee66dcd64d328fc655bac26e3dfcdc1f052cb335451f4a411d9e74ad4` /
+  `c01a63c5141bd49a9ebabfdcaa8cffd218a0dc0eded402fa1437758e21225aec` and `bash -n` without
+  repeating the already reviewed full harness/candidate gate.
+- [x] Fresh samples at `2026-08-16T06:46:43Z` and `06:47:00Z` retained durable vector
+  `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`, WeCom
+  `25:49:0:0:0:1`, historical queued `7:0`, provider/delivery tuple `391:49:35:44`, and zero
+  actionable/running/unknown work. Exact prior services/source/markers/tags, false flags,
+  protected inputs, clean logs and fresh 708-object MinIO state passed. The immediate invocation
+  boundary retained 6,976 seconds before `2026-08-16T08:45:00Z`.
+- [x] Replaced only the staged driver. The stage remained mode 0700 with exactly ten mode-0600
+  members, source/image archives and 307/165-file manifests unchanged; remote driver hash and
+  `bash -n` passed. Invoked it exactly once as root from physical `/opt/edu-ai-lead-agent`, by its
+  absolute protected-stage path with stdin `/dev/null`.
+- [x] The driver quiesced writers and completed fresh rollback
+  `20260816T064939Z-zhipu-ocr-default-off`. Protected-manifest SHA-256 is
+  `1c4af079eef19cd3bab42bc40d5f865be13ca7b1433e46423c860fa8ff5209cd`. PostgreSQL dump /
+  526-line catalog hashes are
+  `6ffcda7aacc5a4e5b9d4a372c8cc31faf44de4bf3eb776f009a631f00439476b` /
+  `caacbcff7d186df52553c39e205c11ae442bd84c1bb195e67509e8d43e50027a`; the catalog matched
+  `pg_restore --list`. MinIO manifest remained
+  `704a6937016a07c2fe843611afb3088efe85fa96d6b3bc5cabe391e385f2f4a8` for 708 objects. Brand
+  manifest/archive and active-code archive remained
+  `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24` /
+  `4fb13a0ca7698adbd946a444a0bea8c18390c6397d6b6a33cbb6168034efe4dc` /
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`. Prior active-tag /
+  unique rollback inventories are
+  `aeb0397afd7771fc2d17e766b42a693910545be98f73072c9b47f566a765ed1a` /
+  `31ba23e359066a9440846704cfe92ecb9f4d181aedfb323da658ece75a85e655`.
+- [ ] Candidate post-load gates reached and `pip check` passed. After active retag armed
+  `tags_changed=1`, host overlay armed `overlay_changed=1` and failed as `source member mode is
+  outside the reviewed allowlist`. The frozen source archive encodes all 307 regular files outside
+  the driver's `0600|0644|0700|0755` allowlist: 295 are mode 0664 and 12 are mode 0775. The sorted
+  manifest's first member, `.env.example`, is already 0664, so overlay fails on the first member.
+  Content/path hashes are unchanged; this is an archive-mode/driver-policy mismatch. No marker,
+  one-shot, migration or candidate service restoration occurred.
+- [x] Recovery restored the backed-up prior overlay, active tags and services, logged `recovery
+  completed`, and the single invocation exited 1. Independent samples at `06:51:53Z` and
+  `06:52:09Z` retained every vector/provider counter. Exact prior source/markers/tags, eight
+  restart-zero services, false flags, protected inputs, infrastructure and logs passed; candidate
+  running count was zero, `release-result.txt` was absent, and no second run occurred.
+
+The target was not deployed. Model-invocation, image-attempt and WeCom-attempt counts had zero
+delta, so no Zhipu OCR, Comfly, image-generation or Enterprise WeChat provider call occurred. No
+fixture, enqueue, retry, resend, activation, commit or push occurred. Execution is stopped pending
+a separately reviewed source-mode policy/normalization correction and new explicit authorization.
+
+### Offline canonical source-mode correction
+
+Exact local archive inspection reproduced the recovered failure without production access: all
+307 regular source members are noncanonical only because of group-write inheritance—295 are 0664
+and 12 are 0775—and the legacy allowlist rejects the first sorted member, `.env.example`. Paths and
+content hashes are unchanged.
+
+The driver now validates the archive's complete regular-file mode set during local extraction,
+before production preflight, quiesce or backup. It accepts only 0644/0664 as canonical 0644 and
+0755/0775 as canonical 0755, writes sorted exact 307-path mode evidence, and verifies the extracted
+tree and the current destination are regular non-symlink files in the expected executable class.
+Unsupported modes, special bits, world-write, duplicates, unsafe paths, path-set drift and
+non-regular members fail closed. Overlay iterates only this file evidence and calls `install` with
+the canonical 0644/0755 mode; no group-write bit or directory is preserved.
+
+The full fake harness covers canonical and group-writable positives; 0600, 0700, 0666, 0777,
+setuid, setgid, sticky and unknown-mode negatives; extracted-mode and destination executable-class
+drift; and strict fake `install -m 0644/0755` calls. It retains the complete candidate,
+OCI/classic archive, tag and early/mid/late recovery gates. The exact frozen archive passes the new
+preflight-only validator with `canonical_0644=295`, `canonical_0755=12` and 307 evidence lines;
+the former allowlist rejects it as expected.
+
+Initial implementation mode-0600 SHA-256 values before independent review were
+`870eb45bef00bd927aa270aa737780b745c1db4300347fb295d72ef2af961d6e` for the driver and
+`d6c2758de04a419f642d707a24a15bbcf2e20a6ebebb6a18c96db36a369a712b` for the harness.
+
+Independent review found and fixed two additional pre-extraction/overlay gaps. Directory members,
+including an explicit root member, now accept only 0755/0775 and reject world-write, special and
+encoded type bits before `tar --same-permissions`. Source and destination files are anchored to
+their physical absolute roots, preventing a nested ancestor symlink from escaping the reviewed
+tree; after `install`, exact canonical mode and owner/group are rechecked before the final manifest
+hash. Installation targets a generated root-only sibling and atomically replaces the destination,
+so a final-component symlink race cannot redirect `install`. The harness adds real directory-mode
+headers, unsafe mode-evidence syntax/order/path-set
+cases, a real local `/usr/bin/install` result, a successful no-op fake that must fail, and a nested
+destination symlink whose target remains unchanged. The exact 307-file archive still passes with
+`canonical_0644=295` and `canonical_0755=12`.
+
+Final independently reviewed mode-0600 SHA-256 values are
+`0074ca60fa46a64a16957f0ff684058ed62bb4f5d0466b85b7fb6d57339cba1c` for the driver and
+`7563e97eeb6778f60d104dee8ee7f40a5027999f6bb20ce8bcc881962e1865da` for the harness.
+
+This was offline/local only: no SSH, production, Docker load, transfer, quiesce, backup, retag,
+overlay, restart, provider/WeCom access, enqueue, retry, resend, build or flag change occurred. The
+retained `20260816T064939Z-zhipu-ocr-default-off` backup/recovery evidence above is unchanged. The
+artifact builder should normalize future source archives to 0644/0755; this compatibility gate does
+not authorize a retry or deployment.
+
+## Authorized 0074ca retry — pre-backup active-mode mismatch
+
+- [x] Verified final local driver/harness SHA-256 values
+  `0074ca60fa46a64a16957f0ff684058ed62bb4f5d0466b85b7fb6d57339cba1c` /
+  `7563e97eeb6778f60d104dee8ee7f40a5027999f6bb20ce8bcc881962e1865da`, mode 0600 and
+  `bash -n`, without repeating the independently reviewed harness/full candidate tests.
+- [x] Fresh samples at `2026-08-16T07:21:42Z` and `07:22:00Z` retained durable vector
+  `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`, WeCom
+  `25:49:0:0:0:1`, historical queued `7:0`, provider/delivery tuple `391:49:35:44`, and zero
+  actionable/running/unknown work. Exact prior services/source/markers/tags, false flags,
+  protected inputs, clean logs and fresh 708-object MinIO state passed. The immediate invocation
+  boundary retained 4,874 seconds before `2026-08-16T08:45:00Z`.
+- [x] Replaced only the staged driver. The stage remained mode 0700 with exactly ten mode-0600
+  members, source/image archives and 307/165-file manifests unchanged; remote hash and `bash -n`
+  passed. Invoked it exactly once as root from physical `/opt/edu-ai-lead-agent`, by its absolute
+  protected-stage path with stdin `/dev/null`.
+- [ ] Driver preflight mapped the exact archive to 295 canonical 0644 and 12 canonical 0755 files,
+  then `assert_previous_source` failed as `source mode class differs from the canonical contract`.
+  State was `backup_ready=0`, `tags_changed=0`, `overlay_changed=0`: the lock/quiesce/fresh-backup,
+  image load, retag, overlay, one-shot, migration and service-restoration phases did not begin.
+  Recovery completed and the invocation exited 1; it was not run again. No fresh backup ID or
+  checksum exists for this attempt, and `20260816T064939Z-zhipu-ocr-default-off` remains history
+  only.
+- [x] Independent samples at `07:24:58Z` and `07:25:15Z` retained every vector and provider/
+  delivery counter exactly. Prior release/image/source/markers/tags, eight restart-zero services,
+  false flags, protected inputs, infrastructure and logs passed; candidate running count was zero.
+- [x] A separately authorized one-shot read-only diagnosis streamed exact canonical evidence from
+  the stage driver's source-only pure validators into the 307 active destinations. Results were
+  295 current 0600 versus canonical 0644 plus 12 current 0700 versus canonical 0755: zero matches,
+  307 mismatches. Every destination was an `ubuntu:ubuntu` regular file whose realpath remained
+  inside physical `/opt/edu-ai-lead-agent`; the first sorted mismatch was `.env.example` at
+  0600/0644. Only 20 bounded mismatch rows were emitted, with no content/hash/env output and no
+  remote temporary file or mutation.
+
+The target was not deployed. Model-invocation, image-attempt and WeCom-attempt counts had zero
+delta, so no Zhipu OCR, Comfly, image-generation or Enterprise WeChat provider call occurred. No
+fixture, enqueue, retry, resend, activation, backup, commit or push occurred. Production access is
+stopped pending an independently reviewed active restrictive-mode compatibility decision and new
+explicit authorization.
+
+### Offline restrictive destination-mode preservation correction
+
+The pre-backup failure and its separately authorized read-only diagnosis remain the evidence
+boundary: candidate semantic evidence is 295 mode 0644 plus 12 mode 0755, while all 307 current
+destinations are stricter—295 mode 0600 plus 12 mode 0700—with regular `ubuntu:ubuntu` paths anchored
+inside the application root. No production mutation or fresh backup occurred in that attempt.
+
+The driver now separates candidate semantics from destination access policy. Archive/extracted
+files still accept only 0644/0664 -> semantic 0644 and 0755/0775 -> semantic 0755. Existing
+destinations accept only 0600/0644 for non-executable or 0700/0755 for executable content; group/
+world-write, special, unknown and class-mismatched modes fail. Before quiesce, exact sorted evidence
+binds each candidate semantic/path to its exact destination mode after owner/group and physical
+realpath checks. Overlay validates that binding again, rejects mode or ownership TOCTOU drift,
+installs into a root-only sibling using the preserved destination mode, atomically replaces the
+existing path, and then verifies realpath, exact mode, owner/group and byte equality. It never adds
+a path and never broadens 0600/0700 to 0644/0755.
+
+The full fake harness passes strict and canonical destinations, mixed per-file preservation,
+destination evidence tampering, group/world-write, special/unknown/class mismatch, post-preflight
+mode drift, no-op install and nested symlink negatives. Its production-shaped 307-file case proves
+the old exact comparison mismatches all 307 candidate/destination modes, while the corrected
+semantic binding installs exact candidate bytes and retains 295 mode 0600 plus 12 mode 0700. All
+existing full-candidate, OCI/classic, tag and early/mid/late/signal recovery gates remain green.
+The exact local archive plus a synthetic restrictive destination passes preflight-only with the
+same 295/12 mapping and 307 historical exact-mode mismatches.
+
+Initial implementation mode-0600 SHA-256 values before independent least-privilege review were
+`03e3fb11808d789cc9a6a6b8d5fcf48f4d42147f14fb78be62c5416c0771f013` for the driver and
+`aafbffeb15e8e7a2e7d0694f37500410df9925a457776067e5389f725a1448e6` for the harness.
+
+Independent review made destination evidence self-contained by binding owner/group on every
+semantic-mode/exact-mode/path row. It moved install temporaries out of the application-writable
+tree into the physical root-owned non-writable parent, requires root:root mode 0700 and the same
+destination filesystem before install and replacement, and retains cleanup on every trapped
+failure. The harness now uses real 0664/0775 modes in its 307-file candidate, rejects ownership
+drift and evidence ownership tampering, rejects escaped/non-root temporaries, proves zero temporary
+residue, and injects a final-component symlink immediately before `mv -T` to prove the external
+target is unchanged. The exact frozen archive installed over a generated restrictive destination
+and passed all 307 hashes with 295 mode 0600 and 12 mode 0700.
+
+Final independently reviewed mode-0600 SHA-256 values are
+`bcbe4dd7b3e580d7e025f3fb33cedab486d7d39f7164b653b9b0586c8d6fee1a` for the driver and
+`36038d89d0a1cc9918466c7b1692867f76487097618bacd5d59a32a09ae9df82` for the harness.
+This correction authorizes no retry or deployment.
+
+## Authorized bcbe4d retry — trusted-parent recovered exit 1
+
+- [x] Verified final local driver/harness SHA-256 values
+  `bcbe4dd7b3e580d7e025f3fb33cedab486d7d39f7164b653b9b0586c8d6fee1a` /
+  `36038d89d0a1cc9918466c7b1692867f76487097618bacd5d59a32a09ae9df82`, mode 0600 and
+  `bash -n`, without repeating independently reviewed offline tests.
+- [x] Fresh samples at `2026-08-16T08:09:43Z` and `08:10:01Z` retained durable vector
+  `36:182:36:13:4:59:157:35:44:35:391:25:49:0:0`, current-day `2:2:4`, WeCom
+  `25:49:0:0:0:1`, historical queued `7:0`, provider/delivery tuple `391:49:35:44`, and zero
+  actionable/running/unknown work. Exact prior services/source/markers/tags, false flags,
+  protected inputs, clean logs and fresh 708-object MinIO state passed. The immediate invocation
+  boundary retained 2,002 seconds before `2026-08-16T08:45:00Z`.
+- [x] Replaced only the staged driver. Exact ten-member protection, source/image archives and
+  307/165-file manifests remained unchanged; remote hash and `bash -n` passed. Invoked it exactly
+  once as root from physical `/opt/edu-ai-lead-agent`, by its absolute protected-stage path with
+  stdin `/dev/null`.
+- [x] The driver quiesced writers and completed fresh rollback
+  `20260816T081242Z-zhipu-ocr-default-off`. Protected-manifest SHA-256 is
+  `d3eaf7fab7130ff92e404f34955f7e8e16b3baa48ac6a7a576cd5799a2f2dfa0`. PostgreSQL dump /
+  526-line catalog hashes are
+  `dfe5a8fbb841368a30cb3da67227e6370c44e76250df7932a7ae76443cb9746b` /
+  `945ac4b019261c0e78317cd1b148c167eafc83b558b69edaf2be9b081bab4199`; the catalog matched
+  `pg_restore --list`. MinIO manifest remained
+  `704a6937016a07c2fe843611afb3088efe85fa96d6b3bc5cabe391e385f2f4a8` for 708 objects. Brand
+  manifest/archive and active-code archive remained
+  `7ddb17cf32426ddd1a5e586e63d8dd6b4641cf29dd9a9519313a088117528e24` /
+  `4fb13a0ca7698adbd946a444a0bea8c18390c6397d6b6a33cbb6168034efe4dc` /
+  `797d347837410b45bdb74c57bf3311ee69c301e7ba40da3d2fd167fc9549a057`. Prior active-tag /
+  unique rollback inventories are
+  `aeb0397afd7771fc2d17e766b42a693910545be98f73072c9b47f566a765ed1a` /
+  `5ce7d88b0755db41a61340bd30f4cac561e59b77ceaf5217020b968bdbc74926`.
+- [ ] Candidate gates reached and `pip check` passed. Atomic overlay then failed as `trusted install
+  parent ownership or mode is unsafe`, with `backup_ready=1`, `tags_changed=1`,
+  `overlay_changed=1`. No one-shot, migration or candidate service restoration began. Recovery
+  restored prior overlay/tags/services, logged `recovery completed`, and the one invocation exited
+  1; it was not rerun.
+- [x] Independent samples at `08:14:56Z` and `08:15:12Z` retained every vector/provider counter.
+  Exact prior source/markers/tags, eight restart-zero services, false flags, protected inputs,
+  infrastructure and logs passed; candidate running count was zero and `release-result.txt` absent.
+- [x] Read-only stat diagnosis proved the driver derives temp parent `/opt` from destination root
+  `/opt/edu-ai-lead-agent`. `/opt` is physical non-symlink directory mode 0750 owned
+  `ubuntu:ubuntu` (uid/gid 1000:1001), while the driver requires uid/gid 0:0; both paths are on
+  device 64770. A second bounded query found mechanical same-filesystem trust candidates
+  `/var/backups/edu-ai/releases` root:root 0700, `/var/backups/edu-ai` root:root 0700 and
+  `/var/backups` root:root 0755. `/var/tmp` and `/tmp` are root:root 1777 and fail. No contents were
+  listed and neither query created a temporary file or mutation.
+
+The target was not deployed. Provider/delivery counters had zero delta; no OCR, Comfly,
+image-generation or Enterprise WeChat call, fixture, enqueue, retry, resend, activation, commit or
+push occurred. Production access is stopped pending an independently reviewed trusted-parent design
+and new explicit authorization.
+
+### Offline fixed trusted backup-root correction
+
+Atomic install now uses fixed `SOURCE_INSTALL_TMP_ROOT=${BACKUP_ROOT}` rather than `/opt`. A
+pre-stop gate requires the exact physical non-symlink root to be root:root 0700, same-device and
+free of any reserved-prefix object; scan errors fail closed without exposing entry names. Each
+generated name has an exact six-alphanumeric suffix, is revalidated before `mv -T`, and is removed
+on success or only through physical-direct-child trap cleanup; rollback names cannot collide.
+
+The full harness passes a production-shaped non-root-0750 application ancestry with separate
+root-owned backup root and real mode-0600 atomic install. Old-derived, missing, symlink, non-root,
+0750, 1777, mocked cross-device, reserved file/symlink/long-prefix residue and scan failures fail;
+cleanup preserves backup/unrelated paths and refuses a symlink root. Existing
+307/full-candidate/OCI/recovery gates remain green. Final mode-0600 hashes: driver
+`189f2dc1370544b3a57bd5fdbfd471e9e2066045a94ba336d06bd4aeb28b2072`; harness
+`212fa5b535ddd7c6f64826a1b6828d0e1fd9260daeee92442c3ad8b92d876fef`. The 081242 evidence is
+unchanged and these hashes authorize no retry.
+
+## User-authorized final fast-path production release
+
+- [x] Entered strict read-only monitoring because the pre-17:00 maintenance window was below the
+  900-second boundary. At `17:00:01` CST ordinary automation created the evening acquisition run;
+  acquisition completed 10/10, governance completed 19 succeeded plus 2 review-required jobs, and
+  the slot completed with `selected=0`, `unfilled=3`, and zero delivery windows. This typed
+  no-delivery result was terminal without manual enqueue/retry/send. Ordinary governance changed
+  the provider tuple from `391:49:35:44` to `394:49:35:44` before release authorization was used.
+- [x] Independent samples at `2026-08-16T09:05:38Z` and `09:05:53Z` retained durable/provider/WeCom
+  vectors `37:184:37:13:5:59:157:35:44:35:394:25:49:0:0` / `394:49:35:44` /
+  `25:49:0:0:0:1`, with actionable/running/unknown all zero and the same `1:0:3` evening-slot /
+  zero-window result.
+- [x] The user explicitly replaced the complex-driver execution with one fast path. Fresh
+  preflight confirmed exact protected stage membership (10 files, all mode 0600), source archive
+  `e516184eebdeb9b98c09cc3fecd98369012d75aba5763fdb16ed836b2d3390f9`, 307-entry source
+  manifest `a6a7271fd08a9176d98fa317a46535e7921c7936974bd67d188e6cd1518d3657`, inactive candidate
+  `sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2` with exact c66
+  revision, prior aec802 services restart-zero, false flags, healthy API/infrastructure, Alembic
+  `20260815_0021`, and ten active sources. The fast path did not repeat OCI/full-candidate/307-
+  topology gates and did not invoke the complex driver.
+- [x] Acquired the backup lock, stopped the eight application services in dispatcher-to-API order,
+  and retained exact zero vectors. Fresh unique backup
+  `20260816T091212Z-zhipu-ocr-fast-default-off` contains a PostgreSQL custom dump and validated
+  `pg_restore --list` catalog, the current 307-file source archive/manifest, protected env/release/
+  markers, the ten prior active-tag identities, and ten unique rollback tags. SHA-256 values are:
+  protected manifest `2721c71d08842f301ca8e0de86cf1273ec6c1c79cc20137cfd736ff0efcb3e74`,
+  PostgreSQL dump `a0b5bee39db44af9df59d99d40d9065b42ebc5ab07aba0053c5af288eaae353b`, catalog
+  `48a575e6ed936e4fcd9e357da6120a08a3c9df7a8d733dc83e68f905c19fa121`, and prior-source
+  archive `3cbaf789b53fcbe6b2ec4b8671286f01f009cb83563e837f7c7a24e79e8987f4`. Per authorization,
+  no fresh MinIO/brand mirror was made; the retained full rollback evidence remains available.
+- [x] With root `umask 077`, overlaid the validated archive at physical
+  `/opt/edu-ai-lead-agent` using `tar --no-same-owner --no-same-permissions`, verified all 307
+  hashes, wrote full/short c66 markers, and retagged the exact candidate to the shared active tag
+  plus nine service `:latest` tags. `backend-migrate` ran no-build/no-deps/force-recreate, exited
+  zero, and retained Alembic `20260815_0021`; MinIO init was unnecessary and was not run.
+- [x] Restored API, acquisition, governance and content services in dependency order and the
+  dispatcher last. All eight services use the exact candidate image with restart count zero; API
+  is healthy, flags are `false:false`, the prior image has zero running containers, and the
+  15-second simple stability gate retained the exact baseline. Independent read-only postcheck
+  passed with release-result SHA-256
+  `930d3cf793eff8dc5b95383da326e7f47266239926f7c0af309a5a451215cba0`.
+
+The fast release caused zero provider, image-attempt or WeCom delta: provider remained
+`394:49:35:44`, WeCom remained `25:49:0:0:0:1`, and durable state remained
+`37:184:37:13:5:59:157:35:44:35:394:25:49:0:0`. No OCR, Comfly, fixture, enqueue, retry, resend,
+manual delivery, MinIO object mutation, frontend deployment, commit or push occurred. Production
+mutation remains stopped; the simplified independent conclusion follows.
+
+### User-authorized one-shot OCR activation gate — failed closed
+
+- [x] Read-only preflight retained exact c66/candidate runtime, healthy API, restart-zero API and
+  content worker, and runtime contract
+  `false:false:glm-ocr:10485760:1048576:120.0:glm-5.2:1:false:zhipu`. No content/image work or
+  nonterminal WeCom delivery was running. The pre-call durable/provider/WeCom aggregates were
+  `37:184:37:13:5:59:157:35:44:35:394:25:49:0:0` / `394:49:35:44` / `25:49:0:0`.
+- [x] Generated a deterministic RGB 1024x1024 three-line fixture using the trusted Noto Sans CJK
+  font. The protected mode-0600 PNG was 42,981 bytes with SHA-256
+  `9337541f14f4d887a11a1c1f970fcd1d88b7acc66fd51a6e863084894720618e`; its ordered lines matched
+  the approved brand, controlled category title and short subtitle allowlist.
+- [x] The first remote preparation stopped before Docker on a local wrapper assertion: the minimal
+  protected environment contained 13 lines rather than the asserted 12. It made zero HTTP
+  requests, removed its stage/container, retained `false:false`, and did not consume the authorized
+  provider attempt.
+- [x] The corrected sole authorized Docker invocation used the exact active image and an isolated
+  direct recognizer with one-attempt configuration. The outer SSH/remote command exited 1 and the
+  only captured safe marker was `fixture_cleanup=armed`; none of `typed_result`, `exact_ordered`,
+  `accepted_line_count`, `issue_codes`, `http_attempts`, provider or model was emitted. The wrapper
+  had captured Docker status internally but did not print it, so exact Docker exit status is
+  **unknown**. Its protected stderr was removed by cleanup, so the paid HTTP-attempt count is also
+  **unknown**; no claim of zero or one is made and no retry was attempted.
+- [x] Failed closed without editing `.env`, backing it up, recreating services or enabling either
+  feature. The remote fixture stage and unique container are absent. Two samples 15 seconds apart
+  retained exact candidate/restart-zero API and worker state, healthy API and flags `false:false`.
+  The final read-only aggregate was
+  `37:184:37:13:5:59:157:35:44:35:394:25:49:0:0` / `394:49:35:44` / `25:49:0:0` with
+  running `0:0:0:0`; durable, provider-durable and WeCom deltas were all zero.
+
+No database, MinIO, Comfly, news or WeCom workflow was invoked; no enqueue, image generation,
+retry, resend or manual delivery occurred. Durable provider counters cannot prove whether the
+direct HTTP request crossed the external provider boundary, so that single boundary remains
+unknown. Production remains default-off and no further call or mutation is authorized by this run.
+
+### Simplified independent postdeploy conclusion
+
+- [x] The checker used bounded read-only SSH only. Its first `backup_shape` stop used the obsolete
+  complex-driver suffix instead of the documented fast-backup suffix. The corrected continuation
+  reached physical `20260816T091212Z-zhipu-ocr-fast-default-off`, verified root:root mode 0700 and
+  matched the fixed protected-manifest, PostgreSQL-dump and catalog hashes. The later
+  `code.tar.gz_shape` stop was another checker filename assumption, not a production mismatch.
+  Under the simplified gate, code/result sidecar names are no longer required; no further SSH was
+  opened.
+- [x] Runtime observations passed before that filename stop: exact c66 full/short markers, all
+  eight long-lived services on candidate `03a988...` running at restart zero, healthy API/
+  PostgreSQL/MinIO, migration exit zero at Alembic `20260815_0021`, and API/content flags
+  `false:false`. Together with the implement agent's independent 15-second exact-baseline
+  postcheck, safe logs, old-image-running-zero and release-result evidence above, the simplified
+  postdeploy gate is PASS with no production blocker.
+
+### User-authorized minimal production activation — succeeded
+
+- [x] The official-contract recheck confirmed c66 uses the documented `/layout_parsing`,
+  `glm-ocr`, private data-URI, 10 MiB input and `object[][]` raw layout contract. It classified the
+  earlier unknown as missing wrapper evidence, not a provider failure; no new fixture or provider
+  request was permitted.
+- [x] At `2026-08-16T09:51:46Z`, fresh preflight retained c66 and candidate
+  `sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2`, healthy API,
+  restart-zero API/worker and runtime
+  `false:false:glm-ocr:10485760:1048576:120.0:1:false`. Both target keys were absent from both
+  `.env` and `.release.env`; their false values therefore came from reviewed Compose defaults.
+  Durable/provider/WeCom aggregates were
+  `37:184:37:13:5:59:157:35:44:35:394:25:49:0:0` / `394:49:35:44` / `25:49:0:0`, with
+  all running and current-day actionable counts zero.
+- [x] Created protected rollback `20260816T095342Z-zhipu-ocr-activation-env`. Its mode-0600 exact
+  pre-activation env has SHA-256
+  `4ad88db853075ad8668a1c45bd2e1f4498256c2ece0903ab2fbe3ea40521efdc`. The source already ended
+  in a newline; the atomic replacement retained the complete original prefix, owner and mode and
+  appended only one `IMAGE_DIVERSITY_ENABLED=true` and one `IMAGE_OCR_ENABLED=true` assignment.
+  The resulting env SHA-256 is
+  `df0213dbd192632307d4cba54f678f13e593da61e39a08b79474f2f6d2b5f717`; neither key was added to
+  `.release.env`, and absolute Compose render passed.
+- [x] Recreated only `acquisition-api` and `content-worker` using no-build/no-deps. Their runtime
+  contract is now `true:true:glm-ocr:10485760:1048576:120.0:1:false`; both use the exact candidate
+  with restart count zero and API is healthy. The dispatcher container identity was unchanged.
+- [x] The 15-second gate retained provider `394:49:35:44`, WeCom `25:49:0:0` and running
+  `0:0:0:0:0:0:0:0`. Bounded activation logs had zero severe, secret or provider-request markers.
+
+No fixture, OCR/Comfly call, enqueue, retry, resend, service dependency start, dispatcher mutation
+or manual delivery occurred. The earlier paid-attempt state remains historically unknown and was
+not reinterpreted. Activation completed without failure or rollback; the protected env rollback is
+retained and no commit or push was made.
