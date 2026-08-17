@@ -156,6 +156,39 @@ GNU `unlink` once per file. The focused harness proves the exact safe Docker arg
 executes regular/symlink/FIFO and empty/malformed/mount-drift cases, rejects the removed MinIO
 `exec ... find` path, propagates failures, removes partial evidence, and binds both cleanup calls.
 
+## 7ba migration-container stop and exact f20 recovery
+
+The first 7ba process rejected the SSH boundary because remote stdin had not been explicitly
+redirected to `/dev/null`; no single-invocation marker, load, stop, backup, tag, source or env change
+occurred. That exposed a separate operator defect: pre-mutation exit handling entered the final
+recovery gate without an initialized trusted workspace and emitted an inaccurate incident message.
+The entrypoint now arms traps only after immutable argv/path/stdin checks and recovery runs only
+when a mutation state was armed.
+
+After a read-only identity/vector audit and an explicit remote `</dev/null>`, the reviewed 7ba
+invocation passed candidate validation, quiesced writers, completed backup
+`20260817T071117Z-broad-offline`, retagged and overlaid the candidate source, then stopped before
+migration and before `.7`: an exited prior `backend-migrate` container still existed. Payload
+rollback restored f20, but the final gate compared MinIO implementation metadata and observed only
+`.minio.sys` rotation. It therefore stopped all eight application services fail-closed.
+
+A bounded aggregate-only diagnosis proved the MinIO delta was internal-only: 12 control entries
+added, 6 modified and 24 removed, while business objects were exactly `0 added / 0 modified / 0
+removed`. The fresh backup's protected checksum set passed; env, release env, source, markers, tags,
+database/provider/source/work/legacy/`.7` vectors all matched the pre-release baseline. The exact
+eight f20 container IDs from that backup were then validated as exited/restart-zero/prior-image and
+started in dependency order, with zero-work checks around every scheduler and dispatcher. An
+independent 15-second postcheck passed API health, eight running/restart-zero services, OCR and
+diversity true, `.6`, candidate running zero, bounded logs and every protected vector.
+
+The correction inventories only MinIO's user-object namespace; the root `.minio.sys` control tree
+is intentionally excluded while all other files remain descriptor-anchored and fail-closed. A
+stale migration one-shot is removed only when unique, exited, restart-zero and bound to the exact
+previous image and Compose project/service/container-number labels. Running, multiple, foreign or
+label-drift containers are rejected. At that fail-closed boundary the 7ba candidate was not invoked
+again until the user explicitly authorized a fast-path continuation with the same checksum-bound
+application payload and corrected task-local operator.
+
 ## Remaining release work
 
 The initial clean Codeup candidate at `c387966...` was built and passed offline runtime validation.
@@ -185,8 +218,8 @@ the first stop and immediately before each scheduler/dispatcher, starts them seq
 rechecks the same vectors after each start; any post-`.7` creation/drift reaches the existing
 stop-all-eight incident disposition.
 
-- Operator SHA-256: `f76a1a3aa381d96cdb2541b4d90141947d4e0a43521d3d8dffb5c903e9b35466`
-- Operator harness SHA-256: `445686a61806f0119e3529da210090c1e728df866c479f350bbcd3a81405f276`
+- Operator SHA-256: `fca5b0fad061ea95a9fb33d339ff2a4fa22ac29e33ebb1a36738bbcc4254543b`
+- Operator harness SHA-256: `050ebfb11d3001ed9df4513f61499099489a5d501e3adf0cded494caf6789554`
 - Validator SHA-256: `183db15c8938e9e235b0529d227ee6c0ed32bbb9460dc40d5bd2a06197e6515b`
 - Builder SHA-256: `873080ab8ba20e5073bfbaa327663062ce529c60ccc661bf96ec4a5ae99da7b1`
 - Builder harness SHA-256: `b6284cec4a66299b8b2c034a6c8e258e6e93df0e2c34cd6050e1e8cca0614963`
@@ -197,3 +230,34 @@ gitleaks are unavailable in this environment. Local Docker build and reviewed Co
 were performed in the release workflow. The c558 attempt loaded only the isolated candidate and
 cycled the eight application services during automatic recovery; active tags, source, environment,
 database, and object state remained unchanged, and no provider call, fixture, or WeCom action occurred.
+
+## Successful 7ba activation
+
+The user explicitly authorized a fast-path continuation using the already validated and Codeup-pushed
+7ba application payload. The application image, source archive, manifests and validator remained
+byte-identical; only the task-local operator changed. Two pre-mutation runs stopped before claiming
+the release because the new stage name did not match the protected prefix and the process locale did
+not match the manifest ordering contract. The operator now exports `LC_ALL=C`; both failures left the
+f20 source, tags, environment, containers and data untouched.
+
+The next protected run completed backup and overlay, then rejected one exited migration container.
+Automatic recovery completed and restored all eight f20 services. Read-only inspection proved the
+container was the exact earlier c66 image, Compose project/service/container-number matched, status
+was exited, restart count was zero and exit code was zero. Under the user's fast-path authorization,
+that single stale one-shot was removed and its failed invocation marker was retained.
+
+The final server-owned transient run completed successfully:
+
+- Codeup/release commit: `7ba25d3eeb290d3f784ae449a5b6ad360a8def58`
+- candidate image: `sha256:7627186cf1650a63bbe2e5e136e2364970a9383f756a62ed7db8c6e5cb50b21c`
+- fresh backup: `20260817T073746Z-broad-offline`
+- Alembic head: `20260815_0021` (no new migration)
+- effective scoring: `scoring-v1-preview.7-delivered-repeat-history`
+- OCR/diversity: `true:true`
+- eight application services: candidate image, running, restart count zero; API healthy
+- protected vectors: durable `39:39:13:7:64:40:40:403:25:49`, provider
+  `403:40:49:25:49`, sources `10:38:10`, actionable/nonterminal
+  `0:0:0:0:0:0:0`, legacy `0:0:0`, candidate-v7 `0:0:0:0`
+
+The operator and independent read-only postcheck both passed. No fixture, provider call, enqueue,
+retry/replay/resend or WeCom action was invoked by the release.

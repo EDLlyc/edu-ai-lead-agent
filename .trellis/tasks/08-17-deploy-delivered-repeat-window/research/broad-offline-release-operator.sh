@@ -5,6 +5,7 @@
 
 set -Eeuo pipefail
 IFS=$'\n\t'
+export LC_ALL=C
 umask 077
 
 readonly APP_DIR="/opt/edu-ai-lead-agent"
@@ -314,6 +315,10 @@ def walk(directory_fd, relative, depth):
             metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
             if stat.S_ISLNK(metadata.st_mode):
                 raise ValueError
+            if relative == b"." and name == b".minio.sys":
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise ValueError
+                continue
             if stat.S_ISDIR(metadata.st_mode):
                 child_fd = os.open(name, directory_flags, dir_fd=directory_fd)
                 child_metadata = os.fstat(child_fd)
@@ -1356,12 +1361,31 @@ phase_install_candidate() {
   write_release_markers "$candidate_commit" "$candidate_short"
 }
 
+remove_stale_migration_container() {
+  local cid record image status restarts project_label service_label number_label extra
+  cid=$(compose_call ps -a -q backend-migrate) || return 1
+  [[ "$cid" != *$'\n'* ]] || { die "multiple backend migration containers exist"; return 1; }
+  [[ -n "$cid" ]] || return 0
+  [[ "$cid" =~ ^[0-9a-f]{64}$ ]] || { die "backend migration container id is unsafe"; return 1; }
+  record=$(docker_call inspect "$cid" --format \
+    '{{printf "%s\t%s\t%d\t%s\t%s\t%s" .Image .State.Status .RestartCount (index .Config.Labels "com.docker.compose.project") (index .Config.Labels "com.docker.compose.service") (index .Config.Labels "com.docker.compose.container-number")}}' \
+    </dev/null) || return 1
+  IFS=$'\t' read -r image status restarts project_label service_label number_label extra <<<"$record"
+  [[ -z "$extra" && "$image" == "$PREVIOUS_IMAGE_ID" && "$status" == exited \
+    && "$restarts" == 0 && "$project_label" == "$COMPOSE_PROJECT" \
+    && "$service_label" == backend-migrate && "$number_label" == 1 ]] \
+    || { die "existing backend migration container is not the reviewed stale one-shot"; return 1; }
+  docker_call rm "$cid" </dev/null >/dev/null || return 1
+  [[ -z "$(compose_call ps -a -q backend-migrate)" ]] \
+    || { die "stale backend migration container was not removed"; return 1; }
+}
+
 phase_migrate_and_probe() {
   local before_sources after_sources
   before_sources=$(source_vector)
   # Exact command override: no default command, no seed_sources, no dependency
   # one-shot, no pull, and no TTY/stdin inheritance.
-  [[ -z "$(compose_call ps -a -q backend-migrate)" ]] || die "a backend migration container already exists"
+  remove_stale_migration_container
   if ! compose_call run --rm --no-deps --pull never --no-TTY \
     --entrypoint alembic backend-migrate -c alembic.ini upgrade head; then
     die "Alembic-only migration failed"
@@ -1627,7 +1651,9 @@ on_exit() {
   local rc=$? recovery_rc=0 cleanup_rc=0
   trap - ERR EXIT
   trap '' HUP INT TERM
-  if ((rc != 0 && completed == 0)); then
+  if ((rc != 0 && completed == 0 && (writers_stopped == 1 || backup_ready == 1 \
+      || env_normalized == 1 || tags_changed == 1 || overlay_changed == 1 \
+      || env_activated == 1))); then
     set +e
     (set -Eeuo pipefail; recover "$rc")
     recovery_rc=$?
@@ -1682,10 +1708,10 @@ main() {
   [[ ! -t 0 && "$(readlink /proc/$$/fd/0)" == /dev/null ]] || die "stdin must be /dev/null"
   operator_path=$(realpath -- "$0")
   [[ "$operator_path" == "${stage_dir}/broad-offline-release-operator.sh" ]] || die "operator entrypoint differs from staged file"
+  install_traps
   run_release
 }
 
 if [[ ${BROAD_OFFLINE_SOURCE_ONLY:-0} != 1 ]]; then
-  install_traps
   main "$@"
 fi

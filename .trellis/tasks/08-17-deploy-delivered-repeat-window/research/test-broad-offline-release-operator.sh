@@ -96,8 +96,7 @@ assert_fake_recovery() {
   reject_text "${test_root}/success/events" "recovery:"
 
   run_fake_case early preflight zero 42
-  reject_text "${test_root}/early/events" "recovery:prior-payload"
-  reject_text "${test_root}/early/events" "recovery:prior-services"
+  reject_text "${test_root}/early/events" "recovery:"
 
   run_fake_case mid install-candidate zero 42
   require_text "${test_root}/mid/events" "recovery:prior-payload"
@@ -503,9 +502,24 @@ assert_minio_inventory_contract() (
   [[ ! -e "$output" ]] || fail "malformed MinIO inventory left partial evidence"
 
   printf 'safe-object\n' >"$inventory_root/object"
+  mkdir -m 700 "$inventory_root/.minio.sys"
+  printf 'internal-before\n' >"$inventory_root/.minio.sys/internal"
   run_mode=actual
   write_minio_inventory minio-container "$output"
-  [[ -s "$output" ]] || fail "real descriptor-based MinIO inventory was empty"
+  [[ "$(wc -l <"$output" | tr -d '[:space:]')" == 1 ]] \
+    || fail "MinIO control metadata entered the business-object inventory"
+  local object_manifest_sha
+  object_manifest_sha=$(sha256sum "$output" | awk '{print $1}')
+  unlink -- "$output"
+  printf 'internal-after\n' >"$inventory_root/.minio.sys/internal"
+  write_minio_inventory minio-container "$output"
+  [[ "$(sha256sum "$output" | awk '{print $1}')" == "$object_manifest_sha" ]] \
+    || fail "MinIO control metadata rotation changed the business-object inventory"
+  unlink -- "$output"
+  printf 'changed-object\n' >"$inventory_root/object"
+  write_minio_inventory minio-container "$output"
+  [[ "$(sha256sum "$output" | awk '{print $1}')" != "$object_manifest_sha" ]] \
+    || fail "MinIO business-object drift did not change the inventory"
   unlink -- "$output"
   ln -s object "$inventory_root/link"
   if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
@@ -534,6 +548,62 @@ assert_minio_inventory_contract() (
     fail "MinIO inventory command failure was not propagated"
   fi
   [[ ! -e "$output" ]] || fail "failed MinIO inventory left partial evidence"
+)
+
+assert_stale_migration_cleanup_contract() (
+  local expected_cid state=exited removed=0 multiple=0
+  local fixture_image=$PREVIOUS_IMAGE_ID fixture_restarts=0
+  local fixture_project=$COMPOSE_PROJECT fixture_service=backend-migrate fixture_number=1
+  expected_cid=$(printf 'a%.0s' {1..64})
+  compose_call() {
+    [[ "$#" == 4 && "$1" == ps && "$2" == -a && "$3" == -q && "$4" == backend-migrate ]] || return 81
+    if ((removed == 1)); then return 0; fi
+    printf '%s\n' "$expected_cid"
+    if ((multiple == 1)); then printf '%s\n' "$(printf 'b%.0s' {1..64})"; fi
+  }
+  docker_call() {
+    case "$1" in
+      inspect)
+        [[ "$2" == "$expected_cid" && "$3" == --format && -n "${4-}" ]] || return 82
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+          "$fixture_image" "$state" "$fixture_restarts" "$fixture_project" \
+          "$fixture_service" "$fixture_number"
+        ;;
+      rm)
+        [[ "$2" == "$expected_cid" && "$#" == 2 ]] || return 83
+        removed=1
+        ;;
+      *) return 84 ;;
+    esac
+  }
+  remove_stale_migration_container
+  [[ "$removed" == 1 ]] || fail "reviewed exited migration one-shot was not removed"
+  removed=0
+  state=running
+  if remove_stale_migration_container >/dev/null 2>&1; then
+    fail "running migration container was accepted as stale"
+  fi
+  [[ "$removed" == 0 ]] || fail "unsafe migration container was removed"
+  state=exited
+  fixture_image="sha256:$(printf 'c%.0s' {1..64})"
+  if remove_stale_migration_container >/dev/null 2>&1; then
+    fail "foreign-image migration container was accepted"
+  fi
+  fixture_image=$PREVIOUS_IMAGE_ID
+  fixture_project=foreign-project
+  if remove_stale_migration_container >/dev/null 2>&1; then
+    fail "foreign-label migration container was accepted"
+  fi
+  fixture_project=$COMPOSE_PROJECT
+  fixture_restarts=1
+  if remove_stale_migration_container >/dev/null 2>&1; then
+    fail "restarted migration container was accepted"
+  fi
+  fixture_restarts=0
+  multiple=1
+  if remove_stale_migration_container >/dev/null 2>&1; then
+    fail "multiple migration containers were accepted"
+  fi
 )
 
 assert_stage_shape() {
@@ -678,6 +748,7 @@ assert_artifact_validator() {
 }
 
 assert_static_contract() {
+  require_text "$OPERATOR" 'export LC_ALL=C'
   require_text "$OPERATOR" 'PREVIOUS_COMMIT="f20db2060abcfd49b6236137838473ac6f0b7dd4"'
   require_text "$OPERATOR" 'PREVIOUS_IMAGE_ID="sha256:ce67385749cc14ee845d3a6fbdd92404df59902adc579534df5d01b6e1a4e8da"'
   require_text "$OPERATOR" 'EXPECTED_RUNTIME_LOCK_SHA256="3be154ff0e7f741b9f74d516baf739a4a38571218670b47dd1031f9dc1b44915"'
@@ -705,6 +776,8 @@ assert_static_contract() {
   reject_text "$OPERATOR" 'assert_startup_projection_zero'
   require_text "$OPERATOR" 'rollback-tag-inventory.txt'
   require_text "$OPERATOR" 'assert_rollback_tags'
+  require_text "$OPERATOR" 'remove_stale_migration_container'
+  reject_text "$OPERATOR" 'a backend migration container already exists'
   require_text "$OPERATOR" 'write_minio_inventory "$minio_id" "${backup_dir}/minio.sha256"'
   require_text "$OPERATOR" 'write_minio_inventory "$minio_id" "${runtime_evidence_dir}/minio.sha256"'
   require_text "$OPERATOR" 'unlink -- "$candidate_additions_file"'
@@ -777,5 +850,6 @@ assert_observed_startup_gate
 assert_immutable_rollback_tag_contract
 assert_candidate_provenance_contract
 assert_minio_inventory_contract
+assert_stale_migration_cleanup_contract
 assert_stage_shape
 printf 'PASS: broad offline operator static, artifact, trusted-root, install/rollback, config, and fail-closed recovery checks\n'

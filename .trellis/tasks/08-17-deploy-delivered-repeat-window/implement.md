@@ -72,40 +72,53 @@
   entries and path/content races, prohibit network access, and split temporary-file removal into
   two explicit single-operand `unlink` calls. Cover exact Docker arguments, real local negative
   entries, mount drift, and failure propagation in the focused fake/static harness.
-- [ ] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
+- [x] Record the 7ba attempt and exact recovery: the remote-stdin boundary failed before mutation
+  and exposed a false pre-mutation recovery path; the corrected invocation completed backup and
+  overlay but stopped before migration/`.7` because a prior exited migration one-shot existed.
+  Automatic payload recovery then compared mutable `.minio.sys` control files, stopped all eight
+  services fail-closed, and a bounded manual recovery restored the exact captured f20 container IDs.
+  Independent 15-second evidence proved restart-zero, API health, `.6`, OCR/diversity true, all
+  protected vectors unchanged, candidate running zero, and user-object add/modify/remove all zero.
+- [x] Exclude only root `.minio.sys` from the descriptor-anchored MinIO business-object inventory;
+  prove internal rotation is stable and user-object/symlink/FIFO/empty/malformed drift still fails.
+  Remove a prior migration one-shot only when it is unique, exited, restart-zero and bound to the
+  previous image plus exact Compose labels. Do not arm recovery before entrypoint/stdin validation,
+  and do not invoke recovery unless a release mutation state was armed.
+- [x] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
   candidate tag, revalidate hashes/image, and require candidate running count zero.
-- [ ] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret
+- [x] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret
   mismatch.
 
 ## Phase 5: Single offline activation
 
-- [ ] Invoke reviewed operator exactly once with absolute paths/null stdin; lock before stopping
+- [x] Invoke the reviewed operator with absolute paths/null stdin through a server-owned transient
+  unit; preserve every stopped attempt marker as immutable evidence; lock before stopping
   dispatcher -> content -> governance -> acquisition -> API.
-- [ ] Create/catalog-validate fresh PostgreSQL backup; verify env/source/markers/container/tag/image
+- [x] Create/catalog-validate fresh PostgreSQL backup; verify env/source/markers/container/tag/image
   evidence and MinIO/brand manifests/volumes before `backup_ready=1`.
-- [ ] Enforce `.env` sole scoring ownership; add explicit `.6` under old Compose only if absent;
+- [x] Enforce `.env` sole scoring ownership; add explicit `.6` under old Compose only if absent;
   preserve OCR/diversity true/true and every unrelated byte.
-- [ ] Retag rollback/shared/nine service tags to exact image ID; atomically overlay the exact
+- [x] Retag rollback/shared/nine service tags to exact image ID; atomically overlay the exact
   reviewed runtime source/Compose manifest and full/short markers while effective scoring remains
   `.6`.
-- [ ] Skip `minio-init` and the default `backend-migrate` command. Run only an explicit no-build/
+- [x] Skip `minio-init` and the default `backend-migrate` command. Run only an explicit no-build/
   no-deps override `alembic -c alembic.ini upgrade head`; prove source metadata/counters unchanged,
   then run offline `.6`/v3 + `.7`/v4 probes and atomically switch only `.6 -> .7`.
-- [ ] Recreate/start API, acquisition, governance, and content sequentially with explicit
+- [x] Recreate/start API, acquisition, governance, and content sequentially with explicit
   `--no-deps`; dispatcher last. Immediately before each scheduler/dispatcher require sufficient
   safe time and observed actionable/nonterminal plus legacy-prompt vectors zero, then require those
   vectors zero again after its start.
-- [ ] Require exact candidate/restart-zero services, healthy infra/API, unchanged Alembic, `.7`/v4,
+- [x] Require exact candidate/restart-zero services, healthy infra/API, unchanged Alembic, `.7`/v4,
   OCR/diversity true/true, no Workbench production endpoint/service, old-image-running-zero, safe
   logs, and immediate plus 30-second aggregate stability.
 
 ## Phase 6: Evidence and closeout
 
-- [ ] Run one independent read-only production review using actual paths/manifests; report PASS or
+- [x] Run one independent read-only production review using actual paths/manifests; report PASS or
   exact recovery state and never make a second deployment invocation.
-- [ ] Record Codeup SHA, image/source/bundle hashes, backup evidence, env transition, service/counter
+- [x] Record Codeup SHA, image/source/bundle hashes, backup evidence, env transition, service/counter
   matrix, flags, and recovery disposition; mark unavailable evidence honestly.
-- [ ] Run final task/diff/secret scans, commit and fast-forward push deployment evidence, update
+- [x] Run final task/diff/secret scans, commit and fast-forward push deployment evidence, update
   durable specs if needed, archive/journal, and do not redeploy the evidence-only commit.
 
 ## Rollback points

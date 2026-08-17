@@ -664,7 +664,14 @@ release artifacts, or production deployment automation change.
   then mount it read-only into an already reviewed helper or candidate image with networking
   disabled, a read-only root filesystem, dropped capabilities, no privilege escalation, bounded
   resources, and fail-closed regular-file/symlink/race checks. Do not print object paths or manifest
-  contents in release logs.
+  contents in release logs. For MinIO, bind the user-object namespace and exclude the
+  implementation-owned `.minio.sys` control tree, whose internal metadata may rotate without a
+  business-object mutation.
+- A stopped Compose one-shot may be removed before its replacement only after proving there is
+  exactly one container, it is exited with restart count zero, and its image plus project/service/
+  container-number labels match the captured previous release. Never remove a running, ambiguous,
+  foreign, or differently versioned container. Arm recovery traps only after entrypoint/argument/
+  stdin checks, and invoke recovery only after a release mutation was actually armed.
 - Automatic rollback restores only the previous application runtime/digest when no migration was
   attempted, the Alembic head is unchanged, or backward compatibility was explicitly reviewed.
   It never restores a database or runs Alembic downgrade.
@@ -701,6 +708,8 @@ release artifacts, or production deployment automation change.
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
 | Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path. The sole f20 bootstrap exception is the exact three named app-owned `0664` metadata files under the bound `292:12:3` distribution. |
 | A backup inventory depends on a utility absent from the service image, the named-volume identity/mountpoint drifts, or the read-only helper rejects an entry/race | Fail the backup before activation, retain partial evidence as non-restorable, and restore the captured prior service set; never accept an empty or partial manifest. |
+| MinIO `.minio.sys` metadata rotates while the user-object manifest is byte-exact | Do not report a business-object mutation; compare only the validated user-object namespace and retain aggregate internal-metadata diagnostics separately. |
+| A prior migration one-shot exists | Remove it only when its unique exited identity matches the captured previous release; otherwise fail before migration and do not guess which container is stale. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
@@ -738,7 +747,11 @@ release artifacts, or production deployment automation change.
   utilities, assert the exact read-only volume-helper argv and mount identity, reject symlink,
   special-file, race, and helper failures without leaving partial evidence, and exercise cleanup
   commands with their actual supported arity. Multi-target cleanup must use separate checked
-  invocations rather than relying on a utility to accept multiple operands.
+  invocations rather than relying on a utility to accept multiple operands. MinIO cases also prove
+  `.minio.sys` rotation leaves the user-object manifest unchanged while real object drift changes it.
+- One-shot cleanup tests accept one exact exited previous-release migration container and reject
+  running, multiple, foreign-image, or label-drift cases. Pre-entrypoint and pre-mutation failures
+  must not enter rollback/final-gate logic or emit an inaccurate stopped-services incident.
 - Offline image-bundle tests use real OCI layout structure plus the supported classic structure.
   They prove the OCI candidate manifest digest can differ from the config digest and reject
   descriptor/config/layer hash or size drift, config diff-ID drift, non-standard JSON,
