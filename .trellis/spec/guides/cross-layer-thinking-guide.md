@@ -124,6 +124,29 @@ After implementation:
 - [ ] Checked that derived state points back to the source event identifier
       (`seq`, `id`, `version`) instead of inventing a second cursor
 
+## Choose The Business Fact, Not An Upstream Proxy
+
+Cross-layer rules often have several plausible clocks: created, selected, generated, queued,
+attempted, and delivered. Name the user-visible fact first, then trace the complete durable lineage
+that proves it. Do not substitute the nearest upstream row merely because it is easier to query.
+
+For any cooldown, deduplication, billing, or audience-frequency rule:
+
+- define the authoritative terminal state and mode (for example, formal + delivered);
+- join through the typed origin lineage instead of matching only a shared ID;
+- filter authoritative rows before latest/earliest aggregation and de-duplicate fan-out;
+- keep orthogonal history on its own clock (editorial selection can still drive theme diversity even
+  when delivery drives audience repetition);
+- version the semantic identity when changing the clock so stored runs replay under their original
+  meaning;
+- test the proxy-positive/outcome-negative case, every non-authoritative terminal state, duplicate
+  lineage, and the exact time-window boundary in the real persistence engine.
+
+**Real-world example**: a seven-day audience-repeat veto originally used topic selection history.
+That treated selected-but-never-delivered content as something the audience had already seen. The
+correct contract uses a formal terminal delivery through selection -> copy -> package -> delivery,
+while selection history continues to own same-day exclusion and theme-repetition penalties.
+
 ---
 
 ## Cross-Platform Template Consistency

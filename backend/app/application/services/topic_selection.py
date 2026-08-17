@@ -16,8 +16,8 @@ from app.core.errors import ConflictError, TopicSelectionLeaseLostError
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
-    DEFAULT_TOPIC_SCORING_VERSION,
     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
     TopicScoringConfig,
     select_daily_topic,
 )
@@ -27,7 +27,7 @@ logger = structlog.get_logger()
 
 
 def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
-    if settings.content_scoring_version == DEFAULT_TOPIC_SCORING_VERSION:
+    if settings.content_scoring_version in TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS:
         priority_rule_version = (
             settings.content_selection_priority_rule_version
             or MINISTRY_EDUCATION_PRIORITY_RULE_VERSION

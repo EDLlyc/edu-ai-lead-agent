@@ -36,7 +36,7 @@ social publishing.
 - Each enabled slot owns one idempotent scheduled acquisition identity and the exact terminal
   governance run derived from it. A terminal same-date run from another acquisition or slot cannot
   satisfy readiness.
-- Slot selection reuses the stored `.6` eligibility, Ministry priority, threshold, and veto result.
+- Slot selection reuses the stored `.7` eligibility, Ministry priority, threshold, and veto result.
   `slot-ranking-v1` may reorder only eligible candidates from governed/editorial/product
   projections; it cannot change eligibility, totals, threshold state, priority authentication, or
   vetoes.
@@ -45,9 +45,12 @@ social publishing.
 - A slot selects 0--3 events. The business-date advisory lock and relational uniqueness enforce no
   repeated event across slots and at most nine slot selections per day. Insufficient quality
   persists explicit unfilled reasons and never lowers the threshold.
-- Seven-day repeat computation for a slot merges legacy daily selections with previous slot
-  selections. This merge is opt-in to the slot repository; legacy daily `.4`/`.5`/`.6` replay
-  remains daily-history-only.
+- Under `.7`, seven-day repeat computation for a slot merges daily-origin and slot-origin lineages
+  only when their material package has a formal Enterprise WeChat job in terminal `delivered`
+  state. The SQL projection is distinct by event/version/business date before latest-date
+  aggregation. Selected rows still own the category-based theme penalty, and same-day exclusion
+  remains exact selection history. This merge is opt-in to the slot repository; literal `.6` and
+  older replay remain selection-backed, with the legacy daily path daily-history-only.
 - Every selected event has one discriminated copy origin, one full evidence-bound 180--240 Hanzi
   copy target, one independent image request/artifact, and one material package. Exactly one of the
   legacy daily origin and slot selection origin is present.
@@ -73,9 +76,11 @@ social publishing.
 | Slot or global content gate is disabled | No automatic slot acquisition, selection, generation, or delivery |
 | Exact acquisition/governance lineage is incomplete | Remain preparing/retry readiness; create no slot decision or provider work |
 | Candidate is vetoed, out of cohort, or below ordinary threshold | Ineligible; slot affinity and product fit cannot rescue it |
-| Authenticated Ministry education candidate has no hard veto | Preserve the exact `.6` priority/bypass behavior before slot ordering |
+| Authenticated Ministry education candidate has no hard veto | Preserve the exact `.6`/`.7` priority/bypass behavior before slot ordering |
 | Only 0--2 candidates qualify | Select only those candidates and persist unfilled reasons |
-| Event was selected in a prior slot or within the seven-day window | Exclude it with a stored explanation |
+| Event was formally delivered from a prior daily/slot selection inside the `.7` seven-day window | Exclude it with a stored explanation |
+| Prior `.7` slot is selected but absent, test-only, or not terminal-delivered | Keep it out of hard-repeat history; retain it for theme history |
+| Event was selected by an earlier slot on the same business date | Exclude it immediately without waiting for delivery |
 | Concurrent decisions approach the daily limit | Advisory lock plus database constraints converge at no more than nine selections |
 | Copy/image/package fails for one selection | Only that selection fails; ready siblings continue independently |
 | Package is ready before target | Keep it queued with `not_before=target`; zero provider calls |
@@ -90,13 +95,15 @@ social publishing.
 
 - Good: morning selects three eligible events, creates three independent copy/image/packages, and
   starts each ready package in ordinal order with at least the durable configured gap.
-- Good: noon excludes an event selected in morning and an event selected by a slot two days ago,
-  while the legacy daily replay for the same stored `.6` cutoff remains unchanged.
+- Good: noon immediately excludes an event selected in morning and excludes an event formally
+  delivered by a slot two days ago, while allowing a two-day-old selected-but-undelivered event and
+  keeping literal `.6` replay unchanged.
 - Base: only one candidate qualifies; the slot succeeds with one independent package and two
   explained unfilled positions.
 - Base: no candidate qualifies; the slot succeeds empty and performs no model, image, or delivery
   provider call.
-- Bad: add slot keywords to the `.6` total, query the latest unrelated governance run, combine
+- Bad: add slot keywords to the `.7` total, treat selection alone as a v4 audience-visible repeat,
+  query the latest unrelated governance run, combine
   siblings into one draft/image, use an in-process sleep for the package gap, or reclaim an unknown
   slot send after lease loss.
 
@@ -105,8 +112,9 @@ social publishing.
 - Pure domain tests cover all three schedules, timezone-aware cross-midnight preparation, bounds,
   Ministry ordering, affinity reasons, stable ties, 0/1/2/3 selections, same-day exclusion, and the
   nine-item ceiling.
-- Topic repository tests prove slot history participates in seven-day repeat scoring while the
-  legacy daily candidate query remains unchanged.
+- Topic repository tests prove `.7` daily/slot formal-delivered history participates in seven-day
+  repeat scoring, absent/test/non-delivered states do not, duplicates collapse, theme history and
+  same-day exclusion remain selected-row based, and literal `.6` replay remains unchanged.
 - Real PostgreSQL migration tests cover clean upgrade, metadata parity, composite foreign-key
   cross-wire rejection, origin XOR, daily uniqueness/max-nine behavior, and safe downgrade refusal
   when live slot-origin rows exist.

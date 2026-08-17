@@ -22,6 +22,7 @@ from app.domain.editorial_relevance import (
     evaluate_science_tech_editorial_relevance,
 )
 from app.domain.topic_selection import (
+    DELIVERED_CONTENT_VETO_RULE_VERSION,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     DailyTopicDecision,
     TopicCandidate,
@@ -32,6 +33,7 @@ from app.infrastructure.db.models import (
     ArticleOccurrenceModel,
     ContentSlotRunModel,
     ContentSlotSelectionModel,
+    CopyGenerationRunModel,
     DailyTopicSelectionModel,
     EventAssignmentDecisionModel,
     EventClusterModel,
@@ -41,12 +43,14 @@ from app.infrastructure.db.models import (
     EvidenceCandidateModel,
     GovernanceJobModel,
     GovernanceRunModel,
+    MaterialPackageModel,
     NormalizedArticleModel,
     SourceVersionModel,
     TopicScoreModel,
     TopicScoringConfigModel,
     TopicSelectionJobModel,
     TopicSelectionRunModel,
+    WeComDeliveryJobModel,
 )
 
 _SAFE_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
@@ -430,12 +434,17 @@ async def load_governed_topic_candidates(
     """Project immutable governed candidates without reinterpreting legacy history.
 
     Legacy daily runs intentionally keep their historical daily-only repetition projection.
-    New content-slot runs additionally merge prior slot selections so the same seven-day veto
-    continues across slot-produced editions.
+    Content-slot runs additionally merge prior slot selections. The delivered-history veto rule
+    changes only the hard-repeat date projection; selected versions continue to own the theme
+    repetition projection for every policy.
     """
 
     recent_days_value = config_snapshot.get("recent_selection_window_days", 7)
     recent_days = int(recent_days_value) if isinstance(recent_days_value, int) else 7
+    history_start = business_date - timedelta(days=max(recent_days, 30))
+    uses_delivered_repeat_history = (
+        config_snapshot.get("veto_rule_version") == DELIVERED_CONTENT_VETO_RULE_VERSION
+    )
 
     latest_version_id = (
         select(EventClusterVersionModel.id)
@@ -573,8 +582,7 @@ async def load_governed_topic_candidates(
                 ).where(
                     DailyTopicSelectionModel.decision_kind == "selected",
                     DailyTopicSelectionModel.business_date < business_date,
-                    DailyTopicSelectionModel.business_date
-                    >= business_date - timedelta(days=max(recent_days, 30)),
+                    DailyTopicSelectionModel.business_date >= history_start,
                     DailyTopicSelectionModel.timezone == timezone,
                     DailyTopicSelectionModel.scoring_profile == scoring_profile,
                 )
@@ -597,26 +605,136 @@ async def load_governed_topic_candidates(
                     )
                     .where(
                         ContentSlotSelectionModel.business_date < business_date,
-                        ContentSlotSelectionModel.business_date
-                        >= business_date - timedelta(days=max(recent_days, 30)),
+                        ContentSlotSelectionModel.business_date >= history_start,
                         ContentSlotSelectionModel.timezone == timezone,
                         ContentSlotRunModel.scoring_profile == scoring_profile,
                     )
                 )
             ).tuples()
         )
-    last_selected: dict[UUID, date] = {}
     prior_version_ids: list[UUID] = []
-    for selected_event_id, selected_version_id, selected_business_date in (
+    for _selected_event_id, selected_version_id, _selected_business_date in (
         *daily_prior_rows,
         *slot_prior_rows,
     ):
+        if selected_version_id is not None:
+            prior_version_ids.append(selected_version_id)
+
+    repeat_history_rows = (*daily_prior_rows, *slot_prior_rows)
+    if uses_delivered_repeat_history:
+        daily_delivered_rows = tuple(
+            (
+                await session.execute(
+                    select(
+                        DailyTopicSelectionModel.selected_event_id,
+                        DailyTopicSelectionModel.selected_event_version_id,
+                        DailyTopicSelectionModel.business_date,
+                    )
+                    .select_from(DailyTopicSelectionModel)
+                    .join(
+                        CopyGenerationRunModel,
+                        and_(
+                            CopyGenerationRunModel.daily_topic_selection_id
+                            == DailyTopicSelectionModel.id,
+                            CopyGenerationRunModel.topic_selection_run_id
+                            == DailyTopicSelectionModel.run_id,
+                            CopyGenerationRunModel.business_date
+                            == DailyTopicSelectionModel.business_date,
+                            CopyGenerationRunModel.timezone == DailyTopicSelectionModel.timezone,
+                            CopyGenerationRunModel.scoring_profile
+                            == DailyTopicSelectionModel.scoring_profile,
+                            CopyGenerationRunModel.decision_kind == "selected",
+                            CopyGenerationRunModel.selected_event_id
+                            == DailyTopicSelectionModel.selected_event_id,
+                            CopyGenerationRunModel.selected_event_version_id
+                            == DailyTopicSelectionModel.selected_event_version_id,
+                        ),
+                    )
+                    .join(
+                        MaterialPackageModel,
+                        MaterialPackageModel.run_id == CopyGenerationRunModel.id,
+                    )
+                    .join(
+                        WeComDeliveryJobModel,
+                        WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id,
+                    )
+                    .where(
+                        DailyTopicSelectionModel.decision_kind == "selected",
+                        DailyTopicSelectionModel.business_date < business_date,
+                        DailyTopicSelectionModel.business_date >= history_start,
+                        DailyTopicSelectionModel.timezone == timezone,
+                        DailyTopicSelectionModel.scoring_profile == scoring_profile,
+                        WeComDeliveryJobModel.content_slot_selection_id.is_(None),
+                        WeComDeliveryJobModel.mode == "formal",
+                        WeComDeliveryJobModel.status == "delivered",
+                    )
+                    .distinct()
+                )
+            ).tuples()
+        )
+        slot_delivered_rows: tuple[tuple[UUID, UUID, date], ...] = ()
+        if include_content_slot_history:
+            slot_delivered_rows = tuple(
+                (
+                    await session.execute(
+                        select(
+                            ContentSlotSelectionModel.selected_event_id,
+                            ContentSlotSelectionModel.selected_event_version_id,
+                            ContentSlotSelectionModel.business_date,
+                        )
+                        .select_from(ContentSlotSelectionModel)
+                        .join(
+                            ContentSlotRunModel,
+                            ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                        )
+                        .join(
+                            CopyGenerationRunModel,
+                            and_(
+                                CopyGenerationRunModel.content_slot_selection_id
+                                == ContentSlotSelectionModel.id,
+                                CopyGenerationRunModel.business_date
+                                == ContentSlotSelectionModel.business_date,
+                                CopyGenerationRunModel.timezone
+                                == ContentSlotSelectionModel.timezone,
+                                CopyGenerationRunModel.scoring_profile
+                                == ContentSlotRunModel.scoring_profile,
+                                CopyGenerationRunModel.decision_kind == "selected",
+                                CopyGenerationRunModel.selected_event_id
+                                == ContentSlotSelectionModel.selected_event_id,
+                                CopyGenerationRunModel.selected_event_version_id
+                                == ContentSlotSelectionModel.selected_event_version_id,
+                            ),
+                        )
+                        .join(
+                            MaterialPackageModel,
+                            MaterialPackageModel.run_id == CopyGenerationRunModel.id,
+                        )
+                        .join(
+                            WeComDeliveryJobModel,
+                            WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id,
+                        )
+                        .where(
+                            ContentSlotSelectionModel.business_date < business_date,
+                            ContentSlotSelectionModel.business_date >= history_start,
+                            ContentSlotSelectionModel.timezone == timezone,
+                            ContentSlotRunModel.scoring_profile == scoring_profile,
+                            WeComDeliveryJobModel.content_slot_selection_id
+                            == ContentSlotSelectionModel.id,
+                            WeComDeliveryJobModel.mode == "formal",
+                            WeComDeliveryJobModel.status == "delivered",
+                        )
+                        .distinct()
+                    )
+                ).tuples()
+            )
+        repeat_history_rows = (*daily_delivered_rows, *slot_delivered_rows)
+
+    last_selected: dict[UUID, date] = {}
+    for selected_event_id, _selected_version_id, selected_business_date in repeat_history_rows:
         if selected_event_id is not None:
             previous = last_selected.get(selected_event_id)
             if previous is None or selected_business_date > previous:
                 last_selected[selected_event_id] = selected_business_date
-        if selected_version_id is not None:
-            prior_version_ids.append(selected_version_id)
     prior_categories = tuple(
         (
             await session.scalars(

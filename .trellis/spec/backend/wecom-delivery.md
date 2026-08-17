@@ -107,6 +107,13 @@ The normal state path is `queued -> running -> delivered`. A text-success/image-
 failure queues the same job with bounded backoff. Explicit operator retry may reopen `failed`,
 `partial`, or `delivery_unknown`, but never `delivered`.
 
+`status=delivered` is also the authoritative audience-visible success signal for the active `.7`
+topic repeat window. Topic history follows the typed daily/slot selection -> copy generation run ->
+material package -> delivery job lineage and additionally requires `mode=formal`. It does not
+reconstruct success from attempt rows, child states, or provider bodies. Test mode and queued,
+running, partial, failed, cancelled, `delivery_window_expired`, or `delivery_unknown` jobs never
+create a v4 hard-repeat date; literal `.6` replay remains selection-backed.
+
 Text is sent before image. A successful child state is persisted before the next child is called;
 lease recovery therefore skips a delivered child. Image delivery reads the private MinIO object,
 checks size, SHA-256, and PNG/JPEG signature. The self-built-app adapter uploads temporary media;
@@ -166,6 +173,8 @@ API responses, or durable delivery rows.
 | Send timeout or ambiguous transport result | Mark child and job `unknown`/`delivery_unknown`; never auto-resend |
 | Invalid recipient, invalid credentials, unsupported media, or malformed provider response | Terminal safe error; no raw provider text in API/logs |
 | Text succeeds and image fails | Persist text success and mark job `partial` or queued for an eligible retry |
+| Selection/package has no formal terminal-delivered job | Exclude it from `.7` hard-repeat history |
+| Multiple packages/jobs reach delivered for one selection | Project one distinct event/version/business-date history row |
 | Legacy dispatcher lease expires | Reclaim with `FOR UPDATE SKIP LOCKED`; skip already delivered children |
 | Slot dispatcher lease expires after package start | Persist the unresolved child and job as unknown; never auto-reclaim it |
 
@@ -176,6 +185,9 @@ API responses, or durable delivery rows.
   sends text then image, both child attempts are durable, and the job becomes `delivered`.
 - Good: after a deployment, a valid package from yesterday remains queryable for audit but is not
   selected by today's automatic reconciliation.
+- Good: a formal terminal-delivered package contributes its selection business date to `.7`
+  repeat history even when a newer test or failed job exists; duplicate successful jobs do not
+  multiply or change that date.
 - Base: WeCom remains disabled in local Compose; API exposes no recipient and dispatcher remains
   idle without needing credentials.
 - Good: a text-success/image-timeout result is visible as `partial` or `delivery_unknown`, and an
@@ -202,6 +214,9 @@ API responses, or durable delivery rows.
   business-date-level formal-job exclusions, current-business-date join, direct quality predicates,
   malformed/missing JSONB snapshots, and bounded race-skip logging. Include a timezone-boundary
   test with a fixed UTC clock.
+- Topic-history integration tests use real PostgreSQL to assert both daily and slot origins,
+  formal-delivered inclusion, all nonqualifying modes/states, duplicate projection, and the rule
+  that a newer failed/test job cannot hide an older formal success.
 - Compose checks run `docker compose config --quiet` and build the `wecom-dispatcher` image without
   credentials. A real provider send is opt-in and must never be part of the default test suite.
 - `scripts/doctor.sh` and migration-head assertions must be updated whenever the Alembic head moves.

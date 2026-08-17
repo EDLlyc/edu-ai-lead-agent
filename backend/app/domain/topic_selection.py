@@ -28,10 +28,16 @@ from app.domain.science_policy_priority import (
     evaluate_science_policy_priority,
 )
 
-DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
+DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
+TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
+TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
+    TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
+    DEFAULT_TOPIC_SCORING_VERSION,
+)
 SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = "scoring-v1-preview.5-science-education-product-fit"
 DEFAULT_SELECTION_PRIORITY_RULE_VERSION: str | None = None
 GOVERNED_CONTENT_VETO_RULE_VERSION = "topic-veto-v3-governed-content"
+DELIVERED_CONTENT_VETO_RULE_VERSION = "topic-veto-v4-delivered-content"
 SCIENCE_EDUCATION_VETO_RULE_VERSION = "topic-veto-v2-science-ai-education"
 LEGACY_TOPIC_VETO_RULE_VERSION = "topic-veto-v1"
 SOURCE_PRIORITY_RULE_VERSION = "source-priority-v1"
@@ -196,7 +202,7 @@ class TopicScoringConfig:
     @property
     def uses_tiered_editorial_features(self) -> bool:
         return (
-            self.version == DEFAULT_TOPIC_SCORING_VERSION
+            self.version in TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS
             or self.science_tech_editorial_rule_version is not None
         )
 
@@ -235,11 +241,28 @@ class TopicScoringConfig:
     def effective_veto_rule_version(self) -> str:
         if self.veto_rule_version is not None:
             return self.veto_rule_version
+        if self.version == DEFAULT_TOPIC_SCORING_VERSION:
+            return DELIVERED_CONTENT_VETO_RULE_VERSION
         if self.uses_tiered_editorial_features:
             return GOVERNED_CONTENT_VETO_RULE_VERSION
         if self.uses_science_education_features:
             return SCIENCE_EDUCATION_VETO_RULE_VERSION
         return LEGACY_TOPIC_VETO_RULE_VERSION
+
+    @property
+    def has_authenticated_ministry_priority(self) -> bool:
+        expected_veto_rule = {
+            TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION: GOVERNED_CONTENT_VETO_RULE_VERSION,
+            DEFAULT_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+        }.get(self.version)
+        return (
+            expected_veto_rule is not None
+            and self.effective_veto_rule_version == expected_veto_rule
+            and self.uses_tiered_editorial_features
+            and self.effective_science_tech_editorial_rule_version
+            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            and self.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+        )
 
     @property
     def penalty_weights(self) -> Mapping[str, float]:
@@ -639,10 +662,7 @@ def score_topic_candidate(
         config=config,
     )
     threshold_bypass_applied = (
-        priority_applied
-        and not passes_threshold
-        and config.version == DEFAULT_TOPIC_SCORING_VERSION
-        and config.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+        priority_applied and not passes_threshold and config.has_authenticated_ministry_priority
     )
     editorially_qualified = (
         not config.uses_tiered_editorial_features
@@ -825,12 +845,7 @@ def _priority_state(
     }:
         return False, "unsupported_selection_priority_rule"
     if config.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION:
-        if (
-            config.version != DEFAULT_TOPIC_SCORING_VERSION
-            or not config.uses_tiered_editorial_features
-            or config.effective_science_tech_editorial_rule_version
-            != SCIENCE_TECH_EDITORIAL_RULE_VERSION
-        ):
+        if not config.has_authenticated_ministry_priority:
             return False, "ministry_priority_disabled_for_config"
         if veto_codes:
             return False, "hard_veto"

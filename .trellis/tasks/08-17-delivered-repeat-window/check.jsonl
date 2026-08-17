@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Verify replay compatibility, exact window boundary, and immutable rule identity."}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Verify daily/slot origin coverage and unchanged same-day behavior."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Verify only formal terminal delivered jobs qualify and unknown/partial states do not."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify active scoring identity and downstream handoff remain consistent."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply real-PostgreSQL, type, lint, drift, and non-tautological regression gates."}
+{"file":".trellis/tasks/08-17-delivered-repeat-window/prd.md","reason":"Check every observable acceptance criterion and out-of-scope production boundary."}

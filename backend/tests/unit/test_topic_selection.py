@@ -5,8 +5,11 @@ import pytest
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
+    DELIVERED_CONTENT_VETO_RULE_VERSION,
+    GOVERNED_CONTENT_VETO_RULE_VERSION,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
+    TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     NoTopicCode,
     TopicCandidate,
     TopicScoringConfig,
@@ -23,6 +26,10 @@ CONFIG = TopicScoringConfig(
 )
 TIERED_CONFIG = TopicScoringConfig(
     selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+)
+HISTORICAL_TIERED_CONFIG = TopicScoringConfig(
+    version=TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
 )
 LEGACY_CONFIG = TopicScoringConfig(
     version="scoring-v1-preview.4-science-policy-priority",
@@ -89,11 +96,11 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
-def test_tiered_config_exposes_immutable_v2_rules_and_round_trips() -> None:
+def test_delivered_history_config_exposes_immutable_v2_rules_and_round_trips() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
-    assert metadata["version"] == "scoring-v1-preview.6-tiered-science-tech-priority"
-    assert metadata["veto_rule_version"] == "topic-veto-v3-governed-content"
+    assert metadata["version"] == "scoring-v1-preview.7-delivered-repeat-history"
+    assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
     assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
     assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
@@ -105,6 +112,22 @@ def test_tiered_config_exposes_immutable_v2_rules_and_round_trips() -> None:
         "freshness": 0.10,
         "communication_potential": 0.10,
     }
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+def test_historical_tiered_config_retains_v3_selection_history_and_round_trips() -> None:
+    metadata = HISTORICAL_TIERED_CONFIG.as_metadata()
+
+    assert metadata["version"] == TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION
+    assert metadata["veto_rule_version"] == GOVERNED_CONTENT_VETO_RULE_VERSION
+    assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
+    historical_policy = dict(metadata)
+    delivered_policy = TIERED_CONFIG.as_metadata()
+    historical_policy.pop("version")
+    historical_policy.pop("veto_rule_version")
+    delivered_policy.pop("version")
+    delivered_policy.pop("veto_rule_version")
+    assert historical_policy == delivered_policy
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
@@ -263,6 +286,23 @@ def test_seven_day_repeat_is_vetoed_but_boundary_is_allowed() -> None:
     assert TopicVetoCode.REPEATED_WITHIN_WINDOW in repeated.veto_codes
     assert TopicVetoCode.REPEATED_WITHIN_WINDOW not in boundary.veto_codes
     assert repeated.raw_features["days_since_last_selection"] == 6.0
+
+
+@pytest.mark.parametrize("config", (HISTORICAL_TIERED_CONFIG, TIERED_CONFIG))
+def test_tiered_versions_preserve_the_seven_day_boundary(config: TopicScoringConfig) -> None:
+    repeated = score_topic_candidate(
+        _candidate(days_since_last_selection=6),
+        as_of=NOW,
+        config=config,
+    )
+    boundary = score_topic_candidate(
+        _candidate(days_since_last_selection=7),
+        as_of=NOW,
+        config=config,
+    )
+
+    assert TopicVetoCode.REPEATED_WITHIN_WINDOW in repeated.veto_codes
+    assert TopicVetoCode.REPEATED_WITHIN_WINDOW not in boundary.veto_codes
 
 
 def test_event_older_than_freshness_window_is_transparently_vetoed() -> None:
@@ -462,7 +502,10 @@ def test_tiered_product_fit_cannot_create_eligibility_for_out_of_scope_content()
     assert score.threshold_bypass_applied is False
 
 
-def test_authenticated_ministry_education_priority_bypasses_only_numeric_threshold() -> None:
+@pytest.mark.parametrize("config", (HISTORICAL_TIERED_CONFIG, TIERED_CONFIG))
+def test_authenticated_ministry_education_priority_bypasses_only_numeric_threshold(
+    config: TopicScoringConfig,
+) -> None:
     ministry = _candidate(
         source_trust=0.2,
         source_diversity=1,
@@ -475,7 +518,7 @@ def test_authenticated_ministry_education_priority_bypasses_only_numeric_thresho
         priority_summary="学生参加科学探究实践。",
     )
 
-    score = score_topic_candidate(ministry, as_of=NOW, config=TIERED_CONFIG)
+    score = score_topic_candidate(ministry, as_of=NOW, config=config)
 
     assert score.total < score.threshold
     assert score.passes_threshold is False

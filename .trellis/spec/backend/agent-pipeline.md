@@ -202,8 +202,10 @@ The executable API, migration, environment, lease, scoring, veto, and test contr
 
 Hard vetoes are evaluated independently of the numeric total and cannot be outweighed. Initial
 vetoes include unresolved Tier C evidence, unverified rumors, unsuitable negative incidents,
-privacy/legal/safety uncertainty, prohibited marketing risk, and an event cluster selected in the
-last seven days.
+privacy/legal/safety uncertainty, prohibited marketing risk, and an audience-visible event repeat
+inside the last seven days. For the active v4 policy, that repeat means a prior formal Enterprise WeChat job
+with terminal `delivered` status through the typed selection/copy/package lineage; literal `.6`
+and older stored policies retain selection-backed replay.
 
 Scoring uses normalized features and a versioned configuration:
 
@@ -223,17 +225,19 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.6-tiered-science-tech-priority` gives 0.30 to tiered editorial
+The implemented `scoring-v1-preview.7-delivered-repeat-history` gives 0.30 to tiered editorial
 priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
 and communication potential. It keeps genuine hard vetoes but does not add the historical
 `outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
 0.62 numeric threshold only when no hard veto exists; ordinary education and frontier candidates
-remain threshold-bound. Historical `.5` configurations keep their science/AI-education scope veto
-and disabled source priority, while `.4` keeps its legacy feature map, policy-action requirement,
-and Ministry priority semantics on replay.
+remain threshold-bound. `.7` differs from literal `.6` only through its immutable scoring/veto
+identity and delivery-backed repeat provenance; weights, threshold, editorial/product rules,
+Ministry priority/bypass, penalties, and ordering are identical. Historical `.5` configurations
+keep their science/AI-education scope veto and disabled source priority, while `.4` keeps its legacy
+feature map, policy-action requirement, and Ministry priority semantics on replay.
 
 Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
-authenticated Ministry education priority under `.6` may bypass only that numeric threshold and
+authenticated Ministry education priority under `.6`/`.7` may bypass only that numeric threshold and
 still requires zero hard vetoes. Stable tie-breakers must be documented (for example source tier,
 publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.
@@ -1065,7 +1069,8 @@ posting the package.
 - Two scheduler replicas produce one run for the same business key.
 - A worker crash after an external response does not create a duplicate image/model artifact.
 - Tier C content can create a lead but cannot satisfy `external_fact.evidence_ids`.
-- A seven-day repeated event and a below-threshold candidate both stop before generation.
+- A `.7` event formally delivered inside six business-date days and a below-threshold candidate
+  both stop before generation; selected-but-undelivered history and the day-seven boundary proceed.
 - A draft with an unbound fact fails deterministic validation and never reaches audit.
 - Prompt-injection text in a snapshot remains quoted data and cannot alter stage instructions.
 - Audit retry exhaustion preserves issues and artifacts for internal review.

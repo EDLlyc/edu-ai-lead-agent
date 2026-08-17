@@ -7,6 +7,7 @@ import pytest
 from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.application.services.topic_selection import (
     TopicSelectionExecutor,
+    build_topic_scoring_config,
     enqueue_manual_topic_selection,
     reconcile_daily_topic_selection,
 )
@@ -146,7 +147,7 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
 
     run_id = await enqueue_manual_topic_selection(
         repository,
-        Settings(),
+        Settings(_env_file=None),
         business_date=None,
         now=NOW,
     )
@@ -158,7 +159,20 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
+    assert config.version == "scoring-v1-preview.7-delivered-repeat-history"
+    assert config.selection_priority_rule_version == "ministry-education-priority-v3"
+
+
+def test_historical_tiered_scoring_version_keeps_ministry_priority_defaults() -> None:
+    config = build_topic_scoring_config(
+        Settings(
+            _env_file=None,
+            content_scoring_version="scoring-v1-preview.6-tiered-science-tech-priority",
+        )
+    )
+
     assert config.version == "scoring-v1-preview.6-tiered-science-tech-priority"
+    assert config.effective_veto_rule_version == "topic-veto-v3-governed-content"
     assert config.selection_priority_rule_version == "ministry-education-priority-v3"
 
 
