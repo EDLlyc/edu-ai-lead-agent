@@ -699,6 +699,8 @@ assert_static_contract() {
   require_text "$OPERATOR" 'PREVIOUS_COMMIT="7ba25d3eeb290d3f784ae449a5b6ad360a8def58"'
   require_text "$OPERATOR" 'PREVIOUS_IMAGE_ID="sha256:7627186cf1650a63bbe2e5e136e2364970a9383f756a62ed7db8c6e5cb50b21c"'
   require_text "$OPERATOR" 'CANDIDATE_COMMIT="cbc27b2491e4ebd49e6cc58692b065268e2887db"'
+  require_text "$OPERATOR" 'INVOCATION_GUARD_SUFFIX="retry2"'
+  require_text "$OPERATOR" 'edu-ai-image-fallback-release-${candidate_commit}-${INVOCATION_GUARD_SUFFIX}.once'
   require_text "$OPERATOR" 'EXPECTED_RUNTIME_LOCK_SHA256="3be154ff0e7f741b9f74d516baf739a4a38571218670b47dd1031f9dc1b44915"'
   require_text "$OPERATOR" 'EXPECTED_DOCKERFILE_SHA256="d4c2823d9354a7a5c31c2885317cd46b5c764d6afb964306c4204f7ed063fd1f"'
   require_text "$OPERATOR" 'EXPECTED_SOURCE_FILE_COUNT=321'

@@ -21,6 +21,7 @@ readonly PREVIOUS_COMMIT="7ba25d3eeb290d3f784ae449a5b6ad360a8def58"
 readonly PREVIOUS_SHORT="7ba25d3"
 readonly PREVIOUS_IMAGE_ID="sha256:7627186cf1650a63bbe2e5e136e2364970a9383f756a62ed7db8c6e5cb50b21c"
 readonly CANDIDATE_COMMIT="cbc27b2491e4ebd49e6cc58692b065268e2887db"
+readonly INVOCATION_GUARD_SUFFIX="retry2"
 readonly DEPENDENCY_BASE_ID="sha256:50fd2519fbc5aa204c45e76cb685d01aaea1656b998d3ed96c9ab6671b3b9374"
 readonly SCORING_ACTIVE="scoring-v1-preview.7-delivered-repeat-history"
 readonly VETO_ACTIVE="topic-veto-v4-delivered-content"
@@ -1524,7 +1525,7 @@ acquire_release_lock() {
 }
 
 claim_single_invocation() {
-  local guard="/var/lock/edu-ai-image-fallback-release-${candidate_commit}.once"
+  local guard="/var/lock/edu-ai-image-fallback-release-${candidate_commit}-${INVOCATION_GUARD_SUFFIX}.once"
   mkdir -m 0700 -- "$guard" 2>/dev/null || die "candidate release invocation was already claimed"
   printf '%s\n' "$operator_sha256" >"${guard}/operator.sha256"
   chmod 600 "${guard}/operator.sha256"
