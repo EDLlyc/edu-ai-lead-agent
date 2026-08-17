@@ -25,7 +25,7 @@ Phase 1.4 user approval.
 1. Full repository/operator/lock/contract/secret gates before commit and push.
 2. Exact Codeup fetch; prove unchanged production dependencies/runtime lock despite the dev-only
    pyproject change; immutable offline image/source build and entrypoint/Alembic verification.
-3. Read-only c66 preflight, two stable samples, zero actionable/nonterminal/unknown work, zero legacy
+3. Read-only f20 preflight, two stable samples, zero actionable/nonterminal/unknown work, zero legacy
    prompt jobs, and a safe scheduler window. No complete pure read-only startup projection API
    exists; predictive create/claim mirroring is deferred rather than approximated with SQL.
 4. Protected stage; load isolated candidate only; backup lock; dispatcher-first quiescence; fresh
@@ -43,7 +43,7 @@ Phase 1.4 user approval.
 
 ## Recovery contract
 
-- Before durable `.7`: restore `.6`, c66 source/tags/markers/image/services; dispatcher last.
+- Before durable `.7`: restore `.6`, f20 source/tags/markers/image/services; dispatcher last.
 - After durable/nonterminal `.7`, or whenever zero durable/nonterminal `.7` cannot be proven: stop
   all eight application services—API, dispatcher, acquisition scheduler/worker, governance
   scheduler/worker, content scheduler/worker—retain candidate + `.7`, keep only PostgreSQL/MinIO,

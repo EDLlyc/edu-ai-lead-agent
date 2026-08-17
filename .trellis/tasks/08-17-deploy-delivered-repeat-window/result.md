@@ -10,12 +10,13 @@
 - No remote, SSH, production, registry, provider, WeCom, Docker build/load/tag, commit, or push
   operation was performed while producing or testing these files.
 
-The builder and operator are deliberately separate from the application payload. They bind the c66 baseline,
+The builder and operator are deliberately separate from the application payload. The builder binds the
+c66 dependency/path baseline while the operator binds the freshly verified f20 live rollback baseline,
 candidate image ID, dependency base, source archive/manifest/image-source hashes, separate base and
 final pyproject hashes, unchanged runtime lock/Dockerfile, exact stage shape, runtime vectors, and
 the preserved `.env`/`.release.env` hashes plus observed uid:gid. It validates a root-owned mode-0700
 same-device backup/temp root before any stop, supports only bounded `backend/app` candidate source
-additions, creates immutable c66 rollback tags, and removes those additions before restoring the
+additions, creates immutable f20 rollback tags, and removes those additions before restoring the
 prior source archive. The candidate is pinned and revalidated as `linux/amd64`; the classic image
 archive validator binds every layer byte to its ordered config `rootfs.diff_ids` entry.
 
@@ -90,15 +91,23 @@ none is entered by hand.
 
 ## Remaining release work
 
-The clean Codeup commit, candidate image, offline image bundle, protected stage, production read-only
-preflight, one-shot invocation, and independent production review do not exist yet. This local run
-therefore establishes operator behavior only; it is not deployment evidence and must not be used to
-claim Phases 2–6 complete.
+The initial clean Codeup candidate at `c387966...` was built and passed offline runtime validation.
+The first production read-only preflight then correctly found that the live baseline had already
+advanced to f20 (`sha256:ce673857...`), superseding the older recorded c66 rollback identity. It
+also proved the seven retained queued copy rows are dated 2026-08-04 through 2026-08-11,
+current-day actionable copy/package counts are zero, and retained `awaiting_manual_use` packages
+are historical. The observed gate now mirrors the real worker boundary: current-day due copy rows
+plus every running copy and nonterminal WeCom row.
+
+Because the corrected rollback identity and gate are themselves committed release inputs, the
+final authoritative commit/image/bundle must be rebuilt before protected staging and the one-shot
+invocation. No production service, tag, source, environment, database, or object was mutated by
+this preflight.
 
 ## Focused independent review
 
 The task-local review fixed three release blockers: explicit `linux/amd64` build/runtime identity,
-classic-archive layer-to-`rootfs.diff_ids` validation, and immutable per-service c66 rollback tags.
+classic-archive layer-to-`rootfs.diff_ids` validation, and immutable per-service f20 rollback tags.
 It also made recovery marker/env restoration return explicitly on every failed prerequisite rather
 than depending on shell `errexit`, and bound the production operator to exact 321-source/179-image
 counts plus the reviewed 14 additions and 20-line image evidence. The final release contract does
@@ -109,12 +118,13 @@ the first stop and immediately before each scheduler/dispatcher, starts them seq
 rechecks the same vectors after each start; any post-`.7` creation/drift reaches the existing
 stop-all-eight incident disposition.
 
-- Operator SHA-256: `80aa3e2f9f72dc375aeb6884a1d34ed97f4234b1f4cbfdcc9c8e7ee4d0d0aaef`
-- Operator harness SHA-256: `3471ab4056b3eac1da40164785161aba21062347fbbae34e955c33aa04670072`
+- Operator SHA-256: `9586bc12968362b18ef6b4f0d5604111d1c79f63a38dc70624c9cda1d7d92a97`
+- Operator harness SHA-256: `80daf88fd585e6321a0e405757ce623b9edd2c33666c45c34883e30f0b7f0d0f`
 - Validator SHA-256: `183db15c8938e9e235b0529d227ee6c0ed32bbb9460dc40d5bd2a06197e6515b`
 - Builder SHA-256: `873080ab8ba20e5073bfbaa327663062ce529c60ccc661bf96ec4a5ae99da7b1`
 - Builder harness SHA-256: `b6284cec4a66299b8b2c034a6c8e258e6e93df0e2c34cd6050e1e8cca0614963`
 
 `bash -n`, both focused harnesses, Python compile, Ruff, Mypy, task-context validation,
 tracked/untracked diff checks, and the scoped high-confidence secret scan pass. ShellCheck and
-gitleaks are unavailable in this environment. No Docker build/load or external action was run.
+gitleaks are unavailable in this environment. Local Docker build and aggregate-only Codeup/SSH
+reads were performed; no production mutation, provider call, fixture, or WeCom action occurred.

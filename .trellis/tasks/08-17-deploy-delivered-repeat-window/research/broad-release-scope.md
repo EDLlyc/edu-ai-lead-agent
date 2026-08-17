@@ -23,7 +23,7 @@ private material and reproducible `.fls`/`.fdb_latexmk`/`.xdv` compiler files.
 
 ## Feasible release path
 
-No exact project registry or Docker auth is configured, and c66 is a local-tag fast-path baseline.
+No exact project registry or Docker auth is configured, and f20 is the verified live local-tag baseline.
 Therefore commit/push all safe work to authoritative Codeup, build one immutable offline image/source
 bundle from that exact SHA, and deploy through one reviewed local-tag operator. Do not claim standard
 digest readiness; task 08-14 remains the future registry activation path. This one-time exception
@@ -31,6 +31,6 @@ to the digest-only release spec requires explicit user approval after the final 
 
 ## Failure boundary
 
-Before durable `.7`, restore `.6` before c66. After durable/nonterminal `.7`, stop all eight app
+Before durable `.7`, restore `.6` before f20. After durable/nonterminal `.7`, stop all eight app
 services and retain candidate + `.7`. Never make a second deploy call, DB restore/downgrade,
 provider fixture, manual enqueue/retry/resend, or WeCom send.

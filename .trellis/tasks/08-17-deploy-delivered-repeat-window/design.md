@@ -51,10 +51,10 @@ never copied into active application source/image.
 
 | State | Runtime | Scoring | Writers | Recovery |
 |---|---|---|---|---|
-| S0 prior | c66 local tag/image | `.6` or absent | running | no-op |
-| S1 quiesced | c66 | explicit `.6` | stopped | restart captured prior IDs |
+| S0 prior | f20 local tag/image | `.6` or absent | running | no-op |
+| S1 quiesced | f20 | explicit `.6` | stopped | restart captured prior IDs |
 | S2 candidate | new image ID behind local tags | `.6` | stopped | restore source/tags/markers |
-| S3 activated | candidate | `.7` | stopped | full c66 only if no durable `.7` |
+| S3 activated | candidate | `.7` | stopped | full f20 only if no durable `.7` |
 | S4 accepted | candidate | `.7` | dependency-ordered running | retained rollback set |
 
 Operator flags include `backup_ready`, `tags_changed`, `overlay_changed`, `env_activated`, and
@@ -76,12 +76,15 @@ a partial backup and the operator is never invoked twice.
 
 ### Preflight and stage
 
-- Confirm exact c66 source/image/markers, local-tag `.release.env`, OCR/diversity true/true, scoring
+- Confirm exact f20 source/image/markers, local-tag `.release.env`, OCR/diversity true/true, scoring
   ownership, service health/restarts, volumes/capacity/timer, and safe logs.
 - Take two stable aggregate samples at least 15 seconds apart. Require zero running/actionable/
   nonterminal/unknown and legacy-prompt work plus a safe scheduler window. A complete pure
   read-only startup projection API does not exist, so predictive create/claim mirroring is deferred.
 - Explicitly reject actionable copy/package/delivery rows using the pre-`小赛洞察` prompt identity.
+- Preserve inert historical rows: copy queued/retry rows count only when due for the current
+  Asia/Shanghai business date (running rows always count), legacy packages count only for today,
+  and all nonterminal WeCom jobs continue to count globally.
 - Transfer exact artifacts to a unique mode-0700 stage, verify mode-0600 members, load the isolated
   candidate tag, and prove candidate running count remains zero.
 
@@ -117,7 +120,7 @@ a partial backup and the operator is never invoked twice.
 
 ## Rollback
 
-Before durable `.7`, restore `.6` first, then c66 source/tags/markers/image and captured services,
+Before durable `.7`, restore `.6` first, then f20 source/tags/markers/image and captured services,
 dispatcher last. No DB restore/downgrade occurs.
 
 After durable/nonterminal `.7`, or if zero durable/nonterminal `.7` cannot be proven, stop all eight

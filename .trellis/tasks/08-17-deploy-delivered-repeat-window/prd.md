@@ -11,12 +11,12 @@ and cause no manual business/provider/delivery action.
 
 ## Background and confirmed facts
 
-- Last verified production is `c66aa6217d137033118c552f3db11b2a1121d082` on local image
-  `sha256:03a988...`, installed by the proven offline fast path. Latest evidence records
-  `IMAGE_DIVERSITY_ENABLED=true`, `IMAGE_OCR_ENABLED=true`, and scoring `.6`; fresh preflight must
-  revalidate them.
-- Cached Codeup `origin/main=f20db20` already contains `小赛洞察`. Local `main=55cb573` is three
-  commits ahead and includes `3607c78` delivered-repeat plus task/journal commits.
+- Fresh read-only production preflight on 2026-08-17 verified `f20db2060abcfd49b6236137838473ac6f0b7dd4`
+  on local image `sha256:ce673857...`, with `IMAGE_DIVERSITY_ENABLED=true`,
+  `IMAGE_OCR_ENABLED=true`, and scoring `.6`. This supersedes the older recorded c66 baseline.
+- Codeup `main` contains `小赛洞察`, delivered-repeat, Workbench, OCR evidence, reports, and the
+  reviewed release tooling. The deployable identity is always the final fetched full SHA recorded
+  in release evidence, never an earlier planning SHA.
 - Initial inventory: 24 modified and 98 untracked paths covering Agent Workbench, shared DB/security
   refactors, OCR evidence/operators/tests, Trellis artifacts, portfolio assets, reports, and one
   skill-formatting edit.
@@ -111,6 +111,11 @@ and cause no manual business/provider/delivery action.
   actionable/nonterminal/unknown work, and a safe scheduler window.
 - Require no actionable legacy copy/package/delivery work using the prior `小赛洞察` prompt identity;
   do not let an old v17 job cross the content-worker upgrade.
+- Historical copy jobs whose business date is before today and historical `awaiting_manual_use`
+  packages are retained business records, not startup-actionable work: the copy worker claims only
+  the current business date and direct WeCom auto-reconcile selects only today's packages. Count
+  every running copy job, current-day due queued/retry copy jobs, current-day legacy packages, and
+  every nonterminal WeCom job; do not block on inert historical rows.
 - No complete pure read-only application API projects every startup reconcile create/claim, so this
   release does not claim predictive zero-create/zero-claim coverage and does not introduce an
   unverified SQL mirror. Immediately before each scheduler/dispatcher restart, require the existing
@@ -136,7 +141,7 @@ and cause no manual business/provider/delivery action.
 - Require all eight services on the exact candidate image ID/revision at restart zero, healthy
   infra/API, unchanged Alembic, old-image running count zero, runtime `.7`/v4, OCR/diversity
   true/true, no production Workbench route/service, and immediate plus 30-second stable aggregates.
-- Before durable `.7`, failure restores `.6`, c66 source/image/tags/markers/services, dispatcher
+- Before durable `.7`, failure restores `.6`, f20 source/image/tags/markers/services, dispatcher
   last. Database restore and downgrade are never automatic.
 - After durable/nonterminal `.7`, or whenever the operator cannot prove that both durable and
   nonterminal `.7` work are absent, stop all eight application services—API, dispatcher, acquisition

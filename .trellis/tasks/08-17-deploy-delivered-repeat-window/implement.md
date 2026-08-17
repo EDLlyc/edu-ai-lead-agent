@@ -8,7 +8,7 @@
   report/portfolio binary metadata without printing private content.
 - [x] Rewrite the two Workbench authenticated-URL fixtures while preserving rejection assertions.
 - [x] Implement a task-local mode-0600 offline release operator/harness consuming exact Codeup SHA,
-  candidate image ID/bundle/source manifests, and current c66 baseline. Reuse reviewed fast-path
+  candidate image ID/bundle/source manifests, and current f20 baseline. Reuse reviewed fast-path
   controls without executing the unrelated dirty OCR driver.
 - [x] Run `bash -n`, fake early/mid/late/signal recovery, source/image/archive/mode/owner/entrypoint
   tests, secret/diff scans, and independent Trellis review. Freeze operator hash.
@@ -39,13 +39,16 @@
 
 ## Phase 4: Read-only preflight and protected stage
 
-- [ ] Revalidate production c66 source/image/full+short markers, eight services/restarts,
+- [ ] Revalidate production f20 source/image/full+short markers, eight services/restarts,
   API/PostgreSQL/MinIO, scoring cardinality/effective `.6`, OCR/diversity true/true, volumes/
   capacity/timer, `.release.env` local tag, and safe logs.
 - [ ] Capture two aggregate samples at least 15 seconds apart; require stable durable/provider/image/
   WeCom vectors, zero running/actionable/nonterminal/unknown work, no actionable legacy prompt job,
   and a sufficient scheduler window. Do not claim predictive create/claim coverage: no complete
   pure read-only projection API exists, and an unverified SQL mirror is out of scope.
+- [x] Verify the retained seven queued copy rows are dated 2026-08-04 through 2026-08-11 and the
+  retained legacy packages are before today; current-day actionable copy/package counts are zero.
+  Gate current-day due copy work plus all running copy and nonterminal WeCom work, not inert history.
 - [ ] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
   candidate tag, revalidate hashes/image, and require candidate running count zero.
 - [ ] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret
@@ -86,9 +89,9 @@
 
 1. **Before Codeup push:** no remote/production change; fix and rerun gates.
 2. **After push, before first stop:** stage/candidate may exist; production unchanged.
-3. **Stopped, backup incomplete:** restart captured c66 containers; never use partial backup.
-4. **Candidate installed under `.6`:** restore c66 source/tags/markers/image/services, dispatcher last.
-5. **`.7`, no durable/nonterminal `.7`:** restore `.6` first, then c66 rollback is allowed.
+3. **Stopped, backup incomplete:** restart captured f20 containers; never use partial backup.
+4. **Candidate installed under `.6`:** restore f20 source/tags/markers/image/services, dispatcher last.
+5. **`.7`, no durable/nonterminal `.7`:** restore `.6` first, then f20 rollback is allowed.
 6. **Durable/nonterminal `.7`, or zero cannot be proved:** stop all eight services—API,
    dispatcher, acquisition scheduler/worker, governance scheduler/worker, content scheduler/worker—
    retain candidate + `.7`, leave only PostgreSQL/MinIO, and request incident direction. No DB

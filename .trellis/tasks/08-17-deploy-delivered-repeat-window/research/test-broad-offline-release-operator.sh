@@ -570,8 +570,8 @@ assert_artifact_validator() {
 }
 
 assert_static_contract() {
-  require_text "$OPERATOR" 'PREVIOUS_COMMIT="c66aa6217d137033118c552f3db11b2a1121d082"'
-  require_text "$OPERATOR" 'PREVIOUS_IMAGE_ID="sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2"'
+  require_text "$OPERATOR" 'PREVIOUS_COMMIT="f20db2060abcfd49b6236137838473ac6f0b7dd4"'
+  require_text "$OPERATOR" 'PREVIOUS_IMAGE_ID="sha256:ce67385749cc14ee845d3a6fbdd92404df59902adc579534df5d01b6e1a4e8da"'
   require_text "$OPERATOR" 'EXPECTED_RUNTIME_LOCK_SHA256="3be154ff0e7f741b9f74d516baf739a4a38571218670b47dd1031f9dc1b44915"'
   require_text "$OPERATOR" 'EXPECTED_DOCKERFILE_SHA256="d4c2823d9354a7a5c31c2885317cd46b5c764d6afb964306c4204f7ed063fd1f"'
   require_text "$OPERATOR" 'EXPECTED_SOURCE_FILE_COUNT=321'
@@ -591,6 +591,8 @@ assert_static_contract() {
   require_text "$OPERATOR" 'assert_startup_observed_zero "before $service"'
   require_text "$OPERATOR" 'assert_startup_observed_zero "after $service start"'
   require_text "$OPERATOR" '"$(zero_work_vector)" == "0:0:0:0:0:0:0" && "$(legacy_prompt_vector)" == "0:0:0"'
+  require_text "$OPERATOR" "r.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date"
+  require_text "$OPERATOR" "j.available_at<=now()"
   reject_text "$OPERATOR" 'assert_startup_projection_zero'
   require_text "$OPERATOR" 'rollback-tag-inventory.txt'
   require_text "$OPERATOR" 'assert_rollback_tags'

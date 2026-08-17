@@ -15,9 +15,9 @@ readonly RELEASE_ENV="${APP_DIR}/.release.env"
 readonly BACKUP_ROOT="/var/backups/edu-ai/releases"
 readonly BACKUP_LOCK="/var/lock/edu-ai-backup.lock"
 readonly SAFE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-readonly PREVIOUS_COMMIT="c66aa6217d137033118c552f3db11b2a1121d082"
-readonly PREVIOUS_SHORT="c66aa62"
-readonly PREVIOUS_IMAGE_ID="sha256:03a988512f5f0792ec221be15c83db2ee64972f0fb5c4456eccc0562a8f184a2"
+readonly PREVIOUS_COMMIT="f20db2060abcfd49b6236137838473ac6f0b7dd4"
+readonly PREVIOUS_SHORT="f20db20"
+readonly PREVIOUS_IMAGE_ID="sha256:ce67385749cc14ee845d3a6fbdd92404df59902adc579534df5d01b6e1a4e8da"
 readonly DEPENDENCY_BASE_ID="sha256:50fd2519fbc5aa204c45e76cb685d01aaea1656b998d3ed96c9ab6671b3b9374"
 readonly SCORING_SIX="scoring-v1-preview.6-tiered-science-tech-priority"
 readonly SCORING_SEVEN="scoring-v1-preview.7-delivered-repeat-history"
@@ -454,15 +454,17 @@ zero_work_vector() {
     (SELECT count(*) FROM governance_jobs WHERE status IN ('queued','running','retry_scheduled')),
     (SELECT count(*) FROM topic_selection_jobs WHERE status IN ('queued','running')),
     (SELECT count(*) FROM content_slot_jobs WHERE status IN ('queued','running')),
-    (SELECT count(*) FROM copy_generation_jobs WHERE status IN ('queued','running','retry_scheduled')),
+    (SELECT count(*) FROM copy_generation_jobs j JOIN copy_generation_runs r ON r.id=j.run_id
+      WHERE j.status='running' OR (r.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date
+        AND j.status IN ('queued','retry_scheduled') AND j.available_at<=now())),
     (SELECT count(*) FROM image_artifacts WHERE status IN ('queued','running')),
     (SELECT count(*) FROM wecom_delivery_jobs WHERE status IN ('queued','running','partial','delivery_unknown')));"
 }
 
 legacy_prompt_vector() {
   sql_scalar "SELECT concat_ws(':',
-    (SELECT count(*) FROM copy_generation_jobs j JOIN copy_generation_runs r ON r.id=j.run_id WHERE r.version_bundle->>'generator_prompt_version'='moments-generator-v17-english-evidence' AND j.status IN ('queued','running','retry_scheduled')),
-    (SELECT count(*) FROM material_packages p JOIN copy_generation_runs r ON r.id=p.run_id WHERE r.version_bundle->>'generator_prompt_version'='moments-generator-v17-english-evidence' AND p.status IN ('queued','ready','awaiting_manual_use')),
+    (SELECT count(*) FROM copy_generation_jobs j JOIN copy_generation_runs r ON r.id=j.run_id WHERE r.version_bundle->>'generator_prompt_version'='moments-generator-v17-english-evidence' AND (j.status='running' OR (r.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date AND j.status IN ('queued','retry_scheduled') AND j.available_at<=now()))),
+    (SELECT count(*) FROM material_packages p JOIN copy_generation_runs r ON r.id=p.run_id WHERE r.version_bundle->>'generator_prompt_version'='moments-generator-v17-english-evidence' AND r.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date AND p.status IN ('queued','ready','awaiting_manual_use')),
     (SELECT count(*) FROM wecom_delivery_jobs w JOIN material_packages p ON p.id=w.material_package_id JOIN copy_generation_runs r ON r.id=p.run_id WHERE r.version_bundle->>'generator_prompt_version'='moments-generator-v17-english-evidence' AND w.status IN ('queued','running','partial','delivery_unknown')));"
 }
 
