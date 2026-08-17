@@ -60,6 +60,18 @@
   three hashes. Prove the actual 307-path rollback source from Git objects as c66 plus five f20
   runtime files plus `b0a4aab...:.gitignore`; verify that exact hybrid manifest byte-for-byte on
   production and never retry the same candidate identity.
+- [x] Record the c558 backup-portability failure: preflight and isolated load passed and writers
+  quiesced, but the MinIO image lacked `find`; the unchecked in-container pipeline produced an
+  empty inventory and GNU `unlink` then rejected two operands. With `backup_ready=0`, tags/source/
+  env/activation all still zero, automatic recovery restored f20 and an independent 15-second
+  read-only audit passed every vector, all eight services, and candidate-running-zero. Retain the
+  partial `20260817T063725Z-broad-offline` directory as evidence and never consume it as a backup.
+- [x] Replace both MinIO inventories with one fail-closed helper that validates the exact `/data`
+  named volume and mounts it read-only into the validated candidate image for bounded Python
+  hashing through directory/file descriptors; reject empty/malformed output, symlinks/non-regular
+  entries and path/content races, prohibit network access, and split temporary-file removal into
+  two explicit single-operand `unlink` calls. Cover exact Docker arguments, real local negative
+  entries, mount drift, and failure propagation in the focused fake/static harness.
 - [ ] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
   candidate tag, revalidate hashes/image, and require candidate running count zero.
 - [ ] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret

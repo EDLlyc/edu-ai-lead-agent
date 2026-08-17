@@ -428,6 +428,114 @@ assert_candidate_provenance_contract() {
   fi
 }
 
+assert_minio_inventory_contract() (
+  local output="${test_root}/minio.sha256" run_seen=0 expected_arg script requested_root
+  local volume=edu_ai_minio_data
+  local mountpoint=/var/lib/docker/volumes/edu_ai_minio_data/_data
+  local inventory_root="${test_root}/minio-inventory-root" run_mode=synthetic mount_mode=exact
+  local -a expected_run
+  mkdir -m 700 "$inventory_root"
+  candidate_id="sha256:$(printf '1%.0s' {1..64})"
+  expected_run=(
+    run --rm --pull never --network none --read-only
+    --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges:true
+    --user 0:0 --pids-limit 64 --memory 512m --cpus 1
+    --mount "type=volume,src=${volume},dst=/inventory-data,readonly"
+    --entrypoint python "$candidate_id" -c
+  )
+  docker_call() {
+    if [[ "$1" == inspect ]]; then
+      if [[ "$mount_mode" == duplicate ]]; then
+        printf 'volume\t%s\t%s\ttrue\nvolume\t%s\t%s\ttrue\n' "$volume" "$mountpoint" "$volume" "$mountpoint"
+      else
+        printf 'volume\t%s\t%s\ttrue\n' "$volume" "$mountpoint"
+      fi
+      return
+    fi
+    if [[ "$1" == volume && "$2" == inspect ]]; then
+      if [[ "$mount_mode" == mismatch ]]; then
+        printf '%s\t%s-other\n' "$volume" "$mountpoint"
+      else
+        printf '%s\t%s\n' "$volume" "$mountpoint"
+      fi
+      return
+    fi
+    for expected_arg in "${expected_run[@]}"; do
+      [[ "${1-}" == "$expected_arg" ]] || return 91
+      shift
+    done
+    script=${1-}
+    shift
+    [[ "$script" == *'os.scandir(directory_fd)'* && "$script" == *'dir_fd=directory_fd'* \
+      && "$script" == *'os.O_NOFOLLOW'* && "$script" == *'os.O_NONBLOCK'* \
+      && "$script" == *'identity(final_directory) != identity(initial_directory)'* \
+      && "$script" == *'MinIO inventory rejected'* ]] || return 92
+    [[ "$#" == 6 && "$1" == /inventory-data && "$2" == 1000000 \
+      && "$3" == 1099511627776 && "$4" == 64 && "$5" == 4096 && "$6" == 1048576 ]] \
+      || return 93
+    requested_root=$1
+    shift
+    run_seen=1
+    case "$run_mode" in
+      synthetic) printf '%064d\t0\tLi9vYmplY3Q=\n' 0 ;;
+      actual) python3 -c "$script" "$inventory_root" "$@" ;;
+      empty) : ;;
+      malformed) printf 'not-an-inventory-row\n' ;;
+      fail) return 94 ;;
+      *) return 95 ;;
+    esac
+  }
+  write_minio_inventory minio-container "$output"
+  [[ "$run_seen" == 1 && -f "$output" && "$validated_minio_volume_name" == "$volume" ]] \
+    || fail "safe candidate-image MinIO inventory run was not exact"
+  unlink -- "$output"
+
+  run_mode=empty
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "empty MinIO inventory was accepted"
+  fi
+  [[ ! -e "$output" ]] || fail "empty MinIO inventory left partial evidence"
+
+  run_mode=malformed
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "malformed MinIO inventory was accepted"
+  fi
+  [[ ! -e "$output" ]] || fail "malformed MinIO inventory left partial evidence"
+
+  printf 'safe-object\n' >"$inventory_root/object"
+  run_mode=actual
+  write_minio_inventory minio-container "$output"
+  [[ -s "$output" ]] || fail "real descriptor-based MinIO inventory was empty"
+  unlink -- "$output"
+  ln -s object "$inventory_root/link"
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "MinIO inventory accepted a symlink"
+  fi
+  [[ ! -e "$output" ]] || fail "symlink rejection left partial MinIO evidence"
+  unlink -- "$inventory_root/link"
+  mkfifo "$inventory_root/fifo"
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "MinIO inventory accepted a special file"
+  fi
+  [[ ! -e "$output" ]] || fail "special-file rejection left partial MinIO evidence"
+  unlink -- "$inventory_root/fifo"
+
+  mount_mode=duplicate
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "duplicate MinIO /data mounts were accepted"
+  fi
+  mount_mode=mismatch
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "MinIO volume mountpoint mismatch was accepted"
+  fi
+  mount_mode=exact
+  run_mode=fail
+  if write_minio_inventory minio-container "$output" >/dev/null 2>&1; then
+    fail "MinIO inventory command failure was not propagated"
+  fi
+  [[ ! -e "$output" ]] || fail "failed MinIO inventory left partial evidence"
+)
+
 assert_stage_shape() {
   local fixture="${test_root}/stage" member
   mkdir -m 700 "$fixture"
@@ -597,6 +705,12 @@ assert_static_contract() {
   reject_text "$OPERATOR" 'assert_startup_projection_zero'
   require_text "$OPERATOR" 'rollback-tag-inventory.txt'
   require_text "$OPERATOR" 'assert_rollback_tags'
+  require_text "$OPERATOR" 'write_minio_inventory "$minio_id" "${backup_dir}/minio.sha256"'
+  require_text "$OPERATOR" 'write_minio_inventory "$minio_id" "${runtime_evidence_dir}/minio.sha256"'
+  require_text "$OPERATOR" 'unlink -- "$candidate_additions_file"'
+  require_text "$OPERATOR" 'unlink -- "$destination_evidence_file"'
+  reject_text "$OPERATOR" 'cd /data && find'
+  reject_text "$OPERATOR" 'unlink "$candidate_additions_file" "$destination_evidence_file"'
   reject_text "$OPERATOR" 'compose_call up --no-build backend-migrate'
   reject_text "$OPERATOR" 'python -m app.seed_sources'
   reject_text "$OPERATOR" 'make release-prod'
@@ -662,5 +776,6 @@ assert_recovery_deadline_independence
 assert_observed_startup_gate
 assert_immutable_rollback_tag_contract
 assert_candidate_provenance_contract
+assert_minio_inventory_contract
 assert_stage_shape
 printf 'PASS: broad offline operator static, artifact, trusted-root, install/rollback, config, and fail-closed recovery checks\n'

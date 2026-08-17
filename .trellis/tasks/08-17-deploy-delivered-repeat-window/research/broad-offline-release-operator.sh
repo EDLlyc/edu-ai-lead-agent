@@ -128,6 +128,7 @@ workspace_temp_dir=""
 release_marker_uid=""
 release_marker_gid=""
 failure_rc=0
+validated_minio_volume_name=""
 
 # Recovery state.  Flags are armed before their corresponding first mutation.
 writers_stopped=0
@@ -215,6 +216,173 @@ require_regex() { [[ "$1" =~ $2 ]] || die "invalid $3"; }
 
 service_tag() { printf 'edu-ai-lead-agent-%s:latest\n' "$1"; }
 rollback_tag_for_service() { printf '%s-%s\n' "$rollback_tag_prefix" "$1"; }
+
+validate_minio_inventory_file() {
+  local inventory=$1
+  python3 - "$inventory" <<'PY'
+import base64
+import binascii
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+rows = path.read_bytes().splitlines()
+if not rows:
+    raise SystemExit(1)
+previous = None
+seen = set()
+for row in rows:
+    fields = row.split(b"\t")
+    if len(fields) != 3 or re.fullmatch(rb"[0-9a-f]{64}", fields[0]) is None:
+        raise SystemExit(1)
+    if re.fullmatch(rb"0|[1-9][0-9]*", fields[1]) is None:
+        raise SystemExit(1)
+    try:
+        decoded = base64.b64decode(fields[2], validate=True)
+    except (binascii.Error, ValueError):
+        raise SystemExit(1)
+    parts = decoded.split(b"/")
+    if len(decoded) > 4096 or len(parts) < 2 or parts[0] != b"." or any(
+        part in {b"", b".", b".."} for part in parts[1:]
+    ):
+        raise SystemExit(1)
+    if decoded in seen or (previous is not None and decoded <= previous):
+        raise SystemExit(1)
+    seen.add(decoded)
+    previous = decoded
+PY
+}
+
+write_minio_inventory() {
+  local minio_id=$1 output=$2 mount_record volume_record
+  local mount_type volume_name mount_source mount_rw extra
+  [[ ! -e "$output" && ! -L "$output" ]] || { die "MinIO inventory output already exists"; return 1; }
+  mount_record=$(docker_call inspect "$minio_id" --format \
+    '{{range .Mounts}}{{if eq .Destination "/data"}}{{printf "%s\t%s\t%s\t%t\n" .Type .Name .Source .RW}}{{end}}{{end}}' \
+    </dev/null) || return 1
+  [[ -n "$mount_record" && "$mount_record" != *$'\n'* ]] \
+    || { die "MinIO /data mount is not exact"; return 1; }
+  IFS=$'\t' read -r mount_type volume_name mount_source mount_rw extra <<<"$mount_record"
+  [[ "$mount_type" == volume && -z "$extra" && "$mount_rw" == true ]] \
+    || { die "MinIO /data is not one writable named-volume mount"; return 1; }
+  [[ "$volume_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ && "$mount_source" == /* ]] \
+    || { die "MinIO named-volume identity is unsafe"; return 1; }
+  volume_record=$(docker_call volume inspect "$volume_name" --format \
+    '{{printf "%s\t%s" .Name .Mountpoint}}' </dev/null) || return 1
+  [[ "$volume_record" == "${volume_name}"$'\t'"${mount_source}" ]] \
+    || { die "MinIO named-volume mountpoint mismatch"; return 1; }
+  if ! docker_call run --rm --pull never --network none --read-only \
+    --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges:true \
+    --user 0:0 --pids-limit 64 --memory 512m --cpus 1 \
+    --mount "type=volume,src=${volume_name},dst=/inventory-data,readonly" \
+    --entrypoint python "$candidate_id" -c '
+import base64
+import hashlib
+import os
+import stat
+import sys
+
+root = sys.argv[1]
+max_entries, max_bytes, max_depth, max_path, chunk = map(int, sys.argv[2:])
+rows = []
+entry_count = total_bytes = 0
+
+directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+
+def identity(value):
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns)
+
+def walk(directory_fd, relative, depth):
+    global entry_count, total_bytes
+    if depth > max_depth:
+        raise ValueError
+    initial_directory = os.fstat(directory_fd)
+    if not stat.S_ISDIR(initial_directory.st_mode):
+        raise ValueError
+    try:
+        with os.scandir(directory_fd) as iterator:
+            names = sorted(os.fsencode(entry.name) for entry in iterator)
+        for name in names:
+            entry_count += 1
+            if entry_count > max_entries or b"/" in name or name in {b"", b".", b".."}:
+                raise ValueError
+            child_relative = relative + b"/" + name
+            if len(child_relative) > max_path:
+                raise ValueError
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ValueError
+            if stat.S_ISDIR(metadata.st_mode):
+                child_fd = os.open(name, directory_flags, dir_fd=directory_fd)
+                child_metadata = os.fstat(child_fd)
+                if identity(child_metadata) != identity(metadata) or not stat.S_ISDIR(child_metadata.st_mode):
+                    os.close(child_fd)
+                    raise ValueError
+                walk(child_fd, child_relative, depth + 1)
+                current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                if identity(current) != identity(metadata):
+                    raise ValueError
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError
+            descriptor = os.open(name, file_flags, dir_fd=directory_fd)
+            try:
+                before = os.fstat(descriptor)
+                if not stat.S_ISREG(before.st_mode) or identity(before) != identity(metadata):
+                    raise ValueError
+                total_bytes += before.st_size
+                if total_bytes > max_bytes:
+                    raise ValueError
+                digest = hashlib.sha256()
+                while True:
+                    data = os.read(descriptor, chunk)
+                    if not data:
+                        break
+                    digest.update(data)
+                after = os.fstat(descriptor)
+                if identity(after) != identity(before):
+                    raise ValueError
+            finally:
+                os.close(descriptor)
+            current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if identity(current) != identity(before):
+                raise ValueError
+            rows.append((child_relative, digest.hexdigest(), before.st_size))
+        final_directory = os.fstat(directory_fd)
+        if identity(final_directory) != identity(initial_directory):
+            raise ValueError
+    finally:
+        os.close(directory_fd)
+
+try:
+    root_fd = os.open(root, directory_flags)
+    if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+        os.close(root_fd)
+        raise ValueError
+    walk(root_fd, b".", 0)
+    if not rows:
+        raise ValueError
+    for path, digest, size in sorted(rows):
+        encoded = base64.b64encode(path).decode("ascii")
+        print(f"{digest}\t{size}\t{encoded}")
+except BaseException:
+    print("MinIO inventory rejected", file=sys.stderr)
+    sys.exit(1)
+' /inventory-data 1000000 1099511627776 64 4096 1048576 \
+    </dev/null >"$output"; then
+    unlink -- "$output" 2>/dev/null || true
+    die "MinIO inventory failed"
+    return 1
+  fi
+  if [[ ! -s "$output" || -L "$output" ]] || ! validate_minio_inventory_file "$output"; then
+    unlink -- "$output" 2>/dev/null || true
+    die "MinIO inventory output is empty or unsafe"
+    return 1
+  fi
+  validated_minio_volume_name=$volume_name
+}
 
 validate_args() {
   local name service
@@ -1004,18 +1172,15 @@ PY
     printf '%s %s %s\n' "$service" "$tag" "$PREVIOUS_IMAGE_ID" >>"${backup_dir}/rollback-tag-inventory.txt"
   done
   assert_rollback_tags
-  printf 'postgres=%s\nminio=%s\n' \
-    "$(docker_call inspect "$postgres_id" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' </dev/null)" \
-    "$(docker_call inspect "$(container_id minio)" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' </dev/null)" \
-    >"${backup_dir}/volume-inventory.txt"
   (
     cd "${APP_DIR}/private/brand-materials"
     find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
   ) >"${backup_dir}/brand.sha256"
   minio_id=$(container_id minio)
-  docker_call exec "$minio_id" sh -c \
-    'cd /data && find . -type f -exec sha256sum {} + | sort' \
-    </dev/null >"${backup_dir}/minio.sha256"
+  write_minio_inventory "$minio_id" "${backup_dir}/minio.sha256"
+  printf 'postgres=%s\nminio=%s\n' \
+    "$(docker_call inspect "$postgres_id" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' </dev/null)" \
+    "$validated_minio_volume_name" >"${backup_dir}/volume-inventory.txt"
   sha256sum "${backup_dir}/postgres.dump" "${backup_dir}/postgres.catalog" \
     "${backup_dir}/env" "${backup_dir}/release.env" \
     "${backup_dir}/release-commit" "${backup_dir}/RELEASE_COMMIT" \
@@ -1031,7 +1196,8 @@ PY
   find "$backup_dir" -type f -exec chmod 600 {} +
   (cd "$backup_dir" && sha256sum -c protected.sha256) >/dev/null
   [[ "$(sha256sum "${backup_dir}/source-files.sha256" | awk '{print $1}')" == "$previous_source_manifest_sha256" ]] || die "prior source evidence drift"
-  unlink "$candidate_additions_file" "$destination_evidence_file"
+  unlink -- "$candidate_additions_file"
+  unlink -- "$destination_evidence_file"
   candidate_additions_file="${backup_dir}/candidate-additions.list"
   destination_evidence_file="${backup_dir}/destination-evidence.tsv"
   backup_ready=1
@@ -1046,13 +1212,11 @@ assert_protected_runtime_unchanged() {
     find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
   ) >"${runtime_evidence_dir}/brand.sha256" || return 1
   minio_id=$(container_id minio) || return 1
-  docker_call exec "$minio_id" sh -c \
-    'cd /data && find . -type f -exec sha256sum {} + | sort' \
-    </dev/null >"${runtime_evidence_dir}/minio.sha256" || return 1
+  write_minio_inventory "$minio_id" "${runtime_evidence_dir}/minio.sha256" || return 1
   postgres_id=$(container_id postgres) || return 1
   printf 'postgres=%s\nminio=%s\n' \
     "$(docker_call inspect "$postgres_id" --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' </dev/null)" \
-    "$(docker_call inspect "$minio_id" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' </dev/null)" \
+    "$validated_minio_volume_name" \
     >"${runtime_evidence_dir}/volume-inventory.txt" || return 1
   cmp -s "${backup_dir}/brand.sha256" "${runtime_evidence_dir}/brand.sha256" || { die "brand manifest changed"; return 1; }
   cmp -s "${backup_dir}/minio.sha256" "${runtime_evidence_dir}/minio.sha256" || { die "MinIO manifest changed"; return 1; }

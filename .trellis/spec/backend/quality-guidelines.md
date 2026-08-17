@@ -659,6 +659,12 @@ release artifacts, or production deployment automation change.
 - The scheduled and deployment backup paths share a backup lock. Backup evidence is strict and
   binds the previous commit/image to PostgreSQL, MinIO, and brand backup checksums before runtime
   activation; credentials never appear as Docker CLI `KEY=value` arguments.
+- Backup inventory must not assume that a service image contains shell utilities such as `find` or
+  `sha256sum`. For an opaque persistent volume, resolve and validate the exact named-volume mount,
+  then mount it read-only into an already reviewed helper or candidate image with networking
+  disabled, a read-only root filesystem, dropped capabilities, no privilege escalation, bounded
+  resources, and fail-closed regular-file/symlink/race checks. Do not print object paths or manifest
+  contents in release logs.
 - Automatic rollback restores only the previous application runtime/digest when no migration was
   attempted, the Alembic head is unchanged, or backward compatibility was explicitly reviewed.
   It never restores a database or runs Alembic downgrade.
@@ -694,6 +700,7 @@ release artifacts, or production deployment automation change.
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
 | Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path. The sole f20 bootstrap exception is the exact three named app-owned `0664` metadata files under the bound `292:12:3` distribution. |
+| A backup inventory depends on a utility absent from the service image, the named-volume identity/mountpoint drifts, or the read-only helper rejects an entry/race | Fail the backup before activation, retain partial evidence as non-restorable, and restore the captured prior service set; never accept an empty or partial manifest. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
@@ -727,6 +734,11 @@ release artifacts, or production deployment automation change.
   or reliance on `errexit`. Before removing temporary failure artifacts, emit only a redacted
   diagnostic containing the stable phase/action sequence plus byte counts and hashes; never delete
   the only failure signal silently or print raw stderr/argv values.
+- Backup portability tests must prove the real service image is not expected to provide inventory
+  utilities, assert the exact read-only volume-helper argv and mount identity, reject symlink,
+  special-file, race, and helper failures without leaving partial evidence, and exercise cleanup
+  commands with their actual supported arity. Multi-target cleanup must use separate checked
+  invocations rather than relying on a utility to accept multiple operands.
 - Offline image-bundle tests use real OCI layout structure plus the supported classic structure.
   They prove the OCI candidate manifest digest can differ from the config digest and reject
   descriptor/config/layer hash or size drift, config diff-ID drift, non-standard JSON,

@@ -7,8 +7,9 @@
   username-only userinfo fixtures; the rejection contracts are unchanged.
 - Added a task-local broad offline artifact builder/validator, single-invocation release operator,
   and Docker/network-free builder plus fake/recovery harnesses under `research/`.
-- No remote, SSH, production, registry, provider, WeCom, Docker build/load/tag, commit, or push
-  operation was performed while producing or testing these files.
+- Local implementation and focused testing did not invoke SSH, a registry, provider, WeCom,
+  Docker build/load/tag, commit, or push; the separately authorized production attempts and their
+  recovered state are recorded below.
 
 The builder and operator are deliberately separate from the application payload. The builder binds the
 c66 dependency/path baseline while the operator binds the freshly verified f20 live rollback baseline,
@@ -115,6 +116,46 @@ Git objects has SHA-256 `c6c7ead55b8d30d3f70e55bdeb42e1c8d31653850ced2ccaebde6b7
 and passed a complete production `sha256sum -c`. The failed candidate identity will not be invoked
 again; the final release must use a new authoritative commit and candidate.
 
+## Backup portability failure and recovered state
+
+The c558 candidate passed the corrected read-only preflight, loaded only under its isolated tag,
+and quiesced all application writers. During the fresh backup, however, the MinIO container printed
+`find: command not found`. Because that command was inside an in-container pipeline without
+`pipefail`, it left an empty object manifest; the later cleanup also used GNU `unlink` with two
+operands, which failed. The operator had not armed backup readiness or changed runtime payload:
+`backup_ready=0`, `tags_changed=0`, `overlay_changed=0`, and `env_activated=0`.
+
+Automatic recovery restored the captured f20 services. A separate aggregate-only read-only audit
+over 15 seconds then passed the exact durable/provider/source/work vectors, all eight services and
+restart counts, source/tags/environment/database/object evidence, and candidate-running-zero. The
+partial backup directory `20260817T063725Z-broad-offline` is retained as failure evidence and must
+never be treated as a restorable backup.
+
+Root-cause analysis across the release boundary:
+
+- Symptom: backup failed after quiesce, before backup readiness or activation.
+- Direct cause: the operator invoked an unavailable `find` inside the MinIO service image, and
+  later passed two operands to single-target GNU `unlink`.
+- Structural cause: host release behavior depended on an opaque service image's incidental utility
+  set, while the fake harness checked state flow but not those real capabilities and arities.
+- Why earlier hardening missed it: prior checks covered image identity, archive graphs, source
+  metadata and rollback, but did not exercise the actual MinIO inventory boundary or production
+  cleanup operand count.
+- Prevention: the durable backend release spec now requires reviewed read-only volume helpers,
+  exact mount/argv checks, explicit error propagation and real command-arity regressions. There is
+  no repository template copy of this project-specific backend contract to synchronize.
+
+Both MinIO inventory sites now call one helper. It validates that the live `/data` mount is exactly
+one named Docker volume and that its name/source match `docker volume inspect`, then mounts that
+volume read-only into the already-validated candidate image. The inventory process has no network,
+a read-only root filesystem, no privilege escalation, bounded CPU/memory/PIDs/file count/bytes/
+depth/path/chunk size, and streams SHA-256 in Python through anchored directory/file descriptors.
+It fails closed on empty or malformed output, symlinks, non-regular entries, path/content/directory
+races, unsafe output, mount drift, or inventory failure without logging the manifest. Cleanup invokes
+GNU `unlink` once per file. The focused harness proves the exact safe Docker argument sequence,
+executes regular/symlink/FIFO and empty/malformed/mount-drift cases, rejects the removed MinIO
+`exec ... find` path, propagates failures, removes partial evidence, and binds both cleanup calls.
+
 ## Remaining release work
 
 The initial clean Codeup candidate at `c387966...` was built and passed offline runtime validation.
@@ -144,13 +185,15 @@ the first stop and immediately before each scheduler/dispatcher, starts them seq
 rechecks the same vectors after each start; any post-`.7` creation/drift reaches the existing
 stop-all-eight incident disposition.
 
-- Operator SHA-256: `29de23c7909c5ce02e9df42090c42a05475583849f7771928e0ea459c3069691`
-- Operator harness SHA-256: `ce5d3c0a426c46f45c8d5d3356903f2e64e167c49b73dfc2f7b975836b52a94a`
+- Operator SHA-256: `f76a1a3aa381d96cdb2541b4d90141947d4e0a43521d3d8dffb5c903e9b35466`
+- Operator harness SHA-256: `445686a61806f0119e3529da210090c1e728df866c479f350bbcd3a81405f276`
 - Validator SHA-256: `183db15c8938e9e235b0529d227ee6c0ed32bbb9460dc40d5bd2a06197e6515b`
 - Builder SHA-256: `873080ab8ba20e5073bfbaa327663062ce529c60ccc661bf96ec4a5ae99da7b1`
 - Builder harness SHA-256: `b6284cec4a66299b8b2c034a6c8e258e6e93df0e2c34cd6050e1e8cca0614963`
 
 `bash -n`, both focused harnesses, Python compile, Ruff, Mypy, task-context validation,
 tracked/untracked diff checks, and the scoped high-confidence secret scan pass. ShellCheck and
-gitleaks are unavailable in this environment. Local Docker build and aggregate-only Codeup/SSH
-reads were performed; no production mutation, provider call, fixture, or WeCom action occurred.
+gitleaks are unavailable in this environment. Local Docker build and reviewed Codeup/SSH actions
+were performed in the release workflow. The c558 attempt loaded only the isolated candidate and
+cycled the eight application services during automatic recovery; active tags, source, environment,
+database, and object state remained unchanged, and no provider call, fixture, or WeCom action occurred.
