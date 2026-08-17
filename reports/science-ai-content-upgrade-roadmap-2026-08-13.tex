@@ -1,0 +1,336 @@
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=20mm,bottom=20mm,left=19mm,right=19mm,headheight=23pt]{geometry}
+\usepackage{xcolor}
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,shapes.geometric}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{ragged2e}
+\usepackage{setspace}
+
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{BrandNavy}{HTML}{12355B}
+\definecolor{BrandBlue}{HTML}{1976B9}
+\definecolor{BrandGreen}{HTML}{137D6B}
+\definecolor{BrandOrange}{HTML}{E97928}
+\definecolor{BrandGold}{HTML}{E7B24A}
+\definecolor{Ink}{HTML}{243447}
+\definecolor{Muted}{HTML}{66788A}
+\definecolor{PaleBlue}{HTML}{EEF6FB}
+\definecolor{PaleGreen}{HTML}{EEF7F4}
+\definecolor{PaleOrange}{HTML}{FFF4EA}
+\definecolor{PaleGray}{HTML}{F4F6F8}
+\definecolor{RuleGray}{HTML}{D9E1E8}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=BrandNavy,
+  urlcolor=BrandBlue,
+  pdftitle={科学教育 × AI 教育内容增长系统升级方案},
+  pdfauthor={赛先生科学},
+  pdfsubject={内容抓取、筛选、生成、推送与 IP 数字资产升级路线图}
+}
+\urlstyle{same}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setstretch{1.12}
+\setlist[itemize]{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.7em,itemsep=2pt,topsep=3pt}
+
+\titleformat{\section}
+  {\sffamily\bfseries\Large\color{BrandNavy}}
+  {\colorbox{BrandNavy}{\textcolor{white}{\strut\thesection}}}{0.7em}{}
+\titleformat{\subsection}
+  {\sffamily\bfseries\large\color{BrandBlue}}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{14pt}{8pt}
+\titlespacing*{\subsection}{0pt}{10pt}{5pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{Muted}赛先生科学｜内容增长系统升级方案}
+\fancyhead[R]{\sffamily\small\color{Muted}内部汇报材料}
+\fancyfoot[L]{\sffamily\scriptsize\color{Muted}2026.08.13}
+\fancyfoot[R]{\sffamily\scriptsize\color{Muted}\thepage\,/\,\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{RuleGray}\leaders\hrule height \headrulewidth\hfill}}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\newtcolorbox{summarybox}[1][]{
+  enhanced, breakable, colback=PaleBlue, colframe=BrandBlue,
+  boxrule=0.7pt, arc=2mm, left=4mm, right=4mm, top=3mm, bottom=3mm,
+  title=#1, coltitle=white, fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandBlue,colframe=BrandBlue,arc=1.5mm}
+}
+\newtcolorbox{decisionbox}[1][]{
+  enhanced, breakable, colback=PaleOrange, colframe=BrandOrange,
+  boxrule=0.7pt, arc=2mm, left=4mm, right=4mm, top=3mm, bottom=3mm,
+  title=#1, coltitle=white, fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandOrange,colframe=BrandOrange,arc=1.5mm}
+}
+\newtcolorbox{factbox}[1][]{
+  enhanced, breakable, colback=PaleGreen, colframe=BrandGreen,
+  boxrule=0.7pt, arc=2mm, left=4mm, right=4mm, top=3mm, bottom=3mm,
+  title=#1, coltitle=white, fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandGreen,colframe=BrandGreen,arc=1.5mm}
+}
+\newcommand{\tagpill}[2]{\tikz[baseline=(X.base)]\node[rounded corners=3pt,fill=#1,inner xsep=5pt,inner ysep=2.5pt,text=white,font=\sffamily\scriptsize\bfseries] (X) {#2};}
+\newcommand{\statusfact}{\tagpill{BrandGreen}{现状}}
+\newcommand{\statusproposal}{\tagpill{BrandOrange}{建议}}
+\newcommand{\statusgoal}{\tagpill{BrandBlue}{目标}}
+\newcommand{\bigmetric}[3]{%
+  \begin{tcolorbox}[colback=#1!7,colframe=#1!55,boxrule=.6pt,arc=2mm,left=3mm,right=3mm,top=2.5mm,bottom=2.5mm]
+    {\sffamily\bfseries\fontsize{22}{24}\selectfont\color{#1}#2}\par
+    {\sffamily\small\color{Ink}#3}
+  \end{tcolorbox}%
+}
+
+\begin{document}
+\pagenumbering{Roman}
+
+% -----------------------------------------------------------------------------
+% Cover
+% -----------------------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[BrandNavy] (current page.north west) rectangle ([yshift=-120mm]current page.north east);
+  \fill[BrandBlue] ([yshift=-120mm]current page.north west) rectangle ([yshift=-124mm]current page.north east);
+  \fill[BrandOrange] ([xshift=19mm,yshift=18mm]current page.south west) rectangle ([xshift=48mm,yshift=21mm]current page.south west);
+  \draw[BrandBlue!20,line width=18pt] ([xshift=-17mm,yshift=42mm]current page.south east) circle (25mm);
+  \draw[BrandOrange!35,line width=4pt] ([xshift=-10mm,yshift=52mm]current page.south east) circle (39mm);
+\end{tikzpicture}
+
+\vspace*{8mm}
+{\sffamily\bfseries\small\color{white}SAI XIAN SHENG SCIENCE \quad｜\quad INTERNAL REPORT}
+
+\vspace{27mm}
+{\sffamily\bfseries\fontsize{28}{36}\selectfont\color{white}
+科学教育 $\times$ AI 教育\par
+内容增长系统升级方案}
+
+\vspace{7mm}
+{\sffamily\fontsize{14}{20}\selectfont\color{white!85}
+从“每日单条内容生产”升级为“多源、多时段、多内容与 IP 资产化”}
+
+\vspace{31mm}
+\begin{tcolorbox}[width=.86\textwidth,colback=white,colframe=white,boxrule=0pt,arc=2mm,left=5mm,right=5mm,top=4mm,bottom=4mm]
+{\sffamily\bfseries\color{BrandNavy}汇报结论}\par
+本次升级不是简单“多抓新闻、多发内容”，而是围绕\textbf{科学教育与 AI 教育}，建立一套从信源治理、双层筛选、文案质量、分时分批推送，到 IP 数字资产复用的完整内容增长系统。
+\end{tcolorbox}
+
+\vfill
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+{\sffamily\small\color{Muted}汇报主体}\newline
+{\sffamily\bfseries\large\color{Ink}赛先生科学} &
+{\RaggedLeft\sffamily\small\color{Muted}汇报日期}\newline
+{\RaggedLeft\sffamily\bfseries\large\color{Ink}2026 年 8 月 13 日}
+\end{tabularx}
+\end{titlepage}
+\pagenumbering{arabic}
+
+% -----------------------------------------------------------------------------
+\section*{执行摘要}
+\addcontentsline{toc}{section}{执行摘要}
+
+\begin{summarybox}[总体方向]
+围绕“\textbf{科学第四主科，AI 第五主科}”的品牌定位，把现有新闻内容工作升级为更加聚焦、稳定和具有品牌辨识度的科学教育内容体系。
+\end{summarybox}
+
+\vspace{3mm}
+\begin{tabularx}{\textwidth}{@{}C{9mm} L{42mm} Y L{36mm}@{}}
+\toprule
+\textbf{序号} & \textbf{升级方向} & \textbf{我们要做什么} & \textbf{希望实现的变化} \\
+\midrule
+01 & 增加优质信源 & 增加国内外科学教育、AI 教育相关媒体和机构 & 信息覆盖更广、更专业 \\
+02 & 优化内容筛选 & 优先筛出科学教育和 AI 教育内容，再突出与产品相关的新闻 & 选题更准、更有业务价值 \\
+03 & 提高文案质量 & 加强事实、表达、结构和字数管理 & 文案更稳定、更适合发布 \\
+04 & 增加推送频次 & 每天早、中、晚三个时段，每次推送多条新闻 & 内容数量更多、触达更及时 \\
+05 & 优化 IP 数字资产 & 统一角色形象，补充产品场景和常用内容模板 & 品牌视觉更统一、更易复用 \\
+\bottomrule
+\end{tabularx}
+
+\begin{decisionbox}[核心思路]
+本次升级不是单纯增加新闻数量，而是同时提升\textbf{信息来源、选题质量、文案质量、推送效率和品牌表达}，让内容长期服务赛先生科学的产品与品牌发展。
+\end{decisionbox}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{升级背景：让内容更聚焦、更稳定}
+
+当前内容系统已经能够完成新闻采集、筛选、文案生成和内部推送，但在科学教育内容覆盖、AI 教育专业度、产品关联、每日内容数量以及视觉资产复用方面，仍有进一步提升空间。
+
+\begin{factbox}[这次升级主要解决什么问题]
+\begin{itemize}
+  \item \textbf{信源还不够丰富：}国内外科学教育、AI 教育的一手信息覆盖不足；
+  \item \textbf{选题还不够聚焦：}部分泛 AI、泛科技新闻与教育和产品的关系较弱；
+  \item \textbf{文案质量需要更稳定：}字数、结构、事实表达和品牌语言需要统一；
+  \item \textbf{推送数量偏少：}目前内容节奏无法充分覆盖一天中的重要教育动态；
+  \item \textbf{IP 资产需要系统整理：}角色、动作、场景和版式之间还需要形成统一体系。
+\end{itemize}
+\end{factbox}
+
+\begin{summarybox}[升级后的内容定位]
+我们希望持续输出三类价值：\textbf{值得关注的科学教育信息、家长和学校容易理解的专业解读、与赛先生产品方向自然相关的内容观点}。
+\end{summarybox}
+
+% -----------------------------------------------------------------------------
+\section{方向一：增加科学教育与 AI 教育信源}
+
+我们将扩大新闻来源，重点增加与科学教育、AI 教育、青少年科技创新相关的权威机构和专业媒体。
+
+\begin{tabularx}{\textwidth}{@{}L{38mm} Y Y@{}}
+\toprule
+\textbf{信源方向} & \textbf{重点关注内容} & \textbf{代表类型} \\
+\midrule
+国内权威教育媒体 & 科学教育政策、学校实践、课程改革、人才培养 & 新华教育等权威媒体 \\
+科学教育专业机构 & 科学素养、科普教育、青少年科创活动和赛事 & 中国科协及相关机构 \\
+海外 AI 教育媒体 & AI 课程、教师应用、学生素养、教育行业趋势 & EdSurge 等专业媒体 \\
+国内外教育机构 & AI 教育治理、数字教育框架、国际教育趋势 & 教育部门、国际组织、高校与实验室 \\
+\bottomrule
+\end{tabularx}
+
+\begin{decisionbox}[我们的方向]
+逐步建立“\textbf{国内权威发布 + 科学教育专业内容 + 国际 AI 教育观察}”的信源组合。新增来源以质量、稳定性和相关性为前提，不为追求数量盲目扩充。
+\end{decisionbox}
+
+% -----------------------------------------------------------------------------
+\section{方向二：让筛选结果更贴近科学教育和产品}
+
+筛选将分为两个层次：先确认新闻是否真正属于科学教育或 AI 教育，再判断它与我们的产品矩阵有多大关系。
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=5mm,
+  box/.style={rounded corners=2mm,minimum height=16mm,text width=33mm,align=center,font=\sffamily\small\bfseries,text=white},
+  arr/.style={-{Latex[length=2.8mm]},line width=1.2pt,BrandNavy!60}
+]
+\node[box,fill=BrandNavy] (s1) {新闻候选};
+\node[box,fill=BrandBlue,right=5mm of s1] (s2) {科学教育 / AI 教育\\相关内容};
+\node[box,fill=BrandGreen,right=5mm of s2] (s3) {与产品方向\\自然匹配};
+\node[box,fill=BrandOrange,right=5mm of s3] (s4) {形成优先选题};
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\end{tikzpicture}
+\end{center}
+
+\subsection{优先关注的内容方向}
+
+\begin{tabularx}{\textwidth}{@{}C{9mm} L{54mm} Y@{}}
+\toprule
+\textbf{类} & \textbf{产品与业务方向} & \textbf{重点新闻主题} \\
+\midrule
+1 & 儿童科学素养与科学探究 & 科学课程、实验探究、物理化学启蒙 \\
+2 & 数学、物理、化学、生物衔接 & 学科改革、跨学科项目、拔尖人才培养 \\
+3 & 青少年 AI 素养与项目实践 & AI 通识、编程、教师和学生应用 \\
+4 & 机器人与前沿工程实践 & 机器人、AI Agent、AI 安全、3D 打印等 \\
+5 & 科创赛事与创新人才路径 & 科创竞赛、创新项目、人才发展 \\
+6 & 高校、实验室和研学体验 & 高校实验室、科技企业、大科学设施、营地研学 \\
+\bottomrule
+\end{tabularx}
+
+\begin{summarybox}[筛选原则]
+产品相关性用于帮助我们\textbf{发现更有价值的选题和更合适的解读角度}，但不会把重要的科学教育新闻排除在外，也不会把新闻内容写成生硬广告。
+\end{summarybox}
+
+% -----------------------------------------------------------------------------
+\section{方向三：提高文案质量并严格控制字数}
+
+文案升级的重点，是让每条内容做到\textbf{事实准确、表达清楚、重点突出、字数稳定、品牌自然}。
+
+\begin{tabularx}{\textwidth}{@{}L{38mm} Y@{}}
+\toprule
+\textbf{提升方向} & \textbf{具体要求} \\
+\midrule
+事实表达 & 新闻中的人物、机构、时间和核心结论准确，不夸大、不补充未经确认的信息 \\
+教育价值 & 清楚说明这条新闻为什么值得家长、教师或学校关注 \\
+品牌表达 & 自然体现赛先生科学的专业判断，不过度宣传、不强行植入产品 \\
+结构与字数 & 单条文案保持简洁，多新闻摘要方便快速阅读，避免内容冗长 \\
+语言风格 & 表达清晰、有温度、有判断，减少空话、套话和重复内容 \\
+\bottomrule
+\end{tabularx}
+
+\begin{decisionbox}[建议文案口径]
+单条完整文案建议保持在 \textbf{180--240 个汉字}；多新闻推送中，每条摘要建议保持在 \textbf{80--120 个汉字}。文案宁可简洁清楚，也不为了凑字数增加无效表达。
+\end{decisionbox}
+
+% -----------------------------------------------------------------------------
+\section{方向四：每天三个时段，每次推送多条新闻}
+
+未来每天安排三个内容时段，分别覆盖早间信息、午间动态和晚间精选。每次推送多条新闻，让用户在不同时间都能看到有价值的内容。
+
+\begin{tabularx}{\textwidth}{@{}C{26mm} L{35mm} Y L{30mm}@{}}
+\toprule
+\textbf{建议时点} & \textbf{栏目定位} & \textbf{主要内容} & \textbf{建议数量} \\
+\midrule
+07:30 & 科教晨报 & 重要政策、国际动态、当天值得关注的信息 & 2--3 条 \\
+12:30 & 午间观察 & 学校实践、教育行业、课程与工具应用 & 2--3 条 \\
+18:30 & 晚间精选 & 当日重点、趋势解读、与产品方向相关的内容 & 2--3 条 \\
+\bottomrule
+\end{tabularx}
+
+\begin{center}
+\begin{tikzpicture}[x=1mm,y=1mm,font=\sffamily]
+\draw[BrandNavy!35,line width=2pt] (12,0) -- (164,0);
+\foreach \x/\time/\title/\col in {25/07:30/晨报/BrandBlue,88/12:30/午间/BrandGreen,151/18:30/晚报/BrandOrange}{
+  \fill[\col] (\x,0) circle (3.1);
+  \node[above=5mm,text=\col,font=\bfseries] at (\x,0) {\time};
+  \node[below=5mm,text=Ink] at (\x,0) {\title};
+}
+\end{tikzpicture}
+\end{center}
+
+\begin{summarybox}[推送原则]
+增加数量的同时保持内容质量，同一天不重复推送相似新闻。某个时段没有足够好的内容时，可以少发，不为完成数量强行凑新闻。
+\end{summarybox}
+
+% -----------------------------------------------------------------------------
+\section{方向五：优化 IP 数字资产}
+
+IP 资产升级的目标，是让赛先生的角色形象、内容场景和视觉表达更加统一，并能在不同新闻和产品内容中高效复用。
+
+\begin{tabularx}{\textwidth}{@{}L{40mm} Y Y@{}}
+\toprule
+\textbf{升级方向} & \textbf{我们要做什么} & \textbf{预期价值} \\
+\midrule
+统一角色形象 & 统一角色比例、表情、动作和使用规范 & 保持不同内容中的形象一致 \\
+补充产品场景 & 增加教室、实验室、机器人、赛事、研学等场景 & 视觉内容与产品方向更加贴合 \\
+建设常用模板 & 建设新闻卡片、专题封面、节日热点等常用版式 & 提高日常内容生产效率 \\
+整理资产分类 & 按角色、动作、场景、产品和内容用途进行分类 & 查找和复用更加方便 \\
+持续优化效果 & 根据内容表现，持续补充高频、有效的视觉资产 & 让 IP 资产真正服务传播和转化 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{6mm}
+\begin{tcolorbox}[colback=BrandNavy,colframe=BrandNavy,arc=2mm,boxrule=0pt,left=6mm,right=6mm,top=5mm,bottom=5mm]
+{\sffamily\bfseries\Large\color{white}整体预期}\par
+{\color{white!90}通过以上五个方向的升级，赛先生科学的内容将实现：\textbf{信息来源更广、选题更聚焦、文案更稳定、推送更及时、品牌视觉更统一}，进一步强化“科学第四主科，AI 第五主科”的品牌定位。}
+\end{tcolorbox}
+
+\end{document}

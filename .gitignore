@@ -37,8 +37,11 @@ output/
 
 # LaTeX report build intermediates
 /reports/*.aux
+/reports/*.fdb_latexmk
+/reports/*.fls
 /reports/*.out
 /reports/*.toc
+/reports/*.xdv
 
 # Editors and operating systems
 .idea/

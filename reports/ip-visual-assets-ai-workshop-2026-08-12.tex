@@ -1,0 +1,144 @@
+% 编译方式：latexmk -xelatex -interaction=nonstopmode -halt-on-error ip-visual-assets-ai-workshop-2026-08-12.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.6cm,bottom=1.6cm,left=1.75cm,right=1.75cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\usepackage{graphicx}
+\usepackage{titlesec}
+\usepackage{fontspec}
+\usepackage{tikz}
+\usepackage{hyperref}
+\usetikzlibrary{arrows.meta,positioning}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{navy}{HTML}{12355B}
+\definecolor{blue}{HTML}{1976B9}
+\definecolor{cyan}{HTML}{EAF6FC}
+\definecolor{green}{HTML}{137D6B}
+\definecolor{mint}{HTML}{EDF8F5}
+\definecolor{ink}{HTML}{23384D}
+\definecolor{muted}{HTML}{58708A}
+\definecolor{line}{HTML}{D6E2EC}
+\definecolor{orange}{HTML}{E97928}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,pdftitle={从 IP 图片到数据资产：一次 AI 工作实践}}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.38em}
+\renewcommand{\arraystretch}{1.34}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\titleformat{\section}{\large\bfseries\sffamily\color{navy}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{0.85em}{0.3em}
+\pagestyle{empty}
+\tcbset{boxrule=0.55pt,arc=1.5mm,left=3mm,right=3mm,top=2.4mm,bottom=2.4mm}
+\newtcolorbox{summarybox}{colback=cyan,colframe=blue!45,borderline west={2.7pt}{0pt}{blue}}
+\newtcolorbox{insightbox}{colback=mint,colframe=green!45,borderline west={2.7pt}{0pt}{green}}
+
+\begin{document}
+
+\begin{center}
+{\small\sffamily\color{green} 研讨会交流材料}\par\vspace{0.35em}
+{\fontsize{22}{28}\selectfont\bfseries\sffamily\color{navy}从 IP 图片到数据资产}\par\vspace{0.35em}
+{\large\sffamily\color{muted}赛先生科学：用 AI 让品牌视觉素材可检索、可复用、可追溯}\par\vspace{0.65em}
+\tikz\draw[blue,line width=1.2pt] (0,0)--(4.2,0);
+\end{center}
+
+\begin{summarybox}
+\textbf{一句话介绍：}我们把原本散落在文件夹里的赛先生、小赛 IP 图片，整理成有明确身份、场景和用途标签的视觉素材库。这样，AI 在生成每天的品牌配图时，不是“随便找一张图”，而是能根据新闻主题选择合适的角色和动作参考图，再把生成结果和来源、版本一起留下记录。
+\end{summarybox}
+
+\section{1. 我目前用过的工具}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.3cm}Y}
+\rowcolor{navy}\color{white}\bfseries\sffamily 工具 & \color{white}\bfseries\sffamily 我用它做了什么 \\
+Codex（OpenAI 编程智能体） & 协助搭建自动化流程、整理品牌资料、编写图片选择规则、生成脚本和排查运行问题。 \\
+智谱视觉模型（GLM 视觉识别） & 辅助识别图片中是否有赛先生、小赛，以及它更适合用于实验、讨论、阅读还是机器人等场景。 \\
+Comfly / GPT Image 图片生成模型 & 以选中的公司 IP 图片作参考，生成与当天新闻主题相匹配的朋友圈配图。 \\
+Docker + PostgreSQL + JSON 素材清单 & 运行后台自动化服务，并给每张图片建立带标签、尺寸、哈希、审核状态和版本信息的结构化档案。 \\
+\end{tabularx}
+
+\section{2. 我用它做了什么，遇到什么问题}
+
+过去的问题很实际：公司积累了很多 IP 图，但它们大多只是“文件名 + 文件夹”。人知道哪张图适合 AI 主题、哪张适合科学实验，系统却不知道；每次生图都容易重复、角色走样，或选到和内容不搭的图。
+
+现在我们把每张图转换为一条可管理的数据记录。例如一张“小赛和赛先生讨论”图片，会登记：
+
+\begin{insightbox}
+\textbf{资产身份：}动作参考图\quad
+\textbf{角色：}小赛、赛先生\quad
+\textbf{主题：}AI、机器人、科学实验\quad
+\textbf{动作：}讨论、观察\quad
+\textbf{场景：}机器人实验室\quad
+\textbf{管理字段：}文件哈希、尺寸、审核状态、版本分组。
+\end{insightbox}
+
+这样做解决了三个问题：一是能按主题稳定选图；二是能用身份图锁定角色形象、用动作图提供场景；三是图片变更后可以通过哈希发现，避免“同名文件被替换但系统不知道”。目前已整理 41 个受控视觉资产。
+
+\newpage
+\section{3. 我最想用 AI 解决的工作问题}
+
+我最想解决的是：\textbf{让品牌内容生产从“每次人工找素材、人工想图、人工检查”，变成可复用、可协作、可沉淀的日常流程。}
+
+\begin{center}
+\begin{tikzpicture}[node distance=0.55cm and 0.35cm, every node/.style={font=\small\sffamily,align=center}, >=Latex]
+\node[draw=blue!65,fill=cyan,rounded corners=2pt,minimum width=2.55cm,minimum height=0.92cm] (a) {原始 IP 图片\\角色、动作、场景};
+\node[draw=green!65,fill=mint,rounded corners=2pt,minimum width=2.55cm,minimum height=0.92cm,right=of a] (b) {AI 辅助标注\\人工审核校正};
+\node[draw=orange!70,fill=orange!10,rounded corners=2pt,minimum width=2.55cm,minimum height=0.92cm,right=of b] (c) {JSON 视觉资产库\\标签、版本、哈希};
+\node[draw=navy!65,fill=navy!8,rounded corners=2pt,minimum width=2.55cm,minimum height=0.92cm,right=of c] (d) {按新闻主题选图\\驱动生图与投放};
+\draw[->,thick,blue!75] (a)--(b);
+\draw[->,thick,green!75] (b)--(c);
+\draw[->,thick,orange!85] (c)--(d);
+\end{tikzpicture}
+\end{center}
+
+\section{一个真实样例：图片如何变成数据记录}
+
+\noindent\begin{minipage}[t]{0.47\textwidth}
+\centering
+\vspace{0pt}
+\includegraphics[width=0.92\linewidth,height=5.75cm,keepaspectratio]{private/brand-materials/05-visual-assets/小赛和赛先生讨论.png}\par\vspace{0.25em}
+{\small\sffamily\color{muted}原始素材：小赛和赛先生讨论}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\vspace{0pt}
+\begin{tcolorbox}[colback=cyan,colframe=blue!45,title={\small\bfseries\sffamily 对应的结构化数据记录},fonttitle=\small\bfseries\sffamily]
+{\footnotesize\ttfamily
+\{"filename":"小赛和赛先生讨论.png",\\
+\phantom{\{}"relative\_path":"05-visual-assets/",\\
+\phantom{\{}\qquad\qquad\quad"小赛和赛先生讨论.png",\\
+\phantom{\{}"asset\_kind":"action",\\
+\phantom{\{}"roles":["action\_reference"],\\
+\phantom{\{}"characters":["xiao-sai",\\
+\phantom{\{}\qquad\qquad\quad"sai-xiansheng"],\\
+\phantom{\{}"topics":["robotics","ai",\\
+\phantom{\{}\qquad\quad"experiment","science"],\\
+\phantom{\{}"poses":["discuss","observe"],\\
+\phantom{\{}"scene\_tags":["robotics\_lab",\\
+\phantom{\{}\qquad\qquad\quad"experiment"],\\
+\phantom{\{}"priority":96, "approved":true,\\
+\phantom{\{}"size":"2048x2048",\\
+\phantom{\{}"asset\_id":"5c2a29...b63c30"\}
+}
+\end{tcolorbox}
+
+\small \texttt{relative\_path} 是私有素材根目录下的相对地址，不是公网 URL。系统据此读取原图，再结合哈希确认文件未被替换。这些字段用于筛选、轮换、校验和追溯；当天内容被判为 AI / 实验 / 观察主题时，这张图就会因标签匹配而进入候选。
+\end{minipage}
+
+\vspace{0.6em}
+下一步可以继续把这套方法用于课程海报、活动物料和销售素材：先用 AI 提供初始标注，再由团队以少量人工审核维护标准；日常生产时由系统按内容自动选择资产。最终沉淀下来的不是一次次图片，而是一套越用越清楚的品牌视觉能力。
+
+\vfill
+\begin{center}\small\sffamily\color{muted}赛先生科学 · 研讨会交流材料 · 2026 年 8 月 12 日\end{center}
+
+\end{document}

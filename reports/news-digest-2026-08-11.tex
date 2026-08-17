@@ -1,0 +1,286 @@
+% Compile with: latexmk -xelatex -interaction=nonstopmode -halt-on-error news-digest-2026-08-11.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.65cm,bottom=1.7cm,left=1.7cm,right=1.7cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{fontspec}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{navy}{HTML}{102A43}
+\definecolor{ocean}{HTML}{1769AA}
+\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}
+\definecolor{sky}{HTML}{EAF3FA}
+\definecolor{slate}{HTML}{486581}
+\definecolor{ink}{HTML}{243B53}
+\definecolor{muted}{HTML}{627D98}
+\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}
+\definecolor{amber}{HTML}{D97706}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ocean,
+  urlcolor=teal,
+  pdfauthor={赛先生科学内容系统},
+  pdftitle={2026年8月11日新闻抓取日报}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.28em}
+\setlength{\headheight}{22.2pt}
+\setlength{\tabcolsep}{5pt}
+\onehalfspacing
+\raggedbottom
+\sloppy
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\sffamily\color{slate} 新闻抓取日报}
+\rhead{\small\sffamily\color{slate} 赛先生科学内容系统}
+\cfoot{\small\sffamily\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height \headrulewidth\hfill}}
+
+\titleformat{\section}
+  {\Large\bfseries\sffamily\color{navy}}
+  {\thesection}{0.65em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{1.05em}{0.45em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.25em}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\keyvalue}[2]{\noindent\textbf{\sffamily\color{navy}#1：}\textcolor{ink}{#2}\par}
+\newcommand{\statuspill}[2]{%
+  \fcolorbox{#1!35}{#1!13}{\textcolor{#1}{\scriptsize\bfseries\sffamily\,#2\,}}}
+\newcommand{\newsitem}[5]{%
+  \item \textbf{#1}\par
+  {\small\textcolor{slate}{来源：#2\quad 抓取结果：#3\quad 发布时间：#4}}\par
+  {\footnotesize\url{#5}}
+}
+
+\tcbset{enhanced,boxrule=0.55pt,arc=1.7mm,left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm}
+\newtcolorbox{focusbox}[1][]{colback=mint,colframe=teal!55,
+  borderline west={2.6pt}{0pt}{teal},breakable,#1}
+\newtcolorbox{infobox}[1][]{colback=sky,colframe=ocean!38,
+  borderline west={2.4pt}{0pt}{ocean},breakable,#1}
+\newtcolorbox{boundarybox}[1][]{colback=paper,colframe=line,
+  borderline west={2.4pt}{0pt}{amber},breakable,#1}
+
+\begin{document}
+
+\begin{center}
+  \statuspill{teal}{服务器真实采集}\hspace{0.5em}
+  \statuspill{ocean}{9 个来源}\hspace{0.5em}
+  \statuspill{teal}{任务全部成功}\par\vspace{0.75em}
+  {\color{ocean}\large\bfseries\sffamily 赛先生科学内容系统}\par\vspace{0.45em}
+  {\fontsize{22}{28}\selectfont\bfseries\sffamily\color{navy}
+    2026 年 8 月 11 日新闻抓取日报}\par\vspace{0.45em}
+  {\large\sffamily\color{slate}
+    新增新闻、来源状态与原文链接}\par\vspace{0.85em}
+  {\color{teal}\rule{3.2cm}{1.2pt}}
+\end{center}
+
+\keyvalue{采集业务日期}{2026 年 8 月 11 日}
+\keyvalue{采集窗口}{06:30:00 -- 06:30:54（Asia/Shanghai）}
+\keyvalue{采集任务}{9 个来源，9/9 成功；没有来源级失败}
+\keyvalue{数据范围}{本报告只展示本次采集形成的新闻候选及其去重结果，不包含被相关性规则过滤掉的文章正文。}
+
+\begin{focusbox}
+\textbf{结论：}今天的新闻采集链路正常完成。系统发现 5 条新增新闻，确认 10 条新闻与数据库中已有内容未发生变化；另有 162 条抓取内容被相关性规则过滤。教育部科学新闻来源本次采集成功，但没有新增文章，只有 2 条已存在内容被确认未变化。
+\end{focusbox}
+
+\section{采集汇总}
+
+\begin{tabularx}{\textwidth}{L{4.3cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 指标 & \color{white}\bfseries\sffamily 本次结果 \\
+\midrule
+\textbf{来源数} & 9 \\
+\rowcolor{paper}
+\textbf{成功来源任务} & 9/9 \\
+\textbf{新增新闻} & 5 条 \\
+\rowcolor{paper}
+\textbf{已存在且未变化} & 10 条 \\
+\textbf{相关性过滤} & 162 条 \\
+\rowcolor{paper}
+\textbf{来源级异常} & 0；3 个来源返回“无相关候选”，表示没有符合当前相关性规则的候选 \\
+\bottomrule
+\end{tabularx}
+
+\begin{boundarybox}
+\textbf{如何理解“过滤”：}过滤不等于抓取失败。它表示页面已被采集，但文章没有满足当前新闻相关性规则，因此不会进入后续证据治理、选题和文案生成链路。来源任务本身仍然是成功的。
+\end{boundarybox}
+
+\section{本次新增新闻}
+
+以下 5 条是本次采集中新写入候选池的新闻。
+
+\begin{itemize}[leftmargin=1.6em,itemsep=0.8em,topsep=0.3em]
+\newsitem{人形机器人在深圳多场景“上岗”（组图）}{新华网科技}{new}{2026-08-10}{https://www.news.cn/tech/20260810/9065ff65178e443c98d7d36ee7b8b581/c.html}
+\newsitem{今年上半年人形机器人领域新设企业 11.6 万户}{新华网科技}{new}{2026-08-10}{https://www.news.cn/tech/20260810/1dccc7967c2340b1aead211c2f0ebf23/c.html}
+\newsitem{国产大模型改写全球 AI 调用版图}{新华网科技}{new}{2026-08-10}{https://www.news.cn/tech/20260810/7644c2a73a4d4d729812c8e8ec18255f/c.html}
+\newsitem{商汤发布日日新 SenseNova U1 Pro，面向长程任务的交付级原生多模态智能体基座}{商汤科技新闻中心}{new}{2026-08-07}{https://www.sensetime.com/cn/news/51170769}
+\newsitem{全球首个端侧驱动本体的具身世界模型！大晓机器人发布 Kairos 3.1}{商汤科技新闻中心}{new}{2026-08-07}{https://www.sensetime.com/cn/news/51170767}
+\end{itemize}
+
+\section{已抓取但内容未变化}
+
+这些新闻在今天的采集窗口内被再次确认，但由于内容哈希没有变化，没有重复写入新版本。
+
+\begin{itemize}[leftmargin=1.6em,itemsep=0.8em,topsep=0.3em]
+\newsitem{AI 进课堂，如何坚守教育本质？}{中国新闻网教育}{unchanged}{2026-08-07}{https://www.chinanews.com.cn/edu/2026/08-07/10673496.shtml}
+\newsitem{人工智能或可唤醒“沉睡”的文化宝藏}{新华网科技}{unchanged}{2026-08-07}{https://www.news.cn/tech/20260807/7b7ee2ed6bc940438f702aa870993fa1/c.html}
+\newsitem{融资密集落地 AI 视频大模型竞速商业化}{新华网科技}{unchanged}{2026-08-07}{https://www.news.cn/tech/20260807/1605ef446e5045b7ba0ee55245ce731c/c.html}
+\newsitem{AI 推动天文观测向“智能分析与自主发现”演进}{新华网科技}{unchanged}{2026-08-07}{https://www.news.cn/tech/20260807/686ba4b05f144adf86685f49b3406688/c.html}
+\newsitem{雄安人工智能实训基地正式投运}{新华网科技}{unchanged}{2026-08-07}{https://www.news.cn/tech/20260807/2c7bc4ddfbd94c488d2322ebd3000cb1/c.html}
+\newsitem{从数据采集到应用场景，在上海感受具身智能发展活力（组图）}{新华网科技}{unchanged}{2026-08-06}{https://www.news.cn/tech/20260806/73f56130fcec49ba96f46d5e3814251f/c.html}
+\newsitem{探秘 AI 新势力｜脑机接口如何重新连接一个人的生活}{新华网科技}{unchanged}{2026-08-04}{https://www.news.cn/tech/20260804/f7394305e09845febfceae985c63c71e/c.html}
+\newsitem{教育部部署开展义务教育阶段科学教育“做中学”领航行动}{教育部科学新闻}{unchanged}{2026-08-04}{http://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202608/t20260804_1446039.html}
+\newsitem{8 本教育学心理学原创性教材出版}{教育部科学新闻}{unchanged}{2026-08-03}{http://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202608/t20260803_1445969.html}
+\end{itemize}
+
+\section{选题与评分规则}
+
+\begin{infobox}
+\textbf{本次实际选题运行：}使用 \texttt{scoring-v1-preview.4-science-policy-priority} 版本、\texttt{preview} profile；共对 67 个事件评分，其中 8 个达到阈值并具备选题资格。最终 Top 1 为“国产大模型改写全球 AI 调用版图”，总分 \textbf{0.7033}，阈值为 \textbf{0.62}。
+\end{infobox}
+
+\subsection{系统怎样从新闻选出一个题}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+  \item 先对采集结果做去重、规范化、事件聚类和事实治理，只把有可用证据、治理已完成的事件送入选题评分。
+  \item 为每个事件计算来源可信度、来源多样性、人工智能相关性、家长相关性、新鲜度和沟通潜力等正向特征。
+  \item 同时计算主题重复、争议风险和营销风险等扣分项，并检查近期重复、过期、证据和治理状态等硬门禁。
+  \item 先按“是否有科学政策优先资格”和“是否可选”分组，再按总分从高到低排序；同分时依次比较来源可信度、事件时间，最后使用事件 ID 做稳定排序。
+  \item 选择排序后第一个同时满足“没有硬否决 + 总分达到阈值”的事件；如果没有，就记录无候选、全部否决或低于阈值，而不是强行生成。
+\end{enumerate}
+
+\subsection{总分怎么算}
+
+系统使用下面的确定性公式，所有权重和特征都会写入本次选题运行的配置快照，便于复盘：
+
+\begin{focusbox}
+\textbf{总分 = 正向得分之和 -- 风险扣分之和。}
+
+正向得分 = 来源可信度 $\times 0.20$ + 来源多样性 $\times 0.10$ + AI 相关性 $\times 0.20$ + 家长相关性 $\times 0.20$ + 新鲜度 $\times 0.15$ + 沟通潜力 $\times 0.15$。
+
+风险扣分 = 主题重复 $\times 0.15$ + 争议风险 $\times 0.10$ + 营销风险 $\times 0.15$。
+\end{focusbox}
+
+{\small
+\begin{tabularx}{0.96\textwidth}{L{4.6cm}L{1.7cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 特征 & \color{white}\bfseries\sffamily 权重 & \color{white}\bfseries\sffamily 具体含义 \\
+\midrule
+来源可信度 & +0.20 & 根据来源信任等级计算；权威来源更稳定 \\
+\rowcolor{paper}
+来源多样性 & +0.10 & 事件关联来源越多越好，最多按 4 个来源计入 \\
+AI 相关性 & +0.20 & 是否属于人工智能、机器人、科创或科技主题 \\
+\rowcolor{paper}
+家长相关性 & +0.20 & 与孩子成长、学习、教育和家庭理解的关联度 \\
+新鲜度 & +0.15 & 10 天窗口内按时间衰减，越新分越高 \\
+\rowcolor{paper}
+沟通潜力 & +0.15 & 是否有清晰事实、主体和可转化为家长易懂表达的空间 \\
+主题重复 & -0.15 & 与近期开过的主题相似时扣分 \\
+\rowcolor{paper}
+争议风险 & -0.10 & 标题或摘要出现争议、失控等风险信号时扣分 \\
+营销风险 & -0.15 & 出现“保过、稳赚、百分百提升”等营销信号时扣分 \\
+\bottomrule
+\end{tabularx}\par}
+
+\subsection{科学教育政策 Top 1 优先规则}
+
+教育部来源并不会自动成为 Top 1。只有同时满足以下条件，才会在评分通过且没有硬否决时获得优先排序：
+
+\begin{itemize}[leftmargin=1.6em,itemsep=0.25em]
+  \item 主题属于科学教育、科创教育、人工智能教育或机器人教育；
+  \item 标题或摘要包含政策、行动、指南、方案、通知、意见、标准、实施、部署、计划、规划、办法或细则等信号；
+  \item 标题不能命中教材、教科书、课本、读本、会议、座谈会、研讨会、论坛或发布会等排除项。
+\end{itemize}
+
+选题阶段的硬否决包括：治理未完成、没有合格证据、仅有发现型来源、未经证实、负面事件不适合教育表达、隐私或法律安全不确定、违规营销风险、7 天内重复选择，以及超过 10 天新鲜度窗口。文案格式告警与选题硬否决是两套不同规则。
+
+\subsection{今天的评分结果}
+
+下表是服务器今天排序靠前的 8 个候选；8 个均达到 0.62 阈值，系统选择排名第 1 的候选。
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{L{0.7cm}L{10.3cm}L{1.5cm}L{2.0cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 排名 & \color{white}\bfseries\sffamily 候选事件 & \color{white}\bfseries\sffamily 总分 & \color{white}\bfseries\sffamily 结果 \\
+\midrule
+\endhead
+\rowcolor{mint} 1 & 国产大模型改写全球 AI 调用版图 & 0.7033 & \textbf{选中 Top 1} \\
+2 & 安徽启动人工智能专项技能培训 & 0.6743 & 达到阈值 \\
+\rowcolor{paper} 3 & 金刚石跻身 AI 散热界“新贵” & 0.6727 & 达到阈值 \\
+4 & 雄安人工智能实训基地正式投运 & 0.6703 & 达到阈值 \\
+\rowcolor{paper} 5 & 注重 AI 赋能，培养“细胞工厂”建造师——关注新增专业系列报道之四 & 0.6699 & 达到阈值 \\
+6 & AI 锻造电子信息制造业新优势 & 0.6528 & 达到阈值 \\
+\rowcolor{paper} 7 & 脑机接口技术借 AI 实现脑活动转文字 & 0.6363 & 达到阈值 \\
+8 & 8 本教育学心理学原创性教材出版 & 0.6293 & 达到阈值 \\
+\bottomrule
+\end{longtable}
+
+\section{来源处理概况}
+
+\renewcommand{\arraystretch}{1.3}
+\begin{longtable}{L{3.8cm}L{2.2cm}L{1.3cm}L{1.7cm}L{1.6cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 来源 & \color{white}\bfseries\sffamily 结果 & \color{white}\bfseries\sffamily 新增 & \color{white}\bfseries\sffamily 未变化 & \color{white}\bfseries\sffamily 过滤 \\
+\midrule
+\endhead
+中国政府网最新政策 & succeeded & 0 & 1 & 0 \\
+\rowcolor{paper} 中国新闻网教育 & succeeded & 0 & 1 & 49 \\
+中国科学院科研进展 & 无相关候选 & 0 & 0 & 15 \\
+\rowcolor{paper} 光明网教育 & succeeded & 0 & 0 & 35 \\
+北京师范大学新闻网 & 无相关候选 & 0 & 0 & 23 \\
+\rowcolor{paper} 商汤科技新闻中心 & succeeded & 2 & 0 & 4 \\
+教育部科学新闻 & succeeded & 0 & 2 & 8 \\
+\rowcolor{paper} 新华网科技 & succeeded & 3 & 6 & 19 \\
+科技日报 & 无相关候选 & 0 & 0 & 9 \\
+\midrule
+\textbf{合计} & 9 个任务 & \textbf{5} & \textbf{10} & \textbf{162} \\
+\bottomrule
+\end{longtable}
+
+\begin{infobox}
+\textbf{与后续选题的关系：}今天的教育部科学新闻来源没有新增内容；“8 本教育学心理学原创性教材出版”虽达到普通评分阈值，但因命中“教材”排除项，没有触发科学政策优先，最终没有成为 Top 1。教育部来源不会被系统强行使用。
+\end{infobox}
+
+\section{备注}
+
+\begin{itemize}[leftmargin=1.6em,itemsep=0.35em]
+  \item 本报告根据服务器 2026-08-11 的 acquisition run 生成，采集状态为 succeeded。
+  \item 链接为数据库保存的规范化原文地址，点击标题下方链接即可打开来源页面。
+  \item 本次报告未修改服务器数据，未创建新的采集任务，也未触发企业微信发送。
+\end{itemize}
+
+\vfill
+\begin{center}
+  {\small\color{muted}赛先生科学内容自动化系统 · 生成时间：2026 年 8 月 11 日}
+\end{center}
+
+\end{document}

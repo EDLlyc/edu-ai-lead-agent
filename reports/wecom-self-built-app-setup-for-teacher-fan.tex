@@ -1,0 +1,237 @@
+% 编译方式：latexmk -xelatex -interaction=nonstopmode -halt-on-error wecom-self-built-app-setup-for-teacher-fan.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.65cm,bottom=1.75cm,left=1.7cm,right=1.7cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{tikz}
+\usepackage{fontspec}
+\usetikzlibrary{arrows.meta,positioning}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{navy}{HTML}{102A43}
+\definecolor{ocean}{HTML}{1769AA}
+\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}
+\definecolor{sky}{HTML}{EAF3FA}
+\definecolor{slate}{HTML}{486581}
+\definecolor{ink}{HTML}{243B53}
+\definecolor{muted}{HTML}{627D98}
+\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}
+\definecolor{amber}{HTML}{D97706}
+\definecolor{red}{HTML}{B42318}
+\definecolor{redpaper}{HTML}{FEF3F2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ocean,
+  urlcolor=teal,
+  pdfauthor={赛先生品牌内容系统},
+  pdftitle={范老师企业微信自建应用配置说明}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.28em}
+\setlength{\headheight}{22.2pt}
+\setlength{\tabcolsep}{5pt}
+\onehalfspacing
+\raggedbottom
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\sffamily\color{slate} 企业微信接入说明 · 发送给范老师}
+\rhead{\small\sffamily\color{slate} 赛先生品牌内容系统}
+\cfoot{\small\sffamily\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height \headrulewidth\hfill}}
+
+\titleformat{\section}
+  {\Large\bfseries\sffamily\color{navy}}
+  {\tikz[baseline=(n.base)]\node[fill=ocean,text=white,rounded corners=2pt,
+    inner xsep=7pt,inner ysep=2pt,font=\bfseries\sffamily] (n) {\thesection};}
+  {0.75em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{1.1em}{0.45em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.25em}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\keyvalue}[2]{\noindent\textbf{\sffamily\color{navy}#1：}\textcolor{ink}{#2}\par}
+\newcommand{\envvar}[1]{\texttt{\scriptsize\detokenize{#1}}}
+\newcommand{\envvarsmall}[1]{\texttt{\tiny\detokenize{#1}}}
+\newcommand{\statuspill}[2]{%
+  \tikz[baseline=(pill.base)]\node[fill=#1!13,text=#1,draw=#1!35,rounded corners=5pt,
+  inner xsep=6pt,inner ysep=2pt,font=\scriptsize\bfseries\sffamily] (pill) {#2};}
+
+\tcbset{enhanced,boxrule=0.55pt,arc=1.7mm,left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm}
+\newtcolorbox{focusbox}[1][]{colback=mint,colframe=teal!55,
+  borderline west={2.6pt}{0pt}{teal},breakable,#1}
+\newtcolorbox{infobox}[1][]{colback=sky,colframe=ocean!38,
+  borderline west={2.4pt}{0pt}{ocean},breakable,#1}
+\newtcolorbox{securitybox}[1][]{colback=redpaper,colframe=red!45,
+  borderline west={2.6pt}{0pt}{red},breakable,#1}
+\newtcolorbox{boundarybox}[1][]{colback=paper,colframe=line,
+  borderline west={2.4pt}{0pt}{amber},breakable,#1}
+
+\begin{document}
+
+\begin{center}
+  \statuspill{teal}{给范老师的操作说明}\hspace{0.5em}
+  \statuspill{ocean}{第一阶段：文字与图片投递}\par\vspace{0.75em}
+  {\color{ocean}\large\bfseries\sffamily 赛先生科学内容系统}\par\vspace{0.45em}
+  {\fontsize{22}{28}\selectfont\bfseries\sffamily\color{navy}
+    企业微信自建应用接入配置说明}\par\vspace{0.45em}
+  {\large\sffamily\color{slate}
+    请完成后台配置，并把下面列出的参数回传给项目负责人}\par\vspace{0.85em}
+  \tikz\draw[teal,line width=1.2pt] (0,0)--(3.2,0);
+\end{center}
+
+\keyvalue{文档用途}{帮助范老师在企业微信管理后台创建一个自建应用，并提供系统完成“每日文案 + 配图”投递所需的最小配置。}
+\keyvalue{当前系统能力}{系统生成并审计素材包后，可通过企业微信应用向一名指定内部员工发送文字和图片；员工收到后自行查看、复制并发布到朋友圈。}
+\keyvalue{当前接入范围}{先完成出站消息投递。企业微信卡片按钮、H5 回调和二次交互属于后续阶段，本次不需要配置。}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}范老师只需要做三件事：}\quad
+创建自建应用；把目标销售加入应用的可见范围；把应用参数和目标员工的 \texttt{userid} 按本文清单提供给我们。
+不需要安装代码，不需要调用接口，也不需要把个人微信密码提供给任何人。
+\end{focusbox}
+
+\section{范老师在企业微信后台怎么做}
+
+\subsection{登录并创建自建应用}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+  \item 使用企业微信管理员账号登录企业微信管理后台：\url{https://work.weixin.qq.com/}。
+  \item 进入“应用管理”，选择“自建”，点击“创建应用”。
+  \item 建议应用名称填写“赛先生科学内容助手”，应用说明填写“每日科学教育内容素材预览与投递”。
+  \item 应用头像可以使用赛先生科学的品牌图标；不需要申请通讯录写入、群机器人或外部客户权限。
+\end{enumerate}
+
+\begin{infobox}
+\textbf{\sffamily\color{navy}关键点：}\quad
+这是企业微信内部应用，消息只发给企业内部成员。应用的“可见范围”决定谁能收到应用消息，
+请先只添加本次测试的销售，测试通过后再考虑增加人员。
+\end{infobox}
+
+\subsection{设置应用可见范围}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+  \item 在应用详情中找到“可见范围”或“设置可见范围”。
+  \item 添加指定销售本人，或添加包含该销售的部门。
+  \item 保存后确认该员工在应用可见范围内，且员工没有被停用、删除或从企业通讯录移除。
+\end{enumerate}
+
+\subsection{找到企业 ID、应用 ID 和应用 Secret}
+
+\begin{itemize}[leftmargin=2em,itemsep=0.2em]
+\item 企业 ID：进入“我的企业”或“企业信息”，复制“企业 ID”，对应系统参数 \envvar{WECOM_CORP_ID}。
+\item 应用 ID：回到刚才创建的自建应用详情，复制“AgentId”，对应系统参数 \envvar{WECOM_AGENT_ID}；它是一个整数。
+\item 应用 Secret：在同一应用详情中查看或重置“Secret”，对应系统参数 \envvar{WECOM_CORP_SECRET}。
+\end{itemize}
+
+\subsection{找到目标销售的 userid}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+  \item 进入“通讯录”，打开目标销售的成员详情。
+  \item 提供该成员的“账号”或企业微信后台显示的成员 \texttt{userid}。
+  \item 同时提供一个便于识别的姓名，例如“张三（销售）”。
+\end{enumerate}
+
+\begin{boundarybox}
+\textbf{\sffamily\color{navy}不要用手机号代替 userid。}\quad
+姓名、昵称和手机号可能重复或变化；系统需要的是企业微信通讯录中的唯一成员账号。
+如果后台没有直接显示 userid，请让企业微信管理员从成员详情或通讯录导出功能中复制“账号”字段。
+\end{boundarybox}
+
+\section{请提供给我们的参数}
+
+\subsection{必填参数}
+
+\renewcommand{\arraystretch}{1.35}
+\begin{longtable}{L{3.8cm}L{2.8cm}L{3.0cm}L{5.9cm}}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 参数名 &
+\color{white}\bfseries\sffamily 含义 &
+\color{white}\bfseries\sffamily 从哪里找 &
+\color{white}\bfseries\sffamily 是否敏感 \\
+\midrule
+\endhead
+\envvarsmall{WECOM_CORP_ID} & 企业 ID & “我的企业”/企业信息 & 否，但属于内部信息 \\
+\rowcolor{paper}
+\envvarsmall{WECOM_AGENT_ID} & 自建应用 AgentId & 应用详情 & 否，但属于内部信息 \\
+\envvarsmall{WECOM_CORP_SECRET} & 自建应用 Secret & 应用详情 & \textbf{是，必须私密传递} \\
+\rowcolor{paper}
+\envvarsmall{WECOM_DEFAULT_RECIPIENT_ID} & 目标销售 userid/账号 & 通讯录成员详情 & 内部标识，不要公开 \\
+\envvarsmall{WECOM_DEFAULT_RECIPIENT_NAME} & 目标销售显示姓名 & 人工填写 & 否 \\
+\bottomrule
+\end{longtable}
+
+\subsection{建议同时提供的确认信息}
+
+\begin{longtable}{L{4.2cm}L{5.1cm}L{7.0cm}}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries\sffamily 信息 &
+\color{white}\bfseries\sffamily 示例或要求 &
+\color{white}\bfseries\sffamily 用途 \\
+\midrule
+\endhead
+企业名称 & 例如“某某教育科技有限公司” & 防止多个企业配置混淆 \\
+\rowcolor{paper}
+应用名称 & 例如“赛先生科学内容助手” & 确认使用了正确的自建应用 \\
+测试接收人 & 姓名 + userid & 首次只向一人发送测试消息 \\
+\rowcolor{paper}
+是否允许正式自动投递 & 建议先填“先测试，暂不开启” & 测试通过后再打开每日自动发送 \\
+服务器公网出口 IP & 仅当企业微信后台提示需要“企业可信 IP”时提供 & 加入企业微信的 IP 白名单 \\
+\bottomrule
+\end{longtable}
+
+\begin{securitybox}
+\textbf{\sffamily\color{red}Secret 的交付规则：}\quad
+\envvar{WECOM_CORP_SECRET} 不要发到微信群、普通聊天、邮件正文、截图或 GitHub。
+请通过密码管理器、一次性安全链接、电话口述，或直接在服务器的权限为 600 的 \texttt{.env} 中录入。
+我们只把它注入运行容器，不写进代码、不写进 PDF、不打印到日志。
+\end{securitybox}
+
+\section{可以直接复制填写的回传模板}
+
+\begin{infobox}
+\begin{tabularx}{\textwidth}{L{4.3cm}Y}
+\textbf{企业名称} & \\
+\textbf{应用名称} & \\
+\textbf{\envvarsmall{WECOM_CORP_ID}} & \\
+\textbf{\envvarsmall{WECOM_AGENT_ID}} & \\
+\textbf{\envvarsmall{WECOM_CORP_SECRET}} & \textit{请通过私密渠道提供，不要填在普通聊天中} \\
+\textbf{\envvarsmall{WECOM_DEFAULT_RECIPIENT_ID}} & \\
+\textbf{\envvarsmall{WECOM_DEFAULT_RECIPIENT_NAME}} & \\
+\textbf{是否先做测试投递} & 是，先发给上面这一名员工 \\
+\textbf{是否开启每日正式自动投递} & 首次建议：否；测试确认后再开启 \\
+\textbf{后台是否提示需要可信 IP} & 是/否；若是，请附服务器公网出口 IP \\
+\end{tabularx}
+\end{infobox}
+
+\vfill
+\begin{center}
+\small\sffamily\color{muted}
+版本：v1.0 · 适用当前出站文字/图片投递实现 · 不包含朋友圈自动发布
+\end{center}
+
+\end{document}

@@ -1,0 +1,229 @@
+% 编译方式：latexmk -xelatex -interaction=nonstopmode -halt-on-error weekly-report-2026-08-03-08-06.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=1.65cm,bottom=1.75cm,left=1.7cm,right=1.7cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{tikz}
+\usepackage{fontspec}
+\usetikzlibrary{arrows.meta,positioning}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{navy}{HTML}{102A43}
+\definecolor{ocean}{HTML}{1769AA}
+\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}
+\definecolor{sky}{HTML}{EAF3FA}
+\definecolor{slate}{HTML}{486581}
+\definecolor{ink}{HTML}{243B53}
+\definecolor{muted}{HTML}{627D98}
+\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}
+\definecolor{amber}{HTML}{D97706}
+\definecolor{red}{HTML}{B42318}
+\definecolor{redpaper}{HTML}{FEF3F2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=ocean,
+  urlcolor=teal,
+  pdfauthor={赛先生品牌内容系统},
+  pdftitle={赛先生科学内容自动化系统项目周报}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.28em}
+\setlength{\headheight}{22.2pt}
+\setlength{\tabcolsep}{5pt}
+\onehalfspacing
+\raggedbottom
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\sffamily\color{slate} 项目周报 · 赛先生科学内容自动化系统}
+\rhead{\small\sffamily\color{slate} 2026 年第 32 周}
+\cfoot{\small\sffamily\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height \headrulewidth\hfill}}
+
+\titleformat{\section}
+  {\Large\bfseries\sffamily\color{navy}}
+  {\tikz[baseline=(n.base)]\node[fill=ocean,text=white,rounded corners=2pt,
+    inner xsep=7pt,inner ysep=2pt,font=\bfseries\sffamily] (n) {\thesection};}
+  {0.75em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{1.05em}{0.45em}
+\titlespacing*{\subsection}{0pt}{0.8em}{0.25em}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\keyvalue}[2]{\noindent\textbf{\sffamily\color{navy}#1：}\textcolor{ink}{#2}\par}
+\newcommand{\statuspill}[2]{%
+  \tikz[baseline=(pill.base)]\node[fill=#1!13,text=#1,draw=#1!35,rounded corners=5pt,
+  inner xsep=6pt,inner ysep=2pt,font=\scriptsize\bfseries\sffamily] (pill) {#2};}
+
+\tcbset{enhanced,boxrule=0.55pt,arc=1.7mm,left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm}
+\newtcolorbox{focusbox}[1][]{colback=mint,colframe=teal!55,
+  borderline west={2.6pt}{0pt}{teal},breakable,#1}
+\newtcolorbox{infobox}[1][]{colback=sky,colframe=ocean!38,
+  borderline west={2.4pt}{0pt}{ocean},breakable,#1}
+\newtcolorbox{riskbox}[1][]{colback=redpaper,colframe=red!45,
+  borderline west={2.6pt}{0pt}{red},#1}
+\newtcolorbox{boundarybox}[1][]{colback=paper,colframe=line,
+  borderline west={2.4pt}{0pt}{amber},breakable,#1}
+
+\begin{document}
+
+\begin{center}
+  \statuspill{teal}{本周完成}\hspace{0.5em}
+  \statuspill{ocean}{真实验收通过}\par\vspace{0.75em}
+  {\color{ocean}\large\bfseries\sffamily 项目周报}\par\vspace{0.45em}
+  {\fontsize{22}{28}\selectfont\bfseries\sffamily\color{navy}
+    赛先生科学内容自动化系统}\par\vspace{0.45em}
+  {\large\sffamily\color{slate}
+    权威新闻采集 · 科学政策选题 · 家长友好文案 · 品牌配图 · 企业微信投递}\par\vspace{0.85em}
+  \tikz\draw[teal,line width=1.2pt] (0,0)--(3.2,0);
+\end{center}
+
+\keyvalue{报告周期}{2026 年 8 月 3 日至 2026 年 8 月 7 日（截至当前工作日）}
+\keyvalue{报告日期}{2026 年 8 月 7 日}
+\keyvalue{当前结论}{核心内容生产链路已经自动化并真实跑通；企业微信投递技术能力已完成，但凭据和目标员工参数尚未配置，因此正式自动发送暂未开启。}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}管理摘要}\quad
+本周系统从“能够生成内容”推进到“能够持续、可审计地生成素材包”。
+真实预览运行已完成新闻采集、事实治理、教育部科学政策优先选题、智谱文案、
+品牌 IP 参考生图、MinIO 存储和前端查看。系统不会自动发布朋友圈，而是把审核后的文字和图片
+准备好，再通过企业微信自建应用发送给指定销售，由销售自行使用。
+\end{focusbox}
+
+\section{本周完成事项}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.0cm}L{5.3cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 模块 &
+\color{white}\bfseries\sffamily 本周完成 &
+\color{white}\bfseries\sffamily 业务结果 \\
+\midrule
+新闻采集 & 保留 10 天新鲜度窗口，完善来源抓取、限速、失败分类和恢复机制 & 每天自动形成可追溯的权威候选池 \\
+\rowcolor{paper}
+科学政策选题 & 教育部科学相关政策优先；只有科学教育/科创教育/AI 教育/机器人教育主题，同时出现政策、行动、指南、方案、通知、标准、实施等信号时才优先 & 教育部无关新闻不会被强行当作 Top 1 \\
+事实治理 & 对候选做规范化、事实分析、证据绑定、去重和事件组织 & 后续文案可回到来源复核 \\
+\rowcolor{paper}
+品牌资料 & 完成品牌资料 OCR、结构化切片、向量检索和品牌 IP 素材选择 & 生成内容与赛先生品牌资料保持一致 \\
+文案生成 & 使用家长看得懂的语言，解释为什么学科学/科创/AI/机器人、为什么在赛先生学；固定保留 \#赛先生科学，并提炼 2 至 3 个标签 & 文案可直接用于朋友圈正文 \\
+\rowcolor{paper}
+图片生成 & 使用品牌 IP 参考图驱动 Comfly 生图，加入输出下载、尺寸、格式、摘要和重试校验 & 生成 1024×1024 PNG，并保存到 MinIO \\
+审核与素材包 & 文案验证、审计失败最多自动修复一次；绑定选题、文案、图片、来源、证据和审计结果 & 失败不会被伪装成成功，素材包可查询和下载 \\
+\rowcolor{paper}
+企业微信 & 完成自建应用出站文字/图片 dispatcher、持久任务、幂等指纹、有限重试和状态记录 & 已具备向一名内部销售投递的技术能力，默认关闭 \\
+\bottomrule
+\end{tabularx}
+
+\section{真实验收结果}
+
+\subsection{全链路预览运行}
+
+\noindent\begin{tabularx}{\textwidth}{L{4.0cm}Y}
+\toprule
+\rowcolor{ocean}
+\color{white}\bfseries\sffamily 验收项 & \color{white}\bfseries\sffamily 实际结果 \\
+\midrule
+预览运行 ID & \texttt{026d0ca0-eed2-42f9-98c6-887fd9941139} \\
+\rowcolor{paper}
+业务日期 & \texttt{2026-08-08}（隔离预览日期，不覆盖正式日结果） \\
+新闻采集 & 9/9 个采集任务成功 \\
+\rowcolor{paper}
+治理结果 & 17 条可用，4 条进入复核，整体为部分成功 \\
+Top 1 选题 & 教育部“科学教育做中学”科学政策，科学政策优先规则生效 \\
+\rowcolor{paper}
+文案 & \texttt{accepted}，通过验证和审计 \\
+图片 & \texttt{succeeded}，1024×1024 PNG，品牌 IP 参考图已参与生成 \\
+\rowcolor{paper}
+素材包 & \texttt{awaiting\_manual\_use}，已保存并可前端查看 \\
+企业微信投递 & 0 条，原因是当前开关关闭，未向任何销售发送 \\
+\bottomrule
+\end{tabularx}
+
+\begin{infobox}
+\textbf{\sffamily\color{navy}验收含义}\quad
+本次运行证明核心自动化链路可运行，不等于已经开启对外投递。
+企业微信当前设置为 \texttt{WECOM\_ENABLED=false}、
+\texttt{WECOM\_AUTO\_DELIVERY\_ENABLED=false}，因此没有产生真实销售消息。
+\end{infobox}
+
+\subsection{质量门禁与运行状态}
+
+\begin{itemize}[leftmargin=2em,itemsep=0.2em]
+  \item 后端全量 458 个测试通过，Ruff、mypy、API health、\texttt{make doctor} 和 \texttt{git diff --check} 通过。
+  \item acquisition、governance、content 的 scheduler/worker、API、PostgreSQL、MinIO 和 WeCom dispatcher 当前均在运行。
+  \item 失败状态保持可见：文案最多自动修复一次；图片失败支持有限重试；SSRF、Fake-IP、格式和尺寸校验仍保留。
+\end{itemize}
+
+\section{当前状态与未完成事项}
+
+\begin{tabularx}{\textwidth}{L{4.1cm}L{2.2cm}Y}
+\toprule
+\rowcolor{navy}
+\color{white}\bfseries\sffamily 事项 &
+\color{white}\bfseries\sffamily 状态 &
+\color{white}\bfseries\sffamily 说明 \\
+\midrule
+自动采集到素材包 & \textbf{\color{teal}已完成} & 服务器和 Docker 持续运行时，按 Asia/Shanghai 调度器每日执行 \\
+\rowcolor{paper}
+教育部科学政策优先 & \textbf{\color{teal}已完成} & 仅对符合主题和政策信号的内容优先，不处理无关教育部新闻 \\
+品牌 OCR/RAG 与 IP 生图 & \textbf{\color{teal}已完成} & 品牌资料用于检索和参考图选择 \\
+\rowcolor{paper}
+企业微信技术适配 & \textbf{\color{teal}已完成} & 支持文字、图片、幂等、重试和投递状态 \\
+企业微信正式自动发送 & \textbf{\color{amber}待配置} & 需要企业 ID、AgentId、Secret、销售 userid；先测试，再开启自动投递 \\
+\rowcolor{paper}
+朋友圈自动发布 & \textbf{\color{slate}不做} & 企业微信应用只负责发给销售，销售自行发布到朋友圈 \\
+同日正式重算 & \textbf{\color{amber}待规划} & 每日幂等锁会保护已产生结果，后续应增加正式同日重算机制 \\
+\bottomrule
+\end{tabularx}
+
+\begin{riskbox}
+\textbf{\sffamily\color{red}当前主要风险与边界}\quad
+企业微信 Secret 尚未配置，正式投递链路尚未做真实消息验收；当前素材包仍处于人工查看/使用状态。
+此外，同一业务日期已有结果后不会被直接覆盖，避免数据库被不安全地改写；若要重新选题，需要新增正式的同日重算入口。
+\end{riskbox}
+
+\section{下周计划与需要确认}
+
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+  \item 收齐企业微信自建应用参数：企业 ID、AgentId、Secret、目标销售 userid 和可见范围确认。
+  \item 由项目负责人在服务器权限受控的 \texttt{.env} 中配置 Secret，不通过普通聊天或 Git 传递。
+  \item 保持自动投递关闭，先用一份审核通过的素材包向指定销售发送测试文字和图片。
+  \item 范老师确认消息和图片收到且显示正常后，再开启每日正式自动投递。
+  \item 继续完善生产运行监控，并规划同日重算、投递告警和备份策略。
+\end{enumerate}
+
+\begin{focusbox}
+\textbf{\sffamily\color{navy}需要确认的决策}\quad
+确定企业微信目标销售；确认首次测试接收人；测试成功后是否允许开启每日正式自动投递。
+目前不需要提供回调 Token、EncodingAESKey 或朋友圈账号密码。
+\end{focusbox}
+
+\vfill
+\begin{center}
+\small\sffamily\color{muted}
+赛先生品牌内容系统 · 项目周报 · 2026 年 8 月 7 日
+\end{center}
+
+\end{document}
