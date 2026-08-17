@@ -984,3 +984,24 @@ Implemented and independently checked controlled 3D visual diversity with exact 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 45: 以最终成功推送作为重复窗口依据
+
+**Date**: 2026-08-17
+**Task**: 以最终成功推送作为重复窗口依据
+**Branch**: `main`
+
+### Summary
+
+将默认选题策略升级为 .7/v4，仅以 formal delivered 的企业微信成功推送历史触发七天重复 veto；保留 .6 回放、主题历史和同日排除语义，并通过 950 个后端测试与真实 PostgreSQL 回归。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3607c78` | (see git log) |
+
+### Status
+
+[OK] **Completed**
