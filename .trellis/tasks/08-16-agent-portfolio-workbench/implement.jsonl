@@ -1,0 +1,15 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend non-negotiable process, evidence, provider, privacy, and manual-publishing boundaries."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Layer ownership for domain, application ports/services, infrastructure adapters, schemas, routes, and process entry points."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Read-only PostgreSQL sessions, governed evidence/brand separation, truthful FTS terminology, short transactions, and no-migration boundary."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Typed observable Agent stages, evidence/brand separation, claim binding, deterministic validation, and no-autonomous-prompt contract."}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Existing private brand retrieval service, provider/model identity, evidence_eligible=false, and test contracts to reuse."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed provider/tool failures, retry classification, API envelopes, cancellation, and safe terminal behavior."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Trace/log allowlists, usage metrics, prompt/provider/private-content redaction, and correlation rules."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tiered and final backend gates, security review, lock/OpenAPI/migration checks, and forbidden patterns."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend product boundaries, generated API ownership, privacy, and no-publishing constraints."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Feature folder, API mapper, hook, component, and generated client ownership."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Generated OpenAPI types, readonly view models, discriminated UI states, and untrusted-data boundaries."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Focused component composition, trace/citation accessibility, loading/error states, and safe rendering."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend format/lint/type/test/build, accessibility, API drift, security, and E2E expectations."}
+{"file":".trellis/tasks/08-16-agent-portfolio-workbench/research/repository-seams.md","reason":"Exact existing evidence/event/brand/validator reuse points, gaps, recommended modules, tests, and risks."}
+{"file":".trellis/tasks/08-16-agent-portfolio-workbench/research/local-agent-research-workbench.md","reason":"Official LangGraph/MCP/function-calling research, FTS boundary, stdio safety, dependency/lock implications, and alternative durable design trade-offs."}

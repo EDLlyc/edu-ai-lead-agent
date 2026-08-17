@@ -11,6 +11,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.application.ports.copy_generation import (
     ClaimedCopyGenerationJob,
@@ -262,7 +264,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             run = await session.get(CopyGenerationRunModel, claimed.run_id)
             if run is None:
                 raise NotFoundError("copy generation run")
-            origin = await _load_locked_topic_origin(session, run)
+            origin = await load_locked_topic_origin(session, run)
             if run.decision_kind == "no_topic":
                 return LockedTopicContext(
                     origin=origin,
@@ -282,7 +284,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             version = await session.get(EventClusterVersionModel, run.selected_event_version_id)
             if version is None or version.event_id != run.selected_event_id:
                 raise RuntimeError("locked event version is unavailable")
-            evidence = await _load_evidence(
+            evidence = await load_governed_event_evidence(
                 session,
                 version,
                 include_governed_statement=(
@@ -820,7 +822,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             return True
 
 
-async def _load_locked_topic_origin(
+async def load_locked_topic_origin(
     session: AsyncSession, run: CopyGenerationRunModel
 ) -> LegacyDailyTopicOrigin | ContentSlotTopicOrigin:
     has_daily = run.daily_topic_selection_id is not None
@@ -1170,7 +1172,7 @@ async def _claim(
     return claimed
 
 
-async def _load_evidence(
+async def load_governed_event_evidence(
     session: AsyncSession,
     version: EventClusterVersionModel,
     *,
@@ -1207,17 +1209,10 @@ async def _load_evidence(
                     AnalysisFactModel.id == EvidenceBindingModel.fact_id,
                 )
                 .where(
-                    EventMembershipModel.event_id == version.event_id,
-                    EventMembershipModel.created_at <= version.created_at,
-                    or_(
-                        EventMembershipModel.active.is_(True),
-                        EventMembershipModel.superseded_at > version.created_at,
+                    *governed_evidence_eligibility_filters(
+                        event_id=version.event_id,
+                        version_created_at=version.created_at,
                     ),
-                    CandidateAnalysisModel.status == "accepted",
-                    CandidateAnalysisModel.created_at <= version.created_at,
-                    EvidenceBindingModel.validated.is_(True),
-                    ArticleOccurrenceModel.trust_tier.in_(["A", "B"]),
-                    ArticleOccurrenceModel.created_at <= version.created_at,
                 )
                 .order_by(
                     EvidenceBindingModel.statement_kind.desc(),
@@ -1243,6 +1238,28 @@ async def _load_evidence(
             governed_statement=(fact_text or summary) if include_governed_statement else None,
         )
         for binding, occurrence, summary, fact_text in rows
+    )
+
+
+def governed_evidence_eligibility_filters(
+    *,
+    event_id: UUID | InstrumentedAttribute[UUID],
+    version_created_at: datetime | InstrumentedAttribute[datetime],
+) -> tuple[ColumnElement[bool], ...]:
+    """Single SQL predicate source for validated Tier A/B event evidence reads."""
+
+    return (
+        EventMembershipModel.event_id == event_id,
+        EventMembershipModel.created_at <= version_created_at,
+        or_(
+            EventMembershipModel.active.is_(True),
+            EventMembershipModel.superseded_at > version_created_at,
+        ),
+        CandidateAnalysisModel.status == "accepted",
+        CandidateAnalysisModel.created_at <= version_created_at,
+        EvidenceBindingModel.validated.is_(True),
+        ArticleOccurrenceModel.trust_tier.in_(["A", "B"]),
+        ArticleOccurrenceModel.created_at <= version_created_at,
     )
 
 

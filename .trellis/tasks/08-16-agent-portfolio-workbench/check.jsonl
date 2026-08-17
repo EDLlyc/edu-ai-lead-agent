@@ -1,0 +1,15 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review non-negotiable backend boundaries and ensure the local workbench cannot mutate business pipelines."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Verify the executable local-only registry, read-only database, bounded graph, MCP, eval, API, and production-exclusion contracts captured after implementation."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify read-only short transactions, FTS truthfulness, data-domain separation, and absence of unauthorized schema changes."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify typed orchestration, evidence binding, brand separation, deterministic gates, and bounded Agent semantics."}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Verify private brand context remains evidence-ineligible and provider/model scoped."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Audit typed errors, retry/timeout/cancellation handling, and safe API projection."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit trace/log privacy and ensure no prompts, reasoning, bodies, secrets, or private paths leak."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run required backend, dependency, security, schema, and final full gates."}
+{"file":".trellis/spec/frontend/index.md","reason":"Review generated-contract ownership and no-publishing product boundary."}
+{"file":".trellis/spec/frontend/agent-workbench.md","reason":"Verify the executable generated-schema, safe rendering, accessibility, local-only exposure, and production tree-shaking contracts captured after implementation."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Audit generated types, discriminated states, mapper boundaries, and forbidden casts."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Audit focused components, accessible trace/citation UX, and safe untrusted-text rendering."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run frontend contract, lint, strict type, behavior, accessibility, and build gates."}
+{"file":".trellis/tasks/08-16-agent-portfolio-workbench/research/repository-seams.md","reason":"Verify implementation uses the audited reuse seams and does not duplicate business rules or misuse workflow-specific tables."}
+{"file":".trellis/tasks/08-16-agent-portfolio-workbench/research/local-agent-research-workbench.md","reason":"Review official SDK/version assumptions, FTS truthfulness, stdio-only MCP, bounded graph, and dependency lock scope."}

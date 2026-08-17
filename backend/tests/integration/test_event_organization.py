@@ -15,6 +15,7 @@ from app.domain.event_assignment import EventAssignmentPolicy
 from app.domain.governance_entities import ClaimedGovernanceJob, GovernanceVersionBundle
 from app.domain.governance_enums import EventAssignmentOutcome, FactualCategory
 from app.domain.governance_semantic import SemanticDuplicatePolicy
+from app.domain.value_objects import stable_key
 from app.infrastructure.db.governance_artifacts import PostgresGovernanceArtifactRepository
 from app.infrastructure.db.governance_repositories import (
     PostgresGovernanceRepository,
@@ -229,6 +230,9 @@ async def test_exact_copy_reuses_analysis_and_event_with_immutable_source_versio
     assert [version.version for version in versions] == [1, 2]
     assert [version.source_diversity for version in versions] == [2, 3]
     assert versions[0].member_set_hash != versions[1].member_set_hash
+    assert versions[1].member_set_hash == stable_key(
+        *(str(article_id) for article_id in sorted(article_ids, key=lambda value: value.int))
+    )
     assert {version.representative_article_id for version in versions} == {
         versions[0].representative_article_id
     }

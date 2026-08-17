@@ -25,6 +25,7 @@ tests.
 |---|---|
 | [Directory Structure](./directory-structure.md) | Backend package ownership and deployable entry points |
 | [Database Guidelines](./database-guidelines.md) | PostgreSQL, pgvector, SQLAlchemy 2 async, and Alembic |
+| [Local Agent Workbench](./agent-workbench.md) | One typed read-only registry for bounded Agent, MCP stdio, deterministic eval, and a loopback-only API |
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |

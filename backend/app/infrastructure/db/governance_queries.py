@@ -380,60 +380,88 @@ async def list_event_rows(
     )
 
 
-async def get_event_detail(session: AsyncSession, event_id: UUID) -> EventDetailProjection:
+async def get_event_detail(
+    session: AsyncSession,
+    event_id: UUID,
+    *,
+    member_limit: int | None = None,
+    occurrence_limit: int | None = None,
+    include_history: bool = True,
+    include_member_content: bool = True,
+) -> EventDetailProjection:
+    if member_limit is not None and not 1 <= member_limit <= 100:
+        raise ValueError("event member limit must be between one and 100")
+    if occurrence_limit is not None and not 1 <= occurrence_limit <= 100:
+        raise ValueError("event occurrence limit must be between one and 100")
     event = await session.get(EventClusterModel, event_id)
     if event is None or event.current_version_id is None:
         raise NotFoundError("event")
     current_version = await session.get(EventClusterVersionModel, event.current_version_id)
     if current_version is None:
         raise RuntimeError("event current version is missing")
-    versions = tuple(
-        (
-            await session.scalars(
-                select(EventClusterVersionModel)
-                .where(EventClusterVersionModel.event_id == event_id)
-                .order_by(EventClusterVersionModel.version)
-            )
-        ).all()
+    versions = (
+        tuple(
+            (
+                await session.scalars(
+                    select(EventClusterVersionModel)
+                    .where(EventClusterVersionModel.event_id == event_id)
+                    .order_by(EventClusterVersionModel.version)
+                )
+            ).all()
+        )
+        if include_history
+        else (current_version,)
     )
-    member_rows = tuple(
-        (
-            await session.execute(
-                select(
-                    EventMembershipModel,
-                    NormalizedArticleModel,
-                    EvidenceCandidateModel,
-                    EventAssignmentDecisionModel,
-                )
-                .join(
-                    NormalizedArticleModel,
-                    NormalizedArticleModel.id == EventMembershipModel.normalized_article_id,
-                )
-                .join(
-                    EvidenceCandidateModel,
-                    EvidenceCandidateModel.id == NormalizedArticleModel.candidate_id,
-                )
-                .join(
-                    EventAssignmentDecisionModel,
-                    EventAssignmentDecisionModel.id == EventMembershipModel.assignment_decision_id,
-                )
-                .where(
-                    EventMembershipModel.event_id == event_id,
-                    EventMembershipModel.active.is_(True),
-                )
-                .order_by(
-                    func.coalesce(
-                        EvidenceCandidateModel.published_at,
-                        EvidenceCandidateModel.first_fetched_at,
-                    ),
-                    NormalizedArticleModel.id,
-                )
-            )
-        ).tuples()
+    member_statement = (
+        select(
+            EventMembershipModel,
+            NormalizedArticleModel,
+            EvidenceCandidateModel,
+            EventAssignmentDecisionModel,
+        )
+        .join(
+            NormalizedArticleModel,
+            NormalizedArticleModel.id == EventMembershipModel.normalized_article_id,
+        )
+        .join(
+            EvidenceCandidateModel,
+            EvidenceCandidateModel.id == NormalizedArticleModel.candidate_id,
+        )
+        .join(
+            EventAssignmentDecisionModel,
+            EventAssignmentDecisionModel.id == EventMembershipModel.assignment_decision_id,
+        )
+        .where(
+            EventMembershipModel.event_id == event_id,
+            EventMembershipModel.active.is_(True),
+        )
+        .order_by(
+            func.coalesce(
+                EvidenceCandidateModel.published_at,
+                EvidenceCandidateModel.first_fetched_at,
+            ),
+            NormalizedArticleModel.id,
+        )
     )
+    if member_limit is not None:
+        member_statement = member_statement.limit(member_limit)
+    member_rows = tuple((await session.execute(member_statement)).tuples())
+    occurrences_by_candidate: dict[UUID, list[ArticleOccurrenceModel]] = {}
+    if not include_member_content and member_rows:
+        occurrences = await _occurrences_for_candidates(
+            session,
+            {candidate.id for _membership, _article, candidate, _decision in member_rows},
+            per_candidate_limit=occurrence_limit,
+        )
+        for occurrence in occurrences:
+            occurrences_by_candidate.setdefault(occurrence.candidate_id, []).append(occurrence)
     members: list[EventMemberDetail] = []
     for membership, article, candidate, decision in member_rows:
-        analysis = await _accepted_or_reused_analysis(session, article.id)
+        analysis = (
+            await _accepted_or_reused_analysis(session, article.id)
+            if include_member_content
+            else None
+        )
         analysis_article_id = analysis.normalized_article_id if analysis is not None else article.id
         members.append(
             EventMemberDetail(
@@ -442,24 +470,40 @@ async def get_event_detail(session: AsyncSession, event_id: UUID) -> EventDetail
                 candidate=candidate,
                 decision=decision,
                 analysis=analysis,
-                passages=await _passages_for_article(session, analysis_article_id),
-                occurrences=await _occurrences_for_candidate(session, candidate.id),
+                passages=(
+                    await _passages_for_article(session, analysis_article_id)
+                    if include_member_content
+                    else ()
+                ),
+                occurrences=(
+                    await _occurrences_for_candidate(
+                        session,
+                        candidate.id,
+                        limit=occurrence_limit,
+                    )
+                    if include_member_content
+                    else tuple(occurrences_by_candidate.get(candidate.id, ()))
+                ),
             )
         )
-    review_decisions = tuple(
-        (
-            await session.scalars(
-                select(EventAssignmentDecisionModel)
-                .where(
-                    EventAssignmentDecisionModel.selected_event_id == event_id,
-                    EventAssignmentDecisionModel.outcome == "review_required",
+    review_decisions = (
+        tuple(
+            (
+                await session.scalars(
+                    select(EventAssignmentDecisionModel)
+                    .where(
+                        EventAssignmentDecisionModel.selected_event_id == event_id,
+                        EventAssignmentDecisionModel.outcome == "review_required",
+                    )
+                    .order_by(
+                        EventAssignmentDecisionModel.created_at,
+                        EventAssignmentDecisionModel.id,
+                    )
                 )
-                .order_by(
-                    EventAssignmentDecisionModel.created_at,
-                    EventAssignmentDecisionModel.id,
-                )
-            )
-        ).all()
+            ).all()
+        )
+        if include_history
+        else ()
     )
     return EventDetailProjection(
         event=event,
@@ -533,20 +577,60 @@ async def _passages_for_article(
 
 
 async def _occurrences_for_candidate(
-    session: AsyncSession, candidate_id: UUID
+    session: AsyncSession,
+    candidate_id: UUID,
+    *,
+    limit: int | None = None,
 ) -> tuple[ArticleOccurrenceModel, ...]:
-    return await _occurrences_for_candidates(session, {candidate_id})
+    return await _occurrences_for_candidates(
+        session,
+        {candidate_id},
+        per_candidate_limit=limit,
+    )
 
 
 async def _occurrences_for_candidates(
-    session: AsyncSession, candidate_ids: set[UUID]
+    session: AsyncSession,
+    candidate_ids: set[UUID],
+    *,
+    per_candidate_limit: int | None = None,
 ) -> tuple[ArticleOccurrenceModel, ...]:
-    return tuple(
-        (
-            await session.scalars(
-                select(ArticleOccurrenceModel)
-                .where(ArticleOccurrenceModel.candidate_id.in_(candidate_ids))
-                .order_by(ArticleOccurrenceModel.fetched_at, ArticleOccurrenceModel.id)
+    if not candidate_ids:
+        return ()
+    if per_candidate_limit is not None:
+        ranked_occurrences = (
+            select(
+                ArticleOccurrenceModel.id.label("occurrence_id"),
+                ArticleOccurrenceModel.candidate_id.label("candidate_id"),
+                func.row_number()
+                .over(
+                    partition_by=ArticleOccurrenceModel.candidate_id,
+                    order_by=(
+                        ArticleOccurrenceModel.fetched_at,
+                        ArticleOccurrenceModel.id,
+                    ),
+                )
+                .label("candidate_rank"),
             )
-        ).all()
-    )
+            .where(ArticleOccurrenceModel.candidate_id.in_(candidate_ids))
+            .subquery()
+        )
+        statement = (
+            select(ArticleOccurrenceModel)
+            .join(
+                ranked_occurrences,
+                ranked_occurrences.c.occurrence_id == ArticleOccurrenceModel.id,
+            )
+            .where(ranked_occurrences.c.candidate_rank <= per_candidate_limit)
+            .order_by(
+                ranked_occurrences.c.candidate_id,
+                ranked_occurrences.c.candidate_rank,
+            )
+        )
+    else:
+        statement = (
+            select(ArticleOccurrenceModel)
+            .where(ArticleOccurrenceModel.candidate_id.in_(candidate_ids))
+            .order_by(ArticleOccurrenceModel.fetched_at, ArticleOccurrenceModel.id)
+        )
+    return tuple((await session.scalars(statement)).all())

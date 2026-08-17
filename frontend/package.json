@@ -16,6 +16,8 @@
     "preview": "vite preview",
     "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/generated/schema.d.ts",
     "generate:api:check": "openapi-typescript ../backend/openapi.json | cmp -s - src/lib/api/generated/schema.d.ts",
+    "generate:agent-api": "openapi-typescript ../backend/openapi.agent-workbench.json -o src/lib/api/generated/agent-workbench-schema.d.ts",
+    "generate:agent-api:check": "openapi-typescript ../backend/openapi.agent-workbench.json | cmp -s - src/lib/api/generated/agent-workbench-schema.d.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",

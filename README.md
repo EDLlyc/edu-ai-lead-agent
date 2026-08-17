@@ -4,6 +4,24 @@
 
 第二层使用 PostgreSQL/pgvector 和可恢复的 LangGraph checkpoint，支持确定性选题、品牌 RAG、证据绑定文案、独立图片/素材包、内部审核台，以及离线 fake provider 与显式启用的智谱模型。默认仍运行兼容的每日 Top 1；另有默认关闭的早、中、晚三时段模式，每个栏目可独立选择 0--3 条并生产、验证和投递独立素材。系统不提供公开社交平台自动发布。
 
+## Agent 求职作品集
+
+仓库另含一个与生产业务隔离的本地 Agent Research Workbench，用同一套强类型只读工具展示
+bounded Function Calling、MCP stdio、claim-level 引用校验、脱敏 Trace 和确定性评测。默认演示
+使用脱敏 fixture 与固定策略，不需要模型密钥、生产数据库或网络，也不能写业务数据或触发企微。
+
+```bash
+make agent-portfolio-check
+# 终端 1
+make agent-workbench-dev
+# 终端 2
+make agent-workbench-ui
+```
+
+Workbench 后端只绑定 `127.0.0.1:8010`，页面只在 Vite development 且显式打开本地 flag 时
+出现；正常 `api_main`、Dockerfile、Compose 与生产 OpenAPI 均不注册该功能。架构、安全边界、
+评测解释和面试讲解见 [Agent Research Workbench case study](./docs/portfolio/agent-workbench.md)。
+
 ## 前置条件
 
 - Conda

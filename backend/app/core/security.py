@@ -17,6 +17,17 @@ METADATA_ADDRESSES = {
 }
 
 _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_NON_PUBLIC_HOST_SUFFIXES = (
+    "example",
+    "home.arpa",
+    "internal",
+    "invalid",
+    "lan",
+    "local",
+    "localhost",
+    "onion",
+    "test",
+)
 
 
 def _decoded_path_for_policy(path: str) -> str:
@@ -89,6 +100,38 @@ def normalize_https_url(value: str, *, allow_http_fallback: bool = False) -> str
     netloc = host
     normalized = SplitResult(scheme, netloc, path, parts.query, "")
     return urlunsplit(normalized)
+
+
+def normalize_public_https_url(value: str) -> str:
+    """Normalize a stored public HTTPS URL for citation/display projections.
+
+    Acquisition performs the authoritative DNS/IP policy check before persistence. This
+    synchronous projector still rejects ambiguous/local hostnames and every IP literal so
+    downstream Agent and UI boundaries cannot introduce an obviously private address.
+    """
+
+    normalized = normalize_https_url(value)
+    host = urlsplit(normalized).hostname
+    if (
+        host is None
+        or len(host) > 253
+        or any(
+            host == suffix or host.endswith(f".{suffix}") for suffix in _NON_PUBLIC_HOST_SUFFIXES
+        )
+    ):
+        raise PolicyRejectedError("non_public_host", "source URL host is not public")
+    labels = host.split(".")
+    if any(not label or len(label) > 63 for label in labels):
+        raise PolicyRejectedError("invalid_host", "source URL host is invalid")
+    return normalized
+
+
+def is_public_https_url(value: str) -> bool:
+    try:
+        normalize_public_https_url(value)
+    except PolicyRejectedError:
+        return False
+    return True
 
 
 def validate_allowlist(

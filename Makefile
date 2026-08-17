@@ -7,7 +7,8 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	content-scheduler content-worker content-stack-up \
-	api-generate api-contract-check \
+	api-generate api-contract-check agent-api-generate agent-api-contract-check \
+	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
 	backend-integration-test backend-check \
@@ -86,6 +87,35 @@ api-contract-check:
 	$(PY_RUN) python backend/scripts/export_openapi.py --check
 	npm run generate:api:check --prefix frontend
 
+agent-api-generate:
+	$(PY_RUN) python backend/scripts/export_agent_workbench_openapi.py
+	npm run generate:agent-api --prefix frontend
+
+agent-api-contract-check:
+	$(PY_RUN) python backend/scripts/export_agent_workbench_openapi.py --check
+	npm run generate:agent-api:check --prefix frontend
+
+agent-workbench-dev:
+	AGENT_WORKBENCH_ENABLED=true $(PY_RUN) python -m uvicorn \
+		app.agent_workbench_api_main:app --host 127.0.0.1 --port 8010
+
+agent-workbench-ui:
+	VITE_AGENT_WORKBENCH_ENABLED=true \
+	VITE_AGENT_WORKBENCH_API_BASE_URL=http://127.0.0.1:8010 \
+		npm run dev --prefix frontend -- --host 127.0.0.1 --port 5173 --strictPort
+
+agent-workbench-eval:
+	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner
+
+agent-portfolio-check: agent-api-contract-check
+	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check
+	$(PY_RUN) pytest backend/tests/unit/test_agent_tools.py \
+		backend/tests/unit/test_agent_workbench*.py \
+		backend/tests/contract/test_agent_mcp.py \
+		backend/tests/contract/test_agent_workbench_model.py -q --no-cov
+	npm run test --prefix frontend -- --run \
+		src/features/agent-workbench src/app/App.test.tsx
+
 infra-up: env-init
 	docker compose up -d postgres minio minio-init
 
@@ -150,7 +180,8 @@ frontend-test:
 frontend-build:
 	npm run build --prefix frontend
 
-frontend-check: api-contract-check frontend-format-check frontend-lint frontend-typecheck \
+frontend-check: api-contract-check agent-api-contract-check \
+	frontend-format-check frontend-lint frontend-typecheck \
 	frontend-test frontend-build
 
 check: backend-check frontend-check

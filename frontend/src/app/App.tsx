@@ -1,11 +1,25 @@
+import { lazy, Suspense } from "react";
+
 import { BrandKnowledgePanel } from "@/features/brand/BrandKnowledgePanel";
 import { ContentEditionBoard } from "@/features/content-edition/ContentEditionBoard";
+import { isAgentWorkbenchEnabled } from "@/features/agent-workbench/featureFlag";
 import { MaterialPackagePanel } from "@/features/material/MaterialPackagePanel";
 import { PreviewPanel } from "@/features/preview/PreviewPanel";
 
 import styles from "./App.module.css";
 
+const LocalAgentWorkbenchPanel = import.meta.env.DEV
+  ? lazy(async () => {
+      const module =
+        await import("@/features/agent-workbench/AgentWorkbenchPanel");
+      return { default: module.AgentWorkbenchPanel };
+    })
+  : null;
+
 export function App() {
+  const showAgentWorkbench =
+    LocalAgentWorkbenchPanel !== null && isAgentWorkbenchEnabled();
+
   return (
     <>
       <a className={styles.skipLink} href="#main-content">
@@ -55,6 +69,21 @@ export function App() {
             </p>
           </div>
         </section>
+
+        {showAgentWorkbench && LocalAgentWorkbenchPanel !== null ? (
+          <Suspense
+            fallback={
+              <section
+                className={styles.statusSection}
+                aria-label="本地 Agent 研究工作台"
+              >
+                <p role="status">正在载入本地 Agent 工作台…</p>
+              </section>
+            }
+          >
+            <LocalAgentWorkbenchPanel />
+          </Suspense>
+        ) : null}
 
         <BrandKnowledgePanel />
         <PreviewPanel />

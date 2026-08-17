@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import type { PropsWithChildren } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
   activateBrandVersion: vi.fn(),
@@ -29,6 +29,10 @@ vi.mock("@/features/brand/api", () => apiMocks);
 
 import { App } from "./App";
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 function TestProviders({ children }: PropsWithChildren) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -43,6 +47,24 @@ function renderApp() {
 }
 
 describe("brand knowledge workspace", () => {
+  it("keeps the Agent workbench absent without an explicit local flag", () => {
+    renderApp();
+
+    expect(
+      screen.queryByRole("heading", { name: "Agent 研究工作台" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("loads the Agent workbench only after the local development opt-in", async () => {
+    vi.stubEnv("VITE_AGENT_WORKBENCH_ENABLED", "true");
+    renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Agent 研究工作台" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("仅限本地开发")).toBeVisible();
+  });
+
   it("positions brand retrieval as internal copy-generation context", async () => {
     renderApp();
 

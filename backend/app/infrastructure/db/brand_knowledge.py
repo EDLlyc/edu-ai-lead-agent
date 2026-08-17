@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.application.ports.brand_knowledge import BrandKnowledgeRepository
 from app.core.errors import ConflictError, NotFoundError
@@ -916,30 +917,17 @@ async def retrieve_brand_context(
         raise ValueError("brand retrieval embedding identity must not be blank")
     if not 1 <= limit <= 10 or not limit <= candidate_limit <= 100:
         raise ValueError("brand retrieval limits are invalid")
-    scope_filters = [
-        BrandDocumentModel.brand_slug == "sai-xiansheng",
-        BrandDocumentModel.status == "active",
-        BrandDocumentModel.audience == audience.value,
-        BrandDocumentModel.active_version_id == BrandDocumentVersionModel.id,
-        BrandDocumentVersionModel.active.is_(True),
-        BrandDocumentVersionModel.status == BrandVersionStatus.READY.value,
+    scope_filters = (
+        *active_brand_context_filters(
+            audience=audience,
+            document_kinds=document_kinds,
+            valid_on=valid_on,
+        ),
         BrandDocumentVersionModel.embedding_provider == query_provider,
         BrandDocumentVersionModel.embedding_model == query_model,
         BrandChunkEmbeddingModel.provider == query_provider,
         BrandChunkEmbeddingModel.model == query_model,
-        or_(
-            BrandDocumentVersionModel.valid_from.is_(None),
-            BrandDocumentVersionModel.valid_from <= valid_on,
-        ),
-        or_(
-            BrandDocumentVersionModel.valid_until.is_(None),
-            BrandDocumentVersionModel.valid_until >= valid_on,
-        ),
-    ]
-    if document_kinds:
-        scope_filters.append(
-            BrandDocumentModel.document_kind.in_([kind.value for kind in document_kinds])
-        )
+    )
     columns = (
         BrandChunkModel,
         BrandDocumentModel,
@@ -1024,6 +1012,37 @@ async def retrieve_brand_context(
             )
         )
     return _select_diverse_brand_hits(ranked_hits, limit=limit)
+
+
+def active_brand_context_filters(
+    *,
+    audience: BrandAudience,
+    document_kinds: tuple[BrandDocumentKind, ...],
+    valid_on: date,
+) -> tuple[ColumnElement[bool], ...]:
+    """Canonical active/version/audience/date scope for brand-context reads."""
+
+    filters = [
+        BrandDocumentModel.brand_slug == "sai-xiansheng",
+        BrandDocumentModel.status == "active",
+        BrandDocumentModel.audience == audience.value,
+        BrandDocumentModel.active_version_id == BrandDocumentVersionModel.id,
+        BrandDocumentVersionModel.active.is_(True),
+        BrandDocumentVersionModel.status == BrandVersionStatus.READY.value,
+        or_(
+            BrandDocumentVersionModel.valid_from.is_(None),
+            BrandDocumentVersionModel.valid_from <= valid_on,
+        ),
+        or_(
+            BrandDocumentVersionModel.valid_until.is_(None),
+            BrandDocumentVersionModel.valid_until >= valid_on,
+        ),
+    ]
+    if document_kinds:
+        filters.append(
+            BrandDocumentModel.document_kind.in_([kind.value for kind in document_kinds])
+        )
+    return tuple(filters)
 
 
 def _string_tuple(values: object) -> tuple[str, ...]:

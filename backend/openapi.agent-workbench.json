@@ -1,0 +1,624 @@
+{
+  "components": {
+    "schemas": {
+      "AgentCitationKind": {
+        "enum": [
+          "evidence",
+          "brand_context"
+        ],
+        "title": "AgentCitationKind",
+        "type": "string"
+      },
+      "AgentCitationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_eligible": {
+            "title": "Evidence Eligible",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AgentCitationKind"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 9,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source_name",
+          "title",
+          "url",
+          "evidence_eligible"
+        ],
+        "title": "AgentCitationResponse",
+        "type": "object"
+      },
+      "AgentClaimKind": {
+        "enum": [
+          "external_fact",
+          "brand_statement",
+          "opinion"
+        ],
+        "title": "AgentClaimKind",
+        "type": "string"
+      },
+      "AgentClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AgentClaimKind"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "kind",
+          "citation_ids"
+        ],
+        "title": "AgentClaimResponse",
+        "type": "object"
+      },
+      "AgentRunMetricsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "model_latency_ms": {
+            "minimum": 0.0,
+            "title": "Model Latency Ms",
+            "type": "integer"
+          },
+          "model_turns": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Model Turns",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "reasoning_tokens": {
+            "minimum": 0.0,
+            "title": "Reasoning Tokens",
+            "type": "integer"
+          },
+          "successful_tool_calls": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Successful Tool Calls",
+            "type": "integer"
+          },
+          "tool_calls": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Tool Calls",
+            "type": "integer"
+          },
+          "tool_latency_ms": {
+            "minimum": 0.0,
+            "title": "Tool Latency Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_turns",
+          "tool_calls",
+          "successful_tool_calls",
+          "prompt_tokens",
+          "completion_tokens",
+          "reasoning_tokens",
+          "model_latency_ms",
+          "tool_latency_ms",
+          "duration_ms"
+        ],
+        "title": "AgentRunMetricsResponse",
+        "type": "object"
+      },
+      "AgentRunStatus": {
+        "enum": [
+          "completed",
+          "refused",
+          "budget_exhausted",
+          "failed",
+          "cancelled"
+        ],
+        "title": "AgentRunStatus",
+        "type": "string"
+      },
+      "AgentTraceKind": {
+        "enum": [
+          "model_decision",
+          "tool_call",
+          "tool_result",
+          "final",
+          "error"
+        ],
+        "title": "AgentTraceKind",
+        "type": "string"
+      },
+      "AgentTraceStatus": {
+        "enum": [
+          "succeeded",
+          "failed"
+        ],
+        "title": "AgentTraceStatus",
+        "type": "string"
+      },
+      "AgentTraceStepResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "argument_summary": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Argument Summary",
+            "type": "object"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "minimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "issue_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Count"
+          },
+          "item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Count"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AgentTraceKind"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "ordinal": {
+            "minimum": 1.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "reasoning_tokens": {
+            "minimum": 0.0,
+            "title": "Reasoning Tokens",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTraceStatus"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
+          }
+        },
+        "required": [
+          "ordinal",
+          "kind",
+          "status",
+          "argument_summary",
+          "duration_ms",
+          "citation_ids",
+          "prompt_tokens",
+          "completion_tokens",
+          "reasoning_tokens"
+        ],
+        "title": "AgentTraceStepResponse",
+        "type": "object"
+      },
+      "AgentWorkbenchHealthResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "status",
+          "environment",
+          "enabled"
+        ],
+        "title": "AgentWorkbenchHealthResponse",
+        "type": "object"
+      },
+      "AgentWorkbenchRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "model_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "deterministic",
+                  "openai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Mode"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "evidence",
+                  "event",
+                  "brand",
+                  "copy_validation",
+                  "multi_tool",
+                  "insufficient"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "AgentWorkbenchRunRequest",
+        "type": "object"
+      },
+      "AgentWorkbenchRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/AgentCitationResponse"
+            },
+            "maxItems": 20,
+            "title": "Citations",
+            "type": "array"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/AgentClaimResponse"
+            },
+            "maxItems": 8,
+            "title": "Claims",
+            "type": "array"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/AgentRunMetricsResponse"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AgentTraceStepResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1200,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "summary",
+          "claims",
+          "citations",
+          "steps",
+          "metrics"
+        ],
+        "title": "AgentWorkbenchRunResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Local-only, read-only Agent research workbench with a bounded tool-calling loop. This independent application is absent from the production API and performs no publishing, delivery, arbitrary URL fetching, shell execution, or durable writes.",
+    "title": "Edu AI Agent Research Workbench",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/agent-workbench/runs": {
+      "post": {
+        "operationId": "run_agent_workbench_api_v1_agent_workbench_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentWorkbenchRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkbenchRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Agent Workbench",
+        "tags": [
+          "agent-workbench"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkbenchHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  }
+}
