@@ -14,6 +14,10 @@ and cause no manual business/provider/delivery action.
 - Fresh read-only production preflight on 2026-08-17 verified `f20db2060abcfd49b6236137838473ac6f0b7dd4`
   on local image `sha256:ce673857...`, with `IMAGE_DIVERSITY_ENABLED=true`,
   `IMAGE_OCR_ENABLED=true`, and scoring `.6`. This supersedes the older recorded c66 baseline.
+- The active source overlay is not the complete f20 Git tree: all 307 paths are a Git-proven hybrid
+  of the c66 baseline, the five f20 runtime copy-generation files, and `.gitignore` from
+  `b0a4aab...`; the two f20-only test changes were never installed. The exact hybrid manifest,
+  rather than a guessed commit-wide manifest, is the rollback source authority.
 - Codeup `main` contains `小赛洞察`, delivered-repeat, Workbench, OCR evidence, reports, and the
   reviewed release tooling. The deployable identity is always the final fetched full SHA recorded
   in release evidence, never an earlier planning SHA.
@@ -105,7 +109,7 @@ and cause no manual business/provider/delivery action.
 
 ### R6. Bounded production execution
 
-- Revalidate source/image/markers, eight restart-zero application services, healthy infra/API,
+- Revalidate the exact Git-proven hybrid source manifest plus f20 image/markers, eight restart-zero application services, healthy infra/API,
   env ownership, flags, volumes/capacity/timer, and safe logs before mutation.
 - Take two aggregate-only samples at least 15 seconds apart. Require stable vectors, zero running/
   actionable/nonterminal/unknown work, and a safe scheduler window.

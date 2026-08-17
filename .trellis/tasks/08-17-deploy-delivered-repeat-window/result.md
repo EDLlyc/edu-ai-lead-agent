@@ -106,6 +106,15 @@ aggregate, and rejects owner, mode, approved-path, and aggregate distribution dr
 The backend release quality spec now records this as a one-time f20 bootstrap exception rather
 than weakening the repository-wide destination-mode contract.
 
+The next candidate's sole operator run then passed metadata validation but rejected three source
+hashes before image load, first stop, backup, tag, overlay, or environment mutation. Read-only
+comparison showed that production intentionally carries a historical hybrid source tree: c66 owns
+the baseline and both test files; f20 owns exactly five copy-generation runtime files; and
+`.gitignore` matches Git commit `b0a4aab...`. An exact 307-line manifest assembled only from those
+Git objects has SHA-256 `c6c7ead55b8d30d3f70e55bdeb42e1c8d31653850ced2ccaebde6b75f376b0c6`
+and passed a complete production `sha256sum -c`. The failed candidate identity will not be invoked
+again; the final release must use a new authoritative commit and candidate.
+
 ## Remaining release work
 
 The initial clean Codeup candidate at `c387966...` was built and passed offline runtime validation.

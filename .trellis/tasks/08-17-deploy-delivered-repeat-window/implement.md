@@ -56,6 +56,10 @@
   root-owned mode-0600 files, 12 root-owned mode-0700 files, and only `.gitattributes`, `.gitignore`,
   and `AGENTS.md` app-owned mode-0664. Preserve actual per-file uid:gid evidence and reject any
   aggregate, owner, mode, or path drift in the focused harness.
+- [x] Record the second pre-mutation fail-closed check: a full-f20 previous-source manifest rejected
+  three hashes. Prove the actual 307-path rollback source from Git objects as c66 plus five f20
+  runtime files plus `b0a4aab...:.gitignore`; verify that exact hybrid manifest byte-for-byte on
+  production and never retry the same candidate identity.
 - [ ] Transfer exact checksum-bound artifacts to mode-0700 stage/all members mode-0600, load isolated
   candidate tag, revalidate hashes/image, and require candidate running count zero.
 - [ ] Stop before mutation on any identity, env, business-state, scheduler, provider, or secret

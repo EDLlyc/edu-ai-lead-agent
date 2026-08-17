@@ -51,7 +51,7 @@ never copied into active application source/image.
 
 | State | Runtime | Scoring | Writers | Recovery |
 |---|---|---|---|---|
-| S0 prior | f20 local tag/image | `.6` or absent | running | no-op |
+| S0 prior | f20 local tag/image + exact Git-proven hybrid source | `.6` or absent | running | no-op |
 | S1 quiesced | f20 | explicit `.6` | stopped | restart captured prior IDs |
 | S2 candidate | new image ID behind local tags | `.6` | stopped | restore source/tags/markers |
 | S3 activated | candidate | `.7` | stopped | full f20 only if no durable `.7` |
@@ -76,7 +76,7 @@ a partial backup and the operator is never invoked twice.
 
 ### Preflight and stage
 
-- Confirm exact f20 source/image/markers, local-tag `.release.env`, OCR/diversity true/true, scoring
+- Confirm the exact 307-path hybrid source manifest plus f20 image/markers, local-tag `.release.env`, OCR/diversity true/true, scoring
   ownership, service health/restarts, volumes/capacity/timer, and safe logs.
 - Take two stable aggregate samples at least 15 seconds apart. Require zero running/actionable/
   nonterminal/unknown and legacy-prompt work plus a safe scheduler window. A complete pure
