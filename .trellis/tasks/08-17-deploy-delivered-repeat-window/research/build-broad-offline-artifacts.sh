@@ -559,7 +559,7 @@ assert_candidate_runtime() {
   assert_candidate_labels
   assert_rootfs_base_prefix
   runtime_run --entrypoint sh "$candidate_id" -c \
-    'set -eu; expected=$1; test "$(id -u)" -ne 0; test "$(id -un)" = app; test "$(wc -l </app/.release-source.sha256)" -eq 1; test "$(wc -c </app/.release-source.sha256)" -eq 65; test "$(cat /app/.release-source.sha256)" = "$expected"; test -z "$(find /app/app /app/alembic /app/alembic.ini /app/pyproject.toml /app/.release-source.sha256 \( ! -user app -o ! -group app \) -print -quit)"; if { : >/app/.broad-write-probe; } 2>/dev/null; then exit 1; fi; test ! -e /app/build; test ! -e /app/edu_ai_lead_agent_backend.egg-info' \
+    'set -eu; expected=$1; test "$(id -u)" -ne 0; test "$(id -un)" = app; test "$(wc -l </app/.release-source.sha256)" -eq 1; test "$(wc -c </app/.release-source.sha256)" -eq 65; test "$(cat /app/.release-source.sha256)" = "$expected"; test -z "$(find /app/app /app/alembic /app/alembic.ini /app/pyproject.toml /app/.release-source.sha256 \( ! -user app -o ! -group app \) -print -quit)"; if touch /app/.broad-write-probe >/dev/null 2>&1; then exit 1; fi; test ! -e /app/build; test ! -e /app/edu_ai_lead_agent_backend.egg-info' \
     sh "$source_sha256"
   runtime_run --entrypoint python "$candidate_id" -c \
     'import importlib,sys; [importlib.import_module(value) for value in sys.argv[1].split(",")]' \

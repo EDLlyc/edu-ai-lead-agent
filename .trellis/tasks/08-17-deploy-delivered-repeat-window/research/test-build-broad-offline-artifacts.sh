@@ -231,6 +231,8 @@ assert_offline_static_contract() {
   require_text "$BUILDER" 'assert_clean_detached_worktree "$release_worktree" "$release_sha"'
   require_text "$BUILDER" 'candidate_mcp_distribution=absent'
   require_text "$BUILDER" 'production_workbench=absent'
+  require_text "$BUILDER" 'if touch /app/.broad-write-probe >/dev/null 2>&1; then exit 1; fi'
+  reject_text "$BUILDER" ': >/app/.broad-write-probe'
   reject_regex "$BUILDER" '(^|[;&|][[:space:]]*)(git|git_call)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(fetch|pull|push)'
   reject_regex "$BUILDER" '(^|[;&|][[:space:]]*)(docker|docker_call)[[:space:]]+(pull|push|login|load)'
   reject_regex "$BUILDER" '(^|[;&|][[:space:]])(ssh|scp|sftp|rsync|curl|wget|nc)[[:space:]]'

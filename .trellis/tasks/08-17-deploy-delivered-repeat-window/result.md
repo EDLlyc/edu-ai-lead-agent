@@ -112,8 +112,8 @@ stop-all-eight incident disposition.
 - Operator SHA-256: `80aa3e2f9f72dc375aeb6884a1d34ed97f4234b1f4cbfdcc9c8e7ee4d0d0aaef`
 - Operator harness SHA-256: `3471ab4056b3eac1da40164785161aba21062347fbbae34e955c33aa04670072`
 - Validator SHA-256: `183db15c8938e9e235b0529d227ee6c0ed32bbb9460dc40d5bd2a06197e6515b`
-- Builder SHA-256: `48898e8cc9c73b36bba87c57de6b229a438b30c51e2f85f94e4a2d1a31ca575e`
-- Builder harness SHA-256: `28d50d211ccbec7db8db9292a10f40b0fd69916c573ff13fc28eadab5c419a18`
+- Builder SHA-256: `873080ab8ba20e5073bfbaa327663062ce529c60ccc661bf96ec4a5ae99da7b1`
+- Builder harness SHA-256: `b6284cec4a66299b8b2c034a6c8e258e6e93df0e2c34cd6050e1e8cca0614963`
 
 `bash -n`, both focused harnesses, Python compile, Ruff, Mypy, task-context validation,
 tracked/untracked diff checks, and the scoped high-confidence secret scan pass. ShellCheck and
