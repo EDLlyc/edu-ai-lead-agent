@@ -237,6 +237,8 @@ assert_offline_static_contract() {
   require_text "$BUILDER" 'assert_clean_detached_worktree "$release_worktree" "$release_sha"'
   require_text "$BUILDER" 'candidate_mcp_distribution=absent'
   require_text "$BUILDER" 'production_workbench=absent'
+  require_text "$BUILDER" "--env 'IMAGE_ENABLED=true'"
+  require_text "$BUILDER" "--env 'IMAGE_PROVIDER_MODE=fake'"
   require_text "$BUILDER" "--env 'IMAGE_OCR_ENABLED=true'"
   require_text "$BUILDER" "--env 'IMAGE_DIVERSITY_ENABLED=true'"
   require_text "$BUILDER" 'if touch /app/.image-fallback-write-probe >/dev/null 2>&1; then exit 1; fi'

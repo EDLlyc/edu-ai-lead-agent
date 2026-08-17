@@ -629,10 +629,12 @@ assert_candidate_runtime() {
     || { die "Workbench entered production Compose"; return 1; }
   runtime_run \
     --env 'CONTENT_SCORING_VERSION=scoring-v1-preview.7-delivered-repeat-history' \
+    --env 'IMAGE_ENABLED=true' \
+    --env 'IMAGE_PROVIDER_MODE=fake' \
     --env 'IMAGE_OCR_ENABLED=true' \
     --env 'IMAGE_DIVERSITY_ENABLED=true' \
     --entrypoint python "$candidate_id" -c \
-    'from app.core.config import Settings; from app.application.services.topic_selection import build_topic_scoring_config; s=Settings(); c=build_topic_scoring_config(s); assert c.version=="scoring-v1-preview.7-delivered-repeat-history" and c.effective_veto_rule_version=="topic-veto-v4-delivered-content" and s.image_ocr_enabled is True and s.image_diversity_enabled is True'
+    'from app.core.config import Settings; from app.application.services.topic_selection import build_topic_scoring_config; s=Settings(); c=build_topic_scoring_config(s); assert c.version=="scoring-v1-preview.7-delivered-repeat-history" and c.effective_veto_rule_version=="topic-veto-v4-delivered-content" and s.image_enabled is True and s.image_provider_mode=="fake" and s.image_ocr_enabled is True and s.image_diversity_enabled is True'
 }
 
 write_image_validation() {
