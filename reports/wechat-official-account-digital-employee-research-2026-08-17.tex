@@ -1,0 +1,607 @@
+% 编译：latexmk -xelatex -interaction=nonstopmode -halt-on-error wechat-official-account-digital-employee-research-2026-08-17.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=19mm,bottom=19mm,left=18.5mm,right=18.5mm,headheight=24pt]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,shapes.geometric}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{ragged2e}
+\usepackage{setspace}
+\usepackage{longtable}
+
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans Mono CJK SC}
+
+\definecolor{BrandNavy}{HTML}{12355B}
+\definecolor{BrandBlue}{HTML}{1976B9}
+\definecolor{BrandGreen}{HTML}{137D6B}
+\definecolor{BrandOrange}{HTML}{E97928}
+\definecolor{BrandGold}{HTML}{E7B24A}
+\definecolor{Ink}{HTML}{243447}
+\definecolor{Muted}{HTML}{66788A}
+\definecolor{PaleBlue}{HTML}{EEF6FB}
+\definecolor{PaleGreen}{HTML}{EEF7F4}
+\definecolor{PaleOrange}{HTML}{FFF4EA}
+\definecolor{PaleGray}{HTML}{F4F6F8}
+\definecolor{RuleGray}{HTML}{D9E1E8}
+\definecolor{RiskRed}{HTML}{B84A4A}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=BrandNavy,
+  urlcolor=BrandBlue,
+  pdftitle={数字员工——新媒体运营：微信公众号自动推文方案调研},
+  pdfauthor={李宇辰},
+  pdfsubject={现成方案、能力边界与人机协同落地建议}
+}
+\urlstyle{same}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setstretch{1.12}
+\setlist[itemize]{leftmargin=1.45em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.7em,itemsep=2pt,topsep=3pt}
+\renewcommand{\arraystretch}{1.28}
+
+\titleformat{\section}
+  {\sffamily\bfseries\Large\color{BrandNavy}}
+  {\colorbox{BrandNavy}{\textcolor{white}{\strut\thesection}}}{0.7em}{}
+\titleformat{\subsection}
+  {\sffamily\bfseries\large\color{BrandBlue}}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{14pt}{8pt}
+\titlespacing*{\subsection}{0pt}{10pt}{5pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{Muted}数字员工｜公众号自动推文方案调研}
+\fancyhead[R]{\sffamily\small\color{Muted}汇报材料}
+\fancyfoot[L]{\sffamily\scriptsize\color{Muted}资料检索日期：2026.08.17}
+\fancyfoot[R]{\sffamily\scriptsize\color{Muted}\thepage\,/\,\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{RuleGray}\leaders\hrule height \headrulewidth\hfill}}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\newtcolorbox{summarybox}[1][]{
+  enhanced,breakable,colback=PaleBlue,colframe=BrandBlue,
+  boxrule=.7pt,arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,
+  title=#1,coltitle=white,fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandBlue,colframe=BrandBlue,arc=1.5mm}
+}
+\newtcolorbox{decisionbox}[1][]{
+  enhanced,breakable,colback=PaleOrange,colframe=BrandOrange,
+  boxrule=.7pt,arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,
+  title=#1,coltitle=white,fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandOrange,colframe=BrandOrange,arc=1.5mm}
+}
+\newtcolorbox{factbox}[1][]{
+  enhanced,breakable,colback=PaleGreen,colframe=BrandGreen,
+  boxrule=.7pt,arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,
+  title=#1,coltitle=white,fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=BrandGreen,colframe=BrandGreen,arc=1.5mm}
+}
+\newtcolorbox{riskbox}[1][]{
+  enhanced,breakable,colback=RiskRed!6,colframe=RiskRed,
+  boxrule=.7pt,arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,
+  title=#1,coltitle=white,fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=RiskRed,colframe=RiskRed,arc=1.5mm}
+}
+\newcommand{\pill}[2]{\tikz[baseline=(X.base)]\node[rounded corners=3pt,fill=#1,inner xsep=5pt,inner ysep=2.4pt,text=white,font=\sffamily\scriptsize\bfseries] (X) {#2};}
+\newcommand{\srcref}[1]{\textsuperscript{\textcolor{BrandBlue}{[#1]}}}
+\newcommand{\metric}[3]{%
+  \begin{tcolorbox}[colback=#1!7,colframe=#1!55,boxrule=.6pt,arc=2mm,left=3mm,right=3mm,top=2.5mm,bottom=2.5mm]
+    {\sffamily\bfseries\fontsize{20}{22}\selectfont\color{#1}#2}\par
+    {\sffamily\small\color{Ink}#3}
+  \end{tcolorbox}%
+}
+
+\begin{document}
+\pagenumbering{Roman}
+
+% -----------------------------------------------------------------------------
+% Cover
+% -----------------------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[BrandNavy] (current page.north west) rectangle ([yshift=-126mm]current page.north east);
+  \fill[BrandBlue] ([yshift=-126mm]current page.north west) rectangle ([yshift=-130mm]current page.north east);
+  \draw[BrandBlue!25,line width=20pt] ([xshift=-17mm,yshift=42mm]current page.south east) circle (26mm);
+  \draw[BrandOrange!42,line width=4pt] ([xshift=-10mm,yshift=52mm]current page.south east) circle (40mm);
+  \fill[BrandOrange] ([xshift=18.5mm,yshift=18mm]current page.south west) rectangle ([xshift=54mm,yshift=21mm]current page.south west);
+\end{tikzpicture}
+
+\vspace*{7mm}
+{\sffamily\bfseries\small\color{white}DIGITAL EMPLOYEE \quad｜\quad NEW MEDIA OPERATIONS}
+
+\vspace{25mm}
+{\sffamily\bfseries\fontsize{29}{37}\selectfont\color{white}
+数字员工——新媒体运营\par
+微信公众号自动推文方案调研}
+
+\vspace{7mm}
+{\sffamily\fontsize{14}{20}\selectfont\color{white!85}
+现成方案、能力边界与人机协同落地建议}
+
+\vspace{28mm}
+\begin{tcolorbox}[width=.87\textwidth,colback=white,colframe=white,boxrule=0pt,arc=2mm,left=5mm,right=5mm,top=4mm,bottom=4mm]
+{\sffamily\bfseries\color{BrandNavy}核心结论}\par
+市场上已有成熟的 AI 写作、公众号排版、多账号分发和数字员工平台，但没有一个工具能够安全替代全部运营判断。建议在现有内容自动化基础上，先建设“\textbf{自动生成并同步草稿、人工审核并确认发布、数据回流持续复盘}”的公众号数字员工。
+\end{tcolorbox}
+
+\vfill
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+{\sffamily\small\color{Muted}汇报主题}\newline
+{\sffamily\bfseries\large\color{Ink}数字员工｜新媒体运营} &
+{\RaggedLeft\sffamily\small\color{Muted}汇报人 / 日期}\newline
+{\RaggedLeft\sffamily\bfseries\large\color{Ink}李宇辰｜2026 年 8 月 17 日}
+\end{tabularx}
+\end{titlepage}
+
+\pagenumbering{arabic}
+
+% -----------------------------------------------------------------------------
+\section*{执行摘要}
+\addcontentsline{toc}{section}{执行摘要}
+
+\begin{summarybox}[一句话回答]
+\textbf{有现成方案，但应组合使用。}编辑排版和多账号管理可以直接采购成熟工具；选题、事实核验、品牌口径与流程追踪更适合复用现有系统；公众号侧先接草稿箱和人工审批，等质量稳定后再评估受控发布。
+\end{summarybox}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}Y Y Y@{}}
+\metric{BrandGreen}{现成可用}{AI 写作、公众号排版、配图、账号协同与数据导出已有成熟产品。} &
+\metric{BrandOrange}{需要组合}{事实治理、品牌知识、审核签发和公众号权限不能交给单一工具。} &
+\metric{BrandBlue}{建议先做}{自动生成到草稿箱，人工确认发布；用 4--6 周试点验证质量。}
+\end{tabularx}
+
+\begin{decisionbox}[本次汇报建议形成的决策]
+选择“\textbf{半自动协同型}”路线：保留人对选题、事实、版权、品牌和发布的最终责任，让数字员工负责资料整理、初稿、配图、排版、草稿同步和数据汇总。暂不把“全自动群发”设为第一阶段目标。
+\end{decisionbox}
+
+\begin{tabularx}{\textwidth}{@{}C{11mm} L{40mm} Y L{38mm}@{}}
+\toprule
+\textbf{阶段} & \textbf{主要动作} & \textbf{数字员工承担} & \textbf{人负责} \\
+\midrule
+准备 & 栏目、模板、权限、规则 & 整理规则与素材 & 定方向、定责任人 \\
+试运行 & 每周稳定产出草稿 & 搜集、写作、配图、排版 & 审核、修改、签发 \\
+稳定运营 & 数据回流与持续优化 & 汇总数据、发现问题 & 判断效果、调整策略 \\
+\bottomrule
+\end{tabularx}
+
+\clearpage
+\tableofcontents
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{任务理解：数字员工不是“无人运营”}
+
+“公众号自动推文”常被理解成输入一个主题、系统自动写完并直接发送。实际运营中，最重要的不是把所有按钮交给机器，而是明确哪些工作可以标准化、哪些判断必须由人负责。
+
+\begin{factbox}[数字员工的合适定义]
+数字员工是一套能够按固定规则持续执行任务、与人协作并留下过程记录的工作流程。它可以跨越多个工具，但必须有清晰的输入、输出、审核人、失败处理和效果反馈。
+\end{factbox}
+
+\subsection{八个环节，而不是一个“写文章”按钮}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=4.4mm and 4mm,
+  box/.style={rounded corners=1.8mm,minimum height=13mm,text width=34mm,align=center,font=\sffamily\small\bfseries,text=white},
+  arr/.style={-{Latex[length=2.4mm]},line width=1pt,BrandNavy!60}
+]
+\node[box,fill=BrandNavy] (a) {1 选题规划};
+\node[box,fill=BrandBlue,right=of a] (b) {2 资料收集};
+\node[box,fill=BrandGreen,right=of b] (c) {3 文案写作};
+\node[box,fill=BrandOrange,right=of c] (d) {4 配图制作};
+\node[box,fill=BrandOrange,below=of d] (e) {5 公众号排版};
+\node[box,fill=BrandGreen,left=of e] (f) {6 内容审核};
+\node[box,fill=BrandBlue,left=of f] (g) {7 发布触达};
+\node[box,fill=BrandNavy,left=of g] (h) {8 数据复盘};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d);
+\draw[arr] (d)--(e); \draw[arr] (e)--(f); \draw[arr] (f)--(g);
+\draw[arr] (g)--(h); \draw[arr] (h.west) -- ++(-5mm,0) |- (a.west);
+\end{tikzpicture}
+\end{center}
+
+\begin{tabularx}{\textwidth}{@{}L{31mm} Y Y@{}}
+\toprule
+\textbf{工作性质} & \textbf{适合自动化} & \textbf{应由人最终负责} \\
+\midrule
+高频重复工作 & 聚合资料、结构化整理、初稿、模板排版、数据汇总 & 设定栏目与标准、处理例外 \\
+内容质量判断 & 错字、格式、重复、清单式初检 & 事实、观点、语气、敏感性、品牌判断 \\
+账号与发布 & 同步草稿、记录状态、提醒审核 & 账号授权、发布确认、异常处置 \\
+\bottomrule
+\end{tabularx}
+
+\begin{riskbox}[需要避免的误区]
+把“能生成文章”当成“能运营公众号”；把“发布公开文章”当成“群发给粉丝”；用阅读量代替全部质量判断；为了追求无人值守而取消事实、版权和账号权限审核。
+\end{riskbox}
+
+% -----------------------------------------------------------------------------
+\section{微信官方能力：先把“自动推文”拆开}
+
+微信开放文档分别提供草稿箱、发布、群发和图文数据能力。\srcref{1}\srcref{2}\srcref{3}\srcref{4} 它们对应不同动作、权限和用户影响，不能在方案中合并描述。
+
+\begin{tabularx}{\textwidth}{@{}L{29mm} L{40mm} Y L{35mm}@{}}
+\toprule
+\textbf{动作} & \textbf{结果} & \textbf{适合的自动化程度} & \textbf{主要风险} \\
+\midrule
+生成内容 & 得到标题、正文、摘要、封面与配图 & 高：可自动生成并校验 & 事实、版权、AI 痕迹 \\
+同步草稿 & 内容进入公众号草稿箱，仍可修改 & 高：最适合作为第一阶段终点 & 格式、图片、权限配置 \\
+发布文章 & 草稿形成公开可访问的文章 & 中：建议保留人工确认 & 错发、品牌、合规 \\
+群发触达 & 主动把消息送达符合条件的关注者 & 低：必须核验账号权限与保护机制 & 不可逆触达、频次、投诉 \\
+数据复盘 & 读取阅读、分享等数据并形成总结 & 高：适合自动汇总，人负责解释 & 指标误读、隐私与权限 \\
+\bottomrule
+\end{tabularx}
+
+\begin{summarybox}[最稳妥的第一阶段边界]
+数字员工完成“生成内容 + 同步草稿 + 提醒审核”，授权人员在公众号后台检查并确认发布。这样既能节省重复劳动，又保留平台原生预览、权限和最终签发环节。
+\end{summarybox}
+
+\subsection{上线前必须确认的公众号条件}
+
+\begin{itemize}
+  \item 公众号类型、认证状态和实际开放接口权限；
+  \item 是否具备草稿、发布、群发和数据统计相关能力；
+  \item 管理员、运营者、开发者和最终发布人的权限分工；
+  \item 图片、封面、转载、原创声明和外链的具体规则；
+  \item API 风险操作保护、白名单和异常通知机制。
+\end{itemize}
+
+第三方工具不能突破公众号自身没有的权限。因此，采购工具前应先在实际公众号后台完成权限清单，而不是根据产品宣传直接判断“可以全自动发布”。
+
+% -----------------------------------------------------------------------------
+\section{现成方案版图：市场上有哪些选择}
+
+现有方案可以分为四类。它们解决的问题不同，合理做法是组合，而不是寻找一个“包办一切”的产品。
+
+\begin{center}
+\begin{tikzpicture}[
+  card/.style={rounded corners=2mm,draw=#1!70,fill=#1!7,line width=.8pt,text width=69mm,minimum height=31mm,align=left,inner sep=3.5mm,font=\small},
+  title/.style={font=\sffamily\bfseries\color{#1}}
+]
+\node[card=BrandBlue] (a) {\textbf{\color{BrandBlue}A｜公众号编辑与排版}\par
+代表：135 编辑器、壹伴\par
+强项：写作、模板、排版、配图、草稿协作};
+\node[card=BrandGreen,right=7mm of a] (b) {\textbf{\color{BrandGreen}B｜多账号协同与分发}\par
+代表：新榜小豆芽\par
+强项：账号管理、团队协作、多平台发布、数据导出};
+\node[card=BrandOrange,below=7mm of a] (c) {\textbf{\color{BrandOrange}C｜AI 工作流与数字员工}\par
+代表：扣子、来也科技\par
+强项：多步骤任务、跨工具协作、长期任务与企业治理};
+\node[card=BrandNavy,right=7mm of c] (d) {\textbf{\color{BrandNavy}D｜自建 / 定制工作流}\par
+代表：现有内容系统 + 微信官方能力\par
+强项：品牌定制、事实治理、过程追踪与长期沉淀};
+\end{tikzpicture}
+\end{center}
+
+\begin{tabularx}{\textwidth}{@{}L{31mm} C{21mm} C{21mm} C{21mm} C{21mm} Y@{}}
+\toprule
+\textbf{能力环节} & \textbf{编辑排版} & \textbf{多账号平台} & \textbf{AI 工作流} & \textbf{定制系统} & \textbf{说明} \\
+\midrule
+选题与资料 & 中 & 弱--中 & 强 & 强 & 质量取决于信源和规则 \\
+文案与配图 & 强 & 中 & 强 & 强 & 仍需事实与品牌审核 \\
+公众号排版 & 强 & 中--强 & 需连接 & 需建设 & 成熟模板工具更省时 \\
+团队审核 & 中--强 & 强 & 可配置 & 可定制 & 责任人必须明确 \\
+账号分发 & 中 & 强 & 需连接 & 需建设 & 受平台权限约束 \\
+过程追踪 & 中 & 强 & 强 & 强 & 定制方案最容易贴合内部流程 \\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+{\small\color{Muted}注：表中“强 / 中 / 弱 / 需建设”表示产品定位与适配程度，不是未经实测的效果排名。}
+
+% -----------------------------------------------------------------------------
+\section{代表方案：能解决什么、不能解决什么}
+
+\subsection{135 编辑器：内容与排版的一站式加速}
+
+135 官网公开展示 AI 写作、智能排版、智能配图、公众号模板、团队空间和多公众号运营等能力。\srcref{5}\srcref{6}
+
+\begin{tabularx}{\textwidth}{@{}L{30mm} Y Y@{}}
+\toprule
+\textbf{适合} & \textbf{主要价值} & \textbf{需要补充} \\
+\midrule
+希望快速提高出稿和排版效率的个人或团队 & 模板多、公众号场景成熟，写作到排版衔接快 & 权威资料采集、事实治理、品牌知识、严格审批与长期流程追踪 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{壹伴：在公众号后台增强运营效率}
+
+壹伴帮助中心说明其在公众号后台提供 AI 长文、AI 排版、图片处理、字数和阅读时长等辅助能力。\srcref{7}
+
+\begin{tabularx}{\textwidth}{@{}L{30mm} Y Y@{}}
+\toprule
+\textbf{适合} & \textbf{主要价值} & \textbf{需要补充} \\
+\midrule
+习惯直接在微信公众平台编辑、希望降低学习成本的运营人员 & 与公众号编辑场景贴近，人工可随时检查和修改 & 跨来源选题、复杂团队流程、品牌资料治理和外部系统数据回流 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{新榜小豆芽：矩阵账号与团队分发}
+
+小豆芽官网将多平台账号管理、文章/图片/视频发布、团队空间与数据导出列为主要能力。\srcref{8}
+
+\begin{tabularx}{\textwidth}{@{}L{30mm} Y Y@{}}
+\toprule
+\textbf{适合} & \textbf{主要价值} & \textbf{需要补充} \\
+\midrule
+需要管理多个公众号或多平台账号的团队 & 统一账号、人员、发布和数据，减少重复登录与分发操作 & 内容事实、原创性、品牌口径和各平台差异仍需专门治理 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{扣子 / 来也：可编排的数字员工路线}
+
+扣子官网强调 Agent、工作流、长期任务和文档/图片等内容产物；来也科技强调 RPA、AI、Agent 的跨系统协作与企业级安全管理。\srcref{9}\srcref{10}
+
+\begin{tabularx}{\textwidth}{@{}L{30mm} Y Y@{}}
+\toprule
+\textbf{适合} & \textbf{主要价值} & \textbf{需要补充} \\
+\midrule
+希望把多个步骤连接起来、以后扩展到更多业务流程的团队 & 可把采集、生成、审批、通知和数据汇总组织成持续工作流 & 公众号连接、权限、内容规则、稳定性和审计需要单独设计与验证 \\
+\bottomrule
+\end{tabularx}
+
+\begin{riskbox}[调研判断边界]
+产品官网可以证明厂商公开提供相应功能，但不能单独证明其效果最好。扣子和来也代表“可编排数字员工”，本报告不把它们写成已经原生完成微信公众号自动发布的产品。
+\end{riskbox}
+
+% -----------------------------------------------------------------------------
+\section{三种可选路线及建议}
+
+\begin{tabularx}{\textwidth}{@{}L{29mm} L{34mm} Y Y@{}}
+\toprule
+\textbf{路线} & \textbf{组合方式} & \textbf{优势} & \textbf{局限} \\
+\midrule
+人工增强型 & 通用 AI + 135 / 壹伴 + 人工发布 & 上手最快、成本可控、风险低 & 资料、审核、数据分散，依赖运营人员 \\
+半自动协同型 & 现有内容系统 + 排版模板 + 草稿箱 + 人工签发 & 效率、质量、可追溯和风险较平衡 & 需要打通草稿、模板与审核流程 \\
+定制数字员工型 & 自建流程 + 官方接口 + 审批 + 数据闭环 & 品牌适配强，可长期沉淀和扩展 & 建设与维护成本最高，治理要求高 \\
+\bottomrule
+\end{tabularx}
+
+\begin{decisionbox}[推荐：先走“半自动协同型”]
+已有内容自动化基础已经覆盖最难复制的资料治理、选题、文案和配图部分；优先补公众号长文模板、草稿同步和发布审批，能够用较小增量形成完整演示。成熟编辑器可以作为排版工具或参考，不必重复造轮子。
+\end{decisionbox}
+
+\subsection{为什么不建议第一阶段直接全自动群发}
+
+\begin{itemize}
+  \item 群发是直接影响关注者的高风险动作，错误内容难以完全撤回；
+  \item 公众号类型、认证和接口权限存在差异，需要实际账号核验；
+  \item AI 可以提高生产速度，但不能独立承担事实、版权和品牌责任；
+  \item 先形成稳定草稿，更容易统计人工修改量并找到真正需要优化的环节；
+  \item 人工签发不是“自动化失败”，而是把责任放在正确位置。
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\section{我们已有的基础：从“小赛洞察”扩展到公众号}
+
+现有项目已经不是一个简单聊天机器人，而是一条可持续运行的内容生产链。它能够收集权威信息、组织同类事件、筛选选题、生成文案与配图、检查质量，并把结果交付到内部渠道。
+
+\begin{factbox}[当前可复用能力]
+\begin{itemize}
+  \item 多来源内容定时收集，并保留原始来源；
+  \item 事实治理、相似内容聚类、选题评分与近期重复控制；
+  \item 结合品牌资料生成文案与配图，并进行质量检查；
+  \item 记录任务状态、失败原因和交付结果，便于追踪与复盘；
+  \item 已有内部企业微信交付实践，但明确不等同于公众号发布。
+\end{itemize}
+\end{factbox}
+
+\subsection{从现有能力到公众号，还差什么}
+
+\begin{tabularx}{\textwidth}{@{}L{37mm} Y Y@{}}
+\toprule
+\textbf{环节} & \textbf{已有基础} & \textbf{公众号需要新增} \\
+\midrule
+选题与事实 & 多来源采集、去重、筛选、证据记录 & 栏目规划、长文角度、转载/原创判断 \\
+内容生产 & 短文案、品牌知识、配图与质量检查 & 公众号标题、摘要、长文结构、封面规范 \\
+排版与审核 & 结构化内容和安全校验 & 微信 HTML 模板、手机预览、多人签发清单 \\
+发布与复盘 & 内部交付状态与失败记录 & 草稿箱、发布权限、结果回调、阅读分享数据 \\
+\bottomrule
+\end{tabularx}
+
+\begin{summarybox}[个人实践价值]
+这项新任务并非从零开始。现有项目已经证明我能够把“资料—选题—内容—图片—审核—交付”组织成稳定流程；公众号方向的下一步，是把产物从内部消息升级为适合公开传播的长图文，并增加平台权限与人工签发。
+\end{summarybox}
+
+% -----------------------------------------------------------------------------
+\section{推荐的目标流程：机器做重复劳动，人做关键判断}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=5mm,
+  step/.style={rounded corners=2mm,draw=#1!70,fill=#1!8,text width=45mm,minimum height=16mm,align=center,font=\sffamily\small\bfseries},
+  human/.style={rounded corners=2mm,draw=BrandOrange!80,fill=PaleOrange,text width=45mm,minimum height=16mm,align=center,font=\sffamily\small\bfseries},
+  arr/.style={-{Latex[length=2.6mm]},line width=1.1pt,BrandNavy!65}
+]
+\node[step=BrandNavy] (a) {1 栏目任务与选题范围};
+\node[step=BrandBlue,below=of a] (b) {2 权威资料收集与事件整理};
+\node[step=BrandGreen,below=of b] (c) {3 标题、初稿、封面与配图};
+\node[step=BrandBlue,below=of c] (d) {4 公众号模板排版与草稿同步};
+\node[human,right=13mm of c] (e) {5 人工审核\\事实｜版权｜品牌｜敏感性};
+\node[human,below=of e] (f) {6 授权人员确认发布 / 群发};
+\node[step=BrandNavy,below=of f] (g) {7 阅读、分享、互动数据回流};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d);
+\draw[arr] (d.east) -| (e.south); \draw[arr] (e)--(f); \draw[arr] (f)--(g);
+\draw[arr] (g.west) -- ++(-12mm,0) |- (a.west);
+\node[fit=(a)(b)(c)(d),draw=BrandGreen!50,dashed,rounded corners=3mm,inner sep=4mm,label={[font=\sffamily\small\bfseries,text=BrandGreen]above:数字员工主责}] {};
+\node[fit=(e)(f),draw=BrandOrange!60,dashed,rounded corners=3mm,inner sep=4mm,label={[font=\sffamily\small\bfseries,text=BrandOrange]above:人工责任边界}] {};
+\end{tikzpicture}
+\end{center}
+
+\subsection{发布前的“一页审核清单”}
+
+\begin{tabularx}{\textwidth}{@{}C{10mm} L{33mm} Y@{}}
+\toprule
+\textbf{序} & \textbf{检查项} & \textbf{确认问题} \\
+\midrule
+1 & 事实与来源 & 人物、机构、时间、数字、引语和链接是否与权威来源一致？ \\
+2 & 原创与版权 & 文字、图片、字体、模板和转载授权是否清楚？ \\
+3 & 公众号呈现 & 标题、摘要、封面、手机预览、段落和图片是否正常？ \\
+4 & 品牌与受众 & 是否符合栏目定位、读者需要和品牌语气，是否存在硬植入？ \\
+5 & 风险与权限 & 是否含敏感表述、隐私信息，发布账号和操作人是否正确？ \\
+6 & 发布策略 & 是保存草稿、公开发布还是群发，时间与触达范围是否正确？ \\
+\bottomrule
+\end{tabularx}
+
+% -----------------------------------------------------------------------------
+\section{分阶段实施：先做出可控成果，再扩大自动化}
+
+\begin{tabularx}{\textwidth}{@{}C{12mm} L{28mm} L{45mm} Y L{31mm}@{}}
+\toprule
+\textbf{阶段} & \textbf{建议周期} & \textbf{主要工作} & \textbf{交付物} & \textbf{通过条件} \\
+\midrule
+0 & 第 1 周 & 核验公众号类型、权限、栏目、责任人和模板 & 权限清单、栏目表、审核清单 & 责任边界明确 \\
+1 & 第 2 周 & 用现成工具完成 3--5 篇草稿 & 草稿样例、版式模板 & 手机预览可用 \\
+2 & 第 3--4 周 & 接入现有采集/选题/文案，自动形成草稿 & 每周稳定草稿、修改记录 & 事实与品牌审核通过 \\
+3 & 第 5--6 周 & 接入数据复盘，优化选题与模板 & 周报、指标看板、问题清单 & 指标稳定、无严重风险 \\
+4 & 稳定后 & 评估受控发布，仍保留审批与回退 & 发布审批与异常机制 & 经负责人专项批准 \\
+\bottomrule
+\end{tabularx}
+
+\begin{decisionbox}[建议的最小试点]
+选择一个固定栏目，每周 2--3 篇，连续运行 4 周。先不追求阅读量增长，重点观察草稿是否按时完成、人工修改是否减少、事实和版权问题是否可控。
+\end{decisionbox}
+
+\subsection{角色分工}
+
+\begin{tabularx}{\textwidth}{@{}L{34mm} Y Y@{}}
+\toprule
+\textbf{角色} & \textbf{主要职责} & \textbf{不应承担} \\
+\midrule
+数字员工 & 收集、整理、生成、排版、同步、提醒、汇总 & 最终事实责任、账号授权、敏感判断 \\
+内容运营 & 定栏目、选角度、改文案、审排版、做复盘 & 保管开发密钥或绕过审核 \\
+业务 / 品牌负责人 & 确认业务表达、品牌口径和敏感内容 & 日常重复排版 \\
+公众号管理员 & 管理账号权限、确认发布、处理平台异常 & 把管理员权限交给个人脚本 \\
+\bottomrule
+\end{tabularx}
+
+% -----------------------------------------------------------------------------
+\section{如何衡量效果：效率、质量、增长分开看}
+
+\begin{tabularx}{\textwidth}{@{}L{27mm} L{43mm} Y@{}}
+\toprule
+\textbf{维度} & \textbf{建议指标} & \textbf{解释} \\
+\midrule
+效率 & 从选题到草稿的时间、人工排版时间、按时交付率 & 判断是否真正减少重复劳动 \\
+质量 & 草稿一次通过率、事实修正数、版权/敏感问题数、人工修改比例 & 判断自动化是否带来可用内容 \\
+稳定性 & 草稿失败率、重复选题率、异常恢复时间 & 判断流程能否持续运行 \\
+内容效果 & 阅读完成、分享、收藏、关注转化、留言质量 & 判断内容是否对受众有价值 \\
+组织沉淀 & 模板复用率、品牌知识覆盖、问题复盘闭环率 & 判断能力是否越用越成熟 \\
+\bottomrule
+\end{tabularx}
+
+\begin{factbox}[避免单看“阅读量”]
+阅读量受账号规模、发布时间、选题热度和分发机制影响。试点期应先看效率与质量，再结合阅读、分享和互动判断内容方向；不能因为一篇文章数据高，就跳过事实与版权要求。
+\end{factbox}
+
+\subsection{建议的试点目标}
+
+\begin{itemize}
+  \item 草稿按时交付率逐周提高；
+  \item 人工排版和资料整理时间明显减少；
+  \item 严重事实、版权和账号安全事件为零；
+  \item 草稿修改原因能够被分类，并转化为下一轮规则；
+  \item 4 周后能够回答：哪些环节值得继续自动化，哪些必须保留人工。
+\end{itemize}
+
+% -----------------------------------------------------------------------------
+\section{风险与治理：数字员工必须“可控、可查、可停”}
+
+\begin{tabularx}{\textwidth}{@{}L{27mm} L{40mm} Y L{37mm}@{}}
+\toprule
+\textbf{风险} & \textbf{典型表现} & \textbf{控制措施} & \textbf{责任人} \\
+\midrule
+事实错误 & AI 补写不存在的数字、因果或观点 & 权威来源、关键事实清单、发布前人工核验 & 内容运营 \\
+版权问题 & 搬运文章、未授权图片或字体 & 原创/转载标记、授权记录、商用素材库 & 内容与品牌 \\
+账号安全 & 密钥泄露、权限过大、误群发 & 最小权限、白名单、管理员确认、异常通知 & 公众号管理员 \\
+品牌失控 & 口吻机械、过度营销、敏感表达 & 品牌词库、禁用规则、人工签发 & 品牌负责人 \\
+重复与低质 & 追热点导致同质内容、频率过高 & 选题去重、栏目节奏、质量门槛 & 内容负责人 \\
+指标误导 & 只追阅读量、标题党 & 效率/质量/增长分层复盘 & 项目负责人 \\
+系统异常 & 草稿失败、图片缺失、状态不确定 & 可重试与不可重试区分、人工接管、过程记录 & 运营与技术支持 \\
+\bottomrule
+\end{tabularx}
+
+\begin{riskbox}[三条红线]
+\begin{enumerate}
+  \item 没有明确来源和责任人的内容，不自动进入发布；
+  \item 没有实际公众号权限核验，不承诺自动发布或群发；
+  \item 结果状态不确定时，不自动重复发送。
+\end{enumerate}
+\end{riskbox}
+
+% -----------------------------------------------------------------------------
+\section{最终建议与汇报结论}
+
+\begin{summarybox}[建议方案]
+以现有“小赛洞察”内容能力为基础，补充公众号长文与版式模板，优先接入草稿箱；由内容负责人完成事实、版权、品牌和手机预览审核，再由公众号管理员确认发布。使用成熟编辑器提高排版效率，数字员工平台用于组织跨步骤流程，不急于第一阶段实现无人值守群发。
+\end{summarybox}
+
+\begin{tabularx}{\textwidth}{@{}C{12mm} L{42mm} Y@{}}
+\toprule
+\textbf{优先级} & \textbf{建议行动} & \textbf{原因} \\
+\midrule
+P0 & 核验公众号类型、认证、接口和责任人 & 决定真实可用边界，避免方案建立在错误权限上 \\
+P0 & 固定栏目、模板和发布审核清单 & 让数字员工有稳定标准，而不是每次重新理解 \\
+P1 & 试行自动生成并同步草稿 & 价值明显、风险可控、便于测量人工修改量 \\
+P1 & 建立数据回流和每周复盘 & 让选题、模板和规则持续改进 \\
+P2 & 稳定后评估受控发布 & 只有质量、权限和异常处理成熟后才有必要 \\
+\bottomrule
+\end{tabularx}
+
+% -----------------------------------------------------------------------------
+\clearpage
+\section*{资料来源}
+\addcontentsline{toc}{section}{资料来源}
+
+{\small 以下资料均于 2026 年 8 月 17 日检索。产品功能与平台权限可能调整，正式采购或接入前应再次核验。}
+
+\begin{enumerate}[label={\textcolor{BrandBlue}{[\arabic*]}},leftmargin=2.3em,itemsep=6pt]
+  \item 微信开放文档，\textbf{草稿箱 / 新建草稿}。\href{https://developers.weixin.qq.com/doc/offiaccount/Draft_Box/Add_draft.html}{访问官方页面}
+  \item 微信开放文档，\textbf{发布能力}。\href{https://developers.weixin.qq.com/doc/offiaccount/Publish/Publish.html}{访问官方页面}
+  \item 微信开放文档，\textbf{群发接口与原创校验}。\href{https://developers.weixin.qq.com/doc/offiaccount/Message_Management/Batch_Sends_and_Originality_Checks.html}{访问官方页面}
+  \item 微信开放文档，\textbf{图文分析数据接口}。\href{https://developers.weixin.qq.com/doc/offiaccount/Analytics/Graphic_Analysis_Data_Interface.html}{访问官方页面}
+  \item 135 编辑器，\textbf{AI 公众号编辑器产品页}。\href{https://www.135editor.com/}{访问官网}
+  \item 135 编辑器，\textbf{AI 排版帮助中心}。\href{https://www.135editor.com/ai_editor/ai-style/help/}{访问帮助中心}
+  \item 壹伴微信编辑器，\textbf{帮助中心 / AI 辅助与公众号运营功能}。\href{https://w.yiban.io/help}{访问帮助中心}
+  \item 新榜小豆芽，\textbf{多平台账号管理与内容运营工具}。\href{https://xdy.newrank.cn/}{访问官网}
+  \item 扣子（Coze），\textbf{产品概览 / Agent 与工作流}。\href{https://www.coze.cn/overview}{访问官网}
+  \item 来也科技，\textbf{数字员工平台}。\href{https://laiye.com/}{访问官网}
+  \item 腾讯云微搭低代码，\textbf{微信公众号开放服务}。\href{https://cloud.tencent.com/document/product/1301/100187}{访问官方文档}
+\end{enumerate}
+
+\begin{tcolorbox}[colback=PaleGray,colframe=RuleGray,boxrule=.6pt,arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm]
+\textbf{资料使用说明：}微信官方文档用于判断平台能力与边界；产品官网用于确认厂商公开提供的功能，不能单独证明实际效果或行业排名；本项目基础依据仓库已实现能力作业务化概括，不包含账号、服务器、密钥或内部业务数据。
+\end{tcolorbox}
+
+\vfill
+\begin{center}
+{\sffamily\bfseries\color{BrandNavy}数字员工不是取消人的责任，而是让人的判断更有价值。}\par
+\vspace{3mm}
+{\small\sffamily\color{Muted}—— 微信公众号自动推文方案调研 · 2026 年 8 月 17 日}
+\end{center}
+
+\end{document}
