@@ -1,0 +1,3 @@
+{"file":".trellis/tasks/08-17-deploy-image-output-fallback/research/release-contract.md","reason":"Exact cbc candidate, 7ba production baseline, offline-path constraint and required safety controls."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/release-contract-summary.md","reason":"Previously reviewed offline build, quiesce, backup, activation and rollback contract."}
+{"file":".trellis/tasks/archive/2026-08/08-17-image-output-fallback-reliability/result.md","reason":"Reviewed application behavior, gates, runtime file set and no-migration/API boundary."}
