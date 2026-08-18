@@ -1,8 +1,29 @@
-# Edu AI Lead Agent
+<p align="center">
+  <picture>
+    <source
+      srcset="./docs/portfolio/assets/edu-ai-lead-agent-logo.png"
+      media="(prefers-color-scheme: dark)"
+    >
+    <source
+      srcset="./docs/portfolio/assets/edu-ai-lead-agent-logo.png"
+      media="(prefers-color-scheme: light)"
+    >
+    <img
+      src="./docs/portfolio/assets/edu-ai-lead-agent-logo.png"
+      alt="Edu AI Lead Agent"
+      width="560"
+      style="image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"
+    >
+  </picture>
+</p>
+
+<p align="center">
+  <strong>An evidence-grounded multi-agent content system for science education.</strong>
+</p>
 
 面向科学教育与 AI 教育内容运营的多 Agent 系统：从权威来源采集、事实治理和选题排序，到品牌文案、配图、审核、素材包与内部交付，形成可追溯、可评测、可恢复的完整内容生产链。
 
-[项目亮点](#项目亮点) · [真实内容产出](#真实内容产出) · [系统流程](#系统流程) · [快速开始](#快速开始) · [文档导航](#文档导航)
+[项目亮点](#项目亮点) · [真实内容产出](#真实内容产出) · [系统流程](#系统流程) · [快速开始](#快速开始) · [个人简历](#个人简历) · [文档导航](#文档导航)
 
 ## 项目亮点
 
@@ -128,12 +149,18 @@ make doctor
 make check
 ```
 
+## 个人简历
+
+[下载公开版 PDF](./docs/portfolio/resume/resume-public.pdf) ·
+[查看 LaTeX 源文件](./docs/portfolio/resume/resume-public.tex)
+
 ## 文档导航
 
 | 主题                                 | 文档                                                                           |
 | ------------------------------------ | ------------------------------------------------------------------------------ |
 | Agent Workbench 架构、工具与面试讲解 | [Agent Workbench case study](./docs/portfolio/agent-workbench.md)              |
 | 两组真实文案与对应配图               | [真实内容产出](./docs/portfolio/content-showcase.md)                           |
+| Agent / LLM 应用开发实习简历         | [个人简历](./docs/portfolio/resume/README.md)                                  |
 | Agent 确定性评测                     | [Eval README](./backend/evals/agent_workbench/README.md)                       |
 | 生产发布、回退与 Digest 契约         | [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)        |
 | 服务器迁移与视觉能力启用             | [生产服务器迁移手册](./docs/operations/production-server-migration-runbook.md) |

@@ -42,6 +42,13 @@ output/
 /reports/*.out
 /reports/*.toc
 /reports/*.xdv
+/docs/portfolio/resume/*.aux
+/docs/portfolio/resume/*.fdb_latexmk
+/docs/portfolio/resume/*.fls
+/docs/portfolio/resume/*.log
+/docs/portfolio/resume/*.out
+/docs/portfolio/resume/*.synctex.gz
+/docs/portfolio/resume/*.xdv
 
 # Editors and operating systems
 .idea/
