@@ -16,6 +16,9 @@ from app.core.errors import ConflictError, TopicSelectionLeaseLostError
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
+    DEFAULT_TOPIC_SCORING_THRESHOLD,
+    DEFAULT_TOPIC_SCORING_VERSION,
+    HISTORICAL_TOPIC_SCORING_THRESHOLD,
     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
     TopicScoringConfig,
@@ -42,6 +45,11 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
         version=settings.content_scoring_version,
         profile=settings.content_scoring_profile,
         selection_priority_rule_version=priority_rule_version,
+        threshold=(
+            DEFAULT_TOPIC_SCORING_THRESHOLD
+            if settings.content_scoring_version == DEFAULT_TOPIC_SCORING_VERSION
+            else HISTORICAL_TOPIC_SCORING_THRESHOLD
+        ),
         freshness_window_days=float(settings.content_freshness_window_days),
     )
 

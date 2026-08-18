@@ -1,0 +1,32 @@
+{
+  "id": "lower-topic-selection-threshold",
+  "name": "lower-topic-selection-threshold",
+  "title": "降低新闻入选评分阈值至 0.59",
+  "description": "新增不可变 .8 评分版本，将新运行阈值从 0.62 降至 0.59，保持 delivered-history 重复规则并安全部署。",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": "backend scoring config, tests, specs and production activation",
+  "package": "backend",
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-18",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/domain/topic_selection.py",
+    "backend/app/application/services/topic_selection.py",
+    "backend/app/core/config.py",
+    "compose.yaml",
+    ".env.example"
+  ],
+  "notes": "Planning only until the user explicitly approves the final planning summary.",
+  "meta": {}
+}

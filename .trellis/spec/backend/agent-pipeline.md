@@ -225,19 +225,20 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.7-delivered-repeat-history` gives 0.30 to tiered editorial
+The implemented `scoring-v1-preview.8-threshold-059` gives 0.30 to tiered editorial
 priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
 and communication potential. It keeps genuine hard vetoes but does not add the historical
 `outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
-0.62 numeric threshold only when no hard veto exists; ordinary education and frontier candidates
-remain threshold-bound. `.7` differs from literal `.6` only through its immutable scoring/veto
-identity and delivery-backed repeat provenance; weights, threshold, editorial/product rules,
-Ministry priority/bypass, penalties, and ordering are identical. Historical `.5` configurations
+0.59 numeric threshold only when no hard veto exists; ordinary education and frontier candidates
+remain threshold-bound. `.8` preserves `.7` delivery-backed repeat provenance and differs only by
+its immutable scoring identity and 0.59 threshold; literal `.7` remains 0.62. `.7` differs from
+literal `.6` through its immutable veto identity and delivery-backed repeat provenance. Their
+editorial/product rules, Ministry priority/bypass, penalties, and ordering are identical. Historical `.5` configurations
 keep their science/AI-education scope veto and disabled source priority, while `.4` keeps its legacy
 feature map, policy-action requirement, and Ministry priority semantics on replay.
 
 Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
-authenticated Ministry education priority under `.6`/`.7` may bypass only that numeric threshold and
+authenticated Ministry education priority under `.6`/`.7`/`.8` may bypass only that numeric threshold and
 still requires zero hard vetoes. Stable tie-breakers must be documented (for example source tier,
 publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.

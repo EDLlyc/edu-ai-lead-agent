@@ -15,6 +15,11 @@ from app.core.config import Settings
 from app.core.errors import ConflictError
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.topic_selection import (
+    DEFAULT_TOPIC_SCORING_THRESHOLD,
+    DEFAULT_TOPIC_SCORING_VERSION,
+    DELIVERED_CONTENT_VETO_RULE_VERSION,
+    DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    HISTORICAL_TOPIC_SCORING_THRESHOLD,
     DailyTopicDecision,
     TopicCandidate,
     TopicScoringConfig,
@@ -159,7 +164,23 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert repository.enqueued["trigger"] == "manual"
     config = repository.enqueued["config"]
     assert isinstance(config, TopicScoringConfig)
-    assert config.version == "scoring-v1-preview.7-delivered-repeat-history"
+    assert config.version == DEFAULT_TOPIC_SCORING_VERSION
+    assert config.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
+    assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
+    assert config.selection_priority_rule_version == "ministry-education-priority-v3"
+
+
+def test_historical_delivered_scoring_version_keeps_original_threshold() -> None:
+    config = build_topic_scoring_config(
+        Settings(
+            _env_file=None,
+            content_scoring_version=DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+        )
+    )
+
+    assert config.version == DELIVERED_HISTORY_TOPIC_SCORING_VERSION
+    assert config.threshold == HISTORICAL_TOPIC_SCORING_THRESHOLD
+    assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert config.selection_priority_rule_version == "ministry-education-priority-v3"
 
 
@@ -172,6 +193,7 @@ def test_historical_tiered_scoring_version_keeps_ministry_priority_defaults() ->
     )
 
     assert config.version == "scoring-v1-preview.6-tiered-science-tech-priority"
+    assert config.threshold == HISTORICAL_TOPIC_SCORING_THRESHOLD
     assert config.effective_veto_rule_version == "topic-veto-v3-governed-content"
     assert config.selection_priority_rule_version == "ministry-education-priority-v3"
 

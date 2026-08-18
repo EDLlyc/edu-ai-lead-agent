@@ -28,12 +28,20 @@ from app.domain.science_policy_priority import (
     evaluate_science_policy_priority,
 )
 
-DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
+DELIVERED_HISTORY_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
+DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.8-threshold-059"
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
+    DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     DEFAULT_TOPIC_SCORING_VERSION,
 )
+DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
+    DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    DEFAULT_TOPIC_SCORING_VERSION,
+)
+DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
+HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
 SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = "scoring-v1-preview.5-science-education-product-fit"
 DEFAULT_SELECTION_PRIORITY_RULE_VERSION: str | None = None
 GOVERNED_CONTENT_VETO_RULE_VERSION = "topic-veto-v3-governed-content"
@@ -69,7 +77,7 @@ class TopicScoringConfig:
     profile: str = "preview"
     veto_rule_version: str | None = None
     selection_priority_rule_version: str | None = DEFAULT_SELECTION_PRIORITY_RULE_VERSION
-    threshold: float = 0.62
+    threshold: float = DEFAULT_TOPIC_SCORING_THRESHOLD
     recent_selection_window_days: int = 7
     freshness_window_days: float = 10.0
     source_diversity_cap: int = 4
@@ -241,7 +249,7 @@ class TopicScoringConfig:
     def effective_veto_rule_version(self) -> str:
         if self.veto_rule_version is not None:
             return self.veto_rule_version
-        if self.version == DEFAULT_TOPIC_SCORING_VERSION:
+        if self.version in DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS:
             return DELIVERED_CONTENT_VETO_RULE_VERSION
         if self.uses_tiered_editorial_features:
             return GOVERNED_CONTENT_VETO_RULE_VERSION
@@ -253,6 +261,7 @@ class TopicScoringConfig:
     def has_authenticated_ministry_priority(self) -> bool:
         expected_veto_rule = {
             TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION: GOVERNED_CONTENT_VETO_RULE_VERSION,
+            DELIVERED_HISTORY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             DEFAULT_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         return (

@@ -5,8 +5,12 @@ import pytest
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
+    DEFAULT_TOPIC_SCORING_THRESHOLD,
+    DEFAULT_TOPIC_SCORING_VERSION,
     DELIVERED_CONTENT_VETO_RULE_VERSION,
+    DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     GOVERNED_CONTENT_VETO_RULE_VERSION,
+    HISTORICAL_TOPIC_SCORING_THRESHOLD,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
@@ -23,6 +27,7 @@ NOW = datetime(2026, 7, 30, 2, 0, tzinfo=UTC)
 CONFIG = TopicScoringConfig(
     version="scoring-v1-preview.5-science-education-product-fit",
     selection_priority_rule_version=None,
+    threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
 TIERED_CONFIG = TopicScoringConfig(
     selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
@@ -30,10 +35,17 @@ TIERED_CONFIG = TopicScoringConfig(
 HISTORICAL_TIERED_CONFIG = TopicScoringConfig(
     version=TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
+)
+HISTORICAL_DELIVERED_CONFIG = TopicScoringConfig(
+    version=DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
 LEGACY_CONFIG = TopicScoringConfig(
     version="scoring-v1-preview.4-science-policy-priority",
     selection_priority_rule_version="science-policy-priority-v2",
+    threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
 
 
@@ -96,10 +108,11 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
-def test_delivered_history_config_exposes_immutable_v2_rules_and_round_trips() -> None:
+def test_current_config_exposes_lower_threshold_and_immutable_v2_rules() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
-    assert metadata["version"] == "scoring-v1-preview.7-delivered-repeat-history"
+    assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
+    assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
     assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
@@ -115,6 +128,21 @@ def test_delivered_history_config_exposes_immutable_v2_rules_and_round_trips() -
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
+def test_historical_delivered_config_retains_threshold_and_round_trips() -> None:
+    metadata = HISTORICAL_DELIVERED_CONFIG.as_metadata()
+
+    assert metadata["version"] == DELIVERED_HISTORY_TOPIC_SCORING_VERSION
+    assert metadata["threshold"] == HISTORICAL_TOPIC_SCORING_THRESHOLD
+    assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
+    historical_policy = dict(metadata)
+    current_policy = TIERED_CONFIG.as_metadata()
+    for key in ("version", "threshold"):
+        historical_policy.pop(key)
+        current_policy.pop(key)
+    assert historical_policy == current_policy
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
 def test_historical_tiered_config_retains_v3_selection_history_and_round_trips() -> None:
     metadata = HISTORICAL_TIERED_CONFIG.as_metadata()
 
@@ -122,13 +150,53 @@ def test_historical_tiered_config_retains_v3_selection_history_and_round_trips()
     assert metadata["veto_rule_version"] == GOVERNED_CONTENT_VETO_RULE_VERSION
     assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
     historical_policy = dict(metadata)
-    delivered_policy = TIERED_CONFIG.as_metadata()
+    delivered_policy = HISTORICAL_DELIVERED_CONFIG.as_metadata()
     historical_policy.pop("version")
     historical_policy.pop("veto_rule_version")
     delivered_policy.pop("version")
     delivered_policy.pop("veto_rule_version")
     assert historical_policy == delivered_policy
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+@pytest.mark.parametrize(
+    ("communication_potential", "expected_total", "expected_passes"),
+    ((0.399, 0.5899, False), (0.4, 0.59, True)),
+)
+def test_current_threshold_has_an_exact_point_fifty_nine_boundary(
+    communication_potential: float,
+    expected_total: float,
+    expected_passes: bool,
+) -> None:
+    score = score_topic_candidate(
+        _candidate(
+            event_time=NOW,
+            source_trust=0.0,
+            source_diversity=0,
+            communication_potential=communication_potential,
+            editorial_priority=1.0,
+            product_matrix_fit_v2=0.6,
+        ),
+        as_of=NOW,
+        config=TIERED_CONFIG,
+    )
+
+    assert score.total == expected_total
+    assert score.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
+    assert score.passes_threshold is expected_passes
+    assert score.eligible is expected_passes
+
+
+def test_delivered_repeat_veto_still_wins_above_the_lower_threshold() -> None:
+    score = score_topic_candidate(
+        _candidate(days_since_last_selection=1),
+        as_of=NOW,
+        config=TIERED_CONFIG,
+    )
+
+    assert score.passes_threshold is True
+    assert score.eligible is False
+    assert TopicVetoCode.REPEATED_WITHIN_WINDOW in score.veto_codes
 
 
 def test_hard_veto_cannot_be_outweighed_by_a_high_numeric_score() -> None:
