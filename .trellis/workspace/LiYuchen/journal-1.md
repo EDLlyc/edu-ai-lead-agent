@@ -1181,3 +1181,24 @@ Implemented default-off shared daily and content-slot LLM reranking after determ
 ### Status
 
 [OK] **Completed**
+
+
+## Session 54: Zhipu topic rerank JSON compatibility
+
+**Date**: 2026-08-18
+**Task**: Zhipu topic rerank JSON compatibility
+**Branch**: `main`
+
+### Summary
+
+Versioned topic rerank v1/v2 provider contract, added strict bounded GLM-5.2 JSON compatibility and safe diagnostics, passed independent review plus 1030 backend tests, and completed one successful synthetic max_attempts=1 live validation without production mutation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4356c69` | (see git log) |
+
+### Status
+
+[OK] **Completed**
