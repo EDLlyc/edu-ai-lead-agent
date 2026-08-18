@@ -1096,3 +1096,25 @@ Made controlled visual diversity independent of OCR, passed the full backend gat
 ### Status
 
 [OK] **Completed**
+
+
+## Session 50: Lower topic threshold to 0.59 and deploy
+
+**Date**: 2026-08-18
+**Task**: Lower topic threshold to 0.59 and deploy
+**Branch**: `main`
+
+### Summary
+
+Added immutable scoring .8 with threshold 0.59 while preserving .6/.7 replay, passed 974 backend tests, pushed Codeup, built and validated an offline candidate, activated it across all eight production services with fresh rollback backup, and verified zero release-caused business/provider/WeCom delta.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `572636aa6cca973676abfe99ee7e7e0b4d997c59` | (see git log) |
+| `1e741a9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
