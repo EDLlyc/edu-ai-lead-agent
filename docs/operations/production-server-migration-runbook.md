@@ -235,13 +235,16 @@ First pass fixture, fake-provider, replay, concurrent-reservation, API, Doctor, 
 A controlled-v2 candidate must contain exactly one readable three-level title card with brand
 signature `赛先生科学`, the allowlisted category title, and its matching short subtitle. Reject
 extra/pseudo text, the historical long slogan, raw headline/copy, or a card covering a face,
-scientific object, or main action; the OCR snapshot must match those three lines in order.
+scientific object, or main action. When OCR is enabled, its snapshot must match those three lines
+in order.
+A diversity-only rollout may keep OCR disabled; in that mode the requested three-line prompt
+contract still applies, but the rendered text and order are explicitly not machine-verified.
 A live acceptance is separate authorization: use one approved news item, one provider path, and no
 Enterprise WeChat send. Inspect character identity, topic fit, dimensions, selected plan, and
 similarity outcome without printing prompts, hashes, reference paths, object keys, or provider
 bodies.
 
-Before any live gate, require `IMAGE_OCR_MAX_INPUT_BYTES=10485760`,
+Before any OCR-enabled live gate, require `IMAGE_OCR_MAX_INPUT_BYTES=10485760`,
 `IMAGE_OCR_MAX_RESPONSE_BYTES=1048576`, and `IMAGE_OCR_TIMEOUT_SECONDS=120` in both acquisition API
 and content worker. The adapter accepts only media-gated PNG/JPEG bytes, sends them as a private
 Base64 data URL to `/layout_parsing`, and derives ordered lines only from bounded layout elements.
@@ -249,14 +252,16 @@ PDF, WebP, malformed raster, wrong model/page identity, malformed layout, or res
 a typed failure before similarity or storage. Do not print the request, Base64, provider body,
 private path, object key, or credential while diagnosing a failure.
 
-After approval, set both `IMAGE_DIVERSITY_ENABLED=true` and `IMAGE_OCR_ENABLED=true` in the same
-configuration for acquisition API and content worker; settings validation rejects diversity
-without the exact OCR gate. Restart only those affected services and observe seven business days.
+After approval, set `IMAGE_DIVERSITY_ENABLED=true` in the same configuration for acquisition API
+and content worker. `IMAGE_OCR_ENABLED=false` is a supported diversity-only mode with no OCR
+adapter/call or rendered-text verification. If OCR is enabled, both services must also use the
+reviewed `IMAGE_OCR_MODEL=glm-ocr` contract above. Restart only those affected services and observe
+seven business days.
 Review full-plan distinctness,
 non-identity reference dominance, `regenerate`/`accepted_with_warning` counts, provider call and
 latency/cost deltas, image success, and delivery terminal outcomes. A warning on the alternate is
 expected non-blocking degradation; a third provider call, duplicate sibling plan, unbounded
-history, or any warning that bypasses safety/OCR/identity/media gates is a rollout failure.
+history, or any warning that bypasses safety/enabled-OCR/identity/media gates is a rollout failure.
 
 Rollback sets `IMAGE_DIVERSITY_ENABLED=false` and restarts the affected services. Keep 0021 and all
 v2 plans/attempts/artifacts immutable for audit; do not delete or rewrite delivered history. The

@@ -185,6 +185,9 @@ def test_compose_and_doctor_share_the_bounded_image_ocr_contract() -> None:
         assert f'"{key}"' in doctor
     assert compose.count("IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-false}") == 2
     assert '"IMAGE_OCR_ENABLED"' in doctor
+    assert "diversity_enabled = compose_bool" in doctor
+    assert "ocr_enabled = compose_bool" in doctor
+    assert "if diversity_enabled and ocr_enabled and environment[" in doctor
     assert "controlled image OCR must use the reviewed glm-ocr model" in doctor
 
 

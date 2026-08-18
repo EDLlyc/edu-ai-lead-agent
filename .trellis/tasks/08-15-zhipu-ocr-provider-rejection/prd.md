@@ -61,3 +61,15 @@
 
 用户已批准完整闭环：代码修复、部署、一次确定性 OCR live gate、一次隔离真实新闻验收，
 以及全部门通过后的生产启用。任一门失败都按 fail-closed 恢复，且不得改用第二条新闻。
+
+## 2026-08-18 Superseding Product Decision
+
+用户取消了 OCR 作为受控视觉启用前提。`IMAGE_DIVERSITY_ENABLED=true` 必须允许与
+`IMAGE_OCR_ENABLED=false` 组合运行；该组合不得创建或调用图片 OCR adapter，也不得因
+缺少 OCR 使 material package 失败。既有 OCR-on adapter/parser 与严格测试保持不变，不
+放宽 unknown element、label、bbox、content、table/formula、顺序或 exact-text 规则。
+
+该决策明确接受一个产品权衡：OCR 关闭时，prompt/brief 仍要求三层受控文字，但实际成图
+中的文字及顺序不再被机器验证。PNG/JPEG 媒体签名、输入大小、1024×1024、存储完整性、
+provider identity、按需启用的视觉 audit 与感知相似度门保持不变。本轮只做本地代码、测试
+和文档变更，不授权生产、SSH、provider、企微、enqueue、retry、replay、resend 或部署。

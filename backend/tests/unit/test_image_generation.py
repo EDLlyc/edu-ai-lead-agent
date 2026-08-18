@@ -1281,20 +1281,22 @@ def test_visual_diversity_max_regenerations_accepts_only_one_from_environment(
 def test_visual_diversity_requires_the_reviewed_image_bundle() -> None:
     with pytest.raises(ValueError, match="image generation"):
         Settings(_env_file=None, image_diversity_enabled=True)
-    with pytest.raises(ValueError, match="exact image OCR"):
-        Settings(
-            _env_file=None,
-            image_enabled=True,
-            image_provider_mode="fake",
-            image_diversity_enabled=True,
-        )
+    settings = Settings(
+        _env_file=None,
+        image_enabled=True,
+        image_provider_mode="fake",
+        image_diversity_enabled=True,
+        image_ocr_enabled=False,
+        image_ocr_model="unused-while-disabled",
+    )
+    assert settings.image_diversity_enabled is True
+    assert settings.image_ocr_enabled is False
     with pytest.raises(ValueError, match="reviewed bundle"):
         Settings(
             _env_file=None,
             image_enabled=True,
             image_provider_mode="fake",
             image_diversity_enabled=True,
-            image_ocr_enabled=True,
             image_diversity_prompt_version="unreviewed-prompt",
         )
     with pytest.raises(ValueError, match="reviewed glm-ocr"):

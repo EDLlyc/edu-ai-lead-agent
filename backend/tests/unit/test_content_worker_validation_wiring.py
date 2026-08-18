@@ -52,6 +52,20 @@ def test_validation_adapters_are_absent_by_default_and_in_fake_mode() -> None:
         )
         assert factory.create_image_text_recognizer(fake_image_with_real_ai, client=client) is None
         assert factory.create_image_quality_auditor(fake_image_with_real_ai, client=client) is None
+
+        controlled_without_ocr = Settings(
+            _env_file=None,
+            image_enabled=True,
+            image_provider_mode="comfly",
+            comfly_api_key=SecretStr("image-test-key"),
+            image_diversity_enabled=True,
+            image_ocr_enabled=False,
+            image_ocr_model="unused-while-disabled",
+            ai_provider_mode="zhipu",
+            ai_platform_base_url="https://ai.example.test/v1",
+            ai_platform_api_key=SecretStr("test-key"),
+        )
+        assert factory.create_image_text_recognizer(controlled_without_ocr, client=client) is None
     finally:
         import asyncio
 

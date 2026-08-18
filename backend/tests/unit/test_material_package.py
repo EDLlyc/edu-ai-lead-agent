@@ -47,6 +47,7 @@ from app.core.errors import (
     ProviderRejectedError,
 )
 from app.domain.content_slots import ContentSlot
+from app.domain.image_similarity import ImageSimilarityResult, evaluate_image_similarity
 from app.domain.visual_brief import (
     CONTROLLED_VISUAL_BRIEF_VERSION,
     AcceptedVisualContext,
@@ -1035,6 +1036,136 @@ async def test_material_worker_persists_one_success_with_private_storage_descrip
     assert len(persisted) == 1
     assert persisted[0][0].request_fingerprint == claimed.request_fingerprint
     assert persisted[0][1].sha256 == "a" * 64
+
+
+@pytest.mark.asyncio
+async def test_controlled_material_worker_skips_disabled_ocr_and_keeps_diversity_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    brief = build_visual_brief(
+        AcceptedVisualContext(topic_title="人工智能教育"),
+        version=CONTROLLED_VISUAL_BRIEF_VERSION,
+    )
+    plan = build_visual_plan_bundle(
+        category=brief.category,
+        business_date=date(2026, 8, 18),
+        content_slot=ContentSlot.NOON,
+        stable_seed="controlled-ocr-disabled",
+    ).primary
+    claimed = replace(
+        _claimed_material_package(visual_brief=brief),
+        controlled_plan=plan,
+        plan_reservation_id=uuid4(),
+        prompt_fingerprint="c" * 64,
+    )
+    generator = _RecordingImageGenerator()
+    recognizer = _RecordingImageTextRecognizer()
+    auditor = _RecordingImageQualityAuditor()
+
+    class _IntegrityRecordingImageStore:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def put_immutable(
+            self, body: bytes, *, media_type: str = "image/png"
+        ) -> ImageObjectDescriptor:
+            self.calls += 1
+            sha256 = hashlib.sha256(body).hexdigest()
+            return ImageObjectDescriptor(
+                bucket="private-test-bucket",
+                object_key=f"generated-images/sha256/{sha256[:2]}/{sha256}.png",
+                media_type=media_type,
+                byte_size=len(body),
+                sha256=sha256,
+            )
+
+    store = _IntegrityRecordingImageStore()
+    executor = MaterialPackageExecutor(
+        session_factory=object(),  # type: ignore[arg-type]
+        image_generator=generator,
+        image_store=store,  # type: ignore[arg-type]
+        settings=Settings(
+            _env_file=None,
+            image_enabled=True,
+            image_provider_mode="fake",
+            image_diversity_enabled=True,
+            image_ocr_enabled=False,
+            image_quality_audit_enabled=True,
+        ),
+        reference_asset=None,
+        image_text_recognizer=recognizer,
+        image_quality_auditor=auditor,
+    )
+    similarity_calls = 0
+    persisted: list[dict[str, object]] = []
+
+    async def fake_claim(worker_id: str) -> ClaimedMaterialPackage:
+        del worker_id
+        return claimed
+
+    async def fake_similarity(
+        value: ClaimedMaterialPackage,
+        *,
+        image_bytes: bytes,
+    ) -> tuple[bool, ImageSimilarityResult]:
+        nonlocal similarity_calls
+        assert value == claimed
+        assert image_bytes
+        similarity_calls += 1
+        return True, evaluate_image_similarity(image_bytes, references=())
+
+    async def fake_persist(
+        value: ClaimedMaterialPackage,
+        result: ImageGenerationResult,
+        descriptor: ImageObjectDescriptor,
+        *,
+        validation_snapshot: dict[str, object] | None = None,
+        audit_snapshot: dict[str, object] | None = None,
+        similarity_result: ImageSimilarityResult | None = None,
+    ) -> bool:
+        assert value == claimed
+        persisted.append(
+            {
+                "result": result,
+                "descriptor": descriptor,
+                "validation": validation_snapshot,
+                "audit": audit_snapshot,
+                "similarity": similarity_result,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(executor, "_claim", fake_claim)
+    monkeypatch.setattr(executor, "_assess_image_similarity", fake_similarity)
+    monkeypatch.setattr(executor, "_persist_success", fake_persist)
+
+    assert await executor.execute_next("material-worker") is True
+    assert generator.calls == 1
+    assert recognizer.requests == []
+    assert len(auditor.requests) == 1
+    assert similarity_calls == 1
+    assert store.calls == 1
+    assert len(persisted) == 1
+    validation = persisted[0]["validation"]
+    assert isinstance(validation, dict)
+    assert validation["passed"] is True
+    assert validation["issue_codes"] == []
+    assert validation["media_type"] == "image/png"
+    assert validation["width"] == 1024
+    assert validation["height"] == 1024
+    assert "image_ocr_not_configured" not in json.dumps(validation)
+    audit = persisted[0]["audit"]
+    assert isinstance(audit, dict)
+    assert audit["passed"] is True
+    similarity = persisted[0]["similarity"]
+    assert isinstance(similarity, ImageSimilarityResult)
+    assert similarity.candidate_count == 0
+    result = persisted[0]["result"]
+    descriptor = persisted[0]["descriptor"]
+    assert isinstance(result, ImageGenerationResult)
+    assert isinstance(descriptor, ImageObjectDescriptor)
+    assert descriptor.byte_size == len(result.image_bytes)
+    assert descriptor.sha256 == hashlib.sha256(result.image_bytes).hexdigest()
 
 
 @pytest.mark.asyncio

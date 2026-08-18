@@ -455,3 +455,29 @@ from being selected by `dirname()` proximity.
       `exact-argc-order`, `redacted-failure-diagnostics`, `named-no-rm`, `network-none`,
       `pass-evidence`, `typed-fail-evidence`, `stderr-hash-only`, `cleanup-after-evidence`,
       `malformed-retained`, and `preflight-no-docker`.
+
+## OCR-independent diversity decision after the morning failure
+
+The user reported that a valid 1024×1024 PNG reached Zhipu OCR but was rejected locally with
+`image_ocr_contract_element_extra`. The initially proposed response was to ignore unknown layout
+element extension fields. Before any such code was written, the user superseded that direction:
+OCR is no longer a required product gate for controlled visual diversity, and the strict parser
+must remain unchanged.
+
+The cross-layer cause of the operational dependency was the Settings invariant that rejected
+`IMAGE_DIVERSITY_ENABLED=true` unless `IMAGE_OCR_ENABLED=true`. The material worker already had an
+independent conditional branch: with OCR disabled it performs no recognition call and continues
+from raster validation to enabled audit, similarity, storage, and persistence. The smallest change
+is therefore to remove the startup dependency, while enforcing the reviewed `glm-ocr` model only
+when OCR is actually enabled.
+
+This is an explicit product tradeoff rather than evidence that the provider extension is safe or
+that the rejected image had exact text. With OCR off, the prompt/brief still carries the finite
+three-line contract, but the rendered pixels are not verified for missing, unexpected, duplicate,
+or misordered text. Media signature/size/dimensions, provider identity, enabled visual audit,
+perceptual similarity, and immutable-storage integrity remain independent acceptance gates.
+
+Prevention mechanism: optional external quality gates must have independent activation semantics.
+Settings tests now cover diversity-on/OCR-off, and the material regression proves zero recognizer
+calls plus continued similarity/storage success. OCR-on parser and exact-text contract tests remain
+the fail-closed boundary for any future explicit OCR activation.

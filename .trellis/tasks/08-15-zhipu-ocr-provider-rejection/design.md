@@ -24,14 +24,20 @@ OpenAPI 未规定 index base，官方 SDK examples/mocks 使用 0；API 文档�
 因此本轮不是猜测实际 live body，而是实现同时覆盖两个官方 raw 表示、仍然 fail-closed 的
 兼容边界，并拆分 content-free parser subcodes。不得为验证猜测而重试 provider。
 
+2026-08-18 的产品决策替代了“diversity 必须绑定 OCR”的启动约束：OCR parser 本身保持
+严格且不做 element-extension 放宽，但 `IMAGE_OCR_ENABLED=false` 成为受控视觉的合法运行
+模式。该模式不创建/调用图片 OCR adapter，也不因缺少 OCR 使 package 失败；代价是实际
+成图中的三层文字内容与顺序不再被机器验证。媒体签名/字节/1024×1024、存储完整性、
+provider identity、按需启用的视觉 audit 与感知相似度门继续执行。
+
 ## 2. Components and ownership
 
 ### 2.1 Settings and deployment contract
 
 新增四个默认安全、范围有界的配置：
 
-- `IMAGE_OCR_MODEL=glm-ocr`：只接受无空白、最长 120 字符的标识；启用受控视觉时必须
-  精确等于当前审核版本 `glm-ocr`。
+- `IMAGE_OCR_MODEL=glm-ocr`：只接受无空白、最长 120 字符的标识；受控视觉同时启用 OCR
+  时必须精确等于当前审核版本 `glm-ocr`，OCR 关闭时该模型不参与启动依赖。
 - `IMAGE_OCR_MAX_INPUT_BYTES=10485760`：图片原始字节上限，匹配供应商单图 10 MiB。
 - `IMAGE_OCR_MAX_RESPONSE_BYTES=1048576`：关闭 crop/layout visualization 后的响应上限。
 - `IMAGE_OCR_TIMEOUT_SECONDS=120`：连接超时仍复用 `AI_CONNECT_TIMEOUT_SECONDS`；总/read
@@ -39,7 +45,7 @@ OpenAPI 未规定 index base，官方 SDK examples/mocks 使用 0；API 文档�
 
 `.env.example`、acquisition API、content worker、Doctor 和 production evidence 必须投影
 同一组值。`IMAGE_OCR_ENABLED=false` 时新设置仍可解析但不会创建 adapter 或发起调用；
-`IMAGE_DIVERSITY_ENABLED=true` 仍要求 OCR 同时开启。
+`IMAGE_DIVERSITY_ENABLED=true` 不再要求 OCR 同时开启。
 
 ### 2.2 Provider adapter
 
@@ -113,13 +119,10 @@ OpenAPI 未规定 index base，官方 SDK examples/mocks 使用 0；API 文档�
 
 ```text
 validated generated PNG/JPEG
-  -> ImageTextRecognitionRequest (bytes + expected 3 lines + order=true)
-  -> Zhipu /layout_parsing (glm-ocr, no public URL)
-  -> bounded layout_details
-  -> deterministic text-line projection
-  -> existing exact visual-text validation
-  -> existing validation snapshot / typed failure
-  -> similarity only after OCR passes
+  -> if OCR enabled: private glm-ocr exact ordered visual-text validation
+  -> if OCR disabled: no recognizer/provider call; rendered text remains unverified
+  -> enabled identity/visual-audit gates
+  -> perceptual similarity gate
   -> MinIO write only after every required gate passes
 ```
 
@@ -131,6 +134,7 @@ the public API, durable metadata, or logs.
 | Condition | Result |
 | --- | --- |
 | Feature off / historical v1 | Existing behavior; no OCR client/call |
+| Diversity on / OCR off | Valid startup and package execution with zero OCR calls; rendered text is unverified, while all non-OCR gates remain required |
 | `glm-5.2` remains text model | Copy/governance unchanged |
 | Empty, PDF, WebP, oversized or malformed raster input | Provider-input typed failure before HTTP |
 | 400/422 unsupported request | `provider_request_rejected`, no raw body |
@@ -158,8 +162,9 @@ return to planning rather than expanding scope.
   policy, granular stage classification and every error row above.
 - Factory/config tests prove `AI_CHAT_MODEL=glm-5.2` and `IMAGE_OCR_MODEL=glm-ocr` remain separate,
   and quality auditor routing is unchanged.
-- Material worker fake-provider tests prove exact ordered OCR precedes similarity/storage and no
-  third image call exists.
+- Material worker fake-provider tests prove OCR-on exact ordering precedes similarity/storage and
+  OCR-off controlled execution makes zero recognizer calls while still reaching similarity and
+  safe storage/persistence; no third image call exists.
 - Compose/Doctor/evidence tests prove API/content worker equality and secret-free output.
 - Full backend, frontend contract-only, release, lock, Compose, Doctor, shell and diff gates run
   before deployment. Frontend stays local-only and is not deployed.

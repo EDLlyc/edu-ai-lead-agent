@@ -1182,3 +1182,47 @@ No fixture, OCR/Comfly call, enqueue, retry, resend, service dependency start, d
 or manual delivery occurred. The earlier paid-attempt state remains historically unknown and was
 not reinterpreted. Activation completed without failure or rollback; the protected env rollback is
 retained and no commit or push was made.
+
+## Phase 8 — OCR-independent controlled diversity (2026-08-18, local only)
+
+- [x] Preserve the strict Zhipu OCR parser and all OCR-on request/envelope/element/exact-text
+  behavior; do not implement the proposed unknown-element-extension tolerance.
+- [x] Remove only the Settings dependency that required OCR to be enabled whenever controlled
+  diversity was enabled. Retain reviewed `glm-ocr` identity enforcement when OCR is enabled.
+- [x] Add focused Settings coverage for `diversity=true` / `ocr=false`, including proof that the
+  disabled model value is not an activation dependency.
+- [x] Add a controlled material-worker regression proving valid raster generation proceeds with
+  zero recognizer calls, reaches the perceptual-similarity gate, stores once, and persists a passed
+  non-OCR validation snapshot without `image_ocr_not_configured`.
+- [x] Record the explicit tradeoff in PRD/design/spec/result/root-cause artifacts: requested visual
+  text is not machine-verified while OCR is off; raster, storage, identity, enabled audit, and
+  similarity gates remain in force.
+- [x] Run focused Ruff format/lint, strict mypy, affected pytest, and `git diff --check`; record the
+  exact local-only outcome. Do not access production or any external provider.
+
+Local gates: Ruff format-check/lint passed for the three changed Python files; explicit-config,
+no-incremental strict mypy passed for `config.py` and `material_package.py`; 221 affected Settings,
+image generation, material, worker wiring, and strict Zhipu OCR contract tests passed. The initial
+`uv run` command could not start because `uv` is not installed, so all recorded gates used the
+repository's `/root/anaconda3/envs/edu-ai` interpreter. `git diff --check` passed after the final
+task/spec edits. No production, SSH, Docker, network/provider, WeCom, enqueue, retry, replay,
+resend, commit, push, or deployment action occurred.
+
+Independent local review fixed the remaining cross-layer drift: Doctor now enforces the reviewed
+`glm-ocr` identity only when diversity and OCR are both enabled, while continuing to require API/
+worker equality for every OCR setting. `.env.example`, README, and both production operation guides
+now describe OCR-off text as unverified instead of rejecting the configuration. The worker test
+also carries a real perceptual-similarity result into persistence and proves the enabled audit and
+byte/hash-consistent storage paths remain active; factory coverage proves the disabled recognizer
+is not created under otherwise provider-usable settings.
+
+Final reviewer gates: 237 focused tests passed across Settings/image generation, material worker,
+content-worker validation wiring, strict Zhipu image/PDF OCR contracts, and release/Doctor
+contracts. Ruff format-check/lint passed for all five changed Python files; explicit-config,
+no-incremental strict mypy passed for config, material orchestration, adapter factory, and content
+worker. OCR-off Compose rendering with an intentionally unused OCR model, `bash -n` for Doctor,
+the unchanged-parser diff assertion, and `git diff --check` passed. No external action occurred.
+
+After those review fixes, the final repository-level `make backend-check` also passed: Ruff
+format/lint, strict mypy over 162 source files, and 969 backend tests at 81% coverage. Task context
+validation and `git diff --check` passed; no external action was introduced by the final gate.

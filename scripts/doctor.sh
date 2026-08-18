@@ -200,7 +200,18 @@ for key in keys:
         raise SystemExit(f"image diversity setting {key} must be present and identical")
 if services["acquisition-api"]["environment"]["IMAGE_DIVERSITY_MAX_REGENERATIONS"] != "1":
     raise SystemExit("image diversity permits exactly one regeneration")
-if services["acquisition-api"]["environment"]["IMAGE_OCR_MODEL"] != "glm-ocr":
+def compose_bool(value):
+    normalized = value.strip().casefold()
+    if normalized in {"1", "on", "t", "true", "y", "yes"}:
+        return True
+    if normalized in {"0", "off", "f", "false", "n", "no"}:
+        return False
+    raise SystemExit("image feature flags must be valid boolean values")
+
+environment = services["acquisition-api"]["environment"]
+diversity_enabled = compose_bool(environment["IMAGE_DIVERSITY_ENABLED"])
+ocr_enabled = compose_bool(environment["IMAGE_OCR_ENABLED"])
+if diversity_enabled and ocr_enabled and environment["IMAGE_OCR_MODEL"] != "glm-ocr":
     raise SystemExit("controlled image OCR must use the reviewed glm-ocr model")
 ' >/dev/null || fail "Image-diversity settings are not shared by API and content worker"
 pass "Image-diversity and bounded image-OCR settings are shared"

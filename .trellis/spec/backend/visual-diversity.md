@@ -27,7 +27,7 @@ reference set. It does not combine sibling news items or authorize a new publish
   `visual-brief-v2-controlled-diversity`, `brand-visual-selector-v2-novelty`,
   `image-prompt-v3-controlled-diversity`, `image-pipeline-v3-controlled-diversity`,
   `image-perceptual-hash-v1`, and `image-similarity-policy-v1`.
-- Every controlled v2/v3 image uses one finite, OCR-verifiable three-level text group in this
+- Every controlled v2/v3 brief and prompt requires one finite three-level text group in this
   exact order: brand signature `赛先生科学`, one allowlisted category title, and one allowlisted
   short category subtitle. The group sits in a restrained deep-science-blue rounded card with a
   small orange accent and must not cover a character face, scientific object, or main action.
@@ -37,9 +37,13 @@ reference set. It does not combine sibling news items or authorize a new publish
 - API and content worker must receive identical `IMAGE_DIVERSITY_*`,
   `IMAGE_VISUAL_BRIEF_VERSION`, `IMAGE_PERCEPTUAL_HASH_VERSION`,
   `IMAGE_SIMILARITY_POLICY_VERSION`, `IMAGE_SIMILARITY_THRESHOLD`, and bounded history settings.
-  Doctor enforces equality. The master flag defaults to false and requires image generation, the
-  approved selector, and exact OCR validation; startup fails closed if OCR is disabled.
-- Controlled image OCR is capability-routed independently from text generation. It uses
+  Doctor enforces equality. The master flag defaults to false and requires image generation and
+  the approved selector, but OCR is an independent optional gate. `IMAGE_DIVERSITY_ENABLED=true`
+  with `IMAGE_OCR_ENABLED=false` is valid: no recognizer is created or called, OCR absence is not a
+  package failure, and the generated image's realization and order of the requested text remain
+  explicitly unverified. Raster media/signature/size/1024x1024, storage integrity, provider
+  identity, enabled visual audit, and perceptual-diversity gates remain authoritative.
+- When enabled, controlled image OCR is capability-routed independently from text generation. It uses
   `IMAGE_OCR_MODEL=glm-ocr` on Zhipu `/layout_parsing`, while `AI_CHAT_MODEL=glm-5.2` remains the
   text model and the disabled image-quality auditor retains its existing OpenAI-compatible route.
   API and content worker receive identical OCR enablement, model, 10 MiB input, 1 MiB response,
@@ -102,7 +106,8 @@ reference set. It does not combine sibling news items or authorize a new publish
   only a neutral science-book/model or experiment apparatus; robotics, AI, astronomy, and
   competition objects require the corresponding governed category and cannot be introduced only
   to improve novelty.
-- After existing media, dimension, OCR, identity, and visual-audit gates pass, attempt 1 is
+- After existing media, dimension, identity, enabled OCR, and enabled visual-audit gates pass,
+  attempt 1 is
   perceptually compared with bounded successful history. A near duplicate activates the already
   reserved alternate exactly once with a distinct provider fingerprint. Attempt 2 that remains
   near-duplicate succeeds with `near_duplicate_after_retry`; it is not review-required and remains
@@ -125,7 +130,8 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Concurrent same-slot sibling reservation | Different complete-plan fingerprints under DB lock/unique constraints |
 | Exact SHA or perceptual distance at/below threshold on attempt 1 | Persist `regenerate`, discard transient raster, activate ordinal 2 |
 | Attempt 2 remains near duplicate and all other gates pass | One stored image, succeeded package, `accepted_with_warning`, no third call |
-| Controlled prompt has a missing, reordered, unapproved, or extra text line | Fail before provider use when detectable from the brief; otherwise OCR repair/failure remains authoritative |
+| Controlled prompt has a missing, reordered, unapproved, or extra text line | Fail before provider use when detectable from the brief; when OCR is enabled, OCR repair/failure remains authoritative for rendered text |
+| Diversity enabled with OCR disabled | Make no OCR provider call and do not fail for missing OCR; continue through raster, identity/enabled-audit, similarity, storage-integrity, and persistence gates while treating rendered visual text as unverified |
 | Empty/PDF/WebP/oversized/malformed OCR input | Typed provider-input failure before any HTTP call |
 | OCR authentication, rejection, rate limit, timeout, or temporary provider failure | Existing bounded typed provider failure; never consume the similarity repair budget |
 | Wrong OCR model identity | Terminal identity-mismatch failure before similarity/storage |
@@ -133,7 +139,7 @@ reference set. It does not combine sibling news items or authorize a new publish
 | Unit bbox or page-bounded raw pixel bbox | Normalize deterministically, then preserve geometric ordering |
 | Pixel bbox without both page axes, or outside a validated page | Terminal bbox scale/range code; never infer `0–1000` or another scale |
 | Optional/opaque non-text `image` content/bbox or outer transport extension | Ignore without projection/logging/persistence; unknown element keys remain terminal |
-| Safety/OCR/identity/media/audit failure | Existing typed failure/recovery path; similarity cannot override it |
+| Safety/enabled-OCR/identity/media/enabled-audit failure | Existing typed failure/recovery path; similarity cannot override it |
 | Provider/network failure | Existing bounded provider retry classification; does not consume the diversity retry |
 | Invalid image representation | One unchanged-plan output recovery, then catalog fallback; never consume or extend the diversity retry |
 | Unknown version bundle or regeneration count other than one | Startup validation fails closed |
@@ -153,7 +159,9 @@ reference set. It does not combine sibling news items or authorize a new publish
 - Domain tests cover the full controlled vocabulary, invalid combinations, deterministic ranking,
   relaxation, primary/alternate difference, prompt isolation, the exact three-line text allowlist,
   provider-rejection and representation recovery, and v1 dispatch/metadata compatibility.
-- Provider contract tests mirror both official raw representations: documented normalized boxes
+- Settings/material tests prove diversity accepts OCR-off configuration, makes zero recognizer
+  calls, and still reaches similarity and safe storage/persistence. OCR-on provider contract tests
+  mirror both official raw representations: documented normalized boxes
   and the MaaS pixel boxes exercised by the official SDK converter/tests. They cover zero-/one-
   origin and non-contiguous indices, flat/multi-page envelopes, optional and malformed dimensions,
   missing or unbound scale, page-level scale selection including a small pixel bbox at/below one,
@@ -189,12 +197,13 @@ if safe_and_near_duplicate(image):
 persist_safe_image(image, diversity_warning=safe_and_near_duplicate(image))
 ```
 
-The controlled prompt and OCR gate also share the same finite text contract:
+The controlled prompt and optional OCR gate share the same finite text contract when OCR is enabled:
 
 ```python
 expected_text = ("赛先生科学", allowlisted_title, allowlisted_subtitle)
 assert prompt_renders_exactly(expected_text)
-assert ocr_result.recognized_lines == expected_text
+if settings.image_ocr_enabled:
+    assert ocr_result.recognized_lines == expected_text
 ```
 
 ### 8. Break-loop prevention: raw provider contract drift

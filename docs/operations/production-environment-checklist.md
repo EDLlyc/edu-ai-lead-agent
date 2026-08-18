@@ -45,6 +45,7 @@ the value column blank in this checklist.
 | `AI_PLATFORM_API_KEY`                        | `________________`               | Yes             |
 | `IMAGE_PROVIDER_MODE` / image versions       | `________________`               | No              |
 | `IMAGE_DIVERSITY_ENABLED` / diversity versions | `________________`             | No              |
+| `IMAGE_OCR_ENABLED` / image OCR model and limits | `________________`           | No              |
 | diversity lookback / threshold / max retry   | `________________`               | No              |
 | `TOAPIS_API_KEY` or `COMFLY_API_KEY`         | `________________`               | Yes             |
 
@@ -61,12 +62,15 @@ the value column blank in this checklist.
       API contract, Doctor, and Compose gates pass.
 - [ ] API and content worker resolve the exact reviewed versions, seven-day lookback, bounded
       history, calibrated threshold, and one regeneration.
+- [ ] OCR enablement is recorded independently. If disabled, no recognizer is created or called and
+      rendered text remains unverified; if enabled, both services use the reviewed `glm-ocr` route.
 - [ ] Any separately authorized live acceptance uses one approved news item and performs no
       Enterprise WeChat send.
 - [ ] Seven-day observation records plan coverage, dominant non-identity reference share,
       retries/warnings, provider call/latency/cost, image success, and delivery outcomes.
 - [ ] A safe second near duplicate remains deliverable with `near_duplicate_after_retry`; no path
-      performs a third generation or lets similarity override safety, OCR, identity, or integrity.
+      performs a third generation or lets similarity override safety, enabled OCR, identity, or
+      integrity.
 - [ ] Rollback disables the flag without deleting 0021 rows or rewriting v2/delivered history.
 
 ## Enterprise WeChat group-webhook route

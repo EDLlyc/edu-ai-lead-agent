@@ -1342,3 +1342,59 @@ Both scripts passed `bash -n`. The focused local-only harness exited 0 with
 `51631d0b28769cc6e2e064dc94a98ea67ad5ffc975ab59f5c27ae6601a560b76` respectively. No SSH,
 Docker daemon, provider, network, production, commit or push action occurred. No matching
 `src/templates/markdown/spec/` directory exists, so no template was created.
+
+## OCR-independent controlled diversity — local implementation passed
+
+The 2026-08-18 product decision supersedes the prior OCR activation dependency. Settings now
+accept `IMAGE_DIVERSITY_ENABLED=true` with `IMAGE_OCR_ENABLED=false`; the configured OCR model is
+irrelevant while OCR is off, while controlled diversity still requires exact reviewed `glm-ocr`
+identity whenever OCR is enabled. The Zhipu adapter/parser was not relaxed or otherwise changed,
+including its terminal handling of unknown element fields and exact ordered visual text.
+
+The material worker already had the required independent branch, so no service logic change was
+needed. A new controlled regression proves OCR-off execution generates one media-valid image,
+makes zero recognizer calls even when a recognizer object is supplied, reaches the perceptual-
+similarity gate, writes immutable storage once, and persists a passed validation without
+`image_ocr_not_configured`. Existing OCR-on behavior remains covered by the unchanged strict
+provider/material tests.
+
+The accepted tradeoff is explicit: the controlled prompt/brief still requests the three finite
+brand/category lines, but the actual rendered text and order are not machine-verified while OCR is
+disabled. PNG/JPEG signature and byte bounds, 1024×1024 raster validation, provider identity,
+enabled visual audit, similarity decisions, and storage integrity remain required.
+
+Local gates passed: focused Ruff format-check and lint for all three changed Python files;
+explicit-config, no-incremental strict mypy for the two affected application modules; and 221
+affected Settings/image-generation/material/worker-wiring/strict-Zhipu-OCR tests. The initial
+`uv run` probe did not execute because `uv` is unavailable; the repository's existing
+`/root/anaconda3/envs/edu-ai` interpreter ran every recorded gate. Final `git diff --check` passed.
+No production/SSH/Docker/provider/network, WeCom, enqueue/retry/replay/resend, commit/push, or
+deployment action occurred.
+
+### Independent OCR-optional review
+
+The final local review found and fixed two remaining contract drifts. Doctor had still required
+`IMAGE_OCR_MODEL=glm-ocr` unconditionally; it now mirrors Settings by enforcing that identity only
+when diversity and OCR are both enabled, while retaining API/content-worker equality for all OCR
+settings. `.env.example`, README, the migration runbook, and the production checklist had also
+retained the superseded mandatory-OCR rollout wording and now state the accepted unverified-text
+tradeoff.
+
+The material regression was made non-tautological at the downstream boundaries: it supplies an
+otherwise callable recognizer and proves zero requests, runs an enabled audit, carries a real
+perceptual-similarity result into persistence, retains validated PNG/1024×1024 metadata, and checks
+that the stored descriptor byte count and SHA-256 match the generated body. A provider-shaped
+factory test separately proves OCR-off controlled diversity constructs no recognizer. The strict
+Zhipu adapter/parser implementation remained byte-for-byte outside the diff.
+
+Final gates passed: 237 focused pytest cases; Ruff format-check/lint for all five changed Python
+files; strict explicit-config, no-incremental mypy for Settings, material orchestration, adapter
+factory, and content worker; OCR-off Compose render/equality with a deliberately unused model;
+Doctor shell syntax; unchanged-parser assertion; and `git diff --check`. No production, SSH,
+provider, WeCom, enqueue/retry/replay/resend, deployment, commit, or push action occurred.
+
+The final full repository gate passed after those review edits: `make backend-check` reported Ruff
+format/lint clean, strict mypy clean across 162 source files, and 969 backend tests passed in 56.73
+seconds with 81% coverage. Task context validation and `git diff --check` also passed. This remains
+a local code/config capability change only; production still has OCR enabled until a separately
+authorized release and environment update set `IMAGE_OCR_ENABLED=false`.

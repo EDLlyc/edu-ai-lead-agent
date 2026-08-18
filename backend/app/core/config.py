@@ -417,9 +417,7 @@ class Settings(BaseSettings):
         if self.image_diversity_enabled:
             if not self.image_enabled:
                 raise ValueError("image diversity requires image generation to be enabled")
-            if not self.image_ocr_enabled:
-                raise ValueError("image diversity requires exact image OCR validation")
-            if self.image_ocr_model != "glm-ocr":
+            if self.image_ocr_enabled and self.image_ocr_model != "glm-ocr":
                 raise ValueError("image diversity requires the reviewed glm-ocr image OCR model")
             if not self.image_selector_enabled:
                 raise ValueError("image diversity requires approved visual asset selection")
