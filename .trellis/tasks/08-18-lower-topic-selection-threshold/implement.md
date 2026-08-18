@@ -19,19 +19,19 @@
 
 - [x] Update topic-selection/content-slot specs and task result evidence.
 - [x] Run `make backend-check`, API/Compose drift, diff and high-confidence secret scans.
-- [ ] Commit only reviewed repository files and push the exact full SHA to Codeup `main`.
+- [x] Commit only reviewed repository files and push the exact full SHA to Codeup `main`.
 
 ## Phase 4 — bounded production rollout
 
-- [ ] Build/validate an offline candidate from a clean detached worktree at the pushed SHA.
-- [ ] Verify production preflight: current `.7`, single `.env` owner, no `.release.env` override, healthy prior services and stable counters.
-- [ ] Stop services safely and create a fresh verified rollback set.
-- [ ] Install candidate source/image and atomically change `.env` from exact `.7` to exact `.8`.
-- [ ] Run Alembic-only no-op migration and restore all 8 services, dispatcher last.
-- [ ] Verify runtime `.8`/`0.59`, candidate image/source, restart0/health and zero release-caused provider/WeCom increment.
-- [ ] Do not enqueue, replay or resend today's runs.
+- [x] Build/validate an offline candidate from a clean detached worktree at the pushed SHA.
+- [x] Verify production preflight: current `.7`, single `.env` owner, no `.release.env` override, healthy prior services and stable counters.
+- [x] Stop services safely and create a fresh verified rollback set.
+- [x] Install candidate source/image and atomically change `.env` from exact `.7` to exact `.8`.
+- [x] Confirm the unchanged Alembic head and restore all 8 services, dispatcher last; no migration command was required.
+- [x] Verify runtime `.8`/`0.59`, candidate image/source, restart0/health and zero release-caused provider/WeCom increment.
+- [x] Do not enqueue, replay or resend today's runs.
 
 ## Phase 5 — closure
 
-- [ ] Record exact commit/image/backup/config/runtime evidence in `result.md`.
-- [ ] Run final diff/secret checks and archive the task when complete.
+- [x] Record exact commit/image/backup/config/runtime evidence in `result.md`.
+- [x] Run final diff/secret checks and archive the task when complete.
