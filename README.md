@@ -2,7 +2,7 @@
 
 面向科学教育与 AI 教育内容运营的多 Agent 系统：从权威来源采集、事实治理和选题排序，到品牌文案、配图、审核、素材包与内部交付，形成可追溯、可评测、可恢复的完整内容生产链。
 
-[项目亮点](#项目亮点) · [Agent Workbench](#agent-workbench-作品集) · [真实内容产出](#真实内容产出) · [系统流程](#系统流程) · [快速开始](#快速开始) · [文档导航](#文档导航)
+[项目亮点](#项目亮点) · [真实内容产出](#真实内容产出) · [系统流程](#系统流程) · [快速开始](#快速开始) · [文档导航](#文档导航)
 
 ## 项目亮点
 
@@ -12,16 +12,6 @@
 - **多模态生产**：生成家长友好文案、品牌配图和素材包，并执行文案、图片、相似度与可选 OCR 检查。
 - **Agent 工程化**：LangGraph 有界执行、强类型 Tool Registry、MCP stdio、引用校验、安全 Trace 和离线评测。
 - **可靠交付**：幂等任务、checkpoint、重试/回退、备份与内部企业微信交付；不提供公开平台无人审核发布。
-
-## Agent Workbench 作品集
-
-独立的本地只读 Workbench 展示 Function Calling、MCP、品牌 RAG、证据检索、文案校验与安全拒绝。默认使用脱敏 fixture，不需要模型密钥或生产数据库。
-
-[案例说明](./docs/portfolio/agent-workbench.md) · [真实运行证据](./docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/overview.md) · [评测清单](./backend/evals/agent_workbench/README.md)
-
-![Agent Workbench 三条真实本地运行](./docs/portfolio/assets/agent-workbench-real-runs-overview.png)
-
-三条 checked loopback API/UI 案例覆盖：多工具研究、确定性文案校验，以及发布/发送/shell 请求的零工具安全拒绝。它们证明执行链和安全契约可复现，不代表 live LLM accuracy。
 
 ## 真实内容产出
 
