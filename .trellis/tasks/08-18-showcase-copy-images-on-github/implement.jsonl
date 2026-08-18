@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-18-showcase-copy-images-on-github/prd.md", "reason": "两组已验证素材、展示范围与发布验收条件"}
+{"file": "README.md", "reason": "GitHub 首页现有作品集结构与插入位置"}

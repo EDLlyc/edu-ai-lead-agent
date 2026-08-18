@@ -32,6 +32,26 @@ Workbench 后端只绑定 `127.0.0.1:8010`，页面只在 Vite development 且�
 它验证可复现执行链和安全契约，不代表 live LLM accuracy；旧 trace 图仍只是 checked fixture
 design render。可用 `make agent-portfolio-capture` 生成新的真实本地证据包。
 
+## 真实内容产出
+
+以下两组文案与配图来自历史上已经完成校验的本地素材包，不是为展示页重新生成的内容。
+
+### 科学教育“做中学”
+
+<img src="./docs/portfolio/assets/content-showcase/science-learning-by-doing.png" alt="科学教育做中学主题配图" width="420">
+
+看到一条教育新闻想跟大家聊聊。7月29日，全国义务教育阶段科学教育"做中学"领航行动部署会在京召开，会议提到要针对"重知识传授、轻能力培育"的问题，引导学生从兴趣出发，提出问题、探究验证、反思交流，全面提升学生科学素养。
+
+[查看完整文案和验证信息](./docs/portfolio/content-showcase.md#science-learning-by-doing)
+
+### 脑机接口与人工智能
+
+<img src="./docs/portfolio/assets/content-showcase/brain-computer-interface-ai.png" alt="脑机接口与人工智能主题配图" width="420">
+
+🧠科学家用人工智能（让电脑学会理解人的想法）把脑信号变成文字，不用做手术就能读出人在打什么字。这项技术有望帮助失去说话能力的人重新跟外界沟通，让孩子看到知识真的能改变别人的生活🤝
+
+[查看完整文案和验证信息](./docs/portfolio/content-showcase.md#brain-computer-interface-ai)
+
 ## 前置条件
 
 - Conda
