@@ -1226,3 +1226,40 @@ the unchanged-parser diff assertion, and `git diff --check` passed. No external 
 After those review fixes, the final repository-level `make backend-check` also passed: Ruff
 format/lint, strict mypy over 162 source files, and 969 backend tests at 81% coverage. Task context
 validation and `git diff --check` passed; no external action was introduced by the final gate.
+
+## Phase 9 — OCR-off production activation and one authorized morning resend (2026-08-18)
+
+- [x] Commit and push exact source revision
+  `5d0a4caca97cc61edd201e26bf99f038500f107a` after the full backend gate. Preserve the unrelated
+  untracked Agent Workbench portfolio task.
+- [x] Build a network-disabled overlay image from the exact active production image, copying only
+  the reviewed runtime delta. Validate linux/amd64, the active rootfs prefix, non-root runtime,
+  `pip check`, all eight service imports, Settings `diversity=true` / `ocr=false`, and Alembic head
+  `20260815_0021` before transfer.
+- [x] Run the checksum-bound task-local operator once. Create fresh rollback
+  `20260818T010715Z-ocr-off`, stop and restore all eight services in dependency order, install the
+  exact reviewed source files atomically, change only `IMAGE_OCR_ENABLED=true` to `false`, and
+  retain `IMAGE_DIVERSITY_ENABLED=true`.
+- [x] Independently verify all eight services on candidate image
+  `sha256:886e6e212bfe2a6a21c3a2bd5826b7283f5d5fb76c2949201861d15892fa8f99`, running with restart
+  count zero, healthy API, full release marker `5d0a4caca97cc61edd201e26bf99f038500f107a`, and runtime
+  flags `false:true` (OCR:diversity).
+- [x] Requeue only the already-selected morning package image. The first local wrapper attempt had
+  a Python syntax error before HTTP; a read-only database check proved no mutation. The corrected
+  single request succeeded: image attempt count advanced from 1 to 2 and produced PNG 1024x1024.
+- [x] Because the original morning slot window had expired, create one deterministic, authorized
+  late formal direct-lane WeCom job for the same package, copy and image. Do not create a new
+  acquisition, topic, copy, package, or a second delivery job.
+- [x] Observe terminal delivery before stopping: job
+  `3d08d7fe-0926-47e2-a246-bc574bae26d9` reached `delivered`, with both text and image delivered,
+  one job attempt and exactly two child delivery attempts. Do not retry.
+- [x] Run an independent final read-only check: package image succeeded at attempt 2, exactly one
+  package delivery exists, provider counters are `439:51:51` for model invocations, image attempt
+  sum and WeCom child attempts, all eight services remain restart-zero on the candidate, API is
+  healthy, and the bounded five-minute severe-log count is zero.
+
+The release bundle SHA-256 was
+`e4583bb4e8b59f8f2be9f08dd0b17886a74562c6fec8ef8558080a7af635aba6`; the task-local operator
+SHA-256 is `e53527f8b1c1d9f42536e7df0af99c58c95e71911336bb7f4b38ede13bef3c9f`. The fresh rollback
+backup remains retained. No second image-provider call, duplicate WeCom job, topic replay, news
+acquisition, or manual content rewrite occurred.

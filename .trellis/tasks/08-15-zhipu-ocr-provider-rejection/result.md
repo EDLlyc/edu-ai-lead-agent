@@ -1398,3 +1398,37 @@ format/lint clean, strict mypy clean across 162 source files, and 969 backend te
 seconds with 81% coverage. Task context validation and `git diff --check` also passed. This remains
 a local code/config capability change only; production still has OCR enabled until a separately
 authorized release and environment update set `IMAGE_OCR_ENABLED=false`.
+
+## Production OCR-off release and authorized resend — succeeded
+
+The reviewed source revision `5d0a4caca97cc61edd201e26bf99f038500f107a` was committed and
+pushed to Codeup. A network-disabled overlay was built from the exact active production base and
+validated before transfer. Its immutable candidate image is
+`sha256:886e6e212bfe2a6a21c3a2bd5826b7283f5d5fb76c2949201861d15892fa8f99`; the compressed image
+bundle SHA-256 is `e4583bb4e8b59f8f2be9f08dd0b17886a74562c6fec8ef8558080a7af635aba6`.
+The task-local operator SHA-256 is
+`e53527f8b1c1d9f42536e7df0af99c58c95e71911336bb7f4b38ede13bef3c9f`.
+
+The checksum-bound activation completed once with fresh rollback backup
+`20260818T010715Z-ocr-off`. All eight application services now run the candidate image with restart
+count zero, the API is healthy, the full marker equals the target revision, and the effective
+runtime flags are `IMAGE_OCR_ENABLED=false` and `IMAGE_DIVERSITY_ENABLED=true`. The strict OCR
+implementation remains present but is not invoked while disabled; raster, visual audit,
+similarity, storage and delivery validation remain active.
+
+The already-selected morning package was recovered without creating new editorial content. Its
+single authorized image retry advanced the artifact from failed attempt 1 to succeeded attempt 2,
+producing an `image/png` raster at 1024x1024. A read-only check after a wrapper syntax error proved
+that no hidden first retry occurred, so there was no duplicate provider call.
+
+Because the original morning delivery window was already expired, one deterministic authorized
+late formal direct-lane delivery was created for the existing copy and image. Delivery
+`3d08d7fe-0926-47e2-a246-bc574bae26d9` reached terminal `delivered`: text `delivered`, image
+`delivered`, one job attempt and two child delivery attempts. Exactly one delivery exists for the
+package; no retry or second job was created.
+
+The independent final check retained all eight services on the candidate at restart zero, healthy
+API, flags `false:true`, successful image attempt 2, terminal delivery and bounded severe-log count
+zero. Final safe counters were `439:51:51` for model invocations, aggregate image attempts and
+WeCom child attempts. The rollback backup is retained. Production deployment and the requested
+single resend are complete.
