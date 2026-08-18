@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Verify canonical registry, live-eval honesty, read-only/local-only and production exclusion"}
+{"file": ".trellis/spec/frontend/agent-workbench.md", "reason": "Verify real-view reuse, accessibility, replay labeling and production tree-shaking"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify generated contracts, tests, accessibility and both production/portfolio builds"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify semantics remain consistent from fixtures/eval through UI/docs and CI"}
+{"file": ".trellis/tasks/08-17-agent-workbench-public-portfolio/research/public-portfolio-evidence.md", "reason": "Verify public-tree, permissions, license and publication boundaries against researched evidence"}
+{"file": ".trellis/tasks/08-18-agent-internship-project-improvement-audit/research/project-improvement-audit.md", "reason": "Verify delivered work addresses the highest-value recruiter gaps without feature sprawl"}

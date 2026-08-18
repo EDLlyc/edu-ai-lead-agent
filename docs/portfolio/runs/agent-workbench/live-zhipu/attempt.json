@@ -1,0 +1,11 @@
+{
+  "attempted_at": "2026-08-18T06:41:06Z",
+  "case_id": "multi-tool-research",
+  "capture_phase": "browser_capture_before_evidence_verification",
+  "max_agent_runs": 1,
+  "max_model_decisions": 4,
+  "retry_performed": false,
+  "screenshot_preserved": false,
+  "status": "failed_closed",
+  "typed_response_preserved": false
+}

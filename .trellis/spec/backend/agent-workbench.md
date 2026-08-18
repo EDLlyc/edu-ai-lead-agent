@@ -38,6 +38,10 @@ Do not create protocol-specific tool implementations or duplicate business rules
 - Eval: `cd backend && python -m evals.agent_workbench.runner --check`.
 - Digital-IP projection eval: `cd backend && python -m evals.digital_ip.runner --check`.
 - Portfolio gate: `make agent-portfolio-check`.
+- Real deterministic portfolio capture: `make agent-portfolio-capture`.
+- One-shot live preflight/capture: `make agent-portfolio-live-zhipu-preflight` followed by
+  `make agent-portfolio-live-zhipu-capture`; only the separately authorized operator may run the
+  second command.
 - Registry tools: `search_evidence`, `get_event`, `retrieve_brand_context`, `validate_copy`.
 
 ### 3. Contracts
@@ -80,6 +84,19 @@ Do not create protocol-specific tool implementations or duplicate business rules
 - CORS allows exactly `http://127.0.0.1:5173`, with no wildcard and no credentials.
 - Deterministic fixture mode is the default. OpenAI-compatible mode requires development, explicit
   live opt-in, a configured base URL/key, and is never part of CI-authoritative results.
+- Recruiter-facing real-run evidence starts independent Uvicorn and Vite processes on the exact
+  loopback ports, records a browser-originated POST without route fulfillment, and compares its
+  safe terminal/tool/citation/step projection with a separate direct HTTP probe. Run IDs and
+  latency are diagnostic and may differ. Screenshot JSON must be the response for the same browser
+  run shown in the screenshot.
+- The deterministic capture owns three sanitized cases in one checked manifest, strips PNG
+  metadata, stores only relative paths and SHA-256 hashes, scans public artifacts for credentials
+  and private paths, and cleans all child process groups on success, failure, or signal.
+- The authorized live capture selects only the multi-tool fixture case and performs exactly one
+  browser Agent run with at most four model decisions and no whole-case retry. It maps existing
+  local AI platform settings internally into the isolated Workbench process, accepts only the
+  credential-free official Zhipu API root, never passes provider settings to Vite, and reserves a
+  one-shot output path before the call. Typed failure is evidence and must not trigger a second run.
 - Public citation projection accepts normalized HTTPS only and rejects credentials, fragments, IP
   literals, ambiguous/local hostnames, and reserved/special-use suffixes such as `.test`, `.example`,
   `.invalid`, `.onion`, and `home.arpa`.
@@ -132,6 +149,9 @@ Do not create protocol-specific tool implementations or duplicate business rules
   canonical JSON/Markdown, and registry hash drift.
 - Final gates: `make agent-portfolio-check`, `make backend-check`, lock/OpenAPI/Alembic/Compose/Doctor
   checks, shell syntax, diff check, and scoped secret scan.
+- Portfolio capture harness: case-manifest schema/uniqueness/safe text, exact-host and port-collision
+  rejection, forbidden API interception, direct/UI semantic mismatch, process cleanup, PNG metadata,
+  relative-link/hash verification, and public-artifact privacy scanning.
 
 ### 7. Wrong vs Correct
 

@@ -1,0 +1,10 @@
+{
+  "api_interception": "none",
+  "browser_service_workers": "blocked",
+  "case_id": "safety-refusal",
+  "method": "POST",
+  "request_count": 1,
+  "request_url": "http://127.0.0.1:8010/api/v1/agent-workbench/runs",
+  "server_address": "127.0.0.1:8010",
+  "ui_origin": "http://127.0.0.1:5173"
+}

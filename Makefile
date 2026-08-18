@@ -10,6 +10,8 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
 	topic-rerank-eval \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
+	agent-portfolio-capture agent-portfolio-capture-check \
+	agent-portfolio-live-zhipu-preflight agent-portfolio-live-zhipu-capture \
 	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
 	backend-integration-test backend-check \
@@ -120,6 +122,19 @@ agent-portfolio-check: agent-api-contract-check
 	npm run test --prefix frontend -- --run \
 		src/features/agent-workbench src/app/App.test.tsx
 
+agent-portfolio-capture:
+	$(PY_RUN) python scripts/capture_agent_workbench.py deterministic
+
+agent-portfolio-capture-check:
+	@test -n "$(CAPTURE_DIR)" || { echo "CAPTURE_DIR is required" >&2; exit 2; }
+	$(PY_RUN) python scripts/capture_agent_workbench.py verify "$(CAPTURE_DIR)"
+
+agent-portfolio-live-zhipu-preflight:
+	$(PY_RUN) python scripts/capture_agent_workbench.py preflight-live
+
+agent-portfolio-live-zhipu-capture:
+	$(PY_RUN) python scripts/capture_agent_workbench.py live-zhipu --execute-authorized-once
+
 infra-up: env-init
 	docker compose up -d postgres minio minio-init
 
@@ -143,20 +158,24 @@ infra-logs:
 
 backend-format:
 	$(PY_RUN) ruff format backend deploy/release \
-		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
+		scripts/capture_agent_workbench.py
 
 backend-format-check:
 	$(PY_RUN) ruff format --check backend deploy/release \
-		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
+		scripts/capture_agent_workbench.py
 
 backend-lint:
 	$(PY_RUN) ruff check backend deploy/release \
-		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
+		scripts/capture_agent_workbench.py
 
 backend-typecheck:
 	$(PY_RUN) mypy backend/app backend/scripts deploy/release/contract.py \
 		deploy/release/deploy.py deploy/release/release_tool.py \
-		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py
+		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
+		scripts/capture_agent_workbench.py
 
 backend-test:
 	$(PY_RUN) pytest backend

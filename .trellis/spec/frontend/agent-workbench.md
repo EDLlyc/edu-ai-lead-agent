@@ -29,7 +29,13 @@ enqueue, retry, or server-management action.
 - Untrusted/model/source content is text only. Do not use `dangerouslySetInnerHTML`.
 - The App uses a development-only lazy import. A production Vite build must contain no workbench
   navigation, title, route, panel marker, or runnable workbench chunk even if the flag is set.
-- The screenshot is generated from sanitized fixture data without backend/provider/network access.
+- The stable design screenshot is generated from sanitized fixture data without
+  backend/provider/network access and must be labeled as a checked fixture render, not a real run.
+- Recruiter-facing runtime screenshots use the same development-only panel against real loopback
+  Uvicorn and Vite processes. Playwright must type the checked case query and observe the actual
+  POST to exact `127.0.0.1:8010`; route interception, response fulfillment, service workers, and a
+  parallel trace renderer are forbidden. The saved typed JSON and screenshot share the browser run
+  ID; a separate deterministic API probe may differ only in dynamic IDs/latency.
 
 ### 4. Validation & Error Matrix
 
@@ -63,7 +69,9 @@ enqueue, retry, or server-management action.
 - `make frontend-check` must pass both production and workbench OpenAPI drift, Prettier, ESLint,
   strict TypeScript, full Vitest, and production build.
 - A production build with the workbench flag set must still prove the feature markers/chunk absent.
-- Screenshot reproduction must use fixture interception only and pass a privacy review.
+- The design-fixture screenshot remains network-free. Real evidence capture must use the actual
+  generated-contract client and loopback API, prove exactly one browser POST per case, strip image
+  metadata, and pass hash/link/privacy review.
 
 ### 7. Wrong vs Correct
 

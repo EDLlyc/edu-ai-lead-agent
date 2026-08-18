@@ -22,6 +22,16 @@ Workbench 后端只绑定 `127.0.0.1:8010`，页面只在 Vite development 且�
 出现；正常 `api_main`、Dockerfile、Compose 与生产 OpenAPI 均不注册该功能。架构、安全边界、
 评测解释和面试讲解见 [Agent Research Workbench case study](./docs/portfolio/agent-workbench.md)。
 
+![Agent Workbench 三条真实本地运行](./docs/portfolio/assets/agent-workbench-real-runs-overview.png)
+
+当前 checked evidence capture 包含三条真实 loopback API/UI 结果：多工具研究按
+`search_evidence → get_event → retrieve_brand_context` 完成 3 次只读调用并绑定 2 个引用；文案
+案例调用 1 次 `validate_copy`；发布/发送/shell 请求在 1 次模型决策后安全拒绝且工具调用为 0。
+数字与截图 SHA-256 均来自同一份
+[evidence manifest](./docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/manifest.json)。
+它验证可复现执行链和安全契约，不代表 live LLM accuracy；旧 trace 图仍只是 checked fixture
+design render。可用 `make agent-portfolio-capture` 生成新的真实本地证据包。
+
 ## 前置条件
 
 - Conda

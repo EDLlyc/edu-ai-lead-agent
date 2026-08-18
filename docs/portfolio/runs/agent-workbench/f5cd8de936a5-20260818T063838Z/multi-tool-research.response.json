@@ -1,0 +1,271 @@
+{
+  "citations": [
+    {
+      "evidence_eligible": true,
+      "id": "10000000-0000-4000-8000-000000000003",
+      "kind": "evidence",
+      "source_name": "示例教育部门",
+      "title": "教育部门发布人工智能教育应用指导意见",
+      "url": "https://example.edu.cn/policy/ai-education-guidance"
+    },
+    {
+      "evidence_eligible": false,
+      "id": "20000000-0000-4000-8000-000000000001",
+      "kind": "brand_context",
+      "source_name": "赛先生品牌资料",
+      "title": "赛先生家长沟通原则（脱敏示例）",
+      "url": null
+    }
+  ],
+  "claims": [
+    {
+      "citation_ids": [
+        "10000000-0000-4000-8000-000000000003"
+      ],
+      "kind": "external_fact",
+      "text": "指导意见提出，学校应在安全、透明和教师监督下开展人工智能教育应用。"
+    },
+    {
+      "citation_ids": [
+        "20000000-0000-4000-8000-000000000001"
+      ],
+      "kind": "brand_statement",
+      "text": "用清楚、克制的语言连接科学事实与孩子的观察、提问和实践，不承诺升学结果。"
+    }
+  ],
+  "error_code": null,
+  "metrics": {
+    "completion_tokens": 0,
+    "duration_ms": 16,
+    "model_latency_ms": 0,
+    "model_turns": 4,
+    "prompt_tokens": 0,
+    "reasoning_tokens": 0,
+    "successful_tool_calls": 3,
+    "tool_calls": 3,
+    "tool_latency_ms": 0
+  },
+  "run_id": "746b080e-8bc2-4bef-99da-09ccf0a40585",
+  "status": "completed",
+  "steps": [
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "model_decision",
+      "model": "agent-policy-v1",
+      "ordinal": 1,
+      "prompt_tokens": 0,
+      "provider": "deterministic",
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    },
+    {
+      "argument_summary": {
+        "limit": 3,
+        "query_hash": "9c950d0dad9d0168",
+        "query_length": 53
+      },
+      "call_id": "policy-call-1",
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": null,
+      "kind": "tool_call",
+      "model": null,
+      "ordinal": 2,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "search_evidence"
+    },
+    {
+      "argument_summary": {},
+      "call_id": "policy-call-1",
+      "citation_ids": [
+        "10000000-0000-4000-8000-000000000003"
+      ],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "tool_result",
+      "model": null,
+      "ordinal": 3,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "search_evidence"
+    },
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "model_decision",
+      "model": "agent-policy-v1",
+      "ordinal": 4,
+      "prompt_tokens": 0,
+      "provider": "deterministic",
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    },
+    {
+      "argument_summary": {
+        "event_id": "10000000-0000-4000-8000-000000000001"
+      },
+      "call_id": "policy-call-2",
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": null,
+      "kind": "tool_call",
+      "model": null,
+      "ordinal": 5,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "get_event"
+    },
+    {
+      "argument_summary": {},
+      "call_id": "policy-call-2",
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "tool_result",
+      "model": null,
+      "ordinal": 6,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "get_event"
+    },
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "model_decision",
+      "model": "agent-policy-v1",
+      "ordinal": 7,
+      "prompt_tokens": 0,
+      "provider": "deterministic",
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    },
+    {
+      "argument_summary": {
+        "audience": "parents",
+        "document_kinds": [],
+        "limit": 3,
+        "query_hash": "9c950d0dad9d0168",
+        "query_length": 53,
+        "valid_on": "2026-08-16"
+      },
+      "call_id": "policy-call-3",
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": null,
+      "kind": "tool_call",
+      "model": null,
+      "ordinal": 8,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "retrieve_brand_context"
+    },
+    {
+      "argument_summary": {},
+      "call_id": "policy-call-3",
+      "citation_ids": [
+        "20000000-0000-4000-8000-000000000001"
+      ],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 1,
+      "kind": "tool_result",
+      "model": null,
+      "ordinal": 9,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": "retrieve_brand_context"
+    },
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 2,
+      "kind": "model_decision",
+      "model": "agent-policy-v1",
+      "ordinal": 10,
+      "prompt_tokens": 0,
+      "provider": "deterministic",
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    },
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [
+        "10000000-0000-4000-8000-000000000003",
+        "20000000-0000-4000-8000-000000000001"
+      ],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 2,
+      "kind": "final",
+      "model": null,
+      "ordinal": 11,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    }
+  ],
+  "summary": "可靠证据显示: 指导意见提出，学校应在安全、透明和教师监督下开展人工智能教育应用。 面向家长表达时可遵循: 用清楚、克制的语言连接科学事实与孩子的观察、提问和实践，不承诺升学结果。"
+}

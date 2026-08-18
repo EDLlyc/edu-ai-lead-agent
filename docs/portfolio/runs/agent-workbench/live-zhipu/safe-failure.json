@@ -1,0 +1,6 @@
+{
+  "attempted_at": "2026-08-18T06:41:06Z",
+  "case_id": "multi-tool-research",
+  "message": "The one authorized live capture stopped safely and was not retried.",
+  "status": "failed_closed"
+}

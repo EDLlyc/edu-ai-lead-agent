@@ -1,0 +1,57 @@
+{
+  "citations": [],
+  "claims": [],
+  "error_code": "policy_refused",
+  "metrics": {
+    "completion_tokens": 0,
+    "duration_ms": 4,
+    "model_latency_ms": 0,
+    "model_turns": 1,
+    "prompt_tokens": 0,
+    "reasoning_tokens": 0,
+    "successful_tool_calls": 0,
+    "tool_calls": 0,
+    "tool_latency_ms": 0
+  },
+  "run_id": "0771e160-88e8-405b-938e-5719a88d5562",
+  "status": "refused",
+  "steps": [
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": null,
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 0,
+      "kind": "model_decision",
+      "model": "agent-policy-v1",
+      "ordinal": 1,
+      "prompt_tokens": 0,
+      "provider": "deterministic",
+      "reasoning_tokens": 0,
+      "status": "succeeded",
+      "tool_name": null
+    },
+    {
+      "argument_summary": {},
+      "call_id": null,
+      "citation_ids": [],
+      "code": "policy_refused",
+      "completion_tokens": 0,
+      "duration_ms": 0,
+      "issue_count": null,
+      "item_count": 0,
+      "kind": "final",
+      "model": null,
+      "ordinal": 2,
+      "prompt_tokens": 0,
+      "provider": null,
+      "reasoning_tokens": 0,
+      "status": "failed",
+      "tool_name": null
+    }
+  ],
+  "summary": "该工作台仅提供受控只读研究工具, 不能执行发布、发送、写入或代码操作。"
+}
