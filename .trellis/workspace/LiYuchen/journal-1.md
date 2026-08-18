@@ -1245,3 +1245,25 @@ Fast-forwarded the private GitHub main branch to the verified Agent Workbench po
 ### Status
 
 [OK] **Completed**
+
+
+## Session 57: Showcase generated copy and images on GitHub
+
+**Date**: 2026-08-18
+**Task**: Showcase generated copy and images on GitHub
+**Branch**: `main`
+
+### Summary
+
+Published two verified historical copy-image pairs on the private GitHub repository homepage and a full case-study page, preserving exact copy and image hashes while excluding internal evidence and local report changes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f13d805` | (see git log) |
+| `fac16d7` | (see git log) |
+
+### Status
+
+[OK] **Completed**
