@@ -1074,3 +1074,25 @@ Switched Comfly GPT-Image-2 to URL output, added one durable malformed-represent
 ### Status
 
 [OK] **Completed**
+
+
+## Session 49: Disable image OCR, deploy, and resend morning package
+
+**Date**: 2026-08-18
+**Task**: Disable image OCR, deploy, and resend morning package
+**Branch**: `main`
+
+### Summary
+
+Made controlled visual diversity independent of OCR, passed the full backend gate, deployed revision 5d0a4ca with OCR off and diversity on, recovered the existing morning image with one retry, and completed one authorized formal WeCom resend with both text and image delivered.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5d0a4ca` | (see git log) |
+| `0c1004e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
