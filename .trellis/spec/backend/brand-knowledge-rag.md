@@ -22,6 +22,9 @@ user or public search role.
 - Retrieval: `POST /api/v1/brand-context/retrieve` -> bounded internal copy-generation
   `BrandContextResponse` with `evidence_eligible=false`; the HTTP route also supports controlled
   operator diagnostics.
+- Digital-IP profile: `GET /api/v1/digital-ip/profile` -> one read-only
+  `DigitalIpProfileResponse` for `sai-xiansheng-xiao-sai`, joining active-ready version metadata
+  with a bounded safe projection of the private visual catalog.
 - Worker: `python -m app.content_worker_main`; it alternates topic-selection and brand-ingestion
   claims when both queues contain work.
 - Offline acceptance: `AI_PROVIDER_MODE=fake`; production provider: `AI_PROVIDER_MODE=zhipu` with
@@ -72,7 +75,28 @@ either axis, and 32 million pixels total; discovery stops with an error after 10
 private manifest output must remain inside the resolved materials root and must not be a symbolic
 link.
 
-### 3.1 Structure-aware chunks and retrieval diversity
+### 3.1 Read-only digital-IP projection
+
+- The profile is derived from the existing active document authority. A document contributes only
+  when its `active_version_id` resolves to a version whose state is both `active=true` and `ready`;
+  inactive, stale, queued, processing, and failed versions do not contribute tags or bindings.
+- Fixed identity fields describe the existing Sai Xiansheng/Xiao Sai portfolio only. Tone, safety,
+  visual, approved-example, prohibited-language, and positioning coverage point back to active
+  version IDs instead of copying a second body of mutable rule text.
+- The visual branch reuses `load_visual_catalog` and returns at most 12 approved assets for
+  `sai-xiansheng` or `xiao-sai`. Its response allowlist contains short digest references, display
+  metadata, kind, characters, roles, topics, poses, scenes, dimensions, approval, and priority. It
+  never contains a filename, relative/absolute path, object key, URL, bytes, or full digest. Apply
+  the allowlist to values as well as field names: path-, URL-, and full-digest-shaped metadata is
+  rejected, while a legacy filename-derived display name is replaced by a neutral safe label.
+- Manifest filesystem work runs outside the async event loop. Missing, malformed, unsafe, or
+  inconsistent manifests produce `visual_catalog_status=unavailable`; a valid catalog with no
+  matching approved assets produces `empty`. Both preserve the independent text profile.
+- `profile_fingerprint` is a deterministic SHA-256 over the fixed identity, ordered active version
+  IDs, aggregate tags, visual status/version, and bounded safe asset references. The entire profile
+  remains `evidence_eligible=false`.
+
+### 3.2 Structure-aware chunks and retrieval diversity
 
 The active chunk contract is `brand-chunk-v2-structure-aware`. After text normalization, the parser
 uses the configured maximum chunk size and overlap while preferring, in order, paragraph breaks,
@@ -103,6 +127,8 @@ without changing the evidence-ineligible brand-context boundary.
 | Version not ready | Activation returns HTTP 409 |
 | Inactive, expired, wrong-audience, wrong-kind, or wrong-model chunk | Excluded before ranking |
 | Retrieval succeeds | `evidence_eligible=false` is always present |
+| Visual manifest missing/malformed/private file changed | Profile succeeds with typed `unavailable`; no path or raw exception |
+| Visual catalog valid but no approved Sai/Xiao Sai asset | Profile succeeds with typed `empty` and no fabricated asset |
 | Visual asset is a sidecar, symlink, malformed/oversized PNG, or unsupported file | Skip it and increment the bounded unsupported/sidecar count; never add it to text RAG |
 | Manifest output escapes the private materials root or is a symlink | Reject before writing |
 

@@ -5,6 +5,8 @@ export type BrandDocument = components["schemas"]["BrandDocumentResponse"];
 export type BrandDocumentList =
   components["schemas"]["BrandDocumentListResponse"];
 export type BrandContext = components["schemas"]["BrandContextResponse"];
+export type DigitalIpProfile =
+  components["schemas"]["DigitalIpProfileResponse"];
 export type BrandUploadAccepted =
   components["schemas"]["BrandUploadAcceptedResponse"];
 export type BrandDocumentKind = components["schemas"]["BrandDocumentKind"];
@@ -22,6 +24,16 @@ export async function listBrandDocuments(): Promise<BrandDocumentList> {
   if (data === undefined) {
     throw new Error(
       error === undefined ? "brand_list_failed" : "brand_api_error",
+    );
+  }
+  return data;
+}
+
+export async function getDigitalIpProfile(): Promise<DigitalIpProfile> {
+  const { data, error } = await apiClient.GET("/api/v1/digital-ip/profile");
+  if (data === undefined) {
+    throw new Error(
+      error === undefined ? "digital_ip_profile_failed" : "brand_api_error",
     );
   }
   return data;

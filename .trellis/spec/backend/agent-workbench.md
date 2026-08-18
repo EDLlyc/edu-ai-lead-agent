@@ -36,6 +36,7 @@ Do not create protocol-specific tool implementations or duplicate business rules
 
 - MCP: `python -m app.agent_mcp_main` over stdio only.
 - Eval: `cd backend && python -m evals.agent_workbench.runner --check`.
+- Digital-IP projection eval: `cd backend && python -m evals.digital_ip.runner --check`.
 - Portfolio gate: `make agent-portfolio-check`.
 - Registry tools: `search_evidence`, `get_event`, `retrieve_brand_context`, `validate_copy`.
 
@@ -82,6 +83,11 @@ Do not create protocol-specific tool implementations or duplicate business rules
 - Public citation projection accepts normalized HTTPS only and rejects credentials, fragments, IP
   literals, ambiguous/local hostnames, and reserved/special-use suffixes such as `.test`, `.example`,
   `.invalid`, `.onion`, and `home.arpa`.
+- The separate five-case digital-IP eval reuses the versioned profile projection for positioning,
+  tone, prohibited-language, safety, and visual fixtures. Its canonical JSON/Markdown reports
+  fixture contract conformance, expected kind/tag coverage, prohibited-rule hits, and
+  brand-as-fact violations. It must never be described as live retrieval, embedding, or model
+  accuracy.
 
 ### 4. Validation & Error Matrix
 

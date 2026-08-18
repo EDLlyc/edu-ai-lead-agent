@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Preserve backend layer boundaries, evidence/brand separation, read-only APIs, and no-publish contract."}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Reuse immutable brand versions, activation, hybrid retrieval, provider identity, private metadata, and safe visual-asset boundaries."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Keep Agent tool reuse, fixture-eval honesty, bounded outputs, and brand-context evidence ineligibility."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Implement typed manifest-unavailable and validation outcomes without leaking paths or raw exceptions."}
+{"file":".trellis/tasks/08-18-enhance-digital-ip-library/research/focused-quality-contract.md","reason":"Apply the exact scoped quality, API drift, privacy, negative-path, and no-deploy gates without truncating the large backend quality spec."}
+{"file":".trellis/spec/frontend/index.md","reason":"Preserve generated API types, accessibility, manual-only actions, and the existing internal workspace composition."}
+{"file":".trellis/spec/frontend/brand-knowledge-workspace.md","reason":"Extend the existing upload/status/retrieval surface rather than creating a duplicate product workflow."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Consume generated OpenAPI contracts and validate localStorage as an untrusted runtime boundary."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Cover focused component, accessibility, type, lint, and generated-contract checks."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Keep profile, visual projection, retrieval, feedback, eval, and UI contracts aligned across layers."}

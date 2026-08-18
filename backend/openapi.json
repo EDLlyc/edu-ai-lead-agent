@@ -3260,6 +3260,387 @@
         "title": "DailyTopicResponse",
         "type": "object"
       },
+      "DigitalIpCharacterResponse": {
+        "properties": {
+          "character_id": {
+            "title": "Character Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "character_id",
+          "display_name",
+          "role"
+        ],
+        "title": "DigitalIpCharacterResponse",
+        "type": "object"
+      },
+      "DigitalIpDocumentBindingResponse": {
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/BrandAudience"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_kind": {
+            "$ref": "#/components/schemas/BrandDocumentKind"
+          },
+          "safety_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safety Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tone_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tone Tags",
+            "type": "array"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "visual_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Visual Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_id",
+          "version_id",
+          "version",
+          "title",
+          "document_kind",
+          "audience",
+          "valid_from",
+          "valid_until",
+          "tone_tags",
+          "safety_tags",
+          "visual_tags"
+        ],
+        "title": "DigitalIpDocumentBindingResponse",
+        "type": "object"
+      },
+      "DigitalIpProfileResponse": {
+        "description": "Read-only projection joining active brand metadata with safe visual metadata.",
+        "properties": {
+          "active_document_count": {
+            "minimum": 0.0,
+            "title": "Active Document Count",
+            "type": "integer"
+          },
+          "active_version_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Active Version Ids",
+            "type": "array"
+          },
+          "audiences": {
+            "items": {
+              "$ref": "#/components/schemas/BrandAudience"
+            },
+            "title": "Audiences",
+            "type": "array"
+          },
+          "brand_slug": {
+            "const": "sai-xiansheng",
+            "title": "Brand Slug",
+            "type": "string"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/DigitalIpCharacterResponse"
+            },
+            "title": "Characters",
+            "type": "array"
+          },
+          "content_scenarios": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Scenarios",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "document_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/DigitalIpDocumentBindingResponse"
+            },
+            "title": "Document Bindings",
+            "type": "array"
+          },
+          "document_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/BrandDocumentKind"
+            },
+            "title": "Document Kinds",
+            "type": "array"
+          },
+          "evidence_eligible": {
+            "const": false,
+            "default": false,
+            "description": "Always false: digital-IP guidance is not external-fact evidence.",
+            "title": "Evidence Eligible",
+            "type": "boolean"
+          },
+          "identity_summary": {
+            "title": "Identity Summary",
+            "type": "string"
+          },
+          "profile_fingerprint": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Profile Fingerprint",
+            "type": "string"
+          },
+          "profile_id": {
+            "const": "sai-xiansheng-xiao-sai",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "profile_version": {
+            "const": "digital-ip-profile-v1",
+            "title": "Profile Version",
+            "type": "string"
+          },
+          "safety_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safety Tags",
+            "type": "array"
+          },
+          "tone_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tone Tags",
+            "type": "array"
+          },
+          "visual_assets": {
+            "items": {
+              "$ref": "#/components/schemas/DigitalIpVisualAssetResponse"
+            },
+            "title": "Visual Assets",
+            "type": "array"
+          },
+          "visual_catalog_status": {
+            "$ref": "#/components/schemas/DigitalIpVisualCatalogStatus"
+          },
+          "visual_catalog_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Catalog Version"
+          },
+          "visual_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Visual Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile_id",
+          "profile_version",
+          "display_name",
+          "brand_slug",
+          "identity_summary",
+          "characters",
+          "audiences",
+          "channels",
+          "content_scenarios",
+          "document_bindings",
+          "active_document_count",
+          "active_version_ids",
+          "document_kinds",
+          "tone_tags",
+          "safety_tags",
+          "visual_tags",
+          "visual_catalog_status",
+          "visual_catalog_version",
+          "visual_assets",
+          "profile_fingerprint"
+        ],
+        "title": "DigitalIpProfileResponse",
+        "type": "object"
+      },
+      "DigitalIpVisualAssetResponse": {
+        "description": "Browser-safe metadata: no path, URL, object key, filename, bytes, or full digest.",
+        "properties": {
+          "approved": {
+            "const": true,
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "asset_kind": {
+            "$ref": "#/components/schemas/VisualAssetKind"
+          },
+          "asset_ref": {
+            "maxLength": 16,
+            "minLength": 16,
+            "title": "Asset Ref",
+            "type": "string"
+          },
+          "characters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Characters",
+            "type": "array"
+          },
+          "checksum_ref": {
+            "maxLength": 16,
+            "minLength": 16,
+            "title": "Checksum Ref",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "height": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "poses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Poses",
+            "type": "array"
+          },
+          "priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scene_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scene Tags",
+            "type": "array"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "width": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_ref",
+          "checksum_ref",
+          "display_name",
+          "asset_kind",
+          "characters",
+          "roles",
+          "topics",
+          "poses",
+          "scene_tags",
+          "width",
+          "height",
+          "approved",
+          "priority"
+        ],
+        "title": "DigitalIpVisualAssetResponse",
+        "type": "object"
+      },
+      "DigitalIpVisualCatalogStatus": {
+        "enum": [
+          "ready",
+          "empty",
+          "unavailable"
+        ],
+        "title": "DigitalIpVisualCatalogStatus",
+        "type": "string"
+      },
       "DuplicateRelationResponse": {
         "properties": {
           "created_at": {
@@ -6817,6 +7198,16 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VisualAssetKind": {
+        "description": "The single intended use of one private catalog asset.",
+        "enum": [
+          "identity",
+          "action",
+          "style"
+        ],
+        "title": "VisualAssetKind",
+        "type": "string"
+      },
       "VisualBriefResponse": {
         "properties": {
           "asset_tags": {
@@ -8155,6 +8546,28 @@
         "summary": "Read Daily Topic",
         "tags": [
           "topic-selection"
+        ]
+      }
+    },
+    "/api/v1/digital-ip/profile": {
+      "get": {
+        "description": "Projects active-ready brand-version metadata and bounded approved visual-asset metadata. It exposes no private paths or image bytes, and the result is never factual evidence.",
+        "operationId": "read_digital_ip_profile_api_v1_digital_ip_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigitalIpProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read the local Sai Xiansheng and Xiao Sai digital-IP profile",
+        "tags": [
+          "brand-knowledge"
         ]
       }
     },

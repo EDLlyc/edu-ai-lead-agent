@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
@@ -13,6 +14,8 @@ from app.api.v1.routes.brand_knowledge_views import (
     brand_context_chunk_response,
     brand_document_response,
     brand_ingestion_job_response,
+    digital_ip_document_bindings,
+    digital_ip_profile_response,
 )
 from app.application.ports.brand_knowledge import BrandEmbeddingModel, BrandOriginalStore
 from app.application.services.brand_knowledge import retrieve_brand_context
@@ -24,6 +27,13 @@ from app.domain.brand_knowledge import (
     BrandUploadMetadata,
     validated_brand_upload,
 )
+from app.domain.digital_ip import (
+    project_digital_ip_profile,
+    project_visual_catalog,
+    unavailable_visual_catalog,
+)
+from app.domain.visual_assets import VisualAssetError
+from app.infrastructure.brand.visual_catalog import load_visual_catalog
 from app.infrastructure.db.brand_knowledge import (
     PostgresBrandKnowledgeRepository,
     activate_brand_version,
@@ -39,6 +49,7 @@ from app.schemas.brand_knowledge import (
     BrandIngestionJobResponse,
     BrandRetrievalRequest,
     BrandUploadAcceptedResponse,
+    DigitalIpProfileResponse,
 )
 
 router = APIRouter(tags=["brand-knowledge"])
@@ -129,6 +140,33 @@ async def read_brand_documents(
         items=[brand_document_response(projection) for projection in projections],
         count=len(projections),
     )
+
+
+@router.get(
+    "/digital-ip/profile",
+    response_model=DigitalIpProfileResponse,
+    summary="Read the local Sai Xiansheng and Xiao Sai digital-IP profile",
+    description=(
+        "Projects active-ready brand-version metadata and bounded approved visual-asset metadata. "
+        "It exposes no private paths or image bytes, and the result is never factual evidence."
+    ),
+)
+async def read_digital_ip_profile(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DigitalIpProfileResponse:
+    projections = await list_brand_documents(session)
+    settings: Settings = request.app.state.settings
+    try:
+        loaded = await asyncio.to_thread(load_visual_catalog, settings.image_asset_manifest)
+        visual_catalog = project_visual_catalog(loaded.catalog)
+    except (OSError, RuntimeError, VisualAssetError):
+        visual_catalog = unavailable_visual_catalog()
+    profile = project_digital_ip_profile(
+        digital_ip_document_bindings(projections),
+        visual_catalog,
+    )
+    return digital_ip_profile_response(profile)
 
 
 @router.get("/brand-documents/{document_id}", response_model=BrandDocumentResponse)

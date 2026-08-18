@@ -331,6 +331,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-ip/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the local Sai Xiansheng and Xiao Sai digital-IP profile
+         * @description Projects active-ready brand-version metadata and bounded approved visual-asset metadata. It exposes no private paths or image bytes, and the result is never factual evidence.
+         */
+        get: operations["read_digital_ip_profile_api_v1_digital_ip_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events": {
         parameters: {
             query?: never;
@@ -1876,6 +1896,144 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
+        /** DigitalIpCharacterResponse */
+        DigitalIpCharacterResponse: {
+            /** Character Id */
+            character_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Role */
+            role: string;
+        };
+        /** DigitalIpDocumentBindingResponse */
+        DigitalIpDocumentBindingResponse: {
+            audience: components["schemas"]["BrandAudience"];
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            document_kind: components["schemas"]["BrandDocumentKind"];
+            /** Safety Tags */
+            safety_tags: string[];
+            /** Title */
+            title: string;
+            /** Tone Tags */
+            tone_tags: string[];
+            /** Valid From */
+            valid_from: string | null;
+            /** Valid Until */
+            valid_until: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Visual Tags */
+            visual_tags: string[];
+        };
+        /**
+         * DigitalIpProfileResponse
+         * @description Read-only projection joining active brand metadata with safe visual metadata.
+         */
+        DigitalIpProfileResponse: {
+            /** Active Document Count */
+            active_document_count: number;
+            /** Active Version Ids */
+            active_version_ids: string[];
+            /** Audiences */
+            audiences: components["schemas"]["BrandAudience"][];
+            /**
+             * Brand Slug
+             * @constant
+             */
+            brand_slug: "sai-xiansheng";
+            /** Channels */
+            channels: string[];
+            /** Characters */
+            characters: components["schemas"]["DigitalIpCharacterResponse"][];
+            /** Content Scenarios */
+            content_scenarios: string[];
+            /** Display Name */
+            display_name: string;
+            /** Document Bindings */
+            document_bindings: components["schemas"]["DigitalIpDocumentBindingResponse"][];
+            /** Document Kinds */
+            document_kinds: components["schemas"]["BrandDocumentKind"][];
+            /**
+             * Evidence Eligible
+             * @description Always false: digital-IP guidance is not external-fact evidence.
+             * @default false
+             * @constant
+             */
+            evidence_eligible: false;
+            /** Identity Summary */
+            identity_summary: string;
+            /** Profile Fingerprint */
+            profile_fingerprint: string;
+            /**
+             * Profile Id
+             * @constant
+             */
+            profile_id: "sai-xiansheng-xiao-sai";
+            /**
+             * Profile Version
+             * @constant
+             */
+            profile_version: "digital-ip-profile-v1";
+            /** Safety Tags */
+            safety_tags: string[];
+            /** Tone Tags */
+            tone_tags: string[];
+            /** Visual Assets */
+            visual_assets: components["schemas"]["DigitalIpVisualAssetResponse"][];
+            visual_catalog_status: components["schemas"]["DigitalIpVisualCatalogStatus"];
+            /** Visual Catalog Version */
+            visual_catalog_version: string | null;
+            /** Visual Tags */
+            visual_tags: string[];
+        };
+        /**
+         * DigitalIpVisualAssetResponse
+         * @description Browser-safe metadata: no path, URL, object key, filename, bytes, or full digest.
+         */
+        DigitalIpVisualAssetResponse: {
+            /**
+             * Approved
+             * @constant
+             */
+            approved: true;
+            asset_kind: components["schemas"]["VisualAssetKind"];
+            /** Asset Ref */
+            asset_ref: string;
+            /** Characters */
+            characters: string[];
+            /** Checksum Ref */
+            checksum_ref: string;
+            /** Display Name */
+            display_name: string;
+            /** Height */
+            height: number;
+            /** Poses */
+            poses: string[];
+            /** Priority */
+            priority: number;
+            /** Roles */
+            roles: string[];
+            /** Scene Tags */
+            scene_tags: string[];
+            /** Topics */
+            topics: string[];
+            /** Width */
+            width: number;
+        };
+        /**
+         * DigitalIpVisualCatalogStatus
+         * @enum {string}
+         */
+        DigitalIpVisualCatalogStatus: "ready" | "empty" | "unavailable";
         /** DuplicateRelationResponse */
         DuplicateRelationResponse: {
             /**
@@ -3238,6 +3396,12 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * VisualAssetKind
+         * @description The single intended use of one private catalog asset.
+         * @enum {string}
+         */
+        VisualAssetKind: "identity" | "action" | "style";
         /** VisualBriefResponse */
         VisualBriefResponse: {
             /** Asset Tags */
@@ -4024,6 +4188,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_digital_ip_profile_api_v1_digital_ip_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigitalIpProfileResponse"];
                 };
             };
         };

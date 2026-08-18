@@ -15,6 +15,8 @@ retrieved primarily by the downstream WeChat Moments copy-generation node.
   [`BrandKnowledgePanel.tsx`](../../../frontend/src/features/brand/BrandKnowledgePanel.tsx).
 - Wire adapter: [`api.ts`](../../../frontend/src/features/brand/api.ts) consumes generated OpenAPI
   `components`; it does not define duplicate response interfaces.
+- Digital-IP projection: `GET /api/v1/digital-ip/profile` is loaded by the feature hook and rendered
+  above the existing ingestion/status rails.
 - Server state: [`hooks.ts`](../../../frontend/src/features/brand/hooks.ts) owns query keys,
   mutations, invalidation, and bounded polling.
 - Styling: `BrandKnowledgePanel.module.css`; tests:
@@ -36,6 +38,21 @@ retrieved primarily by the downstream WeChat Moments copy-generation node.
   that it is not a parent-facing service and cannot prove external facts.
 - Audience is fixed to `parents` as generated-copy target metadata, not as an operator role.
 - Generated wire types under `src/lib/api/generated/` are generator-owned and never edited by hand.
+- The profile view shows fixed character identity, active version bindings, aggregate tone/safety/
+  visual tags, approved visual metadata, and a shortened profile fingerprint. Missing visual
+  metadata renders the backend's `empty` or `unavailable` state; the browser never receives a
+  filename, private path, object key, URL, bytes, or full asset digest.
+- Retrieval diagnostics display document title, version reference, kind, tone/safety/visual tags,
+  full-text/vector/fused scores, and the explicit `evidence_eligible=false` boundary.
+- Retrieval feedback is browser-local only under the versioned
+  `edu-ai-lead-agent.digital-ip-feedback.v1` namespace. The runtime-validated ledger stores at most
+  50 records containing query/profile fingerprints, bounded chunk/version IDs, an
+  accepted/rejected decision, a controlled reason, timestamp, and optional 160-character note. It
+  stores no returned chunk text and fails safe on malformed or inaccessible storage. Decoding
+  rebuilds each record from this explicit field allowlist so unknown legacy or injected properties
+  cannot be re-persisted.
+- Feedback never calls a backend write, activates a version, changes rules, promotes an approved
+  example, trains a model, sends content, or publishes. Users can clear the complete local ledger.
 
 ### 4. Validation & Error Matrix
 
@@ -50,6 +67,9 @@ retrieved primarily by the downstream WeChat Moments copy-generation node.
 | Active document | Show keyboard-accessible deactivation button |
 | Context diagnostic returns no items | Empty result, never fabricate brand guidance |
 | Context retrieval/provider failure | Accessible alert; no stale success claim |
+| Profile request pending/failed | Accessible status/alert; document workflow stays usable |
+| Visual catalog unavailable/empty | Honest typed empty state; text identity remains visible |
+| Browser storage malformed/inaccessible | Ignore malformed records or show a bounded save error; do not crash |
 | Any state | No post/publish button or social credentials |
 
 ### 5. Good / Base / Bad Cases

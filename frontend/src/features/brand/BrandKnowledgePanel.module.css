@@ -36,6 +36,339 @@
   letter-spacing: 0.1em;
 }
 
+.profileShell {
+  min-height: 14rem;
+  margin-block-end: var(--space-5);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.profileShell > p,
+.profileEmpty {
+  display: grid;
+  min-height: 14rem;
+  margin: 0;
+  padding: var(--space-6);
+  place-content: center;
+  text-align: center;
+}
+
+.profileEmpty p {
+  color: var(--text-muted);
+}
+
+.profileCard {
+  padding: clamp(1.5rem, 3vw, 3rem);
+}
+
+.profileTopline,
+.visualHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.profileTopline p,
+.visualHeader p,
+.feedbackPanel > div:first-child > p {
+  margin: 0 0 var(--space-3);
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+}
+
+.profileTopline h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 5vw, 5rem);
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+}
+
+.profileTopline > div:first-child > span,
+.feedbackPanel > div:first-child > span {
+  display: block;
+  margin-block-start: var(--space-3);
+  color: var(--text-muted);
+}
+
+.fingerprint {
+  display: grid;
+  min-width: 15rem;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+}
+
+.fingerprint span,
+.fingerprint small,
+.visualHeader > span {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+}
+
+.fingerprint code {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.characterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-block-start: var(--space-6);
+  border-block: 1px solid var(--border-strong);
+}
+
+.characterGrid > div {
+  display: grid;
+  padding: var(--space-5);
+  border-inline-end: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+}
+
+.characterGrid > div:last-child {
+  border-inline-end: 0;
+}
+
+.characterGrid span,
+.characterGrid small {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.characterGrid strong {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+}
+
+.profileStats {
+  display: grid;
+  grid-template-columns: 0.55fr 0.8fr 1fr 1.2fr;
+  margin: 0;
+  border-block-end: 1px solid var(--border-strong);
+}
+
+.profileStats > div {
+  padding: var(--space-4);
+  border-inline-end: 1px solid var(--border-subtle);
+}
+
+.profileStats > div:last-child {
+  border-inline-end: 0;
+}
+
+.profileStats dt,
+.visualGrid dt,
+.scoreGrid dt {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+}
+
+.profileStats dd,
+.bindingList small,
+.visualGrid dd,
+.scoreGrid dd {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.bindingPanel {
+  margin-block-start: var(--space-6);
+}
+
+.bindingPanel > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.bindingPanel > div:first-child p {
+  margin: 0;
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+}
+
+.bindingPanel h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.bindingList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  gap: var(--space-3);
+}
+
+.bindingList li {
+  display: grid;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  gap: var(--space-2);
+}
+
+.bindingList li > div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.bindingList small,
+.bindingEmpty {
+  color: var(--text-faint);
+}
+
+.bindingEmpty {
+  margin-block-end: 0;
+}
+
+.personaGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-block-start: var(--space-6);
+  border: 1px solid var(--border-strong);
+}
+
+.personaGrid > section {
+  min-height: 12rem;
+  padding: var(--space-4);
+  border-inline-end: 1px solid var(--border-subtle);
+}
+
+.personaGrid > section:last-child {
+  border-inline-end: 0;
+}
+
+.personaGrid h4 {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+.personaGrid p {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.tagGroup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.tagGroup > strong {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+.tagGroup > span {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+}
+
+.tagGroup ul {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: var(--space-2);
+}
+
+.tagGroup li {
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--border-subtle);
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.visualCatalog {
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-5);
+  border-block-start: 0.35rem solid var(--accent);
+}
+
+.visualHeader h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+}
+
+.visualEmpty {
+  display: grid;
+  min-height: 8rem;
+  margin-block-start: var(--space-4);
+  padding: var(--space-5);
+  place-content: center;
+  border: 1px dashed var(--border-strong);
+  text-align: center;
+}
+
+.visualEmpty p {
+  margin-block-end: 0;
+  color: var(--text-muted);
+}
+
+.visualGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-block-start: var(--space-4);
+  gap: var(--space-3);
+}
+
+.visualGrid article {
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-base);
+}
+
+.visualGrid article > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  color: var(--signal-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+.visualGrid h5 {
+  margin: var(--space-4) 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.visualGrid dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  gap: var(--space-3);
+}
+
+.visualGrid article > small {
+  display: block;
+  margin-block-start: var(--space-4);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+}
+
 .railGrid {
   display: grid;
   grid-template-columns: minmax(18rem, 0.78fr) minmax(24rem, 1.22fr);
@@ -89,7 +422,9 @@
 
 .uploadRail input,
 .uploadRail select,
-.retrievalPanel input {
+.retrievalPanel input,
+.retrievalPanel select,
+.retrievalPanel textarea {
   min-height: 2.9rem;
   width: 100%;
   border: 1px solid var(--border-strong);
@@ -103,6 +438,8 @@
 .uploadRail input:focus-visible,
 .uploadRail select:focus-visible,
 .retrievalPanel input:focus-visible,
+.retrievalPanel select:focus-visible,
+.retrievalPanel textarea:focus-visible,
 .workspace button:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
@@ -250,7 +587,6 @@
 
 .results {
   display: grid;
-  grid-column: 1 / -1;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -262,16 +598,139 @@
   border-block-start: 1px solid var(--border-subtle);
 }
 
-.results span {
+.resultHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.resultHeader span {
   color: var(--signal-cyan);
   font-family: var(--font-mono);
   font-size: 0.66rem;
+}
+
+.resultHeader strong {
+  margin-inline-end: auto;
 }
 
 .results p {
   margin-block-end: 0;
   color: var(--text-muted);
   white-space: pre-wrap;
+}
+
+.retrievalOutput {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--space-4);
+}
+
+.evidenceBoundary {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  gap: var(--space-4);
+}
+
+.evidenceBoundary strong {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.evidenceBoundary span,
+.retrievalEmpty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.scoreGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-3) 0;
+  border-block: 1px solid var(--border-subtle);
+}
+
+.scoreGrid > div {
+  padding: var(--space-2);
+  border-inline-end: 1px solid var(--border-subtle);
+}
+
+.feedbackPanel {
+  display: grid;
+  grid-template-columns:
+    minmax(14rem, 1.1fr) minmax(11rem, 0.6fr) minmax(12rem, 0.7fr)
+    minmax(14rem, 1fr);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+  gap: var(--space-4);
+}
+
+.feedbackPanel h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.feedbackPanel fieldset {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  border: 1px solid var(--border-subtle);
+  gap: var(--space-3);
+}
+
+.feedbackPanel fieldset label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.feedbackPanel fieldset input {
+  min-height: auto;
+  width: auto;
+}
+
+.feedbackPanel label > span,
+.feedbackPanel legend {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.feedbackPanel textarea {
+  min-height: 4rem;
+  padding: var(--space-2);
+  resize: vertical;
+}
+
+.feedbackActions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.feedbackActions button {
+  padding-inline: var(--space-4);
+}
+
+.feedbackActions span,
+.feedbackStatus {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.feedbackStatus {
+  grid-column: 1 / -1;
+  min-height: 1rem;
+  margin: 0;
 }
 
 .liveRegion {
@@ -296,7 +755,9 @@
 @media (max-width: 880px) {
   .sectionHeader,
   .railGrid,
-  .retrievalPanel {
+  .retrievalPanel,
+  .profileTopline,
+  .visualHeader {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -306,7 +767,30 @@
     border-block-end: 1px solid var(--border-strong);
   }
 
-  .results {
+  .retrievalOutput {
+    grid-column: 1;
+  }
+
+  .profileStats,
+  .bindingList,
+  .personaGrid,
+  .visualGrid,
+  .feedbackPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .profileStats > div,
+  .personaGrid > section {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--border-subtle);
+  }
+
+  .fingerprint {
+    min-width: 0;
+  }
+
+  .feedbackActions,
+  .feedbackStatus {
     grid-column: 1;
   }
 }

@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Verify no duplicate retrieval path, no private asset leakage, active-version correctness, and evidence separation."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Verify tool/eval reuse, bounded deterministic reporting, and honest fixture claims."}
+{"file":".trellis/tasks/08-18-enhance-digital-ip-library/research/focused-quality-contract.md","reason":"Review focused test sufficiency, API drift, private-path safety, localStorage validation, and no-deploy scope without truncated context."}
+{"file":".trellis/spec/frontend/brand-knowledge-workspace.md","reason":"Verify the digital-IP additions remain internal, accessible, generated-type driven, and free of publish actions."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Audit generated wire types and localStorage runtime validation."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run focused frontend accessibility, state, lint, type, and build checks proportionate to the task."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review end-to-end profile and feedback field propagation and reject duplicated business logic."}

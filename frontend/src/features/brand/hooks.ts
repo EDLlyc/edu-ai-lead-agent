@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   activateBrandVersion,
   deactivateBrandDocument,
+  getDigitalIpProfile,
   listBrandDocuments,
   retrieveBrandContext,
   uploadBrandDocument,
@@ -11,7 +12,15 @@ import {
 export const brandKnowledgeKeys = {
   all: ["brand-knowledge"] as const,
   documents: () => [...brandKnowledgeKeys.all, "documents"] as const,
+  profile: () => [...brandKnowledgeKeys.all, "digital-ip-profile"] as const,
 } as const;
+
+export function useDigitalIpProfile() {
+  return useQuery({
+    queryKey: brandKnowledgeKeys.profile(),
+    queryFn: getDigitalIpProfile,
+  });
+}
 
 export function useBrandDocuments() {
   return useQuery({
@@ -36,9 +45,7 @@ export function useUploadBrandDocument() {
   return useMutation({
     mutationFn: uploadBrandDocument,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: brandKnowledgeKeys.documents(),
-      });
+      await queryClient.invalidateQueries({ queryKey: brandKnowledgeKeys.all });
     },
   });
 }
@@ -52,9 +59,7 @@ export function useActivateBrandVersion() {
     }: Readonly<{ documentId: string; versionId: string }>) =>
       activateBrandVersion(documentId, versionId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: brandKnowledgeKeys.documents(),
-      });
+      await queryClient.invalidateQueries({ queryKey: brandKnowledgeKeys.all });
     },
   });
 }
@@ -64,9 +69,7 @@ export function useDeactivateBrandDocument() {
   return useMutation({
     mutationFn: deactivateBrandDocument,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: brandKnowledgeKeys.documents(),
-      });
+      await queryClient.invalidateQueries({ queryKey: brandKnowledgeKeys.all });
     },
   });
 }

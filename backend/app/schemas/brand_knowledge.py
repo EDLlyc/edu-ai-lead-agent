@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.domain.brand_knowledge import BrandAudience, BrandDocumentKind
+from app.domain.digital_ip import DigitalIpVisualCatalogStatus
+from app.domain.visual_assets import VisualAssetKind
 
 
 class BrandVersionResponse(BaseModel):
@@ -152,4 +154,71 @@ class BrandContextResponse(BaseModel):
     evidence_eligible: Literal[False] = Field(
         default=False,
         description="Always false: brand guidance cannot support externally verifiable claims.",
+    )
+
+
+class DigitalIpCharacterResponse(BaseModel):
+    character_id: str
+    display_name: str
+    role: str
+
+
+class DigitalIpDocumentBindingResponse(BaseModel):
+    document_id: UUID
+    version_id: UUID
+    version: int
+    title: str
+    document_kind: BrandDocumentKind
+    audience: BrandAudience
+    valid_from: date | None
+    valid_until: date | None
+    tone_tags: list[str]
+    safety_tags: list[str]
+    visual_tags: list[str]
+
+
+class DigitalIpVisualAssetResponse(BaseModel):
+    """Browser-safe metadata: no path, URL, object key, filename, bytes, or full digest."""
+
+    asset_ref: str = Field(min_length=16, max_length=16)
+    checksum_ref: str = Field(min_length=16, max_length=16)
+    display_name: str
+    asset_kind: VisualAssetKind
+    characters: list[str]
+    roles: list[str]
+    topics: list[str]
+    poses: list[str]
+    scene_tags: list[str]
+    width: int = Field(ge=1, le=8_192)
+    height: int = Field(ge=1, le=8_192)
+    approved: Literal[True]
+    priority: int = Field(ge=0, le=1_000)
+
+
+class DigitalIpProfileResponse(BaseModel):
+    """Read-only projection joining active brand metadata with safe visual metadata."""
+
+    profile_id: Literal["sai-xiansheng-xiao-sai"]
+    profile_version: Literal["digital-ip-profile-v1"]
+    display_name: str
+    brand_slug: Literal["sai-xiansheng"]
+    identity_summary: str
+    characters: list[DigitalIpCharacterResponse]
+    audiences: list[BrandAudience]
+    channels: list[str]
+    content_scenarios: list[str]
+    document_bindings: list[DigitalIpDocumentBindingResponse]
+    active_document_count: int = Field(ge=0)
+    active_version_ids: list[UUID]
+    document_kinds: list[BrandDocumentKind]
+    tone_tags: list[str]
+    safety_tags: list[str]
+    visual_tags: list[str]
+    visual_catalog_status: DigitalIpVisualCatalogStatus
+    visual_catalog_version: str | None
+    visual_assets: list[DigitalIpVisualAssetResponse]
+    profile_fingerprint: str = Field(min_length=64, max_length=64)
+    evidence_eligible: Literal[False] = Field(
+        default=False,
+        description="Always false: digital-IP guidance is not external-fact evidence.",
     )
