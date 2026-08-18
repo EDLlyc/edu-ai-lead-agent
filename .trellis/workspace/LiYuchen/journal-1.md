@@ -1160,3 +1160,24 @@ Added immutable scoring .8 with threshold 0.59 while preserving .6/.7 replay, pa
 ### Status
 
 [OK] **Completed**
+
+
+## Session 53: LLM topic reranking
+
+**Date**: 2026-08-18
+**Task**: LLM topic reranking
+**Branch**: `main`
+
+### Summary
+
+Implemented default-off shared daily and content-slot LLM reranking after deterministic eligibility, with immutable config/audit, strict Zhipu and fake adapters, safe fallback, migration 20260818_0022, offline eval, API projections, full backend and independent review gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3d83f5a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
