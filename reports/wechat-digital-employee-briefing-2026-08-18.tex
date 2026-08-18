@@ -1,0 +1,393 @@
+% 编译：latexmk -xelatex -interaction=nonstopmode -halt-on-error wechat-digital-employee-briefing-2026-08-18.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=18mm,bottom=18mm,left=18mm,right=18mm,headheight=23pt]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{ragged2e}
+\usepackage{setspace}
+
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+
+\definecolor{Navy}{HTML}{143A5A}
+\definecolor{Blue}{HTML}{1877B8}
+\definecolor{Green}{HTML}{16806A}
+\definecolor{Orange}{HTML}{E6782E}
+\definecolor{Gold}{HTML}{E7B547}
+\definecolor{Ink}{HTML}{263746}
+\definecolor{Muted}{HTML}{667887}
+\definecolor{PaleBlue}{HTML}{EEF6FB}
+\definecolor{PaleGreen}{HTML}{EEF8F4}
+\definecolor{PaleOrange}{HTML}{FFF4EA}
+\definecolor{PaleGray}{HTML}{F4F6F8}
+\definecolor{Rule}{HTML}{D8E1E8}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Navy,
+  urlcolor=Blue,
+  pdftitle={数字员工——新媒体运营：公众号自动推文方案汇报},
+  pdfauthor={李宇辰},
+  pdfsubject={公众号内容生产数字员工建设方案}
+}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setstretch{1.1}
+\setlist[itemize]{leftmargin=1.5em,itemsep=3pt,topsep=4pt}
+\setlist[enumerate]{leftmargin=1.7em,itemsep=3pt,topsep=4pt}
+\renewcommand{\arraystretch}{1.32}
+
+\titleformat{\section}
+  {\sffamily\bfseries\Large\color{Navy}}
+  {\colorbox{Navy}{\textcolor{white}{\strut\thesection}}}{0.7em}{}
+\titleformat{\subsection}
+  {\sffamily\bfseries\large\color{Blue}}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{12pt}{8pt}
+\titlespacing*{\subsection}{0pt}{9pt}{5pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{Muted}数字员工｜新媒体运营}
+\fancyhead[R]{\sffamily\small\color{Muted}公众号自动推文方案}
+\fancyfoot[L]{\sffamily\scriptsize\color{Muted}汇报材料｜2026.08.18}
+\fancyfoot[R]{\sffamily\scriptsize\color{Muted}\thepage\,/\,\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{Rule}\leaders\hrule height \headrulewidth\hfill}}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\newtcolorbox{keybox}[1][]{
+  enhanced,breakable,colback=PaleBlue,colframe=Blue,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Blue,colframe=Blue,arc=1.5mm}
+}
+\newtcolorbox{greenbox}[1][]{
+  enhanced,breakable,colback=PaleGreen,colframe=Green,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Green,colframe=Green,arc=1.5mm}
+}
+\newtcolorbox{orangebox}[1][]{
+  enhanced,breakable,colback=PaleOrange,colframe=Orange,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Orange,colframe=Orange,arc=1.5mm}
+}
+
+\newcommand{\metric}[3]{%
+  \begin{tcolorbox}[colback=#1!7,colframe=#1!55,boxrule=.6pt,arc=2mm,
+    left=3mm,right=3mm,top=2.5mm,bottom=2.5mm,height=31mm,valign=center]
+    {\sffamily\bfseries\fontsize{17}{19}\selectfont\color{#1}#2}\par
+    {\sffamily\small\color{Ink}#3}
+  \end{tcolorbox}%
+}
+
+\begin{document}
+
+% -----------------------------------------------------------------------------
+% 封面
+% -----------------------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[Navy] (current page.north west) rectangle ([yshift=-132mm]current page.north east);
+  \fill[Blue] ([yshift=-132mm]current page.north west) rectangle ([yshift=-136mm]current page.north east);
+  \draw[Blue!22,line width=22pt] ([xshift=-20mm,yshift=43mm]current page.south east) circle (28mm);
+  \draw[Orange!45,line width=4pt] ([xshift=-10mm,yshift=54mm]current page.south east) circle (42mm);
+  \fill[Orange] ([xshift=18mm,yshift=18mm]current page.south west) rectangle
+    ([xshift=58mm,yshift=21mm]current page.south west);
+\end{tikzpicture}
+
+\vspace*{8mm}
+{\sffamily\bfseries\small\color{white}DIGITAL EMPLOYEE \quad｜\quad NEW MEDIA OPERATIONS}
+
+\vspace{27mm}
+{\sffamily\bfseries\fontsize{30}{38}\selectfont\color{white}
+数字员工——新媒体运营\par
+公众号自动推文方案汇报}
+
+\vspace{8mm}
+{\sffamily\fontsize{14}{20}\selectfont\color{white!86}
+从内容发现到公众号草稿的智能协作流程}
+
+\vspace{31mm}
+\begin{tcolorbox}[width=.86\textwidth,colback=white,colframe=white,boxrule=0pt,
+  arc=2mm,left=5mm,right=5mm,top=4mm,bottom=4mm]
+{\sffamily\bfseries\color{Navy}方案定位}\par
+建设一名服务于公众号运营的数字员工，承担资料整理、选题辅助、文章初稿、配图排版、质量检查和草稿同步等重复工作；运营人员负责方向判断、内容审核和最终发布。
+\end{tcolorbox}
+
+\vfill
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+{\sffamily\small\color{Muted}汇报主题}\newline
+{\sffamily\bfseries\large\color{Ink}数字员工｜公众号运营} &
+{\RaggedLeft\sffamily\small\color{Muted}汇报人 / 日期}\newline
+{\RaggedLeft\sffamily\bfseries\large\color{Ink}李宇辰｜2026 年 8 月 18 日}
+\end{tabularx}
+\end{titlepage}
+
+% -----------------------------------------------------------------------------
+\section{项目背景与建设目标}
+
+公众号日常运营包含大量重复工作：寻找资料、筛选主题、整理观点、撰写初稿、制作配图、调整格式和记录发布效果。人工逐项完成耗时较长，而且容易出现资料遗漏、风格不一致和进度难追踪等问题。
+
+\begin{keybox}[建设目标]
+把重复、标准化的工作交给数字员工，把方向判断、事实确认、价值判断和发布责任保留给运营人员，形成稳定、可检查、可持续改进的公众号内容生产流程。
+\end{keybox}
+
+\begin{tabularx}{\textwidth}{@{}Y Y Y@{}}
+\metric{Blue}{提高效率}{减少资料整理、初稿撰写和格式调整所需时间。} &
+\metric{Green}{稳定质量}{统一栏目结构、表达风格、图片规格和检查标准。} &
+\metric{Orange}{过程可控}{保留来源、审核意见、草稿状态和效果记录。}
+\end{tabularx}
+
+\subsection{数字员工的角色}
+
+数字员工不是简单的“写文章工具”，而是一套按照固定步骤持续完成工作的协作系统。它接收运营要求，依次完成内容收集、筛选、生产、检查和草稿整理，并在关键环节请求人工确认。
+
+\begin{tabularx}{\textwidth}{@{}L{31mm} Y Y@{}}
+\toprule
+\textbf{工作类型} & \textbf{数字员工负责} & \textbf{运营人员负责} \\
+\midrule
+重复执行 & 汇总资料、生成初稿、整理图片、套用排版、记录状态 & 制定栏目、发布节奏和工作标准 \\
+质量判断 & 检查格式、缺项、重复、明显错误和来源完整性 & 判断事实、观点、语气、版权和敏感风险 \\
+账号操作 & 将通过检查的内容整理到公众号草稿箱 & 预览、修改并最终确认发布 \\
+\bottomrule
+\end{tabularx}
+
+\begin{orangebox}[第一阶段边界]
+数字员工的终点是“形成可审核的公众号草稿”，不是直接面向读者自动群发。这样既能提高效率，也能保留必要的人工把关。
+\end{orangebox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{整体工作流程}
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=6mm and 4mm,
+  flowstep/.style={rounded corners=2mm,minimum height=16mm,text width=34mm,
+    inner xsep=1.5mm,align=center,font=\sffamily\small\bfseries,text=white},
+  arr/.style={-{Latex[length=2.5mm]},line width=1pt,Navy!62}
+]
+\node[flowstep,fill=Navy] (a) {1\quad 内容来源};
+\node[flowstep,fill=Blue,right=of a] (b) {2\quad 选题筛选};
+\node[flowstep,fill=Green,right=of b] (c) {3\quad 文章生成};
+\node[flowstep,fill=Orange,right=of c] (d) {4\quad 配图排版};
+\node[flowstep,fill=Orange,below=of d] (e) {5\quad 质量检查};
+\node[flowstep,fill=Green,left=of e] (f) {6\quad 人工审核};
+\node[flowstep,fill=Blue,left=of f] (g) {7\quad 草稿与发布};
+\node[flowstep,fill=Navy,left=of g] (h) {8\quad 数据复盘};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d);
+\draw[arr] (d)--(e); \draw[arr] (e)--(f); \draw[arr] (f)--(g);
+\draw[arr] (g)--(h); \draw[arr] (h.west)--++(-5mm,0)|-(a.west);
+\end{tikzpicture}
+\end{center}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}C{11mm} L{31mm} Y L{37mm}@{}}
+\toprule
+\textbf{步骤} & \textbf{主要任务} & \textbf{产出} & \textbf{关键要求} \\
+\midrule
+1 & 内容来源 & 新闻、政策、行业动态和单位资料清单 & 来源清楚、时间有效 \\
+2 & 选题筛选 & 候选选题及推荐理由 & 符合定位、避免近期重复 \\
+3 & 文章生成 & 标题、摘要、正文初稿 & 结构清楚、事实有依据 \\
+4 & 配图排版 & 封面、正文配图和公众号版式 & 风格统一、阅读友好 \\
+5 & 质量检查 & 问题清单和修改建议 & 检查事实、格式、版权和风险 \\
+6 & 人工审核 & 审核通过或退回修改 & 责任人明确、意见可记录 \\
+7 & 草稿与发布 & 公众号草稿及发布结果 & 人工确认后再发布 \\
+8 & 数据复盘 & 阅读、分享、反馈和改进建议 & 形成下一轮选题依据 \\
+\bottomrule
+\end{tabularx}
+
+\begin{greenbox}[流程特点]
+每个环节都有明确输入和输出；出现资料不足、检查不通过或审核退回时，内容返回上一环节修改，不带着问题继续向后流转。
+\end{greenbox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{核心功能设计}
+
+\begin{tabularx}{\textwidth}{@{}L{34mm} Y Y@{}}
+\toprule
+\textbf{功能模块} & \textbf{主要能力} & \textbf{带来的价值} \\
+\midrule
+内容雷达 & 按栏目持续收集新闻、政策、活动和行业资料，记录标题、日期与来源 & 减少人工搜索，避免遗漏重要信息 \\
+智能选题 & 根据相关性、时效性、重要性和近期重复情况形成候选选题 & 让选题更有依据，减少同类内容反复出现 \\
+文章生产 & 按栏目模板形成标题、摘要、正文结构和完整初稿 & 缩短从选题到初稿的时间 \\
+视觉与排版 & 生成封面与正文配图建议，统一字号、颜色、段落和重点样式 & 保持公众号视觉风格一致 \\
+质量检查 & 检查来源、表达、格式、图片、版权提示和敏感风险 & 在人工审核前提前发现常见问题 \\
+审核工作台 & 展示原始资料、文章、图片和问题清单，支持退回与修改 & 让审核有依据、有记录 \\
+草稿管理 & 将审核通过的内容整理为公众号草稿，记录草稿和发布状态 & 减少重复复制、上传和排版操作 \\
+运营复盘 & 汇总阅读、分享、反馈、常见问题和栏目表现 & 用实际效果持续调整选题与内容 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{三层协作结构}
+
+\begin{center}
+\begin{tikzpicture}[
+  layer/.style={rounded corners=2mm,minimum height=18mm,text width=145mm,
+    align=left,inner xsep=5mm,font=\sffamily\small},
+  note/.style={font=\sffamily\small\bfseries,text=white}
+]
+\node[layer,fill=PaleBlue,draw=Blue] (l1) {\textbf{内容生产层}\quad 内容来源、选题、写作、配图、排版与质量检查};
+\node[layer,fill=PaleGreen,draw=Green,below=5mm of l1] (l2) {\textbf{运营协作层}\quad 任务状态、人工审核、修改意见、草稿管理与发布确认};
+\node[layer,fill=PaleOrange,draw=Orange,below=5mm of l2] (l3) {\textbf{管理复盘层}\quad 栏目规则、账号权限、过程记录、数据汇总与持续改进};
+\node[note,fill=Blue,rounded corners=1mm,anchor=east] at ([xshift=-3mm]l1.east) {自动完成};
+\node[note,fill=Green,rounded corners=1mm,anchor=east] at ([xshift=-3mm]l2.east) {人机协作};
+\node[note,fill=Orange,rounded corners=1mm,anchor=east] at ([xshift=-3mm]l3.east) {管理负责};
+\end{tikzpicture}
+\end{center}
+
+\begin{keybox}[设计原则]
+功能不是越多越好。第一阶段优先打通“资料进入—形成草稿—人工审核”的主流程，待内容质量和运行稳定后，再逐步增加数据复盘、多栏目和多账号能力。
+\end{keybox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{人机协作与安全边界}
+
+公众号内容一旦发布，会直接影响单位形象。因此，数字员工必须在明确边界内工作，关键判断和最终发布不能只依赖自动结果。
+
+\begin{tabularx}{\textwidth}{@{}L{32mm} Y Y@{}}
+\toprule
+\textbf{重点事项} & \textbf{系统措施} & \textbf{人工责任} \\
+\midrule
+事实准确 & 保留资料来源，提示缺少依据或存在矛盾的内容 & 核对关键事实、数字、时间和人物 \\
+内容定位 & 按栏目规则和历史内容辅助选题，提示近期相似主题 & 判断是否符合宣传方向和读者需求 \\
+版权与图片 & 记录图片来源和生成方式，检查缺失信息 & 确认引用、转载、肖像和图片使用合规 \\
+账号安全 & 区分生成、审核和发布权限，记录关键操作 & 管理账号权限，不共享敏感凭证 \\
+发布风险 & 默认只进入草稿箱，审核未通过不得继续 & 预览全文并由授权人员确认发布 \\
+异常处理 & 失败时停止当前流程，保留原因并提醒处理 & 判断修改、延期或取消，不盲目重复发布 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{建议的审核清单}
+
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+\begin{itemize}
+  \item 标题是否准确、不过度夸张；
+  \item 关键事实是否有可靠依据；
+  \item 是否符合公众号栏目和单位口径；
+  \item 是否与近期已发内容重复；
+\end{itemize}
+&
+\begin{itemize}
+  \item 图片、引用和转载是否合规；
+  \item 排版、链接和手机预览是否正常；
+  \item 是否存在敏感或容易误解的表达；
+  \item 发布对象、时间和责任人是否正确。
+\end{itemize}
+\end{tabularx}
+
+\begin{orangebox}[责任原则]
+数字员工提供建议和执行重复任务，但不替代内容责任。最终稿应当能够回答：谁审核、依据是什么、修改了什么、谁确认发布。
+\end{orangebox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{分阶段实施计划}
+
+\begin{tabularx}{\textwidth}{@{}C{19mm} L{31mm} Y L{36mm}@{}}
+\toprule
+\textbf{阶段} & \textbf{时间建议} & \textbf{主要工作} & \textbf{验收结果} \\
+\midrule
+第一阶段 & 1--2 周 & 明确公众号定位、栏目、内容来源、文章模板、审核清单和责任人 & 形成可执行的内容规范与样稿 \\
+第二阶段 & 2--4 周 & 打通资料收集、选题、写作、配图、排版和草稿整理，开展小范围试运行 & 每周稳定形成可审核草稿 \\
+第三阶段 & 2--4 周 & 完善审核退回、状态记录、异常提醒和公众号草稿同步 & 流程稳定，问题能够追踪和处理 \\
+第四阶段 & 持续优化 & 汇总阅读与反馈数据，调整栏目、选题标准、模板和发布节奏 & 内容质量和运营效率持续提升 \\
+\bottomrule
+\end{tabularx}
+
+\subsection{试运行建议}
+
+\begin{enumerate}
+  \item 先选择一个主题明确、风险较低的栏目；
+  \item 每周生成 1--2 篇草稿，全部由人工审核；
+  \item 记录初稿完成时间、修改次数、主要问题和是否采用；
+  \item 运行 4--6 周后，再决定是否增加栏目或提高频率。
+\end{enumerate}
+
+\begin{tabularx}{\textwidth}{@{}Y Y Y Y@{}}
+\metric{Blue}{效率}{从确定选题到形成可审核草稿所需时间} &
+\metric{Green}{质量}{草稿采用率、平均修改次数和事实问题数量} &
+\metric{Orange}{稳定}{按时完成率、异常次数和人工介入原因} &
+\metric{Navy}{效果}{阅读、分享、反馈与栏目持续表现}
+\end{tabularx}
+
+\begin{greenbox}[阶段性判断]
+如果数字员工能够稳定产出“来源清楚、结构完整、修改量可控”的草稿，就说明第一阶段建设有效。是否提高自动化程度，应由试运行数据决定，而不是一开始追求完全无人操作。
+\end{greenbox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+\section{预期成果与汇报结论}
+
+\subsection{预期形成的成果}
+
+\begin{tabularx}{\textwidth}{@{}C{12mm} L{42mm} Y@{}}
+\toprule
+\textbf{序号} & \textbf{成果} & \textbf{说明} \\
+\midrule
+1 & 公众号内容规范 & 明确栏目、语气、篇幅、图片、来源和审核要求 \\
+2 & 数字员工工作流程 & 从内容发现到草稿审核的完整步骤和状态记录 \\
+3 & 文章与视觉模板 & 统一标题、摘要、正文结构、封面和排版风格 \\
+4 & 审核与责任机制 & 明确系统检查、人工审核、发布确认和异常处理 \\
+5 & 运营复盘机制 & 定期汇总内容质量、运行效率和发布效果 \\
+\bottomrule
+\end{tabularx}
+
+\begin{keybox}[汇报结论]
+公众号数字员工的核心价值，不是让系统代替人发布文章，而是把零散、重复的运营工作组织成一条稳定流程。建议先实现“自动生产草稿、人工审核发布”，用小范围试运行验证质量，再逐步扩展栏目和数据复盘能力。
+\end{keybox}
+
+\subsection{建议老师确认的事项}
+
+\begin{enumerate}
+  \item 首个试点公众号及优先栏目；
+  \item 内容来源范围和重点服务对象；
+  \item 审核责任人和最终发布人；
+  \item 试运行周期、每周产量和评价指标。
+\end{enumerate}
+
+\vfill
+\begin{center}
+\begin{tikzpicture}
+\node[rounded corners=3mm,fill=Navy,inner xsep=13mm,inner ysep=5mm,
+  text=white,font=\sffamily\bfseries\large] {先形成稳定草稿，再逐步提高自动化程度};
+\end{tikzpicture}
+\end{center}
+
+\vfill
+{\small\color{Muted}
+说明：具体公众号接口和账号权限以实际账号后台为准。本方案第一阶段不设置无人审核的自动群发。}
+
+\end{document}
