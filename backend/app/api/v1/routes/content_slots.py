@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_session
+from app.api.v1.routes.topic_selection_views import topic_rerank_summary
 from app.application.services.content_slots import enqueue_manual_content_slot
 from app.core.config import Settings
 from app.core.errors import PolicyRejectedError
@@ -27,8 +28,10 @@ from app.infrastructure.db.models import (
     ContentSlotSelectionModel,
     CopyGenerationRunModel,
     MaterialPackageModel,
+    TopicRerankRecordModel,
     WeComDeliveryJobModel,
 )
+from app.infrastructure.db.topic_selection import get_topic_rerank_record
 from app.schemas.content_slots import (
     ContentEditionResponse,
     ContentEditionSelectionResponse,
@@ -63,7 +66,10 @@ async def create_content_slot_run(
         slot=ContentSlot(payload.content_slot),
         now=datetime.now(UTC),
     )
-    projected = _run_response(await get_content_slot_run(session, run_id))
+    projected = _run_response(
+        await get_content_slot_run(session, run_id),
+        await get_topic_rerank_record(session, content_slot_run_id=run_id),
+    )
     response.headers["Location"] = projected.status_url
     return projected
 
@@ -73,7 +79,10 @@ async def read_content_slot_run(
     run_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ContentSlotRunResponse:
-    return _run_response(await get_content_slot_run(session, run_id))
+    return _run_response(
+        await get_content_slot_run(session, run_id),
+        await get_topic_rerank_record(session, content_slot_run_id=run_id),
+    )
 
 
 @router.get("/content-slot-runs/{run_id}/scores", response_model=ContentSlotScoreListResponse)
@@ -311,7 +320,10 @@ def _edition_slot_state(
     return "ready"
 
 
-def _run_response(run: ContentSlotRunModel) -> ContentSlotRunResponse:
+def _run_response(
+    run: ContentSlotRunModel,
+    record: TopicRerankRecordModel | None = None,
+) -> ContentSlotRunResponse:
     slot = ContentSlot(run.content_slot)
     return ContentSlotRunResponse(
         id=run.id,
@@ -325,6 +337,13 @@ def _run_response(run: ContentSlotRunModel) -> ContentSlotRunResponse:
         governance_run_id=run.governance_run_id,
         governed_event_cutoff=run.governed_event_cutoff,
         config_fingerprint=run.config_fingerprint,
+        rerank_config_fingerprint=run.rerank_config_fingerprint,
+        rerank_config=run.rerank_config_snapshot,
+        rerank=topic_rerank_summary(
+            config_snapshot=run.rerank_config_snapshot,
+            config_fingerprint=run.rerank_config_fingerprint,
+            record=record,
+        ),
         slot_policy_version=run.slot_policy_version,
         slot_policy_fingerprint=run.slot_policy_fingerprint,
         preparation_at=run.preparation_at,
@@ -348,6 +367,7 @@ def _run_response(run: ContentSlotRunModel) -> ContentSlotRunResponse:
 
 def _score_response(row: ContentSlotScoreProjection) -> ContentSlotScoreResponse:
     score = row.score
+    rerank_explanation = score.explanation.get("rerank_explanation")
     return ContentSlotScoreResponse(
         id=score.id,
         run_id=score.run_id,
@@ -367,6 +387,12 @@ def _score_response(row: ContentSlotScoreProjection) -> ContentSlotScoreResponse
         final_ordering_value=score.final_ordering_value,
         final_ordering_key=score.final_ordering_key,
         rank=score.rank,
+        deterministic_rank=score.deterministic_rank,
+        final_rank=score.rank,
+        rerank_reason_codes=[
+            str(code) for code in score.explanation.get("rerank_reason_codes", [])
+        ],
+        rerank_explanation=(rerank_explanation if isinstance(rerank_explanation, str) else None),
         selected_ordinal=score.selected_ordinal,
         explanation=dict(score.explanation),
     )

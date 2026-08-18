@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Verify the LLM cannot alter threshold, veto, priority, repeat history, replay, or deterministic fallback behavior."}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Verify slot affinity, same-day exclusion, group ordering, item limits, and persistence remain authoritative."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Review real PostgreSQL constraints, atomic decision/audit persistence, sessions, leases, and rollback compatibility."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Ensure prompts, candidate text, provider bodies, secrets, and private paths never enter logs."}
+{"file": ".trellis/tasks/08-18-llm-topic-reranking/research/current-selection-and-rerank-seams.md", "reason": "Check implementation against the confirmed code seams and avoid self-confirming fake/eval coverage."}
+{"file": ".trellis/tasks/08-18-llm-topic-reranking/research/focused-quality-contract.md", "reason": "Run the exact provider, migration, replay, contract, privacy and negative-path gates without large-spec context truncation."}

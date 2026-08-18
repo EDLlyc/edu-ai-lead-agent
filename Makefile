@@ -8,6 +8,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	content-scheduler content-worker content-stack-up \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
+	topic-rerank-eval \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	infra-up stack-up governance-stack-up infra-down infra-status infra-logs \
 	backend-format backend-format-check backend-lint backend-typecheck backend-test \
@@ -106,6 +107,9 @@ agent-workbench-ui:
 
 agent-workbench-eval:
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner
+
+topic-rerank-eval:
+	cd backend && $(PY_RUN) python -m evals.topic_rerank.runner --check
 
 agent-portfolio-check: agent-api-contract-check
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check

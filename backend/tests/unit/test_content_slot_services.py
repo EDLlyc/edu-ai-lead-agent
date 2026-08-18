@@ -18,6 +18,7 @@ from app.core.config import Settings
 from app.core.errors import ConflictError
 from app.domain.content_slots import ContentSlot, ContentSlotSchedule, SlotRankingPolicy
 from app.domain.enums import RunTrigger
+from app.domain.topic_rerank import TopicRerankConfig
 from app.domain.topic_selection import TopicScoringConfig
 
 NOW = datetime(2026, 8, 14, 3, 0, tzinfo=UTC)
@@ -86,6 +87,9 @@ class _SlotRepository:
 
     async def load_policy(self, _run_id: object) -> SlotRankingPolicy:
         return SlotRankingPolicy()
+
+    async def load_rerank_config(self, _run_id: object) -> TopicRerankConfig:
+        return TopicRerankConfig()
 
     async def load_candidates(self, _run_id: object):
         return ()
@@ -193,15 +197,15 @@ async def test_slot_acquisition_and_selection_reconciliation_share_due_business_
 
 
 @pytest.mark.asyncio
-async def test_slot_executor_recomputes_after_two_same_day_conflicts() -> None:
+async def test_slot_executor_does_not_loop_after_a_persistence_conflict() -> None:
     repository = _SlotRepository(conflict_count=2)
     executor = ContentSlotExecutor(repository, _enabled_settings())  # type: ignore[arg-type]
 
     assert await executor.execute_next("slot-worker") is True
 
-    assert repository.same_day_reads == 3
-    assert repository.completed is True
-    assert repository.failed == []
+    assert repository.same_day_reads == 1
+    assert repository.completed is False
+    assert repository.failed == ["content_slot_decision_conflict"]
 
 
 @pytest.mark.asyncio

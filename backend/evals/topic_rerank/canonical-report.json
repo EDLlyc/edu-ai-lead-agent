@@ -1,0 +1,227 @@
+{
+  "case_count": 8,
+  "cases": [
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "daily-reorder",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "daily",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "reorder"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "evening-reorder",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "evening",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "reorder"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "hard-veto-excluded",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "daily",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "hard_veto"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "morning-reorder",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "morning",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "reorder"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "noon-reorder",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "noon",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "reorder"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "priority-barrier",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "daily",
+      "failure_code": null,
+      "final_order_suffixes": [
+        1,
+        2
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "priority"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "provider-fallback",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "daily",
+      "failure_code": "provider_unavailable",
+      "final_order_suffixes": [
+        1,
+        2
+      ],
+      "outcome": "fallback",
+      "passed": true,
+      "scenario": "fallback"
+    },
+    {
+      "base_order_suffixes": [
+        1,
+        2
+      ],
+      "candidate_count": 2,
+      "case_id": "same-day-excluded",
+      "checks": {
+        "candidate_count": true,
+        "exact_permutation": true,
+        "fallback_parity": true,
+        "final_order": true,
+        "hard_exclusions": true,
+        "outcome": true,
+        "priority_barrier": true,
+        "selection_boundary": true
+      },
+      "context": "noon",
+      "failure_code": null,
+      "final_order_suffixes": [
+        2,
+        1
+      ],
+      "outcome": "applied",
+      "passed": true,
+      "scenario": "same_day"
+    }
+  ],
+  "claim": "fixture_contract_conformance_only",
+  "dataset_sha256": "9905ac5ba1ef4fa6c7da790a67317a3458a7b2f1fcda616fb8844bbd30752288",
+  "disclaimer": "Provider-free synthetic fixtures verify safety and structure contracts only; this is not evidence of live-model editorial quality or production accuracy.",
+  "failed_case_ids": [],
+  "passed_count": 8,
+  "policy_version": "topic-rerank-v1"
+}

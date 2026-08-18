@@ -121,6 +121,8 @@ async def test_content_slot_api_projects_disabled_missing_and_durable_empty_slot
         run_id = UUID(created.json()["id"])
         assert created.json()["content_slot"] == "morning"
         assert created.json()["selected_count"] == 0
+        assert created.json()["rerank_config"]["enabled"] is False
+        assert created.json()["rerank"]["outcome"] == "not_applied"
 
         async with integration_context.session_factory() as session:
             await session.execute(
@@ -145,6 +147,8 @@ async def test_content_slot_api_projects_disabled_missing_and_durable_empty_slot
         assert run.json()["selected_count"] == 0
         assert run.json()["unfilled_count"] == 3
         assert run.json()["unfilled_reason_codes"] == ["no_candidates"]
+        assert run.json()["rerank"]["outcome"] == "skipped"
+        assert run.json()["rerank"]["provider"] == "disabled"
         assert scores.json() == {"items": [], "count": 0}
         morning = edition.json()["slots"][0]
         assert morning["state"] == "ready"

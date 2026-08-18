@@ -11,7 +11,12 @@ from app.application.ports.content_slots import (
     ClaimedContentSlotJob,
     ContentSlotRepository,
 )
-from app.application.services.topic_selection import build_topic_scoring_config
+from app.application.ports.topic_rerank import TopicReranker
+from app.application.services.topic_reranking import execute_topic_rerank
+from app.application.services.topic_selection import (
+    build_topic_rerank_config,
+    build_topic_scoring_config,
+)
 from app.core.config import Settings
 from app.core.errors import ConflictError, ContentSlotLeaseLostError
 from app.domain.content_slots import (
@@ -20,6 +25,11 @@ from app.domain.content_slots import (
     SlotRankingPolicy,
     due_content_slot_business_date,
     select_slot_topics,
+)
+from app.domain.topic_rerank import (
+    TopicRerankRequest,
+    apply_content_slot_rerank,
+    build_slot_rerank_pool,
 )
 
 logger = structlog.get_logger()
@@ -61,6 +71,7 @@ async def enqueue_manual_content_slot(
         schedule=schedule,
         config=build_topic_scoring_config(settings),
         policy=SlotRankingPolicy(version=settings.content_slot_ranking_version),
+        rerank_config=build_topic_rerank_config(settings),
         lineage=lineage,
         trigger="manual",
     )
@@ -101,15 +112,22 @@ async def reconcile_content_slot_selection(
         schedule=schedule,
         config=build_topic_scoring_config(settings),
         policy=SlotRankingPolicy(version=settings.content_slot_ranking_version),
+        rerank_config=build_topic_rerank_config(settings),
         lineage=lineage,
         trigger="scheduled",
     )
 
 
 class ContentSlotExecutor:
-    def __init__(self, repository: ContentSlotRepository, settings: Settings) -> None:
+    def __init__(
+        self,
+        repository: ContentSlotRepository,
+        settings: Settings,
+        reranker: TopicReranker | None = None,
+    ) -> None:
         self._repository = repository
         self._settings = settings
+        self._reranker = reranker
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -127,33 +145,56 @@ class ContentSlotExecutor:
         try:
             config = await self._repository.load_config(claimed.run_id)
             policy = await self._repository.load_policy(claimed.run_id)
+            rerank_config = await self._repository.load_rerank_config(claimed.run_id)
             candidates = await self._repository.load_candidates(claimed.run_id)
-            for conflict_attempt in range(3):
-                self._ensure_lease(lease_lost)
-                same_day_ids = await self._repository.same_day_selected_event_ids(claimed.run_id)
-                decision = select_slot_topics(
-                    candidates,
-                    as_of=claimed.cutoff_at,
-                    config=config,
-                    slot=claimed.slot,
-                    policy=policy,
-                    max_items=claimed.item_limit,
-                    same_day_selected_event_ids=same_day_ids,
+            self._ensure_lease(lease_lost)
+            same_day_ids = await self._repository.same_day_selected_event_ids(claimed.run_id)
+            decision = select_slot_topics(
+                candidates,
+                as_of=claimed.cutoff_at,
+                config=config,
+                slot=claimed.slot,
+                policy=policy,
+                max_items=claimed.item_limit,
+                same_day_selected_event_ids=same_day_ids,
+            )
+            pool = build_slot_rerank_pool(
+                decision,
+                candidates,
+                limit=rerank_config.candidate_limit,
+            )
+            request = (
+                TopicRerankRequest(
+                    run_id=claimed.run_id,
+                    cutoff_at=claimed.cutoff_at,
+                    context=claimed.slot.value,
+                    policy_version=rerank_config.policy_version,
+                    max_output_tokens=rerank_config.max_output_tokens,
+                    candidates=pool,
                 )
-                try:
-                    persisted = await self._repository.persist_decision(
-                        claimed=claimed,
-                        config=config,
-                        policy=policy,
-                        decision=decision,
-                    )
-                except ConflictError:
-                    if conflict_attempt == 2:
-                        raise
-                    continue
-                if not persisted:
-                    raise ContentSlotLeaseLostError()
-                break
+                if pool
+                else None
+            )
+            rerank_outcome = await execute_topic_rerank(
+                config=rerank_config,
+                reranker=self._reranker,
+                request=request,
+            )
+            self._ensure_lease(lease_lost)
+            decision = apply_content_slot_rerank(
+                decision,
+                rerank_outcome,
+                max_items=claimed.item_limit,
+            )
+            persisted = await self._repository.persist_decision(
+                claimed=claimed,
+                config=config,
+                policy=policy,
+                decision=decision,
+                rerank_outcome=rerank_outcome,
+            )
+            if not persisted:
+                raise ContentSlotLeaseLostError()
             if not await self._repository.complete(claimed=claimed):
                 raise ContentSlotLeaseLostError()
             logger.info(
@@ -167,6 +208,10 @@ class ContentSlotExecutor:
                 unfilled_count=decision.unfilled_count,
                 scoring_version=config.version,
                 slot_policy_version=policy.version,
+                rerank_outcome=rerank_outcome.kind.value,
+                rerank_failure_code=(
+                    rerank_outcome.failure_code.value if rerank_outcome.failure_code else None
+                ),
             )
         except ContentSlotLeaseLostError:
             logger.warning(

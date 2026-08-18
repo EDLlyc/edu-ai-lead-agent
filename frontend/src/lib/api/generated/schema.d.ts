@@ -1481,6 +1481,13 @@ export interface components {
              * Format: date-time
              */
             preparation_at: string;
+            rerank: components["schemas"]["TopicRerankSummaryResponse"];
+            /** Rerank Config */
+            rerank_config: {
+                [key: string]: unknown;
+            };
+            /** Rerank Config Fingerprint */
+            rerank_config_fingerprint: string;
             /** Scores Url */
             scores_url: string;
             /** Scoring Profile */
@@ -1528,6 +1535,8 @@ export interface components {
         };
         /** ContentSlotScoreResponse */
         ContentSlotScoreResponse: {
+            /** Deterministic Rank */
+            deterministic_rank: number;
             /** Eligible */
             eligible: boolean;
             /**
@@ -1552,6 +1561,8 @@ export interface components {
             final_ordering_key: string;
             /** Final Ordering Value */
             final_ordering_value: number;
+            /** Final Rank */
+            final_rank: number;
             /**
              * Id
              * Format: uuid
@@ -1561,6 +1572,10 @@ export interface components {
             passes_threshold: boolean;
             /** Rank */
             rank: number;
+            /** Rerank Explanation */
+            rerank_explanation: string | null;
+            /** Rerank Reason Codes */
+            rerank_reason_codes: string[];
             /**
              * Run Id
              * Format: uuid
@@ -1877,6 +1892,7 @@ export interface components {
             decision: "selected" | "no_topic";
             /** No Topic Code */
             no_topic_code: string | null;
+            rerank: components["schemas"]["TopicRerankSummaryResponse"];
             /** Revision */
             revision: number;
             /**
@@ -3240,6 +3256,40 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** TopicRerankSummaryResponse */
+        TopicRerankSummaryResponse: {
+            /** Candidate Count */
+            candidate_count: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Config Fingerprint */
+            config_fingerprint: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Failure Code */
+            failure_code: string | null;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Model */
+            model: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "not_applied" | "applied" | "skipped" | "fallback";
+            /** Policy Version */
+            policy_version: string;
+            /** Prompt Fingerprint */
+            prompt_fingerprint: string | null;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Provider */
+            provider: string;
+            /** Reasoning Tokens */
+            reasoning_tokens: number;
+            /** Request Fingerprint */
+            request_fingerprint: string | null;
+        };
         /** TopicScoreListResponse */
         TopicScoreListResponse: {
             /** Count */
@@ -3249,6 +3299,8 @@ export interface components {
         };
         /** TopicScoreResponse */
         TopicScoreResponse: {
+            /** Deterministic Rank */
+            deterministic_rank: number;
             /** Eligible */
             eligible: boolean;
             /**
@@ -3269,6 +3321,8 @@ export interface components {
             explanation: {
                 [key: string]: unknown;
             };
+            /** Final Rank */
+            final_rank: number;
             /**
              * Id
              * Format: uuid
@@ -3298,6 +3352,10 @@ export interface components {
             raw_features: {
                 [key: string]: number;
             };
+            /** Rerank Explanation */
+            rerank_explanation: string | null;
+            /** Rerank Reason Codes */
+            rerank_reason_codes: string[];
             /**
              * Run Id
              * Format: uuid
@@ -3356,6 +3414,13 @@ export interface components {
             is_current: boolean;
             /** No Topic Code */
             no_topic_code: string | null;
+            rerank: components["schemas"]["TopicRerankSummaryResponse"];
+            /** Rerank Config */
+            rerank_config: {
+                [key: string]: unknown;
+            };
+            /** Rerank Config Fingerprint */
+            rerank_config_fingerprint: string;
             /** Revision */
             revision: number;
             /** Scores Url */

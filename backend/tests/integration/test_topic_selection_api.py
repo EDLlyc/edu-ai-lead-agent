@@ -82,6 +82,8 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         run_id = UUID(created.json()["id"])
         assert created.json()["status"] == "queued"
         assert created.json()["scoring_version"] == ("scoring-v1-preview.8-threshold-059")
+        assert created.json()["rerank_config"]["enabled"] is False
+        assert created.json()["rerank"]["outcome"] == "not_applied"
         assert created.headers["location"] == f"/api/v1/topic-selection-runs/{run_id}"
 
     async with integration_context.session_factory() as session:
@@ -125,12 +127,16 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
     assert run.json()["status"] == "succeeded"
     assert run.json()["no_topic_code"] == "no_candidates"
     assert run.json()["considered_count"] == 0
+    assert run.json()["rerank"]["outcome"] == "skipped"
+    assert run.json()["rerank"]["provider"] == "disabled"
+    assert run.json()["rerank"]["candidate_count"] == 0
     assert scores.status_code == 200
     assert scores.json() == {"items": [], "count": 0}
     assert daily.status_code == 200
     assert daily.json()["decision"] == "no_topic"
     assert daily.json()["no_topic_code"] == "no_candidates"
     assert daily.json()["selected_score"] is None
+    assert daily.json()["rerank"]["outcome"] == "skipped"
     assert replay.status_code == 202
     assert replay.json()["id"] != str(run_id)
     assert replay.json()["revision"] == 2

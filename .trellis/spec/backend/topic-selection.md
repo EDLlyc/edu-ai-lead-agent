@@ -27,10 +27,11 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - Scheduler/worker: `python -m app.content_scheduler_main` and
   `python -m app.content_worker_main`; root wrappers are `make content-scheduler`,
   `make content-worker`, and `make content-stack-up`.
-- Migrations: `20260730_0005` creates the topic-selection schema and `20260730_0006` tightens the
-  business key and event/version integrity constraints.
+- Migrations: `20260730_0005` creates the topic-selection schema, `20260730_0006` tightens the
+  business key and event/version integrity constraints, and `20260818_0022` adds immutable
+  rerank configuration, deterministic ranks, and typed rerank audit.
 - Durable tables: `topic_scoring_configs`, `topic_selection_runs`, `topic_selection_jobs`,
-  `topic_scores`, and `daily_topic_selections`.
+  `topic_scores`, `daily_topic_selections`, and the shared `topic_rerank_records` audit table.
 
 ### 3. Contracts
 
@@ -83,6 +84,21 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - Stable ordering is applied Ministry priority, ordinary eligible, below-threshold without veto,
   then hard-vetoed; within each group use total, source trust, event time, then UUID. Every
   considered event receives a persisted rank even when vetoed or below threshold.
+- The optional `topic-rerank-v1` stage runs only after that deterministic ordering. Its independent
+  enqueue-time snapshot/fingerprint pins enabled state, provider/model, candidate cap (at most
+  eight), temperature zero, output cap, and deterministic fallback policy without changing the
+  `.8` scoring fingerprint. It receives only eligible governed projections; zero/one candidate
+  skips the provider, candidates outside the cap retain their deterministic order, and a model may
+  reorder only within the same Ministry/ordinary priority group.
+- Rerank output is a strict full permutation with 1--3 allowlisted reason codes and a bounded
+  explanation per candidate. Unknown/duplicate/missing IDs, group crossings, provider failures,
+  parsing failures, or input limits produce a typed fallback to the exact deterministic order.
+  Candidate projections are serialized as JSON data, with literal angle brackets escaped before
+  delimiter insertion so untrusted titles or summaries cannot terminate the data-only block.
+  Final scores preserve both `deterministic_rank` and final `rank`; one XOR-bound audit row stores
+  safe orders, reasons, fingerprints, usage, latency, outcome, and failure code without raw prompts
+  or provider bodies. Historical migrated runs have the canonical disabled snapshot and may
+  legitimately project `not_applied` when no audit row exists.
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database
   composite foreign keys enforce this for runs, scores, and daily selections.
 - A day with neither an ordinary eligible score at or above threshold nor an authenticated `.6`/`.7`/`.8`
@@ -98,7 +114,10 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 `CONTENT_CATCHUP_HOURS`, `CONTENT_POLL_SECONDS`, `CONTENT_WORKER_CONCURRENCY`,
 `CONTENT_LEASE_SECONDS`, `CONTENT_HEARTBEAT_SECONDS`, `CONTENT_MAX_ATTEMPTS`,
 `CONTENT_SCORING_VERSION`, `CONTENT_SCORING_PROFILE`, and
-`CONTENT_SELECTION_PRIORITY_RULE_VERSION`.
+`CONTENT_SELECTION_PRIORITY_RULE_VERSION`. Rerank keys are
+`CONTENT_LLM_RERANK_ENABLED`, `CONTENT_LLM_RERANK_POLICY_VERSION`,
+`CONTENT_LLM_RERANK_CANDIDATE_LIMIT`, and `CONTENT_LLM_RERANK_MAX_OUTPUT_TOKENS`; the feature is
+default-off and enabling it requires the already validated `fake` or `zhipu` AI provider mode.
 
 ## Parallel content-slot selection
 
@@ -148,6 +167,10 @@ remain selection-backed.
 | Lease is lost before persistence/completion | Do not overwrite the decision; let durable retry converge |
 | Expired lease reaches `CONTENT_MAX_ATTEMPTS` | Mark job/run failed unless a decision was already persisted |
 | Unknown or Tier C source tier | Trust contribution is zero; it cannot become eligible evidence |
+| Rerank is disabled or has fewer than two eligible candidates | Skip provider and persist the deterministic order/audit |
+| Rerank output has an unknown, duplicate, missing, or out-of-group candidate | Persist typed fallback and use the exact deterministic order |
+| Provider times out, rejects, or returns malformed JSON | Complete selection through deterministic fallback; expose no raw body |
+| Candidate is vetoed, below threshold without authenticated bypass, or outside the top-eight pool | Never enter or be rescued by model ordering |
 
 ### 5. Good / Base / Bad Cases
 
@@ -166,6 +189,10 @@ remain selection-backed.
   metadata parity except scoring/veto identity, Ministry below-threshold selection, every hard-veto non-bypass,
   frontier ordinary-threshold behavior, education/frontier rank, product-fit non-rescue, exact
   `.4`/`.5` replay, stale-event cutoff, seven-day boundary, tie-break, and all `no_topic` branches.
+- [`test_topic_rerank.py`](../../../backend/tests/unit/test_topic_rerank.py) and
+  [`test_topic_rerank_provider.py`](../../../backend/tests/contract/test_topic_rerank_provider.py):
+  cap/skip/permutation/group barriers, daily and slot application, fallback parity, prompt
+  isolation, strict provider JSON, safe error mapping, usage, and latency.
 - [`test_topic_selection_delivery.py`](../../../backend/tests/unit/test_topic_selection_delivery.py):
   scheduler/worker behavior, heartbeat/lease loss, bounded attempts, projection boundaries, and
   safe response mapping.
@@ -180,7 +207,9 @@ remain selection-backed.
 - [`test_topic_selection_api.py`](../../../backend/tests/integration/test_topic_selection_api.py):
   202 enqueue, run/scores/daily response shapes, Location URL, and disabled/not-found/conflict paths.
 - [`test_governance_migrations.py`](../../../backend/tests/integration/test_governance_migrations.py):
-  unique head `20260730_0006`, required tables, constraints, and preserved governance schema.
+  unique head `20260818_0022`, required tables, constraints, and preserved governance schema.
+- `python -m evals.topic_rerank.runner --check` verifies provider-free synthetic fixture contract
+  conformance only; it is not a claim about live editorial quality.
 - Regenerate `backend/openapi.json` and
   `frontend/src/lib/api/generated/schema.d.ts`; `make api-contract-check` must report no drift.
 

@@ -14,6 +14,7 @@ import structlog
 from pydantic import SecretStr
 
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
+from app.application.ports.topic_rerank import TopicReranker
 from app.application.services.brand_knowledge import BrandIngestionExecutor
 from app.application.services.content_slots import ContentSlotExecutor
 from app.application.services.copy_generation import (
@@ -37,6 +38,10 @@ from app.infrastructure.ai.factory import (
     create_image_generator,
     create_image_quality_auditor,
     create_image_text_recognizer,
+)
+from app.infrastructure.ai.topic_rerank import (
+    DeterministicFakeTopicReranker,
+    ZhipuTopicReranker,
 )
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
@@ -78,10 +83,6 @@ async def run_content_worker() -> None:
         )
         copy_saver = await exit_stack.enter_async_context(copy_checkpointer.saver())
         repository = PostgresTopicSelectionRepository(session_factory)
-        executor = TopicSelectionExecutor(repository, settings)
-        slot_executor = ContentSlotExecutor(
-            PostgresContentSlotRepository(session_factory), settings
-        )
         brand_executor: BrandIngestionExecutor | None = None
         copy_repository = PostgresCopyGenerationRepository(session_factory)
         copy_executor = CopyGenerationExecutor(
@@ -94,6 +95,36 @@ async def run_content_worker() -> None:
         )
         if settings.ai_provider_mode == "zhipu":
             embedding_client = httpx.AsyncClient(follow_redirects=False)
+        reranker: TopicReranker | None = None
+        if settings.content_llm_rerank_enabled:
+            if settings.ai_provider_mode == "fake":
+                reranker = DeterministicFakeTopicReranker(model=settings.ai_chat_model)
+            else:
+                if (
+                    embedding_client is None
+                    or settings.ai_platform_base_url is None
+                    or settings.ai_platform_api_key is None
+                ):
+                    raise RuntimeError("validated Zhipu topic rerank settings are unavailable")
+                reranker = ZhipuTopicReranker(
+                    client=embedding_client,
+                    base_url=settings.ai_platform_base_url,
+                    api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
+                    model=settings.ai_chat_model,
+                    connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+                    read_timeout_seconds=settings.ai_read_timeout_seconds,
+                    total_timeout_seconds=settings.ai_total_timeout_seconds,
+                    concurrency=settings.ai_provider_concurrency,
+                    max_attempts=settings.ai_max_attempts,
+                    max_input_characters=settings.ai_max_input_characters,
+                    max_output_tokens=settings.content_llm_rerank_max_output_tokens,
+                )
+        executor = TopicSelectionExecutor(repository, settings, reranker=reranker)
+        slot_executor = ContentSlotExecutor(
+            PostgresContentSlotRepository(session_factory),
+            settings,
+            reranker=reranker,
+        )
         if settings.image_enabled and settings.image_provider_mode != "disabled":
             if settings.image_provider_mode in {"toapis", "comfly"}:
                 image_client = httpx.AsyncClient(follow_redirects=False)

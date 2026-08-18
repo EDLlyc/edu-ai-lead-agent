@@ -331,6 +331,8 @@ At minimum, prove:
 - a Tier C lead cannot become final factual evidence;
 - duplicate content retains provenance and a seven-day event repeat is vetoed;
 - a below-threshold day ends as `no_topic` without model/image generation;
+- topic reranking receives only eligible candidates, preserves Ministry priority and slot
+  same-day barriers, caps input at eight, and falls back byte-stably in ordering semantics;
 - every accepted core claim has an eligible evidence binding;
 - deterministic validation runs before LLM audit;
 - an LLM auditor cannot invent evidence or override a hard veto;
@@ -340,6 +342,12 @@ At minimum, prove:
 - controlled visual diversity reserves two different plans before provider work, compares safe
   rasters against bounded seven-day history, calls the fake provider at most twice, stores only the
   second safe raster on a double near-duplicate, and keeps the resulting warning delivery-eligible.
+
+The checked topic-rerank eval is `python -m evals.topic_rerank.runner --check`. It uses only
+synthetic provider-free fixtures spanning daily and all three slots, priority, veto, same-day, and
+fallback cases. Its stable JSON/Markdown report excludes timestamps and volatile usage/latency and
+must say `fixture_contract_conformance_only`; it cannot be presented as live-model editorial
+accuracy. Fake policy code must not read expected answers from the eval dataset.
 
 ### Front-to-back flow
 
@@ -351,6 +359,9 @@ artifact, expose the package, and exercise the frontend copy/download/source-lin
 
 - Treat source content and model output as untrusted; delimit it as data and never promote embedded
   instructions to system/developer prompts.
+- Topic-rerank prompts receive only bounded governed projections, never full articles, secrets,
+  private paths, brand bodies, or raw provider responses; APIs/logs expose safe fingerprints and
+  allowlisted reasons only.
 - Apply network timeouts, response-size limits, content-type checks, and an outbound-source policy
   to ingestion to reduce SSRF and resource-exhaustion risk.
 - Sanitize rendered content and object keys/filenames.

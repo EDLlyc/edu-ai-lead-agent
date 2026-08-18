@@ -7,14 +7,22 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
+from app.application.ports.topic_rerank import TopicReranker
 from app.application.ports.topic_selection import (
     ClaimedTopicSelectionJob,
     TopicSelectionRepository,
 )
+from app.application.services.topic_reranking import execute_topic_rerank
 from app.core.config import Settings
 from app.core.errors import ConflictError, TopicSelectionLeaseLostError
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERSION
+from app.domain.topic_rerank import (
+    TopicRerankConfig,
+    TopicRerankRequest,
+    apply_daily_topic_rerank,
+    build_daily_rerank_pool,
+)
 from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_THRESHOLD,
     DEFAULT_TOPIC_SCORING_VERSION,
@@ -54,6 +62,17 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
     )
 
 
+def build_topic_rerank_config(settings: Settings) -> TopicRerankConfig:
+    return TopicRerankConfig(
+        enabled=settings.content_llm_rerank_enabled,
+        policy_version=settings.content_llm_rerank_policy_version,
+        candidate_limit=settings.content_llm_rerank_candidate_limit,
+        provider=(settings.ai_provider_mode if settings.content_llm_rerank_enabled else "disabled"),
+        model=(settings.ai_chat_model if settings.content_llm_rerank_enabled else "none"),
+        max_output_tokens=settings.content_llm_rerank_max_output_tokens,
+    )
+
+
 async def enqueue_manual_topic_selection(
     repository: TopicSelectionRepository,
     settings: Settings,
@@ -75,6 +94,7 @@ async def enqueue_manual_topic_selection(
         business_date=resolved_date,
         timezone=settings.business_timezone,
         config=build_topic_scoring_config(settings),
+        rerank_config=build_topic_rerank_config(settings),
         governed_event_cutoff=governed_event_cutoff,
         trigger="manual",
     )
@@ -107,6 +127,7 @@ async def reconcile_daily_topic_selection(
             business_date=business_date,
             timezone=settings.business_timezone,
             config=build_topic_scoring_config(settings),
+            rerank_config=build_topic_rerank_config(settings),
             governed_event_cutoff=governed_event_cutoff,
             trigger="scheduled",
         )
@@ -124,9 +145,15 @@ async def reconcile_daily_topic_selection(
 
 
 class TopicSelectionExecutor:
-    def __init__(self, repository: TopicSelectionRepository, settings: Settings) -> None:
+    def __init__(
+        self,
+        repository: TopicSelectionRepository,
+        settings: Settings,
+        reranker: TopicReranker | None = None,
+    ) -> None:
         self._repository = repository
         self._settings = settings
+        self._reranker = reranker
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -143,6 +170,7 @@ class TopicSelectionExecutor:
         )
         try:
             config = await self._repository.load_config(claimed.run_id)
+            rerank_config = await self._repository.load_rerank_config(claimed.run_id)
             candidates = await self._repository.load_candidates(claimed.run_id)
             self._ensure_lease(lease_lost)
             decision = select_daily_topic(
@@ -150,10 +178,35 @@ class TopicSelectionExecutor:
                 as_of=claimed.cutoff_at,
                 config=config,
             )
+            pool = build_daily_rerank_pool(
+                decision,
+                candidates,
+                limit=rerank_config.candidate_limit,
+            )
+            request = (
+                TopicRerankRequest(
+                    run_id=claimed.run_id,
+                    cutoff_at=claimed.cutoff_at,
+                    context="daily",
+                    policy_version=rerank_config.policy_version,
+                    max_output_tokens=rerank_config.max_output_tokens,
+                    candidates=pool,
+                )
+                if pool
+                else None
+            )
+            rerank_outcome = await execute_topic_rerank(
+                config=rerank_config,
+                reranker=self._reranker,
+                request=request,
+            )
+            self._ensure_lease(lease_lost)
+            decision = apply_daily_topic_rerank(decision, rerank_outcome)
             if not await self._repository.persist_decision(
                 claimed=claimed,
                 config=config,
                 decision=decision,
+                rerank_outcome=rerank_outcome,
             ):
                 raise TopicSelectionLeaseLostError()
             if not await self._repository.complete(claimed=claimed):
@@ -170,6 +223,10 @@ class TopicSelectionExecutor:
                 ),
                 no_topic_code=(decision.no_topic_code.value if decision.no_topic_code else None),
                 scoring_version=config.version,
+                rerank_outcome=rerank_outcome.kind.value,
+                rerank_failure_code=(
+                    rerank_outcome.failure_code.value if rerank_outcome.failure_code else None
+                ),
             )
         except TopicSelectionLeaseLostError:
             logger.warning(

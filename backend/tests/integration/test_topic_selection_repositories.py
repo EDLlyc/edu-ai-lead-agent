@@ -9,6 +9,7 @@ from app.application.services.governance_runtime import build_governance_version
 from app.core.errors import ConflictError
 from app.domain.governance_enums import FactualCategory
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+from app.domain.topic_rerank import TopicRerankConfig
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
@@ -29,6 +30,7 @@ from app.infrastructure.db.topic_selection import (
     complete_topic_selection_job,
     enqueue_topic_selection_run,
     get_daily_topic_result,
+    get_topic_rerank_record,
     get_topic_selection_run,
     heartbeat_topic_selection_job,
     list_topic_score_rows,
@@ -76,7 +78,23 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
         assert replay.id == run.id
         assert replay.config_snapshot == config.as_metadata()
         assert replay.config_snapshot["selection_priority_rule_version"] == "source-priority-v1"
+        assert replay.rerank_config_snapshot == TopicRerankConfig().as_metadata()
+        assert replay.rerank_config_fingerprint == TopicRerankConfig().fingerprint
         run_id = run.id
+
+        with pytest.raises(ConflictError):
+            await enqueue_topic_selection_run(
+                session,
+                business_date=business_date,
+                timezone="Asia/Shanghai",
+                config=config,
+                rerank_config=TopicRerankConfig(
+                    enabled=True,
+                    provider="fake",
+                    model="fake-rerank-v1",
+                ),
+                governed_event_cutoff=cutoff,
+            )
 
         different_config = TopicScoringConfig(
             version=f"scoring-v1-preview-{suffix}-next",
@@ -119,6 +137,12 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
             decision=decision,
         )
         assert await complete_topic_selection_job(session, claimed=claimed)
+        assert not await persist_topic_selection_decision(
+            session,
+            claimed=claimed,
+            config=config,
+            decision=decision,
+        )
 
         stored_run = await get_topic_selection_run(session, run_id)
         scores = await list_topic_score_rows(session, run_id)
@@ -127,6 +151,10 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
             business_date=business_date,
             timezone="Asia/Shanghai",
             scoring_profile=config.profile,
+        )
+        rerank_record = await get_topic_rerank_record(
+            session,
+            topic_selection_run_id=run_id,
         )
 
     assert stored_run.status == "succeeded"
@@ -139,6 +167,13 @@ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
     assert daily.selection.decision_kind == "no_topic"
     assert daily.selection.no_topic_code == "no_candidates"
     assert daily.selected_title is None
+    assert rerank_record is not None
+    assert rerank_record.outcome == "skipped"
+    assert rerank_record.provider == "disabled"
+    assert rerank_record.candidate_count == 0
+    assert rerank_record.base_order == []
+    assert rerank_record.final_order == []
+    assert rerank_record.reasons == {}
 
 
 @pytest.mark.integration

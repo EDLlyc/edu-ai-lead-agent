@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.topic_rerank import TopicRerankSummaryResponse
+
 ContentSlotValue = Literal["morning", "noon", "evening"]
 
 
@@ -26,6 +28,9 @@ class ContentSlotRunResponse(BaseModel):
     governance_run_id: UUID
     governed_event_cutoff: datetime
     config_fingerprint: str
+    rerank_config_fingerprint: str
+    rerank_config: dict[str, Any]
+    rerank: TopicRerankSummaryResponse
     slot_policy_version: str
     slot_policy_fingerprint: str
     preparation_at: datetime
@@ -65,6 +70,10 @@ class ContentSlotScoreResponse(BaseModel):
     final_ordering_value: float
     final_ordering_key: str
     rank: int
+    deterministic_rank: int
+    final_rank: int
+    rerank_reason_codes: list[str]
+    rerank_explanation: str | None
     selected_ordinal: int | None = Field(default=None, ge=1, le=3)
     explanation: dict[str, Any]
 

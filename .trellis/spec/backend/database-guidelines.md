@@ -8,7 +8,7 @@ acquisition, factual-governance, material-package, and Enterprise WeChat deliver
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260815_0021`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260818_0022`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -124,6 +124,13 @@ Every score stores feature values, weights, penalties, total, threshold, rule/mo
 eligibility, and veto reasons. Every generated artifact stores prompt version, model/provider,
 input artifact references, and validation/audit verdicts.
 
+Topic selection rerank state uses a separate immutable run snapshot/fingerprint and never mutates
+the historical numeric scoring snapshot. `topic_scores` and `content_slot_scores` store both
+deterministic and final rank. `topic_rerank_records` binds exactly one daily or slot run through an
+XOR constraint and partial unique indexes and stores only bounded safe order/reason/fingerprint/
+usage metadata. The selection, score rows, and rerank audit commit together under the existing
+lease; provider calls occur before that short transaction.
+
 Claims and evidence are relational records, not just a prose `source_note`. A binding records the
 claim ID, evidence passage/snapshot ID, exact quote or offsets, URL, source tier, and retrieval
 time. Enforce that accepted core claims have at least one eligible binding in application logic
@@ -168,7 +175,8 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260815_0021` (adds controlled visual-plan reservation and similarity-attempt audit after
+  `20260818_0022` (adds immutable daily/slot topic-rerank config, deterministic/final ranks, and
+  typed XOR-bound rerank audit after controlled visual-plan reservation and similarity-attempt audit after
   independent three-slot production and durable delivery windows, and after
   bounded image-provider-rejection recovery, reviewed material-package delivery jobs and attempts,
   source-scoped

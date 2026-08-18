@@ -2051,6 +2051,18 @@
             "title": "Preparation At",
             "type": "string"
           },
+          "rerank": {
+            "$ref": "#/components/schemas/TopicRerankSummaryResponse"
+          },
+          "rerank_config": {
+            "additionalProperties": true,
+            "title": "Rerank Config",
+            "type": "object"
+          },
+          "rerank_config_fingerprint": {
+            "title": "Rerank Config Fingerprint",
+            "type": "string"
+          },
           "scores_url": {
             "title": "Scores Url",
             "type": "string"
@@ -2142,6 +2154,9 @@
           "governance_run_id",
           "governed_event_cutoff",
           "config_fingerprint",
+          "rerank_config_fingerprint",
+          "rerank_config",
+          "rerank",
           "slot_policy_version",
           "slot_policy_fingerprint",
           "preparation_at",
@@ -2187,6 +2202,10 @@
       },
       "ContentSlotScoreResponse": {
         "properties": {
+          "deterministic_rank": {
+            "title": "Deterministic Rank",
+            "type": "integer"
+          },
           "eligible": {
             "title": "Eligible",
             "type": "boolean"
@@ -2230,6 +2249,10 @@
             "title": "Final Ordering Value",
             "type": "number"
           },
+          "final_rank": {
+            "title": "Final Rank",
+            "type": "integer"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2242,6 +2265,24 @@
           "rank": {
             "title": "Rank",
             "type": "integer"
+          },
+          "rerank_explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Explanation"
+          },
+          "rerank_reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rerank Reason Codes",
+            "type": "array"
           },
           "run_id": {
             "format": "uuid",
@@ -2322,6 +2363,10 @@
           "final_ordering_value",
           "final_ordering_key",
           "rank",
+          "deterministic_rank",
+          "final_rank",
+          "rerank_reason_codes",
+          "rerank_explanation",
           "explanation"
         ],
         "title": "ContentSlotScoreResponse",
@@ -3187,6 +3232,9 @@
             ],
             "title": "No Topic Code"
           },
+          "rerank": {
+            "$ref": "#/components/schemas/TopicRerankSummaryResponse"
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -3255,7 +3303,8 @@
           "selected_event_version_id",
           "no_topic_code",
           "decided_at",
-          "selected_score"
+          "selected_score",
+          "rerank"
         ],
         "title": "DailyTopicResponse",
         "type": "object"
@@ -6802,6 +6851,117 @@
         "title": "SourceResponse",
         "type": "object"
       },
+      "TopicRerankSummaryResponse": {
+        "properties": {
+          "candidate_count": {
+            "maximum": 8.0,
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "config_fingerprint": {
+            "title": "Config Fingerprint",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "not_applied",
+              "applied",
+              "skipped",
+              "fallback"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "prompt_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Fingerprint"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "reasoning_tokens": {
+            "minimum": 0.0,
+            "title": "Reasoning Tokens",
+            "type": "integer"
+          },
+          "request_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Fingerprint"
+          }
+        },
+        "required": [
+          "outcome",
+          "enabled",
+          "policy_version",
+          "config_fingerprint",
+          "provider",
+          "model",
+          "candidate_count",
+          "failure_code",
+          "request_fingerprint",
+          "prompt_fingerprint",
+          "prompt_tokens",
+          "completion_tokens",
+          "reasoning_tokens",
+          "latency_ms"
+        ],
+        "title": "TopicRerankSummaryResponse",
+        "type": "object"
+      },
       "TopicScoreListResponse": {
         "properties": {
           "count": {
@@ -6825,6 +6985,10 @@
       },
       "TopicScoreResponse": {
         "properties": {
+          "deterministic_rank": {
+            "title": "Deterministic Rank",
+            "type": "integer"
+          },
           "eligible": {
             "title": "Eligible",
             "type": "boolean"
@@ -6859,6 +7023,10 @@
             "additionalProperties": true,
             "title": "Explanation",
             "type": "object"
+          },
+          "final_rank": {
+            "title": "Final Rank",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
@@ -6907,6 +7075,24 @@
             },
             "title": "Raw Features",
             "type": "object"
+          },
+          "rerank_explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Explanation"
+          },
+          "rerank_reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rerank Reason Codes",
+            "type": "array"
           },
           "run_id": {
             "format": "uuid",
@@ -6965,7 +7151,11 @@
           "eligible",
           "veto_codes",
           "explanation",
-          "rank"
+          "rank",
+          "deterministic_rank",
+          "final_rank",
+          "rerank_reason_codes",
+          "rerank_explanation"
         ],
         "title": "TopicScoreResponse",
         "type": "object"
@@ -7035,6 +7225,18 @@
               }
             ],
             "title": "No Topic Code"
+          },
+          "rerank": {
+            "$ref": "#/components/schemas/TopicRerankSummaryResponse"
+          },
+          "rerank_config": {
+            "additionalProperties": true,
+            "title": "Rerank Config",
+            "type": "object"
+          },
+          "rerank_config_fingerprint": {
+            "title": "Rerank Config Fingerprint",
+            "type": "string"
           },
           "revision": {
             "title": "Revision",
@@ -7139,6 +7341,9 @@
           "revision",
           "config_fingerprint",
           "config",
+          "rerank_config_fingerprint",
+          "rerank_config",
+          "rerank",
           "status",
           "considered_count",
           "eligible_count",

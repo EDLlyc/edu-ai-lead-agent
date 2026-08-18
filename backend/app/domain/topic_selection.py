@@ -512,6 +512,9 @@ class TopicScore:
     frontier_significance: float = 0.0
     science_tech_editorial_reason_codes: tuple[str, ...] = ()
     rank: int | None = None
+    deterministic_rank: int | None = None
+    rerank_reason_codes: tuple[str, ...] = ()
+    rerank_explanation: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "raw_features", MappingProxyType(dict(self.raw_features)))
@@ -573,6 +576,9 @@ class TopicScore:
             "frontier_significance": self.frontier_significance,
             "science_tech_editorial_reason_codes": list(self.science_tech_editorial_reason_codes),
             "rank": self.rank,
+            "deterministic_rank": self.deterministic_rank,
+            "rerank_reason_codes": list(self.rerank_reason_codes),
+            "rerank_explanation": self.rerank_explanation,
         }
 
 
@@ -753,7 +759,10 @@ def select_daily_topic(
             key=lambda score: _score_sort_key(score, candidates_by_id[score.event_id]),
         )
     )
-    ranked = tuple(replace(score, rank=index) for index, score in enumerate(ordered, start=1))
+    ranked = tuple(
+        replace(score, rank=index, deterministic_rank=index)
+        for index, score in enumerate(ordered, start=1)
+    )
     selected = next((score for score in ranked if score.eligible), None)
     if selected is not None:
         return DailyTopicDecision(

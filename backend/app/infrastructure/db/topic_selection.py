@@ -14,12 +14,18 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.topic_selection import ClaimedTopicSelectionJob
+from app.application.services.topic_reranking import topic_rerank_outcome_metadata
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.editorial_relevance import (
     evaluate_product_matrix_fit,
     evaluate_product_matrix_fit_v2,
     evaluate_science_ai_education_relevance,
     evaluate_science_tech_editorial_relevance,
+)
+from app.domain.topic_rerank import (
+    TopicRerankConfig,
+    TopicRerankOutcome,
+    skipped_topic_rerank_outcome,
 )
 from app.domain.topic_selection import (
     DELIVERED_CONTENT_VETO_RULE_VERSION,
@@ -46,6 +52,7 @@ from app.infrastructure.db.models import (
     MaterialPackageModel,
     NormalizedArticleModel,
     SourceVersionModel,
+    TopicRerankRecordModel,
     TopicScoreModel,
     TopicScoringConfigModel,
     TopicSelectionJobModel,
@@ -171,6 +178,7 @@ async def enqueue_topic_selection_run(
     config: TopicScoringConfig,
     governed_event_cutoff: datetime,
     trigger: str = "manual",
+    rerank_config: TopicRerankConfig | None = None,
 ) -> tuple[TopicSelectionRunModel, bool]:
     if governed_event_cutoff.tzinfo is None:
         raise ValueError("governed event cutoff must be timezone-aware")
@@ -182,6 +190,9 @@ async def enqueue_topic_selection_run(
     snapshot = config.as_metadata()
     fingerprint = stored_config.fingerprint
     config_id = stored_config.id
+    resolved_rerank_config = rerank_config or TopicRerankConfig()
+    rerank_snapshot = resolved_rerank_config.as_metadata()
+    rerank_fingerprint = resolved_rerank_config.fingerprint
 
     current = await session.scalar(
         select(TopicSelectionRunModel)
@@ -202,7 +213,12 @@ async def enqueue_topic_selection_run(
             and governed_event_cutoff > current.governed_event_cutoff
         )
         if not can_recover:
-            if current.config_fingerprint != fingerprint or current.config_snapshot != snapshot:
+            if (
+                current.config_fingerprint != fingerprint
+                or current.config_snapshot != snapshot
+                or current.rerank_config_fingerprint != rerank_fingerprint
+                or current.rerank_config_snapshot != rerank_snapshot
+            ):
                 await session.rollback()
                 raise ConflictError(
                     "a different scoring config already owns this date and scoring profile"
@@ -224,6 +240,8 @@ async def enqueue_topic_selection_run(
             config_id=config_id,
             config_fingerprint=fingerprint,
             config_snapshot=snapshot,
+            rerank_config_fingerprint=rerank_fingerprint,
+            rerank_config_snapshot=rerank_snapshot,
             governed_event_cutoff=governed_event_cutoff,
             status="queued",
         )
@@ -242,7 +260,12 @@ async def enqueue_topic_selection_run(
         )
         if existing is None:
             raise RuntimeError("topic selection run conflict could not be resolved")
-        if existing.config_fingerprint != fingerprint or existing.config_snapshot != snapshot:
+        if (
+            existing.config_fingerprint != fingerprint
+            or existing.config_snapshot != snapshot
+            or existing.rerank_config_fingerprint != rerank_fingerprint
+            or existing.rerank_config_snapshot != rerank_snapshot
+        ):
             await session.rollback()
             raise ConflictError(
                 "a different scoring config already owns this date and scoring profile"
@@ -875,12 +898,20 @@ async def load_topic_scoring_config(session: AsyncSession, run_id: UUID) -> Topi
     return TopicScoringConfig.from_metadata(run.config_snapshot)
 
 
+async def load_topic_rerank_config(session: AsyncSession, run_id: UUID) -> TopicRerankConfig:
+    run = await session.get(TopicSelectionRunModel, run_id)
+    if run is None:
+        raise NotFoundError("topic selection run")
+    return TopicRerankConfig.from_metadata(run.rerank_config_snapshot)
+
+
 async def persist_topic_selection_decision(
     session: AsyncSession,
     *,
     claimed: ClaimedTopicSelectionJob,
     config: TopicScoringConfig,
     decision: DailyTopicDecision,
+    rerank_outcome: TopicRerankOutcome | None = None,
 ) -> bool:
     now = datetime.now(UTC)
     job = await session.scalar(
@@ -904,10 +935,22 @@ async def persist_topic_selection_decision(
     )
     if run is None:
         raise RuntimeError("claimed topic selection run is missing")
+    stored_rerank_config = TopicRerankConfig.from_metadata(run.rerank_config_snapshot)
+    if rerank_outcome is None:
+        if stored_rerank_config.enabled:
+            raise ValueError("enabled topic rerank requires a persisted outcome")
+        rerank_outcome = skipped_topic_rerank_outcome(
+            stored_rerank_config,
+            tuple(score.event_id for score in decision.scores if score.eligible)[:8],
+        )
     fingerprint = topic_scoring_config_fingerprint(config)
     if (
         run.config_fingerprint != fingerprint
         or run.config_snapshot != config.as_metadata()
+        or run.rerank_config_fingerprint != stored_rerank_config.fingerprint
+        or rerank_outcome.policy_version != run.rerank_config_snapshot.get("policy_version")
+        or rerank_outcome.provider != run.rerank_config_snapshot.get("provider")
+        or rerank_outcome.model != run.rerank_config_snapshot.get("model")
         or decision.scoring_version != config.version
         or decision.scoring_profile != config.profile
     ):
@@ -959,6 +1002,7 @@ async def persist_topic_selection_decision(
                 eligible=score.eligible,
                 veto_codes=[code.value for code in score.veto_codes],
                 rank=rank,
+                deterministic_rank=(score.deterministic_rank or rank),
                 explanation={
                     "formula": "sum(positive_components)-sum(penalty_components)",
                     "scoring_version": score.scoring_version,
@@ -988,10 +1032,41 @@ async def persist_topic_selection_decision(
                     "science_tech_editorial_reason_codes": list(
                         score.science_tech_editorial_reason_codes
                     ),
+                    "deterministic_rank": score.deterministic_rank or rank,
+                    "final_rank": rank,
+                    "rerank_reason_codes": list(score.rerank_reason_codes),
+                    "rerank_explanation": score.rerank_explanation,
                 },
             )
             .on_conflict_do_nothing(constraint="uq_topic_scores_run_event")
         )
+    rerank_metadata = topic_rerank_outcome_metadata(rerank_outcome)
+    await session.execute(
+        insert(TopicRerankRecordModel)
+        .values(
+            id=uuid4(),
+            topic_selection_run_id=run.id,
+            content_slot_run_id=None,
+            policy_version=rerank_outcome.policy_version,
+            provider=rerank_outcome.provider,
+            model=rerank_outcome.model,
+            outcome=rerank_outcome.kind.value,
+            failure_code=(
+                rerank_outcome.failure_code.value if rerank_outcome.failure_code else None
+            ),
+            candidate_count=rerank_outcome.candidate_count,
+            base_order=rerank_metadata["base_order"],
+            final_order=rerank_metadata["final_order"],
+            reasons=rerank_metadata["reasons"],
+            request_fingerprint=rerank_outcome.request_fingerprint,
+            prompt_fingerprint=rerank_outcome.prompt_fingerprint,
+            prompt_tokens=rerank_outcome.prompt_tokens,
+            completion_tokens=rerank_outcome.completion_tokens,
+            reasoning_tokens=rerank_outcome.reasoning_tokens,
+            latency_ms=rerank_outcome.latency_ms,
+        )
+        .on_conflict_do_nothing()
+    )
     selection_id = uuid4()
     inserted_selection_id = await session.scalar(
         insert(DailyTopicSelectionModel)
@@ -1135,6 +1210,26 @@ async def get_topic_selection_run(session: AsyncSession, run_id: UUID) -> TopicS
     if run is None:
         raise NotFoundError("topic selection run")
     return run
+
+
+async def get_topic_rerank_record(
+    session: AsyncSession,
+    *,
+    topic_selection_run_id: UUID | None = None,
+    content_slot_run_id: UUID | None = None,
+) -> TopicRerankRecordModel | None:
+    if (topic_selection_run_id is None) == (content_slot_run_id is None):
+        raise ValueError("exactly one topic rerank origin is required")
+    statement = select(TopicRerankRecordModel)
+    if topic_selection_run_id is not None:
+        statement = statement.where(
+            TopicRerankRecordModel.topic_selection_run_id == topic_selection_run_id
+        )
+    else:
+        statement = statement.where(
+            TopicRerankRecordModel.content_slot_run_id == content_slot_run_id
+        )
+    return cast(TopicRerankRecordModel | None, await session.scalar(statement))
 
 
 async def get_governed_event_cutoff(
@@ -1281,6 +1376,7 @@ class PostgresTopicSelectionRepository:
         business_date: date,
         timezone: str,
         config: TopicScoringConfig,
+        rerank_config: TopicRerankConfig,
         governed_event_cutoff: datetime,
         trigger: str = "manual",
     ) -> UUID:
@@ -1290,6 +1386,7 @@ class PostgresTopicSelectionRepository:
                 business_date=business_date,
                 timezone=timezone,
                 config=config,
+                rerank_config=rerank_config,
                 governed_event_cutoff=governed_event_cutoff,
                 trigger=trigger,
             )
@@ -1332,16 +1429,25 @@ class PostgresTopicSelectionRepository:
         async with self._session_factory() as session:
             return await load_topic_scoring_config(session, run_id)
 
+    async def load_rerank_config(self, run_id: UUID) -> TopicRerankConfig:
+        async with self._session_factory() as session:
+            return await load_topic_rerank_config(session, run_id)
+
     async def persist_decision(
         self,
         *,
         claimed: ClaimedTopicSelectionJob,
         config: TopicScoringConfig,
         decision: DailyTopicDecision,
+        rerank_outcome: TopicRerankOutcome | None = None,
     ) -> bool:
         async with self._session_factory() as session:
             return await persist_topic_selection_decision(
-                session, claimed=claimed, config=config, decision=decision
+                session,
+                claimed=claimed,
+                config=config,
+                decision=decision,
+                rerank_outcome=rerank_outcome,
             )
 
     async def complete(self, *, claimed: ClaimedTopicSelectionJob) -> bool:

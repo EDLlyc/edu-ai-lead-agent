@@ -23,6 +23,7 @@ schedule/enqueue
   -> normalize, segment, and validate factual analysis
   -> exact/semantic duplicate relations and event organization
   -> eligibility vetoes and versioned scoring
+  -> optional bounded LLM rerank inside hard priority barriers
   -> select Top 1 or finish no_topic
   -> retrieve evidence and brand context separately
   -> draft typed claims/copy/image prompt
@@ -36,6 +37,14 @@ schedule/enqueue
 Each stage consumes immutable or versioned artifact references and returns a typed result. Persist
 the stage status before and after work. A worker restart must resume from durable state rather than
 reconstructing progress from logs or rerunning the whole workflow.
+
+Topic reranking is an ordering stage, not a scoring or governance stage. The deterministic selector
+owns eligibility, the 0.59 threshold, Ministry authentication, hard vetoes, seven-day delivered
+repeat, slot affinity, and same-day exclusion. A default-off shared daily/slot service sends at most
+eight already eligible governed projections to one fake/Zhipu adapter call, validates a complete
+within-group permutation, and otherwise uses the exact base order. Enqueue pins its independent
+policy/provider/model config; persistence retains base/final ranks plus a safe typed audit. No DB
+session remains open across the provider call and no second judge/model pass is introduced.
 
 ## Source governance and ingestion
 

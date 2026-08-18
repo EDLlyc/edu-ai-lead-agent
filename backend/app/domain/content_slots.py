@@ -189,7 +189,10 @@ class ContentSlotScore:
     ordering_value: float
     final_ordering_key: str
     rank: int | None = None
+    deterministic_rank: int | None = None
     selected_ordinal: int | None = None
+    rerank_reason_codes: tuple[str, ...] = ()
+    rerank_explanation: str | None = None
 
     def __post_init__(self) -> None:
         if not 0 <= self.affinity <= 0.25 or not math.isfinite(self.affinity):
@@ -362,6 +365,7 @@ def select_slot_topics(
         replace(
             score,
             rank=index + 1,
+            deterministic_rank=index + 1,
             selected_ordinal=ordinal_by_index.get(index),
         )
         for index, score in enumerate(ordered)

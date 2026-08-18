@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.topic_rerank import TopicRerankSummaryResponse
+
 
 class CreateTopicSelectionRunRequest(BaseModel):
     business_date: date | None = None
@@ -21,6 +23,9 @@ class TopicSelectionRunResponse(BaseModel):
     revision: int
     config_fingerprint: str
     config: dict[str, Any]
+    rerank_config_fingerprint: str
+    rerank_config: dict[str, Any]
+    rerank: TopicRerankSummaryResponse
     status: str
     considered_count: int
     eligible_count: int
@@ -60,6 +65,10 @@ class TopicScoreResponse(BaseModel):
     veto_codes: list[str]
     explanation: dict[str, Any]
     rank: int
+    deterministic_rank: int
+    final_rank: int
+    rerank_reason_codes: list[str]
+    rerank_explanation: str | None
 
 
 class TopicScoreListResponse(BaseModel):
@@ -80,3 +89,4 @@ class DailyTopicResponse(BaseModel):
     no_topic_code: str | None
     decided_at: datetime
     selected_score: TopicScoreResponse | None
+    rerank: TopicRerankSummaryResponse

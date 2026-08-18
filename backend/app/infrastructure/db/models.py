@@ -1381,6 +1381,8 @@ class TopicSelectionRunModel(Base):
     )
     config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    rerank_config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    rerank_config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     governed_event_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     selected_event_id: Mapped[UUID | None] = mapped_column(
@@ -1541,6 +1543,7 @@ class TopicScoreModel(Base):
     eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
     veto_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    deterministic_rank: Mapped[int] = mapped_column(Integer, nullable=False)
     explanation: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1548,6 +1551,7 @@ class TopicScoreModel(Base):
 
     __table_args__ = (
         CheckConstraint("rank >= 1", name="ck_topic_scores_rank"),
+        CheckConstraint("deterministic_rank >= 1", name="ck_topic_scores_deterministic_rank"),
         CheckConstraint(
             "jsonb_typeof(veto_codes) = 'array'", name="ck_topic_scores_veto_codes_array"
         ),
@@ -1699,6 +1703,8 @@ class ContentSlotRunModel(Base):
     )
     config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    rerank_config_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    rerank_config_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     slot_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
     slot_policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     slot_policy_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -1874,6 +1880,7 @@ class ContentSlotScoreModel(Base):
     final_ordering_value: Mapped[float] = mapped_column(Float, nullable=False)
     final_ordering_key: Mapped[str] = mapped_column(String(300), nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    deterministic_rank: Mapped[int] = mapped_column(Integer, nullable=False)
     selected_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1881,6 +1888,9 @@ class ContentSlotScoreModel(Base):
 
     __table_args__ = (
         CheckConstraint("rank >= 1", name="ck_content_slot_scores_rank"),
+        CheckConstraint(
+            "deterministic_rank >= 1", name="ck_content_slot_scores_deterministic_rank"
+        ),
         CheckConstraint(
             "selected_ordinal IS NULL OR selected_ordinal BETWEEN 1 AND 3",
             name="ck_content_slot_scores_selected_ordinal",
@@ -2028,6 +2038,91 @@ class ContentSlotSelectionModel(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_content_slot_selections_business_slot", "business_date", "content_slot"),
+    )
+
+
+class TopicRerankRecordModel(Base):
+    __tablename__ = "topic_rerank_records"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    topic_selection_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "topic_selection_runs.id",
+            name="fk_topic_rerank_records_topic_selection_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+    )
+    content_slot_run_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "content_slot_runs.id",
+            name="fk_topic_rerank_records_content_slot_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+    )
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    candidate_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    base_order: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    final_order: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reasons: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prompt_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(topic_selection_run_id IS NULL) <> (content_slot_run_id IS NULL)",
+            name="ck_topic_rerank_records_origin_xor",
+        ),
+        CheckConstraint(
+            "outcome IN ('applied', 'skipped', 'fallback')",
+            name="ck_topic_rerank_records_outcome",
+        ),
+        CheckConstraint(
+            "(outcome = 'fallback') = (failure_code IS NOT NULL)",
+            name="ck_topic_rerank_records_failure_state",
+        ),
+        CheckConstraint(
+            "candidate_count BETWEEN 0 AND 8",
+            name="ck_topic_rerank_records_candidate_count",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(base_order) = 'array' AND "
+            "jsonb_typeof(final_order) = 'array' AND jsonb_typeof(reasons) = 'object'",
+            name="ck_topic_rerank_records_json_shapes",
+        ),
+        CheckConstraint(
+            "prompt_tokens >= 0 AND completion_tokens >= 0 "
+            "AND reasoning_tokens >= 0 AND latency_ms >= 0",
+            name="ck_topic_rerank_records_usage",
+        ),
+        Index(
+            "uq_topic_rerank_records_daily_run",
+            "topic_selection_run_id",
+            unique=True,
+            postgresql_where=text("topic_selection_run_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_topic_rerank_records_slot_run",
+            "content_slot_run_id",
+            unique=True,
+            postgresql_where=text("content_slot_run_id IS NOT NULL"),
+        ),
     )
 
 

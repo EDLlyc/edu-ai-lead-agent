@@ -15,6 +15,7 @@ from app.application.ports.content_slots import (
     ClaimedContentSlotJob,
     GovernedSlotLineage,
 )
+from app.application.services.topic_reranking import topic_rerank_outcome_metadata
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.content_slots import (
     ContentSlot,
@@ -22,6 +23,11 @@ from app.domain.content_slots import (
     ContentSlotSchedule,
     ContentSlotScore,
     SlotRankingPolicy,
+)
+from app.domain.topic_rerank import (
+    TopicRerankConfig,
+    TopicRerankOutcome,
+    skipped_topic_rerank_outcome,
 )
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
 from app.infrastructure.db.models import (
@@ -34,6 +40,7 @@ from app.infrastructure.db.models import (
     EventClusterVersionModel,
     GovernanceJobModel,
     GovernanceRunModel,
+    TopicRerankRecordModel,
 )
 from app.infrastructure.db.topic_selection import (
     ensure_topic_scoring_config,
@@ -136,6 +143,7 @@ async def enqueue_content_slot_run(
     policy: SlotRankingPolicy,
     lineage: GovernedSlotLineage,
     trigger: str,
+    rerank_config: TopicRerankConfig | None = None,
 ) -> tuple[ContentSlotRunModel, bool]:
     if trigger not in {"manual", "scheduled"}:
         raise ValueError("content slot trigger must be manual or scheduled")
@@ -145,6 +153,7 @@ async def enqueue_content_slot_run(
         raise ValueError("content slot timezone must be non-blank and bounded")
     await _lock_business_date(session, business_date, timezone)
     stored_config = await ensure_topic_scoring_config(session, config)
+    resolved_rerank_config = rerank_config or TopicRerankConfig()
     instants = schedule.instants(business_date, timezone)
     existing = await session.scalar(
         select(ContentSlotRunModel)
@@ -165,6 +174,8 @@ async def enqueue_content_slot_run(
             or existing.config_fingerprint != stored_config.fingerprint
             or existing.config_snapshot != config.as_metadata()
             or existing.slot_policy_snapshot != policy.as_metadata()
+            or existing.rerank_config_fingerprint != resolved_rerank_config.fingerprint
+            or existing.rerank_config_snapshot != resolved_rerank_config.as_metadata()
             or existing.item_limit != schedule.max_items
         ):
             await session.rollback()
@@ -186,6 +197,8 @@ async def enqueue_content_slot_run(
         config_id=stored_config.id,
         config_fingerprint=stored_config.fingerprint,
         config_snapshot=config.as_metadata(),
+        rerank_config_fingerprint=resolved_rerank_config.fingerprint,
+        rerank_config_snapshot=resolved_rerank_config.as_metadata(),
         slot_policy_version=policy.version,
         slot_policy_fingerprint=policy.fingerprint,
         slot_policy_snapshot=policy.as_metadata(),
@@ -377,6 +390,13 @@ async def load_content_slot_policy(session: AsyncSession, run_id: UUID) -> SlotR
     )
 
 
+async def load_content_slot_rerank_config(session: AsyncSession, run_id: UUID) -> TopicRerankConfig:
+    run = await session.get(ContentSlotRunModel, run_id)
+    if run is None:
+        raise NotFoundError("content slot run")
+    return TopicRerankConfig.from_metadata(run.rerank_config_snapshot)
+
+
 async def get_same_day_selected_event_ids(session: AsyncSession, run_id: UUID) -> frozenset[UUID]:
     run = await session.get(ContentSlotRunModel, run_id)
     if run is None:
@@ -449,6 +469,7 @@ async def persist_content_slot_decision(
     config: TopicScoringConfig,
     policy: SlotRankingPolicy,
     decision: ContentSlotDecision,
+    rerank_outcome: TopicRerankOutcome | None = None,
 ) -> bool:
     now = datetime.now(UTC)
     job = await session.scalar(
@@ -472,12 +493,28 @@ async def persist_content_slot_decision(
     )
     if run is None:
         raise RuntimeError("claimed content slot run is missing")
+    stored_rerank_config = TopicRerankConfig.from_metadata(run.rerank_config_snapshot)
+    if rerank_outcome is None:
+        if stored_rerank_config.enabled:
+            raise ValueError("enabled topic rerank requires a persisted outcome")
+        rerank_outcome = skipped_topic_rerank_outcome(
+            stored_rerank_config,
+            tuple(
+                score.base.event_id
+                for score in decision.scores
+                if score.base.eligible and not score.same_day_excluded
+            )[:8],
+        )
     await _lock_business_date(session, run.business_date, run.timezone)
     if (
         run.config_fingerprint != topic_scoring_config_fingerprint(config)
         or run.config_snapshot != config.as_metadata()
         or run.slot_policy_fingerprint != policy.fingerprint
         or run.slot_policy_snapshot != policy.as_metadata()
+        or run.rerank_config_fingerprint != stored_rerank_config.fingerprint
+        or rerank_outcome.policy_version != run.rerank_config_snapshot.get("policy_version")
+        or rerank_outcome.provider != run.rerank_config_snapshot.get("provider")
+        or rerank_outcome.model != run.rerank_config_snapshot.get("model")
         or decision.slot.value != run.content_slot
         or decision.scoring_version != config.version
         or decision.scoring_profile != config.profile
@@ -525,6 +562,10 @@ async def persist_content_slot_decision(
                     "same_day_excluded": score.same_day_excluded,
                     "same_day_exclusion_reason": score.same_day_exclusion_reason,
                     "final_ordering_key": score.final_ordering_key,
+                    "deterministic_rank": score.deterministic_rank or score.rank,
+                    "final_rank": score.rank,
+                    "rerank_reason_codes": list(score.rerank_reason_codes),
+                    "rerank_explanation": score.rerank_explanation,
                 },
                 slot_affinity=score.affinity,
                 slot_affinity_reasons=list(score.affinity_reasons),
@@ -533,6 +574,7 @@ async def persist_content_slot_decision(
                 final_ordering_value=score.ordering_value,
                 final_ordering_key=score.final_ordering_key,
                 rank=score.rank,
+                deterministic_rank=score.deterministic_rank or score.rank,
                 selected_ordinal=score.selected_ordinal,
             )
             .on_conflict_do_nothing(constraint="uq_content_slot_scores_run_event")
@@ -549,6 +591,34 @@ async def persist_content_slot_decision(
                 raise RuntimeError("content slot score conflict could not be resolved")
             score_id = existing_score.id
         score_ids[base.event_id] = score_id
+
+    rerank_metadata = topic_rerank_outcome_metadata(rerank_outcome)
+    await session.execute(
+        insert(TopicRerankRecordModel)
+        .values(
+            id=uuid4(),
+            topic_selection_run_id=None,
+            content_slot_run_id=run.id,
+            policy_version=rerank_outcome.policy_version,
+            provider=rerank_outcome.provider,
+            model=rerank_outcome.model,
+            outcome=rerank_outcome.kind.value,
+            failure_code=(
+                rerank_outcome.failure_code.value if rerank_outcome.failure_code else None
+            ),
+            candidate_count=rerank_outcome.candidate_count,
+            base_order=rerank_metadata["base_order"],
+            final_order=rerank_metadata["final_order"],
+            reasons=rerank_metadata["reasons"],
+            request_fingerprint=rerank_outcome.request_fingerprint,
+            prompt_fingerprint=rerank_outcome.prompt_fingerprint,
+            prompt_tokens=rerank_outcome.prompt_tokens,
+            completion_tokens=rerank_outcome.completion_tokens,
+            reasoning_tokens=rerank_outcome.reasoning_tokens,
+            latency_ms=rerank_outcome.latency_ms,
+        )
+        .on_conflict_do_nothing()
+    )
 
     for score in selected_scores:
         await session.execute(
@@ -776,6 +846,7 @@ class PostgresContentSlotRepository:
         schedule: ContentSlotSchedule,
         config: TopicScoringConfig,
         policy: SlotRankingPolicy,
+        rerank_config: TopicRerankConfig,
         lineage: GovernedSlotLineage,
         trigger: str,
     ) -> UUID:
@@ -787,6 +858,7 @@ class PostgresContentSlotRepository:
                 schedule=schedule,
                 config=config,
                 policy=policy,
+                rerank_config=rerank_config,
                 lineage=lineage,
                 trigger=trigger,
             )
@@ -817,6 +889,10 @@ class PostgresContentSlotRepository:
         async with self._session_factory() as session:
             return await load_content_slot_policy(session, run_id)
 
+    async def load_rerank_config(self, run_id: UUID) -> TopicRerankConfig:
+        async with self._session_factory() as session:
+            return await load_content_slot_rerank_config(session, run_id)
+
     async def load_candidates(self, run_id: UUID) -> tuple[TopicCandidate, ...]:
         async with self._session_factory() as session:
             return await load_content_slot_candidates(session, run_id)
@@ -832,6 +908,7 @@ class PostgresContentSlotRepository:
         config: TopicScoringConfig,
         policy: SlotRankingPolicy,
         decision: ContentSlotDecision,
+        rerank_outcome: TopicRerankOutcome | None = None,
     ) -> bool:
         async with self._session_factory() as session:
             return await persist_content_slot_decision(
@@ -840,6 +917,7 @@ class PostgresContentSlotRepository:
                 config=config,
                 policy=policy,
                 decision=decision,
+                rerank_outcome=rerank_outcome,
             )
 
     async def complete(self, *, claimed: ClaimedContentSlotJob) -> bool:

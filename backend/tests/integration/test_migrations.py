@@ -33,9 +33,12 @@ async def test_clean_database_is_at_alembic_head(
                     "copy_generation_runs",
                     "wecom_delivery_jobs",
                     "wecom_delivery_windows",
+                    "topic_selection_runs",
+                    "topic_scores",
                     "content_slot_runs",
                     "content_slot_scores",
                     "content_slot_selections",
+                    "topic_rerank_records",
                 )
             }
         )
@@ -66,6 +69,7 @@ async def test_clean_database_is_at_alembic_head(
                     "copy_generation_runs",
                     "wecom_delivery_windows",
                     "wecom_delivery_jobs",
+                    "topic_rerank_records",
                 )
             }
         )
@@ -114,7 +118,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260815_0021"
+    assert revision == "20260818_0022"
     assert {
         "sources",
         "source_versions",
@@ -158,10 +162,18 @@ async def test_clean_database_is_at_alembic_head(
         "content_slot_jobs",
         "content_slot_scores",
         "content_slot_selections",
+        "topic_rerank_records",
         "wecom_delivery_windows",
         "wecom_delivery_jobs",
         "wecom_delivery_attempts",
     }.issubset(tables)
+    for table in ("topic_selection_runs", "content_slot_runs"):
+        assert columns[table]["rerank_config_snapshot"]["nullable"] is False
+        assert columns[table]["rerank_config_fingerprint"]["nullable"] is False
+    for table in ("topic_scores", "content_slot_scores"):
+        assert columns[table]["deterministic_rank"]["nullable"] is False
+    assert columns["topic_rerank_records"]["candidate_count"]["nullable"] is False
+    assert columns["topic_rerank_records"]["reasons"]["nullable"] is False
     assert columns["acquisition_runs"]["content_slot"]["nullable"] is True
     assert columns["copy_generation_runs"]["daily_topic_selection_id"]["nullable"] is True
     assert columns["copy_generation_runs"]["topic_selection_run_id"]["nullable"] is True
@@ -265,6 +277,7 @@ async def test_clean_database_is_at_alembic_head(
         ("content_slot_runs", "ck_content_slot_runs_window"),
         ("content_slot_scores", "ck_content_slot_scores_exclusion"),
         ("content_slot_selections", "ck_content_slot_selections_ordinal"),
+        ("topic_rerank_records", "ck_topic_rerank_records_origin_xor"),
         ("copy_generation_runs", "ck_copy_generation_runs_origin_xor"),
         ("wecom_delivery_windows", "ck_wecom_delivery_windows_gap"),
         ("wecom_delivery_jobs", "ck_wecom_delivery_jobs_slot_shape"),

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.topic_rerank import TopicRerankConfig, TopicRerankOutcome
 from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, TopicScoringConfig
 
 
@@ -30,6 +31,7 @@ class TopicSelectionRepository(Protocol):
         business_date: date,
         timezone: str,
         config: TopicScoringConfig,
+        rerank_config: TopicRerankConfig,
         governed_event_cutoff: datetime,
         trigger: str = "manual",
     ) -> UUID: ...
@@ -42,6 +44,8 @@ class TopicSelectionRepository(Protocol):
 
     async def load_config(self, run_id: UUID) -> TopicScoringConfig: ...
 
+    async def load_rerank_config(self, run_id: UUID) -> TopicRerankConfig: ...
+
     async def load_candidates(self, run_id: UUID) -> tuple[TopicCandidate, ...]: ...
 
     async def persist_decision(
@@ -50,6 +54,7 @@ class TopicSelectionRepository(Protocol):
         claimed: ClaimedTopicSelectionJob,
         config: TopicScoringConfig,
         decision: DailyTopicDecision,
+        rerank_outcome: TopicRerankOutcome,
     ) -> bool: ...
 
     async def complete(self, *, claimed: ClaimedTopicSelectionJob) -> bool: ...

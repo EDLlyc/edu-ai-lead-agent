@@ -11,6 +11,7 @@ from app.domain.content_slots import (
     ContentSlotSchedule,
     SlotRankingPolicy,
 )
+from app.domain.topic_rerank import TopicRerankConfig, TopicRerankOutcome
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
 
 
@@ -52,6 +53,7 @@ class ContentSlotRepository(Protocol):
         schedule: ContentSlotSchedule,
         config: TopicScoringConfig,
         policy: SlotRankingPolicy,
+        rerank_config: TopicRerankConfig,
         lineage: GovernedSlotLineage,
         trigger: str,
     ) -> UUID: ...
@@ -66,6 +68,8 @@ class ContentSlotRepository(Protocol):
 
     async def load_policy(self, run_id: UUID) -> SlotRankingPolicy: ...
 
+    async def load_rerank_config(self, run_id: UUID) -> TopicRerankConfig: ...
+
     async def load_candidates(self, run_id: UUID) -> tuple[TopicCandidate, ...]: ...
 
     async def same_day_selected_event_ids(self, run_id: UUID) -> frozenset[UUID]: ...
@@ -77,6 +81,7 @@ class ContentSlotRepository(Protocol):
         config: TopicScoringConfig,
         policy: SlotRankingPolicy,
         decision: ContentSlotDecision,
+        rerank_outcome: TopicRerankOutcome,
     ) -> bool: ...
 
     async def complete(self, *, claimed: ClaimedContentSlotJob) -> bool: ...

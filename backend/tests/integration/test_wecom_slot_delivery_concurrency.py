@@ -9,6 +9,7 @@ import pytest
 from app.application.services.copy_generation import build_copy_version_bundle
 from app.application.services.wecom_delivery import WeComDeliveryExecutor
 from app.domain.content_slots import SlotRankingPolicy
+from app.domain.topic_rerank import TopicRerankConfig
 from app.domain.topic_selection import TopicScoringConfig, TopicVetoCode, score_topic_candidate
 from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
 from app.infrastructure.db.models import (
@@ -58,6 +59,7 @@ async def _seed_slot_delivery_lane(
     )
     governance_id = uuid4()
     policy = SlotRankingPolicy()
+    rerank_config = TopicRerankConfig()
     config = TopicScoringConfig(
         profile=f"slot-delivery-{uuid4().hex[:10]}",
         version="scoring-v1-preview.6-tiered-science-tech-priority",
@@ -115,6 +117,8 @@ async def _seed_slot_delivery_lane(
                 config_id=stored_config.id,
                 config_fingerprint=topic_scoring_config_fingerprint(config),
                 config_snapshot=config.as_metadata(),
+                rerank_config_fingerprint=rerank_config.fingerprint,
+                rerank_config_snapshot=rerank_config.as_metadata(),
                 slot_policy_version=policy.version,
                 slot_policy_fingerprint=policy.fingerprint,
                 slot_policy_snapshot=policy.as_metadata(),
@@ -229,6 +233,7 @@ async def _seed_slot_delivery_lane(
                     same_day_exclusion_reason=None,
                     final_ordering_value=0.9,
                     final_ordering_key=f"slot-delivery-{index}",
+                    deterministic_rank=index,
                     rank=index,
                     selected_ordinal=index,
                 )
@@ -473,6 +478,8 @@ async def _seed_daily_delivery_origin(
             config_id=slot_run.config_id,
             config_fingerprint=config_fingerprint,
             config_snapshot=slot_run.config_snapshot,
+            rerank_config_fingerprint=slot_run.rerank_config_fingerprint,
+            rerank_config_snapshot=slot_run.rerank_config_snapshot,
             governed_event_cutoff=completed_at,
             status="succeeded",
             selected_event_id=slot_selection.selected_event_id,

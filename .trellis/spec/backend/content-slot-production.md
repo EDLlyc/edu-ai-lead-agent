@@ -24,9 +24,10 @@ social publishing.
   - `GET /api/v1/content-slot-runs/{run_id}/scores`.
   - `GET /api/v1/content-editions/{business_date}?profile=preview`.
 - Durable tables: `content_slot_runs`, `content_slot_jobs`, `content_slot_scores`,
-  `content_slot_selections`, and `wecom_delivery_windows`, plus nullable typed slot-origin fields on
-  acquisition, copy-generation, and delivery rows.
-- Alembic revision: `20260814_0020`, following `20260807_0019`.
+  `content_slot_selections`, shared `topic_rerank_records`, and `wecom_delivery_windows`, plus
+  nullable typed slot-origin fields on acquisition, copy-generation, and delivery rows.
+- Slot foundation revision: `20260814_0020`; current head `20260818_0022` adds shared daily/slot
+  rerank snapshots, deterministic ranks, and XOR-bound typed audit.
 - Runtime gates: `CONTENT_SLOT_MODE_ENABLED` plus one enable flag per slot. All default to false and
   require the existing `CONTENT_ENABLED` parent gate.
 - Delivery gap: `WECOM_SLOT_PACKAGE_GAP_SECONDS`, default 60, enforced through durable window state.
@@ -42,6 +43,14 @@ social publishing.
   vetoes.
 - Ministry AI/science-education news remains globally first when eligible and is never held for a
   preferred column. Column affinities are soft preferences, not quotas.
+- The optional shared `topic-rerank-v1` receives at most the first eight candidates that remain
+  eligible after slot affinity and same-day exclusion. It may reorder only within the existing
+  Ministry/ordinary group, never changes affinity, total, threshold, veto, exclusion, or item
+  limit, and leaves candidates outside the cap in deterministic order. Zero/one candidate skips;
+  provider/schema/permutation failure completes with the exact base order and a typed audit.
+- Candidate/config reads close before the provider call. Same-day state is loaded before that call
+  and rechecked under the persistence lock. A late conflict ends that execution and relies on the
+  bounded job retry; an executor never loops a second logical model request after one conflict.
 - A slot selects 0--3 events. The business-date advisory lock and relational uniqueness enforce no
   repeated event across slots and at most nine slot selections per day. Insufficient quality
   persists explicit unfilled reasons and never lowers the threshold.
@@ -90,6 +99,9 @@ social publishing.
 | Edition item has no delivery job after expiry | Project `expired`, not `preparing` |
 | Composite lineage/window fields disagree | PostgreSQL rejects the row |
 | Historical daily row is queried or replayed | Preserve the legacy API shape, daily history rules, and stored version semantics |
+| Same-day excluded, hard-vetoed, below-threshold, or out-of-cap candidate is favored by model text | It never enters/changes the bounded rerank pool |
+| Model crosses the Ministry priority barrier or returns an invalid permutation | Persist typed fallback and retain deterministic slot order |
+| Persistence conflict occurs after a provider result | End the execution; no in-execution second model call |
 
 ### 5. Good / Base / Bad Cases
 
@@ -119,7 +131,10 @@ social publishing.
   cross-wire rejection, origin XOR, daily uniqueness/max-nine behavior, and safe downgrade refusal
   when live slot-origin rows exist.
 - Service/API tests cover exact lineage, idempotent replay, empty/partial/mixed states, safe source
-  URLs, expired projection, sibling isolation, and unchanged daily endpoints.
+  URLs, expired projection, sibling isolation, immutable rerank pins, safe summary/rank projection,
+  single-call conflict behavior, and unchanged daily endpoints.
+- Shared unit/adapter tests and `python -m evals.topic_rerank.runner --check` cover morning/noon/
+  evening fixtures, same-day exclusion, priority barriers, strict JSON, and provider-free fallback.
 - Delivery tests use a controlled clock and real PostgreSQL to prove no early claim, concurrent
   lowest-ready selection, persisted gap at 59/60 seconds, expiry without provider calls, stale
   running-to-unknown behavior, and legacy recovery compatibility.

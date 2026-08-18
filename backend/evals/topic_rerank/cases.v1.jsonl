@@ -1,0 +1,8 @@
+{"case_id":"daily-reorder","context":"daily","scenario":"reorder","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[]}
+{"case_id":"morning-reorder","context":"morning","scenario":"reorder","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[]}
+{"case_id":"noon-reorder","context":"noon","scenario":"reorder","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[]}
+{"case_id":"evening-reorder","context":"evening","scenario":"reorder","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[]}
+{"case_id":"priority-barrier","context":"daily","scenario":"priority","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[1,2],"expected_excluded_suffixes":[]}
+{"case_id":"hard-veto-excluded","context":"daily","scenario":"hard_veto","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[3]}
+{"case_id":"same-day-excluded","context":"noon","scenario":"same_day","expected_outcome":"applied","expected_candidate_count":2,"expected_final_suffixes":[2,1],"expected_excluded_suffixes":[3]}
+{"case_id":"provider-fallback","context":"daily","scenario":"fallback","expected_outcome":"fallback","expected_candidate_count":2,"expected_final_suffixes":[1,2],"expected_excluded_suffixes":[]}

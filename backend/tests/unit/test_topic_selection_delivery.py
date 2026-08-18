@@ -14,6 +14,7 @@ from app.application.services.topic_selection import (
 from app.core.config import Settings
 from app.core.errors import ConflictError
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
+from app.domain.topic_rerank import TopicRerankConfig, TopicRerankOutcome
 from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_THRESHOLD,
     DEFAULT_TOPIC_SCORING_VERSION,
@@ -34,6 +35,7 @@ LEASE_TOKEN = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 class FakeTopicSelectionRepository:
     def __init__(self, candidates: tuple[TopicCandidate, ...] = ()) -> None:
         self.config = TopicScoringConfig()
+        self.rerank_config = TopicRerankConfig()
         self.candidates = candidates
         self.claimed: ClaimedTopicSelectionJob | None = ClaimedTopicSelectionJob(
             job_id=JOB_ID,
@@ -65,6 +67,7 @@ class FakeTopicSelectionRepository:
         business_date: date,
         timezone: str,
         config: TopicScoringConfig,
+        rerank_config: TopicRerankConfig,
         governed_event_cutoff: datetime,
         trigger: str = "manual",
     ) -> UUID:
@@ -74,6 +77,7 @@ class FakeTopicSelectionRepository:
             "business_date": business_date,
             "timezone": timezone,
             "config": config,
+            "rerank_config": rerank_config,
             "governed_event_cutoff": governed_event_cutoff,
             "trigger": trigger,
         }
@@ -95,6 +99,10 @@ class FakeTopicSelectionRepository:
         assert run_id == RUN_ID
         return self.config
 
+    async def load_rerank_config(self, run_id: UUID) -> TopicRerankConfig:
+        assert run_id == RUN_ID
+        return self.rerank_config
+
     async def load_candidates(self, run_id: UUID) -> tuple[TopicCandidate, ...]:
         assert run_id == RUN_ID
         return self.candidates
@@ -105,9 +113,11 @@ class FakeTopicSelectionRepository:
         claimed: ClaimedTopicSelectionJob,
         config: TopicScoringConfig,
         decision: DailyTopicDecision,
+        rerank_outcome: TopicRerankOutcome,
     ) -> bool:
         assert claimed.run_id == RUN_ID
         assert config == self.config
+        assert rerank_outcome.provider == "disabled"
         self.persisted = decision
         return True
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_session
 from app.api.v1.routes.topic_selection_views import (
     topic_decision_kind,
+    topic_rerank_summary,
     topic_score_response,
     topic_selection_run_response,
 )
@@ -19,6 +20,7 @@ from app.core.errors import ConflictError, NotFoundError
 from app.infrastructure.db.topic_selection import (
     PostgresTopicSelectionRepository,
     get_daily_topic_result,
+    get_topic_rerank_record,
     get_topic_selection_run,
     list_topic_score_rows,
 )
@@ -54,7 +56,10 @@ async def create_topic_selection_run(
         now=datetime.now(UTC),
     )
     run = await get_topic_selection_run(session, run_id)
-    projected = topic_selection_run_response(run)
+    projected = topic_selection_run_response(
+        run,
+        await get_topic_rerank_record(session, topic_selection_run_id=run.id),
+    )
     response.headers["Location"] = projected.status_url
     return projected
 
@@ -67,7 +72,10 @@ async def read_topic_selection_run(
     run_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TopicSelectionRunResponse:
-    return topic_selection_run_response(await get_topic_selection_run(session, run_id))
+    return topic_selection_run_response(
+        await get_topic_selection_run(session, run_id),
+        await get_topic_rerank_record(session, topic_selection_run_id=run_id),
+    )
 
 
 @router.get(
@@ -111,6 +119,7 @@ async def read_daily_topic(
         None,
     )
     config_version = projection.run.config_snapshot.get("version")
+    rerank_record = await get_topic_rerank_record(session, topic_selection_run_id=projection.run.id)
     return DailyTopicResponse(
         business_date=projection.selection.business_date,
         timezone=projection.selection.timezone,
@@ -124,4 +133,9 @@ async def read_daily_topic(
         no_topic_code=projection.selection.no_topic_code,
         decided_at=projection.selection.created_at,
         selected_score=selected_score,
+        rerank=topic_rerank_summary(
+            config_snapshot=projection.run.rerank_config_snapshot,
+            config_fingerprint=projection.run.rerank_config_fingerprint,
+            record=rerank_record,
+        ),
     )

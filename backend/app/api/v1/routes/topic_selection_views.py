@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
-from app.infrastructure.db.models import TopicSelectionRunModel
+from app.infrastructure.db.models import TopicRerankRecordModel, TopicSelectionRunModel
 from app.infrastructure.db.topic_selection import TopicScoreProjection
+from app.schemas.topic_rerank import TopicRerankSummaryResponse
 from app.schemas.topic_selection import TopicScoreResponse, TopicSelectionRunResponse
 
 TopicDecisionKind = Literal["selected", "no_topic"]
+TopicRerankOutcomeValue = Literal["not_applied", "applied", "skipped", "fallback"]
 
 
 def topic_decision_kind(value: str) -> TopicDecisionKind:
@@ -17,7 +19,43 @@ def topic_decision_kind(value: str) -> TopicDecisionKind:
     raise RuntimeError("stored daily topic decision kind is invalid")
 
 
-def topic_selection_run_response(run: TopicSelectionRunModel) -> TopicSelectionRunResponse:
+def topic_rerank_summary(
+    *,
+    config_snapshot: dict[str, object],
+    config_fingerprint: str,
+    record: TopicRerankRecordModel | None,
+) -> TopicRerankSummaryResponse:
+    enabled = config_snapshot.get("enabled") is True
+    policy = config_snapshot.get("policy_version")
+    provider = config_snapshot.get("provider")
+    model = config_snapshot.get("model")
+    projected_provider = provider if isinstance(provider, str) else "unknown"
+    projected_model = model if isinstance(model, str) else "unknown"
+    outcome: TopicRerankOutcomeValue = (
+        cast(TopicRerankOutcomeValue, record.outcome) if record is not None else "not_applied"
+    )
+    return TopicRerankSummaryResponse(
+        outcome=outcome,
+        enabled=enabled,
+        policy_version=policy if isinstance(policy, str) else "unknown",
+        config_fingerprint=config_fingerprint,
+        provider=record.provider if record is not None else projected_provider,
+        model=record.model if record is not None else projected_model,
+        candidate_count=record.candidate_count if record is not None else 0,
+        failure_code=record.failure_code if record is not None else None,
+        request_fingerprint=record.request_fingerprint if record is not None else None,
+        prompt_fingerprint=record.prompt_fingerprint if record is not None else None,
+        prompt_tokens=record.prompt_tokens if record is not None else 0,
+        completion_tokens=record.completion_tokens if record is not None else 0,
+        reasoning_tokens=record.reasoning_tokens if record is not None else 0,
+        latency_ms=record.latency_ms if record is not None else 0,
+    )
+
+
+def topic_selection_run_response(
+    run: TopicSelectionRunModel,
+    record: TopicRerankRecordModel | None = None,
+) -> TopicSelectionRunResponse:
     config_version = run.config_snapshot.get("version")
     return TopicSelectionRunResponse(
         id=run.id,
@@ -29,6 +67,13 @@ def topic_selection_run_response(run: TopicSelectionRunModel) -> TopicSelectionR
         revision=run.revision,
         config_fingerprint=run.config_fingerprint,
         config=run.config_snapshot,
+        rerank_config_fingerprint=run.rerank_config_fingerprint,
+        rerank_config=run.rerank_config_snapshot,
+        rerank=topic_rerank_summary(
+            config_snapshot=run.rerank_config_snapshot,
+            config_fingerprint=run.rerank_config_fingerprint,
+            record=record,
+        ),
         status=run.status,
         considered_count=run.total_scores,
         eligible_count=run.eligible_scores,
@@ -51,6 +96,7 @@ def topic_score_response(row: TopicScoreProjection) -> TopicScoreResponse:
     score = row.score
     explanation_version = score.explanation.get("scoring_version")
     explanation_profile = score.explanation.get("scoring_profile")
+    rerank_explanation = score.explanation.get("rerank_explanation")
     return TopicScoreResponse(
         id=score.id,
         run_id=score.run_id,
@@ -77,4 +123,10 @@ def topic_score_response(row: TopicScoreProjection) -> TopicScoreResponse:
         veto_codes=[str(code) for code in score.veto_codes],
         explanation=dict(score.explanation),
         rank=score.rank,
+        deterministic_rank=score.deterministic_rank,
+        final_rank=score.rank,
+        rerank_reason_codes=[
+            str(code) for code in score.explanation.get("rerank_reason_codes", [])
+        ],
+        rerank_explanation=(rerank_explanation if isinstance(rerank_explanation, str) else None),
     )
