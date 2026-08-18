@@ -1202,3 +1202,25 @@ Versioned topic rerank v1/v2 provider contract, added strict bounded GLM-5.2 JSO
 ### Status
 
 [OK] **Completed**
+
+
+## Session 55: Publish verified Agent Workbench portfolio evidence
+
+**Date**: 2026-08-18
+**Task**: Publish verified Agent Workbench portfolio evidence
+**Branch**: `main`
+
+### Summary
+
+Added a recruiter-facing Agent Workbench case study with three real loopback API/UI runs, typed JSON evidence, sanitized screenshots, hash-verified manifests, reproducible capture tooling, regression tests, and explicit failed-closed live Zhipu boundaries.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6043e67` | (see git log) |
+| `b1d9fd0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
