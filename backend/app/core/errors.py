@@ -326,6 +326,59 @@ class InvalidProviderOutputError(ProviderError):
         )
 
 
+class TopicRerankInvalidProviderOutputError(InvalidProviderOutputError):
+    """Content-free topic-rerank failure retaining only safe provider metrics."""
+
+    __slots__ = (
+        "completion_tokens",
+        "latency_ms",
+        "prompt_fingerprint",
+        "prompt_tokens",
+        "reasoning_tokens",
+    )
+
+    _SAFE_ISSUE_CODES = frozenset(
+        {
+            "topic_rerank_completion_invalid",
+            "topic_rerank_json_envelope_invalid",
+            "topic_rerank_schema_invalid",
+        }
+    )
+    _MAX_METRIC = 2_147_483_647
+
+    def __init__(
+        self,
+        issue_code: str,
+        *,
+        prompt_fingerprint: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        latency_ms: int = 0,
+        validation_issues: tuple[ProviderValidationIssue, ...] = (),
+    ) -> None:
+        if issue_code not in self._SAFE_ISSUE_CODES:
+            raise ValueError("topic rerank provider issue code is invalid")
+        if len(prompt_fingerprint) != 64 or any(
+            character not in "0123456789abcdef" for character in prompt_fingerprint
+        ):
+            raise ValueError("topic rerank prompt fingerprint must be SHA-256")
+        metrics = (prompt_tokens, completion_tokens, reasoning_tokens, latency_ms)
+        if any(
+            not isinstance(value, int)
+            or isinstance(value, bool)
+            or not 0 <= value <= self._MAX_METRIC
+            for value in metrics
+        ):
+            raise ValueError("topic rerank provider metrics must be bounded non-negative integers")
+        super().__init__((issue_code,), validation_issues=validation_issues)
+        self.prompt_fingerprint = prompt_fingerprint
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.reasoning_tokens = reasoning_tokens
+        self.latency_ms = latency_ms
+
+
 class BrandOcrError(ProviderError):
     """Provider boundary failure for the private brand OCR capability."""
 

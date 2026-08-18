@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Authoritative rerank policy, fallback, persistence, and replay contract"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Provider JSON envelope, safe validation diagnostics, and retry boundaries"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Safe provider metric logging and raw-content prohibitions"}
+{"file": ".trellis/tasks/08-18-zhipu-rerank-output-compatibility/research/official-zhipu-and-local-contract.md", "reason": "Official GLM-5.2 JSON/thinking evidence and local failure boundary"}
+{"file": ".trellis/tasks/08-18-zhipu-rerank-output-compatibility/research/executable-contract-summary.md", "reason": "Bounded Agent-pipeline and quality contracts needed during implementation"}

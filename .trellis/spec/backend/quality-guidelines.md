@@ -332,7 +332,8 @@ At minimum, prove:
 - duplicate content retains provenance and a seven-day event repeat is vetoed;
 - a below-threshold day ends as `no_topic` without model/image generation;
 - topic reranking receives only eligible candidates, preserves Ministry priority and slot
-  same-day barriers, caps input at eight, and falls back byte-stably in ordering semantics;
+  same-day barriers, caps input at eight, selects v1/v2 prompt/payload/parser by immutable policy,
+  and falls back byte-stably in ordering semantics;
 - every accepted core claim has an eligible evidence binding;
 - deterministic validation runs before LLM audit;
 - an LLM auditor cannot invent evidence or override a hard veto;
@@ -348,6 +349,14 @@ synthetic provider-free fixtures spanning daily and all three slots, priority, v
 fallback cases. Its stable JSON/Markdown report excludes timestamps and volatile usage/latency and
 must say `fixture_contract_conformance_only`; it cannot be presented as live-model editorial
 accuracy. Fake policy code must not read expected answers from the eval dataset.
+
+Topic-rerank provider contracts must independently assert the v2 JSON-object payload with disabled
+thinking and sampling, exact schema/reason-code prompt, pure/fenced/bounded-affix compatibility,
+and strict rejection of arrays, competing structures, malformed/oversized envelopes, extra fields,
+type coercion, unknown enums, invalid UUIDs, invalid permutations, and priority crossings. Privacy
+tests must inspect bounded `loc`/`type` diagnostics and prove API keys, prompts, candidate text,
+completion bodies, provider bodies, and exception strings are absent. Literal v1 tests must prove
+its payload and exact-object parser did not inherit v2 behavior.
 
 ### Front-to-back flow
 

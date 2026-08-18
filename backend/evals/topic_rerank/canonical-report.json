@@ -223,5 +223,5 @@
   "disclaimer": "Provider-free synthetic fixtures verify safety and structure contracts only; this is not evidence of live-model editorial quality or production accuracy.",
   "failed_case_ids": [],
   "passed_count": 8,
-  "policy_version": "topic-rerank-v1"
+  "policy_version": "topic-rerank-v2-zhipu-json-contract"
 }

@@ -60,13 +60,26 @@ allowlisted `loc` / `type` projection. Focused contract, worker, PostgreSQL, and
 must prove nested locations remain useful, issue counts are capped, and raw values or exception
 causes do not leak at any boundary.
 
-Before Pydantic validation, a structured-copy adapter may normalize only one bounded top-level JSON
-object. Accepted envelopes are: a pure object, one `json` code fence containing only that object,
-or bounded non-JSON prose around one uniquely balanced object. The scanner must handle escaped
-quotes, backslashes, and braces inside JSON strings. Reject array roots, multiple objects, a second
-JSON structure/value, unclosed or malformed JSON, ambiguous/multiple fences, non-standard JSON
-constants, and over-limit envelopes. Parse only the extracted object; never deserialize surrounding
-prose. Envelope compatibility does not relax Pydantic fields, claims, bindings, enums, or limits.
+Before Pydantic validation, approved structured-output adapters may normalize only one bounded
+top-level JSON object through the shared provider helper. Current topic-rerank v2 and structured
+copy use that exact scanner; literal topic-rerank v1 retains exact-object parsing. Accepted
+envelopes are: a pure object, one `json` code fence containing only that object, or bounded non-JSON
+prose around one uniquely balanced object. The scanner must handle escaped quotes, backslashes, and
+braces inside JSON strings. Reject array roots, multiple objects, a second JSON structure/value,
+unclosed or malformed JSON, ambiguous/multiple fences, non-standard JSON constants, and over-limit
+envelopes. Parse only the extracted object; never deserialize surrounding prose. Envelope
+compatibility does not relax Pydantic fields, claims, bindings, enums, limits, permutation
+completeness, or priority barriers.
+
+Topic reranking distinguishes bounded internal `topic_rerank_completion_invalid`,
+`topic_rerank_json_envelope_invalid`, and `topic_rerank_schema_invalid` stages. After a valid chat
+completion envelope, an invalid content body keeps only the safe prompt fingerprint, non-negative
+usage counters, latency, and normalized `loc`/`type` entries. Topic-specific location projection
+retains only stable schema segments and integer indexes; provider-controlled extra-field names map
+to `unknown` rather than entering diagnostics. It never carries raw content, candidate text, prompt
+text, response bodies, credentials, or exception strings. Application and durable/API projections
+still expose only `invalid_provider_output`, perform no schema-repair model call, and preserve the
+exact deterministic base order.
 
 Expected outcomes such as `no_topic` are domain/run results, not exceptions. A hard veto can be a
 typed control failure inside a stage, but it must be persisted as a structured veto result rather

@@ -13,13 +13,24 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from app.application.services.topic_reranking import build_topic_rerank_prompt
-from app.core.errors import InvalidProviderOutputError, ProviderInputLimitError
+from app.core.errors import (
+    ProviderInputLimitError,
+    ProviderValidationIssue,
+    TopicRerankInvalidProviderOutputError,
+    normalize_provider_validation_issues,
+)
 from app.domain.topic_rerank import (
+    CURRENT_TOPIC_RERANK_POLICY_VERSION,
+    LEGACY_TOPIC_RERANK_POLICY_VERSION,
     TOPIC_RERANK_REASON_CODES,
     TopicRerankCandidate,
     TopicRerankItem,
     TopicRerankModelResult,
     TopicRerankRequest,
+)
+from app.infrastructure.ai.provider_json import (
+    ProviderJsonEnvelopeError,
+    extract_provider_json_object,
 )
 from app.infrastructure.ai.zhipu import _post_json_with_retries
 
@@ -33,6 +44,24 @@ TopicRerankReasonCode = Literal[
     "insight_potential",
     "topic_diversity",
 ]
+_MAX_PROVIDER_METRIC = 2_147_483_647
+_SAFE_VALIDATION_LOC_SEGMENTS = frozenset(
+    {
+        "choices",
+        "completion_tokens",
+        "completion_tokens_details",
+        "content",
+        "event_id",
+        "explanation",
+        "items",
+        "message",
+        "ordinal",
+        "prompt_tokens",
+        "reason_codes",
+        "root",
+        "usage",
+    }
+)
 
 
 class _ProviderModel(BaseModel):
@@ -40,8 +69,8 @@ class _ProviderModel(BaseModel):
 
 
 class _Usage(_ProviderModel):
-    prompt_tokens: int = Field(default=0, ge=0)
-    completion_tokens: int = Field(default=0, ge=0)
+    prompt_tokens: int = Field(default=0, ge=0, le=_MAX_PROVIDER_METRIC, strict=True)
+    completion_tokens: int = Field(default=0, ge=0, le=_MAX_PROVIDER_METRIC, strict=True)
     completion_tokens_details: dict[str, Any] | None = None
 
 
@@ -241,6 +270,11 @@ class ZhipuTopicReranker:
             "temperature": 0.0,
             "max_tokens": output_limit,
         }
+        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+            payload["thinking"] = {"type": "disabled"}
+            payload["do_sample"] = False
+        elif request.policy_version != LEGACY_TOPIC_RERANK_POLICY_VERSION:
+            raise ValueError("unsupported topic rerank request policy")
         started = perf_counter_ns()
         response = await _post_json_with_retries(
             client=self._client,
@@ -254,26 +288,75 @@ class ZhipuTopicReranker:
             payload=payload,
             max_response_bytes=max(16_384, output_limit * 16),
         )
+        latency_ms = max(0, (perf_counter_ns() - started) // 1_000_000)
         try:
-            completion = _ChatCompletion.model_validate(response.json())
-            output = _TopicRerankOutput.model_validate_json(completion.choices[0].message.content)
-            items = tuple(
-                TopicRerankItem(
-                    event_id=_parse_event_id(item.event_id),
-                    ordinal=item.ordinal,
-                    reason_codes=tuple(item.reason_codes),
-                    explanation=item.explanation.strip(),
-                )
-                for item in output.items
-            )
-        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
-            raise InvalidProviderOutputError(("topic_rerank_schema_invalid",)) from None
+            response_payload = response.json()
+        except (json.JSONDecodeError, TypeError, ValueError):
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_completion_invalid",
+                prompt_fingerprint=prompt.fingerprint,
+                latency_ms=latency_ms,
+                validation_issues=_root_issue("json_invalid"),
+            ) from None
+        try:
+            completion = _ChatCompletion.model_validate(response_payload)
+        except ValidationError as error:
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_completion_invalid",
+                prompt_fingerprint=prompt.fingerprint,
+                latency_ms=latency_ms,
+                validation_issues=_safe_validation_issues(error),
+            ) from None
         reasoning_tokens = 0
         details = completion.usage.completion_tokens_details
         if isinstance(details, dict):
             value = details.get("reasoning_tokens", 0)
-            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            if (
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and 0 <= value <= _MAX_PROVIDER_METRIC
+            ):
                 reasoning_tokens = value
+        metrics = {
+            "prompt_tokens": completion.usage.prompt_tokens,
+            "completion_tokens": completion.usage.completion_tokens,
+            "reasoning_tokens": reasoning_tokens,
+            "latency_ms": latency_ms,
+        }
+        if completion.usage.completion_tokens > output_limit:
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_schema_invalid",
+                prompt_fingerprint=prompt.fingerprint,
+                validation_issues=_issue(("usage", "completion_tokens"), "output_limit_exceeded"),
+                **metrics,
+            )
+        content = completion.choices[0].message.content
+        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+            try:
+                normalized_content = extract_provider_json_object(content)
+            except ProviderJsonEnvelopeError as error:
+                raise _invalid_topic_rerank_output(
+                    "topic_rerank_json_envelope_invalid",
+                    prompt_fingerprint=prompt.fingerprint,
+                    validation_issues=_root_issue(error.validation_type),
+                    **metrics,
+                ) from None
+        else:
+            normalized_content = content
+        try:
+            output = _TopicRerankOutput.model_validate_json(normalized_content)
+        except ValidationError as error:
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_schema_invalid",
+                prompt_fingerprint=prompt.fingerprint,
+                validation_issues=_safe_validation_issues(error),
+                **metrics,
+            ) from None
+        items = _build_topic_rerank_items(
+            output,
+            prompt_fingerprint=prompt.fingerprint,
+            metrics=metrics,
+        )
         return TopicRerankModelResult(
             items=items,
             provider="zhipu",
@@ -282,12 +365,101 @@ class ZhipuTopicReranker:
             prompt_tokens=completion.usage.prompt_tokens,
             completion_tokens=completion.usage.completion_tokens,
             reasoning_tokens=reasoning_tokens,
-            latency_ms=max(0, (perf_counter_ns() - started) // 1_000_000),
+            latency_ms=latency_ms,
         )
 
 
 def _parse_event_id(value: str) -> UUID:
     return UUID(value)
+
+
+def _build_topic_rerank_items(
+    output: _TopicRerankOutput,
+    *,
+    prompt_fingerprint: str,
+    metrics: dict[str, int],
+) -> tuple[TopicRerankItem, ...]:
+    items: list[TopicRerankItem] = []
+    for index, item in enumerate(output.items):
+        try:
+            event_id = _parse_event_id(item.event_id)
+        except (TypeError, ValueError):
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_schema_invalid",
+                prompt_fingerprint=prompt_fingerprint,
+                validation_issues=_issue(("items", index, "event_id"), "uuid_parsing"),
+                **metrics,
+            ) from None
+        try:
+            items.append(
+                TopicRerankItem(
+                    event_id=event_id,
+                    ordinal=item.ordinal,
+                    reason_codes=tuple(item.reason_codes),
+                    explanation=item.explanation.strip(),
+                )
+            )
+        except ValueError:
+            field = (
+                "reason_codes"
+                if len(set(item.reason_codes)) != len(item.reason_codes)
+                else "explanation"
+            )
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_schema_invalid",
+                prompt_fingerprint=prompt_fingerprint,
+                validation_issues=_issue(("items", index, field), "value_error"),
+                **metrics,
+            ) from None
+    return tuple(items)
+
+
+def _invalid_topic_rerank_output(
+    issue_code: str,
+    *,
+    prompt_fingerprint: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    reasoning_tokens: int = 0,
+    latency_ms: int = 0,
+    validation_issues: tuple[ProviderValidationIssue, ...] = (),
+) -> TopicRerankInvalidProviderOutputError:
+    return TopicRerankInvalidProviderOutputError(
+        issue_code,
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        reasoning_tokens=reasoning_tokens,
+        latency_ms=latency_ms,
+        validation_issues=validation_issues,
+    )
+
+
+def _safe_validation_issues(error: ValidationError) -> tuple[ProviderValidationIssue, ...]:
+    return normalize_provider_validation_issues(
+        (
+            tuple(
+                segment
+                if isinstance(segment, int) or segment in _SAFE_VALIDATION_LOC_SEGMENTS
+                else "unknown"
+                for segment in item["loc"]
+            ),
+            item["type"],
+        )
+        for item in error.errors(
+            include_url=False,
+            include_context=False,
+            include_input=False,
+        )
+    )
+
+
+def _issue(loc: tuple[str | int, ...], issue_type: str) -> tuple[ProviderValidationIssue, ...]:
+    return normalize_provider_validation_issues(((loc, issue_type),))
+
+
+def _root_issue(issue_type: str) -> tuple[ProviderValidationIssue, ...]:
+    return _issue(("root",), issue_type)
 
 
 assert set(get_args(TopicRerankReasonCode)) == TOPIC_RERANK_REASON_CODES

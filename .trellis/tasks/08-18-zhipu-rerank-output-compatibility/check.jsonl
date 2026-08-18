@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Verify versioned rerank behavior and deterministic fallback invariants"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify bounded diagnostics and no raw provider content leakage"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify safe metrics and prohibited raw provider fields"}
+{"file": ".trellis/tasks/08-18-zhipu-rerank-output-compatibility/research/official-zhipu-and-local-contract.md", "reason": "Check implementation against official API facts and live evidence limits"}
+{"file": ".trellis/tasks/08-18-zhipu-rerank-output-compatibility/research/executable-contract-summary.md", "reason": "Run the bounded required Agent-pipeline and quality checks"}

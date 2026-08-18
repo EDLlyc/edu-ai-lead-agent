@@ -9,6 +9,10 @@ from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, 
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
+from app.domain.topic_rerank import (
+    DEFAULT_TOPIC_RERANK_POLICY_VERSION,
+    SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS,
+)
 from app.domain.visual_diversity import (
     IMAGE_PERCEPTUAL_HASH_VERSION,
     IMAGE_SIMILARITY_POLICY_VERSION,
@@ -102,7 +106,7 @@ class Settings(BaseSettings):
     content_selection_priority_rule_version: str | None = "ministry-education-priority-v3"
     content_llm_rerank_enabled: bool = False
     content_llm_rerank_policy_version: str = Field(
-        default="topic-rerank-v1", min_length=1, max_length=80
+        default=DEFAULT_TOPIC_RERANK_POLICY_VERSION, min_length=1, max_length=80
     )
     content_llm_rerank_candidate_limit: int = Field(default=8, ge=1, le=8)
     content_llm_rerank_max_output_tokens: int = Field(default=1_024, ge=128, le=4_096)
@@ -258,6 +262,13 @@ class Settings(BaseSettings):
     @classmethod
     def parse_fixed_diversity_regeneration_count(cls, value: object) -> object:
         return 1 if value == "1" else value
+
+    @field_validator("content_llm_rerank_policy_version")
+    @classmethod
+    def validate_content_llm_rerank_policy_version(cls, value: str) -> str:
+        if value not in SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS:
+            raise ValueError("unsupported content LLM rerank policy version")
+        return value
 
     def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
         def schedule(

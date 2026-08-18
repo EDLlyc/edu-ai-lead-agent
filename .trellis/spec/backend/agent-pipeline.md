@@ -43,8 +43,13 @@ owns eligibility, the 0.59 threshold, Ministry authentication, hard vetoes, seve
 repeat, slot affinity, and same-day exclusion. A default-off shared daily/slot service sends at most
 eight already eligible governed projections to one fake/Zhipu adapter call, validates a complete
 within-group permutation, and otherwise uses the exact base order. Enqueue pins its independent
-policy/provider/model config; persistence retains base/final ranks plus a safe typed audit. No DB
-session remains open across the provider call and no second judge/model pass is introduced.
+policy/provider/model config; current `topic-rerank-v2-zhipu-json-contract` uses an exact JSON shape,
+seven allowlisted reason codes, JSON-object mode, disabled thinking/sampling, and the shared bounded
+one-object extractor. Literal `topic-rerank-v1` keeps its legacy prompt, payload, and exact-object
+parser. Persistence retains base/final ranks plus a safe typed audit. Invalid completion envelope,
+JSON envelope, or strict schema produces bounded content-free diagnostics and the generic durable
+fallback while preserving available usage/latency. No DB session remains open across the provider
+call and no second judge/model pass is introduced.
 
 ## Source governance and ingestion
 

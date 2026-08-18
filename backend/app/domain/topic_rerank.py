@@ -13,7 +13,12 @@ from uuid import UUID
 from app.domain.content_slots import ContentSlotDecision, ContentSlotScore
 from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, TopicScore
 
-DEFAULT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v1"
+LEGACY_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v1"
+CURRENT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v2-zhipu-json-contract"
+DEFAULT_TOPIC_RERANK_POLICY_VERSION = CURRENT_TOPIC_RERANK_POLICY_VERSION
+SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
+    {LEGACY_TOPIC_RERANK_POLICY_VERSION, CURRENT_TOPIC_RERANK_POLICY_VERSION}
+)
 DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT = 8
 DEFAULT_TOPIC_RERANK_MAX_OUTPUT_TOKENS = 1_024
 TOPIC_RERANK_FALLBACK_POLICY = "deterministic_base_order"
@@ -62,8 +67,8 @@ class TopicRerankConfig:
     fallback_policy: str = TOPIC_RERANK_FALLBACK_POLICY
 
     def __post_init__(self) -> None:
-        if not self.policy_version.strip() or len(self.policy_version) > 80:
-            raise ValueError("topic rerank policy version must be non-blank and bounded")
+        if self.policy_version not in SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS:
+            raise ValueError("unsupported topic rerank policy version")
         if not 1 <= self.candidate_limit <= DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT:
             raise ValueError("topic rerank candidate limit must be in [1, 8]")
         if self.provider not in {"disabled", "fake", "zhipu"}:
@@ -245,8 +250,8 @@ class TopicRerankRequest:
             raise ValueError("topic rerank cutoff must be timezone-aware")
         if self.context not in {"daily", "morning", "noon", "evening"}:
             raise ValueError("topic rerank request context is invalid")
-        if not self.policy_version.strip() or len(self.policy_version) > 80:
-            raise ValueError("topic rerank request policy must be bounded")
+        if self.policy_version not in SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS:
+            raise ValueError("unsupported topic rerank request policy")
         if not 128 <= self.max_output_tokens <= 4_096:
             raise ValueError("topic rerank request output limit is invalid")
         if not 1 <= len(self.candidates) <= DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT:

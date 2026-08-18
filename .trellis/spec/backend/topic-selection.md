@@ -84,20 +84,32 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - Stable ordering is applied Ministry priority, ordinary eligible, below-threshold without veto,
   then hard-vetoed; within each group use total, source trust, event time, then UUID. Every
   considered event receives a persisted rank even when vetoed or below threshold.
-- The optional `topic-rerank-v1` stage runs only after that deterministic ordering. Its independent
-  enqueue-time snapshot/fingerprint pins enabled state, provider/model, candidate cap (at most
-  eight), temperature zero, output cap, and deterministic fallback policy without changing the
-  `.8` scoring fingerprint. It receives only eligible governed projections; zero/one candidate
-  skips the provider, candidates outside the cap retain their deterministic order, and a model may
-  reorder only within the same Ministry/ordinary priority group.
+- The optional topic-rerank stage runs only after that deterministic ordering. Current snapshots
+  use `topic-rerank-v2-zhipu-json-contract`; literal `topic-rerank-v1` snapshots remain supported
+  with their original prose prompt, request payload, and exact-object parser. The immutable policy
+  selects prompt, wire payload, and parser together; unknown identities and a request/config policy
+  mismatch fail before transport.
+  The independent enqueue-time snapshot/fingerprint pins enabled state, provider/model, candidate
+  cap (at most eight), temperature zero, output cap, and deterministic fallback policy without
+  changing the `.8` scoring fingerprint. It receives only eligible governed projections; zero/one
+  candidate skips the provider, candidates outside the cap retain their deterministic order, and
+  a model may reorder only within the same Ministry/ordinary priority group.
 - Rerank output is a strict full permutation with 1--3 allowlisted reason codes and a bounded
   explanation per candidate. Unknown/duplicate/missing IDs, group crossings, provider failures,
   parsing failures, or input limits produce a typed fallback to the exact deterministic order.
   Candidate projections are serialized as JSON data, with literal angle brackets escaped before
   delimiter insertion so untrusted titles or summaries cannot terminate the data-only block.
+  Current Zhipu requests use JSON-object mode, disabled thinking, and disabled sampling. Their
+  exact prompt names the object/item shape, all seven reason codes, complete permutation,
+  consecutive integer ordinal, priority barrier, and no-Markdown/no-prose rules. Content parsing
+  accepts only the shared bounded one-object envelopes before unchanged strict schema and semantic
+  validation; literal v1 continues to require an exact JSON object.
   Final scores preserve both `deterministic_rank` and final `rank`; one XOR-bound audit row stores
   safe orders, reasons, fingerprints, usage, latency, outcome, and failure code without raw prompts
-  or provider bodies. Historical migrated runs have the canonical disabled snapshot and may
+  or provider bodies. Completion, JSON-envelope, and schema failures have bounded internal
+  diagnostics, while durable/public failure remains `invalid_provider_output`; post-response
+  fallback retains safe prompt fingerprint, usage, and latency. Historical migrated runs have the
+  canonical disabled v1 snapshot and may
   legitimately project `not_applied` when no audit row exists.
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database
   composite foreign keys enforce this for runs, scores, and daily selections.

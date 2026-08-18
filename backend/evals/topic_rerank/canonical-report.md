@@ -2,7 +2,7 @@
 
 > Provider-free synthetic fixtures verify safety and structure contracts only; this is not evidence of live-model editorial quality or production accuracy.
 
-- Policy: `topic-rerank-v1`
+- Policy: `topic-rerank-v2-zhipu-json-contract`
 - Dataset SHA-256: `9905ac5ba1ef4fa6c7da790a67317a3458a7b2f1fcda616fb8844bbd30752288`
 - Result: 8/8 passing
 - Volatile latency and token counts are intentionally excluded.
