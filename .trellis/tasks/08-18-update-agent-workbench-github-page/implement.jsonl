@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-18-update-agent-workbench-github-page/prd.md", "reason": "发布范围、外部变更边界和验收条件"}
+{"file": ".trellis/tasks/archive/2026-08/08-17-agent-workbench-public-portfolio/result.md", "reason": "已验证作品集提交、资产与测试证据"}
