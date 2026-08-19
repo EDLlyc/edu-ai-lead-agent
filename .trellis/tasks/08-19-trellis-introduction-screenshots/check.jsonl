@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-19-trellis-introduction-screenshots/research/screenshot-provenance.md", "reason": "Verify source image integrity, correct deterministic-fixture labeling, privacy boundary, and no overclaiming."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Apply evidence-based review and proportional report quality verification."}

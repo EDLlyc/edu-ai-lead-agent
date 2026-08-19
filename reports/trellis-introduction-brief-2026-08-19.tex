@@ -17,6 +17,7 @@
 \usepackage{lastpage}
 \usepackage{ragged2e}
 \usepackage{setspace}
+\usepackage{graphicx}
 
 \setmainfont{Noto Serif CJK SC}
 \setsansfont{Noto Sans CJK SC}
@@ -262,7 +263,39 @@ Trellis 是放在项目仓库里的 \textbf{AI 开发协作框架}，用统一�
 \clearpage
 
 % -----------------------------------------------------------------------------
-% Page 5: use cases and conclusion
+% Page 5: verifiable local-run evidence
+% -----------------------------------------------------------------------------
+\section{真实项目运行记录：每一步都能回看}
+
+\begin{softbox}[colback=PaleTeal,colframe=Teal!55]
+\sffamily\small
+以下是\textbf{项目中的真实本地运行记录}，并非 Trellis 自身的界面：运行使用脱敏
+deterministic fixture，展示可复现的本地 loopback API/UI 执行、工具边界与可检查记录。
+\end{softbox}
+
+\vspace{2mm}
+\begin{center}
+\includegraphics[width=105mm]{docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/overview.png}
+\par\vspace{1mm}
+{\sffamily\scriptsize\color{Muted}真实项目本地运行总览：完成、受控校验与安全拒绝都留下可查看的结果。}
+\end{center}
+
+\vspace{1mm}
+\begin{center}
+\includegraphics[width=95mm,trim={0 1747bp 0 38bp},clip]{docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/multi-tool-research.png}
+\par\vspace{1mm}
+{\sffamily\scriptsize\color{Muted}多工具详情：问题、受控工具、引用结论与过程观测在同一条运行记录中对应。}
+\end{center}
+
+\vspace{1mm}
+\begin{callout}[colback=PaleBlue,colframe=Blue!60]
+\sffamily\small
+图中使用脱敏确定性夹具，证明本地执行链和可检查边界；\textbf{不代表线上模型能力或生产运行情况}。
+\end{callout}
+\clearpage
+
+% -----------------------------------------------------------------------------
+% Page 6: use cases and conclusion
 % -----------------------------------------------------------------------------
 \section{适合谁用，以及该怎样理解它的价值}
 
@@ -288,13 +321,7 @@ Trellis 是放在项目仓库里的 \textbf{AI 开发协作框架}，用统一�
 \end{softbox}
 \end{tabularx}
 
-\vspace{9mm}
-\begin{callout}
-\minihead{Navy}{进阶能力，只在需要时使用}\par
-复杂工作可以由不同的实现、检查角色协作；Channel 可支持实时多智能体协作；Memory 可帮助回看过往会话。这些能力服务于同一个目标：让协作过程连续而可复核。
-\end{callout}
-
-\vspace{11mm}
+\vspace{14mm}
 \begin{center}
 \begin{tikzpicture}
 \node[rounded corners=3mm,fill=Navy,text=white,text width=142mm,minimum height=32mm,

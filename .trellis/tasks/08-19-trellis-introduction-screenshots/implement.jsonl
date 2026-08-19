@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-19-trellis-introduction-screenshots/research/screenshot-provenance.md", "reason": "Use the verified source paths, hashes, capture mode, and caption boundaries when embedding real screenshots."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Apply proportional, evidence-backed documentation work and preserve unrelated workspace changes."}
