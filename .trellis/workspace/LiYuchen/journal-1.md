@@ -1356,3 +1356,37 @@ Added a six-page evidence section to the Trellis introduction using two manifest
 ### Next Steps
 
 - No follow-up required; leave unrelated user changes untouched.
+
+
+## Session 61: Replace Trellis screenshots with task/spec example
+
+**Date**: 2026-08-19
+**Task**: Replace Trellis screenshots with task/spec example
+**Branch**: `main`
+
+### Summary
+
+Replaced the unsuitable runtime screenshot page with a concise, privacy-safe Task-to-Spec-to-Output example based on a real Trellis task structure.
+
+### Main Changes
+
+- Removed all screenshot, Agent Workbench, deterministic-fixture, loopback, and image dependency content from the Trellis briefing.
+- Restored the five-page format and added a simplified real task/spec/output card diagram.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `587a144` | (see git log) |
+
+### Testing
+
+- [OK] XeLaTeX/PDF, five-page visual inspection, font/text extraction, reference absence scan, privacy scan, independent review, and diff hygiene passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No follow-up needed; preserve unrelated user changes.
