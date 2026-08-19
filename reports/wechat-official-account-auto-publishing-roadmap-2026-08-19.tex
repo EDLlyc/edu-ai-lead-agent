@@ -360,70 +360,7 @@ Draft Record & 把文章版本、请求指纹、草稿标识、时间和结果�
 \clearpage
 
 % -----------------------------------------------------------------------------
-% 第 6 页：调度、状态与恢复
-% -----------------------------------------------------------------------------
-\section{任务怎样调度，失败怎样恢复}
-
-\begin{center}
-\begin{tikzpicture}[
-  comp/.style={rounded corners=1.8mm,minimum height=20mm,text width=38mm,
-    inner xsep=2mm,align=center,font=\sffamily\small},
-  store/.style={cylinder,shape border rotate=90,aspect=.26,minimum height=22mm,
-    minimum width=34mm,align=center,font=\sffamily\small},
-  arr/.style={-{Latex[length=2.2mm]},line width=.9pt,Navy!62}
-]
-\node[comp,fill=PaleBlue,draw=Blue] (scheduler) {\textbf{Scheduler}\\只负责准时创建任务};
-\node[store,fill=PaleGold,draw=Gold,right=13mm of scheduler] (pg) {\textbf{PostgreSQL}\\权威状态};
-\node[comp,fill=PaleGreen,draw=Green,right=13mm of pg] (worker) {\textbf{Worker Pool}\\领取租约并推进一步};
-\node[comp,fill=PaleOrange,draw=Orange,below=12mm of pg] (stage) {\textbf{Stage Runner}\\生产 / 渲染 / 媒体 / 草稿};
-\draw[arr] (scheduler)--node[above,font=\sffamily\scriptsize,text=Muted]{写入 queued}(pg);
-\draw[arr] (pg)--node[above,font=\sffamily\scriptsize,text=Muted]{领取租约}(worker);
-\draw[arr] (worker)--(stage);
-\draw[arr] (stage)--node[left,font=\sffamily\scriptsize,text=Muted]{阶段结果}(pg);
-\draw[arr,dashed] (pg) to[bend right=18] node[below,font=\sffamily\scriptsize,text=Muted]{恢复位置}(worker);
-\end{tikzpicture}
-\end{center}
-
-\subsection*{建议的阶段进度不是一条黑盒脚本}
-\begin{center}
-\begin{tikzpicture}[
-  state/.style={rounded corners=1.5mm,minimum height=13mm,text width=22mm,
-    inner xsep=1mm,align=center,font=\sffamily\scriptsize\bfseries},
-  arr/.style={-{Latex[length=1.9mm]},line width=.8pt,Navy!58}
-]
-\node[state,fill=PaleGray,draw=Muted] (q) {queued\\待领取};
-\node[state,fill=PaleBlue,draw=Blue,right=3.5mm of q] (r) {running\\执行中};
-\node[state,fill=PaleBlue,draw=Blue,right=3.5mm of r] (p) {produced\\内容完成};
-\node[state,fill=PaleOrange,draw=Orange,right=3.5mm of p] (h) {rendered\\排版完成};
-\node[state,fill=PaleOrange,draw=Orange,right=3.5mm of h] (m) {media ready\\媒体完成};
-\node[state,fill=PaleGreen,draw=Green,right=3.5mm of m] (d) {draft ready\\草稿完成};
-\draw[arr] (q)--(r); \draw[arr] (r)--(p); \draw[arr] (p)--(h); \draw[arr] (h)--(m); \draw[arr] (m)--(d);
-\end{tikzpicture}
-\end{center}
-
-\begin{tabularx}{\textwidth}{@{}L{36mm} Y L{49mm}@{}}
-\toprule
-\textbf{机制} & \textbf{怎样实现} & \textbf{解决的问题} \\
-\midrule
-PostgreSQL 权威状态 & 每完成一阶段，再原子地写入状态、产物位置和时间 & 服务重启后知道从哪里继续，不依赖内存或日志猜测 \\
-租约与心跳 & Worker 领取有时限的租约，执行中定期续约 & Worker 崩溃后任务可被重新领取，不会永久卡住 \\
-业务幂等键 & 栏目 + 内容版本 + 目标账号形成稳定唯一键 & 调度重复、按钮重复点击不会创建两条同一任务 \\
-请求指纹 & 渲染版本、图片和草稿字段形成指纹 & 微信超时后避免不加判断地再次创建相同草稿 \\
-有限重试 & 网络/限流按退避重试；权限、参数、内容错误直接停下 & 只重试可能恢复的问题，不制造无限循环 \\
-小型 checkpoint & 编排器只保存恢复节点和必要标识，正文与状态放持久层 & 恢复数据可控，不把大文本塞入运行内存 \\
-\bottomrule
-\end{tabularx}
-
-\begin{orangebox}[三类失败的处理]
-\textbf{可重试：}短暂网络、限流、平台 5xx → 退避后有限重试。\quad
-\textbf{需修复：}权限、白名单、格式、缺图 → 停止并给出明确原因。\quad
-\textbf{结果未知：}请求已发出但响应丢失 → 先核对记录与平台状态，再决定补偿。
-\end{orangebox}
-
-\clearpage
-
-% -----------------------------------------------------------------------------
-% 第 7 页：最小落地
+% 第 6 页：最小落地
 % -----------------------------------------------------------------------------
 \section{最小闭环怎样落地}
 
