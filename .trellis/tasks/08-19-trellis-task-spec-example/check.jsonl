@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-19-trellis-task-spec-example/research/real-task-structure.md", "reason": "Verify the new example remains a faithful abstraction, preserves privacy, and does not overstate Trellis behavior."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Review the task/Spec explanation against the project-local guideline source."}

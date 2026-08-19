@@ -17,7 +17,6 @@
 \usepackage{lastpage}
 \usepackage{ragged2e}
 \usepackage{setspace}
-\usepackage{graphicx}
 
 \setmainfont{Noto Serif CJK SC}
 \setsansfont{Noto Sans CJK SC}
@@ -263,41 +262,42 @@ Trellis 是放在项目仓库里的 \textbf{AI 开发协作框架}，用统一�
 \clearpage
 
 % -----------------------------------------------------------------------------
-% Page 5: verifiable local-run evidence
-% -----------------------------------------------------------------------------
-\section{真实项目运行记录：每一步都能回看}
-
-\begin{softbox}[colback=PaleTeal,colframe=Teal!55]
-\sffamily\small
-以下是\textbf{项目中的真实本地运行记录}，并非 Trellis 自身的界面：运行使用脱敏
-deterministic fixture，展示可复现的本地 loopback API/UI 执行、工具边界与可检查记录。
-\end{softbox}
-
-\vspace{2mm}
-\begin{center}
-\includegraphics[width=105mm]{docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/overview.png}
-\par\vspace{1mm}
-{\sffamily\scriptsize\color{Muted}真实项目本地运行总览：完成、受控校验与安全拒绝都留下可查看的结果。}
-\end{center}
-
-\vspace{1mm}
-\begin{center}
-\includegraphics[width=95mm,trim={0 1747bp 0 38bp},clip]{docs/portfolio/runs/agent-workbench/f5cd8de936a5-20260818T063838Z/multi-tool-research.png}
-\par\vspace{1mm}
-{\sffamily\scriptsize\color{Muted}多工具详情：问题、受控工具、引用结论与过程观测在同一条运行记录中对应。}
-\end{center}
-
-\vspace{1mm}
-\begin{callout}[colback=PaleBlue,colframe=Blue!60]
-\sffamily\small
-图中使用脱敏确定性夹具，证明本地执行链和可检查边界；\textbf{不代表线上模型能力或生产运行情况}。
-\end{callout}
-\clearpage
-
-% -----------------------------------------------------------------------------
-% Page 6: use cases and conclusion
+% Page 5: task, spec, and verifiable output
 % -----------------------------------------------------------------------------
 \section{适合谁用，以及该怎样理解它的价值}
+
+\begin{callout}[colback=PaleTeal,colframe=Teal!65]
+\minihead{Teal}{一个真实任务，怎样连接规则与结果}
+\hfill \labelpill{Navy}{基于真实任务结构的简化示意}
+\par\vspace{1mm}
+{\sffamily\scriptsize\color{Muted}任务会按复杂度保留必要工件，简单事项可以更轻。}
+\end{callout}
+
+\vspace{3mm}
+\begin{center}
+\begin{tikzpicture}[
+  card/.style={rounded corners=2mm,minimum height=37mm,text width=41mm,align=left,
+    font=\sffamily\small,inner sep=3.5mm},
+  arrow/.style={-{Latex[length=2.2mm]},line width=.9pt,Navy!65},
+  connector/.style={font=\sffamily\scriptsize\color{Muted},align=center}
+]
+  \node[card,fill=PaleBlue,draw=Blue!75] (task) {\textcolor{Navy}{\textbf{Task}}\par\vspace{1mm}
+  目标\quad 做一份 5 分钟简介\par
+  需求与验收\par 设计与执行\par 结果记录};
+  \node[card,fill=PalePurple,draw=Purple!70,right=9mm of task] (spec) {\textcolor{Purple}{\textbf{Spec}}\par\vspace{1mm}
+  项目规则\par
+  先确认范围\par
+  使用已有约定};
+  \node[card,fill=PaleTeal,draw=Teal!75,right=9mm of spec] (output) {\textcolor{Teal}{\textbf{Output}}\par\vspace{1mm}
+  可编辑源\par
+  成品\par
+  编译与检查记录};
+  \draw[arrow] (task)--node[above,connector]{读取} (spec);
+  \draw[arrow] (spec)--node[above,connector]{产出} (output);
+\end{tikzpicture}
+\end{center}
+
+\vspace{5mm}
 
 \begin{tabularx}{\textwidth}{@{}Y@{\hspace{6mm}}Y@{}}
 \begin{softbox}[colback=PaleBlue,colframe=Blue!40]
@@ -321,7 +321,7 @@ deterministic fixture，展示可复现的本地 loopback API/UI 执行、工具
 \end{softbox}
 \end{tabularx}
 
-\vspace{14mm}
+\vspace{7mm}
 \begin{center}
 \begin{tikzpicture}
 \node[rounded corners=3mm,fill=Navy,text=white,text width=142mm,minimum height=32mm,
