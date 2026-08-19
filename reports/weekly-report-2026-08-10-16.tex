@@ -1,0 +1,136 @@
+% 编译：xelatex -interaction=nonstopmode -halt-on-error weekly-report-2026-08-10-16.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+\usepackage[a4paper,top=1.55cm,bottom=1.55cm,left=1.7cm,right=1.7cm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{booktabs,tabularx,array,enumitem,tcolorbox,hyperref,fancyhdr,titlesec,setspace,tikz}
+\tcbuselibrary{skins,breakable}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage{fontspec}
+\setCJKmainfont{Noto Serif CJK SC}\setCJKsansfont{Noto Sans CJK SC}\setCJKmonofont{Noto Sans Mono CJK SC}
+\setmainfont{Noto Serif CJK SC}\setsansfont{Noto Sans CJK SC}\setmonofont{Noto Sans Mono CJK SC}
+\definecolor{navy}{HTML}{102A43}\definecolor{ocean}{HTML}{1769AA}\definecolor{teal}{HTML}{0F8B8D}
+\definecolor{mint}{HTML}{E6F4F1}\definecolor{sky}{HTML}{EAF3FA}\definecolor{ink}{HTML}{243B53}
+\definecolor{slate}{HTML}{486581}\definecolor{muted}{HTML}{627D98}\definecolor{line}{HTML}{D9E2EC}
+\definecolor{paper}{HTML}{F7FAFC}\definecolor{amber}{HTML}{D97706}\definecolor{red}{HTML}{B42318}\definecolor{redpaper}{HTML}{FEF3F2}
+\hypersetup{colorlinks=true,linkcolor=ocean,urlcolor=teal,pdfauthor={赛先生科学内容自动化系统},pdftitle={2026年8月10日—16日工作周报}}
+\setlength{\parindent}{2em}\setlength{\parskip}{0.25em}\setlength{\headheight}{23pt}\setlength{\tabcolsep}{5pt}\onehalfspacing\raggedbottom
+\pagestyle{fancy}\fancyhf{}\lhead{\small\sffamily\color{slate}项目周报 · 赛先生科学内容自动化系统}\rhead{\small\sffamily\color{slate}2026.08.10—08.16}\cfoot{\small\sffamily\color{muted}\thepage}\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ocean!65}\leaders\hrule height\headrulewidth\hfill}}
+\titleformat{\section}{\Large\bfseries\sffamily\color{navy}}{\tikz[baseline=(n.base)]\node[fill=ocean,text=white,rounded corners=2pt,inner xsep=7pt,inner ysep=2pt,font=\bfseries\sffamily](n){\thesection};}{0.75em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily\color{ocean}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{0.9em}{0.35em}\titlespacing*{\subsection}{0pt}{0.65em}{0.2em}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\pill}[2]{\tikz[baseline=(p.base)]\node[fill=#1!13,text=#1,draw=#1!35,rounded corners=5pt,inner xsep=6pt,inner ysep=2pt,font=\scriptsize\bfseries\sffamily](p){#2};}
+\tcbset{enhanced,boxrule=0.55pt,arc=1.7mm,left=3.5mm,right=3.5mm,top=2.5mm,bottom=2.5mm}
+\newtcolorbox{focusbox}[1][]{colback=mint,colframe=teal!55,borderline west={2.6pt}{0pt}{teal},breakable,#1}
+\newtcolorbox{infobox}[1][]{colback=sky,colframe=ocean!38,borderline west={2.4pt}{0pt}{ocean},breakable,#1}
+\newtcolorbox{riskbox}[1][]{colback=redpaper,colframe=red!45,borderline west={2.6pt}{0pt}{red},breakable,#1}
+\newtcolorbox{boundarybox}[1][]{colback=paper,colframe=line,borderline west={2.4pt}{0pt}{amber},breakable,#1}
+\begin{document}
+\begin{center}
+  \pill{teal}{本周完成}\hspace{0.5em}\pill{ocean}{已部署并验证}\hspace{0.5em}\pill{amber}{边界清晰}\par\vspace{0.7em}
+  {\color{ocean}\large\bfseries\sffamily 工作周报}\par\vspace{0.35em}
+  {\fontsize{22}{28}\selectfont\bfseries\sffamily\color{navy}从“能生成”走向“可控生产”}\par\vspace{0.35em}
+  {\large\sffamily\color{slate}内容交付 · 图片兼容 · 科技选题 · 三时段编排 · 发布稳定性}\par\vspace{0.7em}
+  \tikz\draw[teal,line width=1.2pt](0,0)--(3.2,0);
+\end{center}
+\noindent\textbf{报告周期：}2026 年 8 月 10 日 00:00 至 8 月 16 日 23:59（Asia/Shanghai）\par
+\noindent\textbf{本周主线：}内容生产质量、新闻选题、分时段生产、视觉多样性和生产稳定性持续收敛；重点是把每一步做成有证据、有边界、可回退的生产能力。
+\begin{focusbox}
+\textbf{管理摘要}\quad 本周完成四条主线的工程收敛：文案从严格阻断转为可审计的 warning/有限修复，来源链接和新闻 framing 更完整；图片链路兼容 Comfly 直出栅格响应并增加安全 fallback；科学/教育来源与分层科技主题进入选题优先级，三时段生产形成独立谱系并抑制同日重复；后端发布、迁移、健康、备份和零重复验收门禁进一步固化。\par
+\textbf{需要保留的结论：}CAST/EdSurge 的 DNS 已恢复但确定性发现仍为 \texttt{parse\_failure}，尚未接入；视觉多样性受控验收的媒体门通过，但智谱 OCR 返回 \texttt{provider\_request\_rejected}，相关生产开关保持关闭。
+\end{focusbox}
+\section{本周完成事项}
+\noindent\begin{tabularx}{\textwidth}{L{2.8cm}L{6.1cm}Y}\toprule
+\rowcolor{navy}\color{white}\bfseries\sffamily 主线&\color{white}\bfseries\sffamily 做了什么&\color{white}\bfseries\sffamily 业务意义\\\midrule
+内容与交付&调整预览与 Moments 文案规则；加入新闻 framing、来源证据链接；企业微信正文去掉选题标题；warning 只记录并支持有限修复&正文更贴近阅读场景，同时保留审计线索，格式瑕疵不再无谓阻断\\
+\rowcolor{paper}图片与供应商&兼容 Comfly 直接 PNG/JPEG/WebP 响应、空 alternate 占位和有限等待；保留品牌图 fallback，并明确 OCR 门禁&供应商响应变化有兼容层；失败时安全退出，不把未验收图片带入生产\\
+选题与生产编排&提高科学/教育来源优先级，恢复分层科学技术优先；引入 morning/noon/evening 独立生产与交付窗口&三条谱系可分别追踪、分别失败和分别交付，降低跨时段串线与重复\\
+\rowcolor{paper}发布与稳定性&完成后端自动化发布；固化迁移、服务健康、备份、零重复核验；依赖源失败时复用已验证依赖层完成发布&发布有可回退证据；构建约束被记录为运维 workaround，不误称为产品功能\\\bottomrule\end{tabularx}
+\vfill\begin{center}\small\sffamily\color{muted}证据范围：本页及后续页面仅使用 2026.08.10—08.16 任务结果、日志和提交记录。\end{center}
+\newpage
+\section{内容与图片链路}
+\subsection{文案与交付：更灵活，但仍可审计}
+\begin{infobox}
+本周完成了预览交付规则的放宽与收敛：格式问题可产生 warning，允许一次有限 repair；新闻正文增加 framing 与来源链接；正式企业微信正文移除选题标题；Moments 默认更紧凑，并将来源日期恢复到当前业务日边界。结果是“可读性优先、证据不丢失、质量问题可见”。\end{infobox}
+\begin{itemize}[leftmargin=2em,itemsep=0.25em]
+\item 已部署并验证：预览 warning 审计、来源链接和去标题正文（提交证据：\texttt{d9db4e0}、\texttt{21f3188}、\texttt{007000c}、\texttt{8dfa9f5}）。
+\item 本地验证/规则层：有限修复和 fallback 不等于跳过事实、证据或人工判断；仍由质量门和投递状态决定是否进入后续环节。
+\item 关键边界：本周没有据此推算阅读量、推送成功率、成本或 ROI。
+\end{itemize}
+\subsection{图片供应商：响应兼容与 fail-closed}
+\noindent\begin{tabularx}{\textwidth}{L{3.1cm}Y L{3.0cm}}\toprule
+\rowcolor{ocean}\color{white}\bfseries\sffamily 处理点&\color{white}\bfseries\sffamily 本周结果&\color{white}\bfseries\sffamily 状态\\\midrule
+直接栅格响应&识别 Comfly 直接返回的 PNG/JPEG/WebP，并纳入既有校验链路&已部署并验证\\
+占位与等待&空 alternate 不再误判为可用内容；provider 等待有明确上限&已部署并验证\\
+品牌 fallback&图片质量或供应商响应不满足门禁时，沿用安全 fallback 路径&已部署并验证\\
+视觉多样性与 OCR&媒体门在隔离验收中通过；随后 OCR 被 provider rejection 终止，未存储最终图&保持关闭\\\bottomrule\end{tabularx}
+\begin{boundarybox}
+\textbf{不能合并表述：}“媒体门通过”只说明尺寸与媒体校验通过；不代表 OCR、相似度、人工视觉检查或生产启用均通过。受控验收严格 fail-closed：一次图片生成、一次 OCR 调用，零重试、零企业微信增量，\texttt{IMAGE\_DIVERSITY\_ENABLED=false} 与 \texttt{IMAGE\_OCR\_ENABLED=false} 保持不变。
+\end{boundarybox}
+\noindent 图片兼容证据来自 \texttt{6c58689}、\texttt{0d4c2a2}、\texttt{3aa7417}、\texttt{bf5aae9}、\texttt{c66aa62}；OCR 边界来自 8 月 15 日隔离验收任务结果。
+\section{一周时间线}
+\begin{center}
+\begin{tikzpicture}[x=1cm,y=1cm,>=Latex]
+  \draw[line width=1.2pt,draw=ocean] (0,0)--(15.4,0);
+  \foreach \x/\d/\t/\c in {0/10/内容规则/ocean,2.5/11/图片兼容/teal,5/12/Moments边界/ocean,7.5/13/科学教育优先/teal,10/14/三时段生产/ocean,12.7/15/视觉验收/amber,15.2/16/发布门禁/teal}{
+    \fill[\c] (\x,0) circle (2.2pt);\node[above=5pt,align=center,font=\scriptsize\sffamily\color{navy}] at (\x,0) {8月\d\\\t};}
+  \node[below=8pt,align=center,font=\scriptsize\sffamily\color{muted}] at (7.7,0) {内容 → 图片 → 选题 → 三时段 → 受控验收 → 发布与回退证据};
+\end{tikzpicture}
+\end{center}
+\newpage
+\section{选题与三时段生产编排}
+\subsection{从来源优先到分层主题}
+\begin{focusbox}
+科学/教育来源优先级已恢复为明确的编辑信号，而非仅按来源身份加分：科学教育、科创教育、人工智能教育和机器人教育等主题进入优先判断；分层科技优先规则恢复后，仍需经过既有治理、证据、新鲜度和否决条件。\par
+这意味着“优先”不等于“无条件入选”：没有合格候选时仍可记录无选题，未通过门禁的候选不会被优先级救回。
+\end{focusbox}
+\subsection{三时段独立谱系}
+\noindent\begin{tabularx}{\textwidth}{L{2.5cm}L{4.6cm}Y}\toprule
+\rowcolor{navy}\color{white}\bfseries\sffamily 编排层&\color{white}\bfseries\sffamily 约束&\color{white}\bfseries\sffamily 结果\\\midrule
+morning / noon / evening&每个时段有独立 acquisition、selection、copy、image/material 与 delivery window&单个时段失败不覆盖兄弟时段，谱系可追溯\\
+同日选择&保留日期级锁与事件排除，兼容 legacy null-slot 历史记录&避免同日重复投递和跨模式重复\\
+窗口与顺序&准备、目标、过期时间明确；交付按窗口与 ordinal 处理&可解释“未到时间、已过期、已交付”等状态\\
+\rowcolor{paper}来源与主题&编辑优先级只作用于既有资格候选，不绕过事实治理&业务偏好与安全门分层，降低误选风险\\\bottomrule\end{tabularx}
+\subsection{关键结果}
+\begin{itemize}[leftmargin=2em,itemsep=0.25em]
+\item 三时段 independent production 已完成实现、迁移和离线验收；各 slot 的 topic、copy、material 和窗口字段贯穿 API/UI/下载投影。
+\item 同日重复投递保护已修复并部署；历史 legacy 路径保持兼容，不能因为新 slot 模式而改写旧记录。
+\item 证据锚点：科学教育优先 \texttt{4bba9eb}，科技分层 \texttt{6bd7a17}，三时段 \texttt{c045f17}，重复抑制 \texttt{3383841}、\texttt{d47a1d1}。
+\end{itemize}
+\begin{boundarybox}
+\textbf{运行边界：}自动化编排增强了准备、隔离与追踪能力，但不等于所有链路无人值守；企业微信等外部副作用仍受审核、质量和交付门禁约束。
+\end{boundarybox}
+\section{关键结果与验收口径}
+\noindent\begin{tabularx}{\textwidth}{L{3.3cm}Y L{3.0cm}}\toprule
+\rowcolor{ocean}\color{white}\bfseries\sffamily 验收对象&\color{white}\bfseries\sffamily 证据化结果&\color{white}\bfseries\sffamily 口径\\\midrule
+后端测试&任务记录中的阶段性全量门禁为 538 / 543 / 618（按对应任务证据）&只表示测试通过，不推导业务效果\\
+数据库迁移&本周生产链路使用迁移版本 0021；迁移、健康、备份和回退检查完成&“已部署并验证”\\
+重复与副作用&受控视觉验收 WeCom job/attempt 增量为 0/0；OCR 失败后无 retry/resend&“保持关闭 / 零增量”\\
+发布构建&部分发布因依赖源解析失败而复用已验证依赖层&运维 workaround，不是产品能力\\\bottomrule\end{tabularx}
+\section{问题边界与下周计划}
+\subsection{问题一：CAST / EdSurge 仍待解析}
+\begin{riskbox}
+DNS 与入口访问已恢复；但两个连接器的确定性 discovery 均返回 \texttt{parse\_failure}，没有获得符合审查范围的文章 URL，因此没有 detail 请求、生产 source row 或 acquisition job。\textbf{结论：未接入、未激活，待连接器/parser 修复。}
+\end{riskbox}
+\noindent\textbf{下周动作：}审查列表页结构漂移，更新并评审 parser；在独立的 bounded entry + at-most-one-detail gate 通过前，继续保留 pending profile，不通过放宽 allowlist 或绕过解析来“补齐”结果。
+\subsection{问题二：智谱 OCR provider rejection}
+\begin{riskbox}
+隔离验收中的 1024×1024 媒体校验通过，但唯一一次 OCR 逻辑调用以 \texttt{provider\_request\_rejected} 终止。没有第二次生成、retry、手工 enqueue、resend 或企业微信增量；视觉多样性与 OCR 生产开关继续关闭。\textbf{结论：供应商兼容性未完成，不能写成生产启用。}
+\end{riskbox}
+\noindent\textbf{下周动作：}定位并修复经审查的 OCR 请求/响应兼容问题；重新启用必须经过单独授权的隔离验收，取得可存储图片、严格 OCR 证据、相似度决定和人工视觉检查后，才讨论生产开关。
+\subsection{发布与质量的持续边界}
+\begin{infobox}
+后端发布、迁移、服务健康、备份和零重复检查本周完成并验证；但构建时复用依赖层是应对包源解析失败的操作性 workaround，未来若依赖变更仍需先解决构建来源。自动化能力增强不改变人工/安全门对外部副作用的约束。
+\end{infobox}
+\section{下周工作清单}
+\begin{enumerate}[leftmargin=2em,itemsep=0.28em]
+\item 完成 CAST/EdSurge 列表页 parser 修复与独立 bounded live gate，仍保持未激活直到验收通过。
+\item 在不打开生产开关的前提下，完成 Zhipu OCR provider rejection 的兼容性诊断、离线回归和评审材料。
+\item 继续观察三时段窗口、重复抑制和发布回退证据，确认 slot sibling isolation 与历史 legacy 兼容。
+\item 评估依赖源解析的发布前置条件；依赖发生变化时重新构建并验证，不把复用层作为默认假设。
+\end{enumerate}
+\section{证据索引}
+\small 本报告按任务证据优先、提交记录辅助的原则整理。内容/交付：\texttt{d9db4e0}、\texttt{21f3188}、\texttt{007000c}、\texttt{126129e}、\texttt{8dfa9f5}；图片/provider：\texttt{6c58689}、\texttt{0d4c2a2}、\texttt{3aa7417}、\texttt{bf5aae9}、\texttt{c66aa62}；选题/slot：\texttt{4bba9eb}、\texttt{6bd7a17}、\texttt{c045f17}、\texttt{3383841}、\texttt{d47a1d1}；发布/稳定性：\texttt{a14847a}、\texttt{bc1d189}、\texttt{3f54be2}、\texttt{8b55533}、\texttt{7d8a914}。\par
+\vfill\begin{center}\small\sffamily\color{muted}赛先生科学内容自动化系统 · 2026 年 8 月 10 日—16 日\end{center}
+\end{document}
