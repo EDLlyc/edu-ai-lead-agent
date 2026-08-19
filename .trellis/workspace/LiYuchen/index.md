@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 59
+- **Total Sessions**: 60
 - **Last Active**: 2026-08-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1324 | Active |
+| `journal-1.md` | ~1358 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 60 | 2026-08-19 | Add verified screenshots to Trellis brief | `af83f05` | `main` |
 | 59 | 2026-08-19 | Add Trellis introduction brief | `135f2d4` | `main` |
 | 58 | 2026-08-19 | 微信公众号自动推文技术实现路线报告 | `51966ab` | `main` |
 | 57 | 2026-08-18 | Showcase generated copy and images on GitHub | `f13d805`, `fac16d7` | `main` |

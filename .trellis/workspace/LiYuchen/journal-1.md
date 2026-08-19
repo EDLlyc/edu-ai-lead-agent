@@ -1322,3 +1322,37 @@ Created and independently reviewed a concise five-page Chinese Trellis introduct
 ### Next Steps
 
 - No follow-up required for this report; preserve unrelated dirty user files.
+
+
+## Session 60: Add verified screenshots to Trellis brief
+
+**Date**: 2026-08-19
+**Task**: Add verified screenshots to Trellis brief
+**Branch**: `main`
+
+### Summary
+
+Added a six-page evidence section to the Trellis introduction using two manifest-verified, deterministic-fixture local-run screenshots with explicit local-loopback and non-live-model boundaries.
+
+### Main Changes
+
+- Embedded the verified overview and multi-tool run evidence in the existing Trellis presentation without modifying source screenshots.
+- Recorded screenshot provenance, integrity hashes, privacy constraints, and an independent review.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `af83f05` | (see git log) |
+
+### Testing
+
+- [OK] Manifest hash verification, XeLaTeX/PDF inspection, image/font/text/privacy checks, visual review, task validation, and diff hygiene passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No follow-up required; leave unrelated user changes untouched.
