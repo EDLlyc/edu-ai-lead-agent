@@ -1,0 +1,308 @@
+% 编译：latexmk -xelatex -interaction=nonstopmode -halt-on-error -outdir=reports reports/trellis-introduction-brief-2026-08-19.tex
+\documentclass[UTF8,11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=18mm,bottom=17mm,left=18mm,right=18mm,headheight=23pt]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{ragged2e}
+\usepackage{setspace}
+
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+
+\definecolor{Navy}{HTML}{173B5B}
+\definecolor{Blue}{HTML}{2A6FAD}
+\definecolor{Purple}{HTML}{7058A6}
+\definecolor{Teal}{HTML}{168777}
+\definecolor{Ink}{HTML}{263746}
+\definecolor{Muted}{HTML}{667887}
+\definecolor{Rule}{HTML}{D6E0E8}
+\definecolor{PaleBlue}{HTML}{EDF5FB}
+\definecolor{PalePurple}{HTML}{F2EFF9}
+\definecolor{PaleTeal}{HTML}{EDF8F6}
+\definecolor{PaleGray}{HTML}{F5F7F9}
+
+\hypersetup{colorlinks=true,linkcolor=Navy,urlcolor=Blue,
+  pdftitle={Trellis：让 AI 在项目规则中持续协作},
+  pdfauthor={项目分享材料},pdfsubject={Trellis 简介}
+}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setstretch{1.08}
+\setlist[itemize]{leftmargin=1.45em,itemsep=3pt,topsep=3pt,parsep=0pt}
+\renewcommand{\arraystretch}{1.3}
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+
+\titleformat{\section}{\sffamily\bfseries\LARGE\color{Navy}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{4pt}{10pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{Muted}Trellis｜AI 开发协作框架}
+\fancyhead[R]{\sffamily\small\color{Muted}简介分享}
+\fancyfoot[L]{\sffamily\scriptsize\color{Muted}让上下文留在项目里}
+\fancyfoot[R]{\sffamily\scriptsize\color{Muted}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{Rule}\leaders\hrule height \headrulewidth\hfill}}
+
+\newtcolorbox{callout}[1][]{enhanced,colback=PaleBlue,colframe=Blue!70,boxrule=.7pt,
+  arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,#1}
+\newtcolorbox{softbox}[1][]{enhanced,colback=PaleGray,colframe=Rule,boxrule=.6pt,
+  arc=2mm,left=4mm,right=4mm,top=3mm,bottom=3mm,#1}
+\newcommand{\labelpill}[2]{\tikz[baseline=(X.base)]\node (X) [rounded corners=1.5mm,fill=#1,
+  text=white,inner xsep=3mm,inner ysep=1.4mm,font=\sffamily\bfseries\scriptsize] {#2};}
+\newcommand{\minihead}[2]{\textcolor{#1}{\sffamily\bfseries\large #2}}
+
+\begin{document}
+
+% -----------------------------------------------------------------------------
+% Page 1: cover
+% -----------------------------------------------------------------------------
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[Navy] (current page.north west) rectangle ([yshift=-132mm]current page.north east);
+  \fill[Purple] ([yshift=-132mm]current page.north west) rectangle ([yshift=-136mm]current page.north east);
+  \fill[Teal] ([xshift=18mm,yshift=20mm]current page.south west) rectangle
+    ([xshift=72mm,yshift=23mm]current page.south west);
+  \draw[Blue!40,line width=16pt] ([xshift=-20mm,yshift=42mm]current page.south east) circle (31mm);
+  \draw[Purple!55,line width=3pt] ([xshift=-8mm,yshift=53mm]current page.south east) circle (43mm);
+\end{tikzpicture}
+
+\vspace*{12mm}
+{\sffamily\bfseries\small\color{white}AI-ASSISTED DEVELOPMENT \quad｜\quad 5 分钟简介}
+
+\vspace{23mm}
+{\sffamily\bfseries\fontsize{31}{40}\selectfont\color{white}
+Trellis\par
+让 AI 在项目规则中持续协作}
+
+\vspace{8mm}
+{\sffamily\fontsize{14}{21}\selectfont\color{white!88}
+把流程、任务、规范与经验沉淀在仓库里，让每次协作都能接得上。}
+
+\vspace{28mm}
+\begin{tcolorbox}[width=.92\textwidth,colback=white,colframe=white,boxrule=0pt,arc=2mm,
+  left=5mm,right=5mm,top=4mm,bottom=4mm]
+{\sffamily\bfseries\color{Navy}一句话定义}\par
+Trellis 是放在项目仓库里的 \textbf{AI 开发协作框架}，用统一流程连接需求规划、项目规范、任务执行、质量检查和经验沉淀。
+\end{tcolorbox}
+
+\vspace{6mm}
+\begin{tabularx}{.92\textwidth}{@{}Y Y@{}}
+\labelpill{Teal}{价值} & \labelpill{Purple}{边界} \\
+\vspace{2mm}\sffamily\color{Ink}让 AI \textbf{先读规则、按任务工作、留下可复核记录}。 &
+\vspace{2mm}\sffamily\color{Ink}它不是大模型，不替代 Git，也不保证代码天然正确。 \\
+\end{tabularx}
+
+\vfill
+{\sffamily\small\color{white!80}面向对 AI 辅助开发有基本了解的团队与个人}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+
+% -----------------------------------------------------------------------------
+% Page 2: why
+% -----------------------------------------------------------------------------
+\section{为什么 AI 开发需要一条“可接续”的线}
+
+\begin{callout}
+\minihead{Navy}{问题不在于 AI 能不能回答，而在于工作能否持续、可追踪地推进。}
+\end{callout}
+
+\vspace{4mm}
+\begin{tabularx}{\textwidth}{@{}Y@{\hspace{6mm}}Y@{}}
+\begin{softbox}[colback=PaleGray]
+\minihead{Purple}{常见断点}\par\vspace{1mm}
+\begin{itemize}
+  \item 新会话开始，又要重新解释目标和背景；
+  \item AI 没有读到项目约定，做法逐渐漂移；
+  \item 需求、设计、检查结果散在对话里，难以复核；
+  \item 多人或多个角色协作时，进度与责任不清晰。
+\end{itemize}
+\end{softbox}
+&
+\begin{softbox}[colback=PaleTeal,colframe=Teal!45]
+\minihead{Teal}{Trellis 的补法}\par\vspace{1mm}
+\begin{itemize}
+  \item 用工作流提示当前阶段和下一步；
+  \item 用任务文件保存目标、设计、计划和结果；
+  \item 用项目规范约束实现前必须阅读的规则；
+  \item 用工作区与记忆保存进展和可复用经验。
+\end{itemize}
+\end{softbox}
+\end{tabularx}
+
+\vspace{8mm}
+\begin{center}
+\begin{tikzpicture}[
+  item/.style={rounded corners=2mm,minimum height=21mm,text width=35mm,align=center,
+    font=\sffamily\small,inner sep=3mm},
+  arrow/.style={-{Latex[length=2.2mm]},line width=.9pt,Navy!65}
+]
+  \node[item,fill=PalePurple,draw=Purple!70] (a) {\textbf{一次性对话}\par\color{Muted}\scriptsize 目标与上下文容易消散};
+  \node[item,fill=PaleBlue,draw=Blue!75,right=8mm of a] (b) {\textbf{项目内协作}\par\color{Muted}\scriptsize 流程和资料有固定位置};
+  \node[item,fill=PaleTeal,draw=Teal!75,right=8mm of b] (c) {\textbf{持续复用}\par\color{Muted}\scriptsize 后续会话可以接着做};
+  \draw[arrow] (a)--(b); \draw[arrow] (b)--(c);
+\end{tikzpicture}
+\end{center}
+
+\vfill
+\begin{softbox}[colback=PaleBlue]
+\minihead{Navy}{关键变化}\quad 从“每次给 AI 一段临时提示”，变成“让 AI 在项目已有的上下文中完成一项可复核的工作”。
+\end{softbox}
+\clearpage
+
+% -----------------------------------------------------------------------------
+% Page 3: lifecycle
+% -----------------------------------------------------------------------------
+\section{一项工作怎样在 Trellis 中流动}
+
+\begin{callout}[colback=PalePurple,colframe=Purple!65]
+\minihead{Purple}{先规划，再实现；先读规范，再动手；完成后留下记录。}
+\end{callout}
+
+\vspace{8mm}
+\begin{center}
+\begin{tikzpicture}[
+  flowstep/.style={rounded corners=2mm,minimum height=20mm,text width=29mm,align=center,
+    font=\sffamily\small\bfseries,inner sep=2.5mm},
+  note/.style={font=\sffamily\scriptsize\color{Muted},align=center},
+  arrow/.style={-{Latex[length=2.3mm]},line width=1pt,Navy!70}
+]
+  \node[flowstep,fill=PaleBlue,draw=Blue] (a) {提出需求};
+  \node[flowstep,fill=PalePurple,draw=Purple,right=6mm of a] (b) {规划任务};
+  \node[flowstep,fill=PaleTeal,draw=Teal,right=6mm of b] (c) {加载规范};
+  \node[flowstep,fill=PaleBlue,draw=Blue,below=18mm of c] (d) {实现};
+  \node[flowstep,fill=PalePurple,draw=Purple,left=6mm of d] (e) {检查};
+  \node[flowstep,fill=PaleTeal,draw=Teal,left=6mm of e] (f) {提交与归档};
+  \draw[arrow] (a)--(b); \draw[arrow] (b)--(c); \draw[arrow] (c)--(d);
+  \draw[arrow] (d)--(e); \draw[arrow] (e)--(f);
+  \draw[arrow] (f.south) to[out=-100,in=-80,looseness=.9] node[below,note] {经验进入后续会话} (a.south);
+  \node[note,above=2mm of a] {要解决什么};
+  \node[note,above=2mm of b] {目标与方案};
+  \node[note,above=2mm of c] {项目规则};
+  \node[note,below=2mm of d] {做出改动};
+  \node[note,below=2mm of e] {测试与复核};
+  \node[note,below=2mm of f] {版本与记录};
+\end{tikzpicture}
+\end{center}
+
+\vspace{10mm}
+\begin{tabularx}{\textwidth}{@{}L{27mm}Y@{}}
+\toprule
+\textbf{环节} & \textbf{它解决什么} \\
+\midrule
+规划任务 & 先把目标、范围、验收标准和执行思路写清楚，避免直接开写后反复返工。 \\
+加载规范 & AI 在实现前读取项目已有的约定，减少“每个任务一套做法”。 \\
+检查与归档 & 测试、评审、差异检查仍然执行；结果与经验被保留给下一次使用。 \\
+\bottomrule
+\end{tabularx}
+
+\vfill
+\begin{softbox}[colback=PaleGray]
+\minihead{Navy}{分工不变，只是衔接更清楚}\quad Git 管版本；AI 模型负责理解与生成；测试和评审判断质量；Trellis 补充流程与上下文。
+\end{softbox}
+\clearpage
+
+% -----------------------------------------------------------------------------
+% Page 4: core components + example
+% -----------------------------------------------------------------------------
+\section{四类内容，把协作放回项目里}
+
+\begin{tabularx}{\textwidth}{@{}L{37mm}Y@{}}
+\toprule
+\textbf{组成} & \textbf{通俗解释} \\
+\midrule
+\labelpill{Navy}{Workflow} & 规定现在处于哪一步、下一步该做什么，让一次工作有明确节奏。 \\
+\addlinespace[2mm]
+\labelpill{Purple}{Tasks} & 保存一项工作的目标、设计、执行计划和结果，让过程可追踪、可复核。 \\
+\addlinespace[2mm]
+\labelpill{Blue}{Specs} & 保存这个项目自己的工程规范与边界，让 AI 不必靠猜测写代码。 \\
+\addlinespace[2mm]
+\labelpill{Teal}{Workspace / Memory} & 保存会话进展和经验，让下一次协作可以从已知状态继续。 \\
+\bottomrule
+\end{tabularx}
+
+\vspace{7mm}
+\begin{callout}[colback=PaleTeal,colframe=Teal!65]
+\minihead{Teal}{一个不含业务细节的例子：为产品增加一个功能}
+\end{callout}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}L{28mm}Y@{}}
+\textcolor{Purple}{\sffamily\bfseries 1．先说清楚} & 写下功能目标、范围和验收条件；必要时先形成设计与实施计划。 \\
+\addlinespace[2mm]
+\textcolor{Blue}{\sffamily\bfseries 2．再读取规则} & AI 加载相关项目规范，了解既有代码风格、测试要求和边界。 \\
+\addlinespace[2mm]
+\textcolor{Teal}{\sffamily\bfseries 3．实现并检查} & 按计划改动，运行测试与质量检查；问题回到任务记录中处理。 \\
+\addlinespace[2mm]
+\textcolor{Navy}{\sffamily\bfseries 4．提交并留痕} & 用 Git 保存代码版本；任务结果与会话经验成为下一次工作的起点。 \\
+\end{tabularx}
+
+\vfill
+\begin{softbox}[colback=PalePurple,colframe=Purple!40]
+\minihead{Purple}{有了这四类内容}\quad 不靠某个人记住上下文，也不把关键决策只留在一段难以回看的聊天记录中。
+\end{softbox}
+\clearpage
+
+% -----------------------------------------------------------------------------
+% Page 5: use cases and conclusion
+% -----------------------------------------------------------------------------
+\section{适合谁用，以及该怎样理解它的价值}
+
+\begin{tabularx}{\textwidth}{@{}Y@{\hspace{6mm}}Y@{}}
+\begin{softbox}[colback=PaleBlue,colframe=Blue!40]
+\minihead{Blue}{适合的工作}\par\vspace{1mm}
+\begin{itemize}
+  \item 有多个步骤、需要设计和验收的功能开发；
+  \item 要跨会话推进、容易丢失背景的长期事项；
+  \item 有团队规范，希望 AI 也能遵守的项目；
+  \item 需要多人或多个角色协作、追踪交接的任务。
+\end{itemize}
+\end{softbox}
+&
+\begin{softbox}[colback=PalePurple,colframe=Purple!40]
+\minihead{Purple}{不该期待的事}\par\vspace{1mm}
+\begin{itemize}
+  \item 它不会替你选择业务方向；
+  \item 它不取代 Git 的版本控制；
+  \item 它不替代测试、评审与人的判断；
+  \item 它不能承诺每一次生成都没有错误。
+\end{itemize}
+\end{softbox}
+\end{tabularx}
+
+\vspace{9mm}
+\begin{callout}
+\minihead{Navy}{进阶能力，只在需要时使用}\par
+复杂工作可以由不同的实现、检查角色协作；Channel 可支持实时多智能体协作；Memory 可帮助回看过往会话。这些能力服务于同一个目标：让协作过程连续而可复核。
+\end{callout}
+
+\vspace{11mm}
+\begin{center}
+\begin{tikzpicture}
+\node[rounded corners=3mm,fill=Navy,text=white,text width=142mm,minimum height=32mm,
+  align=center,inner sep=6mm,font=\sffamily\large\bfseries]
+{Trellis 的价值不是替代人或工具，\\而是让 AI 辅助开发有流程、有上下文、有记录。};
+\end{tikzpicture}
+\end{center}
+
+\vfill
+{\sffamily\small\color{Muted}小结：从一项具体任务开始，把“先读规则、按任务工作、留下记录”变成团队习惯。}
+\end{document}
