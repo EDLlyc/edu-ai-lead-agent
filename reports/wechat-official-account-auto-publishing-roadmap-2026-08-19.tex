@@ -1,0 +1,476 @@
+% 编译：latexmk -xelatex -interaction=nonstopmode -halt-on-error -outdir=reports reports/wechat-official-account-auto-publishing-roadmap-2026-08-19.tex
+\documentclass[UTF8,10pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[a4paper,top=17mm,bottom=16mm,left=17mm,right=17mm,headheight=23pt]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{fontspec}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,fit}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{ragged2e}
+\usepackage{setspace}
+
+\setmainfont{Noto Serif CJK SC}
+\setsansfont{Noto Sans CJK SC}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+
+\definecolor{Navy}{HTML}{143A5A}
+\definecolor{Blue}{HTML}{1877B8}
+\definecolor{Green}{HTML}{16806A}
+\definecolor{Orange}{HTML}{E6782E}
+\definecolor{Gold}{HTML}{D9A72E}
+\definecolor{Ink}{HTML}{263746}
+\definecolor{Muted}{HTML}{667887}
+\definecolor{PaleBlue}{HTML}{EEF6FB}
+\definecolor{PaleGreen}{HTML}{EEF8F4}
+\definecolor{PaleOrange}{HTML}{FFF4EA}
+\definecolor{PaleGold}{HTML}{FFF9E8}
+\definecolor{PaleGray}{HTML}{F4F6F8}
+\definecolor{Rule}{HTML}{D8E1E8}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=Navy,
+  urlcolor=Blue,
+  pdftitle={微信公众号自动推文技术实现路线},
+  pdfauthor={项目组},
+  pdfsubject={从现有内容生产链到微信公众号草稿箱的技术实现}
+}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setstretch{1.05}
+\setlist[itemize]{leftmargin=1.45em,itemsep=2pt,topsep=3pt,parsep=0pt}
+\renewcommand{\arraystretch}{1.25}
+
+\titleformat{\section}
+  {\sffamily\bfseries\Large\color{Navy}}
+  {\colorbox{Navy}{\textcolor{white}{\strut\thesection}}}{0.7em}{}
+\titleformat{\subsection}
+  {\sffamily\bfseries\large\color{Blue}}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{8pt}{7pt}
+\titlespacing*{\subsection}{0pt}{7pt}{4pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{Muted}技术实现路线｜公众号自动推文}
+\fancyhead[R]{\sffamily\small\color{Muted}内容生产 → 微信草稿}
+\fancyfoot[L]{\sffamily\scriptsize\color{Muted}内部技术材料｜2026.08.19}
+\fancyfoot[R]{\sffamily\scriptsize\color{Muted}\thepage\,/\,\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{Rule}\leaders\hrule height \headrulewidth\hfill}}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\newtcolorbox{keybox}[1][]{
+  enhanced,colback=PaleBlue,colframe=Blue,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Blue,colframe=Blue,arc=1.5mm}
+}
+\newtcolorbox{greenbox}[1][]{
+  enhanced,colback=PaleGreen,colframe=Green,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Green,colframe=Green,arc=1.5mm}
+}
+\newtcolorbox{orangebox}[1][]{
+  enhanced,colback=PaleOrange,colframe=Orange,boxrule=.7pt,arc=2mm,
+  left=4mm,right=4mm,top=3mm,bottom=3mm,title=#1,coltitle=white,
+  fonttitle=\sffamily\bfseries,
+  attach boxed title to top left={xshift=3mm,yshift=-2mm},
+  boxed title style={colback=Orange,colframe=Orange,arc=1.5mm}
+}
+\newtcolorbox{plainbox}[1][]{
+  enhanced,colback=PaleGray,colframe=Rule,boxrule=.6pt,arc=2mm,
+  left=3.5mm,right=3.5mm,top=3mm,bottom=3mm,#1
+}
+\newcommand{\techcard}[4]{%
+  \begin{tcolorbox}[colback=#1!7,colframe=#1!55,boxrule=.6pt,arc=2mm,
+    left=3mm,right=3mm,top=2.5mm,bottom=2.5mm,height=#4,valign=center]
+    {\sffamily\bfseries\large\color{#1}#2}\par
+    {\sffamily\small\color{Ink}#3}
+  \end{tcolorbox}%
+}
+
+\begin{document}
+
+% -----------------------------------------------------------------------------
+% 第 1 页：封面与一句话架构
+% -----------------------------------------------------------------------------
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \fill[Navy] (current page.north west) rectangle ([yshift=-140mm]current page.north east);
+  \fill[Blue] ([yshift=-140mm]current page.north west) rectangle ([yshift=-144mm]current page.north east);
+  \draw[Blue!22,line width=24pt] ([xshift=-19mm,yshift=43mm]current page.south east) circle (28mm);
+  \draw[Orange!48,line width=4pt] ([xshift=-9mm,yshift=55mm]current page.south east) circle (43mm);
+  \fill[Orange] ([xshift=17mm,yshift=17mm]current page.south west) rectangle
+    ([xshift=62mm,yshift=20mm]current page.south west);
+\end{tikzpicture}
+
+\vspace*{8mm}
+{\sffamily\bfseries\small\color{white}TECHNICAL IMPLEMENTATION \quad｜\quad WECHAT DRAFT}
+
+\vspace{27mm}
+{\sffamily\bfseries\fontsize{30}{38}\selectfont\color{white}
+微信公众号自动推文\par
+技术实现路线}
+
+\vspace{8mm}
+{\sffamily\fontsize{14}{21}\selectfont\color{white!86}
+从现有内容生产链到公众号草稿箱：架构、流程、适配与恢复}
+
+\vspace{33mm}
+\begin{tcolorbox}[width=.91\textwidth,colback=white,colframe=white,boxrule=0pt,
+  arc=2mm,left=5mm,right=5mm,top=4mm,bottom=4mm]
+{\sffamily\bfseries\color{Navy}一句话架构}\par
+Scheduler 创建任务，Worker 复用现有采集与内容生产链，形成结构化文章包；微信公众号适配器完成排版、图片/封面上传和草稿创建，PostgreSQL 记录全过程状态，运营人员最终预览发布。
+\end{tcolorbox}
+
+\vspace{7mm}
+\begin{center}
+\begin{tikzpicture}[
+  unit/.style={rounded corners=1.6mm,minimum height=16mm,text width=28mm,
+    inner xsep=1.3mm,align=center,font=\sffamily\scriptsize\bfseries},
+  arr/.style={-{Latex[length=2.1mm]},line width=.9pt,Navy!60}
+]
+\node[unit,fill=PaleBlue,draw=Blue] (a) {任务调度};
+\node[unit,fill=PaleBlue,draw=Blue,right=5mm of a] (b) {内容生产};
+\node[unit,fill=PaleOrange,draw=Orange,right=5mm of b] (c) {微信适配};
+\node[unit,fill=PaleGreen,draw=Green,right=5mm of c] (d) {草稿记录};
+\node[unit,fill=PaleGold,draw=Gold,right=5mm of d] (e) {人工发布};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d); \draw[arr] (d)--(e);
+\end{tikzpicture}
+\end{center}
+
+\vfill
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+{\sffamily\small\color{Muted}第一阶段技术边界}\newline
+{\sffamily\bfseries\large\color{Ink}自动到草稿箱｜不自动群发} &
+{\RaggedLeft\sffamily\small\color{Muted}材料类型 / 日期}\newline
+{\RaggedLeft\sffamily\bfseries\large\color{Ink}技术实现说明｜2026 年 8 月 19 日}
+\end{tabularx}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+
+% -----------------------------------------------------------------------------
+% 第 2 页：开源参考
+% -----------------------------------------------------------------------------
+\section{代表性公开实现给了哪些参考}
+
+\begin{keybox}[使用方式]
+这些公开实现只用于验证“模块怎样拆、数据怎样走”的共性思路；本报告未安装、未运行、未做安全或生产验证。部分仓库未识别到许可证，公开可见不等于可复制或商用，也不建议直接拿任何一个项目上线。
+\end{keybox}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}L{34mm} L{38mm} Y L{39mm}@{}}
+\toprule
+\textbf{代表性方案} & \textbf{主要解决什么} & \textbf{采用的技术启发} & \textbf{不把它当成什么} \\
+\midrule
+wechatpy & Python 微信接口 SDK & 微信请求封装成独立客户端，业务流程不直接拼接口 & 不是采集、写作、审核和恢复系统 \\
+Wenyan\newline md2wechat & Markdown 排版与草稿辅助 & 中间稿先渲染为内联样式 HTML，再统一处理图片与封面 & 不是事实治理或任务编排平台 \\
+wechat-publisher & 内容到草稿的阶段式流水线 & 搜集、写作、配图、排版、检查、草稿分别执行 & 公开说明不等于生产质量已验证 \\
+auto-wx-post & token、上传、缓存与重试 & 凭据集中管理，媒体上传可并发，失败有限重试 & 不是可向模型开放的无限制发布服务 \\
+\bottomrule
+\end{tabularx}
+
+\subsection*{从共性中选择的五条技术原则}
+\begin{tabularx}{\textwidth}{@{}Y Y Y@{}}
+\techcard{Blue}{① 分层}{内容生产、文章渲染、微信接口各自可替换。}{37mm} &
+\techcard{Green}{② 中间稿}{标题、摘要、正文块、图片和证据先形成稳定文章包。}{37mm} &
+\techcard{Orange}{③ 媒体分流}{正文图片换微信 URL，封面换永久素材标识。}{37mm} \\
+\techcard{Gold}{④ 状态持久化}{任务、版本、草稿标识和错误原因写入数据库。}{37mm} &
+\techcard{Blue}{⑤ 人工签发}{系统止于草稿；预览、修改和发布由人完成。}{37mm} &
+\techcard{Green}{采用策略}{借模块边界与可靠性思路，不复制项目整体。}{37mm}
+\end{tabularx}
+
+\begin{orangebox}[明确排除]
+不使用浏览器模拟登录；不让写作模型接触公众号密钥；不把内容生成与微信接口写成一个不可恢复的长脚本；不把“接口返回成功”直接等同于业务完成。
+\end{orangebox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+% 第 3 页：整体架构
+% -----------------------------------------------------------------------------
+\section{整体架构怎样组成}
+
+\begin{center}
+\begin{tikzpicture}[
+  block/.style={rounded corners=2mm,minimum height=24mm,text width=46mm,
+    inner xsep=2mm,align=center,font=\sffamily\small},
+  store/.style={cylinder,shape border rotate=90,aspect=.25,minimum height=22mm,
+    minimum width=34mm,align=center,font=\sffamily\small},
+  arr/.style={-{Latex[length=2.2mm]},line width=.9pt,Navy!62}
+]
+\node[block,fill=PaleBlue,draw=Blue] (schedule) {\textbf{Scheduler / API}\\创建任务、栏目和触发时间};
+\node[block,fill=PaleBlue,draw=Blue,right=8mm of schedule] (worker) {\textbf{Worker 编排}\\领取任务、推进阶段、写入状态};
+\node[store,fill=PaleGold,draw=Gold,right=11mm of worker] (pg) {\textbf{PostgreSQL}\\任务权威状态};
+
+\node[block,fill=PaleGreen,draw=Green,below=12mm of schedule] (existing) {\textbf{现有内容生产底座}\\采集 → 事实 → 选题\\品牌文案 → 配图 → 检查};
+\node[block,fill=PaleGreen,draw=Green,right=8mm of existing] (article) {\textbf{Article Package}\\公众号长文与复核\\标题、正文块、图片与证据};
+\node[block,fill=PaleOrange,draw=Orange,right=8mm of article] (adapter) {\textbf{WeChat Adapter}\\HTML、媒体、草稿\\token 与错误码};
+
+\node[block,fill=PaleGray,draw=Muted,below=12mm of article] (review) {\textbf{审核入口 / 手机预览}\\查看证据与微信草稿\\人工修改并发布};
+
+\draw[arr] (schedule)--(worker);
+\draw[arr] (worker)--(existing);
+\draw[arr] (existing)--(article);
+\draw[arr] (article)--(adapter);
+\draw[arr] (adapter)--(review);
+\draw[arr] (worker)--(pg);
+\draw[arr] (adapter.north) to[bend left=18] (pg.south);
+\end{tikzpicture}
+\end{center}
+
+\subsection*{每个模块的输入和输出}
+\begin{tabularx}{\textwidth}{@{}L{35mm} Y Y@{}}
+\toprule
+\textbf{模块} & \textbf{读入} & \textbf{写出} \\
+\midrule
+Scheduler / Worker & 栏目、时间、重跑请求、待处理任务 & 当前阶段、租约、重试次数、完成/失败结果 \\
+现有内容生产底座 & 可信来源、栏目规则、品牌知识 & 带证据的选题、品牌文案和配图素材 \\
+Article Package & 已选题与内容生产素材 & 按长文模板组织并复核的、可重复渲染的平台无关文章包 \\
+WeChat Adapter & 已审核文章包、账号配置 & 微信 HTML、媒体标识、草稿标识、错误分类 \\
+PostgreSQL & 每个阶段的确定结果 & 任务、版本、幂等键、草稿状态的权威记录 \\
+\bottomrule
+\end{tabularx}
+
+\begin{greenbox}[复用 / 新增边界]
+\textbf{复用：}现有可信采集、事实治理、受控选题、品牌文案、配图、检查、任务状态和失败恢复。\quad
+\textbf{新增：}Article Package 长文模板与中间稿合同、微信渲染、正文图/封面上传、草稿客户端、预览签发和草稿状态记录。
+\end{greenbox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+% 第 4 页：端到端时序
+% -----------------------------------------------------------------------------
+\section{一篇文章怎样跑完整流程}
+
+\begin{center}
+\begin{tikzpicture}[
+  flow/.style={rounded corners=1.7mm,minimum height=18mm,text width=27.5mm,
+    inner xsep=1mm,align=center,font=\sffamily\scriptsize\bfseries,text=white},
+  arr/.style={-{Latex[length=2.1mm]},line width=.9pt,Navy!65}
+]
+\node[flow,fill=Navy] (s1) {01\\创建任务};
+\node[flow,fill=Navy,right=4mm of s1] (s2) {02\\Worker 领取};
+\node[flow,fill=Blue,right=4mm of s2] (s3) {03\\采集与选题};
+\node[flow,fill=Blue,right=4mm of s3] (s4) {04\\文案与配图};
+\node[flow,fill=Green,right=4mm of s4] (s5) {05\\长文与复核};
+
+\node[flow,fill=Orange,below=9mm of s5] (s6) {06\\渲染微信 HTML};
+\node[flow,fill=Orange,left=4mm of s6] (s7) {07\\上传图片封面};
+\node[flow,fill=Green,left=4mm of s7] (s8) {08\\创建草稿};
+\node[flow,fill=Blue,left=4mm of s8] (s9) {09\\记录草稿状态};
+\node[flow,fill=Navy,left=4mm of s9] (s10) {10\\人工预览发布};
+
+\draw[arr] (s1)--(s2); \draw[arr] (s2)--(s3); \draw[arr] (s3)--(s4); \draw[arr] (s4)--(s5);
+\draw[arr] (s5)--(s6); \draw[arr] (s6)--(s7); \draw[arr] (s7)--(s8); \draw[arr] (s8)--(s9); \draw[arr] (s9)--(s10);
+\end{tikzpicture}
+\end{center}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}C{12mm} L{35mm} Y L{47mm}@{}}
+\toprule
+\textbf{段} & \textbf{执行组件} & \textbf{实际动作} & \textbf{必须落库的结果} \\
+\midrule
+1 & Scheduler & 按栏目/人工指令创建唯一任务 & 任务标识、业务幂等键、触发原因 \\
+2 & Worker & 领取任务租约，读取最近安全阶段 & 执行者、租约、心跳、开始时间 \\
+3--4 & 现有生产底座 & 采集、事实治理、选题、文案、配图和检查 & 来源、版本、检查结果和素材包位置 \\
+5--7 & 长文与渲染模块 & 按模板组织并复核文章包，生成 HTML，上传正文图与封面 & 文章包/复核版本、微信 URL、封面标识 \\
+8--9 & 草稿客户端 & 提交确定版本到 draft/add，记录响应 & 请求指纹、草稿标识、成功/错误分类 \\
+10 & 运营人员 & 手机预览、必要修改、后台发布 & 审核状态；发布结果后续回填 \\
+\bottomrule
+\end{tabularx}
+
+\begin{orangebox}[失败发生时]
+Worker 先把当前阶段、错误类别和已完成资源写入 PostgreSQL，再决定“有限重试”还是“等待人工处理”。恢复时从最近成功阶段继续，不重新采集、不重新生成，也不盲目重复创建草稿。
+\end{orangebox}
+
+\begin{keybox}[第一阶段终点]
+第 8--9 步成功即完成自动化验收：目标账号草稿箱能看到正确文章，系统能定位对应版本与草稿标识。第 10 步仍由授权人员完成。
+\end{keybox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+% 第 5 页：微信适配实现
+% -----------------------------------------------------------------------------
+\section{微信公众号适配具体怎样做}
+
+\begin{center}
+\begin{tikzpicture}[
+  unit/.style={rounded corners=1.7mm,minimum height=19mm,text width=27mm,
+    inner xsep=1.4mm,align=center,font=\sffamily\scriptsize\bfseries},
+  arr/.style={-{Latex[length=2.1mm]},line width=.9pt,Navy!65}
+]
+\node[unit,fill=PaleBlue,draw=Blue] (a) {Token Manager\\集中获取与缓存};
+\node[unit,fill=PaleBlue,draw=Blue,right=5mm of a] (b) {HTML Renderer\\内联样式与清理};
+\node[unit,fill=PaleOrange,draw=Orange,right=5mm of b] (c) {Media Uploader\\正文图与封面};
+\node[unit,fill=PaleGreen,draw=Green,right=5mm of c] (d) {Draft Client\\调用 draft/add};
+\node[unit,fill=PaleGold,draw=Gold,right=5mm of d] (e) {Draft Record\\标识与版本对应};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d); \draw[arr] (d)--(e);
+\end{tikzpicture}
+\end{center}
+
+\begin{tabularx}{\textwidth}{@{}L{31mm} Y L{48mm}@{}}
+\toprule
+\textbf{子模块} & \textbf{实现动作} & \textbf{输出 / 约束} \\
+\midrule
+Token Manager & 仅适配器读取账号凭据；集中获取并缓存 token，过期前刷新 & 内容模型和普通 Worker 不接触密钥；固定出口 IP 需在白名单 \\
+HTML Renderer & 将 Article Package 或 Markdown 渲染为微信兼容 HTML；把 CSS 变为受控内联样式 & 过滤脚本和不支持标签；模板带版本，可对同一文章重复渲染 \\
+正文图片 & 读取已审核图片，上传“发表内容中的图片”，用返回 URL 替换正文引用 & 外部图片不能原样保留；每张图记录来源、哈希和微信 URL \\
+封面素材 & 封面独立上传为永久素材，得到 media 标识 & 与正文图片分开处理；草稿使用确定的封面版本 \\
+Draft Client & 组合标题、摘要、作者、HTML、封面等已审核字段，调用 draft/add & 不调用正式发布接口；对请求生成指纹，避免重复草稿 \\
+Draft Record & 把文章版本、请求指纹、草稿标识、时间和结果关联保存 & 接口成功才进入“草稿完成”；失败保留错误码和阶段 \\
+\bottomrule
+\end{tabularx}
+
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+\begin{orangebox}[超时不能直接重试]
+如果 draft/add 已发出但响应丢失，先用请求指纹查本地记录，再核对平台草稿状态；无法确认时转人工处理，不直接补发，否则可能产生两份相同草稿。
+\end{orangebox} &
+\begin{keybox}[权限必须先实测]
+账号主体、认证状态、草稿开关、发布能力和 IP 白名单以目标公众号后台为准。权限不足时，流程明确停止并等待配置。
+\end{keybox}
+\end{tabularx}
+
+\begin{greenbox}[人工发布边界]
+适配器只创建草稿并返回草稿标识。运营人员在手机和公众号后台检查版式、链接、图片与全文，必要时修改后手工发布。
+\end{greenbox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+% 第 6 页：调度、状态与恢复
+% -----------------------------------------------------------------------------
+\section{任务怎样调度，失败怎样恢复}
+
+\begin{center}
+\begin{tikzpicture}[
+  comp/.style={rounded corners=1.8mm,minimum height=20mm,text width=38mm,
+    inner xsep=2mm,align=center,font=\sffamily\small},
+  store/.style={cylinder,shape border rotate=90,aspect=.26,minimum height=22mm,
+    minimum width=34mm,align=center,font=\sffamily\small},
+  arr/.style={-{Latex[length=2.2mm]},line width=.9pt,Navy!62}
+]
+\node[comp,fill=PaleBlue,draw=Blue] (scheduler) {\textbf{Scheduler}\\只负责准时创建任务};
+\node[store,fill=PaleGold,draw=Gold,right=13mm of scheduler] (pg) {\textbf{PostgreSQL}\\权威状态};
+\node[comp,fill=PaleGreen,draw=Green,right=13mm of pg] (worker) {\textbf{Worker Pool}\\领取租约并推进一步};
+\node[comp,fill=PaleOrange,draw=Orange,below=12mm of pg] (stage) {\textbf{Stage Runner}\\生产 / 渲染 / 媒体 / 草稿};
+\draw[arr] (scheduler)--node[above,font=\sffamily\scriptsize,text=Muted]{写入 queued}(pg);
+\draw[arr] (pg)--node[above,font=\sffamily\scriptsize,text=Muted]{领取租约}(worker);
+\draw[arr] (worker)--(stage);
+\draw[arr] (stage)--node[left,font=\sffamily\scriptsize,text=Muted]{阶段结果}(pg);
+\draw[arr,dashed] (pg) to[bend right=18] node[below,font=\sffamily\scriptsize,text=Muted]{恢复位置}(worker);
+\end{tikzpicture}
+\end{center}
+
+\subsection*{建议的阶段进度不是一条黑盒脚本}
+\begin{center}
+\begin{tikzpicture}[
+  state/.style={rounded corners=1.5mm,minimum height=13mm,text width=22mm,
+    inner xsep=1mm,align=center,font=\sffamily\scriptsize\bfseries},
+  arr/.style={-{Latex[length=1.9mm]},line width=.8pt,Navy!58}
+]
+\node[state,fill=PaleGray,draw=Muted] (q) {queued\\待领取};
+\node[state,fill=PaleBlue,draw=Blue,right=3.5mm of q] (r) {running\\执行中};
+\node[state,fill=PaleBlue,draw=Blue,right=3.5mm of r] (p) {produced\\内容完成};
+\node[state,fill=PaleOrange,draw=Orange,right=3.5mm of p] (h) {rendered\\排版完成};
+\node[state,fill=PaleOrange,draw=Orange,right=3.5mm of h] (m) {media ready\\媒体完成};
+\node[state,fill=PaleGreen,draw=Green,right=3.5mm of m] (d) {draft ready\\草稿完成};
+\draw[arr] (q)--(r); \draw[arr] (r)--(p); \draw[arr] (p)--(h); \draw[arr] (h)--(m); \draw[arr] (m)--(d);
+\end{tikzpicture}
+\end{center}
+
+\begin{tabularx}{\textwidth}{@{}L{36mm} Y L{49mm}@{}}
+\toprule
+\textbf{机制} & \textbf{怎样实现} & \textbf{解决的问题} \\
+\midrule
+PostgreSQL 权威状态 & 每完成一阶段，再原子地写入状态、产物位置和时间 & 服务重启后知道从哪里继续，不依赖内存或日志猜测 \\
+租约与心跳 & Worker 领取有时限的租约，执行中定期续约 & Worker 崩溃后任务可被重新领取，不会永久卡住 \\
+业务幂等键 & 栏目 + 内容版本 + 目标账号形成稳定唯一键 & 调度重复、按钮重复点击不会创建两条同一任务 \\
+请求指纹 & 渲染版本、图片和草稿字段形成指纹 & 微信超时后避免不加判断地再次创建相同草稿 \\
+有限重试 & 网络/限流按退避重试；权限、参数、内容错误直接停下 & 只重试可能恢复的问题，不制造无限循环 \\
+小型 checkpoint & 编排器只保存恢复节点和必要标识，正文与状态放持久层 & 恢复数据可控，不把大文本塞入运行内存 \\
+\bottomrule
+\end{tabularx}
+
+\begin{orangebox}[三类失败的处理]
+\textbf{可重试：}短暂网络、限流、平台 5xx → 退避后有限重试。\quad
+\textbf{需修复：}权限、白名单、格式、缺图 → 停止并给出明确原因。\quad
+\textbf{结果未知：}请求已发出但响应丢失 → 先核对记录与平台状态，再决定补偿。
+\end{orangebox}
+
+\clearpage
+
+% -----------------------------------------------------------------------------
+% 第 7 页：最小落地
+% -----------------------------------------------------------------------------
+\section{最小闭环怎样落地}
+
+\begin{center}
+\begin{tikzpicture}[
+  phase/.style={rounded corners=1.8mm,minimum height=23mm,text width=34mm,
+    inner xsep=2mm,align=center,font=\sffamily\small},
+  arr/.style={-{Latex[length=2.1mm]},line width=.9pt,Navy!62}
+]
+\node[phase,fill=PaleBlue,draw=Blue] (p0) {\textbf{0｜权限探针}\\账号、白名单\\草稿开关};
+\node[phase,fill=PaleOrange,draw=Orange,right=6mm of p0] (p1) {\textbf{1｜适配器原型}\\一篇审核稿\\进入草稿箱};
+\node[phase,fill=PaleGreen,draw=Green,right=6mm of p1] (p2) {\textbf{2｜接内容链}\\Article Package\\渲染与媒体};
+\node[phase,fill=PaleGold,draw=Gold,right=6mm of p2] (p3) {\textbf{3｜加可靠性}\\Worker、状态\\恢复与观测};
+\draw[arr] (p0)--(p1); \draw[arr] (p1)--(p2); \draw[arr] (p2)--(p3);
+\end{tikzpicture}
+\end{center}
+
+\vspace{2mm}
+\begin{tabularx}{\textwidth}{@{}L{33mm} L{30mm} Y L{43mm}@{}}
+\toprule
+\textbf{技术项} & \textbf{复用 / 新增} & \textbf{最小实现} & \textbf{验收信号} \\
+\midrule
+现有内容生产底座 & 复用 & 输出带证据的选题、品牌文案和配图素材 & 相同输入可定位同一内容版本 \\
+Article Package & 新增 & 按长文模板组织正文，并复核事实、品牌和版权 & 可脱离微信重复渲染，复核结果可追踪 \\
+微信 Renderer & 新增 & 受控模板生成内联 HTML，过滤不支持内容 & 微信后台和手机预览一致 \\
+Media / Draft Adapter & 新增 & 分别上传正文图与封面，只调用 draft/add & 草稿可见，草稿标识与内容版本对应 \\
+Scheduler / Worker & 复用并扩展 & 定时建任务、租约领取、分阶段推进 & 重复触发不重复建任务 \\
+PostgreSQL 状态 & 扩展 & 保存状态、产物、幂等键、请求指纹和错误类别 & 重启后从最近成功阶段继续 \\
+审核入口 & 新增 & 展示证据、文章版本、预览链接与草稿结果 & 人工确认后在后台发布 \\
+\bottomrule
+\end{tabularx}
+
+\begin{keybox}[最小闭环验收]
+使用一篇已审核样稿完成：权限核验 → 文章包 → 微信 HTML → 正文图/封面 → draft/add → 草稿记录 → 手机预览。同一已确认任务的正常重放不重复创建草稿；结果未知时先核对平台状态，中途失败可从最近成功阶段继续。
+\end{keybox}
+
+\begin{greenbox}[技术结论]
+最稳妥的实现不是新增一个“自动发文脚本”，而是在现有内容生产链后增加可版本化文章包、可隔离微信适配器和可恢复任务状态。第一阶段做到草稿箱即完成自动化闭环，正式发布继续由人负责。
+\end{greenbox}
+
+\begin{plainbox}
+{\small\color{Muted}\textbf{资料范围：}微信官方开发文档、公开技术实现、当前项目 Agent Pipeline 规范。公开方案仅用于模块与数据流参考，未验证直接上线。实施前仍需以目标公众号后台权限和当时官方文档为准。}
+\end{plainbox}
+
+\vfill
+\begin{center}
+{\sffamily\bfseries\Large\color{Navy}先把“内容 → 草稿”做成可重复、可恢复的技术链路。}
+\end{center}
+
+\end{document}
