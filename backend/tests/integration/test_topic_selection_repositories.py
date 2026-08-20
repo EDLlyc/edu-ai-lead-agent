@@ -18,7 +18,9 @@ from app.domain.content_slots import (
 )
 from app.domain.editorial_relevance import ScienceTechContentSignal
 from app.domain.governance_enums import FactualCategory
-from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+from app.domain.ministry_education_priority import (
+    MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+)
 from app.domain.topic_rerank import (
     TopicRerankConfig,
     TopicRerankFailureCode,
@@ -30,6 +32,7 @@ from app.domain.topic_rerank import (
     finalize_daily_topic_rerank,
 )
 from app.domain.topic_selection import (
+    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
@@ -421,6 +424,7 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
 
     suffix = uuid4().hex[:12]
     config = TopicScoringConfig(
+        version=BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
         profile=f"ministry-auth-{suffix}",
         threshold=0.99,
         selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
@@ -491,10 +495,10 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_v3_rerank_applied_and_finalization_fallback_are_atomic(
+async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
     integration_context: IntegrationContext,
 ) -> None:
-    """Persist both v3 paths against real event/version foreign keys."""
+    """Persist both v4 paths against real event/version foreign keys."""
 
     acquisition_run_id, candidate_ids = await _create_acquisition_fixture(
         integration_context,
@@ -770,16 +774,19 @@ async def test_v3_rerank_applied_and_finalization_fallback_are_atomic(
 
     assert applied_record is not None
     assert applied_record.outcome == "applied"
+    assert applied_record.policy_version == rerank_config.policy_version
     assert applied_record.failure_code is None
     assert len(applied_record.reasons) == 2
     assert sorted(score.score.rank for score in applied_scores) == [1, 2]
     assert sorted(score.score.deterministic_rank for score in applied_scores) == [1, 2]
     assert fallback_record is not None
     assert fallback_record.outcome == "fallback"
+    assert fallback_record.policy_version == rerank_config.policy_version
     assert fallback_record.failure_code == "finalization_request_mismatch"
     assert fallback_record.base_order == fallback_record.final_order
     assert all(score.score.rank == score.score.deterministic_rank for score in fallback_scores)
     assert slot_record is not None
     assert slot_record.outcome == "applied"
+    assert slot_record.policy_version == rerank_config.policy_version
     assert slot_record.failure_code is None
     assert len(slot_record.reasons) == 2

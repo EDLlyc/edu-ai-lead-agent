@@ -20,6 +20,7 @@ from app.domain.topic_rerank import (
     CURRENT_TOPIC_RERANK_POLICY_VERSION,
     LEGACY_TOPIC_RERANK_POLICY_VERSION,
     V2_TOPIC_RERANK_POLICY_VERSION,
+    V3_TOPIC_RERANK_POLICY_VERSION,
     TopicRerankCandidate,
     TopicRerankConfig,
     TopicRerankFailureCode,
@@ -86,6 +87,20 @@ def _response_content(*, extra: bool = False) -> str:
     return json.dumps({"items": items}, ensure_ascii=False)
 
 
+def _order_response_content(
+    indexes: tuple[int, ...] = (2, 1),
+    *,
+    extra: bool = False,
+) -> str:
+    return json.dumps(
+        {
+            "order": [f"00000000-0000-4000-8000-{index:012d}" for index in indexes],
+            **({"explanation": "provider-authored text"} if extra else {}),
+        },
+        ensure_ascii=False,
+    )
+
+
 def _adapter(
     handler: httpx.MockTransport,
     *,
@@ -136,7 +151,7 @@ async def test_zhipu_topic_rerank_sends_one_bounded_json_request_and_projects_us
                         "finish_reason": "stop",
                         "message": {
                             "role": "assistant",
-                            "content": _response_content(),
+                            "content": _order_response_content(),
                         },
                     }
                 ],
@@ -176,7 +191,14 @@ async def test_zhipu_topic_rerank_sends_one_bounded_json_request_and_projects_us
     assert isinstance(messages, list)
     assert "ignore rules" not in messages[0]["content"]
     assert "ignore rules" in messages[1]["content"]
-    assert '"items":[{"event_id":"candidate UUID"' in messages[0]["content"]
+    assert '{"order":["candidate UUID"]}' in messages[0]["content"]
+    assert "不得返回 ordinal、理由、解释、评分" in messages[0]["content"]
+    assert tuple(str(item.event_id) for item in result.items) == (
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000001",
+    )
+    assert all(item.reason_codes == ("model_rank_order",) for item in result.items)
+    assert all(item.explanation == "模型在固定候选池内调整顺序。" for item in result.items)
     assert result.prompt_tokens == 123
     assert result.completion_tokens == 45
     assert result.reasoning_tokens == 7
@@ -205,6 +227,37 @@ async def test_literal_v2_keeps_strict_json_payload_and_envelope_parser() -> Non
     adapter, client = _adapter(httpx.MockTransport(handler))
     try:
         result = await adapter.rerank(_request(policy_version=V2_TOPIC_RERANK_POLICY_VERSION))
+    finally:
+        await client.aclose()
+
+    assert len(result.items) == 2
+    assert captured["thinking"] == {"type": "disabled"}
+    assert captured["do_sample"] is False
+    assert captured["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_literal_v3_keeps_strict_json_payload_and_envelope_parser() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": f"结果如下：\n{_response_content()}\n请审核。",
+                        }
+                    }
+                ]
+            },
+        )
+
+    adapter, client = _adapter(httpx.MockTransport(handler))
+    try:
+        result = await adapter.rerank(_request(policy_version=V3_TOPIC_RERANK_POLICY_VERSION))
     finally:
         await client.aclose()
 
@@ -264,7 +317,7 @@ async def test_v2_accepts_only_approved_single_object_envelopes(envelope: str) -
         )
     )
     try:
-        result = await adapter.rerank(_request())
+        result = await adapter.rerank(_request(policy_version=V2_TOPIC_RERANK_POLICY_VERSION))
     finally:
         await client.aclose()
 
@@ -303,7 +356,7 @@ async def test_v2_rejects_unsafe_json_envelopes(
     )
     try:
         with pytest.raises(TopicRerankInvalidProviderOutputError) as raised:
-            await adapter.rerank(_request())
+            await adapter.rerank(_request(policy_version=V2_TOPIC_RERANK_POLICY_VERSION))
     finally:
         await client.aclose()
 
@@ -318,7 +371,7 @@ async def test_v2_rejects_unsafe_json_envelopes(
 @pytest.mark.asyncio
 async def test_v2_rejects_oversized_completion_content_at_json_boundary() -> None:
     content = f'{"x" * 32_769}{{"items":[]}}'
-    request = _request()
+    request = _request(policy_version=V2_TOPIC_RERANK_POLICY_VERSION)
     request = TopicRerankRequest(
         run_id=request.run_id,
         cutoff_at=request.cutoff_at,
@@ -406,7 +459,12 @@ async def test_v2_rejects_strict_schema_and_item_failures_without_raw_output(kin
     )
     try:
         with pytest.raises(TopicRerankInvalidProviderOutputError) as raised:
-            await adapter.rerank(_request(title=candidate_secret))
+            await adapter.rerank(
+                _request(
+                    title=candidate_secret,
+                    policy_version=V3_TOPIC_RERANK_POLICY_VERSION,
+                )
+            )
     finally:
         await client.aclose()
 
@@ -545,7 +603,7 @@ async def test_zhipu_topic_rerank_rejects_extra_output_fields() -> None:
     transport = httpx.MockTransport(
         lambda _: httpx.Response(
             200,
-            json={"choices": [{"message": {"content": _response_content(extra=True)}}]},
+            json={"choices": [{"message": {"content": _order_response_content(extra=True)}}]},
         )
     )
     adapter, client = _adapter(transport)
@@ -556,7 +614,107 @@ async def test_zhipu_topic_rerank_rejects_extra_output_fields() -> None:
         await client.aclose()
 
     assert SECRET not in str(captured.value)
-    assert "score" not in str(captured.value)
+    assert "provider-authored text" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"items":[]}',
+        '{"order":[1,2]}',
+        '{"order":["PRIVATE-INVALID-UUID-0000000000000"]}',
+        '{"order":[]}',
+    ],
+)
+@pytest.mark.asyncio
+async def test_v4_rejects_non_minimal_or_invalid_order_schema_without_raw_output(
+    content: str,
+) -> None:
+    adapter, client = _adapter(
+        httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": content}}]},
+            )
+        )
+    )
+    try:
+        with pytest.raises(TopicRerankInvalidProviderOutputError) as raised:
+            await adapter.rerank(_request(title="PRIVATE-CANDIDATE-TEXT"))
+    finally:
+        await client.aclose()
+
+    assert raised.value.issue_codes == ("topic_rerank_schema_invalid",)
+    assert content not in str(raised.value)
+    assert "PRIVATE-CANDIDATE-TEXT" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        f"```json\n{_order_response_content()}\n```",
+        f"结果如下：\n{_order_response_content()}\n请审核。",
+    ],
+)
+@pytest.mark.asyncio
+async def test_v4_rejects_markdown_and_prose_json_envelopes(content: str) -> None:
+    adapter, client = _adapter(
+        httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": content}}]},
+            )
+        )
+    )
+    try:
+        with pytest.raises(TopicRerankInvalidProviderOutputError) as raised:
+            await adapter.rerank(_request(title="PRIVATE-CANDIDATE-TEXT"))
+    finally:
+        await client.aclose()
+
+    assert raised.value.issue_codes == ("topic_rerank_schema_invalid",)
+    assert content not in str(raised.value)
+    assert "PRIVATE-CANDIDATE-TEXT" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "indexes",
+    [
+        (1,),
+        (1, 1),
+        (1, 3),
+        (1, 2, 3),
+    ],
+)
+@pytest.mark.asyncio
+async def test_v4_invalid_permutations_call_once_and_fall_back(indexes: tuple[int, ...]) -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": _order_response_content(indexes)}}]},
+        )
+
+    request = _request()
+    config = TopicRerankConfig(
+        enabled=True,
+        provider="zhipu",
+        model="glm-test",
+        policy_version=CURRENT_TOPIC_RERANK_POLICY_VERSION,
+    )
+    adapter, client = _adapter(httpx.MockTransport(handler))
+    try:
+        outcome = await execute_topic_rerank(config=config, reranker=adapter, request=request)
+    finally:
+        await client.aclose()
+
+    assert calls == 1
+    assert outcome.kind is TopicRerankOutcomeKind.FALLBACK
+    assert outcome.failure_code is TopicRerankFailureCode.INVALID_PERMUTATION
+    assert outcome.final_order == outcome.base_order
 
 
 @pytest.mark.asyncio

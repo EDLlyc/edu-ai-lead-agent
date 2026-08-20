@@ -20,7 +20,9 @@ from app.domain.editorial_relevance import (
 )
 from app.domain.ministry_education_priority import (
     MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
     evaluate_ministry_education_priority,
+    evaluate_substantive_ministry_education_priority,
 )
 from app.domain.ministry_education_priority import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY as _MOE_SCIENCE_TOP1_PRIORITY_POLICY,
@@ -34,21 +36,27 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science
 DELIVERED_HISTORY_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
 THRESHOLD_059_TOPIC_SCORING_VERSION = "scoring-v1-preview.8-threshold-059"
 BROAD_HARD_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.9-broad-hard-tech-pool"
-DEFAULT_TOPIC_SCORING_VERSION = BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = (
+    "scoring-v1-preview.10-substantive-science-education-priority"
+)
+DEFAULT_TOPIC_SCORING_VERSION = SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
-    DEFAULT_TOPIC_SCORING_VERSION,
+    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
-    DEFAULT_TOPIC_SCORING_VERSION,
+    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
-    DEFAULT_TOPIC_SCORING_VERSION,
+    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -250,7 +258,10 @@ class TopicScoringConfig:
             return None
         if self.science_tech_editorial_rule_version is not None:
             return self.science_tech_editorial_rule_version
-        if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION:
+        if self.version in {
+            BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+            SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+        }:
             return SCIENCE_TECH_EDITORIAL_RULE_VERSION
         return SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
 
@@ -258,7 +269,10 @@ class TopicScoringConfig:
     def effective_hard_tech_pool_policy_version(self) -> str | None:
         if self.hard_tech_pool_policy_version is not None:
             return self.hard_tech_pool_policy_version
-        if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION:
+        if self.version in {
+            BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+            SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+        }:
             return BROAD_HARD_TECH_POOL_POLICY_VERSION
         return None
 
@@ -292,8 +306,16 @@ class TopicScoringConfig:
             TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION: GOVERNED_CONTENT_VETO_RULE_VERSION,
             DELIVERED_HISTORY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             THRESHOLD_059_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
-            DEFAULT_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            BROAD_HARD_TECH_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION: (
+                DELIVERED_CONTENT_VETO_RULE_VERSION
+            ),
         }.get(self.version)
+        expected_priority_rule = (
+            MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+            if self.version == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
+            else MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+        )
         return (
             expected_veto_rule is not None
             and self.effective_veto_rule_version == expected_veto_rule
@@ -301,16 +323,24 @@ class TopicScoringConfig:
             and self.effective_science_tech_editorial_rule_version
             == (
                 SCIENCE_TECH_EDITORIAL_RULE_VERSION
-                if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+                if self.version
+                in {
+                    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+                    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+                }
                 else SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
             )
-            and self.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+            and self.selection_priority_rule_version == expected_priority_rule
         )
 
     @property
     def has_broad_hard_tech_pool(self) -> bool:
         return (
-            self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+            self.version
+            in {
+                BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+                SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+            }
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
             == SCIENCE_TECH_EDITORIAL_RULE_VERSION
@@ -940,16 +970,30 @@ def _priority_state(
         SOURCE_PRIORITY_RULE_VERSION,
         SCIENCE_POLICY_PRIORITY_RULE_VERSION,
         MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+        MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
     }:
         return False, "unsupported_selection_priority_rule"
-    if config.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION:
+    if config.selection_priority_rule_version in {
+        MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+        MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
+    }:
         if not config.has_authenticated_ministry_priority:
             return False, "ministry_priority_disabled_for_config"
         if veto_codes:
             return False, "hard_veto"
-        ministry_priority = evaluate_ministry_education_priority(
-            topic_priority_policy=candidate.topic_priority_policy,
-            editorial_cohort=candidate.science_tech_editorial_cohort,
+        ministry_priority = (
+            evaluate_substantive_ministry_education_priority(
+                topic_priority_policy=candidate.topic_priority_policy,
+                editorial_cohort=candidate.science_tech_editorial_cohort,
+                title=candidate.priority_title,
+                summary=candidate.priority_summary,
+                content_signals=candidate.science_tech_content_signals,
+            )
+            if config.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+            else evaluate_ministry_education_priority(
+                topic_priority_policy=candidate.topic_priority_policy,
+                editorial_cohort=candidate.science_tech_editorial_cohort,
+            )
         )
         return ministry_priority.is_eligible, ministry_priority.reason_code
     if candidate.topic_priority_policy is None:

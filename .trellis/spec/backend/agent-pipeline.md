@@ -45,12 +45,13 @@ owns eligibility, the 0.59 threshold, Ministry authentication, hard vetoes, seve
 repeat, slot affinity, same-day exclusion, and item/candidate caps. When the globally disabled-by-
 default content-selection pipeline is enabled, its reranker is on by default and sends at most
 eight already eligible governed projections to exactly one fake/Zhipu adapter call. Enqueue pins
-its independent policy/provider/model config; current `topic-rerank-v3-layered-auto-finalize` uses
-the v2 strict JSON shape, seven allowlisted reason codes, JSON-object mode, disabled
-thinking/sampling, and the shared bounded one-object extractor. Literal v1/v2 snapshots retain
+its independent policy/provider/model config; current `topic-rerank-v4-minimal-order-contract`
+accepts only a complete `order` array of frozen candidate IDs, uses JSON-object mode, disabled
+thinking/sampling, and direct strict top-level-object parsing with no Markdown/prose envelope.
+Ordinals and safe reasons are derived locally. Literal v1/v2/v3 snapshots retain
 their exact historical prompt/payload/parser/application behavior.
 
-The v3 automatic finalizer binds an outcome to the exact run request fingerprint, full pool, and
+The v3/v4 automatic finalizer binds an outcome to the exact run request fingerprint, full pool, and
 event/version pairs, then rechecks hard veto, eligibility, priority, same-day, final set, and caps.
 Any invalid or cross-run mismatch becomes a typed deterministic fallback to the exact base order;
 there is no human selection-review stage and no second judge/model pass. Persistence retains
@@ -264,11 +265,13 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The current `scoring-v1-preview.9-broad-hard-tech-pool` gives 0.30 to tiered editorial
+The current `scoring-v1-preview.10-substantive-science-education-priority` gives 0.30 to tiered editorial
 priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
 and communication potential. It keeps genuine hard vetoes but does not add the historical
 `outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
-0.59 numeric threshold only when no hard veto exists. The current v3 policy also admits governed
+0.59 numeric threshold only when no hard veto exists and title/summary proves a substantive
+science-education policy, teaching practice, talent pathway, or frontier-education action. The
+current broad-recall policy also admits governed
 Tier-A/B frontier hard-tech candidates to the LLM pool below 0.59 when no veto exists, while
 persisting `passes_threshold=false` and its policy reason. Historical `.8` remains threshold-bound
 for ordinary frontier candidates, preserves `.7` delivery-backed repeat provenance, and differs
@@ -279,8 +282,9 @@ keep their science/AI-education scope veto and disabled source priority, while `
 feature map, policy-action requirement, and Ministry priority semantics on replay.
 
 Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
-authenticated Ministry education priority under `.6`/`.7`/`.8`/`.9` may bypass only that numeric threshold and
-still requires zero hard vetoes. Stable tie-breakers must be documented (for example source tier,
+authenticated Ministry education priority under `.6`/`.7`/`.8`/`.9` preserves historical v3
+behavior; `.10` applies only its substantive v4 classifier. Every bypass still requires zero hard
+vetoes. Stable tie-breakers must be documented (for example source tier,
 publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.
 

@@ -221,7 +221,7 @@ def test_compose_and_doctor_pin_layered_topic_rerank_defaults() -> None:
     assert "CONTENT_LLM_RERANK_ENABLED: ${CONTENT_LLM_RERANK_ENABLED:-true}" in compose
     assert (
         "CONTENT_LLM_RERANK_POLICY_VERSION: "
-        "${CONTENT_LLM_RERANK_POLICY_VERSION:-topic-rerank-v3-layered-auto-finalize}"
+        "${CONTENT_LLM_RERANK_POLICY_VERSION:-topic-rerank-v4-minimal-order-contract}"
     ) in compose
     for key in (
         "CONTENT_ENABLED",

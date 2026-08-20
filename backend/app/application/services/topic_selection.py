@@ -15,7 +15,10 @@ from app.application.ports.topic_selection import (
 from app.application.services.topic_reranking import execute_topic_rerank
 from app.core.config import Settings
 from app.core.errors import ConflictError, TopicSelectionLeaseLostError
-from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+from app.domain.ministry_education_priority import (
+    MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
+)
 from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERSION
 from app.domain.topic_rerank import (
     TopicRerankConfig,
@@ -28,6 +31,7 @@ from app.domain.topic_selection import (
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
     LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS,
     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
     TopicScoringConfig,
     select_daily_topic,
@@ -38,7 +42,12 @@ logger = structlog.get_logger()
 
 
 def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
-    if settings.content_scoring_version in TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS:
+    if settings.content_scoring_version == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION:
+        priority_rule_version = (
+            settings.content_selection_priority_rule_version
+            or MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+        )
+    elif settings.content_scoring_version in TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS:
         priority_rule_version = (
             settings.content_selection_priority_rule_version
             or MINISTRY_EDUCATION_PRIORITY_RULE_VERSION

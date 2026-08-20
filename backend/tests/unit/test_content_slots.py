@@ -15,6 +15,7 @@ from app.domain.content_slots import (
     select_slot_topics,
 )
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
+from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
 from app.infrastructure.db.content_slots import _validate_content_slot_decision
 from pydantic import ValidationError
@@ -54,6 +55,8 @@ def _candidate(
         product_matrix_fit_v2=total_features,
         product_matrix_v2_direction_ids=directions,
         topic_priority_policy=priority_policy,
+        priority_title=("人工智能教育课程实施方案" if priority_policy else f"候选 {suffix}"),
+        priority_summary=("推动中小学人工智能课程教学实践。" if priority_policy else "治理摘要"),
         prohibited_marketing_risk=veto,
     )
 
@@ -282,7 +285,9 @@ def test_ministry_priority_is_global_and_same_day_events_are_excluded() -> None:
     morning = select_slot_topics(
         (ordinary, ministry),
         as_of=NOW,
-        config=TopicScoringConfig(selection_priority_rule_version="ministry-education-priority-v3"),
+        config=TopicScoringConfig(
+            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+        ),
         slot=ContentSlot.EVENING,
         policy=SlotRankingPolicy(),
         max_items=2,
@@ -290,7 +295,9 @@ def test_ministry_priority_is_global_and_same_day_events_are_excluded() -> None:
     later = select_slot_topics(
         (ordinary, ministry),
         as_of=NOW,
-        config=TopicScoringConfig(selection_priority_rule_version="ministry-education-priority-v3"),
+        config=TopicScoringConfig(
+            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+        ),
         slot=ContentSlot.NOON,
         policy=SlotRankingPolicy(),
         max_items=2,

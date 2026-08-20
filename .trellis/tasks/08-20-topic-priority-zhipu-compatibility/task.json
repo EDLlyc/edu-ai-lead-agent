@@ -1,0 +1,32 @@
+{
+  "id": "topic-priority-zhipu-compatibility",
+  "name": "topic-priority-zhipu-compatibility",
+  "title": "科技教育优先与智谱排序兼容修复",
+  "description": "收紧教育部科技教育优先语义，并基于真实运行证据兼容智谱排序结构化响应，保持严格候选边界与确定性回退。",
+  "status": "in_progress",
+  "dev_type": "feature",
+  "scope": "backend",
+  "package": "backend",
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/domain/ministry_education_priority.py",
+    "backend/app/domain/topic_selection.py",
+    "backend/app/domain/topic_rerank.py",
+    "backend/app/application/services/topic_reranking.py",
+    "backend/app/infrastructure/ai/topic_rerank.py"
+  ],
+  "notes": "",
+  "meta": {}
+}

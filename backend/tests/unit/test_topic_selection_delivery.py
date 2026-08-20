@@ -178,7 +178,9 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert config.version == DEFAULT_TOPIC_SCORING_VERSION
     assert config.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
-    assert config.selection_priority_rule_version == "ministry-education-priority-v3"
+    assert config.selection_priority_rule_version == (
+        "ministry-education-priority-v4-substantive-science-education"
+    )
 
 
 def test_historical_delivered_scoring_version_keeps_original_threshold() -> None:
@@ -186,6 +188,7 @@ def test_historical_delivered_scoring_version_keeps_original_threshold() -> None
         Settings(
             _env_file=None,
             content_scoring_version=DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+            content_selection_priority_rule_version="ministry-education-priority-v3",
         )
     )
 
@@ -200,6 +203,7 @@ def test_historical_point_eight_scoring_version_keeps_point_fifty_nine_threshold
         Settings(
             _env_file=None,
             content_scoring_version=THRESHOLD_059_TOPIC_SCORING_VERSION,
+            content_selection_priority_rule_version="ministry-education-priority-v3",
         )
     )
 
@@ -214,6 +218,7 @@ def test_historical_tiered_scoring_version_keeps_ministry_priority_defaults() ->
         Settings(
             _env_file=None,
             content_scoring_version="scoring-v1-preview.6-tiered-science-tech-priority",
+            content_selection_priority_rule_version="ministry-education-priority-v3",
         )
     )
 

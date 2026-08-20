@@ -21,7 +21,10 @@ from app.domain.content_slots import (
     select_slot_topics,
 )
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
-from app.domain.ministry_education_priority import MOE_SCIENCE_TOP1_PRIORITY_POLICY
+from app.domain.ministry_education_priority import (
+    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
+    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+)
 from app.domain.topic_rerank import (
     TopicRerankCandidate,
     TopicRerankConfig,
@@ -46,7 +49,9 @@ CASES_PATH = FEATURE_ROOT / "cases.v1.jsonl"
 CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 NOW = datetime(2026, 8, 18, 1, 0, tzinfo=UTC)
-CONFIG = TopicScoringConfig(selection_priority_rule_version="ministry-education-priority-v3")
+CONFIG = TopicScoringConfig(
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+)
 RERANK_CONFIG = TopicRerankConfig(
     enabled=True,
     provider="fake",
@@ -98,8 +103,12 @@ def _candidate(
         product_matrix_fit_v2=product,
         product_matrix_v2_direction_ids=("science_exploration_courses_and_camps",),
         topic_priority_policy=(MOE_SCIENCE_TOP1_PRIORITY_POLICY if priority else None),
-        priority_title=f"合成候选 {suffix}",
-        priority_summary="仅用于离线契约检查的治理后合成摘要。",
+        priority_title=("人工智能教育课程实施方案" if priority else f"合成候选 {suffix}"),
+        priority_summary=(
+            "推动中小学人工智能课程教学实践。"
+            if priority
+            else "仅用于离线契约检查的治理后合成摘要。"
+        ),
         prohibited_marketing_risk=veto,
     )
 

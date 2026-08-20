@@ -3,7 +3,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from app.domain.editorial_relevance import ScienceTechContentSignal, ScienceTechEditorialCohort
-from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+from app.domain.ministry_education_priority import (
+    MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
+)
 from app.domain.topic_selection import (
     BROAD_HARD_TECH_POOL_POLICY_VERSION,
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
@@ -15,6 +18,7 @@ from app.domain.topic_selection import (
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     NoTopicCode,
@@ -24,7 +28,10 @@ from app.domain.topic_selection import (
     score_topic_candidate,
     select_daily_topic,
 )
-from app.infrastructure.db.topic_selection import source_trust_projection
+from app.infrastructure.db.topic_selection import (
+    source_trust_projection,
+    topic_scoring_config_fingerprint,
+)
 
 NOW = datetime(2026, 7, 30, 2, 0, tzinfo=UTC)
 CONFIG = TopicScoringConfig(
@@ -33,7 +40,11 @@ CONFIG = TopicScoringConfig(
     threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
 TIERED_CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+)
+HISTORICAL_BROAD_CONFIG = TopicScoringConfig(
+    version=BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
 )
 HISTORICAL_TIERED_CONFIG = TopicScoringConfig(
     version=TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
@@ -116,14 +127,16 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
-def test_current_config_exposes_broad_hard_tech_policy_and_immutable_v3_rules() -> None:
+def test_current_config_exposes_broad_hard_tech_policy_and_substantive_v4_rule() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
     assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
-    assert metadata["version"] == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+    assert metadata["version"] == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
     assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
-    assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
+    assert metadata["selection_priority_rule_version"] == (
+        MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+    )
     assert metadata["science_tech_editorial_rule_version"] == ("science-tech-editorial-v3-broad")
     assert metadata["hard_tech_pool_policy_version"] == BROAD_HARD_TECH_POOL_POLICY_VERSION
     assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
@@ -136,6 +149,17 @@ def test_current_config_exposes_broad_hard_tech_policy_and_immutable_v3_rules() 
         "communication_potential": 0.10,
     }
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+def test_point_nine_snapshot_retains_literal_v3_policy_and_round_trips() -> None:
+    metadata = HISTORICAL_BROAD_CONFIG.as_metadata()
+
+    assert metadata["version"] == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+    assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+    assert topic_scoring_config_fingerprint(HISTORICAL_BROAD_CONFIG) == (
+        "a9fcf88070354a0a80d2fb39da5dbc3ef5557f9d530ca283bfe1af05a7be71e1"
+    )
 
 
 def test_historical_delivered_config_retains_threshold_and_round_trips() -> None:
@@ -701,8 +725,178 @@ def test_authenticated_ministry_education_priority_bypasses_only_numeric_thresho
     assert score.passes_threshold is False
     assert score.eligible is True
     assert score.priority_applied is True
+    assert score.priority_reason == (
+        "ministry_science_education_teaching_practice"
+        if config is TIERED_CONFIG
+        else "ministry_education_priority"
+    )
+    assert score.threshold_bypass_applied is True
+
+
+def test_substantive_priority_rejects_the_real_tibet_event_only_regression() -> None:
+    meeting = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育对口支援西藏工作会议暨教育系统援藏干部人才座谈会在拉萨召开",
+        priority_summary="会议总结教育援藏工作, 并部署下一阶段对口支援任务。",
+        science_tech_content_signals=(ScienceTechContentSignal.EVENT_OR_CONFERENCE,),
+    )
+
+    score = score_topic_candidate(meeting, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.total < score.threshold
+    assert score.priority_applied is False
+    assert score.priority_reason == "ministry_science_education_event_only"
+    assert score.threshold_bypass_applied is False
+    assert score.eligible is False
+
+
+def test_literal_point_nine_keeps_the_historical_tibet_meeting_priority_result() -> None:
+    meeting = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育对口支援西藏工作会议暨教育系统援藏干部人才座谈会在拉萨召开",
+        priority_summary="会议总结教育援藏工作, 并部署下一阶段对口支援任务。",
+        science_tech_content_signals=(ScienceTechContentSignal.EVENT_OR_CONFERENCE,),
+    )
+
+    score = score_topic_candidate(meeting, as_of=NOW, config=HISTORICAL_BROAD_CONFIG)
+
+    assert score.total < score.threshold
+    assert score.priority_applied is True
     assert score.priority_reason == "ministry_education_priority"
     assert score.threshold_bypass_applied is True
+    assert score.eligible is True
+
+
+@pytest.mark.parametrize(
+    ("title", "summary", "expected_reason"),
+    [
+        (
+            "教育部印发中小学人工智能教育行动方案",
+            "推动人工智能课程实施和教师教学能力建设。",
+            "ministry_science_education_policy_action",
+        ),
+        (
+            "机器人课程走进中小学课堂",
+            "学生通过项目式实践完成机器人实验。",
+            "ministry_science_education_teaching_practice",
+        ),
+        (
+            "基础学科拔尖人才培养计划启动",
+            "面向学生完善科学人才选拔和培养机制。",
+            "ministry_science_education_talent_development",
+        ),
+        (
+            "全国人工智能教育工作会议召开",
+            "会上发布中小学人工智能教育行动方案。",
+            "ministry_science_education_policy_action",
+        ),
+        (
+            "航天科普进校园活动启动",
+            "学生通过实验了解火箭回收与前沿航天技术。",
+            "ministry_science_education_teaching_practice",
+        ),
+    ],
+)
+def test_substantive_priority_accepts_policy_teaching_and_talent_actions(
+    title: str,
+    summary: str,
+    expected_reason: str,
+) -> None:
+    score = score_topic_candidate(
+        _candidate(
+            source_trust=0.2,
+            source_diversity=1,
+            communication_potential=0.1,
+            editorial_priority=0.88,
+            product_matrix_fit_v2=0.0,
+            product_matrix_v2_direction_ids=(),
+            topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+            priority_title=title,
+            priority_summary=summary,
+        ),
+        as_of=NOW,
+        config=TIERED_CONFIG,
+    )
+
+    assert score.priority_applied is True
+    assert score.priority_reason == expected_reason
+    assert score.threshold_bypass_applied is True
+
+
+def test_substantive_priority_rejects_science_education_event_with_only_generic_deployment() -> (
+    None
+):
+    score = score_topic_candidate(
+        _candidate(
+            source_trust=0.2,
+            source_diversity=1,
+            communication_potential=0.1,
+            editorial_priority=0.88,
+            product_matrix_fit_v2=0.0,
+            topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+            priority_title="人工智能教育交流会在京举行",
+            priority_summary="会议总结工作并部署下一阶段任务。",
+            science_tech_content_signals=(ScienceTechContentSignal.EVENT_OR_CONFERENCE,),
+        ),
+        as_of=NOW,
+        config=TIERED_CONFIG,
+    )
+
+    assert score.priority_applied is False
+    assert score.priority_reason == "ministry_science_education_event_only"
+    assert score.threshold_bypass_applied is False
+
+
+@pytest.mark.parametrize(
+    ("title", "summary", "reason"),
+    [
+        (
+            "人工智能课程限时报名优惠",
+            "培训机构推出招生广告, 扫码报名。",
+            "ministry_science_education_promotion_excluded",
+        ),
+        (
+            "科技教育主题体育彩票促销活动",
+            "消费券带动购物节销售。",
+            "ministry_science_education_homonym_excluded",
+        ),
+    ],
+)
+def test_substantive_priority_rejects_promotions_and_homonyms(
+    title: str,
+    summary: str,
+    reason: str,
+) -> None:
+    score = score_topic_candidate(
+        _candidate(
+            source_trust=0.2,
+            source_diversity=1,
+            communication_potential=0.1,
+            editorial_priority=0.88,
+            product_matrix_fit_v2=0.0,
+            topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+            priority_title=title,
+            priority_summary=summary,
+        ),
+        as_of=NOW,
+        config=TIERED_CONFIG,
+    )
+
+    assert score.priority_applied is False
+    assert score.priority_reason == reason
+    assert score.threshold_bypass_applied is False
 
 
 def test_ministry_title_spoof_without_controlled_policy_cannot_bypass_threshold() -> None:

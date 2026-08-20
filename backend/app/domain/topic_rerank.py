@@ -15,17 +15,26 @@ from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, Topic
 
 LEGACY_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v1"
 V2_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v2-zhipu-json-contract"
-CURRENT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v3-layered-auto-finalize"
+V3_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v3-layered-auto-finalize"
+CURRENT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v4-minimal-order-contract"
 DEFAULT_TOPIC_RERANK_POLICY_VERSION = CURRENT_TOPIC_RERANK_POLICY_VERSION
 SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
     {
         LEGACY_TOPIC_RERANK_POLICY_VERSION,
         V2_TOPIC_RERANK_POLICY_VERSION,
+        V3_TOPIC_RERANK_POLICY_VERSION,
         CURRENT_TOPIC_RERANK_POLICY_VERSION,
     }
 )
 STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
-    {V2_TOPIC_RERANK_POLICY_VERSION, CURRENT_TOPIC_RERANK_POLICY_VERSION}
+    {
+        V2_TOPIC_RERANK_POLICY_VERSION,
+        V3_TOPIC_RERANK_POLICY_VERSION,
+        CURRENT_TOPIC_RERANK_POLICY_VERSION,
+    }
+)
+AUTO_FINALIZE_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
+    {V3_TOPIC_RERANK_POLICY_VERSION, CURRENT_TOPIC_RERANK_POLICY_VERSION}
 )
 DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT = 8
 DEFAULT_TOPIC_RERANK_MAX_OUTPUT_TOKENS = 1_024
@@ -41,6 +50,9 @@ TOPIC_RERANK_REASON_CODES = frozenset(
         "topic_diversity",
     }
 )
+V4_TOPIC_RERANK_REASON_CODES = frozenset({"model_rank_order"})
+SUPPORTED_TOPIC_RERANK_REASON_CODES = TOPIC_RERANK_REASON_CODES | V4_TOPIC_RERANK_REASON_CODES
+V4_TOPIC_RERANK_EXPLANATION = "模型在固定候选池内调整顺序。"
 
 
 class TopicRerankOutcomeKind(StrEnum):
@@ -309,7 +321,7 @@ class TopicRerankItem:
             self.reason_codes
         ):
             raise ValueError("topic rerank requires 1 to 3 unique reason codes")
-        if any(code not in TOPIC_RERANK_REASON_CODES for code in self.reason_codes):
+        if any(code not in SUPPORTED_TOPIC_RERANK_REASON_CODES for code in self.reason_codes):
             raise ValueError("topic rerank reason code is not allowlisted")
         if not self.explanation.strip() or len(self.explanation) > 160:
             raise ValueError("topic rerank explanation must be non-blank and bounded")
@@ -366,6 +378,8 @@ class TopicRerankOutcome:
     latency_ms: int = 0
 
     def __post_init__(self) -> None:
+        if self.policy_version not in SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS:
+            raise ValueError("unsupported topic rerank outcome policy")
         if self.candidate_count < 0 or self.candidate_count > DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT:
             raise ValueError("topic rerank outcome candidate count is invalid")
         if self.candidate_count != len(self.base_order) or len(self.final_order) != len(
@@ -396,6 +410,8 @@ class TopicRerankOutcome:
                 raise ValueError("applied topic rerank item ordinals must be consecutive")
             if tuple(item.event_id for item in ordered_items) != self.final_order:
                 raise ValueError("applied topic rerank reasons must match final order")
+            if not _items_match_policy_diagnostics(self.policy_version, ordered_items):
+                raise ValueError("applied topic rerank diagnostics do not match policy")
         for fingerprint in (self.request_fingerprint, self.prompt_fingerprint):
             if fingerprint is not None and (
                 len(fingerprint) != 64
@@ -483,7 +499,11 @@ def build_slot_rerank_pool(
 def validate_topic_rerank_result(
     pool: tuple[TopicRerankCandidate, ...],
     result: TopicRerankModelResult,
+    *,
+    policy_version: str,
 ) -> tuple[UUID, ...]:
+    if not _items_match_policy_diagnostics(policy_version, result.items):
+        raise TopicRerankValidationError(TopicRerankFailureCode.INVALID_PROVIDER_OUTPUT)
     if len(result.items) != len(pool):
         raise TopicRerankValidationError(TopicRerankFailureCode.INVALID_PERMUTATION)
     ordered_items = tuple(sorted(result.items, key=lambda item: item.ordinal))
@@ -498,6 +518,27 @@ def validate_topic_rerank_result(
     if result_groups != tuple(sorted(result_groups)):
         raise TopicRerankValidationError(TopicRerankFailureCode.PRIORITY_BARRIER_VIOLATION)
     return result_ids
+
+
+def _items_match_policy_diagnostics(
+    policy_version: str,
+    items: tuple[TopicRerankItem, ...],
+) -> bool:
+    if policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+        return all(
+            item.reason_codes == ("model_rank_order",)
+            and item.explanation == V4_TOPIC_RERANK_EXPLANATION
+            for item in items
+        )
+    if policy_version in {
+        LEGACY_TOPIC_RERANK_POLICY_VERSION,
+        V2_TOPIC_RERANK_POLICY_VERSION,
+        V3_TOPIC_RERANK_POLICY_VERSION,
+    }:
+        return all(
+            all(code in TOPIC_RERANK_REASON_CODES for code in item.reason_codes) for item in items
+        )
+    return False
 
 
 def apply_daily_topic_rerank(
@@ -592,7 +633,7 @@ def finalize_daily_topic_rerank(
     request: TopicRerankRequest | None,
     candidate_limit: int,
 ) -> tuple[DailyTopicDecision, TopicRerankOutcome]:
-    """Apply v3 reranking only after binding it to this run's frozen pool."""
+    """Apply automatic reranking only after binding it to this run's frozen pool."""
 
     failure_code = _daily_finalization_failure(
         decision,
@@ -620,7 +661,7 @@ def finalize_content_slot_rerank(
     candidate_limit: int,
     max_items: int,
 ) -> tuple[ContentSlotDecision, TopicRerankOutcome]:
-    """Apply v3 slot reranking only after reasserting frozen slot boundaries."""
+    """Apply automatic slot reranking only after reasserting frozen slot boundaries."""
 
     failure_code = _slot_finalization_failure(
         decision,
@@ -648,7 +689,7 @@ def _daily_finalization_failure(
     request: TopicRerankRequest | None,
     candidate_limit: int,
 ) -> TopicRerankFailureCode | None:
-    if not _uses_v3_finalization(request, outcome):
+    if not _uses_automatic_finalization(request, outcome):
         return None
     common_failure = _common_finalization_failure(
         pool,
@@ -681,7 +722,7 @@ def _slot_finalization_failure(
     candidate_limit: int,
     max_items: int,
 ) -> TopicRerankFailureCode | None:
-    if not _uses_v3_finalization(request, outcome):
+    if not _uses_automatic_finalization(request, outcome):
         return None
     common_failure = _common_finalization_failure(
         pool,
@@ -707,12 +748,12 @@ def _slot_finalization_failure(
     return _final_order_priority_failure(pool, outcome)
 
 
-def _uses_v3_finalization(
+def _uses_automatic_finalization(
     request: TopicRerankRequest | None,
     outcome: TopicRerankOutcome,
 ) -> bool:
     policy_version = request.policy_version if request is not None else outcome.policy_version
-    return policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION
+    return policy_version in AUTO_FINALIZE_TOPIC_RERANK_POLICY_VERSIONS
 
 
 def _common_finalization_failure(
@@ -733,7 +774,7 @@ def _common_finalization_failure(
         if pool or outcome.request_fingerprint is not None:
             return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
     elif (
-        request.policy_version != CURRENT_TOPIC_RERANK_POLICY_VERSION
+        request.policy_version not in AUTO_FINALIZE_TOPIC_RERANK_POLICY_VERSIONS
         or outcome.policy_version != request.policy_version
         or request.candidates != pool
         or request.fingerprint != outcome.request_fingerprint
@@ -765,7 +806,7 @@ def _finalization_fallback(
     base_order = tuple(candidate.event_id for candidate in pool)
     return TopicRerankOutcome(
         kind=TopicRerankOutcomeKind.FALLBACK,
-        policy_version=CURRENT_TOPIC_RERANK_POLICY_VERSION,
+        policy_version=(request.policy_version if request is not None else outcome.policy_version),
         provider=outcome.provider,
         model=outcome.model,
         candidate_count=len(base_order),

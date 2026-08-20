@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable
 from time import perf_counter_ns
-from typing import Any, Literal, get_args
+from typing import Annotated, Any, Literal, get_args
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -20,9 +20,11 @@ from app.core.errors import (
     normalize_provider_validation_issues,
 )
 from app.domain.topic_rerank import (
+    CURRENT_TOPIC_RERANK_POLICY_VERSION,
     LEGACY_TOPIC_RERANK_POLICY_VERSION,
     STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS,
     TOPIC_RERANK_REASON_CODES,
+    V4_TOPIC_RERANK_EXPLANATION,
     TopicRerankCandidate,
     TopicRerankItem,
     TopicRerankModelResult,
@@ -56,6 +58,7 @@ _SAFE_VALIDATION_LOC_SEGMENTS = frozenset(
         "items",
         "message",
         "ordinal",
+        "order",
         "prompt_tokens",
         "reason_codes",
         "root",
@@ -102,6 +105,15 @@ class _TopicRerankOutput(BaseModel):
     items: tuple[_TopicRerankItemOutput, ...] = Field(min_length=1, max_length=8)
 
 
+class _TopicRerankOrderOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    order: tuple[Annotated[str, Field(min_length=36, max_length=36)], ...] = Field(
+        min_length=1,
+        max_length=8,
+    )
+
+
 class DeterministicFakeTopicReranker:
     """Provider-free sorter derived only from allowlisted candidate projections."""
 
@@ -139,8 +151,16 @@ class DeterministicFakeTopicReranker:
             TopicRerankItem(
                 event_id=candidate.event_id,
                 ordinal=ordinal,
-                reason_codes=_fake_reason_codes(candidate),
-                explanation="基于受控编辑信号与栏目适配度排序。",
+                reason_codes=(
+                    ("model_rank_order",)
+                    if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION
+                    else _fake_reason_codes(candidate)
+                ),
+                explanation=(
+                    V4_TOPIC_RERANK_EXPLANATION
+                    if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION
+                    else "基于受控编辑信号与栏目适配度排序。"
+                ),
             )
             for ordinal, candidate in enumerate(ordered, start=1)
         )
@@ -331,7 +351,11 @@ class ZhipuTopicReranker:
                 **metrics,
             )
         content = completion.choices[0].message.content
-        if request.policy_version in STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS:
+        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+            # V4 deliberately accepts only the exact top-level JSON object. Historical
+            # v2/v3 retain their bounded code-fence/prose envelope compatibility.
+            normalized_content = content.strip()
+        elif request.policy_version in STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS:
             try:
                 normalized_content = extract_provider_json_object(content)
             except ProviderJsonEnvelopeError as error:
@@ -343,20 +367,36 @@ class ZhipuTopicReranker:
                 ) from None
         else:
             normalized_content = content
-        try:
-            output = _TopicRerankOutput.model_validate_json(normalized_content)
-        except ValidationError as error:
-            raise _invalid_topic_rerank_output(
-                "topic_rerank_schema_invalid",
+        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+            try:
+                order_output = _TopicRerankOrderOutput.model_validate_json(normalized_content)
+            except ValidationError as error:
+                raise _invalid_topic_rerank_output(
+                    "topic_rerank_schema_invalid",
+                    prompt_fingerprint=prompt.fingerprint,
+                    validation_issues=_safe_validation_issues(error),
+                    **metrics,
+                ) from None
+            items = _build_minimal_order_items(
+                order_output,
                 prompt_fingerprint=prompt.fingerprint,
-                validation_issues=_safe_validation_issues(error),
-                **metrics,
-            ) from None
-        items = _build_topic_rerank_items(
-            output,
-            prompt_fingerprint=prompt.fingerprint,
-            metrics=metrics,
-        )
+                metrics=metrics,
+            )
+        else:
+            try:
+                output = _TopicRerankOutput.model_validate_json(normalized_content)
+            except ValidationError as error:
+                raise _invalid_topic_rerank_output(
+                    "topic_rerank_schema_invalid",
+                    prompt_fingerprint=prompt.fingerprint,
+                    validation_issues=_safe_validation_issues(error),
+                    **metrics,
+                ) from None
+            items = _build_topic_rerank_items(
+                output,
+                prompt_fingerprint=prompt.fingerprint,
+                metrics=metrics,
+            )
         return TopicRerankModelResult(
             items=items,
             provider="zhipu",
@@ -411,6 +451,34 @@ def _build_topic_rerank_items(
                 validation_issues=_issue(("items", index, field), "value_error"),
                 **metrics,
             ) from None
+    return tuple(items)
+
+
+def _build_minimal_order_items(
+    output: _TopicRerankOrderOutput,
+    *,
+    prompt_fingerprint: str,
+    metrics: dict[str, int],
+) -> tuple[TopicRerankItem, ...]:
+    items: list[TopicRerankItem] = []
+    for index, value in enumerate(output.order):
+        try:
+            event_id = _parse_event_id(value)
+        except (TypeError, ValueError):
+            raise _invalid_topic_rerank_output(
+                "topic_rerank_schema_invalid",
+                prompt_fingerprint=prompt_fingerprint,
+                validation_issues=_issue(("order", index), "uuid_parsing"),
+                **metrics,
+            ) from None
+        items.append(
+            TopicRerankItem(
+                event_id=event_id,
+                ordinal=index + 1,
+                reason_codes=("model_rank_order",),
+                explanation=V4_TOPIC_RERANK_EXPLANATION,
+            )
+        )
     return tuple(items)
 
 

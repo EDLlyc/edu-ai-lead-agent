@@ -225,6 +225,8 @@ services = json.load(sys.stdin)["services"]
 names = ("acquisition-api", "content-scheduler", "content-worker")
 keys = (
     "CONTENT_ENABLED",
+    "CONTENT_SCORING_VERSION",
+    "CONTENT_SELECTION_PRIORITY_RULE_VERSION",
     "CONTENT_LLM_RERANK_ENABLED",
     "CONTENT_LLM_RERANK_POLICY_VERSION",
     "CONTENT_LLM_RERANK_CANDIDATE_LIMIT",
@@ -245,8 +247,12 @@ def compose_bool(value):
     raise SystemExit("topic rerank flags must be valid boolean values")
 
 environment = services["content-worker"]["environment"]
-if environment["CONTENT_LLM_RERANK_POLICY_VERSION"] != "topic-rerank-v3-layered-auto-finalize":
-    raise SystemExit("content selection must pin the v3 automatic-finalization policy")
+if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.10-substantive-science-education-priority":
+    raise SystemExit("content selection must pin the substantive science-education scoring policy")
+if environment["CONTENT_SELECTION_PRIORITY_RULE_VERSION"] != "ministry-education-priority-v4-substantive-science-education":
+    raise SystemExit("content selection must pin the substantive Ministry priority policy")
+if environment["CONTENT_LLM_RERANK_POLICY_VERSION"] != "topic-rerank-v4-minimal-order-contract":
+    raise SystemExit("content selection must pin the v4 minimal-order policy")
 if environment["CONTENT_LLM_RERANK_CANDIDATE_LIMIT"] != "8":
     raise SystemExit("content selection rerank pool must remain capped at eight")
 if (
