@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from app.api_main import app
+from app.domain.editorial_relevance import SCIENCE_TECH_EDITORIAL_RULE_VERSION
 from app.infrastructure.db.repositories import seed_sources
 from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
 from httpx import ASGITransport, AsyncClient
@@ -27,7 +28,7 @@ async def test_internal_api_lists_sources_and_enqueues_without_fetching(
         assert sources.status_code == 200
         assert sources.json()["count"] == 10
         assert {item["relevance_rule_version"] for item in sources.json()["items"]} == {
-            "science-tech-editorial-v2",
+            SCIENCE_TECH_EDITORIAL_RULE_VERSION,
         }
         assert all("latest_filtered_count" in item for item in sources.json()["items"])
 

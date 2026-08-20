@@ -17,6 +17,7 @@ from app.application.ports.topic_selection import ClaimedTopicSelectionJob
 from app.application.services.topic_reranking import topic_rerank_outcome_metadata
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.editorial_relevance import (
+    SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
     evaluate_product_matrix_fit,
     evaluate_product_matrix_fit_v2,
     evaluate_science_ai_education_relevance,
@@ -468,6 +469,11 @@ async def load_governed_topic_candidates(
     uses_delivered_repeat_history = (
         config_snapshot.get("veto_rule_version") == DELIVERED_CONTENT_VETO_RULE_VERSION
     )
+    scoring_config = TopicScoringConfig.from_metadata(config_snapshot)
+    science_tech_editorial_rule_version = (
+        scoring_config.effective_science_tech_editorial_rule_version
+        or SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
+    )
 
     latest_version_id = (
         select(EventClusterVersionModel.id)
@@ -829,6 +835,7 @@ async def load_governed_topic_candidates(
         science_tech_editorial = evaluate_science_tech_editorial_relevance(
             version.representative_title,
             editorial_body,
+            rule_version=science_tech_editorial_rule_version,
         )
         product_fit_v2 = evaluate_product_matrix_fit_v2(
             version.representative_title,
@@ -857,6 +864,7 @@ async def load_governed_topic_candidates(
                 science_tech_education_relevance=(science_tech_editorial.education_relevance_score),
                 frontier_significance=science_tech_editorial.frontier_significance_score,
                 science_tech_editorial_reason_codes=science_tech_editorial.reason_codes,
+                science_tech_content_signals=science_tech_editorial.content_signals,
                 product_matrix_fit_v2=product_fit_v2.score,
                 product_matrix_v2_direction_ids=product_fit_v2.direction_ids,
                 topic_priority_policy=topic_priority_policy,
@@ -1013,6 +1021,8 @@ async def persist_topic_selection_decision(
                     "priority_applied": score.priority_applied,
                     "priority_reason": score.priority_reason,
                     "threshold_bypass_applied": score.threshold_bypass_applied,
+                    "threshold_bypass_reason": score.threshold_bypass_reason,
+                    "hard_tech_pool_policy_version": score.hard_tech_pool_policy_version,
                     "science_ai_education_rule_version": (score.science_ai_education_rule_version),
                     "science_tech_editorial_rule_version": (
                         score.science_tech_editorial_rule_version
@@ -1032,6 +1042,9 @@ async def persist_topic_selection_decision(
                     "science_tech_editorial_reason_codes": list(
                         score.science_tech_editorial_reason_codes
                     ),
+                    "science_tech_content_signals": [
+                        signal.value for signal in score.science_tech_content_signals
+                    ],
                     "deterministic_rank": score.deterministic_rank or rank,
                     "final_rank": rank,
                     "rerank_reason_codes": list(score.rerank_reason_codes),

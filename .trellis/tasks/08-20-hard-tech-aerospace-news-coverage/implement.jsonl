@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend boundaries and authoritative capability index"}
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Immutable scoring versions, replay semantics, threshold, and downstream topic projection"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Source-version, scoring-config, and durable provenance rules"}
+{"file": ".trellis/tasks/08-20-hard-tech-aerospace-news-coverage/research/xinhua-aerospace-gap.md", "reason": "Verified Xinhua article and reproduced classifier gap"}
+{"file": ".trellis/tasks/08-20-hard-tech-aerospace-news-coverage/research/task-contract-summary.md", "reason": "Bounded acquisition, selection, replay, quality, and security clauses from oversized owning specs"}

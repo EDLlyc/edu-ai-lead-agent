@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from app.api_main import app
-from app.domain.topic_selection import select_daily_topic
+from app.domain.topic_selection import DEFAULT_TOPIC_SCORING_VERSION, select_daily_topic
 from app.infrastructure.db.models import (
     AcquisitionRunModel,
     GovernanceRunModel,
@@ -81,7 +81,7 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         assert created.status_code == 202
         run_id = UUID(created.json()["id"])
         assert created.json()["status"] == "queued"
-        assert created.json()["scoring_version"] == ("scoring-v1-preview.8-threshold-059")
+        assert created.json()["scoring_version"] == DEFAULT_TOPIC_SCORING_VERSION
         assert created.json()["rerank_config"]["enabled"] is False
         assert created.json()["rerank"]["outcome"] == "not_applied"
         assert created.headers["location"] == f"/api/v1/topic-selection-runs/{run_id}"

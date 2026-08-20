@@ -21,6 +21,7 @@ from app.domain.topic_selection import (
     DELIVERED_CONTENT_VETO_RULE_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
     DailyTopicDecision,
     TopicCandidate,
     TopicScoringConfig,
@@ -192,6 +193,20 @@ def test_historical_delivered_scoring_version_keeps_original_threshold() -> None
     assert config.threshold == HISTORICAL_TOPIC_SCORING_THRESHOLD
     assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert config.selection_priority_rule_version == "ministry-education-priority-v3"
+
+
+def test_historical_point_eight_scoring_version_keeps_point_fifty_nine_threshold() -> None:
+    config = build_topic_scoring_config(
+        Settings(
+            _env_file=None,
+            content_scoring_version=THRESHOLD_059_TOPIC_SCORING_VERSION,
+        )
+    )
+
+    assert config.version == THRESHOLD_059_TOPIC_SCORING_VERSION
+    assert config.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
+    assert config.effective_science_tech_editorial_rule_version == "science-tech-editorial-v2"
+    assert config.effective_hard_tech_pool_policy_version is None
 
 
 def test_historical_tiered_scoring_version_keeps_ministry_priority_defaults() -> None:

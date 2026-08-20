@@ -90,7 +90,7 @@ bounded live gate; the approved target count is twelve.
 - Run/job query: `GET /api/v1/acquisition-runs/{run_id}` and `.../{run_id}/jobs`.
 - Evidence queue: `GET /api/v1/evidence-candidates`; stored handoff:
   `GET /api/v1/evidence-candidates/{candidate_id}`.
-- Active rule: `SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v2"` and
+- Active rule: `SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v3-broad"` and
   soft-ordering rule `PRODUCT_MATRIX_FIT_V2_RULE_VERSION =
   "product-matrix-fit-v2-science-pathways"` in
   [`editorial_relevance.py`](../../../backend/app/domain/editorial_relevance.py).
@@ -103,10 +103,14 @@ bounded live gate; the approved target count is twelve.
   bilingual title relevance and product fit without trusting page instructions.
 - Education qualification covers science/AI/technology/STEM education plus evidence-substantive
   white-list competition, technology-specialty student, Strong Foundation Plan, and comprehensive
-  evaluation pathways. Frontier qualification requires both a concrete technology/science topic
-  and substantive progress. Generic AI/science/education, training/admissions marketing,
-  guaranteed outcomes, score-line aggregation, financing, and ordinary product/company releases
-  remain out of scope. Evaluation is deterministic, NFKC-normalized, and bounded to 6000 normalized
+  evaluation pathways. Under v3, a concrete governed hard-technology topic is sufficient for the
+  frontier cohort. Completed progress, plans, failures, capital/market activity, events, product
+  releases, and general hard-tech coverage are typed signals used for ordering and explanation;
+  only completed evidence receives a completed-progress reason. Items without a governed hard-tech
+  topic remain out of scope. Explicit consumer/admissions promotions and non-technical aerospace
+  homonyms such as sports teams, airlines, or satellite television also remain out; these narrow
+  exclusions do not remove a genuine hard-tech product launch, conference, financing event, or
+  engineering failure. Evaluation is deterministic, NFKC-normalized, and bounded to 6000 normalized
   body characters.
 - Order title matches as education, frontier, then the remaining bounded title-neutral probes.
   Within education/frontier cohorts order by editorial score, product-fit score, publication time,
@@ -115,11 +119,12 @@ bounded live gate; the approved target count is twelve.
   only fresh education or qualified-frontier candidates. A zero-match source succeeds with
   `outcome=no_relevant_items`; unrelated detail responses remain auditable filtered observations.
 - Accepted candidates persist both rule versions, cohort and education/frontier/editorial scores,
-  reason codes, title/body topic/progress/exclusion terms, product direction IDs,
+  reason codes, typed content signals, title/body topic/progress/exclusion/signal terms, product direction IDs,
   character-bound/truncation metadata, cleaned text,
   original/canonical URL, publication/fetch time, source/version IDs, immutable snapshot, and
   observations. Historical `ai-title-v1` and `moe-science-v1` source versions remain executable.
-- Historical `science-ai-education-v1`, `ai-title-v1`, and `moe-science-v1` source versions remain
+- Historical `science-tech-editorial-v2`, `science-ai-education-v1`, `ai-title-v1`, and
+  `moe-science-v1` source versions remain
   executable by their stored version strings. Candidate lists expose
   source/title/time/original+canonical URL/candidate ID/rule version. Later
   LangGraph nodes read candidate detail and stored text/snapshot; they do not normally re-crawl the
@@ -176,14 +181,27 @@ detail = await fetcher.fetch(items[0].url, profile)
 
 ```python
 discovered = connector.discover(list_response, profile, limit=scan_limit)
-evaluated = [(item, evaluate_science_tech_editorial_relevance(item.title)) for item in discovered]
+evaluated = [
+    (
+        item,
+        evaluate_science_tech_editorial_relevance(
+            item.title,
+            rule_version=profile.relevance_rule_version,
+        ),
+    )
+    for item in discovered
+]
 education = sorted((row for row in evaluated if row[1].cohort == EDUCATION), key=editorial_key)
 frontier = sorted((row for row in evaluated if row[1].cohort == FRONTIER), key=editorial_key)
 neutral = (row for row in evaluated if not row[1].is_candidate)
 window = [*education, *frontier, *neutral][:item_limit]
 for item, _title_result in window:
     detail = await fetcher.fetch(item.url, profile)
-    result = evaluate_science_tech_editorial_relevance(detail.title, detail.clean_text)
+    result = evaluate_science_tech_editorial_relevance(
+        detail.title,
+        detail.clean_text,
+        rule_version=profile.relevance_rule_version,
+    )
     if result.is_candidate:
         await persist(detail, result)
 ```
@@ -239,20 +257,22 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The implemented `scoring-v1-preview.8-threshold-059` gives 0.30 to tiered editorial
+The current `scoring-v1-preview.9-broad-hard-tech-pool` gives 0.30 to tiered editorial
 priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
 and communication potential. It keeps genuine hard vetoes but does not add the historical
 `outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
-0.59 numeric threshold only when no hard veto exists; ordinary education and frontier candidates
-remain threshold-bound. `.8` preserves `.7` delivery-backed repeat provenance and differs only by
-its immutable scoring identity and 0.59 threshold; literal `.7` remains 0.62. `.7` differs from
+0.59 numeric threshold only when no hard veto exists. The current v3 policy also admits governed
+Tier-A/B frontier hard-tech candidates to the LLM pool below 0.59 when no veto exists, while
+persisting `passes_threshold=false` and its policy reason. Historical `.8` remains threshold-bound
+for ordinary frontier candidates, preserves `.7` delivery-backed repeat provenance, and differs
+only by its immutable scoring identity and 0.59 threshold; literal `.7` remains 0.62. `.7` differs from
 literal `.6` through its immutable veto identity and delivery-backed repeat provenance. Their
 editorial/product rules, Ministry priority/bypass, penalties, and ordering are identical. Historical `.5` configurations
 keep their science/AI-education scope veto and disabled source priority, while `.4` keeps its legacy
 feature map, policy-action requirement, and Ministry priority semantics on replay.
 
 Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
-authenticated Ministry education priority under `.6`/`.7`/`.8` may bypass only that numeric threshold and
+authenticated Ministry education priority under `.6`/`.7`/`.8`/`.9` may bypass only that numeric threshold and
 still requires zero hard vetoes. Stable tie-breakers must be documented (for example source tier,
 publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.

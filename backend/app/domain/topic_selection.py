@@ -14,6 +14,8 @@ from app.domain.editorial_relevance import (
     PRODUCT_MATRIX_FIT_V2_RULE_VERSION,
     SCIENCE_AI_EDUCATION_RULE_VERSION,
     SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+    SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+    ScienceTechContentSignal,
     ScienceTechEditorialCohort,
 )
 from app.domain.ministry_education_priority import (
@@ -30,14 +32,22 @@ from app.domain.science_policy_priority import (
 
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
 DELIVERED_HISTORY_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
-DEFAULT_TOPIC_SCORING_VERSION = "scoring-v1-preview.8-threshold-059"
+THRESHOLD_059_TOPIC_SCORING_VERSION = "scoring-v1-preview.8-threshold-059"
+BROAD_HARD_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.9-broad-hard-tech-pool"
+DEFAULT_TOPIC_SCORING_VERSION = BROAD_HARD_TECH_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
     DEFAULT_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
+    DEFAULT_TOPIC_SCORING_VERSION,
+)
+LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
     DEFAULT_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
@@ -46,6 +56,7 @@ SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = "scoring-v1-preview.5-science-educatio
 DEFAULT_SELECTION_PRIORITY_RULE_VERSION: str | None = None
 GOVERNED_CONTENT_VETO_RULE_VERSION = "topic-veto-v3-governed-content"
 DELIVERED_CONTENT_VETO_RULE_VERSION = "topic-veto-v4-delivered-content"
+BROAD_HARD_TECH_POOL_POLICY_VERSION = "hard-tech-pool-v1-governed-tier-ab"
 SCIENCE_EDUCATION_VETO_RULE_VERSION = "topic-veto-v2-science-ai-education"
 LEGACY_TOPIC_VETO_RULE_VERSION = "topic-veto-v1"
 SOURCE_PRIORITY_RULE_VERSION = "source-priority-v1"
@@ -84,6 +95,7 @@ class TopicScoringConfig:
     science_ai_education_rule_version: str | None = None
     science_tech_editorial_rule_version: str | None = None
     product_matrix_fit_rule_version: str | None = None
+    hard_tech_pool_policy_version: str | None = None
     source_trust_weight: float = 0.20
     source_diversity_weight: float = 0.10
     ai_relevance_weight: float = 0.20
@@ -127,6 +139,11 @@ class TopicScoringConfig:
             self.science_tech_editorial_rule_version,
             self.product_matrix_fit_rule_version,
         )
+        if self.hard_tech_pool_policy_version is not None and (
+            not self.hard_tech_pool_policy_version.strip()
+            or len(self.hard_tech_pool_policy_version) > 80
+        ):
+            raise ValueError("hard-tech pool policy version must be non-blank and bounded")
         if self.science_ai_education_rule_version and self.science_tech_editorial_rule_version:
             raise ValueError("topic scoring cannot combine historical and tiered editorial rules")
         if (
@@ -231,7 +248,19 @@ class TopicScoringConfig:
     def effective_science_tech_editorial_rule_version(self) -> str | None:
         if not self.uses_tiered_editorial_features:
             return None
-        return self.science_tech_editorial_rule_version or SCIENCE_TECH_EDITORIAL_RULE_VERSION
+        if self.science_tech_editorial_rule_version is not None:
+            return self.science_tech_editorial_rule_version
+        if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION:
+            return SCIENCE_TECH_EDITORIAL_RULE_VERSION
+        return SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
+
+    @property
+    def effective_hard_tech_pool_policy_version(self) -> str | None:
+        if self.hard_tech_pool_policy_version is not None:
+            return self.hard_tech_pool_policy_version
+        if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION:
+            return BROAD_HARD_TECH_POOL_POLICY_VERSION
+        return None
 
     @property
     def effective_product_matrix_fit_rule_version(self) -> str | None:
@@ -262,6 +291,7 @@ class TopicScoringConfig:
         expected_veto_rule = {
             TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION: GOVERNED_CONTENT_VETO_RULE_VERSION,
             DELIVERED_HISTORY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            THRESHOLD_059_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             DEFAULT_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         return (
@@ -269,8 +299,22 @@ class TopicScoringConfig:
             and self.effective_veto_rule_version == expected_veto_rule
             and self.uses_tiered_editorial_features
             and self.effective_science_tech_editorial_rule_version
-            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            == (
+                SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                if self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+                else SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
+            )
             and self.selection_priority_rule_version == MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+        )
+
+    @property
+    def has_broad_hard_tech_pool(self) -> bool:
+        return (
+            self.version == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
+            and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
+            and self.effective_science_tech_editorial_rule_version
+            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
         )
 
     @property
@@ -310,6 +354,8 @@ class TopicScoringConfig:
             metadata["product_matrix_fit_rule_version"] = (
                 self.effective_product_matrix_fit_rule_version
             )
+        if self.effective_hard_tech_pool_policy_version is not None:
+            metadata["hard_tech_pool_policy_version"] = self.effective_hard_tech_pool_policy_version
         return metadata
 
     @classmethod
@@ -329,6 +375,9 @@ class TopicScoringConfig:
             "veto_rule_version": _metadata_str(metadata, "veto_rule_version"),
             "selection_priority_rule_version": _metadata_optional_str(
                 metadata, "selection_priority_rule_version"
+            ),
+            "hard_tech_pool_policy_version": _metadata_optional_str(
+                metadata, "hard_tech_pool_policy_version"
             ),
             "threshold": _metadata_float(metadata, "threshold"),
             "recent_selection_window_days": _metadata_int(metadata, "recent_selection_window_days"),
@@ -416,6 +465,7 @@ class TopicCandidate:
     science_tech_education_relevance: float = 0.0
     frontier_significance: float = 0.0
     science_tech_editorial_reason_codes: tuple[str, ...] = ()
+    science_tech_content_signals: tuple[ScienceTechContentSignal, ...] = ()
     product_matrix_fit_v2: float = 0.0
     product_matrix_v2_direction_ids: tuple[str, ...] = ()
     topic_priority_policy: str | None = None
@@ -470,6 +520,8 @@ class TopicCandidate:
             for value in self.science_tech_editorial_reason_codes
         ):
             raise ValueError("topic tiered editorial reason codes must be non-blank and bounded")
+        if len(set(self.science_tech_content_signals)) != len(self.science_tech_content_signals):
+            raise ValueError("topic hard-tech content signals must be unique")
         if any(
             not value.strip() or len(value) > 100 for value in self.product_matrix_direction_ids
         ):
@@ -502,6 +554,8 @@ class TopicScore:
     priority_applied: bool = False
     priority_reason: str = "not_eligible"
     threshold_bypass_applied: bool = False
+    threshold_bypass_reason: str | None = None
+    hard_tech_pool_policy_version: str | None = None
     science_ai_education_rule_version: str | None = None
     science_tech_editorial_rule_version: str | None = None
     product_matrix_fit_rule_version: str | None = None
@@ -511,6 +565,7 @@ class TopicScore:
     science_tech_education_relevance: float = 0.0
     frontier_significance: float = 0.0
     science_tech_editorial_reason_codes: tuple[str, ...] = ()
+    science_tech_content_signals: tuple[ScienceTechContentSignal, ...] = ()
     rank: int | None = None
     deterministic_rank: int | None = None
     rerank_reason_codes: tuple[str, ...] = ()
@@ -562,6 +617,8 @@ class TopicScore:
             "priority_applied": self.priority_applied,
             "priority_reason": self.priority_reason,
             "threshold_bypass_applied": self.threshold_bypass_applied,
+            "threshold_bypass_reason": self.threshold_bypass_reason,
+            "hard_tech_pool_policy_version": self.hard_tech_pool_policy_version,
             "science_ai_education_rule_version": self.science_ai_education_rule_version,
             "science_tech_editorial_rule_version": self.science_tech_editorial_rule_version,
             "product_matrix_fit_rule_version": self.product_matrix_fit_rule_version,
@@ -575,6 +632,9 @@ class TopicScore:
             "science_tech_education_relevance": self.science_tech_education_relevance,
             "frontier_significance": self.frontier_significance,
             "science_tech_editorial_reason_codes": list(self.science_tech_editorial_reason_codes),
+            "science_tech_content_signals": [
+                signal.value for signal in self.science_tech_content_signals
+            ],
             "rank": self.rank,
             "deterministic_rank": self.deterministic_rank,
             "rerank_reason_codes": list(self.rerank_reason_codes),
@@ -676,8 +736,23 @@ def score_topic_candidate(
         passes_threshold=passes_threshold,
         config=config,
     )
-    threshold_bypass_applied = (
+    ministry_threshold_bypass = (
         priority_applied and not passes_threshold and config.has_authenticated_ministry_priority
+    )
+    hard_tech_pool_bypass = (
+        not passes_threshold
+        and not veto_codes
+        and config.has_broad_hard_tech_pool
+        and candidate.science_tech_editorial_cohort
+        is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+    )
+    threshold_bypass_applied = ministry_threshold_bypass or hard_tech_pool_bypass
+    threshold_bypass_reason = (
+        "ministry_education_priority"
+        if ministry_threshold_bypass
+        else "governed_broad_hard_tech_pool"
+        if hard_tech_pool_bypass
+        else None
     )
     editorially_qualified = (
         not config.uses_tiered_editorial_features
@@ -707,6 +782,8 @@ def score_topic_candidate(
         priority_applied=priority_applied,
         priority_reason=priority_reason,
         threshold_bypass_applied=threshold_bypass_applied,
+        threshold_bypass_reason=threshold_bypass_reason,
+        hard_tech_pool_policy_version=(config.effective_hard_tech_pool_policy_version),
         science_ai_education_rule_version=(config.effective_science_ai_education_rule_version),
         science_tech_editorial_rule_version=(config.effective_science_tech_editorial_rule_version),
         product_matrix_fit_rule_version=config.effective_product_matrix_fit_rule_version,
@@ -739,6 +816,9 @@ def score_topic_candidate(
             candidate.science_tech_editorial_reason_codes
             if config.uses_tiered_editorial_features
             else ()
+        ),
+        science_tech_content_signals=(
+            candidate.science_tech_content_signals if config.uses_tiered_editorial_features else ()
         ),
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -10,6 +11,7 @@ from app.api_main import app
 from app.application.services.enqueue_runs import enqueue_manual_run
 from app.application.services.execute_acquisition import AcquisitionExecutor
 from app.core.config import Settings
+from app.domain.editorial_relevance import SCIENCE_TECH_EDITORIAL_RULE_VERSION
 from app.domain.entities import FetchedResponse, SourceProfile
 from app.domain.enums import JobStatus, ObservationOutcome, RunStatus
 from app.domain.value_objects import sha256_bytes
@@ -35,6 +37,8 @@ from sqlalchemy import select, update
 from .conftest import IntegrationContext
 
 FIXTURE_EVALUATED_AT = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
+XINHUA_EVALUATED_AT = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
+XINHUA_FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources" / "xinhua_tech_v1"
 
 
 def fixture_clock() -> datetime:
@@ -81,6 +85,34 @@ class RelevanceFixtureFetcher:
             body=body,
             sha256=sha256_bytes(body),
             fetched_at=datetime(2026, 7, 29, 1, 0, tzinfo=UTC),
+            headers={},
+        )
+
+
+class XinhuaAerospaceFixtureFetcher:
+    def __init__(self) -> None:
+        self.requested_urls: list[str] = []
+
+    async def fetch(
+        self,
+        url: str,
+        profile: SourceProfile,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> FetchedResponse:
+        del etag, last_modified
+        self.requested_urls.append(url)
+        path = "list.html" if url == profile.entry_url else "detail.html"
+        body = (XINHUA_FIXTURE_ROOT / path).read_bytes()
+        return FetchedResponse(
+            requested_url=url,
+            final_url=url,
+            status_code=200,
+            media_type="text/html",
+            body=body,
+            sha256=sha256_bytes(body),
+            fetched_at=XINHUA_EVALUATED_AT,
             headers={},
         )
 
@@ -145,6 +177,66 @@ async def _execute_government_run(
         )
     assert job is not None
     return run, job
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_xinhua_aerospace_recovery_is_frontier_candidate_under_current_rule(
+    integration_context: IntegrationContext,
+) -> None:
+    await _cancel_nonterminal(integration_context)
+    async with integration_context.session_factory() as session:
+        await seed_sources(session)
+    xinhua = next(seed for seed in SOURCE_SEEDS if seed.slug == "xinhua-tech")
+    repository = PostgresAcquisitionRepository(integration_context.session_factory)
+    run_id, created = await enqueue_manual_run(
+        repository,
+        integration_context.settings,
+        source_ids=[xinhua.source_id],
+        idempotency_key=f"xinhua-aerospace-{uuid4()}",
+    )
+    assert created is True
+    fetcher = XinhuaAerospaceFixtureFetcher()
+    executor = AcquisitionExecutor(
+        repository,
+        fetcher,
+        MinioSnapshotStore(integration_context.settings),
+        integration_context.settings,
+        sleep=_no_sleep,
+        jitter=lambda: 0.0,
+        clock=lambda: XINHUA_EVALUATED_AT,
+    )
+
+    assert await executor.execute_next("xinhua-aerospace-worker") is True
+
+    async with integration_context.session_factory() as session:
+        run = await get_run(session, run_id)
+        candidate = await session.scalar(
+            select(EvidenceCandidateModel).where(
+                EvidenceCandidateModel.source_version_id == xinhua.source_version_id,
+                EvidenceCandidateModel.original_url
+                == "https://www.news.cn/tech/20260819/661cedb9b6cf44a6976a167bf60b5d73/c.html",
+            )
+        )
+        observation = await session.scalar(
+            select(SourceObservationModel).where(
+                SourceObservationModel.run_id == run_id,
+                SourceObservationModel.outcome == ObservationOutcome.NEW.value,
+            )
+        )
+    assert run.new_count == 1
+    assert candidate is not None
+    assert candidate.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    assert candidate.extraction_metadata["editorial_cohort"] == "frontier_science_technology"
+    assert candidate.extraction_metadata["content_signals"] == ["completed_progress"]
+    assert candidate.extraction_metadata["matched_title_progress_terms"] == [
+        "aerospace_recovery_or_landing"
+    ]
+    assert observation is not None
+    assert observation.observation_metadata["science_tech_editorial_rule_version"] == (
+        SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    )
+    assert fetcher.requested_urls == [xinhua.entry_url, candidate.original_url]
 
 
 @pytest.mark.integration
@@ -339,8 +431,10 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
     assert cursor is not None and cursor.last_item_id == "content_mixed_unrelated.htm"
     assert candidate is not None
     assert candidate.title == records[2]["TITLE"]
-    assert candidate.relevance_rule_version == "science-tech-editorial-v2"
-    assert candidate.extraction_metadata["relevance_rule_version"] == ("science-tech-editorial-v2")
+    assert candidate.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    assert candidate.extraction_metadata["relevance_rule_version"] == (
+        SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    )
     assert "人工智能" in candidate.extraction_metadata["matched_title_topic_terms"]
     assert candidate.extraction_metadata["science_tech_candidate"] is True
     assert candidate.extraction_metadata["editorial_cohort"] == (
@@ -360,7 +454,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
     assert filter_observation.observation_metadata["frontier_title_count"] == 0
     assert filter_observation.observation_metadata["neutral_probe_count"] == 0
     assert filter_observation.observation_metadata["relevance_rule_version"] == (
-        "science-tech-editorial-v2"
+        SCIENCE_TECH_EDITORIAL_RULE_VERSION
     )
 
     app.state.settings = integration_context.settings
@@ -372,7 +466,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
             "/api/v1/evidence-candidates",
             params={
                 "source_id": str(SOURCE_SEEDS[0].source_id),
-                "relevance_rule_version": "science-tech-editorial-v2",
+                "relevance_rule_version": SCIENCE_TECH_EDITORIAL_RULE_VERSION,
                 "limit": 100,
             },
         )
@@ -382,7 +476,7 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         assert summary["source_display_name"] == SOURCE_SEEDS[0].display_name
         assert summary["original_url"] == records[2]["URL"]
         assert summary["canonical_url"] == records[2]["URL"]
-        assert summary["relevance_rule_version"] == "science-tech-editorial-v2"
+        assert summary["relevance_rule_version"] == SCIENCE_TECH_EDITORIAL_RULE_VERSION
 
         legacy_queue = await client.get(
             "/api/v1/evidence-candidates",
@@ -400,7 +494,8 @@ async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff
         assert detail.json()["clean_text"] == candidate.clean_text
         assert detail.json()["snapshot"]["sha256"]
         assert any(
-            observation["metadata"].get("relevance_rule_version") == "science-tech-editorial-v2"
+            observation["metadata"].get("relevance_rule_version")
+            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
             for observation in detail.json()["observations"]
         )
     assert len(fetcher.requested_urls) == request_count_before_api
@@ -473,4 +568,6 @@ async def test_zero_match_uses_bounded_neutral_probe_and_advances_raw_cursor(
     assert no_match.observation_metadata["frontier_title_count"] == 0
     assert no_match.observation_metadata["neutral_probe_count"] == 1
     assert no_match.observation_metadata["deferred_detail_count"] == 1
-    assert no_match.observation_metadata["relevance_rule_version"] == ("science-tech-editorial-v2")
+    assert no_match.observation_metadata["relevance_rule_version"] == (
+        SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    )

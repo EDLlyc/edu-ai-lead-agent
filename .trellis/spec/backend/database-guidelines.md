@@ -195,12 +195,14 @@ audit records and must not be rewritten in place.
 - Legacy rows keep `relevance_rule_version=NULL`; the original `0003` rollout created immutable
   `ai-title-v1`/`moe-science-v1` versions, and the later hard-boundary rollout created
   `science-ai-education-v1`; all remain replayable. Current seeding creates a new immutable
-  `science-tech-editorial-v2` version for each of ten active sources. CAST science
+  `science-tech-editorial-v3-broad` version for each of ten active sources. The previous
+  `science-tech-editorial-v2` source versions remain immutable and replayable. CAST science
   education and EdSurge AI education remain unseeded/inactive until their independent live gates
   pass; if rows from an experimental run exist, seeding disables them and clears their active
   version without deleting history.
-- `science-tech-editorial-v2` and `product-matrix-fit-v2-science-pathways` add cohort, bounded
-  education/frontier/editorial scores, reasons, topic/progress/exclusion matches, product
+- `science-tech-editorial-v3-broad` and `product-matrix-fit-v2-science-pathways` add cohort, bounded
+  education/frontier/editorial scores, reasons, typed content signals,
+  topic/progress/exclusion/signal matches, product
   directions, and probe counters to existing observation and extraction JSON. This rollout adds no
   migration and does not rewrite historical candidates, snapshots, source versions, or topic
   scoring configurations.

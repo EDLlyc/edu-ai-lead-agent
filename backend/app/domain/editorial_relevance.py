@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 SCIENCE_AI_EDUCATION_RULE_VERSION = "science-ai-education-v1"
 PRODUCT_MATRIX_FIT_RULE_VERSION = "product-matrix-fit-v1"
-SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v2"
+SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION = "science-tech-editorial-v2"
+SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v3-broad"
+SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS = frozenset(
+    {SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION, SCIENCE_TECH_EDITORIAL_RULE_VERSION}
+)
 PRODUCT_MATRIX_FIT_V2_RULE_VERSION = "product-matrix-fit-v2-science-pathways"
 EDITORIAL_CONTENT_CHARACTER_LIMIT = 6_000
 
@@ -229,6 +233,16 @@ class ScienceTechEditorialCohort(StrEnum):
     OUT_OF_SCOPE = "out_of_scope"
 
 
+class ScienceTechContentSignal(StrEnum):
+    COMPLETED_PROGRESS = "completed_progress"
+    PLANNED_OR_IN_PROGRESS = "planned_or_in_progress"
+    FAILURE_OR_SETBACK = "failure_or_setback"
+    CAPITAL_OR_MARKET = "capital_or_market"
+    EVENT_OR_CONFERENCE = "event_or_conference"
+    PRODUCT_OR_SERVICE_RELEASE = "product_or_service_release"
+    GENERAL_HARD_TECH = "general_hard_tech"
+
+
 _SCIENCE_TALENT_PATHWAY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "white_list_competition_pathway",
@@ -430,6 +444,157 @@ _FRONTIER_PROGRESS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+_BROAD_HARD_TECH_TOPIC_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    *_FRONTIER_TOPIC_PATTERNS,
+    (
+        "aerospace_launch_recovery",
+        re.compile(
+            r"运载火箭|可(?:回收|重复使用)(?:运载)?火箭|可重复使用运载器|"
+            r"火箭(?:一级|一子级)|(?:一级|一子级).{0,8}(?:回收|着陆)|"
+            r"垂直(?:回收|着陆)|(?:陆上|海上)回收|回收场|"
+            r"朱雀[一二三四五六七八九十0-9]+号"
+        ),
+    ),
+    (
+        "aerospace_launch_recovery",
+        _ascii_term(
+            r"reusable[\s-]+(?:launch[\s-]+vehicles?|rockets?)|launch[\s-]+vehicles?|"
+            r"rockets?|boosters?|booster[\s-]+(?:landing|recovery)|"
+            r"vertical[\s-]+(?:landing|recovery)"
+        ),
+    ),
+)
+
+_BROAD_HARD_TECH_PROGRESS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    *_FRONTIER_PROGRESS_PATTERNS,
+    (
+        "aerospace_recovery_or_landing",
+        re.compile(
+            r"成功(?:着陆|回收)|(?:着陆|回收)成功|"
+            r"完成.{0,12}(?:垂直|陆上|海上)?(?:着陆|回收)|"
+            r"(?:一级|一子级).{0,12}着陆.{0,8}预定位置"
+        ),
+    ),
+    (
+        "aerospace_recovery_or_landing",
+        _ascii_term(
+            r"success(?:ful|fully)[\s-]+(?:booster[\s-]+)?(?:landing|recovery)|"
+            r"successfully[\s-]+(?:landed|recovered)|"
+            r"(?:booster|first[\s-]+stage)[\s-]+(?:landed|recovered)|"
+            r"completed[\s-]+(?:a[\s-]+)?vertical[\s-]+landing"
+        ),
+    ),
+)
+
+_PLANNED_OR_IN_PROGRESS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "planned_or_in_progress",
+        re.compile(
+            r"拟|计划|将于|即将|预计|力争|目标|冲刺|在研|研制中|"
+            r"开展.{0,12}(?:试验|验证|测试)|进入.{0,8}(?:试验|测试|验证)阶段"
+        ),
+    ),
+    (
+        "planned_or_in_progress",
+        _ascii_term(
+            r"plans?|planned|scheduled|aims?|targets?|prepares?|upcoming|"
+            r"in[\s-]+development|under[\s-]+development|in[\s-]+progress"
+        ),
+    ),
+)
+
+_FAILURE_OR_SETBACK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("failure_or_setback", re.compile(r"失败|失利|未能|异常|中止|终止|爆炸|坠毁|受挫|延期")),
+    (
+        "failure_or_setback",
+        _ascii_term(
+            r"fail(?:ed|ure)?|setback|abort(?:ed)?|anomal(?:y|ies)|crash(?:ed)?|delay(?:ed)?"
+        ),
+    ),
+)
+
+_CAPITAL_OR_MARKET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "capital_or_market",
+        re.compile(r"融资|募资|估值|股价|涨停|资本市场|财报|营收|市场份额|市场规模"),
+    ),
+    (
+        "capital_or_market",
+        _ascii_term(
+            r"funding|financing|valuation|share[\s-]+price|revenue|market[\s-]+(?:share|size)"
+        ),
+    ),
+)
+
+_EVENT_OR_CONFERENCE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("event_or_conference", re.compile(r"发布会|论坛|峰会|展会|大会|会议|开幕|举行|亮相")),
+    (
+        "event_or_conference",
+        _ascii_term(r"conference|forum|summit|expo|exhibition|event|keynote"),
+    ),
+)
+
+_PRODUCT_OR_SERVICE_RELEASE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "product_or_service_release",
+        re.compile(
+            r"新品|新产品|新品发布|产品发布|推出.{0,16}(?:产品|平台|应用|服务|功能|版本)|"
+            r"发布.{0,16}(?:产品|平台|应用|服务|功能|版本)|上线.{0,16}(?:产品|平台|应用|服务|功能|版本)"
+        ),
+    ),
+    (
+        "product_or_service_release",
+        _ascii_term(
+            r"product[\s-]+launch|launch(?:es|ed)?[\s-]+(?:a[\s-]+)?(?:product|platform|app|service)|"
+            r"release(?:s|d)?[\s-]+(?:a[\s-]+)?(?:product|platform|app|service|feature|version)|"
+            r"unveil(?:s|ed)?[\s-]+(?:a[\s-]+)?(?:product|platform|app|service)"
+        ),
+    ),
+)
+
+# Broad recall still needs a small, explicit boundary around phrases that only borrow a
+# technology keyword. These exclusions intentionally do not include ordinary product launches,
+# conferences, financing, or engineering failures; those are valid v3 content shapes.
+_BROAD_HARD_TECH_RECALL_EXCLUSION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "consumer_sales_promotion",
+        re.compile(r"促销|购物节|清仓|满减|领券|折扣|优惠价|低价抢购|买一送一"),
+    ),
+    (
+        "education_or_admissions_marketing",
+        re.compile(
+            r"培训机构|辅导班|冲刺班|课程报名|招生广告|招生简章|招生咨询|"
+            r"扫码(?:报名|咨询)|添加微信|报名优惠|限时报名|志愿填报服务|"
+            r"保录|保过|包过|内部名额|降分录取|百分百录取|确保录取"
+        ),
+    ),
+    (
+        "consumer_sales_promotion",
+        _ascii_term(
+            r"sales?[\s-]+promotion|shopping[\s-]+festival|clearance|coupon|discount|"
+            r"buy[\s-]+one[\s-]+get[\s-]+one"
+        ),
+    ),
+    (
+        "education_or_admissions_marketing",
+        _ascii_term(
+            r"tutoring|coaching|admissions?[\s-]+consulting|guaranteed[\s-]+"
+            r"(?:admission|pass)"
+        ),
+    ),
+)
+
+_BROAD_HARD_TECH_HOMONYM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "non_technical_aerospace_homonym",
+        re.compile(r"火箭队|休斯顿火箭|卫星电视|航空公司"),
+    ),
+    (
+        "non_technical_aerospace_homonym",
+        _ascii_term(r"houston[\s-]+rockets?|satellite[\s-]+tv|airlines?"),
+    ),
+)
+
 _FRONTIER_EXCLUSION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "funding_or_market_activity",
@@ -499,9 +664,12 @@ class ScienceTechEditorialResult:
     body_characters_considered: int
     body_truncated: bool
     rule_version: str = SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    content_signals: tuple[ScienceTechContentSignal, ...] = ()
+    matched_title_signal_terms: tuple[str, ...] = ()
+    matched_body_signal_terms: tuple[str, ...] = ()
 
 
-def evaluate_science_tech_editorial_relevance(
+def _evaluate_science_tech_editorial_relevance_v2(
     title: str | None,
     body: str | None = None,
     *,
@@ -578,6 +746,7 @@ def evaluate_science_tech_editorial_relevance(
             matched_body_exclusion_terms=body_education_exclusions,
             body_characters_considered=len(considered_body),
             body_truncated=len(normalized_body) > len(considered_body),
+            rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
         )
 
     title_frontier_topics = _matches(normalized_title, _FRONTIER_TOPIC_PATTERNS)
@@ -621,6 +790,7 @@ def evaluate_science_tech_editorial_relevance(
             matched_body_exclusion_terms=body_frontier_exclusions,
             body_characters_considered=len(considered_body),
             body_truncated=len(normalized_body) > len(considered_body),
+            rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
         )
 
     exclusion_terms = tuple(
@@ -668,6 +838,221 @@ def evaluate_science_tech_editorial_relevance(
         ),
         body_characters_considered=len(considered_body),
         body_truncated=len(normalized_body) > len(considered_body),
+        rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+    )
+
+
+def _content_signal_matches(
+    text: str,
+    *,
+    completed_terms: tuple[str, ...],
+) -> tuple[tuple[ScienceTechContentSignal, ...], tuple[str, ...]]:
+    signals: list[ScienceTechContentSignal] = []
+    terms: list[str] = []
+    if completed_terms:
+        signals.append(ScienceTechContentSignal.COMPLETED_PROGRESS)
+        terms.extend(completed_terms)
+    for signal, patterns in (
+        (ScienceTechContentSignal.PLANNED_OR_IN_PROGRESS, _PLANNED_OR_IN_PROGRESS_PATTERNS),
+        (ScienceTechContentSignal.FAILURE_OR_SETBACK, _FAILURE_OR_SETBACK_PATTERNS),
+        (ScienceTechContentSignal.CAPITAL_OR_MARKET, _CAPITAL_OR_MARKET_PATTERNS),
+        (ScienceTechContentSignal.EVENT_OR_CONFERENCE, _EVENT_OR_CONFERENCE_PATTERNS),
+        (
+            ScienceTechContentSignal.PRODUCT_OR_SERVICE_RELEASE,
+            _PRODUCT_OR_SERVICE_RELEASE_PATTERNS,
+        ),
+    ):
+        matched = _matches(text, patterns)
+        if matched:
+            signals.append(signal)
+            terms.extend(matched)
+    return tuple(dict.fromkeys(signals)), tuple(dict.fromkeys(terms))
+
+
+def _evaluate_science_tech_editorial_relevance_v3(
+    title: str | None,
+    body: str | None = None,
+    *,
+    body_limit: int,
+) -> ScienceTechEditorialResult:
+    if body_limit < 1:
+        raise ValueError("editorial relevance body limit must be positive")
+    normalized_title = normalize_editorial_text(title)
+    normalized_body = normalize_editorial_text(body)
+    considered_body = normalized_body[:body_limit]
+
+    historical = _evaluate_science_tech_editorial_relevance_v2(
+        title,
+        body,
+        body_limit=body_limit,
+    )
+    title_progress = tuple(
+        dict.fromkeys(_matches(normalized_title, _BROAD_HARD_TECH_PROGRESS_PATTERNS))
+    )
+    body_progress = tuple(
+        dict.fromkeys(_matches(considered_body, _BROAD_HARD_TECH_PROGRESS_PATTERNS))
+    )
+    title_signals, title_signal_terms = _content_signal_matches(
+        normalized_title,
+        completed_terms=title_progress,
+    )
+    body_signals, body_signal_terms = _content_signal_matches(
+        considered_body,
+        completed_terms=body_progress,
+    )
+    content_signals = tuple(dict.fromkeys((*title_signals, *body_signals)))
+
+    if historical.cohort is ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY:
+        return replace(
+            historical,
+            rule_version=SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+            content_signals=content_signals or (ScienceTechContentSignal.GENERAL_HARD_TECH,),
+            matched_title_signal_terms=title_signal_terms,
+            matched_body_signal_terms=body_signal_terms,
+        )
+
+    title_topics = tuple(dict.fromkeys(_matches(normalized_title, _BROAD_HARD_TECH_TOPIC_PATTERNS)))
+    body_topics = tuple(dict.fromkeys(_matches(considered_body, _BROAD_HARD_TECH_TOPIC_PATTERNS)))
+    title_exclusions = tuple(
+        dict.fromkeys(
+            (
+                *_matches(normalized_title, _EDUCATION_EXCLUSION_PATTERNS),
+                *_matches(normalized_title, _FRONTIER_EXCLUSION_PATTERNS),
+                *_matches(normalized_title, _BROAD_HARD_TECH_RECALL_EXCLUSION_PATTERNS),
+                *_matches(normalized_title, _BROAD_HARD_TECH_HOMONYM_PATTERNS),
+            )
+        )
+    )
+    body_exclusions = tuple(
+        dict.fromkeys(
+            (
+                *_matches(considered_body, _EDUCATION_EXCLUSION_PATTERNS),
+                *_matches(considered_body, _FRONTIER_EXCLUSION_PATTERNS),
+                *_matches(considered_body, _BROAD_HARD_TECH_RECALL_EXCLUSION_PATTERNS),
+                *_matches(considered_body, _BROAD_HARD_TECH_HOMONYM_PATTERNS),
+            )
+        )
+    )
+    has_hard_tech_topic = bool(title_topics or body_topics)
+    recall_exclusions = tuple(
+        dict.fromkeys(_matches(normalized_title, _BROAD_HARD_TECH_RECALL_EXCLUSION_PATTERNS))
+    )
+    homonym_exclusions = tuple(
+        dict.fromkeys(_matches(normalized_title, _BROAD_HARD_TECH_HOMONYM_PATTERNS))
+    )
+    matched_topic_labels = set((*title_topics, *body_topics))
+    aerospace_only_homonym = bool(homonym_exclusions) and matched_topic_labels <= {
+        "aerospace_astronomy",
+        "aerospace_launch_recovery",
+    }
+    if not has_hard_tech_topic or recall_exclusions or aerospace_only_homonym:
+        out_of_scope_reasons: tuple[str, ...]
+        if not has_hard_tech_topic:
+            out_of_scope_reasons = (
+                "empty_text"
+                if not normalized_title and not considered_body
+                else "missing_science_technology_topic",
+            )
+        else:
+            out_of_scope_reasons = tuple(
+                dict.fromkeys(
+                    ("hard_tech_recall_excluded", *recall_exclusions, *homonym_exclusions)
+                )
+            )
+        return ScienceTechEditorialResult(
+            is_candidate=False,
+            cohort=ScienceTechEditorialCohort.OUT_OF_SCOPE,
+            editorial_priority_score=0.0,
+            education_relevance_score=0.0,
+            frontier_significance_score=0.0,
+            reason_codes=out_of_scope_reasons,
+            matched_title_education_terms=historical.matched_title_education_terms,
+            matched_body_education_terms=historical.matched_body_education_terms,
+            matched_title_topic_terms=title_topics,
+            matched_body_topic_terms=body_topics,
+            matched_title_progress_terms=title_progress,
+            matched_body_progress_terms=body_progress,
+            matched_title_exclusion_terms=title_exclusions,
+            matched_body_exclusion_terms=body_exclusions,
+            body_characters_considered=len(considered_body),
+            body_truncated=len(normalized_body) > len(considered_body),
+            rule_version=SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+            content_signals=content_signals,
+            matched_title_signal_terms=title_signal_terms,
+            matched_body_signal_terms=body_signal_terms,
+        )
+
+    if not content_signals:
+        content_signals = (ScienceTechContentSignal.GENERAL_HARD_TECH,)
+    score_by_signal = {
+        ScienceTechContentSignal.COMPLETED_PROGRESS: 0.74,
+        ScienceTechContentSignal.PLANNED_OR_IN_PROGRESS: 0.58,
+        ScienceTechContentSignal.FAILURE_OR_SETBACK: 0.56,
+        ScienceTechContentSignal.CAPITAL_OR_MARKET: 0.50,
+        ScienceTechContentSignal.EVENT_OR_CONFERENCE: 0.48,
+        ScienceTechContentSignal.PRODUCT_OR_SERVICE_RELEASE: 0.52,
+        ScienceTechContentSignal.GENERAL_HARD_TECH: 0.46,
+    }
+    base_score = max(score_by_signal[signal] for signal in content_signals)
+    frontier_score = min(
+        0.86,
+        round(
+            base_score
+            + 0.04 * len(set((*title_topics, *body_topics)))
+            + 0.02 * max(0, len(content_signals) - 1),
+            4,
+        ),
+    )
+    primary_signal = max(content_signals, key=score_by_signal.__getitem__)
+    reasons = (
+        f"hard_tech_topic_with_{primary_signal.value}",
+        *(f"content_signal:{signal.value}" for signal in content_signals),
+    )
+    return ScienceTechEditorialResult(
+        is_candidate=True,
+        cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        editorial_priority_score=frontier_score,
+        education_relevance_score=0.0,
+        frontier_significance_score=frontier_score,
+        reason_codes=reasons,
+        matched_title_education_terms=historical.matched_title_education_terms,
+        matched_body_education_terms=historical.matched_body_education_terms,
+        matched_title_topic_terms=title_topics,
+        matched_body_topic_terms=body_topics,
+        matched_title_progress_terms=title_progress,
+        matched_body_progress_terms=body_progress,
+        matched_title_exclusion_terms=title_exclusions,
+        matched_body_exclusion_terms=body_exclusions,
+        body_characters_considered=len(considered_body),
+        body_truncated=len(normalized_body) > len(considered_body),
+        rule_version=SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+        content_signals=content_signals,
+        matched_title_signal_terms=title_signal_terms,
+        matched_body_signal_terms=body_signal_terms,
+    )
+
+
+def evaluate_science_tech_editorial_relevance(
+    title: str | None,
+    body: str | None = None,
+    *,
+    body_limit: int = EDITORIAL_CONTENT_CHARACTER_LIMIT,
+    rule_version: str = SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+) -> ScienceTechEditorialResult:
+    """Classify content with an explicit immutable editorial rule identity."""
+
+    if rule_version not in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS:
+        raise ValueError("unsupported science-tech editorial rule version")
+    if rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION:
+        return _evaluate_science_tech_editorial_relevance_v2(
+            title,
+            body,
+            body_limit=body_limit,
+        )
+    return _evaluate_science_tech_editorial_relevance_v3(
+        title,
+        body,
+        body_limit=body_limit,
     )
 
 

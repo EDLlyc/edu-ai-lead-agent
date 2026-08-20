@@ -25,8 +25,8 @@ from app.domain.topic_rerank import (
 )
 from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_THRESHOLD,
-    DEFAULT_TOPIC_SCORING_VERSION,
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
+    LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS,
     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
     TopicScoringConfig,
@@ -55,7 +55,7 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
         selection_priority_rule_version=priority_rule_version,
         threshold=(
             DEFAULT_TOPIC_SCORING_THRESHOLD
-            if settings.content_scoring_version == DEFAULT_TOPIC_SCORING_VERSION
+            if settings.content_scoring_version in LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS
             else HISTORICAL_TOPIC_SCORING_THRESHOLD
         ),
         freshness_window_days=float(settings.content_freshness_window_days),

@@ -5,6 +5,10 @@ from uuid import uuid4
 
 import pytest
 from app.core.errors import LeaseLostError
+from app.domain.editorial_relevance import (
+    SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+    SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+)
 from app.domain.entities import ExtractedDocument, FetchedResponse, SnapshotDescriptor
 from app.domain.enums import JobStatus, ObservationOutcome, RunStatus, RunTrigger
 from app.infrastructure.db.models import (
@@ -116,7 +120,7 @@ async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
         source.enabled is False and source.active_version_id is None for source in pending_sources
     )
     assert {version.relevance_rule_version for version in active_versions} == {
-        "science-tech-editorial-v2"
+        SCIENCE_TECH_EDITORIAL_RULE_VERSION
     }
     ministry = next(seed for seed in SOURCE_SEEDS if seed.slug == "moe-science-news")
     active_ministry = next(
@@ -161,6 +165,7 @@ async def test_source_seed_reactivates_current_rule_without_deleting_legacy_vers
     seed = SOURCE_SEEDS[0]
     legacy_id = uuid4()
     async with integration_context.session_factory() as session:
+        await seed_sources(session)
         current = await session.get(SourceVersionModel, seed.source_version_id)
         source = await session.get(SourceModel, seed.source_id)
         assert current is not None and source is not None
@@ -181,7 +186,7 @@ async def test_source_seed_reactivates_current_rule_without_deleting_legacy_vers
             rate_limit_seconds=current.rate_limit_seconds,
             connector_version=current.connector_version,
             parser_version=current.parser_version,
-            relevance_rule_version=None,
+            relevance_rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
             config_fingerprint=uuid4().hex,
         )
         session.add(legacy)
@@ -195,7 +200,8 @@ async def test_source_seed_reactivates_current_rule_without_deleting_legacy_vers
         legacy = await session.get(SourceVersionModel, legacy_id)
 
     assert source is not None and source.active_version_id == seed.source_version_id
-    assert legacy is not None and legacy.relevance_rule_version is None
+    assert legacy is not None
+    assert legacy.relevance_rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
 
 
 @pytest.mark.integration

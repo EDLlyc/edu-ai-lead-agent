@@ -30,7 +30,7 @@ from app.domain.editorial_relevance import (
     PRODUCT_MATRIX_FIT_RULE_VERSION,
     PRODUCT_MATRIX_FIT_V2_RULE_VERSION,
     SCIENCE_AI_EDUCATION_RULE_VERSION,
-    SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+    SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS,
     ProductMatrixFitResult,
     ScienceAiEducationResult,
     ScienceTechEditorialCohort,
@@ -276,12 +276,18 @@ class AcquisitionExecutor:
                     deferred_relevant_count = max(
                         0, len(editorial_title_matches) - accepted_title_matches
                     )
-                elif claimed.profile.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION:
+                elif (
+                    claimed.profile.relevance_rule_version
+                    in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS
+                ):
                     tiered_items = [
                         (
                             item,
                             _TieredDiscoveryEvaluation(
-                                relevance=evaluate_science_tech_editorial_relevance(item.title),
+                                relevance=evaluate_science_tech_editorial_relevance(
+                                    item.title,
+                                    rule_version=claimed.profile.relevance_rule_version,
+                                ),
                                 product_fit=evaluate_product_matrix_fit_v2(item.title),
                             ),
                             index,
@@ -364,7 +370,7 @@ class AcquisitionExecutor:
                             None,
                             SCIENCE_RELEVANCE_RULE_VERSION,
                             SCIENCE_AI_EDUCATION_RULE_VERSION,
-                            SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+                            *SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS,
                         }:
                             freshness_filtered_count += 1
                             filtered_count += 1
@@ -447,10 +453,12 @@ class AcquisitionExecutor:
                         )
                     elif (
                         claimed.profile.relevance_rule_version
-                        == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                        in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS
                     ):
                         tiered_relevance = evaluate_science_tech_editorial_relevance(
-                            document.title, document.clean_text
+                            document.title,
+                            document.clean_text,
+                            rule_version=claimed.profile.relevance_rule_version,
                         )
                         product_fit = evaluate_product_matrix_fit_v2(
                             document.title, document.clean_text
@@ -610,12 +618,12 @@ class AcquisitionExecutor:
                             job_outcome = ObservationOutcome.NO_RELEVANT_ITEMS.value
                     elif (
                         claimed.profile.relevance_rule_version
-                        == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                        in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS
                     ):
                         filter_metadata.update(
                             {
                                 "science_tech_editorial_rule_version": (
-                                    SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                                    claimed.profile.relevance_rule_version
                                 ),
                                 "product_matrix_fit_rule_version": (
                                     PRODUCT_MATRIX_FIT_V2_RULE_VERSION
@@ -970,6 +978,9 @@ def _tiered_editorial_relevance_metadata(
         "education_relevance_score": relevance.education_relevance_score,
         "frontier_significance_score": relevance.frontier_significance_score,
         "editorial_reason_codes": list(relevance.reason_codes),
+        "content_signals": [signal.value for signal in relevance.content_signals],
+        "matched_title_signal_terms": list(relevance.matched_title_signal_terms),
+        "matched_content_signal_terms": list(relevance.matched_body_signal_terms),
         "matched_title_education_terms": list(relevance.matched_title_education_terms),
         "matched_content_education_terms": list(relevance.matched_body_education_terms),
         "matched_title_topic_terms": list(relevance.matched_title_topic_terms),

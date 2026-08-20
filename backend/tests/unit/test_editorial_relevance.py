@@ -9,14 +9,31 @@ from app.domain.editorial_relevance import (
     SCIENCE_AI_EDUCATION_RULE_VERSION,
     SCIENCE_LITERACY_INQUIRY,
     SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+    SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
     STUDY_EXPERIENCE,
     SUBJECT_TRANSITION,
+    ScienceTechContentSignal,
     ScienceTechEditorialCohort,
     evaluate_product_matrix_fit,
     evaluate_product_matrix_fit_v2,
     evaluate_science_ai_education_relevance,
-    evaluate_science_tech_editorial_relevance,
 )
+from app.domain.editorial_relevance import (
+    evaluate_science_tech_editorial_relevance as evaluate_current_science_tech_relevance,
+)
+
+
+def evaluate_science_tech_editorial_relevance(
+    title: str | None,
+    body: str | None = None,
+):
+    """Keep all historical-v2 contract tests explicit after the v3 rollout."""
+
+    return evaluate_current_science_tech_relevance(
+        title,
+        body,
+        rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+    )
 
 
 @pytest.mark.parametrize(
@@ -170,7 +187,7 @@ def test_editorial_v2_accepts_governed_science_talent_pathways(
     assert result.cohort is ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY
     assert result.education_relevance_score >= 0.88
     assert reason in result.reason_codes
-    assert result.rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    assert result.rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
 
 
 @pytest.mark.parametrize(
@@ -298,6 +315,131 @@ def test_editorial_v2_is_deterministic_and_enforces_body_character_boundary() ->
     assert first.is_candidate is False
     assert first.body_characters_considered == EDITORIAL_CONTENT_CHARACTER_LIMIT
     assert first.body_truncated is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "朱雀三号遥二运载火箭发射成功 一子级成功着陆预定位置",
+        "我国可重复使用火箭一子级成功回收",
+        "新一代商业火箭完成陆上垂直回收",
+        "Reusable rocket booster successfully landed at the recovery site",
+    ],
+)
+def test_editorial_v3_recalls_completed_aerospace_recovery(title: str) -> None:
+    result = evaluate_current_science_tech_relevance(title)
+
+    assert result.is_candidate is True
+    assert result.cohort is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+    assert result.rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    assert "aerospace_launch_recovery" in result.matched_title_topic_terms
+    assert "aerospace_recovery_or_landing" in result.matched_title_progress_terms
+    assert result.content_signals == (ScienceTechContentSignal.COMPLETED_PROGRESS,)
+    assert result.reason_codes[0] == "hard_tech_topic_with_completed_progress"
+
+
+@pytest.mark.parametrize(
+    ("title", "signal"),
+    [
+        ("朱雀三号拟再次开展回收试验", ScienceTechContentSignal.PLANNED_OR_IN_PROGRESS),
+        ("火箭一级回收失败", ScienceTechContentSignal.FAILURE_OR_SETBACK),
+        ("商业航天企业完成融资", ScienceTechContentSignal.CAPITAL_OR_MARKET),
+        ("机器人新品发布会举行", ScienceTechContentSignal.EVENT_OR_CONFERENCE),
+        ("人工智能企业发布新产品平台", ScienceTechContentSignal.PRODUCT_OR_SERVICE_RELEASE),
+    ],
+)
+def test_editorial_v3_recalls_and_truthfully_types_broad_hard_tech_shapes(
+    title: str,
+    signal: ScienceTechContentSignal,
+) -> None:
+    result = evaluate_current_science_tech_relevance(title)
+
+    assert result.is_candidate is True
+    assert result.cohort is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+    assert signal in result.content_signals
+    if signal is not ScienceTechContentSignal.COMPLETED_PROGRESS:
+        assert "content_signal:completed_progress" not in result.reason_codes
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "普通消费品暑期促销",
+        "非科技企业完成融资",
+        "明星新品发布会举行",
+        "市场规模持续增长",
+    ],
+)
+def test_editorial_v3_still_rejects_items_without_a_governed_hard_tech_topic(
+    title: str,
+) -> None:
+    result = evaluate_current_science_tech_relevance(title)
+
+    assert result.is_candidate is False
+    assert result.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
+    assert result.reason_codes == ("missing_science_technology_topic",)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "AI手机购物节促销开启",
+        "人工智能培训机构保过课程限时报名",
+        "休斯顿火箭队新品发布会举行",
+        "航空公司完成新一轮融资",
+        "卫星电视新品发布会举行",
+        "机器人玩具暑期促销",
+    ],
+)
+def test_editorial_v3_rejects_keyword_borrowing_promotions_and_homonyms(title: str) -> None:
+    result = evaluate_current_science_tech_relevance(title)
+
+    assert result.is_candidate is False
+    assert result.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
+    assert result.reason_codes[0] == "hard_tech_recall_excluded"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "人形机器人新品发布会举行",
+        "新能源车新产品发布",
+        "人工智能企业完成新一轮融资",
+    ],
+)
+def test_editorial_v3_keeps_hard_tech_product_event_and_capital_shapes(title: str) -> None:
+    result = evaluate_current_science_tech_relevance(title)
+
+    assert result.is_candidate is True
+    assert result.cohort is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+
+
+def test_editorial_v3_does_not_erase_a_product_release_for_body_side_sales_language() -> None:
+    result = evaluate_current_science_tech_relevance(
+        "人形机器人新品发布会举行",
+        "现场介绍技术参数, 并公布后续预售优惠价。",
+    )
+
+    assert result.is_candidate is True
+    assert ScienceTechContentSignal.PRODUCT_OR_SERVICE_RELEASE in result.content_signals
+    assert "consumer_sales_promotion" in result.matched_body_exclusion_terms
+
+
+def test_editorial_rule_dispatch_preserves_v2_and_fails_closed_for_unknown_versions() -> None:
+    title = "商业航天企业完成融资"
+
+    historical = evaluate_current_science_tech_relevance(
+        title,
+        rule_version=SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+    )
+    current = evaluate_current_science_tech_relevance(title)
+
+    assert historical.is_candidate is False
+    assert historical.rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
+    assert current.is_candidate is True
+    assert current.rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    with pytest.raises(ValueError, match="unsupported science-tech editorial rule version"):
+        evaluate_current_science_tech_relevance(title, rule_version="science-tech-editorial-v99")
 
 
 @pytest.mark.parametrize(

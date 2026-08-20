@@ -2,9 +2,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from app.domain.editorial_relevance import ScienceTechEditorialCohort
+from app.domain.editorial_relevance import ScienceTechContentSignal, ScienceTechEditorialCohort
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_selection import (
+    BROAD_HARD_TECH_POOL_POLICY_VERSION,
+    BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     DEFAULT_TOPIC_SCORING_THRESHOLD,
     DEFAULT_TOPIC_SCORING_VERSION,
     DELIVERED_CONTENT_VETO_RULE_VERSION,
@@ -13,6 +15,7 @@ from app.domain.topic_selection import (
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     NoTopicCode,
     TopicCandidate,
@@ -41,6 +44,11 @@ HISTORICAL_DELIVERED_CONFIG = TopicScoringConfig(
     version=DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
     threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
+)
+HISTORICAL_THRESHOLD_CONFIG = TopicScoringConfig(
+    version=THRESHOLD_059_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    threshold=DEFAULT_TOPIC_SCORING_THRESHOLD,
 )
 LEGACY_CONFIG = TopicScoringConfig(
     version="scoring-v1-preview.4-science-policy-priority",
@@ -108,14 +116,16 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
-def test_current_config_exposes_lower_threshold_and_immutable_v2_rules() -> None:
+def test_current_config_exposes_broad_hard_tech_policy_and_immutable_v3_rules() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
     assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
+    assert metadata["version"] == BROAD_HARD_TECH_TOPIC_SCORING_VERSION
     assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert metadata["selection_priority_rule_version"] == (MINISTRY_EDUCATION_PRIORITY_RULE_VERSION)
-    assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
+    assert metadata["science_tech_editorial_rule_version"] == ("science-tech-editorial-v3-broad")
+    assert metadata["hard_tech_pool_policy_version"] == BROAD_HARD_TECH_POOL_POLICY_VERSION
     assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
     assert dict(TIERED_CONFIG.positive_weights) == {
         "editorial_priority": 0.30,
@@ -135,7 +145,7 @@ def test_historical_delivered_config_retains_threshold_and_round_trips() -> None
     assert metadata["threshold"] == HISTORICAL_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
     historical_policy = dict(metadata)
-    current_policy = TIERED_CONFIG.as_metadata()
+    current_policy = HISTORICAL_THRESHOLD_CONFIG.as_metadata()
     for key in ("version", "threshold"):
         historical_policy.pop(key)
         current_policy.pop(key)
@@ -570,6 +580,105 @@ def test_tiered_product_fit_cannot_create_eligibility_for_out_of_scope_content()
     assert score.threshold_bypass_applied is False
 
 
+@pytest.mark.parametrize(
+    "signal",
+    [
+        ScienceTechContentSignal.COMPLETED_PROGRESS,
+        ScienceTechContentSignal.PLANNED_OR_IN_PROGRESS,
+        ScienceTechContentSignal.FAILURE_OR_SETBACK,
+        ScienceTechContentSignal.CAPITAL_OR_MARKET,
+        ScienceTechContentSignal.EVENT_OR_CONFERENCE,
+        ScienceTechContentSignal.PRODUCT_OR_SERVICE_RELEASE,
+    ],
+)
+def test_current_policy_admits_governed_broad_hard_tech_below_numeric_threshold(
+    signal: ScienceTechContentSignal,
+) -> None:
+    candidate = _candidate(
+        source_trust=0.75,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.5,
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.5,
+        science_tech_editorial_reason_codes=(f"content_signal:{signal.value}",),
+        science_tech_content_signals=(signal,),
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+    )
+
+    score = score_topic_candidate(candidate, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.total < DEFAULT_TOPIC_SCORING_THRESHOLD
+    assert score.passes_threshold is False
+    assert score.eligible is True
+    assert score.veto_codes == ()
+    assert score.threshold_bypass_applied is True
+    assert score.threshold_bypass_reason == "governed_broad_hard_tech_pool"
+    assert score.hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
+    assert score.science_tech_content_signals == (signal,)
+
+
+def test_historical_point_eight_config_does_not_gain_broad_hard_tech_bypass() -> None:
+    candidate = _candidate(
+        source_trust=0.75,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.5,
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.5,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+    )
+
+    score = score_topic_candidate(candidate, as_of=NOW, config=HISTORICAL_THRESHOLD_CONFIG)
+
+    assert score.total < DEFAULT_TOPIC_SCORING_THRESHOLD
+    assert score.eligible is False
+    assert score.threshold_bypass_applied is False
+    assert score.hard_tech_pool_policy_version is None
+
+
+@pytest.mark.parametrize(
+    "veto_change",
+    [
+        {"governance_resolved": False},
+        {"has_eligible_evidence": False},
+        {"tier_c_only": True},
+        {"unverified": True},
+        {"unsuitable_negative_incident": True},
+        {"privacy_legal_safety_uncertain": True},
+        {"prohibited_marketing_risk": True},
+        {"days_since_last_selection": 2},
+        {"event_time": NOW - timedelta(days=11)},
+    ],
+)
+def test_broad_hard_tech_pool_never_overrides_a_genuine_veto(
+    veto_change: dict[str, object],
+) -> None:
+    candidate = _candidate(
+        source_trust=0.75,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.5,
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.5,
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        **veto_change,
+    )
+
+    score = score_topic_candidate(candidate, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.veto_codes
+    assert score.eligible is False
+    assert score.threshold_bypass_applied is False
+    assert score.threshold_bypass_reason is None
+
+
 @pytest.mark.parametrize("config", (HISTORICAL_TIERED_CONFIG, TIERED_CONFIG))
 def test_authenticated_ministry_education_priority_bypasses_only_numeric_threshold(
     config: TopicScoringConfig,
@@ -720,7 +829,7 @@ def test_tiered_score_explanation_contains_cohort_versions_and_bypass_state() ->
     score = score_topic_candidate(_candidate(), as_of=NOW, config=TIERED_CONFIG)
     metadata = score.as_metadata()
 
-    assert metadata["science_tech_editorial_rule_version"] == "science-tech-editorial-v2"
+    assert metadata["science_tech_editorial_rule_version"] == ("science-tech-editorial-v3-broad")
     assert metadata["product_matrix_fit_rule_version"] == ("product-matrix-fit-v2-science-pathways")
     assert metadata["science_tech_editorial_cohort"] == ("science_technology_education_priority")
     assert metadata["science_tech_education_relevance"] == pytest.approx(0.95)

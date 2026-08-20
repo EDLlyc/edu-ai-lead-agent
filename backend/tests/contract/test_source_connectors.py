@@ -179,6 +179,37 @@ def test_new_connectors_enforce_fixture_proven_article_paths(
     assert expected_path in items[0].url
 
 
+def test_xinhua_tech_fixture_preserves_verified_aerospace_recovery_article_shape() -> None:
+    profile = _profile("xinhua_tech_v1")
+    connector = get_connector(profile.connector_key)
+    list_response = FetchedResponse(
+        requested_url=profile.entry_url,
+        final_url=profile.entry_url,
+        status_code=200,
+        media_type="text/html",
+        body=(FIXTURE_ROOT / profile.connector_key / "list.html").read_bytes(),
+        sha256="xinhua-aerospace-list",
+        fetched_at=datetime(2026, 8, 19, 2, tzinfo=UTC),
+    )
+
+    item = connector.discover(list_response, profile, limit=10)[0]
+
+    assert item.title == "朱雀三号遥二运载火箭发射成功 一子级成功着陆预定位置"
+    assert item.url == ("https://www.news.cn/tech/20260819/661cedb9b6cf44a6976a167bf60b5d73/c.html")
+    detail_response = FetchedResponse(
+        requested_url=item.url,
+        final_url=item.url,
+        status_code=200,
+        media_type="text/html",
+        body=(FIXTURE_ROOT / profile.connector_key / "detail.html").read_bytes(),
+        sha256="xinhua-aerospace-detail",
+        fetched_at=datetime(2026, 8, 19, 2, tzinfo=UTC),
+    )
+    document = connector.extract(detail_response, item, profile)
+    assert "一子级成功着陆于回收场预定位置" in document.clean_text
+    assert "二子级继续飞行并将载荷送入预定轨道" in document.clean_text
+
+
 def test_edsurge_excludes_visible_sponsor_api_external_and_http_items() -> None:
     profile = _profile("edsurge_ai_education_v1")
     connector = get_connector(profile.connector_key)

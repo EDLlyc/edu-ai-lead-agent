@@ -7,12 +7,14 @@ import pytest
 from app.application.services.governance_graph import governance_graph_input
 from app.application.services.governance_runtime import build_governance_version_bundle
 from app.core.errors import ConflictError
+from app.domain.editorial_relevance import ScienceTechContentSignal
 from app.domain.governance_enums import FactualCategory
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
 from app.domain.topic_rerank import TopicRerankConfig
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
+    THRESHOLD_059_TOPIC_SCORING_VERSION,
     NoTopicCode,
     TopicScoringConfig,
     select_daily_topic,
@@ -34,6 +36,7 @@ from app.infrastructure.db.topic_selection import (
     get_topic_selection_run,
     heartbeat_topic_selection_job,
     list_topic_score_rows,
+    load_governed_topic_candidates,
     load_topic_candidates,
     persist_topic_selection_decision,
 )
@@ -406,6 +409,28 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
         candidates = await load_topic_candidates(session, topic_run.id)
         target = next(candidate for candidate in candidates if candidate.event_id == event_id)
         assert target.topic_priority_policy == MOE_SCIENCE_TOP1_PRIORITY_POLICY
+        assert target.science_tech_content_signals == (ScienceTechContentSignal.GENERAL_HARD_TECH,)
+        historical_config = TopicScoringConfig(
+            version=THRESHOLD_059_TOPIC_SCORING_VERSION,
+            profile=f"historical-v2-{suffix}",
+            threshold=0.59,
+            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+        )
+        historical_candidates = await load_governed_topic_candidates(
+            session,
+            business_date=now.date(),
+            timezone="Asia/Shanghai",
+            scoring_profile=historical_config.profile,
+            governed_event_cutoff=cutoff,
+            config_snapshot=historical_config.as_metadata(),
+        )
+        historical_target = next(
+            candidate for candidate in historical_candidates if candidate.event_id == event_id
+        )
+        assert historical_target.science_tech_editorial_cohort == (
+            target.science_tech_editorial_cohort
+        )
+        assert historical_target.science_tech_content_signals == ()
         claimed_topic = await claim_topic_selection_job(
             session,
             run_id=topic_run.id,

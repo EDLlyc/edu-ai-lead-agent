@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     acquisition_first_run_scan_limit: int = Field(default=100, ge=1, le=500)
     acquisition_daily_scan_limit: int = Field(default=50, ge=1, le=200)
     acquisition_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    acquisition_version: str = "acquisition-v5-tiered-science-tech"
+    acquisition_version: str = "acquisition-v6-broad-hard-tech"
 
     governance_enabled: bool = False
     governance_scheduler_enabled: bool = False
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.8-threshold-059"
+    content_scoring_version: str = "scoring-v1-preview.9-broad-hard-tech-pool"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = "ministry-education-priority-v3"
     content_llm_rerank_enabled: bool = False
