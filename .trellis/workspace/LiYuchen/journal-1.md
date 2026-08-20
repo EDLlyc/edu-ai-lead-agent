@@ -1466,3 +1466,24 @@ Expanded governed hard-tech acquisition from breakthrough-only filtering to vers
 ### Status
 
 [OK] **Completed**
+
+
+## Session 65: 收紧科技教育优先并兼容智谱排序
+
+**Date**: 2026-08-20
+**Task**: 收紧科技教育优先并兼容智谱排序
+**Branch**: `main`
+
+### Summary
+
+新增不可变 .10/Ministry v4 与 rerank v4 最小 ID 排列协议，保留历史回放，完成单次隔离智谱兼容验证和独立复核。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fbb86c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
