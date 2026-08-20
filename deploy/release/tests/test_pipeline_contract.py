@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -7,7 +8,11 @@ import tempfile
 from pathlib import Path
 
 import yaml
-from contract import BUNDLE_ALLOWED_PREFIXES
+from contract import (
+    BUNDLE_ALLOWED_PREFIXES,
+    alembic_head_from_blobs,
+    load_compatibility_declaration,
+)
 
 from deploy import APPLICATION_SERVICES
 
@@ -129,6 +134,23 @@ def test_compose_uses_one_application_image_variable() -> None:
     assert compose.count("<<: *app-runtime") == 9
 
 
+def test_repository_migration_declaration_and_doctor_match_the_single_head() -> None:
+    migration_blobs = {
+        str(path): path.read_bytes()
+        for path in Path("backend/alembic/versions").glob("*.py")
+        if not path.name.startswith("__")
+    }
+    head = alembic_head_from_blobs(migration_blobs)
+    declaration = Path("deploy/release/migration-compatibility.json").read_bytes()
+    reviewed, compatible = load_compatibility_declaration(declaration, head)
+    doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")
+
+    assert json.loads(declaration)["alembic_head"] == head
+    assert reviewed is False
+    assert compatible is False
+    assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
+
+
 def test_frontend_is_a_ci_gate_only() -> None:
     pipeline = Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
     image_job = pipeline.split("image_stage:", 1)[1].split("publish_stage:", 1)[0]
@@ -189,6 +211,29 @@ def test_compose_and_doctor_share_the_bounded_image_ocr_contract() -> None:
     assert "ocr_enabled = compose_bool" in doctor
     assert "if diversity_enabled and ocr_enabled and environment[" in doctor
     assert "controlled image OCR must use the reviewed glm-ocr model" in doctor
+
+
+def test_compose_and_doctor_pin_layered_topic_rerank_defaults() -> None:
+    compose = Path("compose.yaml").read_text(encoding="utf-8")
+    doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")
+
+    assert "CONTENT_ENABLED: ${CONTENT_ENABLED:-false}" in compose
+    assert "CONTENT_LLM_RERANK_ENABLED: ${CONTENT_LLM_RERANK_ENABLED:-true}" in compose
+    assert (
+        "CONTENT_LLM_RERANK_POLICY_VERSION: "
+        "${CONTENT_LLM_RERANK_POLICY_VERSION:-topic-rerank-v3-layered-auto-finalize}"
+    ) in compose
+    for key in (
+        "CONTENT_ENABLED",
+        "CONTENT_LLM_RERANK_ENABLED",
+        "CONTENT_LLM_RERANK_POLICY_VERSION",
+        "CONTENT_LLM_RERANK_CANDIDATE_LIMIT",
+        "CONTENT_LLM_RERANK_MAX_OUTPUT_TOKENS",
+        "AI_PROVIDER_MODE",
+    ):
+        assert f'"{key}"' in doctor
+    assert "content selection rerank pool must remain capped at eight" in doctor
+    assert "enabled content rerank must use fake or zhipu provider mode" in doctor
 
 
 def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:

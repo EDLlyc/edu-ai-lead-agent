@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Implement immutable scoring/rerank, hard-veto, fallback, audit and replay contracts"}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Implement the shared daily/slot rerank and same-day exclusion boundary"}
+{"file": ".trellis/tasks/08-20-layered-news-selection-pipeline/research/task-contract-summary.md", "reason": "Preserve typed stage, provider-call, privacy and full quality contracts without truncated specs"}
+{"file": ".trellis/tasks/08-20-layered-news-selection-pipeline/research/current-layer-gap.md", "reason": "Reuse existing layers and close only the automatic finalization gap"}

@@ -28,8 +28,8 @@ from app.domain.content_slots import (
 )
 from app.domain.topic_rerank import (
     TopicRerankRequest,
-    apply_content_slot_rerank,
     build_slot_rerank_pool,
+    finalize_content_slot_rerank,
 )
 
 logger = structlog.get_logger()
@@ -181,9 +181,12 @@ class ContentSlotExecutor:
                 request=request,
             )
             self._ensure_lease(lease_lost)
-            decision = apply_content_slot_rerank(
+            decision, rerank_outcome = finalize_content_slot_rerank(
                 decision,
+                pool,
                 rerank_outcome,
+                request=request,
+                candidate_limit=rerank_config.candidate_limit,
                 max_items=claimed.item_limit,
             )
             persisted = await self._repository.persist_decision(

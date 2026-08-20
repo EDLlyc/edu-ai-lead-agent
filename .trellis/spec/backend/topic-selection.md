@@ -93,10 +93,11 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - Stable ordering is applied Ministry priority, ordinary eligible, below-threshold without veto,
   then hard-vetoed; within each group use total, source trust, event time, then UUID. Every
   considered event receives a persisted rank even when vetoed or below threshold.
-- The optional topic-rerank stage runs only after that deterministic ordering. Current snapshots
-  use `topic-rerank-v2-zhipu-json-contract`; literal `topic-rerank-v1` snapshots remain supported
-  with their original prose prompt, request payload, and exact-object parser. The immutable policy
-  selects prompt, wire payload, and parser together; unknown identities and a request/config policy
+- The topic-rerank stage runs only after that deterministic ordering. Current snapshots use
+  `topic-rerank-v3-layered-auto-finalize`; literal `topic-rerank-v1` and
+  `topic-rerank-v2-zhipu-json-contract` snapshots remain supported with their original prompt,
+  request payload, parser, and replay semantics. The immutable policy selects prompt, wire payload,
+  parser, and finalization behavior together; unknown identities and a request/config policy
   mismatch fail before transport.
   The independent enqueue-time snapshot/fingerprint pins enabled state, provider/model, candidate
   cap (at most eight), temperature zero, output cap, and deterministic fallback policy without
@@ -112,14 +113,20 @@ with their original feature keys, source-priority behavior, and repeat-history p
   exact prompt names the object/item shape, all seven reason codes, complete permutation,
   consecutive integer ordinal, priority barrier, and no-Markdown/no-prose rules. Content parsing
   accepts only the shared bounded one-object envelopes before unchanged strict schema and semantic
-  validation; literal v1 continues to require an exact JSON object.
+  validation; literal v1 continues to require an exact JSON object. V3 additionally names news
+  value and breakthrough significance as ranking dimensions without changing literal v2 text.
+  Under v3, an automatic deterministic finalizer revalidates the exact run request fingerprint,
+  complete bounded pool, event/version pairs, hard vetoes, eligibility, priority groups, same-day
+  exclusions, and configured item/candidate limits before applying the model order. Any missing,
+  cross-run, stale-version, unavailable-candidate, barrier, or cap mismatch becomes a typed
+  deterministic fallback; it never reaches downstream selection as an unvalidated model result.
   Final scores preserve both `deterministic_rank` and final `rank`; one XOR-bound audit row stores
   safe orders, reasons, fingerprints, usage, latency, outcome, and failure code without raw prompts
   or provider bodies. Completion, JSON-envelope, and schema failures have bounded internal
   diagnostics, while durable/public failure remains `invalid_provider_output`; post-response
   fallback retains safe prompt fingerprint, usage, and latency. Historical migrated runs have the
-  canonical disabled v1 snapshot and may
-  legitimately project `not_applied` when no audit row exists.
+  canonical disabled v1 snapshot and may legitimately project `not_applied` when no audit row
+  exists.
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database
   composite foreign keys enforce this for runs, scores, and daily selections.
 - A day with neither an eligible score at or above threshold, an authenticated `.6`/`.7`/`.8`/`.9`
@@ -138,7 +145,10 @@ Relevant environment keys are `CONTENT_ENABLED`, `CONTENT_SCHEDULER_ENABLED`,
 `CONTENT_SELECTION_PRIORITY_RULE_VERSION`. Rerank keys are
 `CONTENT_LLM_RERANK_ENABLED`, `CONTENT_LLM_RERANK_POLICY_VERSION`,
 `CONTENT_LLM_RERANK_CANDIDATE_LIMIT`, and `CONTENT_LLM_RERANK_MAX_OUTPUT_TOKENS`; the feature is
-default-off and enabling it requires the already validated `fake` or `zhipu` AI provider mode.
+enabled by default only inside an enabled content-selection pipeline. The global
+`CONTENT_ENABLED=false` default keeps local development provider-free; an enabled content pipeline
+may explicitly disable reranking, otherwise it requires the already validated `fake` or `zhipu`
+AI provider mode.
 
 ## Parallel content-slot selection
 

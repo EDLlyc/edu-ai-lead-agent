@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     content_scoring_version: str = "scoring-v1-preview.9-broad-hard-tech-pool"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = "ministry-education-priority-v3"
-    content_llm_rerank_enabled: bool = False
+    content_llm_rerank_enabled: bool = True
     content_llm_rerank_policy_version: str = Field(
         default=DEFAULT_TOPIC_RERANK_POLICY_VERSION, min_length=1, max_length=80
     )
@@ -331,7 +331,11 @@ class Settings(BaseSettings):
             raise ValueError("content processes require content to be enabled")
         if self.content_slot_mode_enabled and not self.content_enabled:
             raise ValueError("content slot mode requires content to be enabled")
-        if self.content_llm_rerank_enabled and self.ai_provider_mode not in {"fake", "zhipu"}:
+        if (
+            self.content_enabled
+            and self.content_llm_rerank_enabled
+            and self.ai_provider_mode not in {"fake", "zhipu"}
+        ):
             raise ValueError("content LLM rerank requires fake or zhipu AI provider mode")
         if self.acquisition_total_timeout_seconds < self.acquisition_read_timeout_seconds:
             raise ValueError("acquisition total timeout must cover the read timeout")

@@ -20,8 +20,8 @@ from app.core.errors import (
     normalize_provider_validation_issues,
 )
 from app.domain.topic_rerank import (
-    CURRENT_TOPIC_RERANK_POLICY_VERSION,
     LEGACY_TOPIC_RERANK_POLICY_VERSION,
+    STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS,
     TOPIC_RERANK_REASON_CODES,
     TopicRerankCandidate,
     TopicRerankItem,
@@ -270,7 +270,7 @@ class ZhipuTopicReranker:
             "temperature": 0.0,
             "max_tokens": output_limit,
         }
-        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+        if request.policy_version in STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS:
             payload["thinking"] = {"type": "disabled"}
             payload["do_sample"] = False
         elif request.policy_version != LEGACY_TOPIC_RERANK_POLICY_VERSION:
@@ -331,7 +331,7 @@ class ZhipuTopicReranker:
                 **metrics,
             )
         content = completion.choices[0].message.content
-        if request.policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION:
+        if request.policy_version in STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS:
             try:
                 normalized_content = extract_provider_json_object(content)
             except ProviderJsonEnvelopeError as error:

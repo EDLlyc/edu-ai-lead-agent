@@ -61,8 +61,9 @@ must prove nested locations remain useful, issue counts are capped, and raw valu
 causes do not leak at any boundary.
 
 Before Pydantic validation, approved structured-output adapters may normalize only one bounded
-top-level JSON object through the shared provider helper. Current topic-rerank v2 and structured
-copy use that exact scanner; literal topic-rerank v1 retains exact-object parsing. Accepted
+top-level JSON object through the shared provider helper. Current topic-rerank v3, literal v2, and
+structured copy use that exact scanner; literal topic-rerank v1 retains exact-object parsing.
+Historical v1/v2 topic-rerank outcomes keep their original application behavior. Accepted
 envelopes are: a pure object, one `json` code fence containing only that object, or bounded non-JSON
 prose around one uniquely balanced object. The scanner must handle escaped quotes, backslashes, and
 braces inside JSON strings. Reject array roots, multiple objects, a second JSON structure/value,
@@ -80,6 +81,10 @@ to `unknown` rather than entering diagnostics. It never carries raw content, can
 text, response bodies, credentials, or exception strings. Application and durable/API projections
 still expose only `invalid_provider_output`, perform no schema-repair model call, and preserve the
 exact deterministic base order.
+
+Current v3 finalization failures are typed domain outcomes rather than exceptions. A request
+fingerprint, pool, event/version, candidate availability, priority/final-set barrier, same-day, or
+cap mismatch must produce the exact deterministic fallback without a second provider call.
 
 Expected outcomes such as `no_topic` are domain/run results, not exceptions. A hard veto can be a
 typed control failure inside a stage, but it must be persisted as a structured veto result rather

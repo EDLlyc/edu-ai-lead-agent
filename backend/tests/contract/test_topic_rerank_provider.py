@@ -19,6 +19,7 @@ from app.core.errors import (
 from app.domain.topic_rerank import (
     CURRENT_TOPIC_RERANK_POLICY_VERSION,
     LEGACY_TOPIC_RERANK_POLICY_VERSION,
+    V2_TOPIC_RERANK_POLICY_VERSION,
     TopicRerankCandidate,
     TopicRerankConfig,
     TopicRerankFailureCode,
@@ -180,6 +181,37 @@ async def test_zhipu_topic_rerank_sends_one_bounded_json_request_and_projects_us
     assert result.completion_tokens == 45
     assert result.reasoning_tokens == 7
     assert result.latency_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_literal_v2_keeps_strict_json_payload_and_envelope_parser() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": f"```json\n{_response_content()}\n```",
+                        }
+                    }
+                ]
+            },
+        )
+
+    adapter, client = _adapter(httpx.MockTransport(handler))
+    try:
+        result = await adapter.rerank(_request(policy_version=V2_TOPIC_RERANK_POLICY_VERSION))
+    finally:
+        await client.aclose()
+
+    assert len(result.items) == 2
+    assert captured["thinking"] == {"type": "disabled"}
+    assert captured["do_sample"] is False
+    assert captured["response_format"] == {"type": "json_object"}
 
 
 @pytest.mark.asyncio

@@ -216,6 +216,48 @@ if diversity_enabled and ocr_enabled and environment["IMAGE_OCR_MODEL"] != "glm-
 ' >/dev/null || fail "Image-diversity settings are not shared by API and content worker"
 pass "Image-diversity and bounded image-OCR settings are shared"
 
+docker compose --profile content config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
+names = ("acquisition-api", "content-scheduler", "content-worker")
+keys = (
+    "CONTENT_ENABLED",
+    "CONTENT_LLM_RERANK_ENABLED",
+    "CONTENT_LLM_RERANK_POLICY_VERSION",
+    "CONTENT_LLM_RERANK_CANDIDATE_LIMIT",
+    "CONTENT_LLM_RERANK_MAX_OUTPUT_TOKENS",
+    "AI_PROVIDER_MODE",
+)
+for key in keys:
+    values = [services[name].get("environment", {}).get(key) for name in names]
+    if any(value in (None, "") for value in values) or len(set(values)) != 1:
+        raise SystemExit(f"topic rerank setting {key} must be present and identical")
+
+def compose_bool(value):
+    normalized = value.strip().casefold()
+    if normalized in {"1", "on", "t", "true", "y", "yes"}:
+        return True
+    if normalized in {"0", "off", "f", "false", "n", "no"}:
+        return False
+    raise SystemExit("topic rerank flags must be valid boolean values")
+
+environment = services["content-worker"]["environment"]
+if environment["CONTENT_LLM_RERANK_POLICY_VERSION"] != "topic-rerank-v3-layered-auto-finalize":
+    raise SystemExit("content selection must pin the v3 automatic-finalization policy")
+if environment["CONTENT_LLM_RERANK_CANDIDATE_LIMIT"] != "8":
+    raise SystemExit("content selection rerank pool must remain capped at eight")
+if (
+    compose_bool(environment["CONTENT_ENABLED"])
+    and compose_bool(environment["CONTENT_LLM_RERANK_ENABLED"])
+    and environment["AI_PROVIDER_MODE"] not in {"fake", "zhipu"}
+):
+    raise SystemExit("enabled content rerank must use fake or zhipu provider mode")
+' >/dev/null || fail "Layered topic-rerank settings are invalid or inconsistent"
+pass "Layered topic rerank is bounded, shared, and provider-gated only when content is enabled"
+
 docker compose --profile governance --profile content --profile wecom config --format json | \
   "${python_command[@]}" -c '
 import json
@@ -262,7 +304,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260815_0021" ]] \
+[[ "$migration_revision" == "20260818_0022" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 

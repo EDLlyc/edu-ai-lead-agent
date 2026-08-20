@@ -28,6 +28,7 @@ async def test_topic_selection_api_enqueues_and_exposes_durable_no_topic(
         update={
             "content_enabled": True,
             "content_worker_enabled": True,
+            "content_llm_rerank_enabled": False,
             "content_scoring_profile": scoring_profile,
         }
     )

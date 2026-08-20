@@ -23,7 +23,9 @@ schedule/enqueue
   -> normalize, segment, and validate factual analysis
   -> exact/semantic duplicate relations and event organization
   -> eligibility vetoes and versioned scoring
-  -> optional bounded LLM rerank inside hard priority barriers
+  -> broad-recall deterministic eligible pool
+  -> one bounded LLM rerank inside hard priority barriers
+  -> automatic deterministic finalization or typed fallback
   -> select Top 1 or finish no_topic
   -> retrieve evidence and brand context separately
   -> draft typed claims/copy/image prompt
@@ -40,16 +42,21 @@ reconstructing progress from logs or rerunning the whole workflow.
 
 Topic reranking is an ordering stage, not a scoring or governance stage. The deterministic selector
 owns eligibility, the 0.59 threshold, Ministry authentication, hard vetoes, seven-day delivered
-repeat, slot affinity, and same-day exclusion. A default-off shared daily/slot service sends at most
-eight already eligible governed projections to one fake/Zhipu adapter call, validates a complete
-within-group permutation, and otherwise uses the exact base order. Enqueue pins its independent
-policy/provider/model config; current `topic-rerank-v2-zhipu-json-contract` uses an exact JSON shape,
-seven allowlisted reason codes, JSON-object mode, disabled thinking/sampling, and the shared bounded
-one-object extractor. Literal `topic-rerank-v1` keeps its legacy prompt, payload, and exact-object
-parser. Persistence retains base/final ranks plus a safe typed audit. Invalid completion envelope,
-JSON envelope, or strict schema produces bounded content-free diagnostics and the generic durable
-fallback while preserving available usage/latency. No DB session remains open across the provider
-call and no second judge/model pass is introduced.
+repeat, slot affinity, same-day exclusion, and item/candidate caps. When the globally disabled-by-
+default content-selection pipeline is enabled, its reranker is on by default and sends at most
+eight already eligible governed projections to exactly one fake/Zhipu adapter call. Enqueue pins
+its independent policy/provider/model config; current `topic-rerank-v3-layered-auto-finalize` uses
+the v2 strict JSON shape, seven allowlisted reason codes, JSON-object mode, disabled
+thinking/sampling, and the shared bounded one-object extractor. Literal v1/v2 snapshots retain
+their exact historical prompt/payload/parser/application behavior.
+
+The v3 automatic finalizer binds an outcome to the exact run request fingerprint, full pool, and
+event/version pairs, then rechecks hard veto, eligibility, priority, same-day, final set, and caps.
+Any invalid or cross-run mismatch becomes a typed deterministic fallback to the exact base order;
+there is no human selection-review stage and no second judge/model pass. Persistence retains
+base/final ranks plus a safe typed audit. Invalid completion envelope, JSON envelope, strict schema,
+or finalization contract produces bounded content-free diagnostics and the durable fallback while
+preserving available usage/latency. No DB session remains open across the provider call.
 
 ## Source governance and ingestion
 

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Review finalizer invariants, v1/v2 replay and audit compatibility"}
+{"file": ".trellis/tasks/08-20-layered-news-selection-pipeline/research/task-contract-summary.md", "reason": "Review provider-free eval, privacy, finalization boundaries and complete backend gates"}
+{"file": ".trellis/tasks/08-20-layered-news-selection-pipeline/research/current-layer-gap.md", "reason": "Check the implementation closes the observed gap without duplicating the selector"}

@@ -91,6 +91,7 @@ def test_content_edition_run_stops_projecting_preparing_after_its_window() -> No
     settings = Settings(
         _env_file=None,
         content_enabled=True,
+        content_llm_rerank_enabled=False,
         content_slot_mode_enabled=True,
     )
     projection = SimpleNamespace(

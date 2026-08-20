@@ -332,8 +332,9 @@ At minimum, prove:
 - duplicate content retains provenance and a seven-day event repeat is vetoed;
 - a below-threshold day ends as `no_topic` without model/image generation;
 - topic reranking receives only eligible candidates, preserves Ministry priority and slot
-  same-day barriers, caps input at eight, selects v1/v2 prompt/payload/parser by immutable policy,
-  and falls back byte-stably in ordering semantics;
+  same-day barriers, caps input at eight, selects v1/v2/v3 prompt/payload/parser/finalization by
+  immutable policy, binds v3 results to the exact run pool and event/version pairs, and falls back
+  byte-stably in ordering semantics;
 - every accepted core claim has an eligible evidence binding;
 - deterministic validation runs before LLM audit;
 - an LLM auditor cannot invent evidence or override a hard veto;
@@ -350,11 +351,14 @@ fallback cases. Its stable JSON/Markdown report excludes timestamps and volatile
 must say `fixture_contract_conformance_only`; it cannot be presented as live-model editorial
 accuracy. Fake policy code must not read expected answers from the eval dataset.
 
-Topic-rerank provider contracts must independently assert the v2 JSON-object payload with disabled
-thinking and sampling, exact schema/reason-code prompt, pure/fenced/bounded-affix compatibility,
+Topic-rerank provider contracts must independently assert the v3 and literal v2 JSON-object payload
+with disabled thinking and sampling, exact schema/reason-code prompt, pure/fenced/bounded-affix compatibility,
 and strict rejection of arrays, competing structures, malformed/oversized envelopes, extra fields,
-type coercion, unknown enums, invalid UUIDs, invalid permutations, and priority crossings. Privacy
-tests must inspect bounded `loc`/`type` diagnostics and prove API keys, prompts, candidate text,
+type coercion, unknown enums, invalid UUIDs, invalid permutations, and priority crossings. V3
+domain/service tests must reject cross-run request fingerprints, event-version drift, unavailable
+candidates, priority/final-set barrier crossings, same-day conflicts, and cap breaches as typed
+deterministic fallback without a second provider call. Privacy tests must inspect bounded
+`loc`/`type` diagnostics and prove API keys, prompts, candidate text,
 completion bodies, provider bodies, and exception strings are absent. Literal v1 tests must prove
 its payload and exact-object parser did not inherit v2 behavior.
 

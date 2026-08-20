@@ -27,10 +27,10 @@ from app.domain.topic_rerank import (
     TopicRerankConfig,
     TopicRerankOutcomeKind,
     TopicRerankRequest,
-    apply_content_slot_rerank,
-    apply_daily_topic_rerank,
     build_daily_rerank_pool,
     build_slot_rerank_pool,
+    finalize_content_slot_rerank,
+    finalize_daily_topic_rerank,
 )
 from app.domain.topic_selection import (
     DailyTopicDecision,
@@ -161,12 +161,25 @@ async def _evaluate_case(case: EvalCase) -> dict[str, object]:
     if case.context == "daily":
         if daily_decision is None:
             raise RuntimeError("daily eval decision is missing")
-        final = apply_daily_topic_rerank(daily_decision, outcome)
+        final, outcome = finalize_daily_topic_rerank(
+            daily_decision,
+            pool,
+            outcome,
+            request=request,
+            candidate_limit=RERANK_CONFIG.candidate_limit,
+        )
         selected_ids = (final.selected_event_id,) if final.selected_event_id is not None else ()
     else:
         if slot_decision is None:
             raise RuntimeError("slot eval decision is missing")
-        final_slot = apply_content_slot_rerank(slot_decision, outcome, max_items=3)
+        final_slot, outcome = finalize_content_slot_rerank(
+            slot_decision,
+            pool,
+            outcome,
+            request=request,
+            candidate_limit=RERANK_CONFIG.candidate_limit,
+            max_items=3,
+        )
         selected_ids = final_slot.selected_event_ids
 
     final_suffixes = tuple(_suffix(event_id) for event_id in outcome.final_order)

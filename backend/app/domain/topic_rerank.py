@@ -14,10 +14,18 @@ from app.domain.content_slots import ContentSlotDecision, ContentSlotScore
 from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, TopicScore
 
 LEGACY_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v1"
-CURRENT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v2-zhipu-json-contract"
+V2_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v2-zhipu-json-contract"
+CURRENT_TOPIC_RERANK_POLICY_VERSION = "topic-rerank-v3-layered-auto-finalize"
 DEFAULT_TOPIC_RERANK_POLICY_VERSION = CURRENT_TOPIC_RERANK_POLICY_VERSION
 SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
-    {LEGACY_TOPIC_RERANK_POLICY_VERSION, CURRENT_TOPIC_RERANK_POLICY_VERSION}
+    {
+        LEGACY_TOPIC_RERANK_POLICY_VERSION,
+        V2_TOPIC_RERANK_POLICY_VERSION,
+        CURRENT_TOPIC_RERANK_POLICY_VERSION,
+    }
+)
+STRICT_JSON_TOPIC_RERANK_POLICY_VERSIONS = frozenset(
+    {V2_TOPIC_RERANK_POLICY_VERSION, CURRENT_TOPIC_RERANK_POLICY_VERSION}
 )
 DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT = 8
 DEFAULT_TOPIC_RERANK_MAX_OUTPUT_TOKENS = 1_024
@@ -52,6 +60,11 @@ class TopicRerankFailureCode(StrEnum):
     INVALID_PROVIDER_OUTPUT = "invalid_provider_output"
     INVALID_PERMUTATION = "invalid_permutation"
     PRIORITY_BARRIER_VIOLATION = "priority_barrier_violation"
+    FINALIZATION_REQUEST_MISMATCH = "finalization_request_mismatch"
+    FINALIZATION_EVENT_VERSION_MISMATCH = "finalization_event_version_mismatch"
+    FINALIZATION_CANDIDATE_UNAVAILABLE = "finalization_candidate_unavailable"
+    FINALIZATION_PRIORITY_BARRIER_VIOLATION = "finalization_priority_barrier_violation"
+    FINALIZATION_LIMIT_EXCEEDED = "finalization_limit_exceeded"
     PROVIDER_ERROR = "provider_error"
 
 
@@ -568,6 +581,203 @@ def apply_content_slot_rerank(
         selected_event_ids=tuple(score.base.event_id for score in selected),
         selected_event_version_ids=tuple(score.base.event_version_id for score in selected),
         unfilled_count=max_items - len(selected),
+    )
+
+
+def finalize_daily_topic_rerank(
+    decision: DailyTopicDecision,
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+    *,
+    request: TopicRerankRequest | None,
+    candidate_limit: int,
+) -> tuple[DailyTopicDecision, TopicRerankOutcome]:
+    """Apply v3 reranking only after binding it to this run's frozen pool."""
+
+    failure_code = _daily_finalization_failure(
+        decision,
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=candidate_limit,
+    )
+    if failure_code is not None:
+        outcome = _finalization_fallback(
+            outcome,
+            pool,
+            request=request,
+            failure_code=failure_code,
+        )
+    return apply_daily_topic_rerank(decision, outcome), outcome
+
+
+def finalize_content_slot_rerank(
+    decision: ContentSlotDecision,
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+    *,
+    request: TopicRerankRequest | None,
+    candidate_limit: int,
+    max_items: int,
+) -> tuple[ContentSlotDecision, TopicRerankOutcome]:
+    """Apply v3 slot reranking only after reasserting frozen slot boundaries."""
+
+    failure_code = _slot_finalization_failure(
+        decision,
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=candidate_limit,
+        max_items=max_items,
+    )
+    if failure_code is not None:
+        outcome = _finalization_fallback(
+            outcome,
+            pool,
+            request=request,
+            failure_code=failure_code,
+        )
+    return apply_content_slot_rerank(decision, outcome, max_items=max_items), outcome
+
+
+def _daily_finalization_failure(
+    decision: DailyTopicDecision,
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+    *,
+    request: TopicRerankRequest | None,
+    candidate_limit: int,
+) -> TopicRerankFailureCode | None:
+    if not _uses_v3_finalization(request, outcome):
+        return None
+    common_failure = _common_finalization_failure(
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=candidate_limit,
+    )
+    if common_failure is not None:
+        return common_failure
+    scores_by_id = {score.event_id: score for score in decision.scores}
+    for candidate in pool:
+        score = scores_by_id.get(candidate.event_id)
+        if score is None or score.event_version_id != candidate.event_version_id:
+            return TopicRerankFailureCode.FINALIZATION_EVENT_VERSION_MISMATCH
+        if not score.eligible or score.veto_codes:
+            return TopicRerankFailureCode.FINALIZATION_CANDIDATE_UNAVAILABLE
+        if candidate.deterministic_rank != _required_rank(score.deterministic_rank):
+            return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+        if candidate.priority_group != (0 if score.priority_applied else 1):
+            return TopicRerankFailureCode.FINALIZATION_PRIORITY_BARRIER_VIOLATION
+    return _final_order_priority_failure(pool, outcome)
+
+
+def _slot_finalization_failure(
+    decision: ContentSlotDecision,
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+    *,
+    request: TopicRerankRequest | None,
+    candidate_limit: int,
+    max_items: int,
+) -> TopicRerankFailureCode | None:
+    if not _uses_v3_finalization(request, outcome):
+        return None
+    common_failure = _common_finalization_failure(
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=candidate_limit,
+    )
+    if common_failure is not None:
+        return common_failure
+    if not 1 <= max_items <= 3:
+        return TopicRerankFailureCode.FINALIZATION_LIMIT_EXCEEDED
+    scores_by_id = {score.base.event_id: score for score in decision.scores}
+    for candidate in pool:
+        score = scores_by_id.get(candidate.event_id)
+        if score is None or score.base.event_version_id != candidate.event_version_id:
+            return TopicRerankFailureCode.FINALIZATION_EVENT_VERSION_MISMATCH
+        if not score.base.eligible or score.base.veto_codes or score.same_day_excluded:
+            return TopicRerankFailureCode.FINALIZATION_CANDIDATE_UNAVAILABLE
+        if candidate.deterministic_rank != _required_rank(score.deterministic_rank):
+            return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+        if candidate.priority_group != (0 if score.base.priority_applied else 1):
+            return TopicRerankFailureCode.FINALIZATION_PRIORITY_BARRIER_VIOLATION
+    return _final_order_priority_failure(pool, outcome)
+
+
+def _uses_v3_finalization(
+    request: TopicRerankRequest | None,
+    outcome: TopicRerankOutcome,
+) -> bool:
+    policy_version = request.policy_version if request is not None else outcome.policy_version
+    return policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION
+
+
+def _common_finalization_failure(
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+    *,
+    request: TopicRerankRequest | None,
+    candidate_limit: int,
+) -> TopicRerankFailureCode | None:
+    if not 1 <= candidate_limit <= DEFAULT_TOPIC_RERANK_CANDIDATE_LIMIT:
+        return TopicRerankFailureCode.FINALIZATION_LIMIT_EXCEEDED
+    if len(pool) > candidate_limit:
+        return TopicRerankFailureCode.FINALIZATION_LIMIT_EXCEEDED
+    pool_order = tuple(candidate.event_id for candidate in pool)
+    if outcome.base_order != pool_order or outcome.candidate_count != len(pool):
+        return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+    if request is None:
+        if pool or outcome.request_fingerprint is not None:
+            return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+    elif (
+        request.policy_version != CURRENT_TOPIC_RERANK_POLICY_VERSION
+        or outcome.policy_version != request.policy_version
+        or request.candidates != pool
+        or request.fingerprint != outcome.request_fingerprint
+    ):
+        return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+    if len(set(outcome.final_order)) != len(pool) or set(outcome.final_order) != set(pool_order):
+        return TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+    return None
+
+
+def _final_order_priority_failure(
+    pool: tuple[TopicRerankCandidate, ...],
+    outcome: TopicRerankOutcome,
+) -> TopicRerankFailureCode | None:
+    groups_by_id = {candidate.event_id: candidate.priority_group for candidate in pool}
+    final_groups = tuple(groups_by_id[event_id] for event_id in outcome.final_order)
+    if final_groups != tuple(sorted(final_groups)):
+        return TopicRerankFailureCode.FINALIZATION_PRIORITY_BARRIER_VIOLATION
+    return None
+
+
+def _finalization_fallback(
+    outcome: TopicRerankOutcome,
+    pool: tuple[TopicRerankCandidate, ...],
+    *,
+    request: TopicRerankRequest | None,
+    failure_code: TopicRerankFailureCode,
+) -> TopicRerankOutcome:
+    base_order = tuple(candidate.event_id for candidate in pool)
+    return TopicRerankOutcome(
+        kind=TopicRerankOutcomeKind.FALLBACK,
+        policy_version=CURRENT_TOPIC_RERANK_POLICY_VERSION,
+        provider=outcome.provider,
+        model=outcome.model,
+        candidate_count=len(base_order),
+        base_order=base_order,
+        final_order=base_order,
+        failure_code=failure_code,
+        request_fingerprint=request.fingerprint if request is not None else None,
+        prompt_fingerprint=outcome.prompt_fingerprint,
+        prompt_tokens=outcome.prompt_tokens,
+        completion_tokens=outcome.completion_tokens,
+        reasoning_tokens=outcome.reasoning_tokens,
+        latency_ms=outcome.latency_ms,
     )
 
 

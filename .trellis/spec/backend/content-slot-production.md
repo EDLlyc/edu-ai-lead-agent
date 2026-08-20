@@ -43,13 +43,17 @@ social publishing.
   vetoes.
 - Ministry AI/science-education news remains globally first when eligible and is never held for a
   preferred column. Column affinities are soft preferences, not quotas.
-- The optional shared reranker uses current `topic-rerank-v2-zhipu-json-contract` snapshots while
-  literal `topic-rerank-v1` remains replayable with its legacy prompt/payload/parser. It receives at
-  most the first eight candidates that remain eligible after slot affinity and same-day exclusion.
+- The shared reranker uses current `topic-rerank-v3-layered-auto-finalize` snapshots while literal
+  `topic-rerank-v1` and `topic-rerank-v2-zhipu-json-contract` remain replayable with their original
+  prompt/payload/parser and application semantics. It receives at most the first eight candidates
+  that remain eligible after slot affinity and same-day exclusion.
   It may reorder only within the existing Ministry/ordinary group, never changes affinity, total,
   threshold, veto, exclusion, or item limit, and leaves candidates outside the cap in deterministic
   order. Zero/one candidate skips; provider/schema/permutation failure completes with the exact
-  base order and a typed audit.
+  base order and a typed audit. Before persistence, the v3 automatic finalizer binds the outcome to
+  the exact run request, complete pool, and event/version pairs and rechecks eligibility, veto,
+  priority, same-day state, candidate cap, and slot item limit. Every mismatch is a typed
+  deterministic fallback rather than an accepted model order.
 - Candidate/config reads close before the provider call. Same-day state is loaded before that call
   and rechecked under the persistence lock. A late conflict ends that execution and relies on the
   bounded job retry; an executor never loops a second logical model request after one conflict.

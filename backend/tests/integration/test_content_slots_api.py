@@ -31,6 +31,7 @@ async def test_content_slot_api_projects_disabled_missing_and_durable_empty_slot
     base_settings = integration_context.settings.model_copy(
         update={
             "content_enabled": True,
+            "content_llm_rerank_enabled": False,
             "content_scoring_profile": profile,
             "content_slot_mode_enabled": False,
             "content_morning_enabled": False,

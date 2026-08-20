@@ -21,6 +21,7 @@ from app.domain.topic_rerank import (
     CURRENT_TOPIC_RERANK_POLICY_VERSION,
     LEGACY_TOPIC_RERANK_POLICY_VERSION,
     TOPIC_RERANK_REASON_CODES,
+    V2_TOPIC_RERANK_POLICY_VERSION,
     TopicRerankConfig,
     TopicRerankFailureCode,
     TopicRerankItem,
@@ -32,6 +33,8 @@ from app.domain.topic_rerank import (
     apply_daily_topic_rerank,
     build_daily_rerank_pool,
     build_slot_rerank_pool,
+    finalize_content_slot_rerank,
+    finalize_daily_topic_rerank,
 )
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig, select_daily_topic
 from app.infrastructure.ai.topic_rerank import DeterministicFakeTopicReranker
@@ -125,6 +128,15 @@ async def test_zero_or_one_candidate_skips_provider_and_preserves_order() -> Non
 
     assert outcome.kind is TopicRerankOutcomeKind.SKIPPED
     assert apply_daily_topic_rerank(base, outcome) == base
+    final, audited = finalize_daily_topic_rerank(
+        base,
+        pool,
+        outcome,
+        request=_request(pool),
+        candidate_limit=8,
+    )
+    assert final == base
+    assert audited.kind is TopicRerankOutcomeKind.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -333,6 +345,26 @@ def test_literal_v1_round_trips_and_keeps_legacy_prompt() -> None:
     assert legacy_prompt.fingerprint != current_prompt.fingerprint
 
 
+def test_literal_v2_round_trips_without_reinterpreting_its_prompt() -> None:
+    candidate = _candidate(1)
+    pool = build_daily_rerank_pool(
+        select_daily_topic((candidate,), as_of=NOW, config=CONFIG),
+        (candidate,),
+        limit=8,
+    )
+    v2_config = replace(RERANK_CONFIG, policy_version=V2_TOPIC_RERANK_POLICY_VERSION)
+    v2_request = replace(_request(pool), policy_version=V2_TOPIC_RERANK_POLICY_VERSION)
+    v2_prompt = build_topic_rerank_prompt(v2_request)
+    v3_prompt = build_topic_rerank_prompt(_request(pool))
+
+    assert TopicRerankConfig.from_metadata(v2_config.as_metadata()) == v2_config
+    assert "固定判断维度：传播价值、信息增量、时效性" in v2_prompt.system_message
+    assert "新闻价值、突破程度、时效性" not in v2_prompt.system_message
+    assert "新闻价值、突破程度、时效性" in v3_prompt.system_message
+    assert v2_prompt.user_message == v3_prompt.user_message
+    assert v2_prompt.fingerprint != v3_prompt.fingerprint
+
+
 def test_unknown_policy_is_rejected_by_settings_config_and_request() -> None:
     with pytest.raises(ValueError, match="unsupported topic rerank policy"):
         replace(RERANK_CONFIG, policy_version="topic-rerank-unknown")
@@ -475,14 +507,16 @@ def test_outcome_rejects_non_deterministic_fallback_and_misaligned_applied_audit
         )
 
 
-def test_settings_default_off_and_pin_fake_provider_identity() -> None:
+def test_settings_enable_rerank_only_with_the_enabled_content_pipeline() -> None:
     defaults = Settings(_env_file=None)
     assert build_topic_rerank_config(defaults) == TopicRerankConfig()
+    assert defaults.content_enabled is False
+    assert defaults.content_llm_rerank_enabled is True
     assert defaults.content_llm_rerank_policy_version == CURRENT_TOPIC_RERANK_POLICY_VERSION
 
     enabled = Settings(
         _env_file=None,
-        content_llm_rerank_enabled=True,
+        content_enabled=True,
         ai_provider_mode="fake",
         ai_chat_model="fake-rerank-v1",
     )
@@ -495,4 +529,172 @@ def test_settings_default_off_and_pin_fake_provider_identity() -> None:
 
 def test_settings_reject_enabled_rerank_without_supported_provider() -> None:
     with pytest.raises(ValueError, match="requires fake or zhipu"):
-        Settings(_env_file=None, content_llm_rerank_enabled=True)
+        Settings(_env_file=None, content_enabled=True)
+
+
+@pytest.mark.asyncio
+async def test_v3_finalizer_rejects_outcome_from_another_run() -> None:
+    candidates = (_candidate(1), _candidate(2, communication=1.0))
+    base = select_daily_topic(candidates, as_of=NOW, config=CONFIG)
+    pool = build_daily_rerank_pool(base, candidates, limit=8)
+    first_request = _request(pool)
+    outcome = await execute_topic_rerank(
+        config=RERANK_CONFIG,
+        reranker=DeterministicFakeTopicReranker(model=RERANK_CONFIG.model),
+        request=first_request,
+    )
+    other_run_request = replace(
+        first_request,
+        run_id=UUID("20000000-0000-4000-8000-000000000002"),
+    )
+
+    final, audited = finalize_daily_topic_rerank(
+        base,
+        pool,
+        outcome,
+        request=other_run_request,
+        candidate_limit=8,
+    )
+
+    assert final == base
+    assert audited.kind is TopicRerankOutcomeKind.FALLBACK
+    assert audited.failure_code is TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+    assert audited.base_order == tuple(candidate.event_id for candidate in pool)
+    assert audited.request_fingerprint == other_run_request.fingerprint
+
+
+@pytest.mark.asyncio
+async def test_v3_finalizer_rejects_event_version_rebinding() -> None:
+    candidates = (_candidate(1), _candidate(2, communication=1.0))
+    base = select_daily_topic(candidates, as_of=NOW, config=CONFIG)
+    pool = build_daily_rerank_pool(base, candidates, limit=8)
+    rebound_pool = (
+        replace(
+            pool[0],
+            event_version_id=UUID("30000000-0000-4000-8000-000000000001"),
+        ),
+        pool[1],
+    )
+    request = _request(rebound_pool)
+    outcome = await execute_topic_rerank(
+        config=RERANK_CONFIG,
+        reranker=DeterministicFakeTopicReranker(model=RERANK_CONFIG.model),
+        request=request,
+    )
+
+    final, audited = finalize_daily_topic_rerank(
+        base,
+        rebound_pool,
+        outcome,
+        request=request,
+        candidate_limit=8,
+    )
+
+    assert final == base
+    assert audited.kind is TopicRerankOutcomeKind.FALLBACK
+    assert audited.failure_code is TopicRerankFailureCode.FINALIZATION_EVENT_VERSION_MISMATCH
+
+
+def test_v3_finalizer_reasserts_priority_barrier_after_model_validation() -> None:
+    candidates = (_candidate(1, priority=True), _candidate(2))
+    base = select_daily_topic(candidates, as_of=NOW, config=CONFIG)
+    pool = build_daily_rerank_pool(base, candidates, limit=8)
+    request = _request(pool)
+    final_order = (pool[1].event_id, pool[0].event_id)
+    outcome = TopicRerankOutcome(
+        kind=TopicRerankOutcomeKind.APPLIED,
+        policy_version=CURRENT_TOPIC_RERANK_POLICY_VERSION,
+        provider=RERANK_CONFIG.provider,
+        model=RERANK_CONFIG.model,
+        candidate_count=2,
+        base_order=tuple(candidate.event_id for candidate in pool),
+        final_order=final_order,
+        items=tuple(
+            TopicRerankItem(
+                event_id=event_id,
+                ordinal=ordinal,
+                reason_codes=("information_gain",),
+                explanation="有界理由",
+            )
+            for ordinal, event_id in enumerate(final_order, start=1)
+        ),
+        request_fingerprint=request.fingerprint,
+    )
+
+    final, audited = finalize_daily_topic_rerank(
+        base,
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=8,
+    )
+
+    assert final == base
+    assert audited.failure_code is TopicRerankFailureCode.FINALIZATION_PRIORITY_BARRIER_VIOLATION
+
+
+@pytest.mark.asyncio
+async def test_v3_slot_finalizer_rejects_frozen_same_day_conflict() -> None:
+    candidates = (_candidate(1), _candidate(2, communication=1.0))
+    base = select_slot_topics(
+        candidates,
+        as_of=NOW,
+        config=CONFIG,
+        slot=ContentSlot.NOON,
+        policy=SlotRankingPolicy(),
+        max_items=2,
+    )
+    pool = build_slot_rerank_pool(base, candidates, limit=8)
+    request = replace(_request(pool), context="noon")
+    outcome = await execute_topic_rerank(
+        config=RERANK_CONFIG,
+        reranker=DeterministicFakeTopicReranker(model=RERANK_CONFIG.model),
+        request=request,
+    )
+    conflicted = select_slot_topics(
+        candidates,
+        as_of=NOW,
+        config=CONFIG,
+        slot=ContentSlot.NOON,
+        policy=SlotRankingPolicy(),
+        max_items=2,
+        same_day_selected_event_ids=frozenset({pool[0].event_id}),
+    )
+
+    final, audited = finalize_content_slot_rerank(
+        conflicted,
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=8,
+        max_items=2,
+    )
+
+    assert audited.kind is TopicRerankOutcomeKind.FALLBACK
+    assert audited.failure_code is TopicRerankFailureCode.FINALIZATION_CANDIDATE_UNAVAILABLE
+    assert final.selected_event_ids == conflicted.selected_event_ids
+    assert all(score.rerank_reason_codes == () for score in final.scores)
+
+
+@pytest.mark.asyncio
+async def test_v3_finalizer_reasserts_candidate_limit() -> None:
+    candidates = (_candidate(1), _candidate(2))
+    base = select_daily_topic(candidates, as_of=NOW, config=CONFIG)
+    pool = build_daily_rerank_pool(base, candidates, limit=8)
+    request = _request(pool)
+    outcome = await execute_topic_rerank(
+        config=RERANK_CONFIG,
+        reranker=DeterministicFakeTopicReranker(model=RERANK_CONFIG.model),
+        request=request,
+    )
+
+    final, audited = finalize_daily_topic_rerank(
+        base,
+        pool,
+        outcome,
+        request=request,
+        candidate_limit=1,
+    )
+
+    assert final == base
+    assert audited.failure_code is TopicRerankFailureCode.FINALIZATION_LIMIT_EXCEEDED

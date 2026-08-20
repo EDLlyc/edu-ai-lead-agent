@@ -20,8 +20,8 @@ from app.domain.science_policy_priority import SCIENCE_POLICY_PRIORITY_RULE_VERS
 from app.domain.topic_rerank import (
     TopicRerankConfig,
     TopicRerankRequest,
-    apply_daily_topic_rerank,
     build_daily_rerank_pool,
+    finalize_daily_topic_rerank,
 )
 from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_THRESHOLD,
@@ -63,12 +63,13 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
 
 
 def build_topic_rerank_config(settings: Settings) -> TopicRerankConfig:
+    enabled = settings.content_enabled and settings.content_llm_rerank_enabled
     return TopicRerankConfig(
-        enabled=settings.content_llm_rerank_enabled,
+        enabled=enabled,
         policy_version=settings.content_llm_rerank_policy_version,
         candidate_limit=settings.content_llm_rerank_candidate_limit,
-        provider=(settings.ai_provider_mode if settings.content_llm_rerank_enabled else "disabled"),
-        model=(settings.ai_chat_model if settings.content_llm_rerank_enabled else "none"),
+        provider=(settings.ai_provider_mode if enabled else "disabled"),
+        model=(settings.ai_chat_model if enabled else "none"),
         max_output_tokens=settings.content_llm_rerank_max_output_tokens,
     )
 
@@ -201,7 +202,13 @@ class TopicSelectionExecutor:
                 request=request,
             )
             self._ensure_lease(lease_lost)
-            decision = apply_daily_topic_rerank(decision, rerank_outcome)
+            decision, rerank_outcome = finalize_daily_topic_rerank(
+                decision,
+                pool,
+                rerank_outcome,
+                request=request,
+                candidate_limit=rerank_config.candidate_limit,
+            )
             if not await self._repository.persist_decision(
                 claimed=claimed,
                 config=config,

@@ -99,12 +99,14 @@ decision code. It must not contain perceptual hashes, nearest object IDs, plan s
 reference paths, image bytes, provider bodies, or content text. The final warning is durable
 artifact/package state; it is not inferred from log prose.
 
-Topic-rerank invalid-output observation may include only run/context IDs, policy/provider/model,
+Topic-rerank invalid-output or v3 finalization observation may include only run/context IDs,
+policy/provider/model,
 the generic durable failure, safe prompt/request fingerprints, candidate count, usage/latency, and
 bounded internal stage plus normalized validation `loc`/`type` values. Never log the system/user
 message, candidate title/summary, completion content, response body, provider exception text, or
-credential. The durable rerank row retains the generic `invalid_provider_output` category rather
-than the internal diagnostic stage.
+credential. Provider-output failures retain the generic durable `invalid_provider_output` category
+rather than the internal diagnostic stage; v3 finalization keeps only its allowlisted typed
+mismatch code and safe identities.
 
 ## Avoid
 

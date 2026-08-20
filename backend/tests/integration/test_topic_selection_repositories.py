@@ -1,16 +1,34 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from app.application.ports.content_slots import GovernedSlotLineage
 from app.application.services.governance_graph import governance_graph_input
 from app.application.services.governance_runtime import build_governance_version_bundle
+from app.application.services.topic_reranking import execute_topic_rerank
 from app.core.errors import ConflictError
+from app.domain.content_slots import (
+    ContentSlot,
+    ContentSlotSchedule,
+    SlotRankingPolicy,
+    select_slot_topics,
+)
 from app.domain.editorial_relevance import ScienceTechContentSignal
 from app.domain.governance_enums import FactualCategory
 from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
-from app.domain.topic_rerank import TopicRerankConfig
+from app.domain.topic_rerank import (
+    TopicRerankConfig,
+    TopicRerankFailureCode,
+    TopicRerankOutcomeKind,
+    TopicRerankRequest,
+    build_daily_rerank_pool,
+    build_slot_rerank_pool,
+    finalize_content_slot_rerank,
+    finalize_daily_topic_rerank,
+)
 from app.domain.topic_selection import (
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     SOURCE_PRIORITY_RULE_VERSION,
@@ -19,9 +37,19 @@ from app.domain.topic_selection import (
     TopicScoringConfig,
     select_daily_topic,
 )
+from app.infrastructure.ai.topic_rerank import DeterministicFakeTopicReranker
+from app.infrastructure.db.content_slots import (
+    claim_content_slot_job,
+    complete_content_slot_job,
+    enqueue_content_slot_run,
+    persist_content_slot_decision,
+)
 from app.infrastructure.db.governance_repositories import create_governance_run_for_acquisition
 from app.infrastructure.db.models import (
     AcquisitionJobModel,
+    AcquisitionRunModel,
+    EventClusterModel,
+    EventClusterVersionModel,
     EvidenceCandidateModel,
     SourceObservationModel,
     SourceSnapshotModel,
@@ -459,3 +487,299 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
     assert stored.explanation["topic_priority_policy"] == MOE_SCIENCE_TOP1_PRIORITY_POLICY
     assert stored.explanation["priority_applied"] is True
     assert stored.explanation["threshold_bypass_applied"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_v3_rerank_applied_and_finalization_fallback_are_atomic(
+    integration_context: IntegrationContext,
+) -> None:
+    """Persist both v3 paths against real event/version foreign keys."""
+
+    acquisition_run_id, candidate_ids = await _create_acquisition_fixture(
+        integration_context,
+        candidate_count=1,
+    )
+    now = datetime.now(UTC)
+    async with integration_context.session_factory() as session:
+        candidate = await session.get(EvidenceCandidateModel, candidate_ids[0])
+        assert candidate is not None
+        candidate.title = "人工智能教育与硬科技融合取得新进展"
+        candidate.clean_text = "人工智能教育与硬科技融合取得可核验的新进展。"
+        candidate.published_at = now
+        candidate.first_fetched_at = now
+        await session.commit()
+
+    bundle = build_governance_version_bundle(integration_context.settings)
+    async with integration_context.session_factory() as session:
+        await create_governance_run_for_acquisition(
+            session,
+            acquisition_run_id=acquisition_run_id,
+            bundle=bundle,
+            timezone="Asia/Shanghai",
+        )
+    claimed_governance = await _claim(
+        integration_context,
+        worker_id="topic-rerank-v3-atomic",
+    )
+    graph = _build_graph(
+        integration_context,
+        bundle=bundle,
+        analysis_model=FakeFactualAnalysisModel(
+            category=FactualCategory.AI_INDUSTRY_APPLICATION,
+            entity_name="硬科技教育项目",
+        ),
+        embedding_model=FakeEmbeddingModel(),
+        now=now,
+    )
+    graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+    event_id = graph_result["event_id"]
+    assert isinstance(event_id, UUID)
+
+    suffix = uuid4().hex[:12]
+    scoring_config = TopicScoringConfig(profile=f"rerank-v3-atomic-{suffix}")
+    rerank_config = TopicRerankConfig(
+        enabled=True,
+        provider="fake",
+        model="fake-rerank-v1",
+    )
+    cutoff = now + timedelta(minutes=1)
+    async with integration_context.session_factory() as session:
+        seed_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=now.date(),
+            timezone="Asia/Shanghai",
+            config=scoring_config,
+            rerank_config=rerank_config,
+            governed_event_cutoff=cutoff,
+        )
+        loaded = await load_topic_candidates(session, seed_run.id)
+        first = next(candidate for candidate in loaded if candidate.event_id == event_id)
+        original_version = await session.get(EventClusterVersionModel, first.event_version_id)
+        assert original_version is not None
+        clone_event_id = uuid4()
+        clone_version_id = uuid4()
+        clone_event = EventClusterModel(
+            id=clone_event_id,
+            status="active",
+            current_version_id=None,
+        )
+        session.add(clone_event)
+        await session.flush()
+        session.add(
+            EventClusterVersionModel(
+                id=clone_version_id,
+                event_id=clone_event_id,
+                version=1,
+                representative_article_id=original_version.representative_article_id,
+                representative_title="硬科技教育项目的另一项可核验进展",
+                summary_projection=dict(original_version.summary_projection),
+                event_time_start=original_version.event_time_start,
+                event_time_end=original_version.event_time_end,
+                event_time_precision=original_version.event_time_precision,
+                member_set_hash=uuid4().hex + uuid4().hex,
+                source_diversity=original_version.source_diversity,
+                category_projection=list(original_version.category_projection),
+                entity_projection=list(original_version.entity_projection),
+                clustering_policy_version=original_version.clustering_policy_version,
+                version_bundle_fingerprint=original_version.version_bundle_fingerprint,
+                created_by_run_id=original_version.created_by_run_id,
+            )
+        )
+        await session.flush()
+        clone_event.current_version_id = clone_version_id
+        second = replace(
+            first,
+            event_id=clone_event_id,
+            event_version_id=clone_version_id,
+            priority_title="硬科技教育项目的另一项可核验进展",
+            communication_potential=max(0.0, first.communication_potential - 0.1),
+        )
+
+        claimed_applied = await claim_topic_selection_job(
+            session,
+            run_id=seed_run.id,
+            worker_id="topic-rerank-v3-applied",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed_applied is not None
+        applied_decision = select_daily_topic((first, second), as_of=cutoff, config=scoring_config)
+        applied_pool = build_daily_rerank_pool(applied_decision, (first, second), limit=8)
+        applied_request = TopicRerankRequest(
+            run_id=seed_run.id,
+            cutoff_at=cutoff,
+            context="daily",
+            policy_version=rerank_config.policy_version,
+            max_output_tokens=rerank_config.max_output_tokens,
+            candidates=applied_pool,
+        )
+        applied_outcome = await execute_topic_rerank(
+            config=rerank_config,
+            reranker=DeterministicFakeTopicReranker(model=rerank_config.model),
+            request=applied_request,
+        )
+        applied_decision, applied_outcome = finalize_daily_topic_rerank(
+            applied_decision,
+            applied_pool,
+            applied_outcome,
+            request=applied_request,
+            candidate_limit=rerank_config.candidate_limit,
+        )
+        assert applied_outcome.kind is TopicRerankOutcomeKind.APPLIED
+        assert await persist_topic_selection_decision(
+            session,
+            claimed=claimed_applied,
+            config=scoring_config,
+            decision=applied_decision,
+            rerank_outcome=applied_outcome,
+        )
+        assert await complete_topic_selection_job(session, claimed=claimed_applied)
+
+        fallback_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=now.date() + timedelta(days=1),
+            timezone="Asia/Shanghai",
+            config=scoring_config,
+            rerank_config=rerank_config,
+            governed_event_cutoff=cutoff,
+        )
+        claimed_fallback = await claim_topic_selection_job(
+            session,
+            run_id=fallback_run.id,
+            worker_id="topic-rerank-v3-fallback",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed_fallback is not None
+        fallback_decision = select_daily_topic((first, second), as_of=cutoff, config=scoring_config)
+        fallback_pool = build_daily_rerank_pool(fallback_decision, (first, second), limit=8)
+        fallback_request = replace(
+            applied_request,
+            run_id=fallback_run.id,
+            candidates=fallback_pool,
+        )
+        fallback_decision, fallback_outcome = finalize_daily_topic_rerank(
+            fallback_decision,
+            fallback_pool,
+            applied_outcome,
+            request=fallback_request,
+            candidate_limit=rerank_config.candidate_limit,
+        )
+        assert fallback_outcome.kind is TopicRerankOutcomeKind.FALLBACK
+        assert fallback_outcome.failure_code is TopicRerankFailureCode.FINALIZATION_REQUEST_MISMATCH
+        assert await persist_topic_selection_decision(
+            session,
+            claimed=claimed_fallback,
+            config=scoring_config,
+            decision=fallback_decision,
+            rerank_outcome=fallback_outcome,
+        )
+        assert await complete_topic_selection_job(session, claimed=claimed_fallback)
+
+        applied_record = await get_topic_rerank_record(
+            session,
+            topic_selection_run_id=seed_run.id,
+        )
+        fallback_record = await get_topic_rerank_record(
+            session,
+            topic_selection_run_id=fallback_run.id,
+        )
+        applied_scores = await list_topic_score_rows(session, seed_run.id)
+        fallback_scores = await list_topic_score_rows(session, fallback_run.id)
+
+        slot_schedule = ContentSlotSchedule(
+            slot=ContentSlot.MORNING,
+            enabled=True,
+            target_hour=7,
+            target_minute=30,
+            max_items=2,
+        )
+        slot_policy = SlotRankingPolicy()
+        slot_business_date = now.date() + timedelta(days=2)
+        acquisition_run = await session.get(AcquisitionRunModel, acquisition_run_id)
+        assert acquisition_run is not None
+        acquisition_run.business_date = slot_business_date
+        acquisition_run.content_slot = ContentSlot.MORNING.value
+        await session.flush()
+        slot_run, _ = await enqueue_content_slot_run(
+            session,
+            business_date=slot_business_date,
+            timezone="Asia/Shanghai",
+            schedule=slot_schedule,
+            config=scoring_config,
+            policy=slot_policy,
+            lineage=GovernedSlotLineage(
+                acquisition_run_id=acquisition_run_id,
+                governance_run_id=claimed_governance.run_id,
+                governed_event_cutoff=cutoff,
+            ),
+            trigger="manual",
+            rerank_config=rerank_config,
+        )
+        claimed_slot = await claim_content_slot_job(
+            session,
+            worker_id="topic-rerank-v3-slot",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed_slot is not None
+        slot_decision = select_slot_topics(
+            (first, second),
+            as_of=cutoff,
+            config=scoring_config,
+            slot=ContentSlot.MORNING,
+            policy=slot_policy,
+            max_items=2,
+        )
+        slot_pool = build_slot_rerank_pool(slot_decision, (first, second), limit=8)
+        slot_request = TopicRerankRequest(
+            run_id=slot_run.id,
+            cutoff_at=cutoff,
+            context="morning",
+            policy_version=rerank_config.policy_version,
+            max_output_tokens=rerank_config.max_output_tokens,
+            candidates=slot_pool,
+        )
+        slot_outcome = await execute_topic_rerank(
+            config=rerank_config,
+            reranker=DeterministicFakeTopicReranker(model=rerank_config.model),
+            request=slot_request,
+        )
+        slot_decision, slot_outcome = finalize_content_slot_rerank(
+            slot_decision,
+            slot_pool,
+            slot_outcome,
+            request=slot_request,
+            candidate_limit=rerank_config.candidate_limit,
+            max_items=2,
+        )
+        assert await persist_content_slot_decision(
+            session,
+            claimed=claimed_slot,
+            config=scoring_config,
+            policy=slot_policy,
+            decision=slot_decision,
+            rerank_outcome=slot_outcome,
+        )
+        assert await complete_content_slot_job(session, claimed=claimed_slot)
+        slot_record = await get_topic_rerank_record(
+            session,
+            content_slot_run_id=slot_run.id,
+        )
+
+    assert applied_record is not None
+    assert applied_record.outcome == "applied"
+    assert applied_record.failure_code is None
+    assert len(applied_record.reasons) == 2
+    assert sorted(score.score.rank for score in applied_scores) == [1, 2]
+    assert sorted(score.score.deterministic_rank for score in applied_scores) == [1, 2]
+    assert fallback_record is not None
+    assert fallback_record.outcome == "fallback"
+    assert fallback_record.failure_code == "finalization_request_mismatch"
+    assert fallback_record.base_order == fallback_record.final_order
+    assert all(score.score.rank == score.score.deterministic_rank for score in fallback_scores)
+    assert slot_record is not None
+    assert slot_record.outcome == "applied"
+    assert slot_record.failure_code is None
+    assert len(slot_record.reasons) == 2

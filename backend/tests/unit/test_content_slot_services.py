@@ -127,6 +127,7 @@ def _enabled_settings() -> Settings:
     return Settings(
         _env_file=None,
         content_enabled=True,
+        content_llm_rerank_enabled=False,
         content_slot_mode_enabled=True,
         content_noon_enabled=True,
     )

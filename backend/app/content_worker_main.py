@@ -96,7 +96,7 @@ async def run_content_worker() -> None:
         if settings.ai_provider_mode == "zhipu":
             embedding_client = httpx.AsyncClient(follow_redirects=False)
         reranker: TopicReranker | None = None
-        if settings.content_llm_rerank_enabled:
+        if settings.content_enabled and settings.content_llm_rerank_enabled:
             if settings.ai_provider_mode == "fake":
                 reranker = DeterministicFakeTopicReranker(model=settings.ai_chat_model)
             else:

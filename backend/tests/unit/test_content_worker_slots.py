@@ -47,6 +47,7 @@ async def test_content_worker_reconciles_only_the_active_copy_origin(slot_mode: 
     settings = Settings(
         _env_file=None,
         content_enabled=True,
+        content_llm_rerank_enabled=False,
         content_slot_mode_enabled=slot_mode,
     )
 
