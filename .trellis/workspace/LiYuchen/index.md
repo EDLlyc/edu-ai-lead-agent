@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 63
+- **Total Sessions**: 64
 - **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1447 | Active |
+| `journal-1.md` | ~1468 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 64 | 2026-08-20 | 分层新闻筛选与自动终审 | `05e8ff0` | `main` |
 | 63 | 2026-08-20 | Broaden hard-tech news recall | `7d22370` | `main` |
 | 62 | 2026-08-19 | Create Aug 10-16 weekly report | `f155d8a` | `main` |
 | 61 | 2026-08-19 | Replace Trellis screenshots with task/spec example | `587a144` | `main` |

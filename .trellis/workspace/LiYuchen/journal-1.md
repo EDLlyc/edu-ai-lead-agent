@@ -1445,3 +1445,24 @@ Expanded governed hard-tech acquisition from breakthrough-only filtering to vers
 ### Status
 
 [OK] **Completed**
+
+
+## Session 64: 分层新闻筛选与自动终审
+
+**Date**: 2026-08-20
+**Task**: 分层新闻筛选与自动终审
+**Branch**: `main`
+
+### Summary
+
+完成硬规则、高召回粗筛、单次 LLM 细筛和无人工自动终审流水线；保持 v1/v2 回放及后续发布链路不变，完整后端与独立复核通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05e8ff0` | (see git log) |
+
+### Status
+
+[OK] **Completed**
