@@ -1487,3 +1487,24 @@ Expanded governed hard-tech acquisition from breakthrough-only filtering to vers
 ### Status
 
 [OK] **Completed**
+
+
+## Session 66: 本地重新抓取新闻一次
+
+**Date**: 2026-08-20
+**Task**: 本地重新抓取新闻一次
+**Branch**: `main`
+
+### Summary
+
+执行一次受控本地采集，10/10 来源成功，新增 3 条；下游与模型调用零增量，临时进程完整清理。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0e8d29` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 65
+- **Total Sessions**: 66
 - **Last Active**: 2026-08-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1489 | Active |
+| `journal-1.md` | ~1510 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 66 | 2026-08-20 | 本地重新抓取新闻一次 | `d0e8d29` | `main` |
 | 65 | 2026-08-20 | 收紧科技教育优先并兼容智谱排序 | `7fbb86c` | `main` |
 | 64 | 2026-08-20 | 分层新闻筛选与自动终审 | `05e8ff0` | `main` |
 | 63 | 2026-08-20 | Broaden hard-tech news recall | `7d22370` | `main` |
