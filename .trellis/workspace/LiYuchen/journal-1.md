@@ -1424,3 +1424,24 @@ Created a five-page Chinese weekly report for 2026-08-10 through 2026-08-16 usin
 ### Next Steps
 
 - Use the pending connector parser and provider compatibility items as next-week inputs.
+
+
+## Session 63: Broaden hard-tech news recall
+
+**Date**: 2026-08-20
+**Task**: Broaden hard-tech news recall
+**Branch**: `main`
+
+### Summary
+
+Expanded governed hard-tech acquisition from breakthrough-only filtering to versioned broad recall with typed plan, failure, capital, event, product, and completed-progress signals; preserved historical replay and hard vetoes; added Xinhua aerospace recovery coverage and false-positive guards.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d22370` | (see git log) |
+
+### Status
+
+[OK] **Completed**
