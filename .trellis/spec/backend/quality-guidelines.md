@@ -311,6 +311,9 @@ Cover pure normalization, source-tier eligibility, exact/semantic duplicate deci
 normalization, weighted scoring, threshold behavior, veto precedence, claim coverage, validation
 codes, retry classification, state transitions, and redaction. Use fixed clocks and deterministic
 fixtures.
+Brand parser fixtures must be synthetic and prove PDF page/card boundaries, DOCX Q&A/table order,
+exact parent/child slices, contextual input hashes, conservative claim classification, and
+parent-aware diversity without committing private corpus text or paths.
 
 ### Integration tests
 
@@ -350,6 +353,12 @@ synthetic provider-free fixtures spanning daily and all three slots, priority, v
 fallback cases. Its stable JSON/Markdown report excludes timestamps and volatile usage/latency and
 must say `fixture_contract_conformance_only`; it cannot be presented as live-model editorial
 accuracy. Fake policy code must not read expected answers from the eval dataset.
+
+The checked brand-text retrieval eval is `make brand-retrieval-eval`. Its 36 sanitized cases run
+frozen retrieval v2 and structured v3 through the same domain-owned weighted RRF and diversity
+selector used by PostgreSQL, then score Recall@5, MRR@5, nDCG@5, parent diversity, external-claim
+verification, and brand/evidence separation. The stable report must retain its provider-free fixture
+disclaimer; these metrics must never be described as live embedding or private-corpus accuracy.
 
 Topic-rerank provider contracts must independently assert the v3 and literal v2 JSON-object payload
 with disabled thinking and sampling, exact schema/reason-code prompt, pure/fenced/bounded-affix compatibility,
@@ -593,8 +602,11 @@ release artifacts, or production deployment automation change.
   `--require-hashes`, records OCI created/revision/source/base metadata, and runs as non-root.
 - `.dockerignore` excludes Git/Trellis state, tests, reports, local environments, credentials,
   private materials, and secret-shaped paths from the backend context.
-- Exactly nine application/migration Compose services inherit one shared `APP_IMAGE`. Local
-  development retains `build:`; production sets a digest and always uses `--no-build`.
+- Exactly nine production application/migration Compose services and two development-only
+  `official-account-local` profile services inherit one shared `APP_IMAGE`. The release service
+  set remains the original nine; the local article worker/fixture never enter the default or
+  production topology. Local development retains `build:`; production sets a digest and always
+  uses `--no-build`.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
@@ -924,6 +936,8 @@ the root-owned deployer.
 - Are logs structured, correlated, and free of secrets/content/PII?
 - Are migration and OpenAPI drift checks included where contracts changed?
 - Do tests cover the negative/policy path, not only the happy path?
+- Do visual retrieval tests prove complete-catalog identity scope, semantic ordering after hard
+  gates, deterministic fallback, zero provider calls by default, and no private projection?
 - Does the product still require a human to publish?
 
 ## Forbidden patterns

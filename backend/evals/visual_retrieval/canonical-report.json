@@ -1,0 +1,15 @@
+{
+  "schema_version": "visual-retrieval-eval-report-v2",
+  "input_policy_version": "brand-visual-embedding-input-v2",
+  "dataset_sha256": "84dfafa4bdd03bec28d0d543c16be7b995f35551f8e33706d84e8b341c9c3309",
+  "case_count": 6,
+  "passed_count": 6,
+  "results": [
+    {"case_id": "text-query", "passed": true, "ranking_source": "semantic_primary"},
+    {"case_id": "image-query", "passed": true, "ranking_source": "semantic_primary"},
+    {"case_id": "synonym-query", "passed": true, "ranking_source": "semantic_primary"},
+    {"case_id": "unrelated-query", "passed": true, "ranking_source": "semantic_primary"},
+    {"case_id": "stable-tie", "passed": true, "ranking_source": "semantic_primary"},
+    {"case_id": "provider-failure", "passed": true, "ranking_source": "deterministic_rules"}
+  ]
+}

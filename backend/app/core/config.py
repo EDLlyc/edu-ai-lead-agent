@@ -5,10 +5,32 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.domain.brand_knowledge import (
+    STRUCTURED_BRAND_DERIVATION_VERSIONS,
+    STRUCTURED_BRAND_RETRIEVAL_VERSION,
+    SUPPORTED_BRAND_DERIVATION_VERSIONS,
+    SUPPORTED_BRAND_RETRIEVAL_VERSIONS,
+)
 from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, ContentSlotSchedule
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
+from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
+    OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
+    OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+    OFFICIAL_ACCOUNT_RENDERER_VERSION,
+    OFFICIAL_ACCOUNT_RULE_VERSION,
+    OFFICIAL_ACCOUNT_STYLE_VERSION,
+    OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
+    OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
+    OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
+)
 from app.domain.topic_rerank import (
     DEFAULT_TOPIC_RERANK_POLICY_VERSION,
     SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS,
@@ -22,6 +44,7 @@ from app.domain.visual_diversity import (
     VISUAL_PROMPT_V3_VERSION,
     VISUAL_SELECTOR_V2_VERSION,
 )
+from app.domain.visual_retrieval import VisualEmbeddingIdentity
 
 
 class Settings(BaseSettings):
@@ -30,6 +53,9 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    app_browser_origins: str = Field(
+        default="http://127.0.0.1:5173", min_length=1, max_length=1_000
+    )
     business_timezone: str = "Asia/Shanghai"
 
     database_url: SecretStr = SecretStr(
@@ -160,10 +186,10 @@ class Settings(BaseSettings):
     brand_parse_max_chunks: int = Field(default=600, ge=1, le=2_000)
     brand_chunk_characters: int = Field(default=900, ge=300, le=3_000)
     brand_chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
-    brand_parser_version: str = "brand-parser-v2-glm-ocr"
-    brand_chunk_version: str = "brand-chunk-v2-structure-aware"
-    brand_embedding_input_version: str = "brand-embedding-input-v1"
-    brand_retrieval_version: str = "brand-hybrid-rrf-v2-diverse"
+    brand_parser_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[0]
+    brand_chunk_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[1]
+    brand_embedding_input_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[2]
+    brand_retrieval_version: str = STRUCTURED_BRAND_RETRIEVAL_VERSION
     brand_ocr_model: str = Field(default="glm-ocr", min_length=1, max_length=120)
     brand_ocr_sparse_text_threshold: int = Field(default=40, ge=1, le=10_000)
     brand_ocr_max_request_bytes: int = Field(
@@ -184,6 +210,83 @@ class Settings(BaseSettings):
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
+
+    official_account_local_enabled: bool = False
+    official_account_local_worker_enabled: bool = False
+    official_account_local_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    official_account_local_worker_concurrency: int = Field(default=1, ge=1, le=4)
+    official_account_local_lease_seconds: int = Field(default=300, ge=60, le=3_600)
+    official_account_local_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
+    official_account_local_max_attempts: int = Field(default=3, ge=1, le=6)
+    official_account_local_retry_base_seconds: int = Field(default=10, ge=1, le=600)
+    official_account_local_generator_prompt_version: str = OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION
+    official_account_local_article_schema_version: str = OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION
+    official_account_local_media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+    official_account_local_auditor_prompt_version: str = OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION
+    official_account_local_audit_schema_version: str = OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION
+    official_account_local_rule_version: str = OFFICIAL_ACCOUNT_RULE_VERSION
+    official_account_local_renderer_version: str = OFFICIAL_ACCOUNT_RENDERER_VERSION
+    official_account_local_style_version: str = OFFICIAL_ACCOUNT_STYLE_VERSION
+    official_account_local_template_version: str = OFFICIAL_ACCOUNT_TEMPLATE_VERSION
+    official_account_local_adapter_version: str = OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
+    official_account_local_visual_query_version: str = OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
+    official_account_local_visual_selector_version: str = OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+    official_account_local_visual_semantic_enabled: bool = False
+    official_account_local_generated_visuals_enabled: bool = False
+    official_account_local_generated_visual_plan_version: str = (
+        OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
+    )
+    official_account_local_generated_visual_prompt_version: str = (
+        OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
+    )
+    official_account_local_default_author: str = Field(
+        default="赛先生", min_length=1, max_length=80
+    )
+    official_account_local_min_characters: int = Field(default=1_200, ge=1_000, le=4_000)
+    official_account_local_target_min_characters: int = Field(
+        default=1_800,
+        ge=1_000,
+        le=4_000,
+    )
+    official_account_local_target_max_characters: int = Field(
+        default=2_600,
+        ge=1_000,
+        le=4_000,
+    )
+    official_account_local_max_characters: int = Field(default=4_000, ge=1_200, le=4_000)
+    official_account_local_max_output_tokens: int = Field(default=16_384, ge=2_048, le=16_384)
+    official_account_local_audit_max_output_tokens: int = Field(
+        default=2_048,
+        ge=512,
+        le=4_096,
+    )
+
+    ip_asset_hub_enabled: bool = False
+    ip_asset_worker_enabled: bool = False
+    ip_asset_generation_enabled: bool = False
+    ip_asset_recognition_enabled: bool = False
+    ip_asset_recognition_model: str = Field(
+        default="glm-4.1v-thinking-flash",
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$",
+    )
+    ip_asset_recognition_timeout_seconds: float = Field(default=90.0, gt=0, le=180)
+    ip_asset_recognition_concurrency: int = Field(default=1, ge=1, le=4)
+    ip_asset_recognition_max_request_bytes: int = Field(
+        default=16 * 1024 * 1024,
+        ge=1024 * 1024,
+        le=32 * 1024 * 1024,
+    )
+    ip_asset_recognition_max_response_bytes: int = Field(
+        default=1024 * 1024,
+        ge=16 * 1024,
+        le=4 * 1024 * 1024,
+    )
+    ip_asset_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    ip_asset_worker_concurrency: int = Field(default=1, ge=1, le=4)
+    ip_asset_lease_seconds: int = Field(default=300, ge=60, le=3_600)
+    ip_asset_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
+    ip_asset_max_attempts: int = Field(default=3, ge=1, le=6)
+    ip_asset_upload_concurrency: int = Field(default=2, ge=1, le=8)
 
     image_enabled: bool = False
     image_provider_mode: Literal["disabled", "fake", "toapis", "comfly"] = "disabled"
@@ -233,6 +336,19 @@ class Settings(BaseSettings):
     image_similarity_threshold: int = Field(default=DEFAULT_IMAGE_SIMILARITY_THRESHOLD, ge=0, le=64)
     image_diversity_max_regenerations: Literal[1] = 1
 
+    visual_semantic_enabled: bool = False
+    visual_embedding_provider_mode: Literal["disabled", "fake", "alibaba"] = "disabled"
+    visual_embedding_endpoint: SecretStr | None = None
+    visual_embedding_api_key: SecretStr | None = None
+    visual_embedding_model: Literal["qwen3-vl-embedding"] = "qwen3-vl-embedding"
+    visual_embedding_dimensions: Literal[2048] = 2048
+    visual_embedding_input_policy_version: Literal["brand-visual-embedding-input-v2"] = (
+        "brand-visual-embedding-input-v2"
+    )
+    visual_embedding_timeout_seconds: float = Field(default=60.0, gt=0, le=180)
+    visual_embedding_concurrency: int = Field(default=1, ge=1, le=4)
+    visual_index_lease_seconds: int = Field(default=300, ge=30, le=3_600)
+
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
     ai_platform_api_key: SecretStr | None = None
@@ -264,6 +380,47 @@ class Settings(BaseSettings):
     @classmethod
     def parse_fixed_diversity_regeneration_count(cls, value: object) -> object:
         return 1 if value == "1" else value
+
+    @field_validator("visual_embedding_dimensions", mode="before")
+    @classmethod
+    def parse_fixed_visual_embedding_dimensions(cls, value: object) -> object:
+        return 2048 if value == "2048" else value
+
+    @field_validator("app_browser_origins")
+    @classmethod
+    def validate_app_browser_origins(cls, value: str) -> str:
+        origins: list[str] = []
+        for raw in value.split(","):
+            candidate = raw.strip().rstrip("/")
+            parsed = urlsplit(candidate)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or candidate == "*"
+            ):
+                raise ValueError("APP_BROWSER_ORIGINS must contain exact HTTP(S) origins")
+            if candidate not in origins:
+                origins.append(candidate)
+        if not origins:
+            raise ValueError("APP_BROWSER_ORIGINS must not be empty")
+        return ",".join(origins)
+
+    @property
+    def browser_origins(self) -> tuple[str, ...]:
+        return tuple(self.app_browser_origins.split(","))
+
+    @property
+    def visual_embedding_identity(self) -> VisualEmbeddingIdentity:
+        return VisualEmbeddingIdentity(
+            model=self.visual_embedding_model,
+            dimensions=self.visual_embedding_dimensions,
+            input_policy_version=self.visual_embedding_input_policy_version,
+        )
 
     @field_validator("content_llm_rerank_policy_version")
     @classmethod
@@ -321,6 +478,11 @@ class Settings(BaseSettings):
             raise ValueError("content heartbeat must be shorter than the lease")
         if self.wecom_heartbeat_seconds >= self.wecom_lease_seconds:
             raise ValueError("WeCom heartbeat must be shorter than the lease")
+        if (
+            self.official_account_local_heartbeat_seconds
+            >= self.official_account_local_lease_seconds
+        ):
+            raise ValueError("official-account heartbeat must be shorter than the lease")
         if self.brand_chunk_overlap_characters >= self.brand_chunk_characters:
             raise ValueError("brand chunk overlap must be shorter than the chunk")
         if (
@@ -333,6 +495,95 @@ class Settings(BaseSettings):
             raise ValueError("content processes require content to be enabled")
         if self.content_slot_mode_enabled and not self.content_enabled:
             raise ValueError("content slot mode requires content to be enabled")
+        if self.official_account_local_worker_enabled and not self.official_account_local_enabled:
+            raise ValueError("official-account worker requires the local feature to be enabled")
+        if self.ip_asset_worker_enabled and not self.ip_asset_hub_enabled:
+            raise ValueError("IP asset worker requires the hub to be enabled")
+        if self.ip_asset_heartbeat_seconds >= self.ip_asset_lease_seconds:
+            raise ValueError("IP asset heartbeat must be shorter than the lease")
+        if self.ip_asset_generation_enabled and (
+            not self.ip_asset_hub_enabled
+            or not self.image_enabled
+            or self.image_provider_mode == "disabled"
+        ):
+            raise ValueError("IP asset generation requires an enabled hub and image provider")
+        if self.ip_asset_recognition_enabled:
+            recognition_key = (
+                self.ai_platform_api_key.get_secret_value().strip()
+                if self.ai_platform_api_key is not None
+                else ""
+            )
+            if (
+                not self.ip_asset_hub_enabled
+                or self.ai_provider_mode != "zhipu"
+                or not recognition_key
+            ):
+                raise ValueError(
+                    "IP asset recognition requires an enabled hub and configured Zhipu provider"
+                )
+        if not (
+            self.official_account_local_min_characters
+            <= self.official_account_local_target_min_characters
+            <= self.official_account_local_target_max_characters
+            <= self.official_account_local_max_characters
+        ):
+            raise ValueError("official-account article length policy is inconsistent")
+        official_account_versions = (
+            self.official_account_local_generator_prompt_version,
+            self.official_account_local_article_schema_version,
+            self.official_account_local_media_plan_version,
+            self.official_account_local_auditor_prompt_version,
+            self.official_account_local_audit_schema_version,
+            self.official_account_local_rule_version,
+            self.official_account_local_renderer_version,
+            self.official_account_local_style_version,
+            self.official_account_local_template_version,
+            self.official_account_local_adapter_version,
+            self.official_account_local_visual_query_version,
+            self.official_account_local_visual_selector_version,
+        )
+        if self.official_account_local_enabled and official_account_versions != (
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+            OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
+            OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
+            OFFICIAL_ACCOUNT_RULE_VERSION,
+            OFFICIAL_ACCOUNT_RENDERER_VERSION,
+            OFFICIAL_ACCOUNT_STYLE_VERSION,
+            OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
+            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+            OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
+            OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
+        ):
+            raise ValueError("official-account current version bundle is unsupported")
+        if (
+            self.official_account_local_visual_semantic_enabled
+            and self.visual_embedding_provider_mode == "disabled"
+        ):
+            raise ValueError("official-account visual semantic matching requires a visual provider")
+        if self.official_account_local_generated_visuals_enabled:
+            if (
+                not self.official_account_local_enabled
+                or not self.official_account_local_worker_enabled
+                or not self.image_enabled
+                or self.image_provider_mode == "disabled"
+            ):
+                raise ValueError(
+                    "generated official-account visuals require enabled local worker and image "
+                    "provider"
+                )
+            if self.image_max_attempts != 1:
+                raise ValueError(
+                    "generated official-account visuals require exactly one provider attempt"
+                )
+            if (
+                self.official_account_local_generated_visual_plan_version
+                != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
+                or self.official_account_local_generated_visual_prompt_version
+                != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
+            ):
+                raise ValueError("official-account generated visual version bundle is unsupported")
         if (
             self.content_enabled
             and self.content_llm_rerank_enabled
@@ -439,6 +690,39 @@ class Settings(BaseSettings):
                 raise ValueError("Zhipu base URL must be an HTTPS origin/path without credentials")
         if self.image_enabled and self.image_provider_mode == "disabled":
             raise ValueError("image provider must be enabled when image generation is enabled")
+        if self.visual_semantic_enabled and self.visual_embedding_provider_mode == "disabled":
+            raise ValueError("visual semantic retrieval requires an embedding provider")
+        if self.visual_semantic_enabled and not self.image_selector_enabled:
+            raise ValueError("visual semantic retrieval requires approved asset selection")
+        if self.visual_index_lease_seconds <= self.visual_embedding_timeout_seconds:
+            raise ValueError("visual index lease must outlast the embedding timeout")
+        if self.visual_embedding_provider_mode == "alibaba":
+            endpoint = (
+                self.visual_embedding_endpoint.get_secret_value().strip()
+                if self.visual_embedding_endpoint is not None
+                else ""
+            )
+            api_key = (
+                self.visual_embedding_api_key.get_secret_value().strip()
+                if self.visual_embedding_api_key is not None
+                else ""
+            )
+            if not endpoint or not api_key:
+                raise ValueError("Alibaba visual embedding requires endpoint and API key secrets")
+            parsed_endpoint = urlsplit(endpoint)
+            if (
+                parsed_endpoint.scheme != "https"
+                or not parsed_endpoint.hostname
+                or not parsed_endpoint.hostname.endswith(".cn-beijing.maas.aliyuncs.com")
+                or parsed_endpoint.path
+                != "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
+                or parsed_endpoint.port not in {None, 443}
+                or parsed_endpoint.username is not None
+                or parsed_endpoint.password is not None
+                or parsed_endpoint.query
+                or parsed_endpoint.fragment
+            ):
+                raise ValueError("Alibaba visual embedding endpoint must be the Beijing REST URL")
         if self.image_diversity_enabled:
             if not self.image_enabled:
                 raise ValueError("image diversity requires image generation to be enabled")
@@ -538,6 +822,15 @@ class Settings(BaseSettings):
             )
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")
+        brand_derivation_versions = (
+            self.brand_parser_version,
+            self.brand_chunk_version,
+            self.brand_embedding_input_version,
+        )
+        if brand_derivation_versions not in SUPPORTED_BRAND_DERIVATION_VERSIONS:
+            raise ValueError("brand parser/chunk/input versions must use a supported frozen bundle")
+        if self.brand_retrieval_version not in SUPPORTED_BRAND_RETRIEVAL_VERSIONS:
+            raise ValueError("brand retrieval version is unsupported")
         version_values = {
             self.governance_pipeline_version,
             self.governance_normalization_version,
@@ -564,6 +857,20 @@ class Settings(BaseSettings):
             self.copy_audit_schema_version,
             self.copy_rule_version,
             self.copy_preview_policy_version,
+            self.official_account_local_generator_prompt_version,
+            self.official_account_local_article_schema_version,
+            self.official_account_local_media_plan_version,
+            self.official_account_local_auditor_prompt_version,
+            self.official_account_local_audit_schema_version,
+            self.official_account_local_rule_version,
+            self.official_account_local_renderer_version,
+            self.official_account_local_style_version,
+            self.official_account_local_template_version,
+            self.official_account_local_adapter_version,
+            self.official_account_local_visual_query_version,
+            self.official_account_local_visual_selector_version,
+            self.official_account_local_generated_visual_plan_version,
+            self.official_account_local_generated_visual_prompt_version,
             self.image_prompt_version,
             self.image_pipeline_version,
             self.image_diversity_policy_version,
@@ -573,6 +880,7 @@ class Settings(BaseSettings):
             self.image_diversity_pipeline_version,
             self.image_perceptual_hash_version,
             self.image_similarity_policy_version,
+            self.visual_embedding_input_policy_version,
         }
         version_values.discard(None)
         bounded_version_values = {value for value in version_values if value is not None}

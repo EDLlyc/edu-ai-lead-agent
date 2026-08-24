@@ -1149,3 +1149,529 @@ One sibling's `no_topic`, failure, review requirement, image fallback or deliver
 cancel, duplicate or retry another sibling. The upper bound is nine distinct package identities per
 business date. Fake-provider acceptance must cover 0--3 results, exact replay, sibling isolation and
 the existing full-length evidence-bound copy/image policy without external calls.
+
+## Scenario: Local official-account article and simulated draft
+
+### 1. Scope / Trigger
+
+- Trigger: a developer explicitly creates a long-form official-account article from one eligible
+  material package, or runs the built-in sanitized fixture.
+- This is a local review workflow only. It adds no account credential, token, upload, `draft/add`,
+  publish, send, or Enterprise WeChat operation and does not change the existing Moments copy,
+  material-package, or WeCom contracts.
+
+### 2. Signatures
+
+- API:
+  `GET /api/v1/official-account-local/capabilities`,
+  `GET|POST /api/v1/official-account-local/article-runs`,
+  `GET /api/v1/official-account-local/article-runs/{run_id}`,
+  `POST /api/v1/official-account-local/article-runs/{run_id}/retry`,
+  `POST /api/v1/official-account-local/article-runs/{run_id}/manual-review`,
+  `GET /api/v1/official-account-local/media/{local_media_id}`, and
+  `GET /api/v1/official-account-local/drafts/{local_draft_id}/preview`.
+- Worker: `python -m app.official_account_worker_main`.
+- Offline demo: `make official-account-local-demo`.
+- Explicit live smoke:
+  `make official-account-local-live-smoke MATERIAL_PACKAGE_ID=<uuid>`.
+- Review export:
+  `python -m app.official_account_local_cli export --run-id <uuid> --output-dir <dir> --mode review|copy-ready`.
+- Explicit live-local review export (CLI only):
+  `python -m app.official_account_local_cli export --run-id <uuid> --output-dir <dir> --mode review --allow-live-local-export`.
+  This does not create an HTTP export API and is not a publishing operation.
+- Manual-review request is strict JSON
+  `{decision: "approved"|"rejected", reviewer_label: string[1..80], note: string[1..2000]|null}`.
+  Its response projects `status`, `review_id`, normalized reviewer/note, `reviewed_at`, the immutable
+  request fingerprint, `idempotent_replay`, and `editorially_approved`; it never changes the run's
+  generated artifacts.
+- Migration `20260821_0026` adds `official_account_article_runs`,
+  `official_account_article_versions`, `official_account_article_attempts`,
+  `official_account_render_versions`, `official_account_local_media`, and
+  `official_account_local_drafts`.
+- Migration `20260822_0027` adds current Article v2/multi-image support: body ordinals `0..4`,
+  cover ordinal `0`, per-run body-checksum uniqueness, and ordered draft/body associations whose
+  four-column FK binds `(media_id, run_id, media_role='body', ordinal)` to the exact media row.
+- Migration `20260823_0028` adds immutable, run-bound manual editorial decisions and upgrades the
+  article-version check to accept frozen v1/v2 plus current v3. A ready local draft is required
+  before a decision; exact replays are idempotent, a conflicting final decision is rejected, and
+  model/inherited review remains separate from the human decision.
+- Migration `20260823_0029` accepts current Article v4 with an immutable multimodal-selection
+  snapshot. Migration `20260823_0030` adds immutable Article v5 artifacts for the v8
+  structured-output identity. Downgrade refuses while the corresponding v4 or v5 article exists;
+  it never discards a selection snapshot or v8 artifact to manufacture an older row.
+
+### 3. Contracts
+
+- `OFFICIAL_ACCOUNT_LOCAL_ENABLED=false` and
+  `OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED=false` are the safe defaults. Fixture execution forces
+  `AI_PROVIDER_MODE=disabled` and `CONTENT_LLM_RERANK_ENABLED=false`, constructs no HTTP client,
+  uses only bundled sanitized data/image bytes, and makes zero external requests.
+- A live create requires `generation_mode=live`, one eligible persisted material-package UUID,
+  and a fully configured server-side Zhipu provider. The API enqueues only; one independent worker
+  performs generation and audit outside database transactions. The structured provider transport
+  uses disabled thinking, JSON-object mode, HTTPS/no redirects, bounded correction, and persists
+  only safe request ID/usage/latency metadata.
+- Article Package v1/v2/v3 are frozen and `extra="forbid"`; current new runs use
+  `official-account-article-schema-v4-multimodal-media`. External facts bind only allowlisted evidence
+  IDs, brand statements bind only allowlisted brand-chunk IDs, and opinions bind neither. Model
+  output never owns HTML, CSS, URLs, media identities, or platform fields.
+- Generator and rule identities are an exact pair. New work uses
+  `official-account-generator-v5-structured-output` with `official-account-rules-v4-reader-copy`
+  and auditor `official-account-auditor-v2-structured-output`; unknown or mixed pairs fail closed.
+  Historical v1--v7 prompt and initial transport bytes remain replayable. Only v8 carries the
+  canonical Pydantic output schema in its initial system instruction (and the audit's conditional
+  `accepted`/`issue_codes`/`claim_ids` invariant); all initial system and user text count toward
+  the input limit, while its one correction remains bounded. The
+  current deterministic identities are `official-account-media-plan-v3-multimodal-hybrid`,
+  `official-account-visual-query-v1`,
+  `official-account-visual-selector-v3-multimodal-hybrid`,
+  `wechat-html-renderer-v7-multimodal-media`,
+  `wechat-inline-science-field-guide-v7-multimodal-media`,
+  `wechat-science-field-guide-template-v7-multimodal-media`, and
+  `official-account-local-adapter-v5-multimodal-media`. Renderer v1-v6 and adapter v1-v4
+  bytes, fingerprints, media formats, placement, export, and recovery remain immutable.
+- A saved third-party editorial page may be inspected offline as untrusted design research. Record
+  only measured structural observations and adopt abstract information patterns such as a reading
+  map, restrained section rhythm, judgment/action cards, and a bounded conclusion. Never copy its
+  prose, HTML, images, mascot, QR code, course promotion, anxiety language, or unsupported claims
+  into source, fixtures, prompts, or exports.
+- The application, never the article model, owns the media plan. Current v3 accepts one to five
+  contiguous body slots, targets three to five when distinct approved candidates exist, distributes
+  them after different sections, and never duplicates a checksum. The offline fixture uses three
+  immutable publication JPEGs plus a distinct wide cover and never constructs a visual provider
+  client. Explicit live multimodal mode may rank only the current manifest-approved 41-item brand
+  catalog; the material-package primary image remains the distinct cover. It never searches the
+  web, generates a replacement, scans arbitrary files, or lets similarity admit an ineligible item.
+- Semantic placement uses the balanced section plan first, then maximizes a bounded one-to-one
+  assignment: every normalized tag found in the heading contributes 100, every tag found in the
+  first 360 body characters contributes 20, and ties keep candidate order by
+  `(publication_priority, sha256, candidate_id)`. The only public reason codes are
+  `semantic_heading_match|semantic_body_match|stable_fallback`; fixture placement is exactly after
+  section indexes `0, 2, 3`.
+- `OFFICIAL_ACCOUNT_LOCAL_VISUAL_SEMANTIC_ENABLED=false` is independent and safe by default. When
+  explicitly enabled for live generation, all 2--41 candidates and all at-most-five bounded section
+  queries must validate before index preflight or client construction. PostgreSQL proves exact
+  catalog/provider/model/dimension/input-policy coverage before the first query and rechecks after
+  every result. One request per placement is allowed; there is no correction or retry.
+- The v7 selector uses bounded placement-bitmask dynamic programming, maximizing complete cosine
+  similarity first, frozen tag score second, then stable priority/checksum/public reference. Any
+  unsafe query, incomplete index, provider/result failure, or catalog race discards the entire
+  matrix and runs deterministic tag fallback on a freshly validated candidate set. Article v4/v5
+  stores only bounded identity, query fingerprints, closed status/reason, similarity bands and
+  ordered assignments before render; retry/recovery performs zero embedding queries.
+- Runtime media uses immutable MIME-aware publication derivatives, not the large PNG masters. The
+  repository fixture is RGB JPEG, quality 82, 4:2:0, non-progressive, non-optimized, with
+  EXIF/ICC/text metadata stripped; the original PNG master bytes stay untouched. Body assets are
+  1536x1024 and the distinct cover is 1923x818. Export chooses `.jpg` from verified JPEG bytes and
+  rejects a declared MIME/signature mismatch.
+- Catalog media resolution binds the 16-character public reference, catalog version, immutable PNG
+  master checksum and deterministic JPEG publication checksum at the final read. Adapter v5
+  regenerates and verifies metadata-free publication bytes without persisting or exposing the
+  private filename, path, raw asset ID, query text, vector or raw score. Partial lineage fails
+  closed instead of substituting a fixture or cover image.
+- The deterministic renderer escapes every data value and produces fixed inline-style HTML with
+  exact ordinal body/cover placeholders. Canonical placeholder HTML and resolved local-draft HTML
+  have separate stable fingerprints. The worker stages only missing ordinals, replaces every
+  expected placeholder exactly once, rejects missing/extra/duplicate media, and records all ordered
+  body associations before draft completion. `body_image` remains the ordinal-zero compatibility
+  API projection; `body_images` is the authoritative ordered list and `media_selection` is bounded
+  safe provenance. Body and cover remain non-interchangeable role-scoped rows/IDs.
+- Public status is `queued|running|review_required|ready|failed|result_unknown`; `current_stage`
+  retains the detailed stage. Claims use `FOR UPDATE SKIP LOCKED`, leases, heartbeats, and fencing.
+  Successful article/render/media artifacts are immutable and reused after a later-stage failure.
+  An ambiguous local-draft outcome becomes `result_unknown` and is never retried.
+- POST create/retry returns HTTP 202 plus `Location`. Detail omits raw/resolved HTML, prompts,
+  provider bodies, private brand text, object paths, and credentials. Preview is the sole HTML
+  response and applies no-store, nosniff, no-referrer, and strict CSP headers; the development-only
+  UI uses a permissionless sandbox iframe and generated OpenAPI types.
+- The fixture and API always project `simulation=true` and `本地模拟，未同步公众号`. The frontend is
+  lazy-loaded only when Vite development mode and
+  `VITE_OFFICIAL_ACCOUNT_LOCAL_ENABLED=true` are both true.
+- Export prose is renderer-versioned alongside HTML. For v4, `article.md` and `sources.json` use
+  “家庭实践”, “给家长的三句话”, and “资料来源与适用边界”; historical renderers keep their historical
+  labels. The current `official-account-review-bundle-v4-multimodal-media` exports every planned body
+  image as MIME-aware `assets/body-00.jpg` through `body-04.jpg`, includes the ordered list in its
+  manifest and binds the v7/v8 selection snapshot, and requires an exact, symlink-free tree for
+  idempotent reuse. Pending/rejected review
+  bundles retain warning chrome. Only an immutable approved manual-review row permits a separate
+  copy-ready tree/fingerprint with that warning removed; it never overwrites or reuses a pending
+  bundle. The copy-ready manifest, preflight aggregate, and every manual-review preflight record
+  must all say approved; the review fingerprint participates in its immutable path and ZIP
+  identity. Fixture no-link explanations name the renderer that actually produced the artifact.
+- Fixture export remains the default. A ready simulated `generation_mode=live` run may be exported
+  only by the explicit CLI flag `--allow-live-local-export` in review mode. That creates a separate
+  `live-local-review-*` tree and deterministic ZIP with relative asset URLs, `LOCAL ONLY · 未同步公众号`,
+  `export_scope=live_local`, `copy_ready=false`, and `published=false`; an existing manual-review
+  state is recorded but never converted to approval. There is no HTTP export endpoint.
+- The API media route and CLI export use the same `OfficialAccountLocalMediaResolver`. Before a byte
+  leaves infrastructure it revalidates the persisted fixture/catalog/source-image lineage, MIME,
+  byte size and SHA-256, and finishes its database read before filesystem/MinIO I/O. Catalog paths,
+  MinIO bucket/object keys and private filenames never enter the exported bundle.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Fixture with blank provider configuration | One complete ready local draft; no network client or external request |
+| Live create without a complete Zhipu configuration | Fail closed before enqueue/provider work; fixture remains available |
+| Unknown evidence/brand ID, mixed binding type, invalid length/structure, or provider identity drift | Typed validation/review failure; no render or draft |
+| Same source/mode/provider/model/version fingerprint is submitted concurrently | Return the one durable run; no duplicate model/artifact call |
+| Lease expires before persistence | A new worker may reclaim; the stale lease token cannot write |
+| Render/body-media/cover/draft confirmed failure | Bounded retry resumes from the first missing stage and reuses prior artifacts |
+| Draft result is ambiguous | Persist `result_unknown`; automatic and explicit retry both refuse |
+| Preview contains model text resembling HTML/script/event attributes | Return escaped text only under the fixed CSP document |
+| Body and cover use the same source bytes | Persist different role-scoped media IDs and reject role interchange |
+| Any generator/rule/schema/media-plan/renderer/style/template/adapter/auditor identity is unknown or crosses a supported version family | Fail closed before provider/export work; never guess a compatible artifact |
+| v4 HTML is exported with historical Markdown/source labels | Reject in regression tests; select export labels from the pinned renderer version |
+| Saved reference page contains promotional claims, QR codes, or remote assets | Treat as untrusted research; do not ingest or reproduce them in the product artifact |
+| Current media plan has a gap, more than five body slots, duplicate checksum, missing placeholder, or extra replacement | Fail closed before local draft completion; preserve already valid per-ordinal artifacts for retry |
+| Live package exposes only one approved image | Produce one body slot with an explicit safe-degradation projection; do not duplicate, fetch, or generate images |
+| Draft/body association points to another run, cover role, or different ordinal | PostgreSQL four-column FK/check rejects the write |
+| Same body checksum is staged twice for one run, even under different renders | PostgreSQL partial unique index on `(run_id, sha256)` rejects the duplicate |
+| Manual review targets a missing, non-ready, incomplete, or non-simulated draft lineage | Return 404/409; create no review row |
+| Exact normalized manual-review payload is replayed | Return the immutable decision with `idempotent_replay=true` |
+| A second manual-review payload conflicts with the final row | Return HTTP 409; never overwrite the original decision |
+| Pending/rejected run requests `--mode copy-ready` | Fail closed; preserve the independently exportable warning-bearing review bundle |
+| Live run reaches export without `--allow-live-local-export`, requests copy-ready, is not ready/simulated, or uses a root target directory | Fail closed before reading/writing media; fixture default is unchanged |
+| Live-local media catalog/source checksum, MIME, size, lineage, or relative-HTML replacement drifts | Fail closed and remove the temporary directory; never substitute an asset or expose private storage data |
+| Version family, derivative signature, export tree, or copy-ready preflight state drifts | Refuse recovery/export instead of guessing compatibility or reusing the directory |
+| Any candidate or section query is invalid | Zero index preflight/client/embedding calls; deterministic closed fallback only after a fully valid refreshed candidate set exists |
+| Complete-index preflight fails or fewer than two eligible candidates remain | Zero embedding calls; record closed unavailable/single-candidate status and use deterministic fallback |
+| A later embedding query/result fails | Discard every earlier score; never persist a partial semantic/tag plan |
+| Catalog version/master/publication checksum changes after ranking | Fence the result, reload all 41 candidates and fall back, or fail media staging if the persisted lineage changed |
+| Retry sees a persisted Article v4 or v5 | Reuse its ordered snapshot; make zero semantic calls |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the fixture creates three distinct, section-distributed body images and an independent
+  cover; API, preview, workbench gallery, Markdown, manifest, and ZIP expose the same ordinal order.
+- Good: an explicit live run with complete current catalog coverage ranks only approved body-safe
+  assets, persists one complete snapshot, and uses the material image only as its separate cover.
+- Good: an operator explicitly invokes live-local CLI export for a ready simulated run and receives
+  a relative-asset review ZIP that preserves `pending|approved|rejected` history while saying local
+  only, never published, and not copy-ready.
+- Base: the provider-free fixture creates the same complete durable shape idempotently and is safe
+  for tests and local demonstrations with networking unavailable; a one-image live source remains
+  valid and explicitly degraded.
+- Bad: generate model HTML, call a provider from the API handler, reuse a cover ID as body media,
+  recreate a draft after an ambiguous result, expose private storage/provider data, or add a
+  WeChat/publish control.
+- Bad: copy a reference account's page/module markup or branding, mix prompt/rule versions, or let
+  export labels drift from the pinned renderer while the preview displays a newer vocabulary.
+- Bad: repeat one attractive picture three times, let the LLM choose image URLs/positions, associate
+  ordinal 2 with ordinal 1's row, or scope duplicate detection only to a render instead of the run.
+- Bad: add a web export route, treat a live-local archive as manual approval, export a real run by
+  default, or duplicate the API's media-read integrity checks in the CLI.
+
+### 6. Tests Required
+
+- Domain/renderer unit tests assert strict schema, stable canonical fingerprints, claim allowlists,
+  hard length/structure bounds, escaped text, allowlisted links/tags, and exact media replacement.
+- Golden tests assert exact v1/v2/v3 prompt bytes, exact v1-v6 renderer bytes/fingerprints, the
+  current v4 prompt/rule pairing, deterministic v7 output, AA color contrast, and fail-closed
+  behavior for every mixed/unknown version pair.
+- Multimodal tests assert complete fake-41 reordering, 5x41 bounded DP ties, all-query validation
+  before preflight/client work, zero-call disabled/incomplete/unsafe cases, whole-matrix fallback,
+  refreshed catalog-race fallback, final media-lineage fencing, and recovery without requery.
+  Provider tests remain fake/MockTransport and make no live request.
+- Export tests assert v4 `article.md`/`sources.json` labels and fixture source policy, while also
+  asserting that historical renderer exports retain their original labels. Current tests also
+  assert all publication-derivative hashes/dimensions/metadata, MIME-derived filenames, exact
+  double-export reuse, pending/rejected warning bundles, approved-only copy-ready identity, and
+  consistent approved preflight records.
+- CLI/media tests assert default real-run rejection, explicit ready live-local export with body
+  derivatives and source cover, relative-only media references, pending-review truth, deterministic
+  reuse, no copy-ready/published label, and cleanup on catalog/source integrity mismatch. The
+  resolver is tested by both API and CLI consumers without provider or social-service calls.
+- MockTransport provider contracts assert success, bounded schema correction, timeout/auth/rate
+  classification, identity/usage projection, and absence of raw prompt/response persistence. They
+  never contact a live model.
+- Real PostgreSQL integration asserts migration/metadata parity, concurrent idempotency, lease
+  reclaim/fencing, body/cover role isolation, body ordinal/checksum constraints, strict four-column
+  draft/body lineage, v1 backfill, partial per-ordinal resume, explicit failed-run retry, and
+  `result_unknown` non-retry. It also asserts the ready-only manual-review gate, exact replay,
+  four-way concurrency, immutable conflict, and downgrade refusal after v3/review or v4 selection artifacts.
+  Migration tests inspect semantic columns/SQL, not truncated generated constraint names.
+- API/frontend tests assert HTTP 202/Location, safe detail projection, media and preview headers,
+  ordered `body_images`, compatibility `body_image`, bounded selection provenance, accessible
+  gallery, polling stop, permanent simulation boundary, permissionless iframe,
+  generated-contract use, and absence of unsafe HTML or publishing/credential controls.
+- Runtime acceptance asserts the Compose profile builds, the offline fixture reaches `ready`, the
+  worker reports live provider unavailable, and non-default host ports are reflected in the safe
+  browser URL.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+@router.post("/official-account-runs")
+async def create_run(payload):
+    html = await model.generate(payload)
+    return await wechat.draft_add(html)
+```
+
+This performs unversioned external work in the API process, trusts model markup, and crosses the
+prohibited social-platform boundary.
+
+#### Correct
+
+```python
+run, created = await repository.enqueue_material_package(
+    material_package_id=payload.material_package_id,
+    identity=version_identity,
+)
+# The independent worker later claims the durable run and executes typed stages.
+return AcceptedRun(id=run.id, created=created, status=run.status)
+```
+
+The correct form returns durable state immediately; the worker validates a structured Article
+Package and creates only a local simulated draft through typed adapters.
+
+For multi-image resolution, passing an untyped list or replacing every placeholder with the first
+URL is wrong. The correct form claims the pinned media plan, stages each missing `(role, ordinal)`
+under its own fingerprint, persists strict draft/body lineage, then resolves an exact
+`slot_key -> controlled media URL` map and refuses gaps, extras, or duplicate bytes.
+
+For reference-driven presentation work, copying a saved page into the renderer or fixture is also
+wrong. The correct form records bounded observations in task research, implements an original
+versioned renderer using only governed Article Package fields, and freezes both historical HTML
+goldens and renderer-specific export vocabulary.
+
+## Scenario: Automated approved-IP body visuals (official-account-local v2)
+
+### 1. Scope / Trigger
+
+- Trigger: an approved local-only follow-up turns the prior manual IP-reference supplement into an
+  additive official-account worker stage. It produces original per-section **body** illustrations;
+  it is never a publish, WeChat, or WeCom capability.
+- The current article's existing manual editorial review and approved-only copy-ready behavior do
+  not review, approve, or block an individual image. There is deliberately no image-review gate.
+
+### 2. Signatures
+
+- DB: `official_account_local_generated_visuals` is immutable by
+  `(render_version_id, ordinal)` and `request_fingerprint`; local body media may reference it via
+  `official_account_local_media.generated_visual_id`. The database shape constraint binds the
+  complete version tuple: historical plan v1 requires prompt v1 and nullable v2-only fields;
+  block-anchor plan v2 requires prompt v2 plus every anchor/input/output-profile field. Never
+  validate `plan_version` without its matching `prompt_version`.
+- Worker: `OfficialAccountLocalExecutor(..., generated_visuals_enabled, image_generator,
+  generated_visual_store, generated_visual_provider, generated_visual_model)` may generate only
+  after the persisted Article v8 media-selection snapshot exists.
+- API detail: `generated_visuals[]` exposes ordinal, section, safe public reference, selection
+  method/band, bounded block position/kind, plan/output-profile identity, provider/model, status and
+  output metadata. While `generating_body_visuals` has not staged media yet, the safe planned total
+  comes from the persisted media-selection snapshot assignments rather than the current media row
+  count. It has no create, approve, publish, provider-body, or prompt endpoint.
+
+### 3. Contracts
+
+- `OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED=false` is the default. Enabling it requires
+  the local worker, `IMAGE_ENABLED=true`, `IMAGE_PROVIDER_MODE in {fake,toapis,comfly}`, and
+  `IMAGE_MAX_ATTEMPTS=1`; current plan/prompt settings must equal the v2 block-anchor literals.
+  Historical v1 dispatch retains its original request fingerprint, section-first-360 prompt,
+  PNG provider request bytes, and raw result bytes.
+- For each selected body placement, use only its revalidated public reference from the exact,
+  complete 41-item Qwen3-VL approved-catalog snapshot. If semantic selection/index capability is
+  absent, use its persisted deterministic-selector snapshot; never search or read arbitrary files.
+- Persist the intent before calling the image port. Build prompt text only in memory. Store only
+  safe reference/checksum/version/fingerprint/provider/result metadata plus bounded block
+  index/kind/fingerprint; never persist or expose block text, a prompt, raw catalog ID, vector,
+  private path/object key, reference bytes, or provider body.
+- Select one eligible semantic block inside the assigned section and construct the transient v2
+  scene brief from that exact block, heading, and topic. Bind the anchor, reference-input
+  normalization identity/checksum, prompt hash, and output profile to the request fingerprint.
+- Preserve exact valid PNG provider bytes. For v2 catalog JPEG references, verify the publication
+  checksum and deterministically normalize to metadata-free PNG before ToApis/Comfly request
+  construction. Persist the generated v2 publication artifact itself as metadata-free
+  `image/jpeg` at exactly 1536×1024; local media, HTML, and export resolve those same bytes.
+- The image port and MinIO write execute outside DB transactions. Fixture/default execution must
+  not instantiate an image client and makes zero external requests. No WeChat or WeCom adapter is
+  introduced or called.
+- A paid live acceptance is an explicit operator-only action, never part of fixture/default tests.
+  It must pass an offline `--preflight-only` run, force Comfly plus `image_max_attempts=1`, reserve
+  a new output directory with an exclusive paid-call intent before network I/O, and allow exactly
+  one generation attempt. Validate provider/model/request identity and the complete 3:2 artifact
+  before writing the success bundle. The safe bundle may contain checksums, version identities,
+  dimensions and call counters, but never a credential, Authorization header, provider URL/body,
+  raw prompt, or private storage path.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Disabled or fixture run | Existing selected-catalog media path; zero image client/provider calls |
+| Feature identity/configuration drifts | Fail closed before image I/O |
+| Persisted plan/prompt versions form a mixed v1/v2 tuple | Reject at the application and database boundaries |
+| Incomplete semantic capability | Reuse deterministic selection snapshot; never broaden the catalog |
+| Existing `generating` intent after a worker interruption | Mark `result_unknown`; do not issue a second image request |
+| Provider timeout after durable intent | Persist `result_unknown` immediately; recovery must issue zero image requests |
+| Paid live-acceptance output directory or intent already exists | Refuse replay before provider I/O |
+| Paid live-acceptance credential appears in terminal/tool output | Treat it as exposed and rotate it immediately; never copy it into artifacts or reports |
+| Existing `failed` intent is recovered | Preserve deterministic `failed`; do not relabel it `result_unknown` and do not call the provider |
+| Image/output/provider identity validation fails | Persist safe non-retryable `failed`; no hidden image retry |
+| Stored state shape is inconsistent | Reject it: `generating` has no completion/error/output; failed/unknown require error and completion; ready requires the full output tuple |
+| Ready output is staged | Require the generated-visual FK plus the same run/render/ordinal, MIME, size and checksum before local media resolution |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a live v8 run uses one already-selected approved public reference per body section, stages
+  validated generated bytes, then still waits for the normal article manual-review event before
+  copy-ready export.
+- Base: fixture, disabled mode, or unavailable multimodal index never creates an image provider;
+  the deterministic catalog snapshot remains the bounded source.
+- Bad: let an LLM select a path/URL, retain its prompt/provider response, call the provider inside
+  a transaction, retry an uncertain paid call, add an image approve/reject state, or add WeChat
+  publishing.
+
+### 6. Tests Required
+
+- Unit-test deterministic block anchoring, transient prompt construction, safe plan projection,
+  fake-image validation, provider/model fingerprint drift, exact 3:2 metadata-free output, and a
+  fixed historical v1 request fingerprint.
+- No-network provider-builder tests prove PNG byte identity and deterministic JPEG-to-PNG inputs
+  for ToApis/Comfly.
+- Test setting validation and fixture behavior, including when the live feature flag is enabled,
+  prove no image client/request is made.
+- Repository/migration tests cover immutable intent/recovery, exact state shapes, ready-only
+  generated-media FK, same-run/render lineage, complete plan/prompt version tuples and no leakage
+  through API/media/export; API/OpenAPI tests expose only safe result fields and prove the planned
+  total is non-zero before the first generated media row exists.
+- Worker tests distinguish deterministic `failed` from uncertain `result_unknown`, make both
+  recovery paths perform zero provider/storage/catalog reads, and keep deterministic catalog
+  selection labeled `stable_fallback` rather than `multimodal_similarity`.
+- Live-acceptance harness tests remain fully offline and assert provider/attempt/version preflight,
+  exclusive-intent replay refusal, JPEG-to-PNG reference identity, timeout-to-unknown with one call,
+  success-bundle redaction and validation-before-write ordering. A completed live acceptance records
+  attempted/succeeded call counts and the zero-call article/embedding/WeChat/WeCom/publish boundary.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+image = await provider.generate(prompt)  # no durable intent, then retry on timeout
+article.body_images.append(image.url)
+```
+
+This loses idempotency, leaks a provider-controlled URL, and can double-charge after an uncertain
+request.
+
+#### Correct
+
+```python
+reference = normalize_v2_provider_reference(revalidated_selected_reference)
+plan = plan_generated_body_visual(..., reference=reference, block_anchor=selected_block)
+intent = await repository.create_generated_visual_intent(claimed=claimed, plan=plan)
+# Call image port outside the transaction only for the newly-created intent.
+result = await image_generator.generate(request)
+publication = prepare_generated_visual_result(result=result, plan=plan)  # exact 1536×1024 JPEG
+await store.put_immutable(publication.image_bytes, media_type=publication.result.media_type)
+await repository.persist_generated_visual(
+    claimed=claimed, plan=plan, result=publication.result
+)
+```
+
+The plan pins a safe public-reference lineage. Recovery treats an unconfirmed external request as
+unknown rather than repeating it, and the usual article-level local/manual-review boundary remains
+in force.
+
+Treating every non-ready recovery as unknown, or resolving a generated image by FK/hash alone, is
+also wrong. Preserve a known `failed` outcome as failed; use `result_unknown` only for an abandoned
+`generating` intent. Before returning stored bytes, bind the ready output to the same run, render
+and ordinal as the local-media row, then revalidate MIME, size and SHA-256.
+
+## Scenario: News-backed visible-IP official-account demo (v3)
+
+### 1. Scope / Trigger
+
+- Use this operator-only additive flow when an official-account demonstration must bind current
+  authoritative news to newly generated body images with a clearly visible approved company IP.
+- It never replaces historical runs or v1/v2 identities and never enables WeChat, WeCom, or publish.
+
+### 2. Signatures
+
+- Plan/prompt pair: `official-account-generated-visual-plan-v3-visible-ip` and
+  `official-account-generated-visual-prompt-v3-visible-ip-block-scene`.
+- Migration: `20260824_0034`, with `down_revision=20260824_0033`.
+- Command: `python -m app.official_account_news_ip_live_demo --output-dir <new-dir>
+  --news-html <verified-news-cache> --plan-html <verified-plan-cache>`.
+- Output ledgers: `intents/body-N.intent.json`, `intents/body-N.result.json`, `run.json`,
+  `evidence.json`, `visual-map.json`, relative `assets/body-NN.jpg`, HTML, manifest and ZIP.
+
+### 3. Contracts
+
+- Generated-visual v1/v2 builders are immutable. Tests freeze both v1 and v2 request
+  fingerprints and the v2 prompt SHA-256; v3 retains the v2 block/reference/output shape while
+  requiring a manifest-approved 小赛／赛先生 character as a clearly visible protagonist.
+- `0034` admits only a complete paired v3 plan/prompt row and applies the existing metadata-free
+  1536×1024 JPEG constraint to ready v2/v3 outputs.
+- Only the two pinned Ministry of Education sources and the exact approved 41-item company-IP
+  catalog are accepted. Facts retain evidence ID, canonical URL, date and bounded quote; family
+  practice copy is labeled interpretation rather than evidence or policy.
+- Exactly three ToApis single-reference calls are possible. Every call requires an exclusive,
+  fsynced intent first, `attempts=1`, and a corresponding terminal result ledger. Comfly, article
+  model, embedding, WeChat, WeCom and publish clients are not constructed.
+- Safe bundles expose checksums, public refs, block anchors, relative images and bounded status;
+  they exclude prompts, provider bodies/task IDs/URLs, credentials, raw paths and object locations.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| News source identity/date or required fact differs | Fail in offline preflight; zero paid calls |
+| Approved catalog is incomplete or reference count is not exactly three | Fail before provider I/O |
+| Existing output directory or any prior intent exists | Refuse replay; never resume a paid call |
+| Provider reports attempts other than one | Reject the result and stop |
+| Provider timeout after `body-N.intent.json` | Write `body-N.result.json` and `run.json` as `result_unknown`; stop without creating the next intent |
+| Three attempts have been created | Structurally prohibit a fourth call |
+| Output is not validated 1536×1024 metadata-free JPEG | Do not publish it into the success bundle |
+| Safe artifact contains a secret, provider URL/body, prompt or private path | Fail the bundle scan |
+
+### 5. Good / Base / Bad Cases
+
+- Good: two verified official sources bind the article claims; three one-shot ToApis calls each
+  yield a 3:2 image with a visible approved IP protagonist; the local bundle has zero external
+  image references and records `3 attempted / 3 succeeded / 0 retry`.
+- Base: offline preflight and tests validate the complete flow with mock generators and zero
+  network calls.
+- Bad: edit v2 prompt text under the v2 version, use a generic mascot without an approved
+  reference, retry a timeout, create a fourth intent, or treat local visual inspection as an
+  implemented automatic multimodal output-quality gate.
+
+### 6. Tests Required
+
+- Freeze v1/v2 golden request fingerprints and v2 prompt SHA-256; assert v3 prompt requires the
+  visible IP protagonist and produces a distinct request identity.
+- Test source identity/fact binding, catalog completeness, ToApis JPEG-to-PNG single-reference
+  construction, exactly-three call cap, exclusive replay refusal, safe artifact redaction and
+  manifest/ZIP equality without network.
+- Mock a timeout and assert one provider invocation, one intent, a terminal result ledger and run
+  both marked `result_unknown`, with no second intent.
+- PostgreSQL tests assert clean upgrade and `0033 -> 0034`, exact plan/prompt pairing, current/head
+  parity and historical v1/v2 row validity.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+for visual in visuals:
+    image = await provider.generate(request)  # retries may be hidden
+    write_success(image)
+```
+
+#### Correct
+
+```python
+write_exclusive_intent(ordinal, request_fingerprint)
+try:
+    image = await one_attempt_toapis.generate(request)
+except ImageProviderTimeoutError:
+    write_terminal_result(ordinal, status="result_unknown")
+    write_run(status="result_unknown")
+    raise
+validated = prepare_generated_visual_result(image, plan=v3_plan)
+write_success_after_validation(validated)
+```

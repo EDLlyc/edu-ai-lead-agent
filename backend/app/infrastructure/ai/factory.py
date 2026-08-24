@@ -12,6 +12,7 @@ from app.application.ports.copy_generation import MaterialDraftAuditor, Material
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
 from app.application.ports.image_generation import ImageGenerator
 from app.application.ports.image_validation import ImageQualityAuditor, ImageTextRecognizer
+from app.application.ports.ip_assets import IpAssetRecognitionModel
 from app.core.config import Settings
 from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
@@ -31,6 +32,7 @@ from app.infrastructure.ai.image_generation import (
 from app.infrastructure.ai.image_validation import (
     OpenAICompatibleImageQualityAuditor,
 )
+from app.infrastructure.ai.ip_asset_recognition import ZhipuIpAssetRecognitionAdapter
 from app.infrastructure.ai.zhipu import (
     ZhipuBrandDocumentOcrModel,
     ZhipuEmbeddingModel,
@@ -39,6 +41,34 @@ from app.infrastructure.ai.zhipu import (
 )
 
 _ImageValidationProvider = TypeVar("_ImageValidationProvider")
+
+
+def create_ip_asset_recognition_model(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> IpAssetRecognitionModel | None:
+    """Create the optional API-side vision assistant only when fully configured."""
+
+    if not settings.ip_asset_recognition_enabled:
+        return None
+    base_url = (settings.ai_platform_base_url or "").strip()
+    api_key = settings.ai_platform_api_key
+    api_key_value = api_key.get_secret_value().strip() if api_key is not None else ""
+    if client is None or settings.ai_provider_mode != "zhipu" or not base_url or not api_key_value:
+        return None
+    return ZhipuIpAssetRecognitionAdapter(
+        client=client,
+        base_url=base_url,
+        api_key=SecretStr(api_key_value),
+        model=settings.ip_asset_recognition_model,
+        connect_timeout_seconds=min(
+            settings.ai_connect_timeout_seconds,
+            settings.ip_asset_recognition_timeout_seconds,
+        ),
+        total_timeout_seconds=settings.ip_asset_recognition_timeout_seconds,
+        concurrency=settings.ip_asset_recognition_concurrency,
+        max_request_bytes=settings.ip_asset_recognition_max_request_bytes,
+        max_response_bytes=settings.ip_asset_recognition_max_response_bytes,
+    )
 
 
 def create_embedding_model(

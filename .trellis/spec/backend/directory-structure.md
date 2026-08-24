@@ -165,7 +165,10 @@ See [`topic-selection.md`](./topic-selection.md) for the executable cross-layer 
 ## Brand-knowledge ownership
 
 - `domain/brand_knowledge.py` owns document metadata, upload validation, stable metadata
-  fingerprints, deterministic chunks, and brand-only retrieval results.
+  fingerprints, deterministic parent sections/contextual child chunks, classification, and
+  brand-only retrieval results.
+- `domain/brand_retrieval.py` owns the pure version-dispatched v2/v3 candidate selector;
+  infrastructure and offline evals import it instead of copying or privately wrapping policy.
 - `application/ports/brand_knowledge.py` and `application/services/brand_knowledge.py` own the
   separate storage/parser/embedding/repository contracts and resumable ingestion execution.
 - `infrastructure/brand/parser.py`, `storage/minio_brand_store.py`, and
@@ -175,8 +178,36 @@ See [`topic-selection.md`](./topic-selection.md) for the executable cross-layer 
   embed, or rank in the request handler.
 - `content_worker_main.py` alternates topic and brand claims to prevent either durable queue from
   starving the other.
+- `backend/evals/brand_retrieval/` owns sanitized observations, scorer-only relevance grades,
+  metric/report rendering, and the canonical fixture-policy baseline. It may depend on domain policy
+  but not SQLAlchemy, provider adapters, private materials, or production state.
 
 See [`brand-knowledge-rag.md`](./brand-knowledge-rag.md) for the executable cross-layer contract.
+
+## Local official-account draft ownership
+
+- `domain/official_account_local.py` owns the frozen Article Package schema, canonical
+  fingerprints, deterministic validation, HTML escaping, rendering, and exact media-slot
+  replacement.
+- `application/ports/official_account_local.py` and
+  `application/services/official_account_local.py` own typed generator/auditor/media/draft ports
+  and the resumable stage executor. `application/services/official_account_media_semantic.py` owns
+  all-query validation, complete-index preflight, whole-plan fallback and bounded multimodal
+  assignment; route/worker code must not duplicate it.
+- `infrastructure/db/official_account_local.py` owns PostgreSQL enqueue, lease, artifact,
+  retry, and recovery operations; `infrastructure/official_account_local.py` owns only offline
+  fixture/local adapters, while `infrastructure/ai/official_account_local.py` owns the opt-in
+  Zhipu transport.
+- `infrastructure/official_account_catalog.py` is the only owner of the approved 41-item manifest's
+  private paths and deterministic publication derivatives. `infrastructure/db/visual_retrieval.py`
+  exposes exact complete-catalog preflight/search without leaking vector rows into the
+  official-account repository.
+- `api/v1/routes/official_account_local.py` only enqueues or projects durable state and serves
+  controlled local media/preview responses. `official_account_worker_main.py` is the independent
+  opt-in worker and never imports or invokes the Enterprise WeChat adapter.
+
+See the local official-account scenario in [`agent-pipeline.md`](./agent-pipeline.md) for the
+cross-layer contract.
 
 ## Enterprise WeChat delivery ownership
 

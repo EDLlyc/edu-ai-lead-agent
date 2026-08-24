@@ -1,0 +1,9 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend non-negotiable boundaries and required package specs."}
+{"file": ".trellis/spec/backend/brand-knowledge-rag.md", "reason": "Owning upload, parser, chunk, embedding, retrieval and privacy contract."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SQLAlchemy, pgvector, migration, provenance and compatibility rules."}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Layer ownership for domain, application, infrastructure and API changes."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed ingestion failure and provider-boundary requirements."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Private brand-text and structured-log privacy rules."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer section metadata propagation and generated contract discipline."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Shared parser/projection/embedding-input ownership."}

@@ -17,18 +17,27 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.application.ports.brand_knowledge import BrandKnowledgeRepository
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.brand_knowledge import (
+    LEGACY_BRAND_DERIVATION_VERSIONS,
+    STRUCTURED_BRAND_DERIVATION_VERSIONS,
+    SUPPORTED_BRAND_DERIVATION_VERSIONS,
     BrandAudience,
     BrandChunkEmbedding,
+    BrandChunkingResult,
+    BrandClaimScope,
+    BrandContentType,
     BrandDocumentKind,
     BrandIngestionJobStatus,
     BrandOriginalDescriptor,
     BrandRetrievalHit,
+    BrandSectionKind,
     BrandUploadMetadata,
     BrandVersionStatus,
     ClaimedBrandIngestionJob,
     ParsedBrandDocument,
     ValidatedBrandUpload,
+    fuse_brand_retrieval_score,
 )
+from app.domain.brand_retrieval import RankedBrandHit, select_diverse_brand_hits
 from app.infrastructure.db.models import (
     BrandChunkEmbeddingModel,
     BrandChunkModel,
@@ -36,91 +45,10 @@ from app.infrastructure.db.models import (
     BrandDocumentVersionModel,
     BrandIngestionAttemptModel,
     BrandIngestionJobModel,
+    BrandSectionModel,
 )
 
 _SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}")
-_RRF_K = 60.0
-_FULL_TEXT_WEIGHT = 0.45
-_VECTOR_WEIGHT = 0.55
-
-
-@dataclass(frozen=True, slots=True)
-class _RankedBrandHit:
-    hit: BrandRetrievalHit
-    ordinal: int
-
-
-def _select_diverse_brand_hits(
-    candidates: Sequence[_RankedBrandHit], *, limit: int
-) -> tuple[BrandRetrievalHit, ...]:
-    """Keep RRF order while using available candidates from different brand sections."""
-    if limit < 1:
-        return ()
-    ordered = sorted(
-        candidates,
-        key=lambda candidate: (
-            -candidate.hit.fused_score,
-            -candidate.hit.vector_score,
-            -candidate.hit.full_text_score,
-            str(candidate.hit.chunk_id),
-        ),
-    )
-    document_cap = max(1, min(2, (limit + 1) // 2))
-    selected: list[_RankedBrandHit] = []
-    selected_ids: set[UUID] = set()
-
-    def add_candidates(
-        *,
-        max_per_document: int | None,
-        avoid_adjacent: bool,
-        avoid_duplicate_text: bool,
-    ) -> None:
-        document_counts: dict[UUID, int] = {}
-        for candidate in selected:
-            document_counts[candidate.hit.document_id] = (
-                document_counts.get(candidate.hit.document_id, 0) + 1
-            )
-        for candidate in ordered:
-            if len(selected) >= limit:
-                return
-            hit = candidate.hit
-            if hit.chunk_id in selected_ids:
-                continue
-            if (
-                max_per_document is not None
-                and document_counts.get(hit.document_id, 0) >= max_per_document
-            ):
-                continue
-            if avoid_duplicate_text and any(existing.hit.text == hit.text for existing in selected):
-                continue
-            if avoid_adjacent and any(
-                existing.hit.document_id == hit.document_id
-                and existing.hit.version_id == hit.version_id
-                and abs(existing.ordinal - candidate.ordinal) <= 1
-                for existing in selected
-            ):
-                continue
-            selected.append(candidate)
-            selected_ids.add(hit.chunk_id)
-            document_counts[hit.document_id] = document_counts.get(hit.document_id, 0) + 1
-
-    # The first pass is intentionally conservative. Later passes are deterministic fallbacks
-    # for a corpus with one document, one section, or repeated OCR output.
-    add_candidates(
-        max_per_document=document_cap,
-        avoid_adjacent=True,
-        avoid_duplicate_text=True,
-    )
-    add_candidates(
-        max_per_document=document_cap,
-        avoid_adjacent=False,
-        avoid_duplicate_text=True,
-    )
-    add_candidates(max_per_document=None, avoid_adjacent=False, avoid_duplicate_text=False)
-
-    rank_by_chunk_id = {candidate.hit.chunk_id: rank for rank, candidate in enumerate(ordered)}
-    selected.sort(key=lambda candidate: rank_by_chunk_id[candidate.hit.chunk_id])
-    return tuple(candidate.hit for candidate in selected)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +135,9 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
         max_attempts: int,
         embedding_provider: str,
         embedding_model: str,
+        parser_version: str,
+        chunk_version: str,
+        embedding_input_version: str,
     ) -> ClaimedBrandIngestionJob | None:
         async with self._session_factory() as session:
             return await _claim(
@@ -216,6 +147,9 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
                 max_attempts=max_attempts,
                 embedding_provider=embedding_provider,
                 embedding_model=embedding_model,
+                parser_version=parser_version,
+                chunk_version=chunk_version,
+                embedding_input_version=embedding_input_version,
             )
 
     async def heartbeat(self, *, claimed: ClaimedBrandIngestionJob, lease_seconds: int) -> bool:
@@ -227,6 +161,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
         *,
         claimed: ClaimedBrandIngestionJob,
         parsed: ParsedBrandDocument,
+        chunking: BrandChunkingResult,
         embeddings: Sequence[BrandChunkEmbedding],
     ) -> bool:
         async with self._session_factory() as session:
@@ -234,6 +169,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
                 session,
                 claimed=claimed,
                 parsed=parsed,
+                chunking=chunking,
                 embeddings=embeddings,
             )
 
@@ -264,6 +200,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
         valid_on: date,
         limit: int,
         candidate_limit: int,
+        retrieval_version: str,
     ) -> tuple[BrandRetrievalHit, ...]:
         async with self._session_factory() as session:
             return await retrieve_brand_context(
@@ -277,6 +214,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
                 valid_on=valid_on,
                 limit=limit,
                 candidate_limit=candidate_limit,
+                retrieval_version=retrieval_version,
             )
 
 
@@ -293,6 +231,9 @@ async def _create_upload(
     embedding_model: str,
     dimensions: int,
 ) -> tuple[UUID, UUID, UUID, bool]:
+    derivation_versions = (parser_version, chunk_version, embedding_input_version)
+    if derivation_versions not in SUPPORTED_BRAND_DERIVATION_VERSIONS:
+        raise ValueError("unsupported brand parser/chunk/input version bundle")
     document = await session.scalar(
         select(BrandDocumentModel)
         .where(BrandDocumentModel.document_key == metadata.document_key)
@@ -430,15 +371,27 @@ async def _claim(
     max_attempts: int,
     embedding_provider: str,
     embedding_model: str,
+    parser_version: str,
+    chunk_version: str,
+    embedding_input_version: str,
 ) -> ClaimedBrandIngestionJob | None:
     now = datetime.now(UTC)
     stale_jobs = tuple(
         (
             await session.scalars(
                 select(BrandIngestionJobModel)
+                .join(
+                    BrandDocumentVersionModel,
+                    BrandDocumentVersionModel.id == BrandIngestionJobModel.version_id,
+                )
                 .where(
                     BrandIngestionJobModel.status == BrandIngestionJobStatus.RUNNING.value,
                     BrandIngestionJobModel.lease_expires_at < now,
+                    BrandDocumentVersionModel.embedding_provider == embedding_provider,
+                    BrandDocumentVersionModel.embedding_model == embedding_model,
+                    BrandDocumentVersionModel.parser_version == parser_version,
+                    BrandDocumentVersionModel.chunk_version == chunk_version,
+                    BrandDocumentVersionModel.embedding_input_version == embedding_input_version,
                 )
                 .with_for_update(skip_locked=True)
             )
@@ -490,6 +443,9 @@ async def _claim(
             BrandIngestionJobModel.attempt_count < max_attempts,
             BrandDocumentVersionModel.embedding_provider == embedding_provider,
             BrandDocumentVersionModel.embedding_model == embedding_model,
+            BrandDocumentVersionModel.parser_version == parser_version,
+            BrandDocumentVersionModel.chunk_version == chunk_version,
+            BrandDocumentVersionModel.embedding_input_version == embedding_input_version,
         )
         .order_by(BrandIngestionJobModel.available_at, BrandIngestionJobModel.created_at)
         .limit(1)
@@ -501,6 +457,9 @@ async def _claim(
     version = await session.get(BrandDocumentVersionModel, job.version_id)
     if version is None:
         raise RuntimeError("brand ingestion job version is missing")
+    document = await session.get(BrandDocumentModel, version.document_id)
+    if document is None:
+        raise RuntimeError("brand ingestion document is missing")
     lease_token = uuid4()
     job.status = BrandIngestionJobStatus.RUNNING.value
     job.attempt_count += 1
@@ -533,6 +492,11 @@ async def _claim(
         media_type=version.media_type,
         sha256=version.sha256,
         safe_filename=version.safe_filename,
+        document_title=document.title,
+        document_kind=BrandDocumentKind(document.document_kind),
+        parser_version=version.parser_version,
+        chunk_version=version.chunk_version,
+        embedding_input_version=version.embedding_input_version,
     )
     await session.commit()
     return claimed
@@ -567,6 +531,7 @@ async def _persist_ingestion(
     *,
     claimed: ClaimedBrandIngestionJob,
     parsed: ParsedBrandDocument,
+    chunking: BrandChunkingResult,
     embeddings: Sequence[BrandChunkEmbedding],
 ) -> bool:
     now = datetime.now(UTC)
@@ -589,6 +554,49 @@ async def _persist_ingestion(
         raise RuntimeError("brand ingestion version is missing")
     if not embeddings:
         raise ValueError("brand ingestion requires at least one embedded chunk")
+    derivation_versions = (
+        claimed.parser_version,
+        claimed.chunk_version,
+        claimed.embedding_input_version,
+    )
+    if derivation_versions not in SUPPORTED_BRAND_DERIVATION_VERSIONS:
+        raise ValueError("brand ingestion version bundle is unsupported")
+    if derivation_versions == STRUCTURED_BRAND_DERIVATION_VERSIONS and not chunking.sections:
+        raise ValueError("structured brand ingestion requires sections")
+    if derivation_versions == LEGACY_BRAND_DERIVATION_VERSIONS and chunking.sections:
+        raise ValueError("legacy brand ingestion must remain sectionless")
+    if tuple(artifact.chunk for artifact in embeddings) != chunking.chunks:
+        raise ValueError("brand embedding artifacts must match the chunking result")
+    if (
+        claimed.parser_version != version.parser_version
+        or claimed.chunk_version != version.chunk_version
+        or claimed.embedding_input_version != version.embedding_input_version
+    ):
+        raise ValueError("brand worker versions do not match the immutable version")
+    for section in chunking.sections:
+        if section.version_id != version.id:
+            raise ValueError("brand section version does not match the immutable version")
+        if parsed.text[section.char_start : section.char_end] != section.text:
+            raise ValueError("brand section must be an exact parsed document slice")
+        session.add(
+            BrandSectionModel(
+                id=section.id,
+                version_id=section.version_id,
+                ordinal=section.ordinal,
+                section_key=section.section_key,
+                kind=section.kind.value,
+                title=section.title,
+                text_hash=section.text_hash,
+                text=section.text,
+                char_start=section.char_start,
+                char_end=section.char_end,
+                source_page=section.source_page,
+                question_number=section.question_number,
+                question_text=section.question_text,
+            )
+        )
+    # No ORM relationships exist here, so preserve the FK insertion order explicitly.
+    await session.flush()
     for artifact in embeddings:
         if artifact.provider != version.embedding_provider:
             raise ValueError("brand embedding provider does not match the immutable version")
@@ -596,14 +604,23 @@ async def _persist_ingestion(
             raise ValueError("brand embedding model does not match the immutable version")
         if any(not math.isfinite(value) for value in artifact.vector) or not any(artifact.vector):
             raise ValueError("brand embedding vector is invalid")
+        if parsed.text[artifact.chunk.char_start : artifact.chunk.char_end] != artifact.chunk.text:
+            raise ValueError("brand chunk must be an exact parsed document slice")
         session.add(
             BrandChunkModel(
                 id=artifact.chunk.id,
                 version_id=version.id,
+                section_id=artifact.chunk.section_id,
                 ordinal=artifact.chunk.ordinal,
+                section_ordinal=artifact.chunk.section_ordinal,
                 chunk_key=artifact.chunk.chunk_key,
                 text_hash=artifact.chunk.text_hash,
                 text=artifact.chunk.text,
+                embedding_text=artifact.chunk.embedding_text,
+                embedding_input_hash=artifact.chunk.embedding_input_hash,
+                content_type=artifact.chunk.content_type.value,
+                claim_scope=artifact.chunk.claim_scope.value,
+                verification_required=artifact.chunk.verification_required,
                 char_start=artifact.chunk.char_start,
                 char_end=artifact.chunk.char_end,
             )
@@ -622,7 +639,7 @@ async def _persist_ingestion(
                 provider=artifact.provider,
                 model=artifact.model,
                 dimensions=len(artifact.vector),
-                input_hash=artifact.chunk.text_hash,
+                input_hash=artifact.chunk.embedding_input_hash,
                 input_version=version.embedding_input_version,
                 request_fingerprint=artifact.request_fingerprint,
                 provider_request_id=artifact.provider_request_id,
@@ -669,6 +686,7 @@ async def _persist_ingestion(
     attempt.safe_metadata = {
         "page_count": parsed.page_count,
         "character_count": len(parsed.text),
+        "section_count": len(chunking.sections),
         "chunk_count": len(embeddings),
         "extraction_method": parsed.extraction_method,
         "embedding_provider": version.embedding_provider,
@@ -906,6 +924,7 @@ async def retrieve_brand_context(
     valid_on: date,
     limit: int,
     candidate_limit: int,
+    retrieval_version: str,
 ) -> tuple[BrandRetrievalHit, ...]:
     if not query_text.strip() or len(query_text) > 2_000:
         raise ValueError("brand retrieval query must be 1-2000 characters")
@@ -933,6 +952,7 @@ async def retrieve_brand_context(
         BrandDocumentModel,
         BrandDocumentVersionModel,
         BrandChunkEmbeddingModel,
+        BrandSectionModel,
     )
     joins = (
         (BrandChunkEmbeddingModel, BrandChunkEmbeddingModel.chunk_id == BrandChunkModel.id),
@@ -944,6 +964,10 @@ async def retrieve_brand_context(
     full_text_statement = select(*columns, full_text_rank.label("rank"))
     for target, condition in joins:
         full_text_statement = full_text_statement.join(target, condition)
+    full_text_statement = full_text_statement.outerjoin(
+        BrandSectionModel,
+        BrandSectionModel.id == BrandChunkModel.section_id,
+    )
     full_text_rows = tuple(
         (
             await session.execute(
@@ -959,6 +983,10 @@ async def retrieve_brand_context(
     vector_statement = select(*columns, cosine_distance.label("distance"))
     for target, condition in joins:
         vector_statement = vector_statement.join(target, condition)
+    vector_statement = vector_statement.outerjoin(
+        BrandSectionModel,
+        BrandSectionModel.id == BrandChunkModel.section_id,
+    )
     vector_rows = tuple(
         (
             await session.execute(
@@ -970,29 +998,37 @@ async def retrieve_brand_context(
     )
     data_by_chunk: dict[
         UUID,
-        tuple[BrandChunkModel, BrandDocumentModel, BrandDocumentVersionModel],
+        tuple[
+            BrandChunkModel,
+            BrandDocumentModel,
+            BrandDocumentVersionModel,
+            BrandSectionModel | None,
+        ],
     ] = {}
     fts_score: dict[UUID, float] = {}
     fts_rank: dict[UUID, int] = {}
-    for rank, (chunk, document, version, _embedding, raw_score) in enumerate(full_text_rows, 1):
-        data_by_chunk[chunk.id] = (chunk, document, version)
+    for rank, (chunk, document, version, _embedding, section, raw_score) in enumerate(
+        full_text_rows, 1
+    ):
+        data_by_chunk[chunk.id] = (chunk, document, version, section)
         fts_score[chunk.id] = max(0.0, float(raw_score))
         fts_rank[chunk.id] = rank
     vector_score: dict[UUID, float] = {}
     vector_rank: dict[UUID, int] = {}
-    for rank, (chunk, document, version, _embedding, raw_distance) in enumerate(vector_rows, 1):
-        data_by_chunk[chunk.id] = (chunk, document, version)
+    for rank, (chunk, document, version, _embedding, section, raw_distance) in enumerate(
+        vector_rows, 1
+    ):
+        data_by_chunk[chunk.id] = (chunk, document, version, section)
         vector_score[chunk.id] = max(-1.0, min(1.0, 1.0 - float(raw_distance)))
         vector_rank[chunk.id] = rank
-    ranked_hits: list[_RankedBrandHit] = []
-    for chunk_id, (chunk, document, version) in data_by_chunk.items():
-        fused = 0.0
-        if chunk_id in fts_rank:
-            fused += _FULL_TEXT_WEIGHT / (_RRF_K + fts_rank[chunk_id])
-        if chunk_id in vector_rank:
-            fused += _VECTOR_WEIGHT / (_RRF_K + vector_rank[chunk_id])
+    ranked_hits: list[RankedBrandHit] = []
+    for chunk_id, (chunk, document, version, section) in data_by_chunk.items():
+        fused = fuse_brand_retrieval_score(
+            full_text_rank=fts_rank.get(chunk_id),
+            vector_rank=vector_rank.get(chunk_id),
+        )
         ranked_hits.append(
-            _RankedBrandHit(
+            RankedBrandHit(
                 ordinal=chunk.ordinal,
                 hit=BrandRetrievalHit(
                     chunk_id=chunk.id,
@@ -1008,10 +1044,23 @@ async def retrieve_brand_context(
                     full_text_score=fts_score.get(chunk_id, 0.0),
                     vector_score=vector_score.get(chunk_id, 0.0),
                     fused_score=fused,
+                    section_id=section.id if section is not None else None,
+                    section_title=section.title if section is not None else None,
+                    section_kind=(BrandSectionKind(section.kind) if section is not None else None),
+                    source_page=section.source_page if section is not None else None,
+                    question_number=section.question_number if section is not None else None,
+                    question_text=section.question_text if section is not None else None,
+                    content_type=BrandContentType(chunk.content_type),
+                    claim_scope=BrandClaimScope(chunk.claim_scope),
+                    verification_required=chunk.verification_required,
                 ),
             )
         )
-    return _select_diverse_brand_hits(ranked_hits, limit=limit)
+    return select_diverse_brand_hits(
+        ranked_hits,
+        limit=limit,
+        retrieval_version=retrieval_version,
+    )
 
 
 def active_brand_context_filters(

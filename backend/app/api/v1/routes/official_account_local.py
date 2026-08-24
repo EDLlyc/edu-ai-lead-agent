@@ -1,0 +1,552 @@
+from __future__ import annotations
+
+# ruff: noqa: RUF001 -- Chinese punctuation is intentional in safe UI explanations.
+from typing import Annotated, Any, cast
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, Request, Response, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.dependencies import get_session
+from app.application.ports.official_account_local import OfficialAccountVersionIdentity
+from app.core.errors import AppError, ConflictError, NotFoundError
+from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+    ArticlePackage,
+)
+from app.infrastructure.db.models import (
+    ImageArtifactModel,
+    MaterialPackageModel,
+    OfficialAccountArticleRunModel,
+    OfficialAccountLocalDraftModel,
+    OfficialAccountLocalMediaModel,
+)
+from app.infrastructure.db.official_account_local import (
+    PostgresOfficialAccountRepository,
+    material_package_source_snapshot,
+)
+from app.infrastructure.official_account_media import (
+    OfficialAccountLocalMediaResolver,
+    OfficialAccountMediaIntegrityError,
+    persisted_media_snapshot,
+)
+from app.schemas.official_account_local import (
+    EligibleMaterialPackageResponse,
+    OfficialAccountCapabilitiesResponse,
+    OfficialAccountDraftResponse,
+    OfficialAccountEmbeddingIdentityResponse,
+    OfficialAccountGeneratedVisualResponse,
+    OfficialAccountManualReviewRequest,
+    OfficialAccountManualReviewResponse,
+    OfficialAccountMediaResponse,
+    OfficialAccountMediaSelectionResponse,
+    OfficialAccountRunCreateRequest,
+    OfficialAccountRunDetailResponse,
+    OfficialAccountRunListResponse,
+    OfficialAccountRunSummaryResponse,
+    OfficialAccountUsageResponse,
+    OfficialAccountValidationResponse,
+)
+
+router = APIRouter(prefix="/official-account-local", tags=["official-account-local"])
+
+
+@router.get("/capabilities", response_model=OfficialAccountCapabilitiesResponse)
+async def capabilities(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OfficialAccountCapabilitiesResponse:
+    settings = request.app.state.settings
+    enabled = bool(settings.official_account_local_enabled)
+    live_available = enabled and _live_provider_available(settings)
+    eligible: list[EligibleMaterialPackageResponse] = []
+    if enabled:
+        rows = (
+            await session.execute(
+                select(MaterialPackageModel, ImageArtifactModel)
+                .join(
+                    ImageArtifactModel,
+                    ImageArtifactModel.id == MaterialPackageModel.image_artifact_id,
+                )
+                .order_by(MaterialPackageModel.created_at.desc())
+                .limit(100)
+            )
+        ).all()
+        for package, image in rows:
+            try:
+                source = material_package_source_snapshot(package, image)
+            except AppError:
+                continue
+            eligible.append(
+                EligibleMaterialPackageResponse(
+                    id=package.id,
+                    title=source.topic_title,
+                    status=package.status,
+                    review_status=package.review_status,
+                )
+            )
+    reason: str | None = None
+    if not enabled:
+        reason = "公众号本地草稿功能未启用"
+    elif not live_available:
+        reason = "真实模型未在服务器端完整配置"
+    return OfficialAccountCapabilitiesResponse(
+        enabled=enabled,
+        fixture_available=enabled,
+        live_available=live_available,
+        live_unavailable_reason=reason,
+        eligible_material_packages=eligible,
+        visual_semantic_enabled=bool(
+            getattr(settings, "official_account_local_visual_semantic_enabled", False)
+        ),
+        visual_semantic_provider_mode=getattr(
+            settings,
+            "visual_embedding_provider_mode",
+            "disabled",
+        ),
+        generated_visuals_enabled=bool(
+            getattr(settings, "official_account_local_generated_visuals_enabled", False)
+        ),
+    )
+
+
+@router.get("/article-runs", response_model=OfficialAccountRunListResponse)
+async def list_article_runs(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> OfficialAccountRunListResponse:
+    _require_enabled(request)
+    repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
+    runs = await repository.list_runs(limit=limit)
+    return OfficialAccountRunListResponse(
+        items=[_summary(run) for run in runs],
+        count=len(runs),
+    )
+
+
+@router.post(
+    "/article-runs",
+    response_model=OfficialAccountRunSummaryResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_article_run(
+    payload: OfficialAccountRunCreateRequest,
+    request: Request,
+    response: Response,
+) -> OfficialAccountRunSummaryResponse:
+    _require_enabled(request)
+    settings = request.app.state.settings
+    repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
+    if payload.source.kind == "fixture":
+        run, _created = await repository.enqueue_fixture(identity=_fixture_identity(settings))
+    else:
+        if not _live_provider_available(settings):
+            raise ConflictError("real article model is not configured on the server")
+        run, _created = await repository.enqueue_material_package(
+            material_package_id=payload.source.material_package_id,
+            identity=_live_identity(settings),
+        )
+    response.headers["Location"] = _detail_url(run.id)
+    return _summary(run)
+
+
+@router.get(
+    "/article-runs/{run_id}",
+    response_model=OfficialAccountRunDetailResponse,
+)
+async def read_article_run(
+    run_id: UUID,
+    request: Request,
+) -> OfficialAccountRunDetailResponse:
+    _require_enabled(request)
+    repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
+    run = await repository.get_run(run_id)
+    article = await repository.get_article(run_id)
+    media_rows = await repository.list_media(run_id)
+    body_rows = tuple(item for item in media_rows if item[1].role == "body")
+    cover_row = next((item for item in media_rows if item[1].role == "cover"), None)
+    draft = await repository.get_draft(run_id)
+    manual_review = await repository.get_manual_review(run_id)
+    generated_visuals = await repository.list_generated_visuals(run_id=run_id)
+    summary = _summary(run)
+    return OfficialAccountRunDetailResponse(
+        **summary.model_dump(),
+        article=article.article if article is not None else None,
+        validation=(
+            OfficialAccountValidationResponse(
+                passed=article.validation_passed,
+                issues=list(article.validation_issues),
+            )
+            if article is not None
+            else None
+        ),
+        audit=article.audit if article is not None else None,
+        usage=(
+            OfficialAccountUsageResponse(
+                prompt_tokens=article.prompt_tokens,
+                completion_tokens=article.completion_tokens,
+                reasoning_tokens=article.reasoning_tokens,
+                latency_ms=article.latency_ms,
+                safe_provider_request_id=article.provider_request_id,
+            )
+            if article is not None
+            else None
+        ),
+        media=[_media(result) for _media_id, result in media_rows],
+        body_image=_media(body_rows[0][1]) if body_rows else None,
+        body_images=[_media(result) for _media_id, result in body_rows],
+        cover_image=_media(cover_row[1]) if cover_row is not None else None,
+        media_selection=_media_selection(
+            run,
+            body_count=len(body_rows),
+            article=article.article if article is not None else None,
+        ),
+        generated_visuals=[_generated_visual(item) for item in generated_visuals],
+        draft=_draft(draft) if draft is not None else None,
+        manual_review=_manual_review(manual_review),
+    )
+
+
+@router.post(
+    "/article-runs/{run_id}/manual-review",
+    response_model=OfficialAccountManualReviewResponse,
+)
+async def record_manual_review(
+    run_id: UUID,
+    payload: OfficialAccountManualReviewRequest,
+    request: Request,
+) -> OfficialAccountManualReviewResponse:
+    _require_enabled(request)
+    repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
+    review, created = await repository.record_manual_review(
+        run_id=run_id,
+        decision=payload.decision,
+        reviewer_label=payload.reviewer_label,
+        note=payload.note,
+    )
+    return _manual_review(review, idempotent_replay=not created)
+
+
+@router.post(
+    "/article-runs/{run_id}/retry",
+    response_model=OfficialAccountRunSummaryResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_article_run(
+    run_id: UUID,
+    request: Request,
+    response: Response,
+) -> OfficialAccountRunSummaryResponse:
+    _require_enabled(request)
+    settings = request.app.state.settings
+    repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
+    run = await repository.retry(
+        run_id=run_id,
+        max_attempts=settings.official_account_local_max_attempts,
+    )
+    response.headers["Location"] = _detail_url(run.id)
+    return _summary(run)
+
+
+@router.get("/media/{local_media_id}", response_class=Response)
+async def read_local_media(
+    local_media_id: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    _require_enabled(request)
+    row = await session.scalar(
+        select(OfficialAccountLocalMediaModel).where(
+            OfficialAccountLocalMediaModel.local_media_id == local_media_id,
+            OfficialAccountLocalMediaModel.status == "ready",
+        )
+    )
+    if row is None:
+        raise NotFoundError("official-account local media")
+    resolver = OfficialAccountLocalMediaResolver(
+        image_asset_manifest=getattr(request.app.state.settings, "image_asset_manifest", None),
+        image_store=getattr(request.app.state, "image_store", None),
+    )
+    try:
+        persisted_media = persisted_media_snapshot(row)
+        body = await resolver.read_verified_bytes(session=session, media=persisted_media)
+    except OfficialAccountMediaIntegrityError as error:
+        raise ConflictError("official-account local media integrity check failed") from error
+    return Response(
+        content=body,
+        media_type=persisted_media.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
+@router.get("/drafts/{local_draft_id}/preview", response_class=Response)
+async def preview_local_draft(
+    local_draft_id: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    _require_enabled(request)
+    draft = await session.scalar(
+        select(OfficialAccountLocalDraftModel).where(
+            OfficialAccountLocalDraftModel.local_draft_id == local_draft_id,
+            OfficialAccountLocalDraftModel.state == "ready",
+            OfficialAccountLocalDraftModel.simulation.is_(True),
+        )
+    )
+    if draft is None:
+        raise NotFoundError("official-account local draft")
+    document = (
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        "<title>公众号本地草稿预览</title></head>"
+        f"<body>{draft.resolved_html}</body></html>"
+    )
+    return Response(
+        content=document.encode("utf-8"),
+        media_type="text/html",
+        headers={
+            "Content-Security-Policy": (
+                "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'self'; "
+                "object-src 'none'"
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
+def _require_enabled(request: Request) -> None:
+    if not request.app.state.settings.official_account_local_enabled:
+        raise ConflictError("official-account local drafting is disabled")
+
+
+def _live_provider_available(settings: Any) -> bool:
+    return bool(
+        settings.ai_provider_mode == "zhipu"
+        and settings.ai_platform_base_url is not None
+        and settings.ai_platform_api_key is not None
+        and settings.ai_platform_api_key.get_secret_value().strip()
+    )
+
+
+def _fixture_identity(settings: Any) -> OfficialAccountVersionIdentity:
+    return _identity(settings, provider="fake", model="official-account-fixture-v1")
+
+
+def _live_identity(settings: Any) -> OfficialAccountVersionIdentity:
+    return _identity(settings, provider="zhipu", model=settings.ai_chat_model)
+
+
+def _identity(
+    settings: Any,
+    *,
+    provider: Any,
+    model: str,
+) -> OfficialAccountVersionIdentity:
+    return OfficialAccountVersionIdentity(
+        provider=provider,
+        model=model,
+        generator_prompt_version=settings.official_account_local_generator_prompt_version,
+        article_schema_version=settings.official_account_local_article_schema_version,
+        media_plan_version=settings.official_account_local_media_plan_version,
+        auditor_prompt_version=settings.official_account_local_auditor_prompt_version,
+        audit_schema_version=settings.official_account_local_audit_schema_version,
+        rule_version=settings.official_account_local_rule_version,
+        renderer_version=settings.official_account_local_renderer_version,
+        style_version=settings.official_account_local_style_version,
+        template_version=settings.official_account_local_template_version,
+        local_adapter_version=settings.official_account_local_adapter_version,
+        visual_query_version=settings.official_account_local_visual_query_version,
+        visual_selector_version=settings.official_account_local_visual_selector_version,
+        generated_visual_plan_version=(
+            settings.official_account_local_generated_visual_plan_version
+            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
+            else None
+        ),
+        generated_visual_prompt_version=(
+            settings.official_account_local_generated_visual_prompt_version
+            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
+            else None
+        ),
+        default_author=settings.official_account_local_default_author,
+        min_characters=settings.official_account_local_min_characters,
+        target_min_characters=settings.official_account_local_target_min_characters,
+        target_max_characters=settings.official_account_local_target_max_characters,
+        max_characters=settings.official_account_local_max_characters,
+    )
+
+
+def _summary(run: OfficialAccountArticleRunModel) -> OfficialAccountRunSummaryResponse:
+    return OfficialAccountRunSummaryResponse(
+        id=run.id,
+        source_kind="fixture" if run.fixture_id is not None else "material_package",
+        material_package_id=run.material_package_id,
+        fixture_id=run.fixture_id,
+        generation_mode=cast(Any, run.generation_mode),
+        provider=cast(Any, run.provider),
+        model=run.model,
+        request_fingerprint=run.request_fingerprint,
+        status=cast(Any, run.status),
+        current_stage=cast(Any, run.current_stage),
+        attempt_count=run.attempt_count,
+        error_code=run.error_code,
+        error_retryable=run.error_retryable,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        detail_url=_detail_url(run.id),
+        retry_url=f"{_detail_url(run.id)}/retry",
+    )
+
+
+def _media(result: Any) -> OfficialAccountMediaResponse:
+    return OfficialAccountMediaResponse(
+        local_media_id=result.local_media_id,
+        role=result.role,
+        ordinal=result.ordinal,
+        media_url=result.media_url,
+        media_type=result.media_type,
+        byte_size=result.byte_size,
+        sha256=result.sha256,
+        semantic_label=result.semantic_label,
+        assigned_section_index=result.assigned_section_index,
+        score_band=result.score_band,
+        selection_reason_code=result.selection_reason_code,
+        selection_method=result.selection_method,
+        similarity_band=result.similarity_band,
+        alt_text=result.alt_text,
+    )
+
+
+def _draft(draft: OfficialAccountLocalDraftModel) -> OfficialAccountDraftResponse:
+    return OfficialAccountDraftResponse(
+        local_draft_id=draft.local_draft_id,
+        state=cast(Any, draft.state),
+        simulation=True,
+        preview_url=(f"/api/v1/official-account-local/drafts/{draft.local_draft_id}/preview"),
+        resolved_fingerprint=draft.resolved_fingerprint,
+        created_at=draft.created_at,
+    )
+
+
+def _generated_visual(item: Any) -> OfficialAccountGeneratedVisualResponse:
+    return OfficialAccountGeneratedVisualResponse(
+        ordinal=item.plan.ordinal,
+        section_index=item.plan.section_index,
+        block_index=item.plan.block_index,
+        block_kind=item.plan.block_kind,
+        reference_asset_ref=item.plan.reference_asset_ref,
+        selection_method=item.plan.selection_method,
+        similarity_band=item.plan.similarity_band,
+        status=item.status,
+        request_fingerprint=item.plan.request_fingerprint,
+        plan_version=item.plan.plan_version,
+        prompt_version=item.plan.prompt_version,
+        output_profile_version=item.plan.output_profile_version,
+        provider=item.plan.provider,
+        model=item.plan.model,
+        media_type=item.media_type,
+        byte_size=item.byte_size,
+        sha256=item.sha256,
+        width=item.width,
+        height=item.height,
+        error_code=item.error_code,
+    )
+
+
+def _manual_review(
+    review: Any | None,
+    *,
+    idempotent_replay: bool = False,
+) -> OfficialAccountManualReviewResponse:
+    if review is None:
+        return OfficialAccountManualReviewResponse(status="pending")
+    return OfficialAccountManualReviewResponse(
+        status=review.decision,
+        review_id=review.id,
+        reviewer_label=review.reviewer_label,
+        note=review.note,
+        reviewed_at=review.reviewed_at,
+        request_fingerprint=review.request_fingerprint,
+        idempotent_replay=idempotent_replay,
+        editorially_approved=review.decision == "approved",
+    )
+
+
+def _media_selection(
+    run: OfficialAccountArticleRunModel,
+    *,
+    body_count: int,
+    article: ArticlePackage | None,
+) -> OfficialAccountMediaSelectionResponse:
+    current_plan = run.version_bundle.get("media_plan_version")
+    if current_plan == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION:
+        snapshot = article.media_selection if article is not None else None
+        planned_body_count = len(snapshot.assignments) if snapshot is not None else body_count
+        semantic_ready = snapshot is not None and snapshot.status == "semantic_ready"
+        explanation = [
+            (
+                "多模态模型只对已经过清单审批和完整性校验的品牌图库排序，不会引入新图片。"
+                if semantic_ready
+                else "多模态排序未生效，本次使用确定性的章节标签回退结果。"
+            ),
+            "正文图片保持一对一且均衡分布；素材包主图只作为独立封面。",
+            "相似度不是审稿结论，最终仍需由人工明确批准或退回。",
+        ]
+        return OfficialAccountMediaSelectionResponse(
+            policy_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            # The selection snapshot is persisted before generated-image provider I/O.  It is
+            # therefore the safe target count while no body-media rows have been staged yet.
+            body_image_count=planned_body_count,
+            target_body_image_count="3–5（候选不足时允许 1–2）",
+            safely_degraded=planned_body_count < 3 or not semantic_ready,
+            explanation=explanation,
+            selection_mode=("multimodal_embedding" if semantic_ready else "deterministic_fallback"),
+            semantic_status=snapshot.status if snapshot is not None else "semantic_unavailable",
+            semantic_unavailable_reason=(
+                snapshot.closed_reason if snapshot is not None else "selection_pending"
+            ),
+            visual_query_version=(snapshot.visual_query_version if snapshot is not None else None),
+            visual_selector_version=(
+                snapshot.visual_selector_version if snapshot is not None else None
+            ),
+            embedding_identity=(
+                OfficialAccountEmbeddingIdentityResponse.model_validate(
+                    snapshot.embedding_identity.model_dump()
+                )
+                if snapshot is not None and snapshot.embedding_identity is not None
+                else None
+            ),
+        )
+    if current_plan in {
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    }:
+        return OfficialAccountMediaSelectionResponse(
+            policy_version=str(current_plan),
+            body_image_count=body_count,
+            target_body_image_count="3–5（历史多图）",
+            safely_degraded=False,
+            explanation=["该历史运行按原确定性多图顺序和 PNG 素材恢复。"],
+            selection_mode="historical",
+        )
+    return OfficialAccountMediaSelectionResponse(
+        policy_version="historical-single-body",
+        body_image_count=body_count,
+        target_body_image_count="1（历史兼容）",
+        safely_degraded=False,
+        explanation=["该历史运行按原单图版本身份恢复，不应用新版多图计划。"],
+    )
+
+
+def _detail_url(run_id: UUID) -> str:
+    return f"/api/v1/official-account-local/article-runs/{run_id}"

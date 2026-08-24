@@ -91,10 +91,12 @@ class BrandRagContextRetriever(BrandContextRetriever):
         repository: BrandKnowledgeRepository,
         embeddings: BrandEmbeddingModel,
         limit: int,
+        retrieval_version: str,
     ) -> None:
         self._repository = repository
         self._embeddings = embeddings
         self._limit = limit
+        self._retrieval_version = retrieval_version
 
     async def retrieve_for_copy(self, topic: LockedTopicContext) -> tuple[ActiveBrandContext, ...]:
         query = "\n".join(
@@ -114,6 +116,7 @@ class BrandRagContextRetriever(BrandContextRetriever):
             document_kinds=tuple(BrandDocumentKind),
             valid_on=topic.business_date,
             limit=self._limit,
+            retrieval_version=self._retrieval_version,
         )
         return tuple(
             ActiveBrandContext(
@@ -126,6 +129,15 @@ class BrandRagContextRetriever(BrandContextRetriever):
                 tone_tags=hit.tone_tags,
                 safety_tags=hit.safety_tags,
                 visual_tags=hit.visual_tags,
+                section_id=hit.section_id,
+                section_title=hit.section_title,
+                section_kind=hit.section_kind,
+                source_page=hit.source_page,
+                question_number=hit.question_number,
+                question_text=hit.question_text,
+                content_type=hit.content_type,
+                claim_scope=hit.claim_scope,
+                verification_required=hit.verification_required,
             )
             for hit in hits
         )
@@ -641,6 +653,14 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
             "tone_tags": item.tone_tags,
             "safety_tags": item.safety_tags,
             "visual_tags": item.visual_tags,
+            "section_title": item.section_title,
+            "section_kind": item.section_kind.value if item.section_kind is not None else None,
+            "source_page": item.source_page,
+            "question_number": item.question_number,
+            "question_text": item.question_text,
+            "content_type": item.content_type.value if item.content_type is not None else None,
+            "claim_scope": item.claim_scope.value if item.claim_scope is not None else None,
+            "verification_required": item.verification_required,
             "text": item.text,
         }
         for item in request.brand_context
@@ -702,6 +722,14 @@ def build_auditor_prompt(request: DraftAuditRequest) -> str:
             "tone_tags": item.tone_tags,
             "safety_tags": item.safety_tags,
             "visual_tags": item.visual_tags,
+            "section_title": item.section_title,
+            "section_kind": item.section_kind.value if item.section_kind is not None else None,
+            "source_page": item.source_page,
+            "question_number": item.question_number,
+            "question_text": item.question_text,
+            "content_type": item.content_type.value if item.content_type is not None else None,
+            "claim_scope": item.claim_scope.value if item.claim_scope is not None else None,
+            "verification_required": item.verification_required,
             "text": item.text,
         }
         for item in request.brand_context

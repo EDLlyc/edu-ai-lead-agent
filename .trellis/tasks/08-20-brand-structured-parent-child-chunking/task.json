@@ -1,0 +1,28 @@
+{
+  "id": "brand-structured-parent-child-chunking",
+  "name": "brand-structured-parent-child-chunking",
+  "title": "品牌资料结构化父子切片",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-20",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "description": "将演示型 PDF 与访谈型 DOCX 升级为可回放的父子切片，并分离原文、Embedding 上下文、语义类型与外部声明边界。"
+  }
+}

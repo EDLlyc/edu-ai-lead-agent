@@ -28,6 +28,7 @@ from app.core.errors import (
     ProviderValidationIssue,
     provider_validation_issues_metadata,
 )
+from app.domain.brand_knowledge import BrandClaimScope, BrandContentType, BrandSectionKind
 from app.domain.content_slots import ContentSlot
 from app.domain.copy_generation import (
     ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION,
@@ -47,6 +48,7 @@ from app.infrastructure.db.models import (
     BrandChunkModel,
     BrandDocumentModel,
     BrandDocumentVersionModel,
+    BrandSectionModel,
     CandidateAnalysisModel,
     ContentSlotRunModel,
     ContentSlotSelectionModel,
@@ -343,6 +345,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                             BrandChunkModel,
                             BrandDocumentVersionModel,
                             BrandDocumentModel,
+                            BrandSectionModel,
                         )
                         .join(
                             BrandDocumentVersionModel,
@@ -351,6 +354,10 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                         .join(
                             BrandDocumentModel,
                             BrandDocumentModel.id == BrandDocumentVersionModel.document_id,
+                        )
+                        .outerjoin(
+                            BrandSectionModel,
+                            BrandSectionModel.id == BrandChunkModel.section_id,
                         )
                         .where(BrandChunkModel.id.in_(ordered_ids))
                     )
@@ -367,8 +374,17 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                     tone_tags=tuple(version.tone_tags),
                     safety_tags=tuple(version.safety_tags),
                     visual_tags=tuple(version.visual_tags),
+                    section_id=section.id if section is not None else None,
+                    section_title=section.title if section is not None else None,
+                    section_kind=(BrandSectionKind(section.kind) if section is not None else None),
+                    source_page=section.source_page if section is not None else None,
+                    question_number=section.question_number if section is not None else None,
+                    question_text=section.question_text if section is not None else None,
+                    content_type=BrandContentType(chunk.content_type),
+                    claim_scope=BrandClaimScope(chunk.claim_scope),
+                    verification_required=chunk.verification_required,
                 )
-                for chunk, version, document in rows
+                for chunk, version, document, section in rows
             }
             if set(by_id) != set(ordered_ids):
                 return ()

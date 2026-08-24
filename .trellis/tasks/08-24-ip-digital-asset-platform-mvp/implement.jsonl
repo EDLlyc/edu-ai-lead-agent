@@ -1,0 +1,18 @@
+{"file":".trellis/spec/backend/index.md","reason":"Load the backend source-of-truth boundaries and linked pre-development checklist."}
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Apply the implemented dynamic asset, storage, search, CORS, idempotency, generation, and lease-fencing contracts."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Place the new domain, services, ports, repositories, routes, workers, and storage adapters in their owning layers."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Design additive PostgreSQL/pgvector models, migrations, leases, transactions, and real integration coverage."}
+{"file":".trellis/spec/backend/visual-retrieval.md","reason":"Reuse the fixed multimodal identity and safety contracts without weakening the static catalog complete-index invariant."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/implementation-check-contracts.md","reason":"Apply the bounded existing image-generation and quality contracts without truncated umbrella-spec injection."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Return typed bounded upload, retrieval, storage, and generation failures without leaking provider/private data."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Preserve privacy-safe structured logging for no-auth uploads, jobs, downloads, and provider failures."}
+{"file":".trellis/spec/frontend/index.md","reason":"Load the internal SPA product boundaries and linked frontend development checklist."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Apply the implemented gallery, generated-wire, safe resource URL, accessibility, download, and degraded-state contracts."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Create the IP asset hub as a cohesive feature using generated API contracts and existing app composition."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Implement the gallery, upload, search, detail, download, and generation UX accessibly."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Use TanStack Query and bounded polling/invalidation for assets and durable jobs."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Separate server state from transient chat, filters, multi-select, and upload form state."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Consume generated OpenAPI wire types and validate browser/runtime boundaries."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/current-foundation.md","reason":"Apply the inspected reuse boundaries for static visual retrieval, MinIO, generation, and the current SPA."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/upload-ai-recognition.md","reason":"Implement the explicit-click, advisory-only Zhipu vision upload-recognition boundary without importing the offline catalog CLI."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Reuse the reviewed private visual annotation allowlist, prompt-injection, safe-error, and no-raw-provider contracts."}

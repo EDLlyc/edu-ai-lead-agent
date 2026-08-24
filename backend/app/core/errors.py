@@ -103,9 +103,76 @@ class CopyGenerationLeaseLostError(AppError):
         )
 
 
+class OfficialAccountLeaseLostError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "official_account_lease_lost",
+            "official-account local run lease ownership was lost",
+            503,
+            True,
+        )
+
+
+class LocalDraftResultUnknownError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "local_draft_result_unknown",
+            "local draft creation result is unknown and requires inspection",
+            409,
+        )
+
+
+class OfficialAccountGeneratedVisualResultUnknownError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "official_account_generated_visual_result_unknown",
+            "generated local body visual result is unknown and requires inspection",
+            409,
+        )
+
+
+class OfficialAccountGeneratedVisualFailedError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "official_account_generated_visual_failed",
+            "generated local body visual failed validation or generation",
+            422,
+        )
+
+
 class BrandUploadRejectedError(AppError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(code, message, 422)
+
+
+class IpAssetUploadRejectedError(AppError):
+    def __init__(self, code: str = "invalid_ip_asset_upload") -> None:
+        safe_codes = {
+            "empty_image",
+            "image_too_large",
+            "unsupported_media_type",
+            "invalid_raster_signature",
+            "media_type_signature_mismatch",
+            "invalid_raster",
+            "invalid_dimensions",
+            "dimension_limit_exceeded",
+            "pixel_limit_exceeded",
+            "dimension_mismatch",
+            "invalid_ip_asset_metadata",
+            "invalid_ip_asset_upload",
+        }
+        selected = code if code in safe_codes else "invalid_ip_asset_upload"
+        super().__init__(selected, "IP asset upload failed validation", 422)
+
+
+class IpAssetRecognitionUnavailableError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "ip_asset_recognition_unavailable",
+            "AI-assisted IP asset recognition is unavailable; manual upload remains available",
+            503,
+            True,
+        )
 
 
 class ProviderError(AppError):

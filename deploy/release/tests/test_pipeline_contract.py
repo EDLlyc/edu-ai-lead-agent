@@ -131,7 +131,14 @@ def test_ci_jobs_use_pinned_specified_container_and_probe_docker() -> None:
 def test_compose_uses_one_application_image_variable() -> None:
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     assert "image: ${APP_IMAGE:-edu-ai-lead-agent-backend:local}" in compose
-    assert compose.count("<<: *app-runtime") == 9
+    assert compose.count("<<: *app-runtime") == 12
+    services = yaml.safe_load(compose)["services"]
+    for service_name in (
+        "official-account-local-worker",
+        "official-account-local-fixture",
+    ):
+        assert services[service_name]["profiles"] == ["official-account-local"]
+    assert services["ip-asset-worker"]["profiles"] == ["ip-assets"]
 
 
 def test_repository_migration_declaration_and_doctor_match_the_single_head() -> None:
@@ -149,6 +156,13 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     assert reviewed is False
     assert compatible is False
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
+    for schema_identity in (
+        "brand_visual_index_jobs",
+        "brand_visual_asset_embeddings",
+        "embedding_input_sha256",
+        "visual_embedding_vector_type",
+    ):
+        assert schema_identity in doctor
 
 
 def test_frontend_is_a_ci_gate_only() -> None:
@@ -436,6 +450,8 @@ def test_external_side_effect_flags_default_closed() -> None:
         "CONTENT_SCHEDULER_ENABLED: ${CONTENT_SCHEDULER_ENABLED:-false}",
         "CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-false}",
         "IMAGE_ENABLED: ${IMAGE_ENABLED:-false}",
+        "IP_ASSET_RECOGNITION_ENABLED: ${IP_ASSET_RECOGNITION_ENABLED:-false}",
+        "VISUAL_SEMANTIC_ENABLED: ${VISUAL_SEMANTIC_ENABLED:-false}",
         "WECOM_ENABLED: ${WECOM_ENABLED:-false}",
         "WECOM_AUTO_DELIVERY_ENABLED: ${WECOM_AUTO_DELIVERY_ENABLED:-false}",
     ):

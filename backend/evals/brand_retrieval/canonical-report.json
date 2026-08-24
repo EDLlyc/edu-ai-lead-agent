@@ -1,0 +1,1401 @@
+{
+  "aggregate": {
+    "case_count": 36,
+    "failed_case_ids": [],
+    "legacy_v2": {
+      "brand_as_fact_violation_count": 0,
+      "macro_mrr_at_5": 1.0,
+      "macro_ndcg_at_5": 0.843687,
+      "macro_parent_diversity_at_5": 0.85,
+      "macro_recall_at_5": 0.8,
+      "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+      "verification_coverage": 1.0
+    },
+    "parent_diversity_delta": 0.15,
+    "passed_count": 36,
+    "structured_v3": {
+      "brand_as_fact_violation_count": 0,
+      "macro_mrr_at_5": 1.0,
+      "macro_ndcg_at_5": 0.928633,
+      "macro_parent_diversity_at_5": 1.0,
+      "macro_recall_at_5": 0.95,
+      "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+      "verification_coverage": 1.0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "audience-insight-01",
+      "category": "audience_insight",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-01-c1",
+          "audience-insight-01-c2",
+          "audience-insight-01-c3",
+          "audience-insight-01-c4",
+          "audience-insight-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-01-c1",
+          "audience-insight-01-c3",
+          "audience-insight-01-c4",
+          "audience-insight-01-c5",
+          "audience-insight-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "audience-insight-02",
+      "category": "audience_insight",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-02-c1",
+          "audience-insight-02-c2",
+          "audience-insight-02-c3",
+          "audience-insight-02-c4",
+          "audience-insight-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-02-c1",
+          "audience-insight-02-c3",
+          "audience-insight-02-c4",
+          "audience-insight-02-c5",
+          "audience-insight-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "audience-insight-03",
+      "category": "audience_insight",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-03-c1",
+          "audience-insight-03-c2",
+          "audience-insight-03-c3",
+          "audience-insight-03-c4",
+          "audience-insight-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-03-c1",
+          "audience-insight-03-c3",
+          "audience-insight-03-c4",
+          "audience-insight-03-c5",
+          "audience-insight-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "audience-insight-04",
+      "category": "audience_insight",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-04-c1",
+          "audience-insight-04-c2",
+          "audience-insight-04-c3",
+          "audience-insight-04-c4",
+          "audience-insight-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "audience-insight-04-c1",
+          "audience-insight-04-c2",
+          "audience-insight-04-c3",
+          "audience-insight-04-c4",
+          "audience-insight-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "digital-ip-values-01",
+      "category": "digital_ip_values",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-01-c1",
+          "digital-ip-values-01-c2",
+          "digital-ip-values-01-c3",
+          "digital-ip-values-01-c4",
+          "digital-ip-values-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-01-c1",
+          "digital-ip-values-01-c3",
+          "digital-ip-values-01-c4",
+          "digital-ip-values-01-c5",
+          "digital-ip-values-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "digital-ip-values-02",
+      "category": "digital_ip_values",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-02-c1",
+          "digital-ip-values-02-c2",
+          "digital-ip-values-02-c3",
+          "digital-ip-values-02-c4",
+          "digital-ip-values-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-02-c1",
+          "digital-ip-values-02-c3",
+          "digital-ip-values-02-c4",
+          "digital-ip-values-02-c5",
+          "digital-ip-values-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "digital-ip-values-03",
+      "category": "digital_ip_values",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-03-c1",
+          "digital-ip-values-03-c2",
+          "digital-ip-values-03-c3",
+          "digital-ip-values-03-c4",
+          "digital-ip-values-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-03-c1",
+          "digital-ip-values-03-c3",
+          "digital-ip-values-03-c4",
+          "digital-ip-values-03-c5",
+          "digital-ip-values-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "digital-ip-values-04",
+      "category": "digital_ip_values",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-04-c1",
+          "digital-ip-values-04-c2",
+          "digital-ip-values-04-c3",
+          "digital-ip-values-04-c4",
+          "digital-ip-values-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "digital-ip-values-04-c1",
+          "digital-ip-values-04-c2",
+          "digital-ip-values-04-c3",
+          "digital-ip-values-04-c4",
+          "digital-ip-values-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "external-claim-01",
+      "category": "external_claim",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "external-claim-01-c1",
+          "external-claim-01-c2",
+          "external-claim-01-c3",
+          "external-claim-01-c4",
+          "external-claim-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "external-claim-01-c1",
+          "external-claim-01-c3",
+          "external-claim-01-c4",
+          "external-claim-01-c5",
+          "external-claim-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "external-claim-02",
+      "category": "external_claim",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "external-claim-02-c1",
+          "external-claim-02-c2",
+          "external-claim-02-c3",
+          "external-claim-02-c4",
+          "external-claim-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "external-claim-02-c1",
+          "external-claim-02-c3",
+          "external-claim-02-c4",
+          "external-claim-02-c5",
+          "external-claim-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "external-claim-03",
+      "category": "external_claim",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "external-claim-03-c1",
+          "external-claim-03-c2",
+          "external-claim-03-c3",
+          "external-claim-03-c4",
+          "external-claim-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "external-claim-03-c1",
+          "external-claim-03-c3",
+          "external-claim-03-c4",
+          "external-claim-03-c5",
+          "external-claim-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "external-claim-04",
+      "category": "external_claim",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "external-claim-04-c1",
+          "external-claim-04-c2",
+          "external-claim-04-c3",
+          "external-claim-04-c4",
+          "external-claim-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "external-claim-04-c1",
+          "external-claim-04-c2",
+          "external-claim-04-c3",
+          "external-claim-04-c4",
+          "external-claim-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "other-01",
+      "category": "other",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "other-01-c1",
+          "other-01-c2",
+          "other-01-c3",
+          "other-01-c4",
+          "other-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "other-01-c1",
+          "other-01-c3",
+          "other-01-c4",
+          "other-01-c5",
+          "other-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "other-02",
+      "category": "other",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "other-02-c1",
+          "other-02-c2",
+          "other-02-c3",
+          "other-02-c4",
+          "other-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "other-02-c1",
+          "other-02-c3",
+          "other-02-c4",
+          "other-02-c5",
+          "other-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "other-03",
+      "category": "other",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "other-03-c1",
+          "other-03-c2",
+          "other-03-c3",
+          "other-03-c4",
+          "other-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "other-03-c1",
+          "other-03-c3",
+          "other-03-c4",
+          "other-03-c5",
+          "other-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "other-04",
+      "category": "other",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "other-04-c1",
+          "other-04-c2",
+          "other-04-c3",
+          "other-04-c4",
+          "other-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "other-04-c1",
+          "other-04-c2",
+          "other-04-c3",
+          "other-04-c4",
+          "other-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "positioning-01",
+      "category": "positioning",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "positioning-01-c1",
+          "positioning-01-c2",
+          "positioning-01-c3",
+          "positioning-01-c4",
+          "positioning-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "positioning-01-c1",
+          "positioning-01-c3",
+          "positioning-01-c4",
+          "positioning-01-c5",
+          "positioning-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "positioning-02",
+      "category": "positioning",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "positioning-02-c1",
+          "positioning-02-c2",
+          "positioning-02-c3",
+          "positioning-02-c4",
+          "positioning-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "positioning-02-c1",
+          "positioning-02-c3",
+          "positioning-02-c4",
+          "positioning-02-c5",
+          "positioning-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "positioning-03",
+      "category": "positioning",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "positioning-03-c1",
+          "positioning-03-c2",
+          "positioning-03-c3",
+          "positioning-03-c4",
+          "positioning-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "positioning-03-c1",
+          "positioning-03-c3",
+          "positioning-03-c4",
+          "positioning-03-c5",
+          "positioning-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "positioning-04",
+      "category": "positioning",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "positioning-04-c1",
+          "positioning-04-c2",
+          "positioning-04-c3",
+          "positioning-04-c4",
+          "positioning-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "positioning-04-c1",
+          "positioning-04-c2",
+          "positioning-04-c3",
+          "positioning-04-c4",
+          "positioning-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "product-profile-01",
+      "category": "product_profile",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "product-profile-01-c1",
+          "product-profile-01-c2",
+          "product-profile-01-c3",
+          "product-profile-01-c4",
+          "product-profile-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "product-profile-01-c1",
+          "product-profile-01-c3",
+          "product-profile-01-c4",
+          "product-profile-01-c5",
+          "product-profile-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "product-profile-02",
+      "category": "product_profile",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "product-profile-02-c1",
+          "product-profile-02-c2",
+          "product-profile-02-c3",
+          "product-profile-02-c4",
+          "product-profile-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "product-profile-02-c1",
+          "product-profile-02-c3",
+          "product-profile-02-c4",
+          "product-profile-02-c5",
+          "product-profile-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "product-profile-03",
+      "category": "product_profile",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "product-profile-03-c1",
+          "product-profile-03-c2",
+          "product-profile-03-c3",
+          "product-profile-03-c4",
+          "product-profile-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "product-profile-03-c1",
+          "product-profile-03-c3",
+          "product-profile-03-c4",
+          "product-profile-03-c5",
+          "product-profile-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "product-profile-04",
+      "category": "product_profile",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "product-profile-04-c1",
+          "product-profile-04-c2",
+          "product-profile-04-c3",
+          "product-profile-04-c4",
+          "product-profile-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "product-profile-04-c1",
+          "product-profile-04-c2",
+          "product-profile-04-c3",
+          "product-profile-04-c4",
+          "product-profile-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "safety-capability-01",
+      "category": "safety_capability",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-01-c1",
+          "safety-capability-01-c2",
+          "safety-capability-01-c3",
+          "safety-capability-01-c4",
+          "safety-capability-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-01-c1",
+          "safety-capability-01-c3",
+          "safety-capability-01-c4",
+          "safety-capability-01-c5",
+          "safety-capability-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "safety-capability-02",
+      "category": "safety_capability",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-02-c1",
+          "safety-capability-02-c2",
+          "safety-capability-02-c3",
+          "safety-capability-02-c4",
+          "safety-capability-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-02-c1",
+          "safety-capability-02-c3",
+          "safety-capability-02-c4",
+          "safety-capability-02-c5",
+          "safety-capability-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "safety-capability-03",
+      "category": "safety_capability",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-03-c1",
+          "safety-capability-03-c2",
+          "safety-capability-03-c3",
+          "safety-capability-03-c4",
+          "safety-capability-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-03-c1",
+          "safety-capability-03-c3",
+          "safety-capability-03-c4",
+          "safety-capability-03-c5",
+          "safety-capability-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "safety-capability-04",
+      "category": "safety_capability",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-04-c1",
+          "safety-capability-04-c2",
+          "safety-capability-04-c3",
+          "safety-capability-04-c4",
+          "safety-capability-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "safety-capability-04-c1",
+          "safety-capability-04-c2",
+          "safety-capability-04-c3",
+          "safety-capability-04-c4",
+          "safety-capability-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "tone-example-01",
+      "category": "tone_example",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "tone-example-01-c1",
+          "tone-example-01-c2",
+          "tone-example-01-c3",
+          "tone-example-01-c4",
+          "tone-example-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "tone-example-01-c1",
+          "tone-example-01-c3",
+          "tone-example-01-c4",
+          "tone-example-01-c5",
+          "tone-example-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "tone-example-02",
+      "category": "tone_example",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "tone-example-02-c1",
+          "tone-example-02-c2",
+          "tone-example-02-c3",
+          "tone-example-02-c4",
+          "tone-example-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "tone-example-02-c1",
+          "tone-example-02-c3",
+          "tone-example-02-c4",
+          "tone-example-02-c5",
+          "tone-example-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "tone-example-03",
+      "category": "tone_example",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "tone-example-03-c1",
+          "tone-example-03-c2",
+          "tone-example-03-c3",
+          "tone-example-03-c4",
+          "tone-example-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "tone-example-03-c1",
+          "tone-example-03-c3",
+          "tone-example-03-c4",
+          "tone-example-03-c5",
+          "tone-example-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "tone-example-04",
+      "category": "tone_example",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "tone-example-04-c1",
+          "tone-example-04-c2",
+          "tone-example-04-c3",
+          "tone-example-04-c4",
+          "tone-example-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "tone-example-04-c1",
+          "tone-example-04-c2",
+          "tone-example-04-c3",
+          "tone-example-04-c4",
+          "tone-example-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "visual-guidance-01",
+      "category": "visual_guidance",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-01-c1",
+          "visual-guidance-01-c2",
+          "visual-guidance-01-c3",
+          "visual-guidance-01-c4",
+          "visual-guidance-01-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-01-c1",
+          "visual-guidance-01-c3",
+          "visual-guidance-01-c4",
+          "visual-guidance-01-c5",
+          "visual-guidance-01-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "visual-guidance-02",
+      "category": "visual_guidance",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.868445,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-02-c1",
+          "visual-guidance-02-c2",
+          "visual-guidance-02-c3",
+          "visual-guidance-02-c4",
+          "visual-guidance-02-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.964118,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-02-c1",
+          "visual-guidance-02-c3",
+          "visual-guidance-02-c4",
+          "visual-guidance-02-c5",
+          "visual-guidance-02-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "visual-guidance-03",
+      "category": "visual_guidance",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.731415,
+        "parent_diversity_at_5": 0.8,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-03-c1",
+          "visual-guidance-03-c2",
+          "visual-guidance-03-c3",
+          "visual-guidance-03-c4",
+          "visual-guidance-03-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.86297,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-03-c1",
+          "visual-guidance-03-c3",
+          "visual-guidance-03-c4",
+          "visual-guidance-03-c5",
+          "visual-guidance-03-c6"
+        ],
+        "verification_coverage": 1.0
+      }
+    },
+    {
+      "case_id": "visual-guidance-04",
+      "category": "visual_guidance",
+      "failure_codes": [],
+      "legacy_v2": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v2-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-04-c1",
+          "visual-guidance-04-c2",
+          "visual-guidance-04-c3",
+          "visual-guidance-04-c4",
+          "visual-guidance-04-c5"
+        ],
+        "verification_coverage": 1.0
+      },
+      "passed": true,
+      "structured_v3": {
+        "brand_as_fact_violation_count": 0,
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.887444,
+        "parent_diversity_at_5": 1.0,
+        "recall_at_5": 0.8,
+        "retrieval_version": "brand-hybrid-rrf-v3-parent-diverse",
+        "selected_candidate_ids": [
+          "visual-guidance-04-c1",
+          "visual-guidance-04-c2",
+          "visual-guidance-04-c3",
+          "visual-guidance-04-c4",
+          "visual-guidance-04-c5"
+        ],
+        "verification_coverage": 1.0
+      }
+    }
+  ],
+  "dataset_version": "brand-retrieval-eval-case-v1:04779a5ffbebe1f5",
+  "disclaimer": "This provider-free report measures deterministic RRF and diversity-policy behavior on sanitized fixture observations. It is not a live embedding recall, private-corpus quality, generation-quality, or production-effectiveness claim.",
+  "schema_version": "brand-retrieval-eval-report-v1",
+  "top_k": 5,
+  "track": "fixture_retrieval_policy_regression"
+}

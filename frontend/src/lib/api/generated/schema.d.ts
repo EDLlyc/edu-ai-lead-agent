@@ -161,6 +161,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/brand-visual-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the approved private visual catalog
+         * @description Internal personal-project demo. Accepts text or one PNG and returns bounded safe asset references; it never returns paths, filenames, bytes, vectors, or evidence.
+         */
+        post: operations["search_brand_visual_catalog_api_v1_brand_visual_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/candidate-analyses": {
         parameters: {
             query?: never;
@@ -470,6 +490,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ip-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ip Assets */
+        get: operations["list_ip_assets_api_v1_ip_assets_get"];
+        put?: never;
+        /** Upload Ip Asset */
+        post: operations["upload_ip_asset_api_v1_ip_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_v1_ip_assets_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download Ip Asset Zip */
+        post: operations["download_ip_asset_zip_api_v1_ip_assets_downloads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Ip Asset Generation */
+        post: operations["create_ip_asset_generation_api_v1_ip_assets_generations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/generations/{job_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Ip Asset Generation */
+        get: operations["read_ip_asset_generation_api_v1_ip_assets_generations__job_ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/recognitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recognize Ip Asset */
+        post: operations["recognize_ip_asset_api_v1_ip_assets_recognitions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/search/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Ip Assets Image */
+        post: operations["search_ip_assets_image_api_v1_ip_assets_search_image_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/search/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Ip Assets Text */
+        post: operations["search_ip_assets_text_api_v1_ip_assets_search_text_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/{asset_ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Ip Asset */
+        get: operations["read_ip_asset_api_v1_ip_assets__asset_ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/{asset_ref}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Ip Asset */
+        get: operations["download_ip_asset_api_v1_ip_assets__asset_ref__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/{asset_ref}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Ip Asset */
+        get: operations["preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/material-packages": {
         parameters: {
             query?: never;
@@ -587,6 +795,126 @@ export interface paths {
         put?: never;
         /** Create Wecom Delivery */
         post: operations["create_wecom_delivery_api_v1_material_packages__package_id__wecom_deliveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Article Runs */
+        get: operations["list_article_runs_api_v1_official_account_local_article_runs_get"];
+        put?: never;
+        /** Create Article Run */
+        post: operations["create_article_run_api_v1_official_account_local_article_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Article Run */
+        get: operations["read_article_run_api_v1_official_account_local_article_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/manual-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Manual Review */
+        post: operations["record_manual_review_api_v1_official_account_local_article_runs__run_id__manual_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Article Run */
+        post: operations["retry_article_run_api_v1_official_account_local_article_runs__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_v1_official_account_local_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/drafts/{local_draft_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Local Draft */
+        get: operations["preview_local_draft_api_v1_official_account_local_drafts__local_draft_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/media/{local_media_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Local Media */
+        get: operations["read_local_media_api_v1_official_account_local_media__local_media_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -827,6 +1155,320 @@ export interface components {
             /** Unchanged Count */
             unchanged_count: number;
         };
+        /** ArticleBulletListBlock */
+        ArticleBulletListBlock: {
+            /**
+             * Claim Refs
+             * @default []
+             */
+            claim_refs: string[];
+            /** Items */
+            items: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "bullet_list";
+        };
+        /** ArticleImageBlock */
+        ArticleImageBlock: {
+            /** Alt Text */
+            alt_text: string;
+            /**
+             * Claim Refs
+             * @default []
+             */
+            claim_refs: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "image";
+            /**
+             * Slot Key
+             * @default body-0
+             * @enum {string}
+             */
+            slot_key: "body-0" | "body-1" | "body-2" | "body-3" | "body-4";
+        };
+        /** ArticleMediaEmbeddingIdentity */
+        ArticleMediaEmbeddingIdentity: {
+            /**
+             * Dimensions
+             * @constant
+             */
+            dimensions: 2048;
+            /**
+             * Input Policy Version
+             * @constant
+             */
+            input_policy_version: "brand-visual-embedding-input-v2";
+            /**
+             * Model
+             * @constant
+             */
+            model: "qwen3-vl-embedding";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "alibaba-model-studio";
+        };
+        /** ArticleMediaSelectionItem */
+        ArticleMediaSelectionItem: {
+            /** Candidate Ref */
+            candidate_ref: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Publication Checksum */
+            publication_checksum: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "semantic_heading_match" | "semantic_body_match" | "stable_fallback" | "multimodal_similarity";
+            /** Section Index */
+            section_index: number;
+            /**
+             * Selection Method
+             * @enum {string}
+             */
+            selection_method: "deterministic_tag" | "multimodal_embedding";
+            /** Similarity Band */
+            similarity_band?: ("very_high" | "high" | "medium" | "low") | null;
+            /** Source Checksum */
+            source_checksum: string;
+        };
+        /** ArticleMediaSelectionSnapshot */
+        ArticleMediaSelectionSnapshot: {
+            /** Assignments */
+            assignments: components["schemas"]["ArticleMediaSelectionItem"][];
+            /** Catalog Fingerprint */
+            catalog_fingerprint: string;
+            /** Catalog Version */
+            catalog_version: string;
+            /** Closed Reason */
+            closed_reason?: ("disabled" | "single_candidate" | "index_incomplete" | "provider_unavailable" | "invalid_provider_output" | "identity_mismatch" | "catalog_changed" | "input_normalization_failed") | null;
+            embedding_identity?: components["schemas"]["ArticleMediaEmbeddingIdentity"] | null;
+            /**
+             * Media Plan Version
+             * @constant
+             */
+            media_plan_version: "official-account-media-plan-v3-multimodal-hybrid";
+            /**
+             * Query Fingerprints
+             * @default []
+             */
+            query_fingerprints: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "semantic_ready" | "semantic_unavailable" | "single_candidate";
+            /**
+             * Visual Query Version
+             * @constant
+             */
+            visual_query_version: "official-account-visual-query-v1";
+            /**
+             * Visual Selector Version
+             * @constant
+             */
+            visual_selector_version: "official-account-visual-selector-v3-multimodal-hybrid";
+        };
+        /** ArticleMediaSlot */
+        ArticleMediaSlot: {
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "body" | "cover";
+            /**
+             * Slot Key
+             * @enum {string}
+             */
+            slot_key: "body-0" | "body-1" | "body-2" | "body-3" | "body-4" | "cover-0";
+        };
+        /** ArticlePackage */
+        ArticlePackage: {
+            /** Author */
+            author: string;
+            /** Claims */
+            claims: components["schemas"]["GeneratedArticleClaim"][];
+            /** Conclusion */
+            conclusion: string;
+            /** Content Fingerprint */
+            content_fingerprint: string;
+            /** Digest */
+            digest: string;
+            /** Lead */
+            lead: string;
+            media_selection?: components["schemas"]["ArticleMediaSelectionSnapshot"] | null;
+            /** Media Slots */
+            media_slots: components["schemas"]["ArticleMediaSlot"][];
+            quality: components["schemas"]["ArticleQualitySummary"];
+            /** Sections */
+            sections: components["schemas"]["ArticleSection"][];
+            /** Sources */
+            sources: components["schemas"]["ArticleSourceProjection"][];
+            /** Title */
+            title: string;
+            /** Topic Title */
+            topic_title: string;
+            versions: components["schemas"]["ArticleVersionBundle"];
+        };
+        /** ArticleParagraphBlock */
+        ArticleParagraphBlock: {
+            /**
+             * Claim Refs
+             * @default []
+             */
+            claim_refs: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "paragraph";
+            /** Text */
+            text: string;
+        };
+        /** ArticleQualitySummary */
+        ArticleQualitySummary: {
+            /** Inherited Copy Audit Accepted */
+            inherited_copy_audit_accepted: boolean;
+            /** Inherited Copy Validation Passed */
+            inherited_copy_validation_passed: boolean;
+            /** Inherited Image Audit Status */
+            inherited_image_audit_status: string;
+            /** Inherited Image Validation Passed */
+            inherited_image_validation_passed: boolean;
+            /** Manual Review Status */
+            manual_review_status: string;
+        };
+        /** ArticleQuoteBlock */
+        ArticleQuoteBlock: {
+            /**
+             * Claim Refs
+             * @default []
+             */
+            claim_refs: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "callout" | "quote";
+            /** Text */
+            text: string;
+        };
+        /** ArticleSection */
+        ArticleSection: {
+            /** Blocks */
+            blocks: (components["schemas"]["ArticleParagraphBlock"] | components["schemas"]["ArticleBulletListBlock"] | components["schemas"]["ArticleQuoteBlock"] | components["schemas"]["ArticleImageBlock"])[];
+            /** Heading */
+            heading: string;
+        };
+        /** ArticleSourceProjection */
+        ArticleSourceProjection: {
+            /**
+             * Evidence Id
+             * Format: uuid
+             */
+            evidence_id: string;
+            /** Source Name */
+            source_name: string;
+            /** Source Tier */
+            source_tier?: string | null;
+            /** Source Url */
+            source_url: string;
+        };
+        /** ArticleValidationIssue */
+        ArticleValidationIssue: {
+            /** Claim Id */
+            claim_id?: string | null;
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "article_length_out_of_bounds" | "article_target_length_warning" | "article_author_mismatch" | "article_claim_id_duplicate" | "article_claim_ref_unknown" | "article_claim_unreferenced" | "article_evidence_unknown" | "article_brand_chunk_unknown" | "article_source_set_mismatch" | "article_media_slot_invalid" | "article_version_bundle_invalid" | "article_unsafe_markup" | "article_unsafe_url" | "article_unsafe_instruction" | "article_content_fingerprint_mismatch";
+            /** Field */
+            field: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+        };
+        /** ArticleVersionBundle */
+        ArticleVersionBundle: {
+            /** Article Schema Version */
+            article_schema_version: string;
+            /** Audit Schema Version */
+            audit_schema_version: string;
+            /** Auditor Prompt Version */
+            auditor_prompt_version: string;
+            /** Generator Prompt Version */
+            generator_prompt_version: string;
+            /** Local Adapter Version */
+            local_adapter_version: string;
+            /** Media Plan Version */
+            media_plan_version?: string | null;
+            /** Renderer Version */
+            renderer_version: string;
+            /** Rule Version */
+            rule_version: string;
+            /** Style Version */
+            style_version: string;
+            /** Template Version */
+            template_version: string;
+            /** Visual Query Version */
+            visual_query_version?: string | null;
+            /** Visual Selector Version */
+            visual_selector_version?: string | null;
+        };
+        /** Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post */
+        Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post: {
+            /**
+             * File
+             * @description Transient PNG, JPEG, or WebP up to 25 MiB
+             */
+            file: string;
+        };
+        /** Body_search_brand_visual_catalog_api_v1_brand_visual_search_post */
+        Body_search_brand_visual_catalog_api_v1_brand_visual_search_post: {
+            /**
+             * Image
+             * @description Optional bounded PNG query
+             */
+            image?: string | null;
+            /**
+             * Limit
+             * @default 5
+             */
+            limit: number;
+            /** Text Query */
+            text_query?: string | null;
+        };
+        /** Body_search_ip_assets_image_api_v1_ip_assets_search_image_post */
+        Body_search_ip_assets_image_api_v1_ip_assets_search_image_post: {
+            asset_type?: components["schemas"]["IpAssetType"] | null;
+            character?: components["schemas"]["IpAssetCharacter"] | null;
+            /**
+             * File
+             * @description Transient PNG, JPEG, or WebP query
+             */
+            file: string;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            orientation?: components["schemas"]["IpAssetOrientation"] | null;
+        };
         /** Body_upload_brand_document_api_v1_brand_documents_post */
         Body_upload_brand_document_api_v1_brand_documents_post: {
             /** @default parents */
@@ -860,11 +1502,71 @@ export interface components {
              */
             visual_tags: string;
         };
+        /** Body_upload_ip_asset_api_v1_ip_assets_post */
+        Body_upload_ip_asset_api_v1_ip_assets_post: {
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            asset_type: components["schemas"]["IpAssetType"];
+            character: components["schemas"]["IpAssetCharacter"];
+            /**
+             * Contributor
+             * @default
+             */
+            contributor: string;
+            /**
+             * Department
+             * @default
+             */
+            department: string;
+            /**
+             * Emotion
+             * @default
+             */
+            emotion: string;
+            /**
+             * File
+             * @description PNG, JPEG, or WebP up to 25 MiB
+             */
+            file: string;
+            /**
+             * Intended Use
+             * @default
+             */
+            intended_use: string;
+            /**
+             * Scene
+             * @default
+             */
+            scene: string;
+            /**
+             * Style
+             * @default
+             */
+            style: string;
+            /**
+             * Tags
+             * @default
+             */
+            tags: string;
+        };
         /**
          * BrandAudience
          * @enum {string}
          */
         BrandAudience: "parents" | "internal";
+        /**
+         * BrandClaimScope
+         * @enum {string}
+         */
+        BrandClaimScope: "brand_statement" | "external_claim" | "normative_rule";
+        /**
+         * BrandContentType
+         * @enum {string}
+         */
+        BrandContentType: "positioning" | "product_profile" | "audience_insight" | "safety_capability" | "digital_ip_values" | "tone_example" | "external_claim" | "visual_guidance" | "other";
         /** BrandContextChunkResponse */
         BrandContextChunkResponse: {
             audience: components["schemas"]["BrandAudience"];
@@ -873,6 +1575,8 @@ export interface components {
              * Format: uuid
              */
             chunk_id: string;
+            claim_scope: components["schemas"]["BrandClaimScope"] | null;
+            content_type: components["schemas"]["BrandContentType"] | null;
             /**
              * Document Id
              * Format: uuid
@@ -885,14 +1589,27 @@ export interface components {
             full_text_score: number;
             /** Fused Score */
             fused_score: number;
+            /** Question Number */
+            question_number: number | null;
+            /** Question Text */
+            question_text: string | null;
             /** Safety Tags */
             safety_tags: string[];
+            /** Section Id */
+            section_id: string | null;
+            section_kind: components["schemas"]["BrandSectionKind"] | null;
+            /** Section Title */
+            section_title: string | null;
+            /** Source Page */
+            source_page: number | null;
             /** Text */
             text: string;
             /** Tone Tags */
             tone_tags: string[];
             /** Vector Score */
             vector_score: number;
+            /** Verification Required */
+            verification_required: boolean;
             /**
              * Version Id
              * Format: uuid
@@ -1041,6 +1758,11 @@ export interface components {
              */
             valid_on?: string | null;
         };
+        /**
+         * BrandSectionKind
+         * @enum {string}
+         */
+        BrandSectionKind: "page" | "interview_qa" | "heading" | "generic";
         /** BrandUploadAcceptedResponse */
         BrandUploadAcceptedResponse: {
             /** Created */
@@ -1154,6 +1876,61 @@ export interface components {
             version: number;
             /** Visual Tags */
             visual_tags: string[];
+        };
+        /**
+         * BrandVisualSearchItemResponse
+         * @description Safe visual hit: no path, filename, bytes, vectors, or provider metadata.
+         */
+        BrandVisualSearchItemResponse: {
+            /**
+             * Approved
+             * @default true
+             * @constant
+             */
+            approved: true;
+            asset_kind: components["schemas"]["VisualAssetKind"];
+            /** Asset Ref */
+            asset_ref: string;
+            /** Catalog Version */
+            catalog_version: string;
+            /**
+             * Ranking Source
+             * @default semantic_primary
+             * @constant
+             */
+            ranking_source: "semantic_primary";
+            /** Roles */
+            roles: string[];
+            /** Similarity */
+            similarity: number;
+            /** Tags */
+            tags: string[];
+        };
+        /** BrandVisualSearchResponse */
+        BrandVisualSearchResponse: {
+            /** Catalog Version */
+            catalog_version: string | null;
+            /** Count */
+            count: number;
+            /**
+             * Evidence Eligible
+             * @default false
+             * @constant
+             */
+            evidence_eligible: false;
+            /** Items */
+            items: components["schemas"]["BrandVisualSearchItemResponse"][];
+            /**
+             * Query Modality
+             * @enum {string}
+             */
+            query_modality: "text" | "image";
+            reason?: components["schemas"]["VisualRetrievalUnavailableReason"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "semantic_unavailable";
         };
         /** CandidateAnalysisDetailResponse */
         CandidateAnalysisDetailResponse: {
@@ -1568,6 +2345,9 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            llm_dimension_scores: components["schemas"]["LlmDimensionScoresResponse"] | null;
+            /** Llm Total */
+            llm_total: number | null;
             /** Passes Threshold */
             passes_threshold: boolean;
             /** Rank */
@@ -2085,6 +2865,20 @@ export interface components {
             /** Threshold */
             threshold: number | null;
         };
+        /** EligibleMaterialPackageResponse */
+        EligibleMaterialPackageResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Review Status */
+            review_status: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
         /** EventAssignmentResponse */
         EventAssignmentResponse: {
             /** Alternatives */
@@ -2433,6 +3227,28 @@ export interface components {
             title: string;
             /** Trust Tier */
             trust_tier: string;
+        };
+        /** GeneratedArticleClaim */
+        GeneratedArticleClaim: {
+            /**
+             * Brand Chunk Ids
+             * @default []
+             */
+            brand_chunk_ids: string[];
+            /**
+             * Evidence Ids
+             * @default []
+             */
+            evidence_ids: string[];
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "external_fact" | "brand_statement" | "opinion";
+            /** Text */
+            text: string;
         };
         /** GovernanceCategoryResponse */
         GovernanceCategoryResponse: {
@@ -2913,6 +3729,375 @@ export interface components {
             /** Width */
             width?: number | null;
         };
+        /** IpAssetCapabilitiesResponse */
+        IpAssetCapabilitiesResponse: {
+            /** Accepted Media Types */
+            accepted_media_types: ("image/png" | "image/jpeg" | "image/webp")[];
+            /**
+             * Authentication
+             * @default none
+             * @constant
+             */
+            authentication: "none";
+            /**
+             * Deployment Boundary
+             * @default company_intranet
+             * @constant
+             */
+            deployment_boundary: "company_intranet";
+            /** Enabled */
+            enabled: boolean;
+            /** Generation Available */
+            generation_available: boolean;
+            /**
+             * Max Upload Bytes
+             * @default 26214400
+             * @constant
+             */
+            max_upload_bytes: 26214400;
+            /** Recognition Available */
+            recognition_available: boolean;
+            /** Semantic Search Available */
+            semantic_search_available: boolean;
+        };
+        /** IpAssetCardResponse */
+        IpAssetCardResponse: {
+            /** Action */
+            action: string;
+            /** Asset Ref */
+            asset_ref: string;
+            asset_type: components["schemas"]["IpAssetType"];
+            /** Byte Size */
+            byte_size: number;
+            /** Canonical Name */
+            canonical_name: string;
+            character: components["schemas"]["IpAssetCharacter"];
+            /**
+             * Contributor
+             * @description Self-reported descriptive label; not verified identity
+             */
+            contributor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Department
+             * @description Self-reported descriptive label; not verified identity
+             */
+            department: string;
+            /** Download Url */
+            download_url: string;
+            /** Emotion */
+            emotion: string;
+            /** Has Alpha */
+            has_alpha: boolean;
+            /** Height */
+            height: number;
+            /** Intended Use */
+            intended_use: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp";
+            orientation: components["schemas"]["IpAssetOrientation"];
+            /** Preview Url */
+            preview_url: string;
+            /** Scene */
+            scene: string;
+            semantic_status: components["schemas"]["IpAssetSemanticStatus"];
+            source_kind: components["schemas"]["IpAssetSource"];
+            status: components["schemas"]["IpAssetStatus"];
+            /** Style */
+            style: string;
+            /** Tags */
+            tags: string[];
+            /** Width */
+            width: number;
+        };
+        /**
+         * IpAssetCharacter
+         * @enum {string}
+         */
+        IpAssetCharacter: "sai_xiansheng" | "xiao_sai" | "duo" | "other";
+        /** IpAssetDetailResponse */
+        IpAssetDetailResponse: {
+            /** Action */
+            action: string;
+            /** Asset Ref */
+            asset_ref: string;
+            asset_type: components["schemas"]["IpAssetType"];
+            /** Byte Size */
+            byte_size: number;
+            /** Canonical Name */
+            canonical_name: string;
+            character: components["schemas"]["IpAssetCharacter"];
+            /** Checksum Ref */
+            checksum_ref: string;
+            /**
+             * Contributor
+             * @description Self-reported descriptive label; not verified identity
+             */
+            contributor: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Department
+             * @description Self-reported descriptive label; not verified identity
+             */
+            department: string;
+            /** Download Url */
+            download_url: string;
+            /** Emotion */
+            emotion: string;
+            /** Has Alpha */
+            has_alpha: boolean;
+            /** Height */
+            height: number;
+            /** Intended Use */
+            intended_use: string;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/png" | "image/jpeg" | "image/webp";
+            /** Name Version */
+            name_version: number;
+            orientation: components["schemas"]["IpAssetOrientation"];
+            /** Preview Url */
+            preview_url: string;
+            /** Safe Original Filename */
+            safe_original_filename: string;
+            /** Scene */
+            scene: string;
+            semantic_status: components["schemas"]["IpAssetSemanticStatus"];
+            source_kind: components["schemas"]["IpAssetSource"];
+            status: components["schemas"]["IpAssetStatus"];
+            /** Style */
+            style: string;
+            /** Tags */
+            tags: string[];
+            /** Width */
+            width: number;
+        };
+        /** IpAssetGenerationRequest */
+        IpAssetGenerationRequest: {
+            asset_type: components["schemas"]["IpAssetType"];
+            character: components["schemas"]["IpAssetCharacter"];
+            /**
+             * Contributor
+             * @default
+             */
+            contributor: string;
+            /**
+             * Department
+             * @default
+             */
+            department: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Ratio
+             * @default 1:1
+             * @constant
+             */
+            ratio: "1:1";
+            /** Reference Asset Ref */
+            reference_asset_ref?: string | null;
+        };
+        /** IpAssetGenerationResponse */
+        IpAssetGenerationResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Created */
+            created: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Generation Available
+             * @default true
+             */
+            generation_available: boolean;
+            /** Job Ref */
+            job_ref: string;
+            /** Output Asset Ref */
+            output_asset_ref?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed";
+            /** Status Url */
+            status_url: string;
+        };
+        /** IpAssetListResponse */
+        IpAssetListResponse: {
+            /** Items */
+            items: components["schemas"]["IpAssetCardResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * IpAssetOrientation
+         * @enum {string}
+         */
+        IpAssetOrientation: "square" | "portrait" | "landscape";
+        /** IpAssetRecognitionResponse */
+        IpAssetRecognitionResponse: {
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            asset_type: components["schemas"]["IpAssetType"];
+            character: components["schemas"]["IpAssetCharacter"];
+            /**
+             * Emotion
+             * @default
+             */
+            emotion: string;
+            /**
+             * Intended Use
+             * @default
+             */
+            intended_use: string;
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Scene
+             * @default
+             */
+            scene: string;
+            /**
+             * Status
+             * @default suggested
+             * @constant
+             */
+            status: "suggested";
+            /**
+             * Style
+             * @default
+             */
+            style: string;
+            /** Tags */
+            tags?: string[];
+        };
+        /** IpAssetSearchItemResponse */
+        IpAssetSearchItemResponse: {
+            asset: components["schemas"]["IpAssetCardResponse"];
+            /** Explanation */
+            explanation: string;
+            /** Similarity */
+            similarity?: number | null;
+        };
+        /**
+         * IpAssetSearchMode
+         * @enum {string}
+         */
+        IpAssetSearchMode: "semantic" | "degraded_metadata";
+        /** IpAssetSearchResponse */
+        IpAssetSearchResponse: {
+            /** Degraded Reason */
+            degraded_reason: string | null;
+            /** Items */
+            items: components["schemas"]["IpAssetSearchItemResponse"][];
+            mode: components["schemas"]["IpAssetSearchMode"];
+            /**
+             * Search Version
+             * @constant
+             */
+            search_version: "ip-asset-hybrid-v2";
+        };
+        /**
+         * IpAssetSemanticStatus
+         * @enum {string}
+         */
+        IpAssetSemanticStatus: "queued" | "running" | "ready" | "unavailable" | "failed";
+        /**
+         * IpAssetSource
+         * @enum {string}
+         */
+        IpAssetSource: "uploaded" | "generated" | "seed_import";
+        /**
+         * IpAssetStatus
+         * @enum {string}
+         */
+        IpAssetStatus: "processing" | "ready" | "failed";
+        /** IpAssetTextSearchRequest */
+        IpAssetTextSearchRequest: {
+            asset_type?: components["schemas"]["IpAssetType"] | null;
+            character?: components["schemas"]["IpAssetCharacter"] | null;
+            /**
+             * Department
+             * @default
+             */
+            department: string;
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+            /** Message */
+            message: string;
+            orientation?: components["schemas"]["IpAssetOrientation"] | null;
+            /** Prior Turns */
+            prior_turns?: string[];
+            source_kind?: components["schemas"]["IpAssetSource"] | null;
+            /**
+             * Tag
+             * @default
+             */
+            tag: string;
+        };
+        /**
+         * IpAssetType
+         * @enum {string}
+         */
+        IpAssetType: "identity_reference" | "portrait_avatar" | "full_body_action" | "expression" | "meme_sticker" | "transparent_cutout" | "scene_illustration" | "poster_element" | "other";
+        /** IpAssetUploadResponse */
+        IpAssetUploadResponse: {
+            asset: components["schemas"]["IpAssetDetailResponse"];
+            /** Duplicate */
+            duplicate: boolean;
+            /** Near Duplicate Distance */
+            near_duplicate_distance?: number | null;
+            /** Near Duplicate Ref */
+            near_duplicate_ref?: string | null;
+        };
+        /** IpAssetZipRequest */
+        IpAssetZipRequest: {
+            /** Asset Refs */
+            asset_refs: string[];
+        };
+        /** LlmDimensionScoresResponse */
+        LlmDimensionScoresResponse: {
+            /** Audience Relevance */
+            audience_relevance: number;
+            /** Breakthrough Significance */
+            breakthrough_significance: number;
+            /** Communication Value */
+            communication_value: number;
+            /** Insight Potential */
+            insight_potential: number;
+            /** News Value */
+            news_value: number;
+            /** Science Education Relevance */
+            science_education_relevance: number;
+        };
         /** MaterialPackageCreateRequest */
         MaterialPackageCreateRequest: {
             /**
@@ -3182,6 +4367,502 @@ export interface components {
             /** Snapshot Id */
             snapshot_id: string | null;
         };
+        /** OfficialAccountAuditVerdict */
+        OfficialAccountAuditVerdict: {
+            /** Accepted */
+            accepted: boolean;
+            /**
+             * Claim Ids
+             * @default []
+             */
+            claim_ids: string[];
+            /**
+             * Issue Codes
+             * @default []
+             */
+            issue_codes: ("fact_not_entailed" | "brand_tone_mismatch" | "privacy_risk" | "safety_risk" | "improper_distribution_instruction")[];
+        };
+        /** OfficialAccountCapabilitiesResponse */
+        OfficialAccountCapabilitiesResponse: {
+            /**
+             * Boundary Label
+             * @default 本地模拟，未同步公众号
+             * @constant
+             */
+            boundary_label: "本地模拟，未同步公众号";
+            /** Eligible Material Packages */
+            eligible_material_packages?: components["schemas"]["EligibleMaterialPackageResponse"][];
+            /** Enabled */
+            enabled: boolean;
+            /** Fixture Available */
+            fixture_available: boolean;
+            /**
+             * Fixture Id
+             * @default official-account-article-v1
+             * @constant
+             */
+            fixture_id: "official-account-article-v1";
+            /**
+             * Generated Visuals Enabled
+             * @default false
+             */
+            generated_visuals_enabled: boolean;
+            /** Live Available */
+            live_available: boolean;
+            /** Live Unavailable Reason */
+            live_unavailable_reason?: string | null;
+            /**
+             * Simulation
+             * @default true
+             * @constant
+             */
+            simulation: true;
+            /**
+             * Visual Semantic Enabled
+             * @default false
+             */
+            visual_semantic_enabled: boolean;
+            /**
+             * Visual Semantic Provider Mode
+             * @default disabled
+             * @enum {string}
+             */
+            visual_semantic_provider_mode: "disabled" | "fake" | "alibaba";
+        };
+        /** OfficialAccountDraftResponse */
+        OfficialAccountDraftResponse: {
+            /**
+             * Boundary Label
+             * @default 本地模拟，未同步公众号
+             * @constant
+             */
+            boundary_label: "本地模拟，未同步公众号";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Local Draft Id */
+            local_draft_id: string;
+            /** Preview Url */
+            preview_url: string;
+            /** Resolved Fingerprint */
+            resolved_fingerprint: string;
+            /**
+             * Simulation
+             * @constant
+             */
+            simulation: true;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "failed" | "result_unknown";
+        };
+        /** OfficialAccountEmbeddingIdentityResponse */
+        OfficialAccountEmbeddingIdentityResponse: {
+            /**
+             * Dimensions
+             * @constant
+             */
+            dimensions: 2048;
+            /**
+             * Input Policy Version
+             * @constant
+             */
+            input_policy_version: "brand-visual-embedding-input-v2";
+            /**
+             * Model
+             * @constant
+             */
+            model: "qwen3-vl-embedding";
+            /**
+             * Provider
+             * @constant
+             */
+            provider: "alibaba-model-studio";
+        };
+        /** OfficialAccountFixtureSourceRequest */
+        OfficialAccountFixtureSourceRequest: {
+            /**
+             * Fixture Id
+             * @default official-account-article-v1
+             * @constant
+             */
+            fixture_id: "official-account-article-v1";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fixture";
+        };
+        /** OfficialAccountGeneratedVisualResponse */
+        OfficialAccountGeneratedVisualResponse: {
+            /** Block Index */
+            block_index?: number | null;
+            /** Block Kind */
+            block_kind?: ("paragraph" | "bullet_list" | "quote" | "callout") | null;
+            /** Byte Size */
+            byte_size?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Media Type */
+            media_type?: string | null;
+            /** Model */
+            model: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Output Profile Version */
+            output_profile_version?: string | null;
+            /** Plan Version */
+            plan_version: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "fake" | "toapis" | "comfly";
+            /** Reference Asset Ref */
+            reference_asset_ref: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Section Index */
+            section_index: number;
+            /**
+             * Selection Method
+             * @enum {string}
+             */
+            selection_method: "deterministic_tag" | "multimodal_embedding";
+            /** Sha256 */
+            sha256?: string | null;
+            /** Similarity Band */
+            similarity_band?: ("very_high" | "high" | "medium" | "low") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "generating" | "ready" | "failed" | "result_unknown";
+            /** Width */
+            width?: number | null;
+        };
+        /** OfficialAccountManualReviewRequest */
+        OfficialAccountManualReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Note */
+            note?: string | null;
+            /** Reviewer Label */
+            reviewer_label: string;
+        };
+        /** OfficialAccountManualReviewResponse */
+        OfficialAccountManualReviewResponse: {
+            /**
+             * Editorially Approved
+             * @default false
+             */
+            editorially_approved: boolean;
+            /**
+             * Idempotent Replay
+             * @default false
+             */
+            idempotent_replay: boolean;
+            /** Note */
+            note?: string | null;
+            /** Request Fingerprint */
+            request_fingerprint?: string | null;
+            /** Review Id */
+            review_id?: string | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Reviewer Label */
+            reviewer_label?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+        };
+        /** OfficialAccountMaterialSourceRequest */
+        OfficialAccountMaterialSourceRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "material_package";
+            /**
+             * Material Package Id
+             * Format: uuid
+             */
+            material_package_id: string;
+        };
+        /** OfficialAccountMediaResponse */
+        OfficialAccountMediaResponse: {
+            /** Alt Text */
+            alt_text?: string | null;
+            /** Assigned Section Index */
+            assigned_section_index?: number | null;
+            /** Byte Size */
+            byte_size: number;
+            /** Local Media Id */
+            local_media_id: string;
+            /** Media Type */
+            media_type: string;
+            /** Media Url */
+            media_url: string;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "body" | "cover";
+            /** Score Band */
+            score_band?: ("heading" | "body" | "fallback") | null;
+            /** Selection Method */
+            selection_method?: ("deterministic_tag" | "multimodal_embedding") | null;
+            /** Selection Reason Code */
+            selection_reason_code?: ("semantic_heading_match" | "semantic_body_match" | "stable_fallback" | "multimodal_similarity") | null;
+            /** Semantic Label */
+            semantic_label?: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Similarity Band */
+            similarity_band?: ("very_high" | "high" | "medium" | "low") | null;
+        };
+        /** OfficialAccountMediaSelectionResponse */
+        OfficialAccountMediaSelectionResponse: {
+            /** Body Image Count */
+            body_image_count: number;
+            embedding_identity?: components["schemas"]["OfficialAccountEmbeddingIdentityResponse"] | null;
+            /** Explanation */
+            explanation: string[];
+            /** Policy Version */
+            policy_version: string;
+            /** Safely Degraded */
+            safely_degraded: boolean;
+            /**
+             * Selection Mode
+             * @default historical
+             * @enum {string}
+             */
+            selection_mode: "multimodal_embedding" | "deterministic_fallback" | "historical";
+            /**
+             * Semantic Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            semantic_status: "semantic_ready" | "semantic_unavailable" | "single_candidate" | "not_applicable";
+            /** Semantic Unavailable Reason */
+            semantic_unavailable_reason?: string | null;
+            /** Target Body Image Count */
+            target_body_image_count: string;
+            /** Visual Query Version */
+            visual_query_version?: string | null;
+            /** Visual Selector Version */
+            visual_selector_version?: string | null;
+        };
+        /** OfficialAccountRunCreateRequest */
+        OfficialAccountRunCreateRequest: {
+            /**
+             * Generation Mode
+             * @enum {string}
+             */
+            generation_mode: "fixture" | "live";
+            /** Source */
+            source: components["schemas"]["OfficialAccountMaterialSourceRequest"] | components["schemas"]["OfficialAccountFixtureSourceRequest"];
+        };
+        /** OfficialAccountRunDetailResponse */
+        OfficialAccountRunDetailResponse: {
+            article: components["schemas"]["ArticlePackage"] | null;
+            /** Attempt Count */
+            attempt_count: number;
+            audit: components["schemas"]["OfficialAccountAuditVerdict"] | null;
+            body_image: components["schemas"]["OfficialAccountMediaResponse"] | null;
+            /** Body Images */
+            body_images: components["schemas"]["OfficialAccountMediaResponse"][];
+            /**
+             * Boundary Label
+             * @default 本地模拟，未同步公众号
+             * @constant
+             */
+            boundary_label: "本地模拟，未同步公众号";
+            /** Completed At */
+            completed_at: string | null;
+            cover_image: components["schemas"]["OfficialAccountMediaResponse"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Current Stage
+             * @enum {string}
+             */
+            current_stage: "queued" | "generating" | "validating" | "auditing" | "rendering" | "generating_body_visuals" | "staging_body_media" | "staging_cover" | "creating_local_draft" | "ready" | "review_required" | "failed" | "result_unknown";
+            /** Detail Url */
+            detail_url: string;
+            draft: components["schemas"]["OfficialAccountDraftResponse"] | null;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Retryable */
+            error_retryable: boolean;
+            /** Fixture Id */
+            fixture_id: string | null;
+            /** Generated Visuals */
+            generated_visuals?: components["schemas"]["OfficialAccountGeneratedVisualResponse"][];
+            /**
+             * Generation Mode
+             * @enum {string}
+             */
+            generation_mode: "fixture" | "live";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            manual_review: components["schemas"]["OfficialAccountManualReviewResponse"];
+            /** Material Package Id */
+            material_package_id: string | null;
+            /** Media */
+            media: components["schemas"]["OfficialAccountMediaResponse"][];
+            media_selection: components["schemas"]["OfficialAccountMediaSelectionResponse"];
+            /** Model */
+            model: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "fake" | "zhipu";
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Retry Url */
+            retry_url: string;
+            /**
+             * Simulation
+             * @default true
+             * @constant
+             */
+            simulation: true;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "material_package" | "fixture";
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "review_required" | "ready" | "failed" | "result_unknown";
+            usage: components["schemas"]["OfficialAccountUsageResponse"] | null;
+            validation: components["schemas"]["OfficialAccountValidationResponse"] | null;
+        };
+        /** OfficialAccountRunListResponse */
+        OfficialAccountRunListResponse: {
+            /** Count */
+            count: number;
+            /** Items */
+            items: components["schemas"]["OfficialAccountRunSummaryResponse"][];
+        };
+        /** OfficialAccountRunSummaryResponse */
+        OfficialAccountRunSummaryResponse: {
+            /** Attempt Count */
+            attempt_count: number;
+            /**
+             * Boundary Label
+             * @default 本地模拟，未同步公众号
+             * @constant
+             */
+            boundary_label: "本地模拟，未同步公众号";
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Current Stage
+             * @enum {string}
+             */
+            current_stage: "queued" | "generating" | "validating" | "auditing" | "rendering" | "generating_body_visuals" | "staging_body_media" | "staging_cover" | "creating_local_draft" | "ready" | "review_required" | "failed" | "result_unknown";
+            /** Detail Url */
+            detail_url: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Error Retryable */
+            error_retryable: boolean;
+            /** Fixture Id */
+            fixture_id: string | null;
+            /**
+             * Generation Mode
+             * @enum {string}
+             */
+            generation_mode: "fixture" | "live";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Material Package Id */
+            material_package_id: string | null;
+            /** Model */
+            model: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "fake" | "zhipu";
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Retry Url */
+            retry_url: string;
+            /**
+             * Simulation
+             * @default true
+             * @constant
+             */
+            simulation: true;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "material_package" | "fixture";
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "review_required" | "ready" | "failed" | "result_unknown";
+        };
+        /** OfficialAccountUsageResponse */
+        OfficialAccountUsageResponse: {
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Reasoning Tokens */
+            reasoning_tokens: number;
+            /** Safe Provider Request Id */
+            safe_provider_request_id: string | null;
+        };
+        /** OfficialAccountValidationResponse */
+        OfficialAccountValidationResponse: {
+            /** Issues */
+            issues: components["schemas"]["ArticleValidationIssue"][];
+            /** Passed */
+            passed: boolean;
+        };
         /** SnapshotMetadataResponse */
         SnapshotMetadataResponse: {
             /** Bucket */
@@ -3328,6 +5009,9 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            llm_dimension_scores: components["schemas"]["LlmDimensionScoresResponse"] | null;
+            /** Llm Total */
+            llm_total: number | null;
             /** Normalized Features */
             normalized_features: {
                 [key: string]: number;
@@ -3507,6 +5191,11 @@ export interface components {
             /** Sha256 */
             sha256: string;
         };
+        /**
+         * VisualRetrievalUnavailableReason
+         * @enum {string}
+         */
+        VisualRetrievalUnavailableReason: "disabled" | "input_normalization_failed" | "provider_unavailable" | "invalid_provider_output" | "identity_mismatch" | "index_incomplete" | "catalog_changed";
         /** VisualTextLayerResponse */
         VisualTextLayerResponse: {
             /** Brand Values */
@@ -3925,6 +5614,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrandIngestionJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_brand_visual_catalog_api_v1_brand_visual_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_search_brand_visual_catalog_api_v1_brand_visual_search_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandVisualSearchResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4505,6 +6227,387 @@ export interface operations {
             };
         };
     };
+    list_ip_assets_api_v1_ip_assets_get: {
+        parameters: {
+            query?: {
+                query?: string;
+                character?: components["schemas"]["IpAssetCharacter"] | null;
+                asset_type?: components["schemas"]["IpAssetType"] | null;
+                department?: string;
+                source_kind?: components["schemas"]["IpAssetSource"] | null;
+                orientation?: components["schemas"]["IpAssetOrientation"] | null;
+                tag?: string;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_ip_asset_api_v1_ip_assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_ip_asset_api_v1_ip_assets_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capabilities_api_v1_ip_assets_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetCapabilitiesResponse"];
+                };
+            };
+        };
+    };
+    download_ip_asset_zip_api_v1_ip_assets_downloads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpAssetZipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ip_asset_generation_api_v1_ip_assets_generations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpAssetGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ip_asset_generation_api_v1_ip_assets_generations__job_ref__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recognize_ip_asset_api_v1_ip_assets_recognitions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetRecognitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_ip_assets_image_api_v1_ip_assets_search_image_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_search_ip_assets_image_api_v1_ip_assets_search_image_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_ip_assets_text_api_v1_ip_assets_search_text_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpAssetTextSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ip_asset_api_v1_ip_assets__asset_ref__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_ip_asset_api_v1_ip_assets__asset_ref__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_material_packages_api_v1_material_packages_get: {
         parameters: {
             query?: {
@@ -4751,6 +6854,245 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WeComDeliveryResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_article_runs_api_v1_official_account_local_article_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_article_run_api_v1_official_account_local_article_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfficialAccountRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountRunSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_article_run_api_v1_official_account_local_article_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_manual_review_api_v1_official_account_local_article_runs__run_id__manual_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfficialAccountManualReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountManualReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_article_run_api_v1_official_account_local_article_runs__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountRunSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capabilities_api_v1_official_account_local_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountCapabilitiesResponse"];
+                };
+            };
+        };
+    };
+    preview_local_draft_api_v1_official_account_local_drafts__local_draft_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                local_draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_local_media_api_v1_official_account_local_media__local_media_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                local_media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

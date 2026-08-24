@@ -27,6 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.schema import conv
 
 
 class Base(DeclarativeBase):
@@ -2379,6 +2380,66 @@ class BrandIngestionAttemptModel(Base):
     )
 
 
+class BrandSectionModel(Base):
+    __tablename__ = "brand_sections"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_document_versions.id",
+            name="fk_brand_sections_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    char_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    question_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    question_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_brand_sections_ordinal"),
+        CheckConstraint(
+            "kind IN ('page', 'interview_qa', 'heading', 'generic')",
+            name="ck_brand_sections_kind",
+        ),
+        CheckConstraint(
+            "char_start >= 0 AND char_end > char_start", name="ck_brand_sections_offsets"
+        ),
+        CheckConstraint(
+            "source_page IS NULL OR source_page >= 1",
+            name="ck_brand_sections_source_page",
+        ),
+        CheckConstraint(
+            "question_number IS NULL OR question_number >= 1",
+            name="ck_brand_sections_question_number",
+        ),
+        CheckConstraint(
+            "(kind = 'page') = (source_page IS NOT NULL)",
+            name="ck_brand_sections_page_locator",
+        ),
+        CheckConstraint(
+            "(kind = 'interview_qa') = (question_number IS NOT NULL AND question_text IS NOT NULL)",
+            name="ck_brand_sections_question_locator",
+        ),
+        UniqueConstraint("section_key", name="uq_brand_sections_section_key"),
+        UniqueConstraint("version_id", "ordinal", name="uq_brand_sections_version_ordinal"),
+        UniqueConstraint("id", "version_id", name="uq_brand_sections_id_version"),
+        Index("ix_brand_sections_version_id", "version_id"),
+    )
+
+
 class BrandChunkModel(Base):
     __tablename__ = "brand_chunks"
 
@@ -2392,15 +2453,26 @@ class BrandChunkModel(Base):
         ),
         nullable=False,
     )
+    section_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chunk_key: Mapped[str] = mapped_column(String(64), nullable=False)
     text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(40), nullable=False, server_default="'other'")
+    claim_scope: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="'brand_statement'"
+    )
+    verification_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     char_start: Mapped[int] = mapped_column(Integer, nullable=False)
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
     search_vector: Mapped[Any] = mapped_column(
         TSVECTOR,
-        Computed("to_tsvector('simple', text)", persisted=True),
+        Computed("to_tsvector('simple', embedding_text)", persisted=True),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -2410,10 +2482,39 @@ class BrandChunkModel(Base):
     __table_args__ = (
         CheckConstraint("ordinal >= 0", name="ck_brand_chunks_ordinal"),
         CheckConstraint(
+            "section_ordinal IS NULL OR section_ordinal >= 0",
+            name="ck_brand_chunks_section_ordinal",
+        ),
+        CheckConstraint(
+            "(section_id IS NULL) = (section_ordinal IS NULL)",
+            name="ck_brand_chunks_section_binding",
+        ),
+        CheckConstraint(
+            "content_type IN ('positioning', 'product_profile', 'audience_insight', "
+            "'safety_capability', 'digital_ip_values', 'tone_example', 'external_claim', "
+            "'visual_guidance', 'other')",
+            name="ck_brand_chunks_content_type",
+        ),
+        CheckConstraint(
+            "claim_scope IN ('brand_statement', 'external_claim', 'normative_rule')",
+            name="ck_brand_chunks_claim_scope",
+        ),
+        CheckConstraint(
+            "claim_scope <> 'external_claim' OR verification_required = true",
+            name="ck_brand_chunks_external_claim_verification",
+        ),
+        CheckConstraint(
             "char_start >= 0 AND char_end > char_start", name="ck_brand_chunks_offsets"
+        ),
+        ForeignKeyConstraint(
+            ["section_id", "version_id"],
+            ["brand_sections.id", "brand_sections.version_id"],
+            name="fk_brand_chunks_section_version",
+            ondelete="CASCADE",
         ),
         UniqueConstraint("chunk_key", name="uq_brand_chunks_chunk_key"),
         UniqueConstraint("version_id", "ordinal", name="uq_brand_chunks_version_ordinal"),
+        UniqueConstraint("section_id", "section_ordinal", name="uq_brand_chunks_section_ordinal"),
         Index("ix_brand_chunks_search_vector", "search_vector", postgresql_using="gin"),
         Index("ix_brand_chunks_version_id", "version_id"),
     )
@@ -2459,6 +2560,105 @@ class BrandChunkEmbeddingModel(Base):
         ),
         UniqueConstraint("request_fingerprint", name="uq_brand_chunk_embeddings_request"),
         Index("ix_brand_chunk_embeddings_chunk_id", "chunk_id"),
+    )
+
+
+class BrandVisualIndexJobModel(Base):
+    __tablename__ = "brand_visual_index_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    derivation_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    catalog_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    image_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_brand_visual_index_jobs_status",
+        ),
+        CheckConstraint("dimensions = 2048", name="ck_brand_visual_index_jobs_dimensions"),
+        CheckConstraint("attempt_count >= 0", name="ck_brand_visual_index_jobs_attempt_count"),
+        CheckConstraint(
+            "input_tokens >= 0 AND image_tokens >= 0 AND latency_ms >= 0",
+            name="ck_brand_visual_index_jobs_metrics",
+        ),
+        UniqueConstraint("derivation_key", name="uq_brand_visual_index_jobs_derivation"),
+        Index("ix_brand_visual_index_jobs_claim", "status", "lease_expires_at", "created_at"),
+        Index(
+            "ix_brand_visual_index_jobs_scope",
+            "catalog_version",
+            "provider",
+            "model",
+            "input_policy_version",
+            "embedding_input_sha256",
+        ),
+    )
+
+
+class BrandVisualAssetEmbeddingModel(Base):
+    __tablename__ = "brand_visual_asset_embeddings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "brand_visual_index_jobs.id",
+            name="fk_brand_visual_asset_embeddings_job_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    derivation_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    catalog_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    vector: Mapped[list[float]] = mapped_column(Vector(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("dimensions = 2048", name="ck_brand_visual_embeddings_dimensions"),
+        UniqueConstraint("job_id", name="uq_brand_visual_asset_embeddings_job"),
+        UniqueConstraint("derivation_key", name="uq_brand_visual_asset_embeddings_derivation"),
+        Index(
+            "ix_brand_visual_asset_embeddings_scope",
+            "catalog_version",
+            "provider",
+            "model",
+            "input_policy_version",
+            "embedding_input_sha256",
+        ),
+        Index("ix_brand_visual_asset_embeddings_asset", "asset_id", "asset_checksum"),
     )
 
 
@@ -3469,6 +3669,781 @@ class MaterialReviewModel(Base):
     )
 
 
+class OfficialAccountArticleRunModel(Base):
+    __tablename__ = "official_account_article_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    material_package_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "material_packages.id",
+            name="fk_official_account_article_runs_material_package_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    fixture_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    generation_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    version_bundle: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    active_article_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    active_render_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    active_body_media_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    active_cover_media_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    active_draft_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_retryable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(generation_mode = 'live' AND material_package_id IS NOT NULL "
+            "AND fixture_id IS NULL) OR "
+            "(generation_mode = 'fixture' AND material_package_id IS NULL "
+            "AND fixture_id IS NOT NULL)",
+            name="ck_official_account_article_runs_source_xor",
+        ),
+        CheckConstraint(
+            "provider IN ('fake', 'zhipu')",
+            name="ck_official_account_article_runs_provider",
+        ),
+        CheckConstraint(
+            "(generation_mode = 'fixture' AND provider = 'fake') OR "
+            "(generation_mode = 'live' AND provider = 'zhipu')",
+            name="ck_official_account_article_runs_mode_provider",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'review_required', 'ready', 'failed', "
+            "'result_unknown')",
+            name="ck_official_account_article_runs_status",
+        ),
+        CheckConstraint(
+            "current_stage IN ('queued', 'generating', 'validating', 'auditing', "
+            "'rendering', 'generating_body_visuals', 'staging_body_media', 'staging_cover', "
+            "'creating_local_draft', 'ready', 'review_required', 'failed', "
+            "'result_unknown')",
+            name="ck_official_account_article_runs_stage",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_official_account_article_runs_attempt"),
+        CheckConstraint(
+            "jsonb_typeof(version_bundle) = 'object'",
+            name="ck_official_account_article_runs_version_bundle_object",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_official_account_article_runs_request"),
+        ForeignKeyConstraint(
+            ["active_article_version_id", "id"],
+            ["official_account_article_versions.id", "official_account_article_versions.run_id"],
+            name="fk_official_account_article_runs_active_article",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["active_render_version_id", "id"],
+            ["official_account_render_versions.id", "official_account_render_versions.run_id"],
+            name="fk_official_account_article_runs_active_render",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["active_body_media_id", "id"],
+            ["official_account_local_media.id", "official_account_local_media.run_id"],
+            name="fk_official_account_article_runs_active_body_media",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["active_cover_media_id", "id"],
+            ["official_account_local_media.id", "official_account_local_media.run_id"],
+            name="fk_official_account_article_runs_active_cover_media",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["active_draft_id", "id"],
+            ["official_account_local_drafts.id", "official_account_local_drafts.run_id"],
+            name="fk_official_account_article_runs_active_draft",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        Index(
+            "ix_official_account_article_runs_claim",
+            "status",
+            "available_at",
+            "lease_expires_at",
+            "created_at",
+        ),
+        Index("ix_official_account_article_runs_material", "material_package_id", "created_at"),
+    )
+
+
+class OfficialAccountArticleVersionModel(Base):
+    __tablename__ = "official_account_article_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_article_versions_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    article_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    generator_request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    generator_provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    audit_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audit_provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    audit_prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    audit_schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    validation_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    audit_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "version IN (1, 2, 3, 4, 5)",
+            name="ck_official_account_article_versions_version",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(article_payload) = 'object'",
+            name="ck_official_account_article_versions_payload_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(validation_snapshot) = 'object' "
+            "AND jsonb_typeof(audit_snapshot) = 'object'",
+            name="ck_official_account_article_versions_quality_objects",
+        ),
+        CheckConstraint(
+            "prompt_tokens >= 0 AND completion_tokens >= 0 "
+            "AND reasoning_tokens >= 0 AND latency_ms >= 0",
+            name="ck_official_account_article_versions_usage",
+        ),
+        UniqueConstraint("id", "run_id", name="uq_official_account_article_versions_id_run"),
+        UniqueConstraint("run_id", "version", name="uq_official_account_article_versions_run"),
+        UniqueConstraint(
+            "generator_request_fingerprint",
+            name="uq_official_account_article_versions_generation_request",
+        ),
+        Index("ix_official_account_article_versions_run_id", "run_id"),
+    )
+
+
+class OfficialAccountArticleAttemptModel(Base):
+    __tablename__ = "official_account_article_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_article_attempts_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    article_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_versions.id",
+            name="fk_official_account_article_attempts_article_version_id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+    )
+    stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    capability: Mapped[str] = mapped_column(String(30), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    completion_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    validation_corrections: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    safe_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "capability IN ('generation', 'audit', 'visual_generation', 'workflow')",
+            name="ck_official_account_article_attempts_capability",
+        ),
+        CheckConstraint(
+            "status IN ('succeeded', 'failed')",
+            name="ck_official_account_article_attempts_status",
+        ),
+        CheckConstraint(
+            "ordinal >= 1 AND prompt_tokens >= 0 AND completion_tokens >= 0 "
+            "AND reasoning_tokens >= 0 AND latency_ms >= 0 "
+            "AND validation_corrections BETWEEN 0 AND 1",
+            name="ck_official_account_article_attempts_metrics",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(safe_metadata) = 'object'",
+            name="ck_official_account_article_attempts_metadata_object",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "stage",
+            "ordinal",
+            name="uq_official_account_article_attempts_stage_ordinal",
+        ),
+        Index(
+            "ix_official_account_article_attempts_request",
+            "capability",
+            "request_fingerprint",
+        ),
+        Index("ix_official_account_article_attempts_run", "run_id", "created_at"),
+    )
+
+
+class OfficialAccountRenderVersionModel(Base):
+    __tablename__ = "official_account_render_versions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_render_versions_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    article_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_versions.id",
+            name="fk_official_account_render_versions_article_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    canonical_html: Mapped[str] = mapped_column(Text, nullable=False)
+    render_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    renderer_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    style_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("byte_size > 0", name="ck_official_account_render_versions_bytes"),
+        UniqueConstraint("id", "run_id", name="uq_official_account_render_versions_id_run"),
+        UniqueConstraint(
+            "article_version_id",
+            "renderer_version",
+            "style_version",
+            "template_version",
+            name="uq_official_account_render_versions_derivation",
+        ),
+        UniqueConstraint(
+            "render_fingerprint",
+            name="uq_official_account_render_versions_fingerprint",
+        ),
+        Index("ix_official_account_render_versions_run", "run_id"),
+    )
+
+
+class OfficialAccountGeneratedVisualModel(Base):
+    """One immutable generated-body-visual intent/result per article render slot.
+
+    Storage is content addressed by the output checksum, so private bucket/object paths do not
+    need to be persisted here.  The plan intentionally retains only safe catalog public refs and
+    checksums; it never stores prompt text, raw catalog IDs, vectors, or provider bodies.
+    """
+
+    __tablename__ = "official_account_generated_visuals"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_generated_visuals_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    article_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_versions.id",
+            name="fk_official_account_generated_visuals_article_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    render_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_render_versions.id",
+            name="fk_official_account_generated_visuals_render_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    block_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    block_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    block_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference_asset_ref: Mapped[str] = mapped_column(String(16), nullable=False)
+    reference_catalog_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    reference_source_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    reference_publication_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    reference_input_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    reference_input_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    selection_method: Mapped[str] = mapped_column(String(40), nullable=False)
+    similarity_band: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    output_profile_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    media_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("ordinal BETWEEN 0 AND 4", name="ck_official_generated_visuals_ordinal"),
+        CheckConstraint(
+            "section_index BETWEEN 0 AND 6", name="ck_official_generated_visuals_section"
+        ),
+        CheckConstraint(
+            "(plan_version = 'official-account-generated-visual-plan-v1' "
+            "AND prompt_version = 'official-account-generated-visual-prompt-v1' "
+            "AND block_index IS NULL AND block_kind IS NULL AND block_fingerprint IS NULL "
+            "AND reference_input_version IS NULL AND reference_input_checksum IS NULL "
+            "AND output_profile_version IS NULL) OR "
+            "(plan_version = 'official-account-generated-visual-plan-v2-block-anchor' "
+            "AND prompt_version = 'official-account-generated-visual-prompt-v2-block-scene' "
+            "AND block_index BETWEEN 0 AND 12 "
+            "AND block_kind IN ('paragraph', 'bullet_list', 'quote', 'callout') "
+            "AND block_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND reference_input_version = "
+            "'image-reference-input-v2-png-preserve-jpeg-normalize' "
+            "AND reference_input_checksum ~ '^[0-9a-f]{64}$' "
+            "AND output_profile_version = "
+            "'official-account-generated-body-publication-v2-3x2-jpeg') OR "
+            "(plan_version = 'official-account-generated-visual-plan-v3-visible-ip' "
+            "AND prompt_version = "
+            "'official-account-generated-visual-prompt-v3-visible-ip-block-scene' "
+            "AND block_index BETWEEN 0 AND 12 "
+            "AND block_kind IN ('paragraph', 'bullet_list', 'quote', 'callout') "
+            "AND block_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND reference_input_version = "
+            "'image-reference-input-v2-png-preserve-jpeg-normalize' "
+            "AND reference_input_checksum ~ '^[0-9a-f]{64}$' "
+            "AND output_profile_version = "
+            "'official-account-generated-body-publication-v2-3x2-jpeg')",
+            name="ck_official_generated_visuals_plan_shape",
+        ),
+        CheckConstraint(
+            "reference_asset_ref ~ '^[0-9a-f]{16}$'",
+            name="ck_official_generated_visuals_reference_ref",
+        ),
+        CheckConstraint(
+            "reference_source_checksum ~ '^[0-9a-f]{64}$' AND "
+            "reference_publication_checksum ~ '^[0-9a-f]{64}$'",
+            name="ck_official_generated_visuals_reference_checksums",
+        ),
+        CheckConstraint(
+            "selection_method IN ('deterministic_tag', 'multimodal_embedding')",
+            name="ck_official_generated_visuals_selection_method",
+        ),
+        CheckConstraint(
+            "(selection_method = 'multimodal_embedding' AND "
+            "similarity_band IN ('very_high', 'high', 'medium', 'low')) OR "
+            "(selection_method = 'deterministic_tag' AND similarity_band IS NULL)",
+            name="ck_official_generated_visuals_similarity_shape",
+        ),
+        CheckConstraint(
+            "provider IN ('fake', 'toapis', 'comfly')",
+            name="ck_official_generated_visuals_provider",
+        ),
+        CheckConstraint(
+            "status IN ('generating', 'ready', 'failed', 'result_unknown')",
+            name="ck_official_generated_visuals_status",
+        ),
+        CheckConstraint(
+            "(status = 'ready' AND media_type IN ('image/png', 'image/jpeg', 'image/webp') "
+            "AND byte_size > 0 AND sha256 ~ '^[0-9a-f]{64}$' AND width BETWEEN 1 AND 8192 "
+            "AND height BETWEEN 1 AND 8192 AND width::bigint * height::bigint <= 32000000 "
+            "AND error_code IS NULL AND completed_at IS NOT NULL) OR "
+            "(status = 'generating' AND media_type IS NULL AND byte_size IS NULL "
+            "AND sha256 IS NULL AND width IS NULL AND height IS NULL AND error_code IS NULL "
+            "AND completed_at IS NULL) OR "
+            "(status IN ('failed', 'result_unknown') AND media_type IS NULL "
+            "AND byte_size IS NULL AND sha256 IS NULL AND width IS NULL AND height IS NULL "
+            "AND error_code IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_official_generated_visuals_result_shape",
+        ),
+        CheckConstraint(
+            "plan_version NOT IN ('official-account-generated-visual-plan-v2-block-anchor', "
+            "'official-account-generated-visual-plan-v3-visible-ip') OR "
+            "status <> 'ready' OR (media_type = 'image/jpeg' AND width = 1536 "
+            "AND height = 1024 AND byte_size BETWEEN 1 AND 20971520)",
+            name="ck_official_generated_visuals_publication",
+        ),
+        UniqueConstraint(
+            "render_version_id", "ordinal", name="uq_official_generated_visuals_render_ordinal"
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_official_generated_visuals_request"),
+        Index("ix_official_generated_visuals_run", "run_id", "ordinal"),
+    )
+
+
+class OfficialAccountLocalMediaModel(Base):
+    __tablename__ = "official_account_local_media"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_local_media_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    render_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_render_versions.id",
+            name="fk_official_account_local_media_render_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    source_image_artifact_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "image_artifacts.id",
+            name="fk_official_account_local_media_source_image_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    fixture_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    generated_visual_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_generated_visuals.id",
+            name="fk_official_account_local_media_generated_visual_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    local_media_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    descriptor: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("role IN ('body', 'cover')", name="ck_official_account_local_media_role"),
+        CheckConstraint(
+            "(role = 'body' AND ordinal BETWEEN 0 AND 4) OR (role = 'cover' AND ordinal = 0)",
+            name="ck_official_account_local_media_ordinal",
+        ),
+        CheckConstraint(
+            "(source_image_artifact_id IS NOT NULL AND fixture_id IS NULL "
+            "AND generated_visual_id IS NULL) OR "
+            "(source_image_artifact_id IS NULL AND fixture_id IS NOT NULL "
+            "AND generated_visual_id IS NULL) OR "
+            "(source_image_artifact_id IS NULL AND fixture_id IS NULL "
+            "AND generated_visual_id IS NOT NULL)",
+            name="ck_official_account_local_media_source_xor",
+        ),
+        CheckConstraint(
+            "status IN ('ready', 'failed')",
+            name="ck_official_account_local_media_status",
+        ),
+        CheckConstraint(
+            "byte_size > 0 AND jsonb_typeof(descriptor) = 'object'",
+            name="ck_official_account_local_media_descriptor",
+        ),
+        UniqueConstraint("id", "run_id", name="uq_official_account_local_media_id_run"),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "role",
+            "ordinal",
+            name="uq_official_media_typed_identity",
+        ),
+        UniqueConstraint(
+            "render_version_id",
+            "role",
+            "ordinal",
+            name="uq_official_account_local_media_render_role",
+        ),
+        UniqueConstraint(
+            "request_fingerprint",
+            name="uq_official_account_local_media_request",
+        ),
+        UniqueConstraint("local_media_id", name="uq_official_account_local_media_local_id"),
+        Index("ix_official_account_local_media_run", "run_id", "role"),
+        Index(
+            "uq_official_account_local_media_body_checksum",
+            "run_id",
+            "sha256",
+            unique=True,
+            postgresql_where=text("role = 'body'"),
+        ),
+    )
+
+
+class OfficialAccountLocalDraftModel(Base):
+    __tablename__ = "official_account_local_drafts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_local_drafts_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    render_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_render_versions.id",
+            name="fk_official_account_local_drafts_render_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    body_media_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_local_media.id",
+            name="fk_official_account_local_drafts_body_media_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    cover_media_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_local_media.id",
+            name="fk_official_account_local_drafts_cover_media_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    local_draft_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    resolved_html: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    simulation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    state: Mapped[str] = mapped_column(String(30), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("simulation = true", name="ck_official_account_local_drafts_simulation"),
+        CheckConstraint(
+            "state IN ('ready', 'failed', 'result_unknown')",
+            name="ck_official_account_local_drafts_state",
+        ),
+        CheckConstraint(
+            "body_media_id <> cover_media_id",
+            name="ck_official_account_local_drafts_media_distinct",
+        ),
+        UniqueConstraint("id", "run_id", name="uq_official_account_local_drafts_id_run"),
+        UniqueConstraint("run_id", name="uq_official_account_local_drafts_run"),
+        UniqueConstraint(
+            "request_fingerprint",
+            name="uq_official_account_local_drafts_request",
+        ),
+        UniqueConstraint("local_draft_id", name="uq_official_account_local_drafts_local_id"),
+        Index("ix_official_account_local_drafts_created", "created_at"),
+    )
+
+
+class OfficialAccountLocalDraftBodyMediaModel(Base):
+    __tablename__ = "official_account_local_draft_body_media"
+
+    draft_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    media_role: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'body'")
+    )
+    body_media_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "ordinal BETWEEN 0 AND 4",
+            name="ck_official_account_local_draft_body_media_ordinal",
+        ),
+        CheckConstraint(
+            "media_role = 'body'",
+            name="ck_official_draft_body_media_role",
+        ),
+        ForeignKeyConstraint(
+            ["draft_id", "run_id"],
+            ["official_account_local_drafts.id", "official_account_local_drafts.run_id"],
+            name="fk_official_account_local_draft_body_media_draft_run",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["body_media_id", "run_id", "media_role", "ordinal"],
+            [
+                "official_account_local_media.id",
+                "official_account_local_media.run_id",
+                "official_account_local_media.role",
+                "official_account_local_media.ordinal",
+            ],
+            name="fk_official_draft_body_media_typed",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "draft_id",
+            "body_media_id",
+            name="uq_official_account_local_draft_body_media_identity",
+        ),
+        Index(
+            "ix_official_account_local_draft_body_media_run",
+            "run_id",
+            "draft_id",
+            "ordinal",
+        ),
+    )
+
+
+class OfficialAccountManualReviewModel(Base):
+    __tablename__ = "official_account_manual_reviews"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_article_runs.id",
+            name="fk_official_account_manual_reviews_run_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    reviewer_label: Mapped[str] = mapped_column(String(80), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('approved', 'rejected')",
+            name=conv("ck_official_account_manual_reviews_decision"),
+        ),
+        CheckConstraint(
+            "char_length(reviewer_label) BETWEEN 1 AND 80",
+            name=conv("ck_official_account_manual_reviews_reviewer"),
+        ),
+        CheckConstraint(
+            "note IS NULL OR char_length(note) BETWEEN 1 AND 2000",
+            name=conv("ck_official_account_manual_reviews_note"),
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'",
+            name=conv("ck_official_account_manual_reviews_fingerprint"),
+        ),
+        UniqueConstraint("run_id", name="uq_official_account_manual_reviews_run"),
+        UniqueConstraint(
+            "request_fingerprint",
+            name="uq_official_account_manual_reviews_request",
+        ),
+        Index("ix_official_account_manual_reviews_reviewed", "reviewed_at"),
+    )
+
+
 class WeComDeliveryWindowModel(Base):
     __tablename__ = "wecom_delivery_windows"
 
@@ -3698,4 +4673,288 @@ class WeComDeliveryAttemptModel(Base):
         CheckConstraint("attempt_number >= 1", name="ck_wecom_delivery_attempts_number"),
         CheckConstraint("latency_ms >= 0", name="ck_wecom_delivery_attempts_latency"),
         Index("ix_wecom_delivery_attempts_job", "job_id", "created_at"),
+    )
+
+
+class IpAssetModel(Base):
+    __tablename__ = "ip_assets"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_ref: Mapped[str] = mapped_column(String(24), nullable=False)
+    blob_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    perceptual_hash: Mapped[str] = mapped_column(String(16), nullable=False)
+    safe_original_filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    has_alpha: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    orientation: Mapped[str] = mapped_column(String(20), nullable=False)
+    bucket: Mapped[str] = mapped_column(String(120), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    naming_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    canonical_name: Mapped[str] = mapped_column(String(260), nullable=False)
+    canonical_slug: Mapped[str] = mapped_column(String(260), nullable=False)
+    name_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    character: Mapped[str] = mapped_column(String(30), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    department: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
+    contributor: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
+    emotion: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("''"))
+    action: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("''"))
+    scene: Mapped[str] = mapped_column(String(60), nullable=False, server_default=text("''"))
+    intended_use: Mapped[str] = mapped_column(String(60), nullable=False, server_default=text("''"))
+    style: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("''"))
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    semantic_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    parent_asset_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_assets_parent_asset_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("asset_ref ~ '^ipa_[a-f0-9]{20}$'", name="ck_ip_assets_ref"),
+        CheckConstraint("blob_sha256 ~ '^[0-9a-f]{64}$'", name="ck_ip_assets_sha256"),
+        CheckConstraint("perceptual_hash ~ '^[0-9a-f]{16}$'", name="ck_ip_assets_phash"),
+        CheckConstraint("byte_size BETWEEN 1 AND 26214400", name="ck_ip_assets_byte_size"),
+        CheckConstraint(
+            "width BETWEEN 1 AND 8192 AND height BETWEEN 1 AND 8192 "
+            "AND width::bigint * height::bigint <= 32000000",
+            name="ck_ip_assets_dimensions",
+        ),
+        CheckConstraint(
+            "media_type IN ('image/png', 'image/jpeg', 'image/webp')",
+            name="ck_ip_assets_media_type",
+        ),
+        CheckConstraint(
+            "orientation IN ('square', 'portrait', 'landscape')",
+            name="ck_ip_assets_orientation",
+        ),
+        CheckConstraint(
+            "character IN ('sai_xiansheng', 'xiao_sai', 'duo', 'other')",
+            name="ck_ip_assets_character",
+        ),
+        CheckConstraint(
+            "asset_type IN ('identity_reference', 'portrait_avatar', 'full_body_action', "
+            "'expression', 'meme_sticker', 'transparent_cutout', 'scene_illustration', "
+            "'poster_element', 'other')",
+            name="ck_ip_assets_type",
+        ),
+        CheckConstraint(
+            "source_kind IN ('uploaded', 'generated', 'seed_import')",
+            name="ck_ip_assets_source",
+        ),
+        CheckConstraint("status IN ('processing', 'ready', 'failed')", name="ck_ip_assets_status"),
+        CheckConstraint(
+            "semantic_status IN ('queued', 'running', 'ready', 'unavailable', 'failed')",
+            name="ck_ip_assets_semantic_status",
+        ),
+        UniqueConstraint("asset_ref", name="uq_ip_assets_ref"),
+        UniqueConstraint("blob_sha256", name="uq_ip_assets_blob_sha256"),
+        UniqueConstraint("naming_key", "name_version", name="uq_ip_assets_name_version"),
+        Index("ix_ip_assets_gallery", "created_at", "id"),
+        Index("ix_ip_assets_filters", "character", "asset_type", "source_kind", "orientation"),
+        Index("ix_ip_assets_department", "department"),
+        Index("ix_ip_assets_phash", "perceptual_hash"),
+    )
+
+
+class IpAssetTagModel(Base):
+    __tablename__ = "ip_asset_tags"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_tags_asset_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    dimension: Mapped[str] = mapped_column(String(30), nullable=False)
+    value: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "dimension IN ('emotion', 'action', 'scene', 'intended_use', 'style', 'free')",
+            name="ck_ip_asset_tags_dimension",
+        ),
+        UniqueConstraint("asset_id", "dimension", "value", name="uq_ip_asset_tags_value"),
+        Index("ix_ip_asset_tags_lookup", "dimension", "value", "asset_id"),
+    )
+
+
+class IpAssetDerivativeModel(Base):
+    __tablename__ = "ip_asset_derivatives"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_derivatives_asset_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    bucket: Mapped[str] = mapped_column(String(120), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind = 'thumbnail'", name="ck_ip_asset_derivatives_kind"),
+        UniqueConstraint("asset_id", "policy_version", "kind", name="uq_ip_asset_derivatives"),
+    )
+
+
+class IpAssetEmbeddingJobModel(Base):
+    __tablename__ = "ip_asset_embedding_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_embedding_jobs_asset_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_ip_asset_embedding_jobs_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ip_asset_embedding_jobs_attempts"),
+        UniqueConstraint("asset_id", name="uq_ip_asset_embedding_jobs_asset"),
+        Index("ix_ip_asset_embedding_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class IpAssetEmbeddingModel(Base):
+    __tablename__ = "ip_asset_embeddings"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_embeddings_asset_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_embedding_jobs.id", name="fk_ip_asset_embeddings_job_id", ondelete="CASCADE"
+        ),
+        nullable=False,
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    vector: Mapped[list[float]] = mapped_column(Vector(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("dimensions = 2048", name="ck_ip_asset_embeddings_dimensions"),
+        UniqueConstraint("job_id", name="uq_ip_asset_embeddings_job"),
+        UniqueConstraint(
+            "asset_id",
+            "provider",
+            "model",
+            "input_policy_version",
+            "source_sha256",
+            name="uq_ip_asset_embeddings_identity",
+        ),
+        Index("ix_ip_asset_embeddings_scope", "provider", "model", "input_policy_version"),
+    )
+
+
+class IpAssetGenerationJobModel(Base):
+    __tablename__ = "ip_asset_generation_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_ref: Mapped[str] = mapped_column(String(24), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt: Mapped[str] = mapped_column(String(2000), nullable=False)
+    character: Mapped[str] = mapped_column(String(30), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    department: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
+    contributor: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
+    ratio: Mapped[str] = mapped_column(String(20), nullable=False)
+    reference_asset_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_assets.id", name="fk_ip_asset_generation_jobs_reference", ondelete="RESTRICT"
+        ),
+        nullable=True,
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    output_asset_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_generation_jobs_output", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("job_ref ~ '^ipg_[a-f0-9]{20}$'", name="ck_ip_asset_generation_jobs_ref"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="ck_ip_asset_generation_jobs_status",
+        ),
+        CheckConstraint("ratio = '1:1'", name="ck_ip_asset_generation_jobs_ratio"),
+        CheckConstraint("attempt_count >= 0", name="ck_ip_asset_generation_jobs_attempts"),
+        UniqueConstraint("job_ref", name="uq_ip_asset_generation_jobs_ref"),
+        UniqueConstraint("idempotency_key", name="uq_ip_asset_generation_jobs_idempotency"),
+        UniqueConstraint("request_fingerprint", name="uq_ip_asset_generation_jobs_fingerprint"),
+        Index("ix_ip_asset_generation_jobs_claim", "status", "available_at", "lease_expires_at"),
     )

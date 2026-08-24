@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V1_PNG_ONLY
+
 
 @dataclass(frozen=True, slots=True)
 class ImageReference:
@@ -15,6 +17,8 @@ class ImageReference:
     sha256: str
     image_bytes: bytes
     selection_reason: str = ""
+    input_normalization_version: str = IMAGE_REFERENCE_INPUT_V1_PNG_ONLY
+    provider_input_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

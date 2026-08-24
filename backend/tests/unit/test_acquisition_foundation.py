@@ -44,6 +44,22 @@ def test_brand_ocr_model_is_a_bounded_identifier() -> None:
         Settings(_env_file=None, brand_ocr_model=" ")
 
 
+def test_brand_version_bundles_are_frozen_and_mixed_labels_fail_closed() -> None:
+    legacy = Settings(
+        _env_file=None,
+        brand_parser_version="brand-parser-v2-glm-ocr",
+        brand_chunk_version="brand-chunk-v2-structure-aware",
+        brand_embedding_input_version="brand-embedding-input-v1",
+        brand_retrieval_version="brand-hybrid-rrf-v2-diverse",
+    )
+    assert legacy.brand_parser_version == "brand-parser-v2-glm-ocr"
+
+    with pytest.raises(ValidationError, match="supported frozen bundle"):
+        Settings(_env_file=None, brand_parser_version="brand-parser-v2-glm-ocr")
+    with pytest.raises(ValidationError, match="brand retrieval version is unsupported"):
+        Settings(_env_file=None, brand_retrieval_version="brand-hybrid-rrf-unknown")
+
+
 def test_image_ocr_settings_are_bounded_and_separate_from_text_generation() -> None:
     settings = Settings(_env_file=None, ai_chat_model="glm-5.2")
 
@@ -75,6 +91,67 @@ def test_image_ocr_numeric_bounds_parse_from_environment_strings(
     assert settings.image_ocr_max_input_bytes == 10 * 1024 * 1024
     assert settings.image_ocr_max_response_bytes == 1024 * 1024
     assert settings.image_ocr_timeout_seconds == 120.0
+
+
+def test_visual_embedding_defaults_are_provider_free_and_enabled_mode_is_closed() -> None:
+    defaults = Settings(_env_file=None)
+    assert defaults.visual_semantic_enabled is False
+    assert defaults.visual_embedding_provider_mode == "disabled"
+    assert defaults.visual_embedding_api_key is None
+    assert defaults.visual_embedding_dimensions == 2048
+    assert defaults.visual_embedding_input_policy_version == "brand-visual-embedding-input-v2"
+    assert (
+        defaults.visual_embedding_identity.input_policy_version == "brand-visual-embedding-input-v2"
+    )
+
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            visual_embedding_input_policy_version="brand-visual-embedding-input-v1",
+        )
+
+    with pytest.raises(ValidationError, match="requires an embedding provider"):
+        Settings(_env_file=None, visual_semantic_enabled=True)
+
+    fake = Settings(
+        _env_file=None,
+        visual_semantic_enabled=True,
+        visual_embedding_provider_mode="fake",
+    )
+    assert fake.visual_embedding_model == "qwen3-vl-embedding"
+
+    with pytest.raises(ValidationError, match="approved asset selection"):
+        Settings(
+            _env_file=None,
+            visual_semantic_enabled=True,
+            visual_embedding_provider_mode="fake",
+            image_selector_enabled=False,
+        )
+
+    with pytest.raises(ValidationError, match="lease must outlast"):
+        Settings(
+            _env_file=None,
+            visual_embedding_timeout_seconds=60,
+            visual_index_lease_seconds=60,
+        )
+
+    with pytest.raises(ValidationError, match="endpoint and API key"):
+        Settings(
+            _env_file=None,
+            visual_semantic_enabled=True,
+            visual_embedding_provider_mode="alibaba",
+        )
+
+
+def test_visual_embedding_dimensions_parse_exact_env_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VISUAL_EMBEDDING_DIMENSIONS", "2048")
+    assert Settings(_env_file=None).visual_embedding_dimensions == 2048
+
+    monkeypatch.setenv("VISUAL_EMBEDDING_DIMENSIONS", "1024")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_state_transitions_are_explicit() -> None:

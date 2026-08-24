@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+from hashlib import sha256
 from io import BytesIO
 from uuid import uuid4
 
@@ -16,12 +17,17 @@ from app.core.errors import (
     ImageProviderRejectedError,
     ProviderAuthenticationError,
 )
+from app.domain.image_provider_input import (
+    IMAGE_REFERENCE_INPUT_V2,
+    normalize_image_provider_reference,
+)
 from app.image_live_smoke import _prompt_for_profile
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
     OpenAICompatibleImageGenerator,
     ToApisImageGenerator,
     _generation_payload,
+    _provider_reference_png,
     _solid_png,
 )
 from PIL import Image
@@ -35,6 +41,106 @@ async def test_fake_image_is_deterministic_and_1024_square() -> None:
     second = await DeterministicFakeImageGenerator().generate(request)
     assert first.image_bytes == second.image_bytes
     assert (first.width, first.height, first.media_type) == (1024, 1024, "image/png")
+
+
+def _reference_jpeg() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (640, 480), (32, 96, 144)).save(
+        output,
+        format="JPEG",
+        quality=82,
+        optimize=False,
+        progressive=False,
+        exif=b"",
+    )
+    return output.getvalue()
+
+
+def test_v2_reference_normalization_preserves_png_and_converts_exact_jpeg() -> None:
+    png = _solid_png("reference-v2", "png-compatible")
+    normalized_png = normalize_image_provider_reference(png)
+    assert normalized_png.image_png == png
+    assert normalized_png.sha256 == sha256(png).hexdigest()
+
+    jpeg = _reference_jpeg()
+    normalized_jpeg = normalize_image_provider_reference(jpeg)
+    assert normalized_jpeg.image_png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert normalized_jpeg.sha256 == sha256(normalized_jpeg.image_png).hexdigest()
+    with Image.open(BytesIO(normalized_jpeg.image_png)) as image:
+        image.load()
+        assert image.size == (640, 480)
+        assert image.info.get("icc_profile") is None
+
+    png_reference = ImageReference(
+        "approved_ip_reference",
+        "asset-png",
+        "reference.png",
+        sha256(png).hexdigest(),
+        png,
+        input_normalization_version=IMAGE_REFERENCE_INPUT_V2,
+        provider_input_sha256=normalized_png.sha256,
+    )
+    jpeg_reference = ImageReference(
+        "approved_ip_reference",
+        "asset-jpeg",
+        "reference.jpg",
+        sha256(jpeg).hexdigest(),
+        jpeg,
+        input_normalization_version=IMAGE_REFERENCE_INPUT_V2,
+        provider_input_sha256=normalized_jpeg.sha256,
+    )
+    assert _provider_reference_png(png_reference) == png
+    assert _provider_reference_png(jpeg_reference) == normalized_jpeg.image_png
+
+
+@pytest.mark.asyncio
+async def test_toapis_and_comfly_build_exact_v2_jpeg_reference_without_external_network() -> None:
+    jpeg = _reference_jpeg()
+    normalized = normalize_image_provider_reference(jpeg)
+    reference = ImageReference(
+        "approved_ip_reference",
+        "asset-jpeg",
+        "reference.jpg",
+        sha256(jpeg).hexdigest(),
+        jpeg,
+        input_normalization_version=IMAGE_REFERENCE_INPUT_V2,
+        provider_input_sha256=normalized.sha256,
+    )
+    uploaded: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        uploaded.append(request.content)
+        return httpx.Response(
+            200,
+            json={"id": "upload-v2", "url": "https://files.toapis.com/u/v2"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        toapis = ToApisImageGenerator(
+            client=client,
+            base_url="https://toapis.com",
+            api_key=SecretStr("test-key"),
+        )
+        await toapis._upload_reference(reference)
+        comfly = _comfly_generator(client)
+        payload = comfly._payload(
+            "parent-facing science illustration",
+            ImageGenerationRequest(
+                uuid4(),
+                uuid4(),
+                "parent-facing science illustration",
+                "provider-input-v2-fingerprint",
+                references=(reference,),
+                reference_mode="single_reference",
+            ),
+        )
+
+    assert len(uploaded) == 1
+    assert normalized.image_png in uploaded[0]
+    encoded = payload["image"]
+    assert isinstance(encoded, list) and len(encoded) == 1
+    assert isinstance(encoded[0], str)
+    assert base64.b64decode(encoded[0].split(",", 1)[1]) == normalized.image_png
 
 
 @pytest.mark.asyncio

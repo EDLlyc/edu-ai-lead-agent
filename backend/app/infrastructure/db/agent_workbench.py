@@ -315,6 +315,7 @@ class _ReadOnlyBrandRepository:
         valid_on: date,
         limit: int,
         candidate_limit: int,
+        retrieval_version: str,
     ) -> tuple[BrandRetrievalHit, ...]:
         async with self._session_factory() as session:
             await _mark_transaction_read_only(session)
@@ -358,6 +359,7 @@ class _ReadOnlyBrandRepository:
                     valid_on=valid_on,
                     limit=limit,
                     candidate_limit=candidate_limit,
+                    retrieval_version=retrieval_version,
                 )
             finally:
                 await session.rollback()

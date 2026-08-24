@@ -25,6 +25,7 @@ from app.application.ports.image_validation import (
     ImageTextRecognitionRequest,
     ImageTextRecognizer,
 )
+from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import Settings
 from app.core.errors import (
     AppError,
@@ -89,6 +90,14 @@ from app.domain.visual_diversity import (
     controlled_image_request_fingerprint,
     controlled_plan_prompt_lines,
     diversity_retry_request_fingerprint,
+)
+from app.domain.visual_retrieval import (
+    VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION,
+)
+from app.domain.visual_retrieval import (
+    VisualIndexUnavailableError,
+    VisualSemanticRanking,
+    canonical_visual_query,
 )
 from app.infrastructure.brand.visual_catalog import (
     LoadedVisualCatalog,
@@ -171,6 +180,33 @@ class ReservedVisualReference:
     sha256: str
     selection_reason: str
     fallback: bool
+    semantic_similarity: float | None = None
+    rule_score: int | None = None
+    ranking_source: str = "deterministic_rules"
+
+
+def _reserved_reference_snapshot(reference: ReservedVisualReference) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "role": reference.role,
+        "asset_id": reference.asset_id,
+        "filename": reference.filename,
+        "sha256": reference.sha256,
+        "selection_reason": reference.selection_reason,
+        "fallback": reference.fallback,
+    }
+    if reference.semantic_similarity is not None:
+        snapshot["semantic_similarity"] = reference.semantic_similarity
+        snapshot["rule_score"] = reference.rule_score
+        snapshot["ranking_source"] = reference.ranking_source
+    return snapshot
+
+
+def _visual_brief_semantic_snapshot(
+    brief_snapshot: dict[str, Any], semantic_snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    if not semantic_snapshot:
+        return brief_snapshot
+    return {**brief_snapshot, "semantic_retrieval": semantic_snapshot}
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +285,79 @@ class ClaimedMaterialPackage:
         )
 
 
+def _visual_query_for_brief(brief: VisualBrief) -> str:
+    return canonical_visual_query(
+        {
+            "category": brief.category.value,
+            "title": brief.text_layer.title,
+            "learning_goal": brief.learning_goal,
+            "scene": brief.scene,
+            "main_action": brief.main_action,
+            "characters": brief.characters,
+            "asset_tags": brief.asset_tags,
+        }
+    )
+
+
+async def _resolve_semantic_ranking(
+    *,
+    enabled: bool,
+    service: VisualRetrievalService | None,
+    manifest_path: str | None,
+    brief: VisualBrief | None,
+) -> tuple[VisualSemanticRanking | None, dict[str, Any]]:
+    if not enabled:
+        return None, {}
+    if service is None or manifest_path is None or brief is None:
+        return None, {
+            "status": "semantic_unavailable",
+            "reason": "provider_unavailable",
+        }
+    try:
+        loaded = await asyncio.to_thread(load_visual_catalog, manifest_path)
+    except (OSError, ValueError):
+        return None, {"status": "semantic_unavailable", "reason": "catalog_changed"}
+    return await _resolve_semantic_ranking_for_catalog(
+        enabled=True,
+        service=service,
+        loaded_catalog=loaded,
+        brief=brief,
+    )
+
+
+async def _resolve_semantic_ranking_for_catalog(
+    *,
+    enabled: bool,
+    service: VisualRetrievalService | None,
+    loaded_catalog: LoadedVisualCatalog,
+    brief: VisualBrief,
+) -> tuple[VisualSemanticRanking | None, dict[str, Any]]:
+    if not enabled:
+        return None, {}
+    if service is None:
+        return None, {
+            "status": "semantic_unavailable",
+            "reason": "provider_unavailable",
+        }
+    try:
+        ranking = await service.search_text(
+            text=_visual_query_for_brief(brief), catalog=loaded_catalog.catalog
+        )
+    except VisualIndexUnavailableError as error:
+        return None, {"status": "semantic_unavailable", "reason": error.reason.value}
+    except Exception:
+        return None, {
+            "status": "semantic_unavailable",
+            "reason": "provider_unavailable",
+        }
+    return ranking, {
+        "status": "ready",
+        "ranking_source": "semantic_primary",
+        "catalog_version": ranking.catalog_version,
+        "indexed_asset_count": ranking.indexed_asset_count,
+    }
+
+
 async def enqueue_material_package(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -273,6 +382,8 @@ async def enqueue_material_package(
     image_similarity_policy_version: str = IMAGE_SIMILARITY_POLICY_VERSION,
     image_diversity_history_days: int = 7,
     image_diversity_history_limit: int = 400,
+    visual_semantic_enabled: bool = False,
+    visual_retrieval_service: VisualRetrievalService | None = None,
 ) -> MaterialPackageResult:
     accepted = await _load_accepted_input(session_factory, run_id)
     if image_diversity_enabled:
@@ -286,6 +397,7 @@ async def enqueue_material_package(
             session_factory=session_factory,
             accepted=accepted,
             loaded_catalog=loaded_catalog,
+            image_asset_manifest=image_asset_manifest,
             image_provider=image_provider,
             image_model=image_model,
             image_max_reference_images=image_max_reference_images,
@@ -299,7 +411,15 @@ async def enqueue_material_package(
             similarity_policy_version=image_similarity_policy_version,
             history_days=image_diversity_history_days,
             history_limit=image_diversity_history_limit,
+            visual_semantic_enabled=visual_semantic_enabled,
+            visual_retrieval_service=visual_retrieval_service,
         )
+    semantic_ranking, semantic_snapshot = await _resolve_semantic_ranking(
+        enabled=visual_semantic_enabled,
+        service=visual_retrieval_service,
+        manifest_path=image_asset_manifest,
+        brief=accepted.visual_brief,
+    )
     prepared = await asyncio.to_thread(
         _prepare_image_input,
         accepted,
@@ -313,6 +433,8 @@ async def enqueue_material_package(
         image_max_reference_images=image_max_reference_images,
         image_reference_budget_bytes=image_reference_budget_bytes,
         selection_seed=str(accepted.run.id),
+        semantic_ranking=semantic_ranking,
+        semantic_snapshot=semantic_snapshot,
     )
     reference_sha256 = prepared.references[0].sha256 if prepared.references else None
     fingerprint = image_request_fingerprint(
@@ -406,14 +528,7 @@ async def enqueue_material_package(
                         "reference_mode": prepared.reference_mode,
                         "visual_brief": prepared.visual_brief_snapshot,
                         "references": [
-                            {
-                                "role": reference.role,
-                                "asset_id": reference.asset_id,
-                                "filename": reference.filename,
-                                "sha256": reference.sha256,
-                                "selection_reason": reference.selection_reason,
-                                "fallback": reference.fallback,
-                            }
+                            _reserved_reference_snapshot(reference)
                             for reference in prepared.reserved_references
                         ],
                         "catalog_version": prepared.catalog_version,
@@ -512,6 +627,7 @@ def _prepare_controlled_plan_input(
     recent_style_asset_ids: tuple[str, ...],
     recent_variant_groups: tuple[str, ...],
     selection_seed: str,
+    semantic_ranking: VisualSemanticRanking | None = None,
 ) -> PreparedControlledPlanInput:
     selection = select_visual_assets(
         loaded_catalog,
@@ -536,6 +652,7 @@ def _prepare_controlled_plan_input(
         selector_version=selector_version,
         max_references=image_max_reference_images,
         max_reference_bytes=image_reference_budget_bytes,
+        semantic_scores=(semantic_ranking.score_map if semantic_ranking is not None else None),
     )
     provider_single_reference = image_provider == "toapis" and len(selection.selected_assets) > 1
     reserved_references = tuple(
@@ -546,6 +663,9 @@ def _prepare_controlled_plan_input(
             sha256=selected.asset.checksum,
             selection_reason=selected.reason,
             fallback=selected.fallback or provider_single_reference,
+            semantic_similarity=selected.semantic_similarity,
+            rule_score=(selected.rule_score if selected.semantic_similarity is not None else None),
+            ranking_source=selected.ranking_source,
         )
         for selected in selection.selected_assets
     )
@@ -593,6 +713,7 @@ async def _enqueue_controlled_material_package(
     session_factory: async_sessionmaker[AsyncSession],
     accepted: AcceptedMaterialInput,
     loaded_catalog: LoadedVisualCatalog,
+    image_asset_manifest: str,
     image_provider: str,
     image_model: str,
     image_max_reference_images: int,
@@ -606,6 +727,8 @@ async def _enqueue_controlled_material_package(
     similarity_policy_version: str,
     history_days: int,
     history_limit: int,
+    visual_semantic_enabled: bool,
+    visual_retrieval_service: VisualRetrievalService | None,
 ) -> MaterialPackageResult:
     reviewed_versions = (
         (policy_version, VISUAL_DIVERSITY_POLICY_VERSION),
@@ -628,6 +751,34 @@ async def _enqueue_controlled_material_package(
         brief = _controlled_visual_brief(accepted, version=brief_version)
     except ValueError as error:
         raise ConflictError("controlled visual diversity input is invalid") from error
+
+    semantic_ranking, semantic_snapshot = await _resolve_semantic_ranking_for_catalog(
+        enabled=visual_semantic_enabled,
+        service=visual_retrieval_service,
+        loaded_catalog=loaded_catalog,
+        brief=brief,
+    )
+    if semantic_ranking is not None:
+        try:
+            refreshed_catalog = await asyncio.to_thread(load_visual_catalog, image_asset_manifest)
+        except (OSError, ValueError) as error:
+            raise ConflictError("approved visual asset catalog is invalid") from error
+        approved_ids = {
+            asset.asset_id for asset in refreshed_catalog.catalog.assets if asset.approved
+        }
+        if (
+            refreshed_catalog.catalog.catalog_version != semantic_ranking.catalog_version
+            or set(semantic_ranking.score_map) != approved_ids
+        ):
+            semantic_ranking = None
+            semantic_snapshot = {
+                "status": "semantic_unavailable",
+                "reason": "catalog_changed",
+            }
+        loaded_catalog = refreshed_catalog
+    effective_selector_version = (
+        VISUAL_SEMANTIC_SELECTOR_VERSION if semantic_ranking is not None else selector_version
+    )
 
     business_date = accepted.run.business_date
     timezone = accepted.run.timezone
@@ -742,7 +893,7 @@ async def _enqueue_controlled_material_package(
                 attempt_ordinal=1,
                 loaded_catalog=loaded_catalog,
                 image_provider=image_provider,
-                selector_version=selector_version,
+                selector_version=effective_selector_version,
                 prompt_version=prompt_version,
                 pipeline_version=pipeline_version,
                 image_max_reference_images=image_max_reference_images,
@@ -751,6 +902,7 @@ async def _enqueue_controlled_material_package(
                 recent_style_asset_ids=recent_style_asset_ids,
                 recent_variant_groups=recent_variant_groups,
                 selection_seed=f"{accepted.run.id}:primary:{bundle.primary.fingerprint}",
+                semantic_ranking=semantic_ranking,
             )
             alternate = _prepare_controlled_plan_input(
                 brief=brief,
@@ -758,7 +910,7 @@ async def _enqueue_controlled_material_package(
                 attempt_ordinal=2,
                 loaded_catalog=loaded_catalog,
                 image_provider=image_provider,
-                selector_version=selector_version,
+                selector_version=effective_selector_version,
                 prompt_version=prompt_version,
                 pipeline_version=pipeline_version,
                 image_max_reference_images=image_max_reference_images,
@@ -767,6 +919,7 @@ async def _enqueue_controlled_material_package(
                 recent_style_asset_ids=recent_style_asset_ids,
                 recent_variant_groups=recent_variant_groups,
                 selection_seed=f"{accepted.run.id}:alternate:{bundle.alternate.fingerprint}",
+                semantic_ranking=semantic_ranking,
             )
         except (OSError, ValueError) as error:
             raise ConflictError("controlled visual reference selection is invalid") from error
@@ -775,7 +928,7 @@ async def _enqueue_controlled_material_package(
             plans=(primary, alternate),
             history_digest=bundle.history_digest,
             catalog_version=loaded_catalog.catalog.catalog_version,
-            selector_version=selector_version,
+            selector_version=effective_selector_version,
             content_slot=content_slot.value if content_slot else None,
             business_date=business_date,
             timezone=timezone,
@@ -797,7 +950,7 @@ async def _enqueue_controlled_material_package(
             policy_version=policy_version,
             prompt_version=prompt_version,
             pipeline_version=pipeline_version,
-            selector_version=selector_version,
+            selector_version=effective_selector_version,
             hash_version=hash_version,
             similarity_policy_version=similarity_policy_version,
         )
@@ -817,10 +970,13 @@ async def _enqueue_controlled_material_package(
                 primary.reserved_references[0].sha256 if primary.reserved_references else None
             ),
             reference_mode=primary.reference_mode,
-            visual_brief_snapshot={
-                **brief.as_metadata(),
-                "controlled_plan": primary.plan.as_metadata(),
-            },
+            visual_brief_snapshot=_visual_brief_semantic_snapshot(
+                {
+                    **brief.as_metadata(),
+                    "controlled_plan": primary.plan.as_metadata(),
+                },
+                semantic_snapshot,
+            ),
             status="queued",
             available_at=datetime.now(UTC),
             attempt_count=0,
@@ -845,14 +1001,7 @@ async def _enqueue_controlled_material_package(
                 "reference_mode": plan_input.reference_mode,
                 "reference_fingerprint": plan_input.reference_fingerprint,
                 "references": [
-                    {
-                        "role": reference.role,
-                        "asset_id": reference.asset_id,
-                        "filename": reference.filename,
-                        "sha256": reference.sha256,
-                        "selection_reason": reference.selection_reason,
-                        "fallback": reference.fallback,
-                    }
+                    _reserved_reference_snapshot(reference)
                     for reference in plan_input.reserved_references
                 ],
             }
@@ -909,7 +1058,7 @@ async def _enqueue_controlled_material_package(
                 reference_fingerprint=plan_input.reference_fingerprint,
                 history_digest=prepared.history_digest,
                 policy_version=policy_version,
-                selector_version=selector_version,
+                selector_version=prepared.selector_version,
                 reference_mode=plan_input.reference_mode,
             )
             for index, plan_input in enumerate(prepared.plans)
@@ -1056,6 +1205,8 @@ def _prepare_image_input(
     image_max_reference_images: int,
     image_reference_budget_bytes: int,
     selection_seed: str = "",
+    semantic_ranking: VisualSemanticRanking | None = None,
+    semantic_snapshot: dict[str, Any] | None = None,
 ) -> PreparedImageInput:
     brief = accepted.visual_brief
     if not image_selector_enabled or image_asset_manifest is None or brief is None:
@@ -1096,6 +1247,17 @@ def _prepare_image_input(
 
     try:
         loaded = load_visual_catalog(image_asset_manifest)
+        if semantic_ranking is not None:
+            approved_ids = {asset.asset_id for asset in loaded.catalog.assets if asset.approved}
+            if (
+                semantic_ranking.catalog_version != loaded.catalog.catalog_version
+                or set(semantic_ranking.score_map) != approved_ids
+            ):
+                semantic_ranking = None
+                semantic_snapshot = {
+                    "status": "semantic_unavailable",
+                    "reason": "catalog_changed",
+                }
         selection_request = AssetSelectionRequest(
             category=brief.category.value,
             topic=brief.text_layer.title,
@@ -1111,9 +1273,14 @@ def _prepare_image_input(
         selection = select_visual_assets(
             loaded,
             selection_request,
-            selector_version=image_selector_version,
+            selector_version=(
+                VISUAL_SEMANTIC_SELECTOR_VERSION
+                if semantic_ranking is not None
+                else image_selector_version
+            ),
             max_references=image_max_reference_images,
             max_reference_bytes=image_reference_budget_bytes,
+            semantic_scores=(semantic_ranking.score_map if semantic_ranking is not None else None),
         )
         references = tuple(
             read_selected_reference(loaded, selected) for selected in selection.selected_assets
@@ -1145,6 +1312,9 @@ def _prepare_image_input(
             sha256=selected.asset.checksum,
             selection_reason=selected.reason,
             fallback=selected.fallback or provider_single_reference,
+            semantic_similarity=selected.semantic_similarity,
+            rule_score=(selected.rule_score if selected.semantic_similarity is not None else None),
+            ranking_source=selected.ranking_source,
         )
         for selected in selection.selected_assets
     )
@@ -1158,7 +1328,9 @@ def _prepare_image_input(
         references=references,
         reserved_references=reserved_references,
         reference_mode=reference_mode,
-        visual_brief_snapshot=brief.as_metadata(),
+        visual_brief_snapshot=_visual_brief_semantic_snapshot(
+            brief.as_metadata(), semantic_snapshot or {}
+        ),
         visual_brief_fingerprint=brief.fingerprint,
         catalog_version=selection.catalog_version,
         selector_version=selection.selector_version,
@@ -1400,6 +1572,7 @@ class MaterialPackageExecutor:
         reference_asset: str | None,
         image_text_recognizer: ImageTextRecognizer | None = None,
         image_quality_auditor: ImageQualityAuditor | None = None,
+        visual_retrieval_service: VisualRetrievalService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._image_generator = image_generator
@@ -1408,6 +1581,7 @@ class MaterialPackageExecutor:
         self._reference_asset = reference_asset
         self._image_text_recognizer = image_text_recognizer
         self._image_quality_auditor = image_quality_auditor
+        self._visual_retrieval_service = visual_retrieval_service
         self._lease_events: dict[UUID, asyncio.Event] = {}
 
     async def reconcile_ready_packages(self, *, limit: int = 20) -> int:
@@ -1464,6 +1638,8 @@ class MaterialPackageExecutor:
                     ),
                     image_diversity_history_days=(self._settings.image_diversity_history_days),
                     image_diversity_history_limit=(self._settings.image_diversity_history_limit),
+                    visual_semantic_enabled=self._settings.visual_semantic_enabled,
+                    visual_retrieval_service=self._visual_retrieval_service,
                 )
             except ConflictError as error:
                 # Another API request or worker may have won the same idempotency race.

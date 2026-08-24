@@ -7,8 +7,13 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	content-scheduler content-worker content-stack-up \
+	official-account-local-worker official-account-local-demo \
+	official-account-local-live-smoke official-account-local-export \
+	ip-asset-worker ip-asset-import-dry-run ip-asset-stack-up ip-asset-ui \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
 	topic-rerank-eval \
+	brand-retrieval-eval \
+	visual-retrieval-eval \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	agent-portfolio-capture agent-portfolio-capture-check \
 	agent-portfolio-live-zhipu-preflight agent-portfolio-live-zhipu-capture \
@@ -74,6 +79,56 @@ content-scheduler:
 content-worker:
 	$(PY_RUN) python -m app.content_worker_main
 
+official-account-local-worker:
+	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+	OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED=true \
+		$(PY_RUN) python -m app.official_account_worker_main
+
+official-account-local-demo:
+	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+	OFFICIAL_ACCOUNT_LOCAL_VISUAL_SEMANTIC_ENABLED=false \
+	VISUAL_EMBEDDING_PROVIDER_MODE=disabled \
+	AI_PROVIDER_MODE=disabled \
+	CONTENT_LLM_RERANK_ENABLED=false \
+		docker compose --profile official-account-local up --build \
+		official-account-local-frontend
+
+official-account-local-live-smoke:
+	@test -n "$(MATERIAL_PACKAGE_ID)" || { echo "MATERIAL_PACKAGE_ID is required" >&2; exit 2; }
+	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+		docker compose --profile official-account-local up -d --build \
+		acquisition-api official-account-local-worker
+	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+		$(PY_RUN) python -m app.official_account_local_cli live \
+		--material-package-id "$(MATERIAL_PACKAGE_ID)"
+
+official-account-local-export:
+	@test -n "$(RUN_ID)" || { echo "RUN_ID is required" >&2; exit 2; }
+	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+		$(PY_RUN) python -m app.official_account_local_cli export \
+		--run-id "$(RUN_ID)" \
+		--mode "$(if $(MODE),$(MODE),review)" \
+		--output-dir "$(if $(OUTPUT_DIR),$(OUTPUT_DIR),output/official-account-local)"
+
+ip-asset-worker:
+	IP_ASSET_HUB_ENABLED=true \
+	IP_ASSET_WORKER_ENABLED=true \
+		$(PY_RUN) python -m app.ip_asset_worker_main
+
+ip-asset-import-dry-run:
+	$(PY_RUN) python -m app.ip_asset_import_main --dry-run \
+		--max-assets "$(if $(MAX_ASSETS),$(MAX_ASSETS),500)"
+
+ip-asset-stack-up:
+	IP_ASSET_HUB_ENABLED=true \
+	IP_ASSET_WORKER_ENABLED=true \
+		docker compose --profile ip-assets up -d --build \
+		acquisition-api ip-asset-worker
+
+ip-asset-ui:
+	VITE_IP_ASSET_HUB_ENABLED=true npm run dev --prefix frontend -- \
+		--host 127.0.0.1 --port 5173 --strictPort
+
 governance-fake-check:
 	$(PY_RUN) pytest backend/tests/unit/test_governance_delivery.py \
 		backend/tests/integration/test_governance_api_e2e.py -q
@@ -112,6 +167,12 @@ agent-workbench-eval:
 
 topic-rerank-eval:
 	cd backend && $(PY_RUN) python -m evals.topic_rerank.runner --check
+
+brand-retrieval-eval:
+	cd backend && $(PY_RUN) python -m evals.brand_retrieval.runner --check
+
+visual-retrieval-eval:
+	cd backend && $(PY_RUN) python -m evals.visual_retrieval.runner --check
 
 agent-portfolio-check: agent-api-contract-check
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check

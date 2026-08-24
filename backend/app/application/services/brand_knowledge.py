@@ -25,6 +25,7 @@ from app.core.errors import (
     BrandOcrUnavailableError,
 )
 from app.domain.brand_knowledge import (
+    STRUCTURED_BRAND_RETRIEVAL_VERSION,
     BrandAudience,
     BrandChunkEmbedding,
     BrandDocumentKind,
@@ -63,6 +64,9 @@ class BrandIngestionExecutor:
             max_attempts=self._settings.content_max_attempts,
             embedding_provider=self._settings.ai_provider_mode,
             embedding_model=self._settings.ai_embedding_model,
+            parser_version=self._settings.brand_parser_version,
+            chunk_version=self._settings.brand_chunk_version,
+            embedding_input_version=self._settings.brand_embedding_input_version,
         )
         if claimed is None:
             return False
@@ -121,16 +125,21 @@ class BrandIngestionExecutor:
                     ocr_completion_tokens=ocr_result.completion_tokens,
                     ocr_latency_ms=ocr_result.latency_ms,
                 )
-            chunks = self._parser.chunk(version_id=claimed.version_id, document=parsed)
+            chunking = self._parser.chunk(
+                version_id=claimed.version_id,
+                document=parsed,
+                document_title=claimed.document_title,
+                document_kind=claimed.document_kind,
+            )
             artifacts: list[BrandChunkEmbedding] = []
-            for chunk in chunks:
+            for chunk in chunking.chunks:
                 if heartbeat_task.done():
                     heartbeat_task.result()
                 result = await self._embeddings.embed_brand(
                     BrandEmbeddingRequest(
                         chunk_id=chunk.id,
-                        input_hash=chunk.text_hash,
-                        text=chunk.text,
+                        input_hash=chunk.embedding_input_hash,
+                        text=chunk.embedding_text,
                     )
                 )
                 if heartbeat_task.done():
@@ -150,6 +159,7 @@ class BrandIngestionExecutor:
             persisted = await self._repository.persist_ingestion(
                 claimed=claimed,
                 parsed=parsed,
+                chunking=chunking,
                 embeddings=artifacts,
             )
             if not persisted:
@@ -161,6 +171,7 @@ class BrandIngestionExecutor:
                 attempt=claimed.attempt_number,
                 page_count=parsed.page_count,
                 character_count=len(parsed.text),
+                section_count=len(chunking.sections),
                 chunk_count=len(artifacts),
                 extraction_method=parsed.extraction_method,
                 ocr_provider=parsed.ocr_provider,
@@ -250,6 +261,7 @@ async def retrieve_brand_context(
     document_kinds: tuple[BrandDocumentKind, ...],
     valid_on: date,
     limit: int,
+    retrieval_version: str = STRUCTURED_BRAND_RETRIEVAL_VERSION,
 ) -> tuple[BrandRetrievalHit, ...]:
     normalized_query = query.strip()
     if not normalized_query or len(normalized_query) > 2_000:
@@ -273,6 +285,7 @@ async def retrieve_brand_context(
         valid_on=valid_on,
         limit=limit,
         candidate_limit=max(limit * 4, 20),
+        retrieval_version=retrieval_version,
     )
 
 

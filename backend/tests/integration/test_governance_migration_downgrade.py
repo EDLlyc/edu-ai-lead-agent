@@ -69,6 +69,59 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
         )
         try:
+            historical_document_id = uuid4()
+            historical_version_id = uuid4()
+            historical_chunk_id = uuid4()
+            historical_text = "historical synthetic brand chunk"
+            historical_hash = "a" * 64
+            await previous_head.execute(
+                """
+                INSERT INTO brand_documents (
+                    id, brand_slug, document_key, title, document_kind,
+                    audience, language, status
+                ) VALUES (
+                    $1, 'sai-xiansheng', $2, 'Synthetic migration document',
+                    'other', 'internal', 'zh-CN', 'active'
+                )
+                """,
+                historical_document_id,
+                "b" * 64,
+            )
+            await previous_head.execute(
+                """
+                INSERT INTO brand_document_versions (
+                    id, document_id, version, safe_filename, media_type,
+                    byte_size, sha256, bucket, object_key, metadata_fingerprint,
+                    parser_version, chunk_version, embedding_input_version,
+                    embedding_provider, embedding_model, embedding_dimensions,
+                    status, active, tone_tags, safety_tags, visual_tags
+                ) VALUES (
+                    $1, $2, 1, 'synthetic.md', 'text/markdown',
+                    1, $3, 'synthetic', 'synthetic/object', $4,
+                    'parser-v2', 'chunk-v2', 'input-v1',
+                    'configured-provider', 'configured-model', 2048,
+                    'ready', false, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb
+                )
+                """,
+                historical_version_id,
+                historical_document_id,
+                "c" * 64,
+                "d" * 64,
+            )
+            await previous_head.execute(
+                """
+                INSERT INTO brand_chunks (
+                    id, version_id, ordinal, chunk_key, text_hash,
+                    text, char_start, char_end
+                ) VALUES ($1, $2, 0, $3, $4, $5, 0, $6)
+                """,
+                historical_chunk_id,
+                historical_version_id,
+                "e" * 64,
+                historical_hash,
+                historical_text,
+                len(historical_text),
+            )
             revision_at_previous_head = await previous_head.fetchval(
                 "SELECT version_num FROM alembic_version"
             )
@@ -85,6 +138,32 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
         assert preserved_slot == 1
         assert preserved_governance == 1
         await asyncio.to_thread(command.upgrade, config, "head")
+        populated = await asyncpg.connect(
+            make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
+        )
+        try:
+            historical_chunk = await populated.fetchrow(
+                """
+                SELECT section_id, section_ordinal, embedding_text,
+                       embedding_input_hash, content_type, claim_scope,
+                       verification_required,
+                       search_vector @@ plainto_tsquery('simple', 'historical') AS searchable
+                FROM brand_chunks
+                WHERE id = $1
+                """,
+                historical_chunk_id,
+            )
+        finally:
+            await populated.close()
+        assert historical_chunk is not None
+        assert historical_chunk["section_id"] is None
+        assert historical_chunk["section_ordinal"] is None
+        assert historical_chunk["embedding_text"] == historical_text
+        assert historical_chunk["embedding_input_hash"] == historical_hash
+        assert historical_chunk["content_type"] == "other"
+        assert historical_chunk["claim_scope"] == "brand_statement"
+        assert historical_chunk["verification_required"] is False
+        assert historical_chunk["searchable"] is True
         with pytest.raises(RuntimeError, match="content-slot artifacts exist"):
             await asyncio.to_thread(command.downgrade, config, "20260807_0019")
         populated = await asyncpg.connect(
@@ -100,7 +179,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             )
         finally:
             await populated.close()
-        assert revision_after_slot_refusal == "20260818_0022"
+        assert revision_after_slot_refusal == "20260824_0034"
         with pytest.raises(RuntimeError, match="governance or checkpoint data exists"):
             await asyncio.to_thread(command.downgrade, config, "20260729_0003")
         populated = await asyncpg.connect(
@@ -113,7 +192,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             await populated.execute("DELETE FROM governance_runs")
         finally:
             await populated.close()
-        assert revision_after_refusal == "20260818_0022"
+        assert revision_after_refusal == "20260824_0034"
         await asyncio.to_thread(command.downgrade, config, "20260729_0003")
 
         downgraded_url = make_url(test_url)

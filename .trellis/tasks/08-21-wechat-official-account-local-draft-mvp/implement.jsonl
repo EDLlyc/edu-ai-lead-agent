@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/08-21-wechat-official-account-local-draft-mvp/research/implementation-check-contracts.md", "reason": "Provides the complete, non-truncated pipeline, worker, provider, persistence, preview and no-publishing contracts required for implementation."}
+{"file": ".trellis/spec/backend/brand-knowledge-rag.md", "reason": "Owns the hard separation between factual evidence and private brand context used by long-form claims."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Owns PostgreSQL/Alembic, typed lineage, short transactions, leases, fingerprints and real integration-test requirements."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Owns typed provider failures, bounded retry, review-required outcomes and unknown-result handling."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Owns model, source, storage and credential redaction for the live generation path."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Owns safe component decomposition, accessibility and the ban on unsafe model-content HTML injection."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Owns TanStack Query server state, bounded polling and avoidance of a second client-side database."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Owns OpenAPI-generated wire types, strict view-model mapping and unsafe HTML boundaries."}
+{"file": ".trellis/tasks/08-21-wechat-official-account-local-draft-mvp/research/current-local-draft-seams.md", "reason": "Maps the exact existing material, Zhipu, worker, migration, storage and frontend seams selected by the design."}

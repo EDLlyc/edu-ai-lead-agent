@@ -12,6 +12,7 @@ from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
 from .conftest import IntegrationContext
 
@@ -130,6 +131,49 @@ async def test_brand_upload_ingest_activate_and_filtered_retrieval(
                 changed_metadata_version_id,
             }
 
+            legacy_settings = settings.model_copy(
+                update={
+                    "brand_parser_version": "brand-parser-v2-glm-ocr",
+                    "brand_chunk_version": "brand-chunk-v2-structure-aware",
+                    "brand_embedding_input_version": "brand-embedding-input-v1",
+                    "brand_retrieval_version": "brand-hybrid-rrf-v2-diverse",
+                }
+            )
+            app.state.settings = legacy_settings
+            legacy_upload = await client.post(
+                "/api/v1/brand-documents",
+                data={
+                    "title": title,
+                    "document_kind": "tone",
+                    "audience": "parents",
+                    "tone_tags": "准确,克制,温暖",
+                    "safety_tags": "不制造焦虑,不作效果承诺",
+                },
+                files={"file": ("parent-tone-v1.md", body, "text/markdown")},
+            )
+            app.state.settings = settings
+            assert legacy_upload.status_code == 202
+            legacy_job_id = UUID(legacy_upload.json()["ingestion_job_id"])
+            legacy_version_id = UUID(legacy_upload.json()["version_id"])
+
+        async with integration_context.engine.begin() as connection:
+            await connection.execute(
+                text(
+                    """
+                    UPDATE brand_ingestion_jobs
+                    SET status = 'running', attempt_count = 1,
+                        lease_owner = 'synthetic-v2-worker', lease_token = :lease_token,
+                        lease_expires_at = now() - interval '1 minute', heartbeat_at = now()
+                    WHERE id = :job_id
+                    """
+                ),
+                {"job_id": legacy_job_id, "lease_token": uuid4()},
+            )
+            await connection.execute(
+                text("UPDATE brand_document_versions SET status = 'processing' WHERE id = :id"),
+                {"id": legacy_version_id},
+            )
+
         executor = BrandIngestionExecutor(
             repository=PostgresBrandKnowledgeRepository(integration_context.session_factory),
             originals=original_store,
@@ -139,7 +183,9 @@ async def test_brand_upload_ingest_activate_and_filtered_retrieval(
                 max_chunks=settings.brand_parse_max_chunks,
                 chunk_characters=settings.brand_chunk_characters,
                 overlap_characters=settings.brand_chunk_overlap_characters,
+                parser_version=settings.brand_parser_version,
                 chunk_version=settings.brand_chunk_version,
+                embedding_input_version=settings.brand_embedding_input_version,
             ),
             embeddings=embedding_model,
             settings=settings,
@@ -174,9 +220,9 @@ async def test_brand_upload_ingest_activate_and_filtered_retrieval(
             retrieval = await client.post(
                 "/api/v1/brand-context/retrieve",
                 json={
-                    "query": "面向家长介绍人工智能时如何避免教育焦虑",
+                    "query": "教育焦虑",
                     "audience": "parents",
-                    "limit": 3,
+                    "limit": 4,
                 },
             )
             assert retrieval.status_code == 200, retrieval.text
@@ -187,6 +233,21 @@ async def test_brand_upload_ingest_activate_and_filtered_retrieval(
                 item["document_id"] == str(document_id) for item in retrieval_payload["items"]
             )
             assert any("教育焦虑" in item["text"] for item in retrieval_payload["items"])
+            assert all(item["section_id"] is not None for item in retrieval_payload["items"])
+            assert all(item["section_kind"] == "generic" for item in retrieval_payload["items"])
+            content_types = {item["content_type"] for item in retrieval_payload["items"]}
+            assert content_types <= {
+                "tone_example",
+                "audience_insight",
+                "safety_capability",
+            }
+            assert "tone_example" in content_types
+            claim_scopes = {item["claim_scope"] for item in retrieval_payload["items"]}
+            assert claim_scopes == {"brand_statement", "external_claim"}
+            assert all(
+                item["verification_required"] == (item["claim_scope"] == "external_claim")
+                for item in retrieval_payload["items"]
+            )
 
             wrong_audience = await client.post(
                 "/api/v1/brand-context/retrieve",
@@ -201,6 +262,55 @@ async def test_brand_upload_ingest_activate_and_filtered_retrieval(
 
         assert await executor.execute_next("brand-rag-integration-worker")
         assert not await executor.execute_next("brand-rag-integration-worker")
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            legacy_job = await client.get(f"/api/v1/brand-ingestion-jobs/{legacy_job_id}")
+        assert legacy_job.status_code == 200
+        assert legacy_job.json()["status"] == "running"
+        assert legacy_job.json()["attempt_count"] == 1
+
+        legacy_executor = BrandIngestionExecutor(
+            repository=PostgresBrandKnowledgeRepository(integration_context.session_factory),
+            originals=original_store,
+            parser=BoundedBrandDocumentParser(
+                max_pages=legacy_settings.brand_parse_max_pages,
+                max_characters=legacy_settings.brand_parse_max_characters,
+                max_chunks=legacy_settings.brand_parse_max_chunks,
+                chunk_characters=legacy_settings.brand_chunk_characters,
+                overlap_characters=legacy_settings.brand_chunk_overlap_characters,
+                parser_version=legacy_settings.brand_parser_version,
+                chunk_version=legacy_settings.brand_chunk_version,
+                embedding_input_version=legacy_settings.brand_embedding_input_version,
+            ),
+            embeddings=embedding_model,
+            settings=legacy_settings,
+        )
+        assert not await legacy_executor.execute_next("brand-rag-v2-rollback-worker")
+        assert await legacy_executor.execute_next("brand-rag-v2-rollback-worker")
+        async with integration_context.engine.connect() as connection:
+            legacy_shape = (
+                await connection.execute(
+                    text(
+                        """
+                        SELECT
+                            (SELECT count(*) FROM brand_sections WHERE version_id = :version_id)
+                                AS section_count,
+                            count(*) AS chunk_count,
+                            count(*) FILTER (
+                                WHERE section_id IS NULL
+                                  AND section_ordinal IS NULL
+                                  AND embedding_text = text
+                                  AND embedding_input_hash = text_hash
+                            ) AS compatible_chunk_count
+                        FROM brand_chunks
+                        WHERE version_id = :version_id
+                        """
+                    ),
+                    {"version_id": legacy_version_id},
+                )
+            ).one()
+        assert legacy_shape.section_count == 0
+        assert legacy_shape.chunk_count >= 1
+        assert legacy_shape.compatible_chunk_count == legacy_shape.chunk_count
     finally:
         app.state.settings = previous_settings
         app.state.session_factory = previous_factory

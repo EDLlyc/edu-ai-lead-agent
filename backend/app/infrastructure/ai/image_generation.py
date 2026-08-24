@@ -47,6 +47,11 @@ from app.domain.image_generation import (
     image_checksum,
     validate_image_prompt,
 )
+from app.domain.image_provider_input import (
+    IMAGE_REFERENCE_INPUT_V1_PNG_ONLY,
+    IMAGE_REFERENCE_INPUT_V2,
+    normalize_image_provider_reference,
+)
 
 _Sleep = Callable[[float], Awaitable[None]]
 OutputHostObserver = Callable[[str], bool]
@@ -103,6 +108,36 @@ def _provider_references(request: ImageGenerationRequest) -> tuple[ImageReferenc
     if request.reference_mode == "single_fallback" and len(references) > 1:
         return references[:1]
     return references
+
+
+def _provider_reference_png(reference: ImageReference) -> bytes:
+    """Build provider bytes under the reference's explicit replay identity.
+
+    The legacy profile retains its exact PNG-only behavior. The v2 profile is used by the
+    official-account catalog path and accepts its exact JPEG publication bytes, while preserving
+    already-valid PNG bytes byte-for-byte.
+    """
+
+    if reference.input_normalization_version == IMAGE_REFERENCE_INPUT_V1_PNG_ONLY:
+        if reference.provider_input_sha256 is not None:
+            raise ImageOutputValidationError()
+        return reference.image_bytes
+    if reference.input_normalization_version != IMAGE_REFERENCE_INPUT_V2:
+        raise ImageOutputValidationError()
+    try:
+        normalized = normalize_image_provider_reference(
+            reference.image_bytes,
+            version=reference.input_normalization_version,
+        )
+    except ValueError:
+        raise ImageOutputValidationError() from None
+    if (
+        image_checksum(reference.image_bytes) != reference.sha256
+        or reference.provider_input_sha256 is None
+        or normalized.sha256 != reference.provider_input_sha256
+    ):
+        raise ImageOutputValidationError()
+    return normalized.image_png
 
 
 def _generation_payload(
@@ -228,7 +263,7 @@ class ToApisImageGenerator:
                 if len(references) > 1:
                     raise ImageProviderRejectedError()
                 if references:
-                    upload_id, upload_url = await self._upload_reference(references[0].image_bytes)
+                    upload_id, upload_url = await self._upload_reference(references[0])
                 payload = _generation_payload(
                     model=self._model,
                     prompt=prompt,
@@ -259,7 +294,8 @@ class ToApisImageGenerator:
             attempts=1,
         )
 
-    async def _upload_reference(self, body: bytes) -> tuple[str | None, str]:
+    async def _upload_reference(self, reference: ImageReference) -> tuple[str | None, str]:
+        body = _provider_reference_png(reference)
         if len(body) > self._max_download_bytes:
             raise ImageOutputValidationError()
         if len(body) < 24 or body[:8] != b"\x89PNG\r\n\x1a\n" or body[12:16] != b"IHDR":
@@ -568,7 +604,7 @@ class OpenAICompatibleImageGenerator:
         return payload
 
     def _reference_data_url(self, reference: ImageReference) -> str:
-        body = reference.image_bytes
+        body = _provider_reference_png(reference)
         if (
             len(body) > self._max_download_bytes
             or len(body) < 24

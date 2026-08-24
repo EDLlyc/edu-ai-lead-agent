@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Literal, cast
 from uuid import UUID
 
+from app.domain.brand_knowledge import BrandClaimScope, BrandContentType, BrandSectionKind
 from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
@@ -87,6 +88,15 @@ class ActiveBrandContext:
     tone_tags: tuple[str, ...] = ()
     safety_tags: tuple[str, ...] = ()
     visual_tags: tuple[str, ...] = ()
+    section_id: UUID | None = None
+    section_title: str | None = None
+    section_kind: BrandSectionKind | None = None
+    source_page: int | None = None
+    question_number: int | None = None
+    question_text: str | None = None
+    content_type: BrandContentType | None = None
+    claim_scope: BrandClaimScope | None = None
+    verification_required: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -95,6 +105,12 @@ class ActiveBrandContext:
             or not self.text.strip()
         ):
             raise ValueError("brand context metadata must not be blank")
+        if self.source_page is not None and self.source_page < 1:
+            raise ValueError("brand context source page must be positive")
+        if self.question_number is not None and self.question_number < 1:
+            raise ValueError("brand context question number must be positive")
+        if self.claim_scope == BrandClaimScope.EXTERNAL_CLAIM and not self.verification_required:
+            raise ValueError("external brand context must require verification")
 
 
 @dataclass(frozen=True, slots=True)

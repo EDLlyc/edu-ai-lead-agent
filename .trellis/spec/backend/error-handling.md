@@ -72,6 +72,109 @@ envelopes. Parse only the extracted object; never deserialize surrounding prose.
 compatibility does not relax Pydantic fields, claims, bindings, enums, limits, permutation
 completeness, or priority barriers.
 
+## Scenario: Bounded structured-output schema correction
+
+### 1. Scope / Trigger
+
+Use this contract when a provider adapter permits one correction after a JSON object fails a
+Pydantic structured-output boundary. It prevents an opaque type name from producing the same bad
+shape twice and prevents provider-controlled field names from leaking through validation locations.
+
+### 2. Signatures
+
+```python
+async def _complete_strict_json(
+    *,
+    transport: _StructuredArticleClient,
+    base_prompt: str,
+    output_tokens: int,
+    schema: type[BaseModel],
+    schema_name: str,
+) -> tuple[str, _ChatCompletion, tuple[int, int, int, int], int]: ...
+
+def _safe_validation_issues(
+    schema: type[BaseModel],
+    error: ValidationError,
+) -> tuple[ProviderValidationIssue, ...]: ...
+```
+
+### 3. Contracts
+
+- Historical official-account v1--v7 identities keep their frozen initial system instruction and
+  base user prompt exactly. The distinct v8 identity (`official-account-generator-v5-structured-output`
+  with `official-account-auditor-v2-structured-output`) is the sole approved exception: its first
+  system instruction carries the canonical validation schema, and the audit instruction also carries
+  the tagged `accepted`/`issue_codes`/`claim_ids` conditional invariant. Both first-call forms are
+  versioned contract bytes; a correction schema or invariant must not silently alter either form or
+  its request fingerprint.
+- The one permitted correction appends canonical, compact `schema.model_json_schema(mode="validation")`
+  under a fixed tag. Bound the schema itself and then apply the existing complete prompt character
+  limit before the HTTP request.
+- A custom Pydantic model validator may enforce rules that generated JSON Schema does not express.
+  Add a bounded, deterministic correction-only invariant schema for those rules. For
+  `OfficialAccountAuditVerdict`, `accepted=true` requires empty `issue_codes` and `claim_ids`, while
+  `accepted=false` requires a present, non-empty `issue_codes` array.
+- Validation locations retain only integer indexes and property names present in the selected
+  schema. Map every provider-created string segment to `unknown` before correction, logging, or
+  persistence.
+- Never include the rejected JSON, field values, exception text, raw response, prompt, or provider
+  body in correction diagnostics. Exhausting the correction remains terminal
+  `invalid_provider_output`; do not add another logical request.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| First object matches the selected Pydantic model | Return it with zero corrections |
+| First object has a known structural error | One correction with canonical schema and safe `loc`/`type` |
+| Root cross-field validator fails | Correction also carries the bounded explicit invariant |
+| Error location contains an unknown field name | Replace that segment with `unknown` everywhere outside the adapter |
+| Schema, invariant, or complete corrected prompt exceeds its bound | `ProviderInputLimitError`; no correction request |
+| Corrected object is still invalid or has an invalid envelope | Terminal `invalid_provider_output`; exactly two logical calls total |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a legacy-shaped first article object receives the current schema, returns a valid
+  discriminated-block object on the only correction, and persists only safe usage metadata.
+- Base: an already-valid object bypasses schema construction in the provider message and preserves
+  the frozen first-call bytes.
+- Bad: tell the provider only "return `GeneratedArticleDraft`", echo an unknown extra-field name,
+  omit a custom cross-field invariant, or issue a third completion after correction failure.
+
+### 6. Tests Required
+
+- Assert the first user prompt is byte-equal to the frozen prompt builder output and contains no
+  correction tags.
+- Make the second fake response valid only when the canonical schema tag is present; assert block
+  discriminator requirements are included and raw value sentinels are absent.
+- Exercise the audit root invariant with an invalid `accepted`/issue combination; require the exact
+  conditional invariant before the fake returns a valid verdict.
+- Assert generation corrections never inherit audit-only invariants, unknown provider field names
+  become `unknown`, prompt bounds stop before a second request, and exhausted correction makes
+  exactly two logical calls.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+correction = f"Return {schema.__name__} again: {error}"
+```
+
+This exposes uncontrolled error text and gives the provider neither the executable structure nor
+custom cross-field rules.
+
+#### Correct
+
+```python
+schema_json = canonical_json(schema.model_json_schema(mode="validation"))
+issues = safe_schema_locations(schema, validation_error)
+correction = tagged_bounded_schema(schema_json, invariant_for(schema), issues)
+```
+
+The correct form preserves the first-call prompt, gives one bounded repair enough structural
+information, redacts provider-created locations, and remains terminal after that repair fails.
+
 Topic reranking distinguishes bounded internal `topic_rerank_completion_invalid`,
 `topic_rerank_json_envelope_invalid`, and `topic_rerank_schema_invalid` stages. After a valid chat
 completion envelope, an invalid content body keeps only the safe prompt fingerprint, non-negative
@@ -120,6 +223,8 @@ in structured logs linked by `request_id`, not in the response.
 - Use bounded exponential backoff with jitter and a configured maximum attempt count.
 - Do not blindly retry schema failures, missing evidence, policy vetoes, prompt-injection findings,
   invalid credentials, unsupported content, or durable provider/model identity mismatches.
+- Treat brand section/chunk exact-slice, parent-version FK, content/claim enum, and embedding-input
+  hash mismatches as terminal ingestion defects; never persist a partially ready version.
 - Before retrying an external side effect, inspect the persisted request fingerprint and provider
   request ID/result state.
 - On exhaustion, store the terminal issue code, safe message, attempt history, and last stage;
@@ -362,6 +467,11 @@ normal bounded raster validation path.
   sentinel projection, and no third provider call.
 
 ## Catching and logging
+
+Visual retrieval distinguishes disabled, input-normalization failure, provider unavailable, invalid
+output, identity mismatch, incomplete index, and catalog change. Material orchestration converts all of these to the bounded
+`semantic_unavailable` audit state and runs the existing deterministic selector. It never retries a
+provider query inside one material attempt and never substitutes a different vector space.
 
 Catch exceptions only where code can translate, compensate, add structured context, or define an
 API/process boundary. Do not catch `Exception` around ordinary business logic and continue with a

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/brand-knowledge-rag.md", "reason": "Verify visual/text embedding separation, catalog safety and response privacy."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify migration, pgvector identity, leases and no mixed vector spaces."}
+{"file": ".trellis/tasks/08-21-brand-multimodal-visual-retrieval/research/current-visual-retrieval-seams.md", "reason": "Independent comparison against repository evidence and live provider contract."}
+{"file": ".trellis/tasks/08-21-brand-multimodal-visual-retrieval/research/implementation-check-contracts.md", "reason": "Verify hard-gate precedence, transaction/provider boundaries, privacy, live-operation authorization and the final quality gate without truncated specs."}

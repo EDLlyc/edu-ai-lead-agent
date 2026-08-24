@@ -1,0 +1,6 @@
+{"case_id":"text-query","kind":"text","category":"science","left_topic":"science","right_topic":"reading","scores":{"left":0.91,"right":0.22},"expected":"left"}
+{"case_id":"image-query","kind":"image","category":"science","left_topic":"science","right_topic":"reading","scores":{"left":0.11,"right":0.87},"expected":"right"}
+{"case_id":"synonym-query","kind":"synonym","category":"robotics","left_topic":"science","right_topic":"robotics","scores":{"left":0.30,"right":0.82},"expected":"right"}
+{"case_id":"unrelated-query","kind":"unrelated","category":"science","left_topic":"science","right_topic":"reading","scores":{"left":0.00,"right":0.00},"expected":"stable"}
+{"case_id":"stable-tie","kind":"tie","category":"other","left_topic":"science","right_topic":"reading","scores":{"left":0.50,"right":0.50},"expected":"stable"}
+{"case_id":"provider-failure","kind":"failure","category":"robotics","left_topic":"reading","right_topic":"robotics","scores":null,"expected":"right"}

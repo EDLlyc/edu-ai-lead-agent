@@ -8,8 +8,8 @@ from uuid import UUID
 
 from app.domain.brand_knowledge import (
     BrandAudience,
-    BrandChunk,
     BrandChunkEmbedding,
+    BrandChunkingResult,
     BrandDocumentKind,
     BrandOriginalDescriptor,
     BrandRetrievalHit,
@@ -89,8 +89,13 @@ class BrandDocumentParser(Protocol):
     def parse(self, *, body: bytes, media_type: str) -> ParsedBrandDocument: ...
 
     def chunk(
-        self, *, version_id: UUID, document: ParsedBrandDocument
-    ) -> tuple[BrandChunk, ...]: ...
+        self,
+        *,
+        version_id: UUID,
+        document: ParsedBrandDocument,
+        document_title: str,
+        document_kind: BrandDocumentKind,
+    ) -> BrandChunkingResult: ...
 
 
 class BrandDocumentOcrModel(Protocol):
@@ -124,6 +129,9 @@ class BrandKnowledgeRepository(Protocol):
         max_attempts: int,
         embedding_provider: str,
         embedding_model: str,
+        parser_version: str,
+        chunk_version: str,
+        embedding_input_version: str,
     ) -> ClaimedBrandIngestionJob | None: ...
 
     async def heartbeat(self, *, claimed: ClaimedBrandIngestionJob, lease_seconds: int) -> bool: ...
@@ -133,6 +141,7 @@ class BrandKnowledgeRepository(Protocol):
         *,
         claimed: ClaimedBrandIngestionJob,
         parsed: ParsedBrandDocument,
+        chunking: BrandChunkingResult,
         embeddings: Sequence[BrandChunkEmbedding],
     ) -> bool: ...
 
@@ -156,4 +165,5 @@ class BrandKnowledgeRepository(Protocol):
         valid_on: date,
         limit: int,
         candidate_limit: int,
+        retrieval_version: str,
     ) -> tuple[BrandRetrievalHit, ...]: ...

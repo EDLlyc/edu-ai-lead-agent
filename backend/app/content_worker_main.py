@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.topic_rerank import TopicReranker
+from app.application.ports.visual_retrieval import VisualEmbeddingModel
 from app.application.services.brand_knowledge import BrandIngestionExecutor
 from app.application.services.content_slots import ContentSlotExecutor
 from app.application.services.copy_generation import (
@@ -24,6 +25,7 @@ from app.application.services.copy_generation import (
 )
 from app.application.services.material_package import MaterialPackageExecutor
 from app.application.services.topic_selection import TopicSelectionExecutor
+from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.ai.brand import GovernanceEmbeddingBrandAdapter
@@ -43,6 +45,10 @@ from app.infrastructure.ai.topic_rerank import (
     DeterministicFakeTopicReranker,
     ZhipuTopicReranker,
 )
+from app.infrastructure.ai.visual_embedding import (
+    AlibabaVisualEmbeddingAdapter,
+    DeterministicFakeVisualEmbedding,
+)
 from app.infrastructure.brand.parser import BoundedBrandDocumentParser
 from app.infrastructure.db.brand_knowledge import PostgresBrandKnowledgeRepository
 from app.infrastructure.db.content_slots import PostgresContentSlotRepository
@@ -50,6 +56,7 @@ from app.infrastructure.db.copy_generation import PostgresCopyGenerationReposito
 from app.infrastructure.db.governance_checkpointer import PostgresGovernanceCheckpointer
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
+from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 
@@ -71,6 +78,7 @@ async def run_content_worker() -> None:
     engine = create_engine(settings)
     embedding_client: httpx.AsyncClient | None = None
     image_client: httpx.AsyncClient | None = None
+    visual_embedding_client: httpx.AsyncClient | None = None
     exit_stack = AsyncExitStack()
     workers: list[asyncio.Task[None]] = []
     material_executor: MaterialPackageExecutor | None = None
@@ -125,6 +133,29 @@ async def run_content_worker() -> None:
             settings,
             reranker=reranker,
         )
+        visual_retrieval_service: VisualRetrievalService | None = None
+        if settings.visual_semantic_enabled:
+            if settings.visual_embedding_provider_mode == "fake":
+                visual_embeddings: VisualEmbeddingModel = DeterministicFakeVisualEmbedding()
+            else:
+                if (
+                    settings.visual_embedding_endpoint is None
+                    or settings.visual_embedding_api_key is None
+                ):
+                    raise RuntimeError("validated visual embedding secrets are unavailable")
+                visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
+                visual_embeddings = AlibabaVisualEmbeddingAdapter(
+                    client=visual_embedding_client,
+                    endpoint=settings.visual_embedding_endpoint,
+                    api_key=settings.visual_embedding_api_key,
+                    timeout_seconds=settings.visual_embedding_timeout_seconds,
+                    concurrency=settings.visual_embedding_concurrency,
+                )
+            visual_retrieval_service = VisualRetrievalService(
+                embeddings=visual_embeddings,
+                repository=PostgresVisualIndexRepository(session_factory),
+                identity=settings.visual_embedding_identity,
+            )
         if settings.image_enabled and settings.image_provider_mode != "disabled":
             if settings.image_provider_mode in {"toapis", "comfly"}:
                 image_client = httpx.AsyncClient(follow_redirects=False)
@@ -146,6 +177,7 @@ async def run_content_worker() -> None:
                 reference_asset=settings.image_reference_asset,
                 image_text_recognizer=image_text_recognizer,
                 image_quality_auditor=image_quality_auditor,
+                visual_retrieval_service=visual_retrieval_service,
             )
         if settings.ai_provider_mode != "disabled":
             brand_repository = PostgresBrandKnowledgeRepository(session_factory)
@@ -166,7 +198,9 @@ async def run_content_worker() -> None:
                     max_chunks=settings.brand_parse_max_chunks,
                     chunk_characters=settings.brand_chunk_characters,
                     overlap_characters=settings.brand_chunk_overlap_characters,
+                    parser_version=settings.brand_parser_version,
                     chunk_version=settings.brand_chunk_version,
+                    embedding_input_version=settings.brand_embedding_input_version,
                     sparse_text_threshold=settings.brand_ocr_sparse_text_threshold,
                 ),
                 embeddings=brand_embeddings,
@@ -205,6 +239,7 @@ async def run_content_worker() -> None:
                     repository=brand_repository,
                     embeddings=brand_embeddings,
                     limit=settings.copy_brand_context_limit,
+                    retrieval_version=settings.brand_retrieval_version,
                 ),
                 generator=generator,
                 auditor=auditor,
@@ -252,6 +287,8 @@ async def run_content_worker() -> None:
             await embedding_client.aclose()
         if image_client is not None:
             await image_client.aclose()
+        if visual_embedding_client is not None:
+            await visual_embedding_client.aclose()
         await exit_stack.aclose()
         await engine.dispose()
         logger.info("content_worker_stopped")

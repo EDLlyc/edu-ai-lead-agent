@@ -64,6 +64,30 @@ Copying and downloading are convenience actions. Keep the text selectable and th
 normal links. There must be no automatic social publishing control. Label the workflow explicitly
 as manual review/copy/download when ambiguity is possible.
 
+## Local official-account explanation
+
+The development-only official-account workbench maps generated OpenAPI fields to one typed view
+model before rendering. It labels `multimodal` versus deterministic fallback, shows the closed
+semantic reason, query/selector versions, bounded provider identity, and per-image selection method
+and similarity band. When the generated-visual capability is enabled, it also maps the safe
+`generated_visuals[]` projection into an ordinal/section/status summary and labels the
+`generating_body_visuals` stage with ready/total derived only from safe results and the planned
+body-image count. The planned count remains available before media staging because the API derives
+it from the persisted selection snapshot; the UI must not substitute `generated_visuals.length`
+or staged media count. It displays bounded block position/kind and uses the API-provided section/block
+purpose for semantic image alt text; it never reconstructs a prompt or private reference from
+those fields. Gallery composition stays exact 3:2 because it renders the same persisted publication
+bytes resolved by final HTML/export. Never render raw similarity, query text, vector, private catalog ID/path or filename,
+prompt, storage descriptor, or provider body. State in visible text that semantic selection and
+automatic image generation are not human editorial approval; pending/rejected/approved article
+review controls and copy-ready eligibility remain a separate aggregate. The panel keeps the
+permanent local-simulation/no-WeChat boundary and provides no publish action.
+
+When the ordered timeline contains eight processing stages, its wide-screen grid must also expose
+eight tracks; keep the existing responsive single-column override for narrow screens. Test both the
+`generating_body_visuals` ready/total label and the last-stage presence so a newly added stage does
+not silently wrap because of stale CSS column counts.
+
 ## Accessibility
 
 - Use semantic landmarks, headings in order, lists, links, buttons, and status messages.

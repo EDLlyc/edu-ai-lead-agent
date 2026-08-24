@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/brand-knowledge-rag.md", "reason": "Verify structure-aware ingestion, retrieval diversity and evidence separation."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify migration, PostgreSQL constraints and vector identity."}
+{"file": ".trellis/tasks/08-20-brand-structured-parent-child-chunking/research/quality-check-summary.md", "reason": "Bounded task-specific lint, type, PostgreSQL, API drift, privacy and review gates from the full quality contract."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify typed failures and no content leakage."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify private data is absent from logs and durable diagnostics."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify one typed metadata contract reaches every consumer."}

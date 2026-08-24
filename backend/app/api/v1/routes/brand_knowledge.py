@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -19,6 +19,7 @@ from app.api.v1.routes.brand_knowledge_views import (
 )
 from app.application.ports.brand_knowledge import BrandEmbeddingModel, BrandOriginalStore
 from app.application.services.brand_knowledge import retrieve_brand_context
+from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import Settings
 from app.core.errors import BrandUploadRejectedError, ConflictError
 from app.domain.brand_knowledge import (
@@ -32,7 +33,14 @@ from app.domain.digital_ip import (
     project_visual_catalog,
     unavailable_visual_catalog,
 )
-from app.domain.visual_assets import VisualAssetError
+from app.domain.visual_assets import VisualAssetError, VisualAssetKind
+from app.domain.visual_retrieval import (
+    MAX_VISUAL_QUERY_IMAGE_BYTES,
+    NormalizedVisualImage,
+    VisualIndexUnavailableError,
+    VisualRetrievalUnavailableReason,
+    normalize_visual_embedding_image,
+)
 from app.infrastructure.brand.visual_catalog import load_visual_catalog
 from app.infrastructure.db.brand_knowledge import (
     PostgresBrandKnowledgeRepository,
@@ -49,6 +57,8 @@ from app.schemas.brand_knowledge import (
     BrandIngestionJobResponse,
     BrandRetrievalRequest,
     BrandUploadAcceptedResponse,
+    BrandVisualSearchItemResponse,
+    BrandVisualSearchResponse,
     DigitalIpProfileResponse,
 )
 
@@ -249,6 +259,7 @@ async def retrieve_brand_context_route(
         document_kinds=tuple(payload.document_kinds),
         valid_on=valid_on,
         limit=payload.limit,
+        retrieval_version=settings.brand_retrieval_version,
     )
     return BrandContextResponse(
         retrieval_version=settings.brand_retrieval_version,
@@ -258,6 +269,98 @@ async def retrieve_brand_context_route(
         items=[brand_context_chunk_response(hit) for hit in hits],
         count=len(hits),
         evidence_eligible=False,
+    )
+
+
+@router.post(
+    "/brand-visual-search",
+    response_model=BrandVisualSearchResponse,
+    summary="Search the approved private visual catalog",
+    description=(
+        "Internal personal-project demo. Accepts text or one PNG and returns bounded safe "
+        "asset references; it never returns paths, filenames, bytes, vectors, or evidence."
+    ),
+)
+async def search_brand_visual_catalog(
+    request: Request,
+    text_query: Annotated[str | None, Form(max_length=2_000)] = None,
+    image: Annotated[UploadFile | None, File(description="Optional bounded PNG query")] = None,
+    limit: Annotated[int, Form(ge=1, le=20)] = 5,
+) -> BrandVisualSearchResponse:
+    settings: Settings = request.app.state.settings
+    normalized_text = (text_query or "").strip()
+    if bool(normalized_text) == (image is not None):
+        raise BrandUploadRejectedError(
+            "invalid_visual_query", "provide exactly one text query or PNG image"
+        )
+    modality: Literal["text", "image"] = "image" if image is not None else "text"
+    normalized_image: NormalizedVisualImage | None = None
+    if image is not None:
+        if (image.content_type or "").split(";", 1)[0].strip().casefold() != "image/png":
+            raise BrandUploadRejectedError(
+                "invalid_visual_query", "visual image query must be a PNG"
+            )
+        normalized_image = await _read_visual_query_image(image, MAX_VISUAL_QUERY_IMAGE_BYTES)
+    service: VisualRetrievalService | None = getattr(
+        request.app.state, "visual_retrieval_service", None
+    )
+    if not settings.visual_semantic_enabled or service is None:
+        return BrandVisualSearchResponse(
+            status="semantic_unavailable",
+            reason=VisualRetrievalUnavailableReason.DISABLED,
+            query_modality=modality,
+            catalog_version=None,
+            items=[],
+            count=0,
+        )
+    try:
+        loaded = await asyncio.to_thread(load_visual_catalog, settings.image_asset_manifest)
+        if image is not None:
+            assert normalized_image is not None
+            ranking = await service.search_normalized_image(
+                normalized=normalized_image, catalog=loaded.catalog
+            )
+        else:
+            ranking = await service.search_text(text=normalized_text, catalog=loaded.catalog)
+    except VisualIndexUnavailableError as error:
+        return BrandVisualSearchResponse(
+            status="semantic_unavailable",
+            reason=error.reason,
+            query_modality=modality,
+            catalog_version=None,
+            items=[],
+            count=0,
+        )
+    except (OSError, VisualAssetError):
+        return BrandVisualSearchResponse(
+            status="semantic_unavailable",
+            reason=VisualRetrievalUnavailableReason.CATALOG_CHANGED,
+            query_modality=modality,
+            catalog_version=None,
+            items=[],
+            count=0,
+        )
+    assets = loaded.catalog.asset_by_id
+    items = [
+        BrandVisualSearchItemResponse(
+            asset_ref=score.asset_id[:16],
+            asset_kind=VisualAssetKind(str(assets[score.asset_id].asset_kind)),
+            roles=[role.value for role in assets[score.asset_id].roles],
+            tags=list(assets[score.asset_id].selection_tags),
+            approved=True,
+            catalog_version=ranking.catalog_version,
+            similarity=score.similarity,
+        )
+        for score in ranking.scores[:limit]
+        if score.asset_id in assets
+    ]
+    return BrandVisualSearchResponse(
+        status="ready",
+        reason=None,
+        query_modality=modality,
+        catalog_version=ranking.catalog_version,
+        items=items,
+        count=len(items),
     )
 
 
@@ -286,6 +389,16 @@ async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
             )
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+async def _read_visual_query_image(file: UploadFile, max_bytes: int) -> NormalizedVisualImage:
+    body = await _read_upload_bounded(file, max_bytes)
+    try:
+        return await asyncio.to_thread(normalize_visual_embedding_image, body)
+    except ValueError:
+        raise BrandUploadRejectedError(
+            "invalid_visual_query", "visual image query must be a bounded PNG"
+        ) from None
 
 
 def _parse_tags(value: str) -> tuple[str, ...]:

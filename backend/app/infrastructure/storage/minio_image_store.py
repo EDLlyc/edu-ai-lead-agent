@@ -59,6 +59,29 @@ class MinioImageStore:
     async def get_bytes(self, descriptor: ImageObjectDescriptor) -> bytes:
         return await asyncio.to_thread(self._get_verified, descriptor)
 
+    async def get_content_addressed_bytes(
+        self,
+        *,
+        media_type: str,
+        byte_size: int,
+        sha256: str,
+    ) -> bytes:
+        """Read a generated object from public-safe content metadata only.
+
+        Callers never receive or persist a bucket/object-key projection; this infrastructure
+        boundary derives the private location from the immutable checksum.
+        """
+
+        return await self.get_bytes(
+            ImageObjectDescriptor(
+                bucket=self._bucket,
+                object_key=image_content_key(sha256, media_type),
+                media_type=media_type,
+                byte_size=byte_size,
+                sha256=sha256,
+            )
+        )
+
     def _put_or_verify(self, descriptor: ImageObjectDescriptor, body: bytes) -> None:
         try:
             stat = self._client.stat_object(descriptor.bucket, descriptor.object_key)

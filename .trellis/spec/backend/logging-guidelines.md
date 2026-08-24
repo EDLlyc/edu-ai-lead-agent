@@ -57,11 +57,14 @@ Never log:
 - full prompts/responses, complete fetched pages, embeddings, or raw HTML by default;
 - minors' names, contact details, images, school/class identifiers, or other personal data;
 - signed object-storage URLs or full internal storage credentials;
-- raw model/provider payloads that can contain source content or sensitive configuration.
+- raw model/provider payloads that can contain source content or sensitive configuration;
+- private brand parent/child text, question text, document paths, object keys, or embedding input.
 
 Log hashes, IDs, counts, byte lengths, classifications, and approved short excerpts instead. Any
 debug-content logging must be explicitly gated, redacted, access-controlled, and disabled in
 production. Typed settings and HTTP clients must redact secrets in their representations.
+Brand-ingestion success may log only page/section/chunk counts, version identities, extraction
+method, and bounded provider metadata; offline private-corpus validation retains aggregate counts.
 
 ## Prompt injection and untrusted content
 
@@ -98,6 +101,10 @@ plan ordinal, retry count, policy version, candidate count, threshold/distance, 
 decision code. It must not contain perceptual hashes, nearest object IDs, plan seeds, prompts,
 reference paths, image bytes, provider bodies, or content text. The final warning is durable
 artifact/package state; it is not inferred from log prose.
+
+Visual embedding operations may log only catalog/asset counts, derivation fingerprints, modality,
+bounded usage/latency, status, and closed error code. Never log a workspace host, endpoint, request
+ID, API key, manifest/file path, filename, Base64/body, raw vector, provider body, or query text.
 
 Topic-rerank invalid-output or v3 finalization observation may include only run/context IDs,
 policy/provider/model,

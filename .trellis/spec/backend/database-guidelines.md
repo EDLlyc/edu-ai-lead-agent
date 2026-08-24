@@ -8,7 +8,7 @@ acquisition, factual-governance, material-package, and Enterprise WeChat deliver
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260818_0022`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260824_0034`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -23,8 +23,12 @@ Use distinct models, repositories, and foreign-key paths for:
   normalized articles/passages, factual analyses, purpose-specific embeddings, duplicate
   relations, event clusters/versions/memberships, assignment decisions, and relational evidence
   bindings.
-- **Brand data:** versioned brand documents/chunks, audience and validity metadata, safety rules,
-  approved examples, and visual guidance.
+- **Brand data:** versioned brand documents/sections/chunks, audience and validity metadata,
+  contextual search input, safety rules, approved examples, and visual guidance.
+- **Visual retrieval data:** approved manifest asset/checksum identities, normalized embedding-input
+  hashes, lease-owned index jobs, and `qwen3-vl-embedding` vectors. These rows never contain paths,
+  filenames, image bytes, or text-brand chunk foreign keys. Input-policy v1 and v2 rows remain
+  exact-filtered, immutable derivations and never form one complete index together.
 
 Both domains may have vector columns, but a brand chunk cannot satisfy a factual claim's evidence
 foreign key. Prefer database constraints over convention alone where possible.
@@ -175,7 +179,21 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260818_0022` (adds immutable daily/slot topic-rerank config, deterministic/final ranks, and
+  `20260824_0034` (adds the visible-IP v3 generated-visual plan/prompt constraint while preserving
+  v1/v2 rows and exact bytes), after `20260824_0033` adds nullable historical-safe block-anchor,
+  provider-input normalization and
+  exact 3:2 publication-profile identity to immutable official-account generated visuals after
+  `20260824_0032` adds their intents/results and ready-only local-media lineage, after the
+  `20260824_0031` intranet IP asset hub, and after
+  `20260823_0030` adds immutable local official-account Article v5 artifacts for the v8
+  structured-output identity and refuses downgrade while they exist, after `20260823_0029` adds
+  immutable local official-account Article v4 multimodal-selection snapshots and downgrade refusal
+  after `20260823_0028` manual editorial decisions, after Article
+  v2/multi-image support in `20260822_0027` and the local article/draft foundation in
+  `20260821_0026`, after deterministic normalized visual-input identity in `20260821_0025`, after `20260821_0024`
+  isolated visual-asset embeddings and after `20260820_0023` structured brand
+  sections/contextual chunk search and after immutable
+  daily/slot topic-rerank config, deterministic/final ranks, and
   typed XOR-bound rerank audit after controlled visual-plan reservation and similarity-attempt audit after
   independent three-slot production and durable delivery windows, and after
   bounded image-provider-rejection recovery, reviewed material-package delivery jobs and attempts,

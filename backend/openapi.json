@@ -274,6 +274,915 @@
         "title": "AcquisitionRunResponse",
         "type": "object"
       },
+      "ArticleBulletListBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Claim Refs",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "const": "bullet_list",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "items"
+        ],
+        "title": "ArticleBulletListBlock",
+        "type": "object"
+      },
+      "ArticleImageBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "claim_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Refs",
+            "type": "array"
+          },
+          "kind": {
+            "const": "image",
+            "title": "Kind",
+            "type": "string"
+          },
+          "slot_key": {
+            "default": "body-0",
+            "enum": [
+              "body-0",
+              "body-1",
+              "body-2",
+              "body-3",
+              "body-4"
+            ],
+            "title": "Slot Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "alt_text"
+        ],
+        "title": "ArticleImageBlock",
+        "type": "object"
+      },
+      "ArticleMediaEmbeddingIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "dimensions": {
+            "const": 2048,
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "input_policy_version": {
+            "const": "brand-visual-embedding-input-v2",
+            "title": "Input Policy Version",
+            "type": "string"
+          },
+          "model": {
+            "const": "qwen3-vl-embedding",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "const": "alibaba-model-studio",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "dimensions",
+          "input_policy_version"
+        ],
+        "title": "ArticleMediaEmbeddingIdentity",
+        "type": "object"
+      },
+      "ArticleMediaSelectionItem": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_ref": {
+            "pattern": "^[0-9a-f]{16}$",
+            "title": "Candidate Ref",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "publication_checksum": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Publication Checksum",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "semantic_heading_match",
+              "semantic_body_match",
+              "stable_fallback",
+              "multimodal_similarity"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "section_index": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Section Index",
+            "type": "integer"
+          },
+          "selection_method": {
+            "enum": [
+              "deterministic_tag",
+              "multimodal_embedding"
+            ],
+            "title": "Selection Method",
+            "type": "string"
+          },
+          "similarity_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "very_high",
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity Band"
+          },
+          "source_checksum": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ordinal",
+          "section_index",
+          "candidate_ref",
+          "source_checksum",
+          "publication_checksum",
+          "selection_method",
+          "reason_code"
+        ],
+        "title": "ArticleMediaSelectionItem",
+        "type": "object"
+      },
+      "ArticleMediaSelectionSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleMediaSelectionItem"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Assignments",
+            "type": "array"
+          },
+          "catalog_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Catalog Fingerprint",
+            "type": "string"
+          },
+          "catalog_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "closed_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "disabled",
+                  "single_candidate",
+                  "index_incomplete",
+                  "provider_unavailable",
+                  "invalid_provider_output",
+                  "identity_mismatch",
+                  "catalog_changed",
+                  "input_normalization_failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Reason"
+          },
+          "embedding_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleMediaEmbeddingIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media_plan_version": {
+            "const": "official-account-media-plan-v3-multimodal-hybrid",
+            "title": "Media Plan Version",
+            "type": "string"
+          },
+          "query_fingerprints": {
+            "default": [],
+            "items": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Query Fingerprints",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "semantic_ready",
+              "semantic_unavailable",
+              "single_candidate"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "visual_query_version": {
+            "const": "official-account-visual-query-v1",
+            "title": "Visual Query Version",
+            "type": "string"
+          },
+          "visual_selector_version": {
+            "const": "official-account-visual-selector-v3-multimodal-hybrid",
+            "title": "Visual Selector Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_plan_version",
+          "visual_query_version",
+          "visual_selector_version",
+          "status",
+          "catalog_version",
+          "catalog_fingerprint",
+          "assignments"
+        ],
+        "title": "ArticleMediaSelectionSnapshot",
+        "type": "object"
+      },
+      "ArticleMediaSlot": {
+        "additionalProperties": false,
+        "properties": {
+          "ordinal": {
+            "default": 0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "body",
+              "cover"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "slot_key": {
+            "enum": [
+              "body-0",
+              "body-1",
+              "body-2",
+              "body-3",
+              "body-4",
+              "cover-0"
+            ],
+            "title": "Slot Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_key",
+          "role"
+        ],
+        "title": "ArticleMediaSlot",
+        "type": "object"
+      },
+      "ArticlePackage": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Author",
+            "type": "string"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/GeneratedArticleClaim"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Claims",
+            "type": "array"
+          },
+          "conclusion": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "content_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Fingerprint",
+            "type": "string"
+          },
+          "digest": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Digest",
+            "type": "string"
+          },
+          "lead": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Lead",
+            "type": "string"
+          },
+          "media_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleMediaSelectionSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media_slots": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleMediaSlot"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "title": "Media Slots",
+            "type": "array"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/ArticleQualitySummary"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleSection"
+            },
+            "maxItems": 7,
+            "minItems": 3,
+            "title": "Sections",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleSourceProjection"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Topic Title",
+            "type": "string"
+          },
+          "versions": {
+            "$ref": "#/components/schemas/ArticleVersionBundle"
+          }
+        },
+        "required": [
+          "title",
+          "digest",
+          "author",
+          "lead",
+          "sections",
+          "conclusion",
+          "claims",
+          "sources",
+          "media_slots",
+          "topic_title",
+          "quality",
+          "versions",
+          "content_fingerprint"
+        ],
+        "title": "ArticlePackage",
+        "type": "object"
+      },
+      "ArticleParagraphBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Claim Refs",
+            "type": "array"
+          },
+          "kind": {
+            "const": "paragraph",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "ArticleParagraphBlock",
+        "type": "object"
+      },
+      "ArticleQualitySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "inherited_copy_audit_accepted": {
+            "title": "Inherited Copy Audit Accepted",
+            "type": "boolean"
+          },
+          "inherited_copy_validation_passed": {
+            "title": "Inherited Copy Validation Passed",
+            "type": "boolean"
+          },
+          "inherited_image_audit_status": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Inherited Image Audit Status",
+            "type": "string"
+          },
+          "inherited_image_validation_passed": {
+            "title": "Inherited Image Validation Passed",
+            "type": "boolean"
+          },
+          "manual_review_status": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Manual Review Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inherited_copy_validation_passed",
+          "inherited_copy_audit_accepted",
+          "inherited_image_validation_passed",
+          "inherited_image_audit_status",
+          "manual_review_status"
+        ],
+        "title": "ArticleQualitySummary",
+        "type": "object"
+      },
+      "ArticleQuoteBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Claim Refs",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "quote",
+              "callout"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 800,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "ArticleQuoteBlock",
+        "type": "object"
+      },
+      "ArticleSection": {
+        "additionalProperties": false,
+        "properties": {
+          "blocks": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "bullet_list": "#/components/schemas/ArticleBulletListBlock",
+                  "callout": "#/components/schemas/ArticleQuoteBlock",
+                  "image": "#/components/schemas/ArticleImageBlock",
+                  "paragraph": "#/components/schemas/ArticleParagraphBlock",
+                  "quote": "#/components/schemas/ArticleQuoteBlock"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ArticleParagraphBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ArticleBulletListBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ArticleQuoteBlock"
+                },
+                {
+                  "$ref": "#/components/schemas/ArticleImageBlock"
+                }
+              ]
+            },
+            "maxItems": 13,
+            "minItems": 1,
+            "title": "Blocks",
+            "type": "array"
+          },
+          "heading": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Heading",
+            "type": "string"
+          }
+        },
+        "required": [
+          "heading",
+          "blocks"
+        ],
+        "title": "ArticleSection",
+        "type": "object"
+      },
+      "ArticleSourceProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "source_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_tier": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Tier"
+          },
+          "source_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_name",
+          "source_url"
+        ],
+        "title": "ArticleSourceProjection",
+        "type": "object"
+      },
+      "ArticleValidationIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          },
+          "code": {
+            "enum": [
+              "article_length_out_of_bounds",
+              "article_target_length_warning",
+              "article_author_mismatch",
+              "article_claim_id_duplicate",
+              "article_claim_ref_unknown",
+              "article_claim_unreferenced",
+              "article_evidence_unknown",
+              "article_brand_chunk_unknown",
+              "article_source_set_mismatch",
+              "article_media_slot_invalid",
+              "article_version_bundle_invalid",
+              "article_unsafe_markup",
+              "article_unsafe_url",
+              "article_unsafe_instruction",
+              "article_content_fingerprint_mismatch"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "field"
+        ],
+        "title": "ArticleValidationIssue",
+        "type": "object"
+      },
+      "ArticleVersionBundle": {
+        "additionalProperties": false,
+        "properties": {
+          "article_schema_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Article Schema Version",
+            "type": "string"
+          },
+          "audit_schema_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Audit Schema Version",
+            "type": "string"
+          },
+          "auditor_prompt_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Auditor Prompt Version",
+            "type": "string"
+          },
+          "generator_prompt_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Generator Prompt Version",
+            "type": "string"
+          },
+          "local_adapter_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Local Adapter Version",
+            "type": "string"
+          },
+          "media_plan_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Plan Version"
+          },
+          "renderer_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Renderer Version",
+            "type": "string"
+          },
+          "rule_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "style_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Style Version",
+            "type": "string"
+          },
+          "template_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Template Version",
+            "type": "string"
+          },
+          "visual_query_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Query Version"
+          },
+          "visual_selector_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Selector Version"
+          }
+        },
+        "required": [
+          "generator_prompt_version",
+          "article_schema_version",
+          "auditor_prompt_version",
+          "audit_schema_version",
+          "rule_version",
+          "renderer_version",
+          "style_version",
+          "template_version",
+          "local_adapter_version"
+        ],
+        "title": "ArticleVersionBundle",
+        "type": "object"
+      },
+      "Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Transient PNG, JPEG, or WebP up to 25 MiB",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post",
+        "type": "object"
+      },
+      "Body_search_brand_visual_catalog_api_v1_brand_visual_search_post": {
+        "properties": {
+          "image": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional bounded PNG query",
+            "title": "Image"
+          },
+          "limit": {
+            "default": 5,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "text_query": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Query"
+          }
+        },
+        "title": "Body_search_brand_visual_catalog_api_v1_brand_visual_search_post",
+        "type": "object"
+      },
+      "Body_search_ip_assets_image_api_v1_ip_assets_search_image_post": {
+        "properties": {
+          "asset_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "character": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetCharacter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Transient PNG, JPEG, or WebP query",
+            "title": "File",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "orientation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetOrientation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_search_ip_assets_image_api_v1_ip_assets_search_image_post",
+        "type": "object"
+      },
       "Body_upload_brand_document_api_v1_brand_documents_post": {
         "properties": {
           "audience": {
@@ -346,12 +1255,107 @@
         "title": "Body_upload_brand_document_api_v1_brand_documents_post",
         "type": "object"
       },
+      "Body_upload_ip_asset_api_v1_ip_assets_post": {
+        "properties": {
+          "action": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Action",
+            "type": "string"
+          },
+          "asset_type": {
+            "$ref": "#/components/schemas/IpAssetType"
+          },
+          "character": {
+            "$ref": "#/components/schemas/IpAssetCharacter"
+          },
+          "contributor": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Contributor",
+            "type": "string"
+          },
+          "department": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Department",
+            "type": "string"
+          },
+          "emotion": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Emotion",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "PNG, JPEG, or WebP up to 25 MiB",
+            "title": "File",
+            "type": "string"
+          },
+          "intended_use": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Intended Use",
+            "type": "string"
+          },
+          "scene": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Scene",
+            "type": "string"
+          },
+          "style": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Style",
+            "type": "string"
+          },
+          "tags": {
+            "default": "",
+            "maxLength": 900,
+            "title": "Tags",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "character",
+          "asset_type"
+        ],
+        "title": "Body_upload_ip_asset_api_v1_ip_assets_post",
+        "type": "object"
+      },
       "BrandAudience": {
         "enum": [
           "parents",
           "internal"
         ],
         "title": "BrandAudience",
+        "type": "string"
+      },
+      "BrandClaimScope": {
+        "enum": [
+          "brand_statement",
+          "external_claim",
+          "normative_rule"
+        ],
+        "title": "BrandClaimScope",
+        "type": "string"
+      },
+      "BrandContentType": {
+        "enum": [
+          "positioning",
+          "product_profile",
+          "audience_insight",
+          "safety_capability",
+          "digital_ip_values",
+          "tone_example",
+          "external_claim",
+          "visual_guidance",
+          "other"
+        ],
+        "title": "BrandContentType",
         "type": "string"
       },
       "BrandContextChunkResponse": {
@@ -363,6 +1367,26 @@
             "format": "uuid",
             "title": "Chunk Id",
             "type": "string"
+          },
+          "claim_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandClaimScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandContentType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "document_id": {
             "format": "uuid",
@@ -384,12 +1408,78 @@
             "title": "Fused Score",
             "type": "number"
           },
+          "question_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Number"
+          },
+          "question_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Text"
+          },
           "safety_tags": {
             "items": {
               "type": "string"
             },
             "title": "Safety Tags",
             "type": "array"
+          },
+          "section_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Id"
+          },
+          "section_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrandSectionKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page"
           },
           "text": {
             "title": "Text",
@@ -405,6 +1495,10 @@
           "vector_score": {
             "title": "Vector Score",
             "type": "number"
+          },
+          "verification_required": {
+            "title": "Verification Required",
+            "type": "boolean"
           },
           "version_id": {
             "format": "uuid",
@@ -430,6 +1524,15 @@
           "tone_tags",
           "safety_tags",
           "visual_tags",
+          "section_id",
+          "section_title",
+          "section_kind",
+          "source_page",
+          "question_number",
+          "question_text",
+          "content_type",
+          "claim_scope",
+          "verification_required",
           "full_text_score",
           "vector_score",
           "fused_score"
@@ -726,6 +1829,16 @@
         ],
         "title": "BrandRetrievalRequest",
         "type": "object"
+      },
+      "BrandSectionKind": {
+        "enum": [
+          "page",
+          "interview_qa",
+          "heading",
+          "generic"
+        ],
+        "title": "BrandSectionKind",
+        "type": "string"
       },
       "BrandUploadAcceptedResponse": {
         "properties": {
@@ -1127,6 +2240,135 @@
           "ingestion_job_status"
         ],
         "title": "BrandVersionResponse",
+        "type": "object"
+      },
+      "BrandVisualSearchItemResponse": {
+        "description": "Safe visual hit: no path, filename, bytes, vectors, or provider metadata.",
+        "properties": {
+          "approved": {
+            "const": true,
+            "default": true,
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "asset_kind": {
+            "$ref": "#/components/schemas/VisualAssetKind"
+          },
+          "asset_ref": {
+            "maxLength": 16,
+            "minLength": 16,
+            "title": "Asset Ref",
+            "type": "string"
+          },
+          "catalog_version": {
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "ranking_source": {
+            "const": "semantic_primary",
+            "default": "semantic_primary",
+            "title": "Ranking Source",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "similarity": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Similarity",
+            "type": "number"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_ref",
+          "asset_kind",
+          "roles",
+          "tags",
+          "catalog_version",
+          "similarity"
+        ],
+        "title": "BrandVisualSearchItemResponse",
+        "type": "object"
+      },
+      "BrandVisualSearchResponse": {
+        "properties": {
+          "catalog_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Version"
+          },
+          "count": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "evidence_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Evidence Eligible",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrandVisualSearchItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "query_modality": {
+            "enum": [
+              "text",
+              "image"
+            ],
+            "title": "Query Modality",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualRetrievalUnavailableReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "semantic_unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "query_modality",
+          "catalog_version",
+          "items",
+          "count"
+        ],
+        "title": "BrandVisualSearchResponse",
         "type": "object"
       },
       "CandidateAnalysisDetailResponse": {
@@ -2258,6 +3500,29 @@
             "title": "Id",
             "type": "string"
           },
+          "llm_dimension_scores": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmDimensionScoresResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llm_total": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Total"
+          },
           "passes_threshold": {
             "title": "Passes Threshold",
             "type": "boolean"
@@ -2367,6 +3632,8 @@
           "final_rank",
           "rerank_reason_codes",
           "rerank_explanation",
+          "llm_dimension_scores",
+          "llm_total",
           "explanation"
         ],
         "title": "ContentSlotScoreResponse",
@@ -3755,6 +5022,36 @@
         "title": "DuplicateRelationResponse",
         "type": "object"
       },
+      "EligibleMaterialPackageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "review_status"
+        ],
+        "title": "EligibleMaterialPackageResponse",
+        "type": "object"
+      },
       "EventAssignmentResponse": {
         "properties": {
           "alternatives": {
@@ -4600,6 +5897,60 @@
           "created_at"
         ],
         "title": "EvidenceCandidateSummary",
+        "type": "object"
+      },
+      "GeneratedArticleClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "brand_chunk_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Brand Chunk Ids",
+            "type": "array"
+          },
+          "evidence_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]{0,79}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "external_fact",
+              "brand_statement",
+              "opinion"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "kind"
+        ],
+        "title": "GeneratedArticleClaim",
         "type": "object"
       },
       "GovernanceCategoryResponse": {
@@ -5978,6 +7329,926 @@
         "title": "ImageValidationResponse",
         "type": "object"
       },
+      "IpAssetCapabilitiesResponse": {
+        "properties": {
+          "accepted_media_types": {
+            "items": {
+              "enum": [
+                "image/png",
+                "image/jpeg",
+                "image/webp"
+              ],
+              "type": "string"
+            },
+            "title": "Accepted Media Types",
+            "type": "array"
+          },
+          "authentication": {
+            "const": "none",
+            "default": "none",
+            "title": "Authentication",
+            "type": "string"
+          },
+          "deployment_boundary": {
+            "const": "company_intranet",
+            "default": "company_intranet",
+            "title": "Deployment Boundary",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "generation_available": {
+            "title": "Generation Available",
+            "type": "boolean"
+          },
+          "max_upload_bytes": {
+            "const": 26214400,
+            "default": 26214400,
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          },
+          "recognition_available": {
+            "title": "Recognition Available",
+            "type": "boolean"
+          },
+          "semantic_search_available": {
+            "title": "Semantic Search Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "semantic_search_available",
+          "generation_available",
+          "recognition_available",
+          "accepted_media_types"
+        ],
+        "title": "IpAssetCapabilitiesResponse",
+        "type": "object"
+      },
+      "IpAssetCardResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "asset_ref": {
+            "title": "Asset Ref",
+            "type": "string"
+          },
+          "asset_type": {
+            "$ref": "#/components/schemas/IpAssetType"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "character": {
+            "$ref": "#/components/schemas/IpAssetCharacter"
+          },
+          "contributor": {
+            "description": "Self-reported descriptive label; not verified identity",
+            "title": "Contributor",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "department": {
+            "description": "Self-reported descriptive label; not verified identity",
+            "title": "Department",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "emotion": {
+            "title": "Emotion",
+            "type": "string"
+          },
+          "has_alpha": {
+            "title": "Has Alpha",
+            "type": "boolean"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "intended_use": {
+            "title": "Intended Use",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "orientation": {
+            "$ref": "#/components/schemas/IpAssetOrientation"
+          },
+          "preview_url": {
+            "title": "Preview Url",
+            "type": "string"
+          },
+          "scene": {
+            "title": "Scene",
+            "type": "string"
+          },
+          "semantic_status": {
+            "$ref": "#/components/schemas/IpAssetSemanticStatus"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/IpAssetSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IpAssetStatus"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_ref",
+          "canonical_name",
+          "character",
+          "asset_type",
+          "source_kind",
+          "department",
+          "contributor",
+          "emotion",
+          "action",
+          "scene",
+          "intended_use",
+          "style",
+          "tags",
+          "media_type",
+          "byte_size",
+          "width",
+          "height",
+          "has_alpha",
+          "orientation",
+          "status",
+          "semantic_status",
+          "created_at",
+          "preview_url",
+          "download_url"
+        ],
+        "title": "IpAssetCardResponse",
+        "type": "object"
+      },
+      "IpAssetCharacter": {
+        "enum": [
+          "sai_xiansheng",
+          "xiao_sai",
+          "duo",
+          "other"
+        ],
+        "title": "IpAssetCharacter",
+        "type": "string"
+      },
+      "IpAssetDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "asset_ref": {
+            "title": "Asset Ref",
+            "type": "string"
+          },
+          "asset_type": {
+            "$ref": "#/components/schemas/IpAssetType"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "character": {
+            "$ref": "#/components/schemas/IpAssetCharacter"
+          },
+          "checksum_ref": {
+            "title": "Checksum Ref",
+            "type": "string"
+          },
+          "contributor": {
+            "description": "Self-reported descriptive label; not verified identity",
+            "title": "Contributor",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "department": {
+            "description": "Self-reported descriptive label; not verified identity",
+            "title": "Department",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "emotion": {
+            "title": "Emotion",
+            "type": "string"
+          },
+          "has_alpha": {
+            "title": "Has Alpha",
+            "type": "boolean"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "intended_use": {
+            "title": "Intended Use",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name_version": {
+            "title": "Name Version",
+            "type": "integer"
+          },
+          "orientation": {
+            "$ref": "#/components/schemas/IpAssetOrientation"
+          },
+          "preview_url": {
+            "title": "Preview Url",
+            "type": "string"
+          },
+          "safe_original_filename": {
+            "title": "Safe Original Filename",
+            "type": "string"
+          },
+          "scene": {
+            "title": "Scene",
+            "type": "string"
+          },
+          "semantic_status": {
+            "$ref": "#/components/schemas/IpAssetSemanticStatus"
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/IpAssetSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IpAssetStatus"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_ref",
+          "canonical_name",
+          "character",
+          "asset_type",
+          "source_kind",
+          "department",
+          "contributor",
+          "emotion",
+          "action",
+          "scene",
+          "intended_use",
+          "style",
+          "tags",
+          "media_type",
+          "byte_size",
+          "width",
+          "height",
+          "has_alpha",
+          "orientation",
+          "status",
+          "semantic_status",
+          "created_at",
+          "preview_url",
+          "download_url",
+          "safe_original_filename",
+          "checksum_ref",
+          "name_version"
+        ],
+        "title": "IpAssetDetailResponse",
+        "type": "object"
+      },
+      "IpAssetGenerationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_type": {
+            "$ref": "#/components/schemas/IpAssetType"
+          },
+          "character": {
+            "$ref": "#/components/schemas/IpAssetCharacter"
+          },
+          "contributor": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Contributor",
+            "type": "string"
+          },
+          "department": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Department",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "ratio": {
+            "const": "1:1",
+            "default": "1:1",
+            "title": "Ratio",
+            "type": "string"
+          },
+          "reference_asset_ref": {
+            "anyOf": [
+              {
+                "maxLength": 24,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Asset Ref"
+          }
+        },
+        "required": [
+          "prompt",
+          "character",
+          "asset_type",
+          "idempotency_key"
+        ],
+        "title": "IpAssetGenerationRequest",
+        "type": "object"
+      },
+      "IpAssetGenerationResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "generation_available": {
+            "default": true,
+            "title": "Generation Available",
+            "type": "boolean"
+          },
+          "job_ref": {
+            "title": "Job Ref",
+            "type": "string"
+          },
+          "output_asset_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Asset Ref"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_ref",
+          "status",
+          "created",
+          "status_url",
+          "created_at",
+          "completed_at"
+        ],
+        "title": "IpAssetGenerationResponse",
+        "type": "object"
+      },
+      "IpAssetListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetCardResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "IpAssetListResponse",
+        "type": "object"
+      },
+      "IpAssetOrientation": {
+        "enum": [
+          "square",
+          "portrait",
+          "landscape"
+        ],
+        "title": "IpAssetOrientation",
+        "type": "string"
+      },
+      "IpAssetRecognitionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Action",
+            "type": "string"
+          },
+          "asset_type": {
+            "$ref": "#/components/schemas/IpAssetType"
+          },
+          "character": {
+            "$ref": "#/components/schemas/IpAssetCharacter"
+          },
+          "emotion": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Emotion",
+            "type": "string"
+          },
+          "intended_use": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Intended Use",
+            "type": "string"
+          },
+          "model": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "scene": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Scene",
+            "type": "string"
+          },
+          "status": {
+            "const": "suggested",
+            "default": "suggested",
+            "title": "Status",
+            "type": "string"
+          },
+          "style": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Style",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "character",
+          "asset_type",
+          "provider",
+          "model"
+        ],
+        "title": "IpAssetRecognitionResponse",
+        "type": "object"
+      },
+      "IpAssetSearchItemResponse": {
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/IpAssetCardResponse"
+          },
+          "explanation": {
+            "maxLength": 240,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "similarity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity"
+          }
+        },
+        "required": [
+          "asset",
+          "explanation"
+        ],
+        "title": "IpAssetSearchItemResponse",
+        "type": "object"
+      },
+      "IpAssetSearchMode": {
+        "enum": [
+          "semantic",
+          "degraded_metadata"
+        ],
+        "title": "IpAssetSearchMode",
+        "type": "string"
+      },
+      "IpAssetSearchResponse": {
+        "properties": {
+          "degraded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded Reason"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetSearchItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/IpAssetSearchMode"
+          },
+          "search_version": {
+            "const": "ip-asset-hybrid-v2",
+            "title": "Search Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "degraded_reason",
+          "search_version",
+          "items"
+        ],
+        "title": "IpAssetSearchResponse",
+        "type": "object"
+      },
+      "IpAssetSemanticStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "ready",
+          "unavailable",
+          "failed"
+        ],
+        "title": "IpAssetSemanticStatus",
+        "type": "string"
+      },
+      "IpAssetSource": {
+        "enum": [
+          "uploaded",
+          "generated",
+          "seed_import"
+        ],
+        "title": "IpAssetSource",
+        "type": "string"
+      },
+      "IpAssetStatus": {
+        "enum": [
+          "processing",
+          "ready",
+          "failed"
+        ],
+        "title": "IpAssetStatus",
+        "type": "string"
+      },
+      "IpAssetTextSearchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "character": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetCharacter"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "department": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Department",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "orientation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetOrientation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prior_turns": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Prior Turns",
+            "type": "array"
+          },
+          "source_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IpAssetSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tag": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "IpAssetTextSearchRequest",
+        "type": "object"
+      },
+      "IpAssetType": {
+        "enum": [
+          "identity_reference",
+          "portrait_avatar",
+          "full_body_action",
+          "expression",
+          "meme_sticker",
+          "transparent_cutout",
+          "scene_illustration",
+          "poster_element",
+          "other"
+        ],
+        "title": "IpAssetType",
+        "type": "string"
+      },
+      "IpAssetUploadResponse": {
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/IpAssetDetailResponse"
+          },
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "near_duplicate_distance": {
+            "anyOf": [
+              {
+                "maximum": 64.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Near Duplicate Distance"
+          },
+          "near_duplicate_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Near Duplicate Ref"
+          }
+        },
+        "required": [
+          "asset",
+          "duplicate"
+        ],
+        "title": "IpAssetUploadResponse",
+        "type": "object"
+      },
+      "IpAssetZipRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Asset Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset_refs"
+        ],
+        "title": "IpAssetZipRequest",
+        "type": "object"
+      },
+      "LlmDimensionScoresResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audience_relevance": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Audience Relevance",
+            "type": "integer"
+          },
+          "breakthrough_significance": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Breakthrough Significance",
+            "type": "integer"
+          },
+          "communication_value": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Communication Value",
+            "type": "integer"
+          },
+          "insight_potential": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Insight Potential",
+            "type": "integer"
+          },
+          "news_value": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "News Value",
+            "type": "integer"
+          },
+          "science_education_relevance": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Science Education Relevance",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "news_value",
+          "breakthrough_significance",
+          "science_education_relevance",
+          "audience_relevance",
+          "communication_value",
+          "insight_potential"
+        ],
+        "title": "LlmDimensionScoresResponse",
+        "type": "object"
+      },
       "MaterialPackageCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6652,6 +8923,1464 @@
         "title": "ObservationResponse",
         "type": "object"
       },
+      "OfficialAccountAuditVerdict": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "claim_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "issue_codes": {
+            "default": [],
+            "items": {
+              "enum": [
+                "fact_not_entailed",
+                "brand_tone_mismatch",
+                "privacy_risk",
+                "safety_risk",
+                "improper_distribution_instruction"
+              ],
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Issue Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "OfficialAccountAuditVerdict",
+        "type": "object"
+      },
+      "OfficialAccountCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "boundary_label": {
+            "const": "本地模拟，未同步公众号",
+            "default": "本地模拟，未同步公众号",
+            "title": "Boundary Label",
+            "type": "string"
+          },
+          "eligible_material_packages": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleMaterialPackageResponse"
+            },
+            "title": "Eligible Material Packages",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fixture_available": {
+            "title": "Fixture Available",
+            "type": "boolean"
+          },
+          "fixture_id": {
+            "const": "official-account-article-v1",
+            "default": "official-account-article-v1",
+            "title": "Fixture Id",
+            "type": "string"
+          },
+          "generated_visuals_enabled": {
+            "default": false,
+            "title": "Generated Visuals Enabled",
+            "type": "boolean"
+          },
+          "live_available": {
+            "title": "Live Available",
+            "type": "boolean"
+          },
+          "live_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Unavailable Reason"
+          },
+          "simulation": {
+            "const": true,
+            "default": true,
+            "title": "Simulation",
+            "type": "boolean"
+          },
+          "visual_semantic_enabled": {
+            "default": false,
+            "title": "Visual Semantic Enabled",
+            "type": "boolean"
+          },
+          "visual_semantic_provider_mode": {
+            "default": "disabled",
+            "enum": [
+              "disabled",
+              "fake",
+              "alibaba"
+            ],
+            "title": "Visual Semantic Provider Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "fixture_available",
+          "live_available"
+        ],
+        "title": "OfficialAccountCapabilitiesResponse",
+        "type": "object"
+      },
+      "OfficialAccountDraftResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "boundary_label": {
+            "const": "本地模拟，未同步公众号",
+            "default": "本地模拟，未同步公众号",
+            "title": "Boundary Label",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "local_draft_id": {
+            "title": "Local Draft Id",
+            "type": "string"
+          },
+          "preview_url": {
+            "title": "Preview Url",
+            "type": "string"
+          },
+          "resolved_fingerprint": {
+            "title": "Resolved Fingerprint",
+            "type": "string"
+          },
+          "simulation": {
+            "const": true,
+            "title": "Simulation",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "local_draft_id",
+          "state",
+          "simulation",
+          "preview_url",
+          "resolved_fingerprint",
+          "created_at"
+        ],
+        "title": "OfficialAccountDraftResponse",
+        "type": "object"
+      },
+      "OfficialAccountEmbeddingIdentityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "dimensions": {
+            "const": 2048,
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "input_policy_version": {
+            "const": "brand-visual-embedding-input-v2",
+            "title": "Input Policy Version",
+            "type": "string"
+          },
+          "model": {
+            "const": "qwen3-vl-embedding",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "const": "alibaba-model-studio",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "dimensions",
+          "input_policy_version"
+        ],
+        "title": "OfficialAccountEmbeddingIdentityResponse",
+        "type": "object"
+      },
+      "OfficialAccountFixtureSourceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fixture_id": {
+            "const": "official-account-article-v1",
+            "default": "official-account-article-v1",
+            "title": "Fixture Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "fixture",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "OfficialAccountFixtureSourceRequest",
+        "type": "object"
+      },
+      "OfficialAccountGeneratedVisualResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "block_index": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Index"
+          },
+          "block_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "paragraph",
+                  "bullet_list",
+                  "quote",
+                  "callout"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Kind"
+          },
+          "byte_size": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byte Size"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 8192.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
+          "model": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "output_profile_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Profile Version"
+          },
+          "plan_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Plan Version",
+            "type": "string"
+          },
+          "prompt_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "fake",
+              "toapis",
+              "comfly"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "reference_asset_ref": {
+            "pattern": "^[0-9a-f]{16}$",
+            "title": "Reference Asset Ref",
+            "type": "string"
+          },
+          "request_fingerprint": {
+            "title": "Request Fingerprint",
+            "type": "string"
+          },
+          "section_index": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Section Index",
+            "type": "integer"
+          },
+          "selection_method": {
+            "enum": [
+              "deterministic_tag",
+              "multimodal_embedding"
+            ],
+            "title": "Selection Method",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "similarity_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "very_high",
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity Band"
+          },
+          "status": {
+            "enum": [
+              "generating",
+              "ready",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 8192.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "ordinal",
+          "section_index",
+          "reference_asset_ref",
+          "selection_method",
+          "status",
+          "request_fingerprint",
+          "plan_version",
+          "prompt_version",
+          "provider",
+          "model"
+        ],
+        "title": "OfficialAccountGeneratedVisualResponse",
+        "type": "object"
+      },
+      "OfficialAccountManualReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reviewer_label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Reviewer Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "reviewer_label"
+        ],
+        "title": "OfficialAccountManualReviewRequest",
+        "type": "object"
+      },
+      "OfficialAccountManualReviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "editorially_approved": {
+            "default": false,
+            "title": "Editorially Approved",
+            "type": "boolean"
+          },
+          "idempotent_replay": {
+            "default": false,
+            "title": "Idempotent Replay",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "request_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Fingerprint"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Label"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "OfficialAccountManualReviewResponse",
+        "type": "object"
+      },
+      "OfficialAccountMaterialSourceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "material_package",
+            "title": "Kind",
+            "type": "string"
+          },
+          "material_package_id": {
+            "format": "uuid",
+            "title": "Material Package Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "material_package_id"
+        ],
+        "title": "OfficialAccountMaterialSourceRequest",
+        "type": "object"
+      },
+      "OfficialAccountMediaResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alt Text"
+          },
+          "assigned_section_index": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Section Index"
+          },
+          "byte_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "local_media_id": {
+            "title": "Local Media Id",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "media_url": {
+            "title": "Media Url",
+            "type": "string"
+          },
+          "ordinal": {
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "body",
+              "cover"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "score_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "heading",
+                  "body",
+                  "fallback"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Band"
+          },
+          "selection_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "deterministic_tag",
+                  "multimodal_embedding"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Method"
+          },
+          "selection_reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "semantic_heading_match",
+                  "semantic_body_match",
+                  "stable_fallback",
+                  "multimodal_similarity"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason Code"
+          },
+          "semantic_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Label"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "similarity_band": {
+            "anyOf": [
+              {
+                "enum": [
+                  "very_high",
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity Band"
+          }
+        },
+        "required": [
+          "local_media_id",
+          "role",
+          "ordinal",
+          "media_url",
+          "media_type",
+          "byte_size",
+          "sha256"
+        ],
+        "title": "OfficialAccountMediaResponse",
+        "type": "object"
+      },
+      "OfficialAccountMediaSelectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "body_image_count": {
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Body Image Count",
+            "type": "integer"
+          },
+          "embedding_identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountEmbeddingIdentityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation": {
+            "items": {
+              "maxLength": 240,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Explanation",
+            "type": "array"
+          },
+          "policy_version": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "safely_degraded": {
+            "title": "Safely Degraded",
+            "type": "boolean"
+          },
+          "selection_mode": {
+            "default": "historical",
+            "enum": [
+              "multimodal_embedding",
+              "deterministic_fallback",
+              "historical"
+            ],
+            "title": "Selection Mode",
+            "type": "string"
+          },
+          "semantic_status": {
+            "default": "not_applicable",
+            "enum": [
+              "semantic_ready",
+              "semantic_unavailable",
+              "single_candidate",
+              "not_applicable"
+            ],
+            "title": "Semantic Status",
+            "type": "string"
+          },
+          "semantic_unavailable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Unavailable Reason"
+          },
+          "target_body_image_count": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Target Body Image Count",
+            "type": "string"
+          },
+          "visual_query_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Query Version"
+          },
+          "visual_selector_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Selector Version"
+          }
+        },
+        "required": [
+          "policy_version",
+          "body_image_count",
+          "target_body_image_count",
+          "safely_degraded",
+          "explanation"
+        ],
+        "title": "OfficialAccountMediaSelectionResponse",
+        "type": "object"
+      },
+      "OfficialAccountRunCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "generation_mode": {
+            "enum": [
+              "fixture",
+              "live"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "fixture": "#/components/schemas/OfficialAccountFixtureSourceRequest",
+                "material_package": "#/components/schemas/OfficialAccountMaterialSourceRequest"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountMaterialSourceRequest"
+              },
+              {
+                "$ref": "#/components/schemas/OfficialAccountFixtureSourceRequest"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "source",
+          "generation_mode"
+        ],
+        "title": "OfficialAccountRunCreateRequest",
+        "type": "object"
+      },
+      "OfficialAccountRunDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "article": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticlePackage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempt_count": {
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountAuditVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountMediaResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body_images": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountMediaResponse"
+            },
+            "title": "Body Images",
+            "type": "array"
+          },
+          "boundary_label": {
+            "const": "本地模拟，未同步公众号",
+            "default": "本地模拟，未同步公众号",
+            "title": "Boundary Label",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cover_image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountMediaResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_stage": {
+            "enum": [
+              "queued",
+              "generating",
+              "validating",
+              "auditing",
+              "rendering",
+              "generating_body_visuals",
+              "staging_body_media",
+              "staging_cover",
+              "creating_local_draft",
+              "ready",
+              "review_required",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "Current Stage",
+            "type": "string"
+          },
+          "detail_url": {
+            "title": "Detail Url",
+            "type": "string"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountDraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_retryable": {
+            "title": "Error Retryable",
+            "type": "boolean"
+          },
+          "fixture_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixture Id"
+          },
+          "generated_visuals": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountGeneratedVisualResponse"
+            },
+            "title": "Generated Visuals",
+            "type": "array"
+          },
+          "generation_mode": {
+            "enum": [
+              "fixture",
+              "live"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "manual_review": {
+            "$ref": "#/components/schemas/OfficialAccountManualReviewResponse"
+          },
+          "material_package_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Package Id"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountMediaResponse"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "media_selection": {
+            "$ref": "#/components/schemas/OfficialAccountMediaSelectionResponse"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "fake",
+              "zhipu"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "request_fingerprint": {
+            "title": "Request Fingerprint",
+            "type": "string"
+          },
+          "retry_url": {
+            "title": "Retry Url",
+            "type": "string"
+          },
+          "simulation": {
+            "const": true,
+            "default": true,
+            "title": "Simulation",
+            "type": "boolean"
+          },
+          "source_kind": {
+            "enum": [
+              "material_package",
+              "fixture"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "review_required",
+              "ready",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountUsageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountValidationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "source_kind",
+          "material_package_id",
+          "fixture_id",
+          "generation_mode",
+          "provider",
+          "model",
+          "request_fingerprint",
+          "status",
+          "current_stage",
+          "attempt_count",
+          "error_code",
+          "error_retryable",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "detail_url",
+          "retry_url",
+          "article",
+          "validation",
+          "audit",
+          "usage",
+          "media",
+          "body_image",
+          "body_images",
+          "cover_image",
+          "media_selection",
+          "draft",
+          "manual_review"
+        ],
+        "title": "OfficialAccountRunDetailResponse",
+        "type": "object"
+      },
+      "OfficialAccountRunListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountRunSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "OfficialAccountRunListResponse",
+        "type": "object"
+      },
+      "OfficialAccountRunSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_count": {
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "boundary_label": {
+            "const": "本地模拟，未同步公众号",
+            "default": "本地模拟，未同步公众号",
+            "title": "Boundary Label",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_stage": {
+            "enum": [
+              "queued",
+              "generating",
+              "validating",
+              "auditing",
+              "rendering",
+              "generating_body_visuals",
+              "staging_body_media",
+              "staging_cover",
+              "creating_local_draft",
+              "ready",
+              "review_required",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "Current Stage",
+            "type": "string"
+          },
+          "detail_url": {
+            "title": "Detail Url",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_retryable": {
+            "title": "Error Retryable",
+            "type": "boolean"
+          },
+          "fixture_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixture Id"
+          },
+          "generation_mode": {
+            "enum": [
+              "fixture",
+              "live"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "material_package_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Package Id"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "fake",
+              "zhipu"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "request_fingerprint": {
+            "title": "Request Fingerprint",
+            "type": "string"
+          },
+          "retry_url": {
+            "title": "Retry Url",
+            "type": "string"
+          },
+          "simulation": {
+            "const": true,
+            "default": true,
+            "title": "Simulation",
+            "type": "boolean"
+          },
+          "source_kind": {
+            "enum": [
+              "material_package",
+              "fixture"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "review_required",
+              "ready",
+              "failed",
+              "result_unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_kind",
+          "material_package_id",
+          "fixture_id",
+          "generation_mode",
+          "provider",
+          "model",
+          "request_fingerprint",
+          "status",
+          "current_stage",
+          "attempt_count",
+          "error_code",
+          "error_retryable",
+          "created_at",
+          "started_at",
+          "completed_at",
+          "detail_url",
+          "retry_url"
+        ],
+        "title": "OfficialAccountRunSummaryResponse",
+        "type": "object"
+      },
+      "OfficialAccountUsageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "latency_ms": {
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "reasoning_tokens": {
+            "minimum": 0.0,
+            "title": "Reasoning Tokens",
+            "type": "integer"
+          },
+          "safe_provider_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Provider Request Id"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "reasoning_tokens",
+          "latency_ms",
+          "safe_provider_request_id"
+        ],
+        "title": "OfficialAccountUsageResponse",
+        "type": "object"
+      },
+      "OfficialAccountValidationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "passed",
+          "issues"
+        ],
+        "title": "OfficialAccountValidationResponse",
+        "type": "object"
+      },
       "SnapshotMetadataResponse": {
         "properties": {
           "bucket": {
@@ -7033,6 +10762,29 @@
             "title": "Id",
             "type": "string"
           },
+          "llm_dimension_scores": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmDimensionScoresResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "llm_total": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Total"
+          },
           "normalized_features": {
             "additionalProperties": {
               "type": "number"
@@ -7155,7 +10907,9 @@
           "deterministic_rank",
           "final_rank",
           "rerank_reason_codes",
-          "rerank_explanation"
+          "rerank_explanation",
+          "llm_dimension_scores",
+          "llm_total"
         ],
         "title": "TopicScoreResponse",
         "type": "object"
@@ -7522,6 +11276,19 @@
         ],
         "title": "VisualReferenceResponse",
         "type": "object"
+      },
+      "VisualRetrievalUnavailableReason": {
+        "enum": [
+          "disabled",
+          "input_normalization_failed",
+          "provider_unavailable",
+          "invalid_provider_output",
+          "identity_mismatch",
+          "index_incomplete",
+          "catalog_changed"
+        ],
+        "title": "VisualRetrievalUnavailableReason",
+        "type": "string"
       },
       "VisualTextLayerResponse": {
         "properties": {
@@ -8280,6 +12047,47 @@
           }
         },
         "summary": "Read Brand Ingestion Job",
+        "tags": [
+          "brand-knowledge"
+        ]
+      }
+    },
+    "/api/v1/brand-visual-search": {
+      "post": {
+        "description": "Internal personal-project demo. Accepts text or one PNG and returns bounded safe asset references; it never returns paths, filenames, bytes, vectors, or evidence.",
+        "operationId": "search_brand_visual_catalog_api_v1_brand_visual_search_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_search_brand_visual_catalog_api_v1_brand_visual_search_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandVisualSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search the approved private visual catalog",
         "tags": [
           "brand-knowledge"
         ]
@@ -9196,6 +13004,592 @@
         ]
       }
     },
+    "/api/v1/ip-assets": {
+      "get": {
+        "operationId": "list_ip_assets_api_v1_ip_assets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "character",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpAssetCharacter"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Character"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpAssetType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "department",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 80,
+              "title": "Department",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpAssetSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orientation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IpAssetOrientation"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Orientation"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 40,
+              "title": "Tag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 60,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Ip Assets",
+        "tags": [
+          "ip-assets"
+        ]
+      },
+      "post": {
+        "operationId": "upload_ip_asset_api_v1_ip_assets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_ip_asset_api_v1_ip_assets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_ip_assets_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/downloads": {
+      "post": {
+        "operationId": "download_ip_asset_zip_api_v1_ip_assets_downloads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAssetZipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Ip Asset Zip",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/generations": {
+      "post": {
+        "operationId": "create_ip_asset_generation_api_v1_ip_assets_generations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAssetGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetGenerationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Ip Asset Generation",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/generations/{job_ref}": {
+      "get": {
+        "operationId": "read_ip_asset_generation_api_v1_ip_assets_generations__job_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_ref",
+            "required": true,
+            "schema": {
+              "title": "Job Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetGenerationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Ip Asset Generation",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/recognitions": {
+      "post": {
+        "operationId": "recognize_ip_asset_api_v1_ip_assets_recognitions_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_recognize_ip_asset_api_v1_ip_assets_recognitions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetRecognitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recognize Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/search/image": {
+      "post": {
+        "operationId": "search_ip_assets_image_api_v1_ip_assets_search_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_search_ip_assets_image_api_v1_ip_assets_search_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Ip Assets Image",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/search/text": {
+      "post": {
+        "operationId": "search_ip_assets_text_api_v1_ip_assets_search_text_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAssetTextSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Ip Assets Text",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/{asset_ref}": {
+      "get": {
+        "operationId": "read_ip_asset_api_v1_ip_assets__asset_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/{asset_ref}/download": {
+      "get": {
+        "operationId": "download_ip_asset_api_v1_ip_assets__asset_ref__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/{asset_ref}/preview": {
+      "get": {
+        "operationId": "preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
     "/api/v1/material-packages": {
       "get": {
         "operationId": "list_material_packages_api_v1_material_packages_get",
@@ -9554,6 +13948,320 @@
         "summary": "Create Wecom Delivery",
         "tags": [
           "wecom-deliveries"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs": {
+      "get": {
+        "operationId": "list_article_runs_api_v1_official_account_local_article_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Article Runs",
+        "tags": [
+          "official-account-local"
+        ]
+      },
+      "post": {
+        "operationId": "create_article_run_api_v1_official_account_local_article_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfficialAccountRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountRunSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Article Run",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}": {
+      "get": {
+        "operationId": "read_article_run_api_v1_official_account_local_article_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountRunDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Article Run",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/manual-review": {
+      "post": {
+        "operationId": "record_manual_review_api_v1_official_account_local_article_runs__run_id__manual_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfficialAccountManualReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountManualReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Manual Review",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/retry": {
+      "post": {
+        "operationId": "retry_article_run_api_v1_official_account_local_article_runs__run_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountRunSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Article Run",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/capabilities": {
+      "get": {
+        "operationId": "capabilities_api_v1_official_account_local_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountCapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/drafts/{local_draft_id}/preview": {
+      "get": {
+        "operationId": "preview_local_draft_api_v1_official_account_local_drafts__local_draft_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "local_draft_id",
+            "required": true,
+            "schema": {
+              "title": "Local Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Local Draft",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/media/{local_media_id}": {
+      "get": {
+        "operationId": "read_local_media_api_v1_official_account_local_media__local_media_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "local_media_id",
+            "required": true,
+            "schema": {
+              "title": "Local Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Local Media",
+        "tags": [
+          "official-account-local"
         ]
       }
     },

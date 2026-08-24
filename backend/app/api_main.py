@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -8,6 +9,7 @@ from uuid import uuid4
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -20,19 +22,37 @@ from app.api.v1.routes import (
     events,
     evidence_candidates,
     governance_runs,
+    ip_assets,
     material_packages,
+    official_account_local,
     sources,
     topic_selection_runs,
     wecom_deliveries,
 )
+from app.application.ports.ip_assets import IpAssetRecognitionModel
+from app.application.ports.visual_retrieval import VisualEmbeddingModel
+from app.application.services.ip_asset_recognition import IpAssetRecognitionService
+from app.application.services.ip_assets import IpAssetService
+from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
 from app.infrastructure.ai.brand import GovernanceEmbeddingBrandAdapter
-from app.infrastructure.ai.factory import create_embedding_model, create_image_generator
+from app.infrastructure.ai.factory import (
+    create_embedding_model,
+    create_image_generator,
+    create_ip_asset_recognition_model,
+)
+from app.infrastructure.ai.visual_embedding import (
+    AlibabaVisualEmbeddingAdapter,
+    DeterministicFakeVisualEmbedding,
+)
+from app.infrastructure.db.ip_assets import PostgresIpAssetRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
+from app.infrastructure.storage.minio_ip_asset_store import MinioIpAssetStore
 from app.schemas.common import ErrorDetail, ErrorEnvelope
 
 settings = get_settings()
@@ -52,10 +72,18 @@ class HealthResponse(BaseModel):
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     embedding_client: httpx.AsyncClient | None = None
     image_client: httpx.AsyncClient | None = None
+    visual_embedding_client: httpx.AsyncClient | None = None
+    ip_asset_recognition_client: httpx.AsyncClient | None = None
+    visual_embeddings: VisualEmbeddingModel | None = None
+    ip_asset_recognition_model: IpAssetRecognitionModel | None = None
     _app.state.brand_original_store = MinioBrandOriginalStore(settings)
     _app.state.brand_embedding_model = None
     _app.state.image_store = MinioImageStore(settings)
     _app.state.image_generator = None
+    _app.state.visual_retrieval_service = None
+    _app.state.ip_asset_service = None
+    _app.state.ip_asset_recognition_service = None
+    _app.state.ip_asset_upload_semaphore = asyncio.Semaphore(settings.ip_asset_upload_concurrency)
     provider_ready = settings.ai_provider_mode == "fake" or (
         settings.ai_provider_mode == "zhipu"
         and settings.ai_platform_api_key is not None
@@ -71,6 +99,46 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.image_provider_mode in {"toapis", "comfly"}:
             image_client = httpx.AsyncClient(follow_redirects=False)
         _app.state.image_generator = create_image_generator(settings, client=image_client)
+    if settings.visual_semantic_enabled:
+        if settings.visual_embedding_provider_mode == "fake":
+            visual_embeddings = DeterministicFakeVisualEmbedding()
+        else:
+            if (
+                settings.visual_embedding_endpoint is None
+                or settings.visual_embedding_api_key is None
+            ):
+                raise RuntimeError("validated visual embedding secrets are unavailable")
+            visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
+            visual_embeddings = AlibabaVisualEmbeddingAdapter(
+                client=visual_embedding_client,
+                endpoint=settings.visual_embedding_endpoint,
+                api_key=settings.visual_embedding_api_key,
+                timeout_seconds=settings.visual_embedding_timeout_seconds,
+                concurrency=settings.visual_embedding_concurrency,
+            )
+        _app.state.visual_retrieval_service = VisualRetrievalService(
+            embeddings=visual_embeddings,
+            repository=PostgresVisualIndexRepository(session_factory),
+            identity=settings.visual_embedding_identity,
+        )
+    if settings.ip_asset_hub_enabled:
+        _app.state.ip_asset_service = IpAssetService(
+            repository=PostgresIpAssetRepository(session_factory),
+            store=MinioIpAssetStore(settings),
+            embeddings=visual_embeddings,
+            identity=settings.visual_embedding_identity,
+        )
+    if settings.ip_asset_recognition_enabled:
+        ip_asset_recognition_client = httpx.AsyncClient(follow_redirects=False)
+        ip_asset_recognition_model = create_ip_asset_recognition_model(
+            settings,
+            client=ip_asset_recognition_client,
+        )
+        if ip_asset_recognition_model is None:
+            raise RuntimeError("validated IP asset recognition provider is unavailable")
+        _app.state.ip_asset_recognition_service = IpAssetRecognitionService(
+            ip_asset_recognition_model
+        )
     try:
         yield
     finally:
@@ -78,6 +146,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await embedding_client.aclose()
         if image_client is not None:
             await image_client.aclose()
+        if visual_embedding_client is not None:
+            await visual_embedding_client.aclose()
+        if ip_asset_recognition_client is not None:
+            await ip_asset_recognition_client.aclose()
         await engine.dispose()
 
 
@@ -92,12 +164,20 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.browser_origins),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID"],
+)
 app.state.settings = settings
 app.state.session_factory = session_factory
 app.include_router(sources.router, prefix="/api/v1")
 app.include_router(acquisition_runs.router, prefix="/api/v1")
 app.include_router(evidence_candidates.router, prefix="/api/v1")
 app.include_router(governance_runs.router, prefix="/api/v1")
+app.include_router(ip_assets.router, prefix="/api/v1")
 app.include_router(candidate_analyses.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(topic_selection_runs.router, prefix="/api/v1")
@@ -105,6 +185,7 @@ app.include_router(content_slots.router, prefix="/api/v1")
 app.include_router(brand_knowledge.router, prefix="/api/v1")
 app.include_router(copy_generation.router, prefix="/api/v1")
 app.include_router(material_packages.router, prefix="/api/v1")
+app.include_router(official_account_local.router, prefix="/api/v1")
 app.include_router(wecom_deliveries.router, prefix="/api/v1")
 
 

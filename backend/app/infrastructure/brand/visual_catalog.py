@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -10,6 +11,7 @@ from app.domain.visual_assets import (
     AssetSelectionRequest,
     AssetSelector,
     SelectedVisualAsset,
+    VisualAsset,
     VisualAssetCatalog,
     VisualAssetCatalogLoader,
     VisualAssetError,
@@ -46,12 +48,14 @@ def select_visual_assets(
     selector_version: str,
     max_references: int,
     max_reference_bytes: int,
+    semantic_scores: Mapping[str, float] | None = None,
 ) -> VisualAssetSelection:
     selector = AssetSelector(
         loaded.catalog,
         selector_version=selector_version,
         max_references=max_references,
         max_reference_bytes=max_reference_bytes,
+        semantic_scores=semantic_scores,
     )
     return selector.select(
         request,
@@ -96,6 +100,15 @@ def read_selected_reference(
     )
 
 
+def read_visual_asset_bytes(loaded: LoadedVisualCatalog, asset: VisualAsset) -> bytes:
+    """Revalidate one manifest-bound asset and return bytes only to an internal caller."""
+
+    current = loaded.catalog.asset_by_id.get(asset.asset_id)
+    if current is None or current.checksum != asset.checksum:
+        raise VisualAssetError("visual asset no longer belongs to the loaded catalog")
+    return VisualAssetCatalogLoader(loaded.materials_root).read_asset(current)
+
+
 def visual_asset_summary(selected: SelectedVisualAsset) -> dict[str, Any]:
     asset = selected.asset
     return {
@@ -107,4 +120,7 @@ def visual_asset_summary(selected: SelectedVisualAsset) -> dict[str, Any]:
         "selection_reason": selected.reason,
         "matched_tags": list(selected.matched_tags),
         "fallback": selected.fallback,
+        "semantic_similarity": selected.semantic_similarity,
+        "rule_score": selected.rule_score,
+        "ranking_source": selected.ranking_source,
     }

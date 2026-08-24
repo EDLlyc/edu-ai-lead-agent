@@ -1,0 +1,17 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify the new feature preserves every non-negotiable backend boundary."}
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Verify the implemented API/DB/env/storage/vector/generation contracts and adversarial error matrix."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review migrations, pgvector identity isolation, transaction/lease behavior, and real PostgreSQL tests."}
+{"file":".trellis/spec/backend/visual-retrieval.md","reason":"Check that dynamic partial-index search does not weaken or contaminate the existing static complete-catalog index."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/implementation-check-contracts.md","reason":"Check generation job/provider/storage integration plus task-specific privacy and quality gates."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Audit typed failure semantics and absence of raw private/provider details."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit logs for credentials, paths, object keys, user-supplied content, and unverified identity claims."}
+{"file":".trellis/spec/frontend/index.md","reason":"Verify the internal SPA still satisfies its product and accessibility boundaries."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Verify the gallery, filters, safe resources, dialogs, downloads, degraded states, and no-auth boundary."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review gallery/forms/dialogs/status feedback for accessibility and honest state presentation."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Review query invalidation, polling termination, retry, and mutation boundaries."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Check server, URL, and local state ownership and prevent accidental chat/upload persistence."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check generated contract usage and runtime handling of untrusted API/browser data."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run strict frontend type, unit, interaction, and accessibility verification."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/current-foundation.md","reason":"Verify implementation stayed within the inspected reuse and compatibility boundaries."}
+{"file":".trellis/tasks/08-24-ip-digital-asset-platform-mvp/research/upload-ai-recognition.md","reason":"Verify explicit-click behavior, advisory authority, transient bytes, failure independence, and provider/privacy boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Verify the runtime adapter preserves reviewed visual annotation allowlisting and never persists raw vision output."}

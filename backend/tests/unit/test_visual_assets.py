@@ -19,6 +19,7 @@ from app.domain.visual_assets import (
     VisualAssetSelectionError,
 )
 from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
+from app.domain.visual_retrieval import VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION
 
 
 def _png(*, width: int = 2, height: int = 3) -> bytes:
@@ -353,6 +354,60 @@ def test_unapproved_asset_is_never_selected() -> None:
     )
 
     assert selection.selected_assets[0].asset_id == approved.asset_id
+
+
+def test_semantic_selector_orders_only_inside_approved_hard_role_pool() -> None:
+    rule_winner = _asset(
+        "semantic-rule-winner",
+        characters=("xiao-sai",),
+        topics=("robotics",),
+        priority=1_000,
+    )
+    semantic_winner = _asset(
+        "semantic-vector-winner",
+        characters=("xiao-sai",),
+        topics=("reading",),
+        priority=1,
+    )
+    unapproved = _asset(
+        "semantic-unapproved",
+        characters=("xiao-sai",),
+        topics=("robotics",),
+        approved=False,
+    )
+    scores = {
+        rule_winner.asset_id: 0.1,
+        semantic_winner.asset_id: 0.9,
+    }
+    selection = AssetSelector(
+        _catalog(rule_winner, semantic_winner, unapproved),
+        selector_version=VISUAL_SEMANTIC_SELECTOR_VERSION,
+        semantic_scores=scores,
+    ).select(
+        AssetSelectionRequest(
+            category="robotics",
+            characters=("xiao-sai",),
+            reference_roles=(VisualAssetRole.IDENTITY_REFERENCE,),
+        )
+    )
+
+    assert selection.selected_assets[0].asset_id == semantic_winner.asset_id
+    assert selection.selected_assets[0].ranking_source == "semantic_primary"
+    assert selection.selected_assets[0].semantic_similarity == pytest.approx(0.9)
+    assert selection.selected_assets[0].rule_score > 0
+    assert unapproved.asset_id not in scores
+
+
+def test_semantic_selector_rejects_partial_score_maps() -> None:
+    first = _asset("semantic-first", characters=("xiao-sai",))
+    second = _asset("semantic-second", characters=("xiao-sai",))
+
+    with pytest.raises(VisualAssetSelectionError, match="cover"):
+        AssetSelector(
+            _catalog(first, second),
+            selector_version=VISUAL_SEMANTIC_SELECTOR_VERSION,
+            semantic_scores={first.asset_id: 0.8},
+        )
 
 
 def test_selector_adds_approved_style_reference_after_identity_and_action() -> None:

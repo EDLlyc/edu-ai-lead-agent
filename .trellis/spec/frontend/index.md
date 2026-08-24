@@ -23,6 +23,10 @@ disabled, missing, preparing, empty/unfilled, ready, failed, expired, delivered 
 per independent item. It links to safe source and material-package resources, keeps polling in the
 server-state hook only while enabled slots are incomplete, and provides no publishing controls.
 
+The SPA additionally contains a feature-flagged IP digital-asset hub for one unauthenticated company
+intranet library. It supports controlled upload, cursor browsing, multimodal/metadata search,
+verified preview/download, bounded ZIP selection, and optional generation-to-library job polling.
+
 React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types are implemented.
 
 ## Guidelines index
@@ -37,6 +41,7 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
 | [Local Agent Workbench UI](./agent-workbench.md) | Development-only generated-contract trace UI, safe citations, accessibility, and production tree-shaking |
 | [Quality Guidelines](./quality-guidelines.md) | Tests, accessibility, generated-contract drift, and review gates |
 | [Brand Knowledge Workspace](./brand-knowledge-workspace.md) | Implemented upload, status, activation, generation-context diagnostics, generated types, accessibility, and manual-only boundary |
+| [IP Digital Asset Hub UI](./ip-asset-hub.md) | No-auth intranet gallery, upload, multimodal search, download, generation, accessibility, and safe resource URL contracts |
 
 ## Non-negotiable product boundaries
 

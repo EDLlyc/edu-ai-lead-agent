@@ -6,9 +6,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.domain.brand_knowledge import BrandAudience, BrandDocumentKind
+from app.domain.brand_knowledge import (
+    BrandAudience,
+    BrandClaimScope,
+    BrandContentType,
+    BrandDocumentKind,
+    BrandSectionKind,
+)
 from app.domain.digital_ip import DigitalIpVisualCatalogStatus
 from app.domain.visual_assets import VisualAssetKind
+from app.domain.visual_retrieval import VisualRetrievalUnavailableReason
 
 
 class BrandVersionResponse(BaseModel):
@@ -137,6 +144,15 @@ class BrandContextChunkResponse(BaseModel):
     tone_tags: list[str]
     safety_tags: list[str]
     visual_tags: list[str]
+    section_id: UUID | None
+    section_title: str | None
+    section_kind: BrandSectionKind | None
+    source_page: int | None
+    question_number: int | None
+    question_text: str | None
+    content_type: BrandContentType | None
+    claim_scope: BrandClaimScope | None
+    verification_required: bool
     full_text_score: float
     vector_score: float
     fused_score: float
@@ -222,3 +238,26 @@ class DigitalIpProfileResponse(BaseModel):
         default=False,
         description="Always false: digital-IP guidance is not external-fact evidence.",
     )
+
+
+class BrandVisualSearchItemResponse(BaseModel):
+    """Safe visual hit: no path, filename, bytes, vectors, or provider metadata."""
+
+    asset_ref: str = Field(min_length=16, max_length=16)
+    asset_kind: VisualAssetKind
+    roles: list[str]
+    tags: list[str]
+    approved: Literal[True] = True
+    catalog_version: str
+    similarity: float = Field(ge=-1.0, le=1.0)
+    ranking_source: Literal["semantic_primary"] = "semantic_primary"
+
+
+class BrandVisualSearchResponse(BaseModel):
+    status: Literal["ready", "semantic_unavailable"]
+    reason: VisualRetrievalUnavailableReason | None = None
+    query_modality: Literal["text", "image"]
+    catalog_version: str | None
+    items: list[BrandVisualSearchItemResponse]
+    count: int = Field(ge=0, le=20)
+    evidence_eligible: Literal[False] = False

@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/brand-knowledge-rag.md", "reason": "Owns brand embedding separation, visual catalog safety, provider identity and retrieval privacy contracts."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Owns PostgreSQL pgvector, migration, lease, immutable derivation and transaction contracts."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Owns typed provider failure, fallback and retry rules."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Owns private asset/provider observability and redaction boundaries."}
+{"file": ".trellis/tasks/08-21-brand-multimodal-visual-retrieval/research/current-visual-retrieval-seams.md", "reason": "Codebase seams, live compatibility aggregate and official provider contract evidence."}
+{"file": ".trellis/tasks/08-21-brand-multimodal-visual-retrieval/research/implementation-check-contracts.md", "reason": "Bounded material-package, provider, persistence, privacy and final-gate contracts extracted from the large pipeline/quality specs."}

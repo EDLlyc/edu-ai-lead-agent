@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/08-21-wechat-official-account-local-draft-mvp/research/implementation-check-contracts.md", "reason": "Verify the complete, non-truncated pipeline, worker, provider, persistence, preview and no-publishing contract matrix."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify migration head/parity, typed FKs, uniqueness, leases, transaction boundaries and real PostgreSQL coverage."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify retry classification, safe terminal errors, audit rejection and no blind retry after unknown draft outcome."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify prompts, raw model responses, secrets, brand text and private storage paths never leak."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify generated contracts, strict mappings, safe preview and absence of dangerouslySetInnerHTML."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify accessibility, polling termination, failure states, generated drift and production build."}
+{"file": ".trellis/tasks/08-21-wechat-official-account-local-draft-mvp/research/current-local-draft-seams.md", "reason": "Compare implementation with the repository evidence and collision/risk boundaries recorded during planning."}

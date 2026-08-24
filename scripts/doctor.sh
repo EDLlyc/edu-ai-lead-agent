@@ -96,7 +96,7 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
-docker compose --profile governance --profile content --profile wecom config --format json | \
+docker compose --profile governance --profile content --profile wecom --profile ip-assets config --format json | \
   "${python_command[@]}" -c '
 import json
 import re
@@ -112,6 +112,7 @@ names = (
     "governance-worker",
     "content-scheduler",
     "content-worker",
+    "ip-asset-worker",
     "wecom-dispatcher",
 )
 images = [services[name].get("image") for name in names]
@@ -123,7 +124,33 @@ if image != "edu-ai-lead-agent-backend:local" and not re.fullmatch(
 ):
     raise SystemExit("non-local APP_IMAGE must be a digest-only reference")
 ' >/dev/null || fail "Application services do not share the local-or-digest APP_IMAGE contract"
-pass "All nine application and migration services share one APP_IMAGE contract"
+pass "All ten application and migration services share one APP_IMAGE contract"
+
+docker compose --profile ip-assets config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
+worker = services["ip-asset-worker"]
+environment = worker.get("environment", {})
+if environment.get("IP_ASSET_HUB_ENABLED") != "true":
+    raise SystemExit("IP asset worker profile must explicitly enable the hub")
+if environment.get("IP_ASSET_WORKER_ENABLED") != "true":
+    raise SystemExit("IP asset worker profile must explicitly enable its worker")
+if worker.get("ports"):
+    raise SystemExit("IP asset worker must not publish a network port")
+for key in (
+    "IP_ASSET_GENERATION_ENABLED",
+    "IP_ASSET_LEASE_SECONDS",
+    "IP_ASSET_HEARTBEAT_SECONDS",
+    "IP_ASSET_MAX_ATTEMPTS",
+    "VISUAL_EMBEDDING_PROVIDER_MODE",
+):
+    if environment.get(key) in (None, ""):
+        raise SystemExit(f"IP asset worker requires bounded setting {key}")
+' >/dev/null || fail "IP asset worker profile is invalid"
+pass "IP asset worker is bounded and does not publish a network port"
 
 [[ -s backend/requirements/runtime.lock && -s backend/requirements/dev.lock ]] \
   || fail "Python hash lockfiles are missing; run 'make python-lock'"
@@ -222,6 +249,55 @@ import json
 import sys
 
 services = json.load(sys.stdin)["services"]
+names = ("acquisition-api", "content-worker")
+keys = (
+    "VISUAL_SEMANTIC_ENABLED",
+    "VISUAL_EMBEDDING_PROVIDER_MODE",
+    "VISUAL_EMBEDDING_MODEL",
+    "VISUAL_EMBEDDING_DIMENSIONS",
+    "VISUAL_EMBEDDING_INPUT_POLICY_VERSION",
+    "VISUAL_EMBEDDING_TIMEOUT_SECONDS",
+    "VISUAL_EMBEDDING_CONCURRENCY",
+    "VISUAL_INDEX_LEASE_SECONDS",
+)
+for key in keys:
+    values = [services[name].get("environment", {}).get(key) for name in names]
+    if any(value in (None, "") for value in values) or len(set(values)) != 1:
+        raise SystemExit(f"visual retrieval setting {key} must be present and identical")
+
+def compose_bool(value):
+    normalized = value.strip().casefold()
+    if normalized in {"1", "on", "t", "true", "y", "yes"}:
+        return True
+    if normalized in {"0", "off", "f", "false", "n", "no"}:
+        return False
+    raise SystemExit("visual retrieval flag must be a valid boolean")
+
+environment = services["acquisition-api"]["environment"]
+enabled = compose_bool(environment["VISUAL_SEMANTIC_ENABLED"])
+mode = environment["VISUAL_EMBEDDING_PROVIDER_MODE"]
+if enabled and mode not in {"fake", "alibaba"}:
+    raise SystemExit("enabled visual retrieval must use fake or alibaba mode")
+if environment["VISUAL_EMBEDDING_MODEL"] != "qwen3-vl-embedding":
+    raise SystemExit("visual retrieval model identity drifted")
+if environment["VISUAL_EMBEDDING_DIMENSIONS"] != "2048":
+    raise SystemExit("visual retrieval dimensions drifted")
+if environment["VISUAL_EMBEDDING_INPUT_POLICY_VERSION"] != "brand-visual-embedding-input-v2":
+    raise SystemExit("visual retrieval input policy drifted")
+if enabled and mode == "alibaba":
+    for key in ("VISUAL_EMBEDDING_ENDPOINT", "VISUAL_EMBEDDING_API_KEY"):
+        values = [services[name].get("environment", {}).get(key) for name in names]
+        if any(value in (None, "") for value in values) or len(set(values)) != 1:
+            raise SystemExit(f"enabled Alibaba visual retrieval requires shared secret {key}")
+' >/dev/null || fail "Visual-retrieval settings are invalid or inconsistent"
+pass "Visual retrieval is bounded, shared, and provider-gated"
+
+docker compose --profile content config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+services = json.load(sys.stdin)["services"]
 names = ("acquisition-api", "content-scheduler", "content-worker")
 keys = (
     "CONTENT_ENABLED",
@@ -310,7 +386,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260818_0022" ]] \
+[[ "$migration_revision" == "20260824_0034" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -358,11 +434,57 @@ pass "Content-slot queue counters are readable ($content_slot_queue_counts; wind
 
 brand_knowledge_table_count="$(
   docker compose exec -T postgres sh -c \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''brand_documents'\'','\''brand_document_versions'\'','\''brand_ingestion_jobs'\'','\''brand_ingestion_attempts'\'','\''brand_chunks'\'','\''brand_chunk_embeddings'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''brand_documents'\'','\''brand_document_versions'\'','\''brand_ingestion_jobs'\'','\''brand_ingestion_attempts'\'','\''brand_sections'\'','\''brand_chunks'\'','\''brand_chunk_embeddings'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
 )"
-[[ "$brand_knowledge_table_count" == "6" ]] \
+[[ "$brand_knowledge_table_count" == "7" ]] \
   || fail "Brand-knowledge schema is incomplete; run 'make migrate'"
 pass "Brand-knowledge tables are installed"
+
+visual_retrieval_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''brand_visual_index_jobs'\'','\''brand_visual_asset_embeddings'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$visual_retrieval_table_count" == "2" ]] \
+  || fail "Visual-retrieval schema is incomplete; run 'make migrate'"
+
+visual_input_hash_column_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name IN ('\''brand_visual_index_jobs'\'', '\''brand_visual_asset_embeddings'\'') AND column_name = '\''embedding_input_sha256'\'' AND is_nullable = '\''NO'\'';"'
+)"
+[[ "$visual_input_hash_column_count" == "2" ]] \
+  || fail "Visual-retrieval normalized-input identity is incomplete; run 'make migrate'"
+pass "Visual-retrieval tables and normalized-input identities are installed"
+
+visual_embedding_vector_type="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT format_type(attribute.atttypid, attribute.atttypmod) FROM pg_attribute AS attribute JOIN pg_class AS relation ON relation.oid = attribute.attrelid WHERE relation.relname = '\''brand_visual_asset_embeddings'\'' AND attribute.attname = '\''vector'\'' AND NOT attribute.attisdropped;"'
+)"
+[[ "$visual_embedding_vector_type" == "vector(2048)" ]] \
+  || fail "Visual embedding column is not vector(2048); run 'make migrate'"
+pass "Visual embedding column is $visual_embedding_vector_type"
+
+official_account_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''official_account_article_runs'\'','\''official_account_article_versions'\'','\''official_account_article_attempts'\'','\''official_account_render_versions'\'','\''official_account_local_media'\'','\''official_account_local_drafts'\'','\''official_account_local_draft_body_media'\'','\''official_account_manual_reviews'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$official_account_table_count" == "8" ]] \
+  || fail "Official-account local schema is incomplete; run 'make migrate'"
+pass "Official-account local run, artifact, media, and draft tables are installed"
+
+ip_asset_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''ip_assets'\'','\''ip_asset_tags'\'','\''ip_asset_derivatives'\'','\''ip_asset_embedding_jobs'\'','\''ip_asset_embeddings'\'','\''ip_asset_generation_jobs'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$ip_asset_table_count" == "6" ]] \
+  || fail "IP asset hub schema is incomplete; run 'make migrate'"
+
+ip_asset_vector_type="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT format_type(attribute.atttypid, attribute.atttypmod) FROM pg_attribute AS attribute JOIN pg_class AS relation ON relation.oid = attribute.attrelid WHERE relation.relname = '\''ip_asset_embeddings'\'' AND attribute.attname = '\''vector'\'' AND NOT attribute.attisdropped;"'
+)"
+[[ "$ip_asset_vector_type" == "vector(2048)" ]] \
+  || fail "IP asset embedding column is not vector(2048); run 'make migrate'"
+pass "IP asset hub tables and $ip_asset_vector_type embedding column are installed"
 
 brand_embedding_vector_type="$(
   docker compose exec -T postgres sh -c \

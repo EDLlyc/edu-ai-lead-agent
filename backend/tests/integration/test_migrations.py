@@ -25,6 +25,9 @@ async def test_clean_database_is_at_alembic_head(
                     "acquisition_runs",
                     "acquisition_jobs",
                     "brand_document_versions",
+                    "brand_chunks",
+                    "brand_visual_index_jobs",
+                    "brand_visual_asset_embeddings",
                     "image_artifacts",
                     "image_artifact_references",
                     "image_visual_plan_reservations",
@@ -39,6 +42,11 @@ async def test_clean_database_is_at_alembic_head(
                     "content_slot_scores",
                     "content_slot_selections",
                     "topic_rerank_records",
+                    "ip_assets",
+                    "ip_asset_embedding_jobs",
+                    "ip_asset_embeddings",
+                    "ip_asset_generation_jobs",
+                    "official_account_generated_visuals",
                 )
             }
         )
@@ -117,8 +125,118 @@ async def test_clean_database_is_at_alembic_head(
                 )
             }
         )
+        official_account_foreign_keys = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_foreign_keys(
+                    "official_account_local_draft_body_media"
+                )
+            }
+        )
+        official_account_media_uniques = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_unique_constraints("official_account_local_media")
+            }
+        )
+        official_account_media_indexes = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_indexes("official_account_local_media")
+            }
+        )
+        official_account_body_columns = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_columns("official_account_local_draft_body_media")
+            }
+        )
+        official_account_body_checks = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_check_constraints(
+                    "official_account_local_draft_body_media"
+                )
+            }
+        )
+        official_account_review_foreign_keys = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_foreign_keys("official_account_manual_reviews")
+            }
+        )
+        official_account_review_uniques = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_unique_constraints("official_account_manual_reviews")
+            }
+        )
+        official_account_review_checks = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_check_constraints("official_account_manual_reviews")
+            }
+        )
+        official_account_generated_visual_columns = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_columns("official_account_generated_visuals")
+            }
+        )
+        official_account_generated_visual_foreign_keys = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_foreign_keys("official_account_generated_visuals")
+            }
+        )
+        official_account_generated_visual_checks = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_check_constraints(
+                    "official_account_generated_visuals"
+                )
+            }
+        )
+        official_account_generated_visual_uniques = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_unique_constraints(
+                    "official_account_generated_visuals"
+                )
+            }
+        )
+        official_account_generated_visual_indexes = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_indexes("official_account_generated_visuals")
+            }
+        )
+        official_account_media_columns = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_columns("official_account_local_media")
+            }
+        )
+        official_account_media_foreign_keys = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_foreign_keys("official_account_local_media")
+            }
+        )
+        official_account_run_checks = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_check_constraints("official_account_article_runs")
+            }
+        )
+        official_account_attempt_checks = await connection.run_sync(
+            lambda sync: {
+                item["name"]: item
+                for item in inspect(sync).get_check_constraints("official_account_article_attempts")
+            }
+        )
 
-    assert revision == "20260818_0022"
+    assert revision == "20260824_0034"
     assert {
         "sources",
         "source_versions",
@@ -139,8 +257,11 @@ async def test_clean_database_is_at_alembic_head(
         "brand_document_versions",
         "brand_ingestion_jobs",
         "brand_ingestion_attempts",
+        "brand_sections",
         "brand_chunks",
         "brand_chunk_embeddings",
+        "brand_visual_index_jobs",
+        "brand_visual_asset_embeddings",
         "copy_generation_runs",
         "copy_generation_jobs",
         "copy_generation_attempts",
@@ -158,6 +279,15 @@ async def test_clean_database_is_at_alembic_head(
         "image_similarity_attempts",
         "material_packages",
         "material_reviews",
+        "official_account_article_runs",
+        "official_account_article_versions",
+        "official_account_article_attempts",
+        "official_account_render_versions",
+        "official_account_local_media",
+        "official_account_local_drafts",
+        "official_account_local_draft_body_media",
+        "official_account_manual_reviews",
+        "official_account_generated_visuals",
         "content_slot_runs",
         "content_slot_jobs",
         "content_slot_scores",
@@ -166,7 +296,18 @@ async def test_clean_database_is_at_alembic_head(
         "wecom_delivery_windows",
         "wecom_delivery_jobs",
         "wecom_delivery_attempts",
+        "ip_assets",
+        "ip_asset_tags",
+        "ip_asset_derivatives",
+        "ip_asset_embedding_jobs",
+        "ip_asset_embeddings",
+        "ip_asset_generation_jobs",
     }.issubset(tables)
+    assert columns["ip_assets"]["object_key"]["nullable"] is False
+    assert columns["ip_assets"]["blob_sha256"]["nullable"] is False
+    assert columns["ip_asset_embedding_jobs"]["lease_token"]["nullable"] is True
+    assert columns["ip_asset_embeddings"]["vector"]["nullable"] is False
+    assert columns["ip_asset_generation_jobs"]["idempotency_key"]["nullable"] is False
     for table in ("topic_selection_runs", "content_slot_runs"):
         assert columns[table]["rerank_config_snapshot"]["nullable"] is False
         assert columns[table]["rerank_config_fingerprint"]["nullable"] is False
@@ -174,6 +315,12 @@ async def test_clean_database_is_at_alembic_head(
         assert columns[table]["deterministic_rank"]["nullable"] is False
     assert columns["topic_rerank_records"]["candidate_count"]["nullable"] is False
     assert columns["topic_rerank_records"]["reasons"]["nullable"] is False
+    assert columns["brand_chunks"]["section_id"]["nullable"] is True
+    assert columns["brand_chunks"]["embedding_text"]["nullable"] is False
+    assert columns["brand_chunks"]["embedding_input_hash"]["nullable"] is False
+    assert columns["brand_chunks"]["verification_required"]["nullable"] is False
+    for table in ("brand_visual_index_jobs", "brand_visual_asset_embeddings"):
+        assert columns[table]["embedding_input_sha256"]["nullable"] is False
     assert columns["acquisition_runs"]["content_slot"]["nullable"] is True
     assert columns["copy_generation_runs"]["daily_topic_selection_id"]["nullable"] is True
     assert columns["copy_generation_runs"]["topic_selection_run_id"]["nullable"] is True
@@ -333,4 +480,138 @@ async def test_clean_database_is_at_alembic_head(
     )
     assert "content_slot IS NOT NULL" in str(
         acquisition_indexes["uq_acquisition_runs_scheduled_slot_business_key"]["dialect_options"]
+    )
+    typed_media_fk = official_account_foreign_keys["fk_official_draft_body_media_typed"]
+    assert typed_media_fk["constrained_columns"] == [
+        "body_media_id",
+        "run_id",
+        "media_role",
+        "ordinal",
+    ]
+    assert typed_media_fk["referred_columns"] == ["id", "run_id", "role", "ordinal"]
+    assert official_account_media_uniques["uq_official_media_typed_identity"]["column_names"] == [
+        "id",
+        "run_id",
+        "role",
+        "ordinal",
+    ]
+    assert official_account_body_columns["media_role"]["nullable"] is False
+    assert "body" in str(official_account_body_columns["media_role"]["default"])
+    assert any(
+        "media_role" in str(item["sqltext"]) and "body" in str(item["sqltext"])
+        for item in official_account_body_checks.values()
+    )
+    body_checksum_index = official_account_media_indexes[
+        "uq_official_account_local_media_body_checksum"
+    ]
+    assert body_checksum_index["unique"] is True
+    assert body_checksum_index["column_names"] == ["run_id", "sha256"]
+    body_checksum_predicate = str(body_checksum_index["dialect_options"]["postgresql_where"])
+    assert "role" in body_checksum_predicate
+    assert "body" in body_checksum_predicate
+    assert (
+        official_account_review_foreign_keys["fk_official_account_manual_reviews_run_id"][
+            "referred_table"
+        ]
+        == "official_account_article_runs"
+    )
+    assert (
+        official_account_review_foreign_keys["fk_official_account_manual_reviews_run_id"][
+            "options"
+        ]["ondelete"]
+        == "CASCADE"
+    )
+    assert official_account_review_uniques["uq_official_account_manual_reviews_run"][
+        "column_names"
+    ] == ["run_id"]
+    assert official_account_review_uniques["uq_official_account_manual_reviews_request"][
+        "column_names"
+    ] == ["request_fingerprint"]
+    for expected in (
+        "ck_official_account_manual_reviews_decision",
+        "ck_official_account_manual_reviews_reviewer",
+        "ck_official_account_manual_reviews_note",
+        "ck_official_account_manual_reviews_fingerprint",
+    ):
+        assert _has_named(set(official_account_review_checks), expected)
+    for column_name in (
+        "run_id",
+        "article_version_id",
+        "render_version_id",
+        "ordinal",
+        "section_index",
+        "reference_asset_ref",
+        "request_fingerprint",
+        "status",
+        "provider",
+        "model",
+    ):
+        assert official_account_generated_visual_columns[column_name]["nullable"] is False
+    for column_name in (
+        "block_index",
+        "block_kind",
+        "block_fingerprint",
+        "reference_input_version",
+        "reference_input_checksum",
+        "output_profile_version",
+    ):
+        assert official_account_generated_visual_columns[column_name]["nullable"] is True
+    assert official_account_media_columns["generated_visual_id"]["nullable"] is True
+    assert (
+        official_account_media_foreign_keys["fk_official_account_local_media_generated_visual_id"][
+            "referred_table"
+        ]
+        == "official_account_generated_visuals"
+    )
+    for expected in (
+        "fk_official_account_generated_visuals_run_id",
+        "fk_official_account_generated_visuals_article_version_id",
+        "fk_official_account_generated_visuals_render_version_id",
+    ):
+        assert expected in official_account_generated_visual_foreign_keys
+    # PostgreSQL's naming convention prepends the table name and can hash-truncate a long
+    # explicit check name; assert the executable SQL instead of its introspected display name.
+    generated_visual_check_sql = "\n".join(
+        str(item["sqltext"]) for item in official_account_generated_visual_checks.values()
+    )
+    for expected in (
+        "ordinal",
+        "section_index",
+        "reference_asset_ref",
+        "reference_source_checksum",
+        "selection_method",
+        "similarity_band",
+        "provider",
+        "status",
+        "media_type",
+        "error_code IS NOT NULL",
+        "completed_at IS NULL",
+        "block_index",
+        "block_kind",
+        "block_fingerprint",
+        "prompt_version",
+        "official-account-generated-visual-prompt-v1",
+        "official-account-generated-visual-prompt-v2-block-scene",
+        "official-account-generated-visual-prompt-v3-visible-ip-block-scene",
+        "reference_input_version",
+        "reference_input_checksum",
+        "output_profile_version",
+        "width = 1536",
+        "height = 1024",
+    ):
+        assert expected in generated_visual_check_sql
+    assert official_account_generated_visual_uniques[
+        "uq_official_generated_visuals_render_ordinal"
+    ]["column_names"] == ["render_version_id", "ordinal"]
+    assert official_account_generated_visual_uniques["uq_official_generated_visuals_request"][
+        "column_names"
+    ] == ["request_fingerprint"]
+    assert official_account_generated_visual_indexes["ix_official_generated_visuals_run"][
+        "column_names"
+    ] == ["run_id", "ordinal"]
+    assert "generating_body_visuals" in "\n".join(
+        str(item["sqltext"]) for item in official_account_run_checks.values()
+    )
+    assert "visual_generation" in "\n".join(
+        str(item["sqltext"]) for item in official_account_attempt_checks.values()
     )

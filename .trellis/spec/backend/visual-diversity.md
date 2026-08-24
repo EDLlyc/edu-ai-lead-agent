@@ -27,6 +27,11 @@ reference set. It does not combine sibling news items or authorize a new publish
   `visual-brief-v2-controlled-diversity`, `brand-visual-selector-v2-novelty`,
   `image-prompt-v3-controlled-diversity`, `image-pipeline-v3-controlled-diversity`,
   `image-perceptual-hash-v1`, and `image-similarity-policy-v1`.
+- When approved multimodal retrieval is ready, selector
+  `brand-visual-selector-v2-multimodal` preserves the same novelty rules while placing semantic
+  similarity before rule score inside each already-eligible role pool. An incomplete/mismatched
+  index or provider failure records `semantic_unavailable` and replays the configured diversity
+  selector without blocking image generation.
 - Every controlled v2/v3 brief and prompt requires one finite three-level text group in this
   exact order: brand signature `赛先生科学`, one allowlisted category title, and one allowlisted
   short category subtitle. The group sits in a restrained deep-science-blue rounded card with a

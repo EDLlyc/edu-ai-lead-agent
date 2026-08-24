@@ -33,6 +33,7 @@ from app.application.services.material_package import (
     _prepare_image_input,
     _provider_output_recovery_error_code,
     _provider_request_fingerprint,
+    _reserved_reference_snapshot,
     _validate_controlled_claim_identity,
     enqueue_material_package,
     retry_material_package_image,
@@ -55,7 +56,13 @@ from app.domain.visual_brief import (
     build_visual_brief,
 )
 from app.domain.visual_diversity import build_visual_plan_bundle
+from app.domain.visual_retrieval import (
+    VisualEmbeddingIdentity,
+    VisualSemanticRanking,
+    VisualSemanticScore,
+)
 from app.infrastructure.ai.image_generation import OpenAICompatibleImageGenerator, _solid_png
+from app.infrastructure.brand.visual_catalog import load_visual_catalog
 from app.infrastructure.db.models import ImageArtifactModel, MaterialPackageModel
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
 from app.schemas.material_package import (
@@ -2390,4 +2397,84 @@ def test_content_driven_image_input_persists_ordered_real_reference_metadata(
         "robotics-action.png",
     ]
     assert prepared.visual_brief_snapshot["category"] == "robotics"
+    assert accepted.visual_brief is not None
+    assert prepared.visual_brief_snapshot == accepted.visual_brief.as_metadata()
+    assert "semantic_retrieval" not in prepared.visual_brief_snapshot
+    assert all(
+        "semantic_similarity" not in _reserved_reference_snapshot(reference)
+        and "rule_score" not in _reserved_reference_snapshot(reference)
+        and "ranking_source" not in _reserved_reference_snapshot(reference)
+        for reference in prepared.reserved_references
+    )
     assert "家长能看懂的正文" not in prepared.prompt
+
+    loaded = load_visual_catalog(manifest)
+    scores = tuple(
+        VisualSemanticScore(asset_id=asset.asset_id, similarity=0.75)
+        for asset in loaded.catalog.assets
+        if asset.approved
+    )
+    healthy_ranking = VisualSemanticRanking(
+        catalog_version=loaded.catalog.catalog_version,
+        identity=VisualEmbeddingIdentity(),
+        query_fingerprint="a" * 64,
+        scores=scores,
+        indexed_asset_count=len(scores),
+        catalog_asset_count=len(scores),
+        complete=True,
+    )
+    semantic = _prepare_image_input(
+        accepted,
+        reference_asset=None,
+        image_asset_manifest=str(manifest),
+        image_provider="comfly",
+        image_prompt_version="image-prompt-test-v1",
+        image_pipeline_version="image-pipeline-test-v1",
+        image_selector_version="visual-asset-selector-test-v1",
+        image_selector_enabled=True,
+        image_max_reference_images=3,
+        image_reference_budget_bytes=1_000_000,
+        semantic_ranking=healthy_ranking,
+        semantic_snapshot={"status": "ready"},
+    )
+    assert semantic.selector_version == "brand-visual-selector-v2-multimodal"
+    assert semantic.visual_brief_snapshot["semantic_retrieval"] == {"status": "ready"}
+    assert all(
+        reference.ranking_source == "semantic_primary" for reference in semantic.reserved_references
+    )
+    assert all(reference.rule_score is not None for reference in semantic.reserved_references)
+    assert all(
+        "rule_score" in _reserved_reference_snapshot(reference)
+        for reference in semantic.reserved_references
+    )
+
+    changed_catalog = _prepare_image_input(
+        accepted,
+        reference_asset=None,
+        image_asset_manifest=str(manifest),
+        image_provider="comfly",
+        image_prompt_version="image-prompt-test-v1",
+        image_pipeline_version="image-pipeline-test-v1",
+        image_selector_version="visual-asset-selector-test-v1",
+        image_selector_enabled=True,
+        image_max_reference_images=3,
+        image_reference_budget_bytes=1_000_000,
+        semantic_ranking=VisualSemanticRanking(
+            catalog_version="different-catalog-version",
+            identity=VisualEmbeddingIdentity(),
+            query_fingerprint="b" * 64,
+            scores=scores,
+            indexed_asset_count=len(scores),
+            catalog_asset_count=len(scores),
+            complete=True,
+        ),
+        semantic_snapshot={"status": "ready"},
+    )
+    assert changed_catalog.selector_version == "visual-asset-selector-test-v1"
+    assert changed_catalog.visual_brief_snapshot["semantic_retrieval"] == {
+        "status": "semantic_unavailable",
+        "reason": "catalog_changed",
+    }
+    assert [reference.asset_id for reference in changed_catalog.reserved_references] == [
+        reference.asset_id for reference in prepared.reserved_references
+    ]

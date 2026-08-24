@@ -1,0 +1,106 @@
+.standalonePage {
+  min-width: 320px;
+  min-height: 100vh;
+  color: #17252a;
+  color-scheme: light;
+  background: #f5f6f2;
+  font-family:
+    Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.standalonePage ::selection {
+  color: #fff;
+  background: #0f766e;
+}
+
+.skipLink {
+  position: fixed;
+  z-index: 100;
+  inset-block-start: 0.75rem;
+  inset-inline-start: 0.75rem;
+  padding: 0.7rem 1rem;
+  color: #fff;
+  background: #095e58;
+  border-radius: 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-180%);
+  transition: transform 160ms ease;
+}
+
+.skipLink:focus {
+  outline: 3px solid #17252a;
+  outline-offset: 3px;
+  transform: translateY(0);
+}
+
+.standaloneMain {
+  min-height: 100vh;
+}
+
+.routeState {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: clamp(1.25rem, 5vw, 4rem);
+  background:
+    radial-gradient(circle at 12% 8%, rgb(15 118 110 / 10%), transparent 22rem),
+    #f5f6f2;
+}
+
+.routeStateCard {
+  width: min(100%, 34rem);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: #fff;
+  border: 1px solid #d9e2de;
+  border-radius: 1.25rem;
+  box-shadow: 0 1rem 3rem rgb(29 53 48 / 8%);
+}
+
+.routeStateKicker {
+  margin: 0 0 0.7rem;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.routeStateCard h1 {
+  margin: 0;
+  color: #17252a;
+  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.routeStateCard p:not(.routeStateKicker) {
+  margin: 1rem 0 0;
+  color: #637176;
+  line-height: 1.7;
+}
+
+.routeStateCard a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  margin-block-start: 1.4rem;
+  padding-inline: 1rem;
+  color: #fff;
+  background: #0f766e;
+  border-radius: 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.routeStateCard a:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skipLink {
+    transition: none;
+  }
+}

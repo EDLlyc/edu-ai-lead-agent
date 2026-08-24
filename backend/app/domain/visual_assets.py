@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import struct
 import zlib
@@ -12,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Self
 
 from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
+from app.domain.visual_retrieval import VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION
 
 VISUAL_ASSET_SCHEMA_VERSION = "brand-visual-assets-v2"
 VISUAL_ASSET_CATALOG_VERSION = "brand-visual-catalog-v1"
@@ -358,7 +360,11 @@ class VisualAssetCatalog:
     def __post_init__(self) -> None:
         if self.schema_version not in SUPPORTED_VISUAL_ASSET_SCHEMA_VERSIONS:
             raise VisualAssetError("visual asset catalog schema version is invalid")
-        if not self.catalog_version or len(self.catalog_version) > 80:
+        if (
+            not self.catalog_version
+            or len(self.catalog_version) > 80
+            or _SAFE_VARIANT_GROUP.fullmatch(self.catalog_version) is None
+        ):
             raise VisualAssetError("visual asset catalog version is invalid")
         ids = [asset.asset_id for asset in self.assets]
         paths = [asset.relative_path for asset in self.assets]
@@ -719,6 +725,9 @@ class SelectedVisualAsset:
     reason: str
     fallback: bool = False
     matched_tags: tuple[str, ...] = ()
+    semantic_similarity: float | None = None
+    rule_score: int = 0
+    ranking_source: str = "deterministic_rules"
 
     @property
     def asset_id(self) -> str:
@@ -762,6 +771,7 @@ class _RankedCandidate:
     score: int
     matched_tags: tuple[str, ...]
     novelty_repeated: bool = False
+    semantic_similarity: float | None = None
 
 
 _ACTION_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -790,6 +800,7 @@ class AssetSelector:
         selector_version: str = VISUAL_ASSET_SELECTOR_VERSION,
         max_references: int = DEFAULT_MAX_REFERENCE_ASSETS,
         max_reference_bytes: int = DEFAULT_MAX_REFERENCE_BYTES,
+        semantic_scores: Mapping[str, float] | None = None,
     ) -> None:
         if isinstance(catalog, VisualAssetCatalog):
             self._catalog = catalog
@@ -808,6 +819,21 @@ class AssetSelector:
         self._selector_version = selector_version
         self._max_references = max_references
         self._max_reference_bytes = max_reference_bytes
+        self._semantic_scores: dict[str, float] | None
+        if selector_version == VISUAL_SEMANTIC_SELECTOR_VERSION:
+            if semantic_scores is None:
+                raise VisualAssetSelectionError("complete semantic scores are required")
+            approved_ids = {asset.asset_id for asset in self._catalog.assets if asset.approved}
+            if set(semantic_scores) != approved_ids:
+                raise VisualAssetSelectionError("semantic scores do not cover the approved catalog")
+            if any(
+                not math.isfinite(score) or not -1.0 <= score <= 1.0
+                for score in semantic_scores.values()
+            ):
+                raise VisualAssetSelectionError("semantic scores are invalid")
+            self._semantic_scores = dict(semantic_scores)
+        else:
+            self._semantic_scores = None
 
     def select(
         self,
@@ -1034,7 +1060,10 @@ class AssetSelector:
                 if request.category and request.category in asset.scene_tags:
                     score += 120
             novelty_repeated = False
-            if self._selector_version == VISUAL_SELECTOR_V2_VERSION:
+            if self._selector_version in {
+                VISUAL_SELECTOR_V2_VERSION,
+                VISUAL_SEMANTIC_SELECTOR_VERSION,
+            }:
                 if role == VisualAssetRole.ACTION_REFERENCE:
                     novelty_repeated = asset.asset_id in request.recent_action_asset_ids
                 elif role == VisualAssetRole.STYLE_REFERENCE:
@@ -1049,12 +1078,18 @@ class AssetSelector:
                     score=score,
                     matched_tags=matched_tags,
                     novelty_repeated=novelty_repeated,
+                    semantic_similarity=(
+                        self._semantic_scores.get(asset.asset_id)
+                        if self._semantic_scores is not None
+                        else None
+                    ),
                 )
             )
         return tuple(
             sorted(
                 candidates,
                 key=lambda item: (
+                    -(item.semantic_similarity if item.semantic_similarity is not None else -1.0),
                     -item.score,
                     -item.asset.priority,
                     self._variant_sort_key(item.asset, request.selection_seed),
@@ -1104,6 +1139,8 @@ class AssetSelector:
             reason_parts.append("controlled fallback")
         if candidate.novelty_repeated:
             reason_parts.append("novelty exhausted; controlled repeat")
+        if candidate.semantic_similarity is not None:
+            reason_parts.append("semantic-primary ranking")
         return SelectedVisualAsset(
             asset=candidate.asset,
             role=role,
@@ -1111,6 +1148,13 @@ class AssetSelector:
             reason="; ".join(reason_parts),
             fallback=fallback,
             matched_tags=candidate.matched_tags,
+            semantic_similarity=candidate.semantic_similarity,
+            rule_score=candidate.score,
+            ranking_source=(
+                "semantic_primary"
+                if candidate.semantic_similarity is not None
+                else "deterministic_rules"
+            ),
         )
 
     @staticmethod

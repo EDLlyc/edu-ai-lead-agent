@@ -114,6 +114,8 @@ async def generate_material_package(
         ),
         image_diversity_history_days=getattr(settings, "image_diversity_history_days", 7),
         image_diversity_history_limit=getattr(settings, "image_diversity_history_limit", 400),
+        visual_semantic_enabled=getattr(settings, "visual_semantic_enabled", False),
+        visual_retrieval_service=getattr(request.app.state, "visual_retrieval_service", None),
     )
     response.headers["Location"] = f"/api/v1/material-packages/{result.package.id}"
     return _detail_response(result.package, result.image)

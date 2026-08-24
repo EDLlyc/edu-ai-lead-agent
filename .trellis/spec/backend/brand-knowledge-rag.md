@@ -13,7 +13,9 @@ user or public search role.
 
 ### 2. Signatures
 
-- Feature migration: `20260730_0007`; current repository head: `20260805_0018`.
+- Feature migrations: `20260730_0007` and structured-section revision `20260820_0023`; current
+  repository head: `20260823_0028` (local official-account editorial review after multi-image and
+  the original local drafting foundation, after normalized visual inputs; no text-RAG vector changes).
 - Upload: `POST /api/v1/brand-documents` as multipart PDF, DOCX, UTF-8 TXT, or Markdown -> HTTP 202.
 - Query: `GET /api/v1/brand-documents`, `GET /api/v1/brand-documents/{document_id}`, and
   `GET /api/v1/brand-ingestion-jobs/{job_id}`.
@@ -42,21 +44,24 @@ user or public search role.
   semantic change; validity or tag content is.
 - Upload is rejected with HTTP 409 when no embedding provider is available. Never create a
   `provider=disabled` job that no worker can claim.
-- The worker claims only versions matching its provider/model. The persisted vector result must
-  match the immutable provider/model and contain exactly 2048 finite, non-zero values.
+- The worker claims and recovers stale leases only for versions matching its parser, chunk,
+  embedding-input, provider, and model identity. The persisted vector result must match the
+  immutable provider/model and contain exactly 2048 finite, non-zero values.
 - Parsing is bounded by file signature, MIME/extension agreement, bytes, PDF pages, text
   characters, chunk count, and DOCX archive safety rules. DOCX macros, embedded objects, external
   relationships, unsafe expansion, and encrypted PDFs are rejected.
-- Chunk IDs, hashes, ordinals, and offsets are deterministic. For every chunk,
-  `parsed.text[char_start:char_end] == chunk.text`.
+- PDF pages and DOCX question-answer groups are immutable `BrandSection` parents. Section/chunk
+  IDs, hashes, ordinals, and offsets are deterministic. Every parent and child is an exact slice of
+  one canonical `parsed.text`; overlap never crosses a parent boundary.
 - PostgreSQL full-text `ts_rank` and pgvector cosine candidates are filtered by active version,
   audience, validity, kind, provider, and model before weighted reciprocal-rank fusion.
 - The retrieval query represents a selected topic or draft-generation intent. Its primary consumer
   is the copy-generation node; no route or UI may present it as a parent-facing search product.
 - Brand tables, repositories, ports, response types, and embedding purpose remain separate from
   factual evidence. No brand chunk can satisfy an evidence binding foreign key or response type.
-- Parent chunks must be flushed before embedding rows when no ORM relationship owns dependency
-  ordering. Do not rely on SQLAlchemy to infer unit-of-work ordering from foreign keys alone.
+- Sections must be flushed before chunks, and chunks before embedding rows, when no ORM
+  relationship owns dependency ordering. Do not rely on SQLAlchemy to infer unit-of-work ordering
+  from foreign keys alone.
 
 Environment keys are `BRAND_UPLOAD_MAX_BYTES`, `BRAND_PARSE_MAX_PAGES`,
 `BRAND_PARSE_MAX_CHARACTERS`, `BRAND_PARSE_MAX_CHUNKS`, `BRAND_CHUNK_CHARACTERS`,
@@ -66,8 +71,8 @@ Environment keys are `BRAND_UPLOAD_MAX_BYTES`, `BRAND_PARSE_MAX_PAGES`,
 `BRAND_OCR_MAX_RESPONSE_BYTES`, `BRAND_OCR_TIMEOUT_SECONDS`, and `BRAND_OCR_MAX_PAGES`.
 
 The default upload maximum is the hard-bounded 25 MiB so the initial supplied slide decks fit.
-Slide-deck PDFs with partial but representative text layers are accepted without OCR for the MVP;
-record extraction coverage and defer OCR/source-slide parsing. Private image assets stay outside
+Slide-deck PDFs with partial but representative text layers are accepted without OCR and preserve
+non-empty pages as parents; OCR is reserved for sparse extraction. Private image assets stay outside
 brand chunks/embeddings. `scripts/build_brand_asset_manifest.py` inventories valid PNG assets for
 the later image pipeline and skips `:com.tencent.wedrive.*` sidecars, symbolic links, malformed PNG
 signatures/chunks, and unsupported files. Each accepted asset is at most 25 MiB, 8192 pixels on
@@ -96,21 +101,119 @@ link.
   IDs, aggregate tags, visual status/version, and bounded safe asset references. The entire profile
   remains `evidence_eligible=false`.
 
-### 3.2 Structure-aware chunks and retrieval diversity
+### 3.2 Structured parents, contextual chunks, and retrieval diversity
 
-The active chunk contract is `brand-chunk-v2-structure-aware`. After text normalization, the parser
-uses the configured maximum chunk size and overlap while preferring, in order, paragraph breaks,
-Markdown block boundaries, sentence endings, and line breaks. It falls back to the hard character
-limit when no boundary is available. Chunk IDs, ordinals, hashes, and offsets remain deterministic,
-and every chunk must satisfy `parsed.text[char_start:char_end] == chunk.text`.
+The active identities are `brand-parser-v3-source-structure`, `brand-chunk-v3-parent-child`, and
+`brand-embedding-input-v2-section-context`. A non-empty PDF page becomes one `page` section and a
+blank page only contributes to `page_count`. DOCX blocks are traversed in XML order; recognized
+`Q1`/`问题一` markers start `interview_qa` sections, while headings and unmatched content use bounded
+`heading`/`generic` fallbacks. Tables remain at their original document position.
 
-The active retrieval contract is `brand-hybrid-rrf-v2-diverse`. PostgreSQL full-text and pgvector
-each produce bounded candidates, which are fused with the documented weighted RRF scores. A
-deterministic post-fusion selector then keeps rank order while preferring different documents,
-skipping adjacent chunks from the same version, and removing identical text. It first caps the
-number of chunks per document; it relaxes adjacency and duplicate-text constraints, then the
-document cap, only when the available corpus cannot fill `limit`. This improves context coverage
-without changing the evidence-ineligible brand-context boundary.
+Within each parent, multiple blank-line card/paragraph blocks are preferred as child boundaries;
+long blocks use paragraph, Markdown, sentence, line, and finally hard-size boundaries. Overlap is
+allowed only inside the same parent. Raw child `text` remains the API/citation value. FTS and the
+existing 2048-dimensional embedding use the deterministic contextual `embedding_text` containing
+bounded document title, section title, optional question, chunk content type, and raw child. The
+embedding request and stored derivation bind `embedding_input_hash`, not raw `text_hash`.
+
+Generic OCR Markdown is budget-aware because layout output can contain hundreds of tiny blank-line
+blocks. v3 first computes the ordinary exact child spans. Only when those spans exceed the remaining
+global chunk budget does it greedily coalesce adjacent blocks within the same generic parent up to the
+configured child size. If fragmentation still exceeds the budget, it bounded-splits one continuous
+trimmed parent range with the existing boundary/overlap rules. Pure separator whitespace at output
+span edges may remain uncovered; all non-whitespace content remains an exact source slice. If the
+continuous parent-local representation still cannot fit, ingestion terminates with
+`brand_chunk_limit`. Never raise the configured 600 hard cap, truncate content, merge parents/pages,
+or apply this fallback to page/Q&A/heading sections or the frozen v2 chunker.
+
+Version labels are executable behavior, not descriptive strings. Settings and parser construction
+accept only two frozen derivation bundles: v2 parser + v2 global chunker + v1 raw embedding input,
+or v3 parser + v3 parent-child chunker + v2 contextual embedding input. The v2 path retains the
+old whole-document PDF/DOCX normalization, paragraphs-before-tables DOCX behavior, global overlap,
+legacy chunk-key formula, raw embedding text/hash, and null section binding. Mixed/unknown bundles
+fail before an upload can create an unclaimable job. Persistence permits sectionless chunks only for
+the exact v2 bundle and requires parent bindings for the exact v3 bundle.
+
+Chunk-level `BrandContentType` and `BrandClaimScope` are closed deterministic classifications.
+Policy, market, award, certification, proportion, and third-party signals require verification;
+`external_claim` takes priority over normative scope. All brand chunks remain evidence-ineligible.
+
+The active retrieval contract is `brand-hybrid-rrf-v3-parent-diverse`. PostgreSQL full-text and
+pgvector candidates retain all active/audience/validity/kind/provider/model filters and weighted
+RRF. Selection first takes at most one child per section, relaxing the document soft cap before it
+allows a second child from an already selected parent. Historical rows with no section use a
+null-safe per-row compatibility key. Duplicate-text constraints are relaxed only to fill the limit.
+The frozen `brand-hybrid-rrf-v2-diverse` rollback path keeps the prior document cap and adjacent
+global-ordinal avoidance. Every retrieval caller passes the validated retrieval version through to
+the repository; responses must never echo v2 while executing the v3 selector, or vice versa.
+
+### 3.3 Provider-free text-retrieval policy evaluation
+
+#### 1. Scope / Trigger
+
+Run this evaluation whenever weighted RRF, retrieval v2/v3 selection, parent diversity, content or
+claim classification, or the sanitized eval dataset changes. It measures deterministic retrieval
+policy behavior only; it does not measure live embedding recall, private-corpus quality, generated
+copy quality, or production effectiveness.
+
+#### 2. Signatures
+
+- Gate: `make brand-retrieval-eval`.
+- Direct check: `cd backend && python -m evals.brand_retrieval.runner --check`.
+- Canonical update: `cd backend && python -m evals.brand_retrieval.runner --write-canonical`.
+- Dataset: `backend/evals/brand_retrieval/cases.v1.jsonl`; checked reports are adjacent.
+
+#### 3. Contracts
+
+- The dataset has exactly 36 sanitized cases: four for each of the nine `BrandContentType` values.
+  Each case contains 7–12 independently graded observations with unique positive FTS/vector ranks.
+- Ranking receives only candidate ranks and production metadata. Evaluator-only `relevance_grade`
+  never enters weighted RRF or selection.
+- `fuse_brand_retrieval_score` and `select_diverse_brand_hits` live in the domain layer and are used
+  by both the PostgreSQL repository and evaluator. Do not copy their formulas into eval code.
+- Both frozen retrieval v2 and structured retrieval v3 return exactly five unique known items. The
+  report gates macro Recall@5, MRR@5, nDCG@5, a positive parent-diversity delta, complete verification
+  marking for selected external claims, and zero brand-as-fact violations.
+- Canonical reports exclude timestamps, latency, tokens, provider responses, private text, paths,
+  vectors, and credentials. The fixture-policy disclaimer is mandatory in JSON and Markdown.
+
+#### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Wrong case count/category balance, duplicate IDs/ranks, blank row, oversized or sensitive fixture | Loader fails closed before scoring |
+| Fewer/more than five results, duplicate result, or unknown candidate ID | Metric scorer raises `ValueError` |
+| v3 relevance metric regresses below v2 | Case and command fail |
+| Parent-diversity delta is zero/negative | Command fails |
+| Selected external claim lacks verification marking | Case and command fail |
+| Any selected brand chunk is marked factual evidence | Case and command fail |
+| JSON/Markdown differs from checked canonical artifacts | `--check` exits non-zero |
+
+#### 5. Good / Base / Bad Cases
+
+- Good: v3 retrieves relevant parent sections in the Top 5, improves diversity, retains fact
+  separation, and the canonical report matches byte-for-byte.
+- Base: an FTS-only or vector-only observation remains rankable through the same production RRF
+  helper and both policy versions return five deterministic results.
+- Bad: use relevance grades as fake-adapter answers, treat fixture numbers as live semantic recall,
+  or permit an external claim/evidence leak because aggregate relevance remains high.
+
+#### 6. Tests Required
+
+- Unit tests freeze RRF weights/K, exact aggregate metrics, balanced category coverage, report
+  stability, strict Top-5 shape, malformed datasets, verification/evidence gates, and canonical drift.
+- Oracle-isolation tests mutate grades without changing selected order and must make relevance
+  metrics fail when fixture truth no longer agrees with the production policy.
+- Existing brand retrieval tests cover the same public selector used by PostgreSQL.
+
+#### 7. Wrong vs Correct
+
+Wrong: implement a fake evaluator that reads `relevance_grade` and emits the expected order, or quote
+fixture Recall@5 as a production/private-corpus result.
+
+Correct: reproduce candidate observations through shared weighted RRF and the versioned selector,
+score the resulting IDs against a scorer-only grade, and label the output as fixture policy
+regression evidence.
 
 ### 4. Validation & Error Matrix
 
@@ -122,7 +225,11 @@ without changing the evidence-ineligible brand-context boundary.
 | Encrypted/malformed/excessive PDF or unsafe DOCX | Terminal typed ingestion/upload failure |
 | Exact body, metadata, provider, and version bundle replay | Existing version/job with `created=false` |
 | Same body but changed validity/tags or provider | New immutable version with `created=true` |
-| Worker provider/model differs from queued version | Job remains unclaimed by that worker |
+| Worker parser/chunk/input/provider/model differs from queued version | Job remains untouched by that worker |
+| Parser/chunk/input versions form a mixed or unknown bundle | Settings/upload/parser fail closed; no job is created |
+| Generic OCR Markdown has pathological tiny blocks | Coalesce exact adjacent spans inside that parent, then continuous parent-local bounded-split if needed |
+| OCR content cannot fit after the continuous parent-local fallback | Terminal `brand_chunk_limit`; no cap increase, truncation or cross-parent merge |
+| External-claim signal appears in brand material | Retrievable brand context, verification required, never factual evidence |
 | Lease lost during embedding/persistence | Stop useful work; persist/recover through lease rules |
 | Version not ready | Activation returns HTTP 409 |
 | Inactive, expired, wrong-audience, wrong-kind, or wrong-model chunk | Excluded before ranking |
@@ -145,22 +252,29 @@ without changing the evidence-ineligible brand-context boundary.
 ### 6. Tests Required
 
 - [`test_brand_knowledge.py`](../../../backend/tests/unit/test_brand_knowledge.py) asserts file
-  validation, DOCX rejection, deterministic structure-aware chunks, sentence fallback, exact
-  offsets, retrieval diversity/fallback behavior, metadata fingerprint semantics, character limits,
-  and filename sanitization.
+  validation, PDF page/card parents, DOCX Q&A/table order, deterministic contextual chunks,
+  generic OCR tiny-block budget coalescing, full non-whitespace coverage, cross-parent isolation,
+  genuine hard-cap rejection, classifications, exact offsets, retrieval diversity/fallback behavior,
+  metadata fingerprints, character limits, and filename sanitization.
+- [`test_brand_knowledge_ocr.py`](../../../backend/tests/unit/test_brand_knowledge_ocr.py) asserts the
+  worker's existing one-request OCR handoff, contextual embedding input, and successful bounded
+  coalescing of pathological generic OCR Markdown before persistence.
 - [`test_brand_knowledge_rag.py`](../../../backend/tests/integration/test_brand_knowledge_rag.py)
   uses real PostgreSQL/pgvector and MinIO to assert upload/replay, metadata/provider version splits,
-  worker processing, activation, generation-context retrieval, wrong-audience exclusion, and
-  deactivation.
+  v3/v2 worker isolation, stale v2 rollback completion with null parents/raw input, activation,
+  generation-context retrieval, wrong-audience exclusion, and deactivation.
 - [`test_migrations.py`](../../../backend/tests/integration/test_migrations.py) asserts head
-  `20260805_0018`, the six brand tables, non-null metadata fingerprint, and non-null provider.
+  `20260823_0028`, the seven text-brand tables, two isolated visual-index tables, normalized visual-input hashes, contextual chunk columns, metadata fingerprints, and
+  provider identity.
 - [`test_brand_asset_manifest.py`](../../../backend/tests/unit/test_brand_asset_manifest.py)
   asserts valid PNG metadata, character tags, sidecar/symlink/invalid-file exclusion, dimension
   limits, and private output-path enforcement.
 - OpenAPI generation and frontend generated types must remain drift-free after route/schema edits.
-- Real supplied brand documents have a bounded offline retrieval record in the active task's
-  `validation.md`; it proves storage/worker/filtering/metadata propagation, while production
-  semantic quality still requires the configured live embedding provider.
+- Real supplied brand documents have an aggregate-only parser record in the active task's
+  `result.md`; it proves page/Q&A recognition and exact offsets without retaining filenames, paths,
+  or source text. Storage, worker, retrieval, and typed metadata propagation are covered by synthetic
+  real-PostgreSQL tests, while production semantic quality still requires the configured live
+  embedding provider.
 
 ### 7. Wrong vs Correct
 
@@ -179,8 +293,11 @@ Without ORM relationships, the unit of work may insert the embedding first and v
 #### Correct
 
 ```python
+for section in sections:
+    session.add(BrandSectionModel(...))
+await session.flush()
 for artifact in embeddings:
-    session.add(BrandChunkModel(...))
+    session.add(BrandChunkModel(section_id=artifact.chunk.section_id, ...))
 await session.flush()
 for artifact in embeddings:
     session.add(BrandChunkEmbeddingModel(chunk_id=artifact.chunk.id, ...))
