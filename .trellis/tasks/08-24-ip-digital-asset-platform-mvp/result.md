@@ -25,6 +25,12 @@ console no longer imports, renders, or mounts the IP page. The standalone route 
 loading/fail-closed states, skip link, single `main`, and single `h1`; unknown and flag-disabled paths
 do not fall back to the console.
 
+The upload drawer now also provides explicit-click AI-assisted recognition. Selecting or replacing a
+file remains local and makes no model call; only “AI 辅助识别” sends normalized transient image bytes.
+Strictly allowlisted suggestions fill editable classification, naming, description and tag fields,
+while department and contributor remain user-owned. Failure leaves manual upload available, and no
+recognition response, raw provider body or temporary image is persisted.
+
 ## Acceptance status
 
 | PRD acceptance criterion                              | Status                                                   | Evidence / qualification                                                                                                                                                                                                                                                         |
@@ -39,7 +45,7 @@ do not fall back to the console.
 | AC8 generation-disabled independence                  | Implemented                                              | Capabilities and UI disable creation without disabling library workflows.                                                                                                                                                                                                        |
 | AC9 existing asset bootstrap                          | Partially accepted                                       | Aggregate-only dry-run and checksum-idempotent implementation are complete. No real import or second real replay was performed.                                                                                                                                                  |
 | AC10 response/browser privacy                         | Implemented                                              | Public schemas omit bucket/object keys/secrets/paths; resource URLs are API-origin restricted; MinIO is private; scoped scans pass.                                                                                                                                              |
-| AC11 engineering gates                                | Task scope passes; full-repository gate qualified        | Focused IP/schema/model/MinIO/pgvector/backend/frontend checks pass. Concurrent official-account `0032` work currently blocks shared full-repository gates; exact failures are below.                                                                                            |
+| AC11 engineering gates                                | Implemented                                              | Focused IP/recognition/schema/model/MinIO/pgvector checks pass. The coordinated dependency snapshot passes OpenAPI/type drift, frontend lint/type/test/build, migration head checks and targeted compatibility regressions.                                                      |
 | AC12 documented no-auth intranet boundary/default-off | Implemented                                              | Exact origin config, loopback Compose ports, disabled defaults, UI and runbook prohibit public exposure.                                                                                                                                                                         |
 
 ## Independent review findings fixed
@@ -68,6 +74,8 @@ do not fall back to the console.
   regression coverage.
 - Cross-port access uses validated `APP_BROWSER_ORIGINS`; wildcard, credentials, paths and malformed
   origins are rejected.
+- Compose now passes all six bounded recognition settings into the API runtime; recognition remains
+  disabled by default and its release-contract test freezes that safe default.
 
 ## Known deferrals and deliberate limits
 
@@ -82,6 +90,8 @@ do not fall back to the console.
   later user-authorized local acceptance uploaded the complete 41-image PNG IP corpus through the
   normal multipart API; this was not an importer run. One explicitly authorized live Comfly
   generation was then performed after enabling the API and dedicated worker.
+- No live AI-recognition provider call was performed. Capability/configuration and provider-free
+  validation paths were checked locally; a real recognition call remains an explicit acceptance step.
 
 ## Independent validation evidence
 
@@ -115,32 +125,28 @@ succeeded` in about 28 seconds, and published one 1024×1024 PNG as a `ready`/se
   explicit Sai Xiansheng filter over Xiaosai query text. Chromium desktop/mobile smoke confirmed one
   rounded composite search focus ring, zero horizontal overflow, and zero console/page errors.
 - `make api-contract-check` passes; OpenAPI and generated frontend types match.
-- `make migrate` reports current head `20260824_0032`. Direct checks confirm all six IP tables,
+- `make migrate` reports current head `20260824_0034`. Direct checks confirm all six IP tables,
   `vector(2048)`, and a private MinIO bucket.
 - Actual OPTIONS tests allow `http://127.0.0.1:5173` and omit allow-origin for an unlisted origin.
 - `make ip-asset-import-dry-run MAX_ASSETS=2` selects two entries with aggregate-only output and no
   source read/mutation, provider call or import.
 - Compose render, scoped privacy scans and `git diff --check` pass.
 
-## Shared-worktree gate qualification
+## Final coordinated quality gate
 
-- `make backend-check`: mypy passes **202 source files**. Full pytest reports **1,361 passed / 3
-  failed**: two unrelated migration tests still assert `0031` after official-account migration
-  `0032`, and one official-account generated-visual worker test fails. Ruff findings are likewise
-  confined to official-account files.
-- `make frontend-check`: generated contracts, Prettier and ESLint pass; TypeScript reports two
-  official-account-local omissions (`generated_visuals_enabled` fixture data and the
-  `generating_body_visuals` label).
-- The later standalone-page review again found full TypeScript blocked only by concurrent
-  `official-account-local` generated-schema drift (`alt_text`, `block_index`, `block_kind`, and
-  `output_profile_version`). Focused IP/App tests, ESLint, Prettier, production build and diff checks
-  pass; those unrelated files were preserved.
-- `make doctor`: IP worker/Compose checks pass, then Doctor stops because the concurrent migration
-  compatibility declaration does not match `0032`; its later migration expectation also names
-  `0031`. Direct current-head/IP schema/vector/private-bucket checks pass.
-
-The reviewer intentionally did not edit concurrent official-account/release files, commit, archive,
-call live providers, or perform a real asset import.
+- The complete migration chain is linear from `20260820_0023` through the single head
+  `20260824_0034`. Alembic head, clean-head, downgrade/metadata parity and release compatibility tests
+  pass, and `make doctor` completes against the local stack.
+- AI-recognition-focused backend coverage passes **37 tests**; frontend IP coverage passes **16
+  tests**. The staged dependency snapshot passes generated OpenAPI/type drift, ESLint, TypeScript,
+  **22 frontend files / 144 tests**, and the production build.
+- A staged-snapshot backend run exposed two legacy read-only Agent brand-adapter incompatibilities;
+  the final snapshot supplies the current retrieval version through a two-line compatibility seam,
+  and both regressions pass. The only isolated-snapshot-only failure required the intentionally
+  uncommitted private 41-image catalog; the same test passes in the real workspace where that catalog
+  exists.
+- Ruff, mypy, release pipeline checks and `git diff --check` pass for the final task changes. No live
+  recognition provider, WeChat/WeCom, publish, real asset import or remote push was invoked.
 
 ## Executable spec update
 
@@ -154,10 +160,8 @@ call live providers, or perform a real asset import.
 
 ## Commit and archive state
 
-The task is implemented and independently reviewed but is intentionally not committed or archived
-from this session. The shared worktree contains uncommitted prerequisite migrations/features
-(`0023` through `0030`, visual retrieval) and concurrent official-account `0032` work, including
-overlapping composition, configuration, database-model, generated-contract, frontend-app, Doctor,
-Compose and release files. A selective IP-only commit would therefore be incomplete/non-buildable,
-while committing whole overlapping files would capture unrelated user/parallel work. Preserve this
-task as `in_progress` until the stacked worktree is coordinated into buildable commits.
+The coordinated brand-structure, visual-retrieval, local official-account and IP-asset dependency
+snapshot is committed as `a7a3ebc` (`feat: add visual publishing and IP asset workflows`). Topic
+scorecard v5, real-data Agent MCP, content-slot, resume/report and unrelated deletion changes remain
+uncommitted in the shared worktree. No remote push was performed. The IP asset task is ready to
+archive with its deliberate live-provider/import/authentication deferrals recorded above.
