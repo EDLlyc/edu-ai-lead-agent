@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Verify filters preserve shared-ready references, profile privacy, honest job states, and studio UX."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify strict types, user-observable tests, accessibility, build, privacy, and browser smoke."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Verify query keys, enabled gates, cursor behavior, polling termination, and invalidation."}
+{"file": ".trellis/tasks/08-25-ip-creation-feedback-reference-filters/research/current-ux-gaps.md", "reason": "Compare implementation against every observed feedback and filter gap."}

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Primary creation-studio, reference eligibility, polling, profile, and accessibility contract."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Visible feedback, semantic controls, focused component, and reduced-motion guidance."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "TanStack Query enabled gates, safe keys, pagination, polling, and invalidation rules."}
+{"file": ".trellis/tasks/08-25-ip-creation-feedback-reference-filters/research/current-ux-gaps.md", "reason": "Code-backed current behavior, reusable endpoints, worker truth, and confirmed gaps."}
