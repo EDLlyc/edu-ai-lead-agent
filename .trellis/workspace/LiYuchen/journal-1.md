@@ -1552,3 +1552,24 @@ Implemented and independently verified the dedicated AI creation studio, browser
 ### Status
 
 [OK] **Completed**
+
+
+## Session 69: Refine IP creation feedback and reference filters
+
+**Date**: 2026-08-25
+**Task**: Refine IP creation feedback and reference filters
+**Branch**: `main`
+
+### Summary
+
+Added visible accessible creation feedback, honest independent-worker queue states, four shared-ready reference sources, active-source search and pagination, selected 01-03 markers, strict profile gating, regression tests, and browser validation without invoking the live image provider.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `94b09b3` | (see git log) |
+
+### Status
+
+[OK] **Completed**
