@@ -55,6 +55,28 @@
   text-decoration: none;
 }
 
+.topBar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logoutButton {
+  min-height: 44px;
+  padding-inline: 16px;
+  color: var(--teal);
+  background: rgb(255 253 247 / 70%);
+  border: 1px solid rgb(25 102 94 / 28%);
+  border-radius: 999px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  background: #fffdf7;
+}
+
 .headerGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);

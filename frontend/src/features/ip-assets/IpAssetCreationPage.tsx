@@ -23,6 +23,7 @@ import {
   useShareIpAsset,
 } from "./hooks";
 import { ProfileSetupDialog } from "./ProfileSetupDialog";
+import { IpAssetLogoutButton } from "./IpAssetLogoutButton";
 import {
   clearLocalIpAssetProfile,
   loadLocalIpAssetProfile,
@@ -310,9 +311,12 @@ export function IpAssetCreationPage() {
   return (
     <section className={styles.studio} aria-labelledby="studio-title">
       <header className={styles.header}>
-        <a className={styles.backLink} href="/ip-assets">
-          ← 返回共享图库
-        </a>
+        <div className={styles.topBar}>
+          <a className={styles.backLink} href="/ip-assets">
+            ← 返回共享图库
+          </a>
+          <IpAssetLogoutButton className={styles.logoutButton} />
+        </div>
         <div className={styles.headerGrid}>
           <div>
             <p className={styles.kicker}>SAI IMAGE ATELIER / 01</p>

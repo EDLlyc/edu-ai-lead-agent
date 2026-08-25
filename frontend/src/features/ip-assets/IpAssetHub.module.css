@@ -163,6 +163,7 @@
 
 .primaryAction,
 .secondaryAction,
+.logoutAction,
 .emptyActions button,
 .loadMore,
 .downloadTray button,
@@ -196,6 +197,16 @@
   color: var(--ink);
   background: rgb(255 255 255 / 80%);
   border-color: var(--line-strong);
+}
+
+.logoutAction {
+  color: var(--teal-dark);
+  background: transparent;
+  border-color: transparent;
+}
+
+.logoutAction:hover {
+  background: var(--teal-soft);
 }
 
 .primaryAction:disabled,
@@ -1534,6 +1545,10 @@
     display: grid;
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logoutAction {
+    grid-column: 1 / -1;
   }
 
   .headerCopy {

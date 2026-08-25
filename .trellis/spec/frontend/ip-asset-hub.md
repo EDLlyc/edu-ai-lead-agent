@@ -8,10 +8,12 @@ Use this contract for `frontend/src/features/ip-assets/`, the standalone route b
 `frontend/src/app/Application.tsx`, generated API mapping, gallery/search state, browser-local profile,
 personal library/favorites, upload/download ranking, detail drawer, or dedicated creation-studio UX.
 
-The interface is company-internal and unauthenticated. It must visibly say so and must never imply
-that department/contributor labels or the browser-local profile are verified identity. The profile
-is a convenience grouping stored in one browser, with no password, recovery, or cross-device sync.
-It is feature-flagged off by default with `VITE_IP_ASSET_HUB_ENABLED=false`.
+The interface is company-internal and remains unauthenticated at the API/data boundary. A local demo
+login page may gate the standalone frontend presentation, but it must visibly say that it does not
+verify identity or protect direct API access. Department/contributor labels and the separate
+browser-local profile are not verified identity. The profile remains a convenience grouping stored
+in one browser, with no password, recovery, or cross-device sync. The feature is off by default with
+`VITE_IP_ASSET_HUB_ENABLED=false`.
 
 ### 2. Signatures
 
@@ -41,8 +43,15 @@ useShareIpAsset();
 useIpAssetLeaderboard(period); // anonymous aggregate only
 
 type ApplicationPath =
-  "console" | "ip-assets" | "ip-assets-create" | "not-found";
-resolveApplicationPath(pathname); // /ip-assets/create[/] is a separate standalone studio
+  | "console"
+  | "ip-assets"
+  | "ip-assets-create"
+  | "ip-assets-login"
+  | "not-found";
+resolveApplicationPath(pathname); // login, library, and creation[/] are standalone routes
+
+hasIpAssetDemoAccess(); // exact, versioned sessionStorage marker only
+safeIpAssetReturnTarget(candidate); // known IP page + query, otherwise /ip-assets
 ```
 
 The hub consumes only generated OpenAPI wire types through its feature API mapper. Preview/download
@@ -56,8 +65,9 @@ resources.
   rail. Upload uses an on-demand drawer; AI creation links to the dedicated studio. The page keeps one logical heading order,
   accessible landmarks, high-contrast focus, responsive single-column fallbacks, and
   `prefers-reduced-motion` guards.
-- The hub exists at `/ip-assets` and the studio at `/ip-assets/create` (both with an optional trailing
-  slash) as lazy standalone pages.
+- The demo login exists at `/ip-assets/login`; the hub exists at `/ip-assets` and the studio at
+  `/ip-assets/create` (all with an optional trailing slash) as standalone pages, with the two
+  substantial feature pages remaining lazy-loaded.
   The shared development console at `/` must not import, render, or mount `IpAssetPage`/`IpAssetHub`,
   even when the IP feature flag is enabled. The standalone document owns exactly one `main`, one
   `h1`, a skip link, a route-specific loading state, and the matching title `IP 数字资产中心` or
@@ -66,6 +76,14 @@ resources.
 - `Application` resolves the pathname before composition. An unknown path or a disabled IP flag
   renders a standalone fail-closed state and never falls back to the shared console or loads the hub
   page. No client-router dependency is required for this narrow MVP route table.
+- Before either feature page renders, `Application` requires the exact versioned demo marker from
+  `sessionStorage`. The login form accepts any trimmed non-empty username and password, sends and
+  stores neither value, exposes invalid/pending/storage-failure feedback, and writes only the marker.
+  The marker lasts for the current tab session and is intentionally independent of the local profile.
+- A successful login restores only `/ip-assets[/]` or `/ip-assets/create[/]` plus its query string.
+  External, protocol-relative, login, console, or unknown return targets fall back to `/ip-assets`;
+  fragments are dropped. Logout clears only the demo marker and opens the login route with the
+  current safe IP page as `returnTo`, preserving the browser-local profile and personal associations.
 - Required upload/generation `character` and `asset_type` controls have no invalid blank selectable
   option. Native required validation and server typed errors both remain authoritative.
 - The upload drawer creates only a local preview after file selection. It calls recognition only
@@ -152,7 +170,8 @@ resources.
   that no downloader identity is recorded. It becomes a horizontal/top module on narrow screens.
 - Every asset card carries meaningful alt text based on the canonical name; broken previews retain a
   textual fallback.
-- The UI contains no delete, archive, approve, publish, authentication, or public-share action.
+- The UI contains no delete, archive, approve, publish, real-authentication, or public-share action.
+  The explicitly labeled demo login/logout controls must not be described as identity verification.
 
 Local browser flow is Vite `http://127.0.0.1:5173/ip-assets` to API `127.0.0.1:8000` through the
 backend's exact CORS allowlist. Intranet deployments should be same origin or configure both
@@ -166,6 +185,11 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Root path `/` with flag on or off                           | Render the shared console without importing/rendering/mounting the IP page                             |
 | `/ip-assets` or `/ip-assets/create` with feature flag false | Render an independent unavailable page; do not load either feature page                                |
+| Known IP page without demo marker                           | Render the login page before importing/rendering the requested feature; preserve its safe return target |
+| Demo login with either trimmed field empty                  | Keep the form visible, focus the first missing field, and announce a bounded validation error           |
+| Demo login succeeds                                         | Store only the versioned session marker and restore the safe requested IP page                          |
+| Demo login receives an external/unknown return target       | Fall back to `/ip-assets`; never navigate to the supplied target                                        |
+| Logout                                                      | Clear only demo access; preserve the local profile/favorites/personal library and return to login       |
 | Unknown browser path                                        | Render the independent not-found state with one main/h1; do not fall back to the console               |
 | Production deep link without SPA rewrite                    | Treat as hosting misconfiguration; configure `/ip-assets` -> `index.html`, not an in-app workaround    |
 | Capabilities loading/error/disabled                         | Honest status or disabled panel; no crashing hooks                                                     |
@@ -233,9 +257,11 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 - Feature flag: absent/false/off values fail closed; only explicit enabled value renders the hub.
 - Route composition: `/` excludes the IP page even with the flag enabled; `/ip-assets` and its
   trailing-slash form render only the library; `/ip-assets/create[/]` renders only the studio;
+  `/ip-assets/login[/]` renders the demo form; protected routes never mount before the session marker;
+  safe return targets restore and external targets fall back; logout preserves local profile data;
   disabled and unknown routes fail closed;
   standalone title cleanup remains correct under React StrictMode.
-- Component: capability states, no-auth/intranet wording, gallery/load-more, every filter, required
+- Component: capability states, demo-login/intranet wording, gallery/load-more, every filter, required
   taxonomy, upload/duplicate refresh, semantic fallback, transient image query, preview/download,
   per-card match explanations, search alerts, non-ready preview/selection guards, ZIP feedback,
   generation polling/output navigation, and empty/error cases.

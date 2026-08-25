@@ -1,6 +1,13 @@
-import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 
+import {
+  currentIpAssetReturnTarget,
+  hasIpAssetDemoAccess,
+  replaceIpAssetLocation,
+  safeIpAssetReturnTarget,
+} from "@/features/ip-assets/demoAccess";
 import { isIpAssetHubEnabled } from "@/features/ip-assets/featureFlag";
+import { IpAssetLoginPage } from "@/features/ip-assets/IpAssetLoginPage";
 
 import { App } from "./App";
 import styles from "./Application.module.css";
@@ -17,16 +24,44 @@ const IpAssetCreationPage = lazy(async () => {
 });
 
 export function Application() {
-  const route = resolveApplicationPath(window.location.pathname);
+  const location = useApplicationLocation();
+  const route = resolveApplicationPath(location.pathname);
 
   if (route === "console") return <App />;
-  if (route === "ip-assets" || route === "ip-assets-create") {
+  if (
+    route === "ip-assets" ||
+    route === "ip-assets-create" ||
+    route === "ip-assets-login"
+  ) {
     if (!isIpAssetHubEnabled()) {
       return (
         <StandaloneDocument title="页面不可用">
           <UnavailableRoute
             description="此本地功能当前未启用。请确认环境配置后重新打开该地址。"
             label="LOCAL FEATURE DISABLED"
+          />
+        </StandaloneDocument>
+      );
+    }
+    if (route === "ip-assets-login") {
+      const returnTarget = safeIpAssetReturnTarget(
+        new URLSearchParams(location.search).get("returnTo"),
+      );
+      return (
+        <StandaloneDocument title="登录 · IP 数字资产中心">
+          <IpAssetLoginPage
+            returnTarget={returnTarget}
+            onAuthenticated={replaceIpAssetLocation}
+          />
+        </StandaloneDocument>
+      );
+    }
+    if (!hasIpAssetDemoAccess()) {
+      return (
+        <StandaloneDocument title="登录 · IP 数字资产中心">
+          <IpAssetLoginPage
+            returnTarget={currentIpAssetReturnTarget()}
+            onAuthenticated={replaceIpAssetLocation}
           />
         </StandaloneDocument>
       );
@@ -50,6 +85,25 @@ export function Application() {
       />
     </StandaloneDocument>
   );
+}
+
+function readApplicationLocation() {
+  return {
+    pathname: window.location.pathname,
+    search: window.location.search,
+  };
+}
+
+function useApplicationLocation() {
+  const [location, setLocation] = useState(readApplicationLocation);
+
+  useEffect(() => {
+    const handlePopState = () => setLocation(readApplicationLocation());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  return location;
 }
 
 function StandaloneDocument({

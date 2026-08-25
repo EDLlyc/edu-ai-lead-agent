@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -33,7 +34,7 @@ vi.mock("@/features/ip-assets/IpAssetPage", () => ({
     return (
       <section aria-labelledby="mock-ip-title">
         <h1 id="mock-ip-title">IP 数字资产中心</h1>
-        <p>公司内网 · 无登录</p>
+        <p>公司内网 · 演示登录</p>
       </section>
     );
   },
@@ -41,6 +42,11 @@ vi.mock("@/features/ip-assets/IpAssetPage", () => ({
 
 import { Application } from "./Application";
 import { resolveApplicationPath } from "./pathResolver";
+import {
+  clearIpAssetDemoAccess,
+  grantIpAssetDemoAccess,
+  hasIpAssetDemoAccess,
+} from "@/features/ip-assets/demoAccess";
 
 const defaultTitle = "Edu AI // Development Console";
 
@@ -49,11 +55,22 @@ afterEach(() => {
   vi.clearAllMocks();
   window.history.replaceState(null, "", "/");
   document.title = defaultTitle;
+  clearIpAssetDemoAccess();
 });
 
-function renderPath(pathname: string, enabled = false, strict = false) {
+function renderPath(
+  pathname: string,
+  enabled = false,
+  strict = false,
+  authenticated = true,
+) {
   window.history.replaceState(null, "", pathname);
   vi.stubEnv("VITE_IP_ASSET_HUB_ENABLED", enabled ? "true" : "false");
+  if (authenticated) {
+    grantIpAssetDemoAccess();
+  } else {
+    clearIpAssetDemoAccess();
+  }
   return render(
     strict ? (
       <StrictMode>
@@ -76,6 +93,8 @@ describe("Application route composition", () => {
     expect(resolveApplicationPath("/ip-assets/create/")).toBe(
       "ip-assets-create",
     );
+    expect(resolveApplicationPath("/ip-assets/login")).toBe("ip-assets-login");
+    expect(resolveApplicationPath("/ip-assets/login/")).toBe("ip-assets-login");
     expect(resolveApplicationPath("/ip-assets/archive")).toBe("not-found");
     expect(resolveApplicationPath("/unknown")).toBe("not-found");
   });
@@ -102,7 +121,7 @@ describe("Application route composition", () => {
           name: "IP 数字资产中心",
         }),
       ).toBeVisible();
-      expect(screen.getByText("公司内网 · 无登录")).toBeVisible();
+      expect(screen.getByText("公司内网 · 演示登录")).toBeVisible();
       expect(screen.queryByText("品牌知识")).not.toBeInTheDocument();
       expect(
         screen.queryByText("EAL Brand Knowledge System"),
@@ -116,6 +135,83 @@ describe("Application route composition", () => {
       await waitFor(() => expect(document.title).toBe("IP 数字资产中心"));
     },
   );
+
+  it("gates a directly requested studio route and restores its safe query after login", async () => {
+    const user = userEvent.setup();
+    renderPath("/ip-assets/create/?reference=ipa_demo0001", true, false, false);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "让每一张 IP 图片，都能被再次找到。",
+      }),
+    ).toBeVisible();
+    expect(routeMocks.creationRender).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "进入资产中心" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("请填写用户名和密码");
+
+    await user.type(screen.getByLabelText("用户名"), "内容同事");
+    await user.type(screen.getByLabelText("密码"), "demo-only-password");
+    await user.click(screen.getByRole("button", { name: "进入资产中心" }));
+
+    expect(
+      screen.getByRole("button", { name: "正在进入资产中心…" }),
+    ).toBeDisabled();
+    expect(screen.getByText("信息完整，正在打开工作台。")).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "AI 视觉创作室" }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe("/ip-assets/create/");
+    expect(window.location.search).toBe("?reference=ipa_demo0001");
+    expect(hasIpAssetDemoAccess()).toBe(true);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain("内容同事");
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(
+      "demo-only-password",
+    );
+  });
+
+  it("gates the library without mounting its lazy feature", () => {
+    renderPath("/ip-assets?view=favorites", true, false, false);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "让每一张 IP 图片，都能被再次找到。",
+      }),
+    ).toBeVisible();
+    expect(routeMocks.ipAssetRender).not.toHaveBeenCalled();
+    expect(routeMocks.creationRender).not.toHaveBeenCalled();
+  });
+
+  it("uses the standalone login route and rejects an external return target", async () => {
+    const user = userEvent.setup();
+    renderPath(
+      "/ip-assets/login?returnTo=https%3A%2F%2Fevil.example%2Fsteal",
+      true,
+      false,
+      false,
+    );
+
+    await user.type(screen.getByLabelText("用户名"), "demo");
+    await user.type(screen.getByLabelText("密码"), "demo");
+    await user.click(screen.getByRole("button", { name: "进入资产中心" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "IP 数字资产中心" }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe("/ip-assets");
+    expect(window.location.origin).not.toBe("https://evil.example");
+  });
+
+  it("keeps the login route fail-closed when the IP feature is disabled", () => {
+    renderPath("/ip-assets/login", false, false, false);
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "页面不可用" }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+  });
 
   it.each(["/ip-assets/create", "/ip-assets/create/"])(
     "renders the standalone creation studio at %s",

@@ -34,6 +34,7 @@ import {
   useUploadIpAsset,
 } from "./hooks";
 import { ProfileSetupDialog } from "./ProfileSetupDialog";
+import { IpAssetLogoutButton } from "./IpAssetLogoutButton";
 import {
   clearLocalIpAssetProfile,
   loadLocalIpAssetProfile,
@@ -231,7 +232,7 @@ export function IpAssetHub() {
           <div>
             <div className={styles.titleLine}>
               <p className={styles.kicker}>SAI VISUAL LIBRARY</p>
-              <span className={styles.boundaryPill}>公司内网 · 无登录</span>
+              <span className={styles.boundaryPill}>公司内网 · 演示登录</span>
             </div>
             <h1 id="ip-asset-hub-title">IP 数字资产中心</h1>
           </div>
@@ -249,13 +250,14 @@ export function IpAssetHub() {
             <span aria-hidden="true">✦</span>
             AI 创作
           </a>
+          <IpAssetLogoutButton className={styles.logoutAction} />
         </div>
         <div className={styles.headerCopy}>
           <p className={styles.intro}>
             汇集赛先生与小赛视觉资产，用自然语言找到合适的图片，再下载、复用或继续创作。
           </p>
           <p className={styles.boundaryNote} role="note">
-            上传人与部门为自填信息，不代表已验证身份。请勿部署到公网。
+            登录入口不验证身份；上传人与部门仍为自填信息。请勿部署到公网。
           </p>
         </div>
       </header>

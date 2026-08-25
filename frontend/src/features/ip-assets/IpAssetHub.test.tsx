@@ -169,7 +169,7 @@ describe("IpAssetHub", () => {
     expect(await screen.findByText("语义 + 元数据结果")).toBeInTheDocument();
   });
 
-  it("shows the no-login boundary, gallery and provider-independent controls", async () => {
+  it("shows the demo-login boundary, gallery and provider-independent controls", async () => {
     const user = userEvent.setup();
     renderHub();
 
@@ -179,7 +179,8 @@ describe("IpAssetHub", () => {
         name: /IP 数字.*资产中心/,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("公司内网 · 无登录")).toBeInTheDocument();
+    expect(screen.getByText("公司内网 · 演示登录")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeVisible();
     expect(await screen.findByText(/AI 创作暂未启用/)).toBeInTheDocument();
     expect(screen.getByLabelText("来源")).toBeInTheDocument();
     expect(screen.getByLabelText("构图")).toBeInTheDocument();

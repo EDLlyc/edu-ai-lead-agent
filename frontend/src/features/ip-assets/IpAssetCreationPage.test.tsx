@@ -136,6 +136,7 @@ describe("IpAssetCreationPage", () => {
       wrapper: Providers,
     });
     await screen.findByRole("heading", { name: "AI 视觉创作室" });
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeVisible();
     expect((await axe(container)).violations).toEqual([]);
   });
 
