@@ -7,7 +7,7 @@
 Use this contract whenever code changes the Sai Xiansheng / Xiao Sai shared image library: upload,
 classification, canonical naming, gallery/search, browser-local personal collections, favorites,
 download ranking, preview/download, dynamic embeddings, seed import, or image-generation-to-library
-work.
+work, including the local API/UI/worker lifecycle used to exercise those capabilities.
 
 The hub is one company-intranet library. It has no login, verified uploader, approval workflow,
 department isolation, delete action, or public-sharing contract. A browser-local random profile
@@ -84,14 +84,19 @@ includes the profile and ordered reference checksums, and reference rows preserv
 #### Commands
 
 ```bash
-make ip-asset-worker
+make ip-asset-worker                         # worker only; API/infrastructure already running
 make ip-asset-import-dry-run MAX_ASSETS=500
-make ip-asset-stack-up
-make ip-asset-ui
+make ip-asset-stack-up                       # API + one worker for a generation-capable local stack
+make ip-asset-ui                             # start the standalone UI after the stack
 ```
 
 `python -m app.ip_asset_import_main` is explicit and dry-run capable. It must never modify source
-manifest files.
+manifest files. When real IP generation is enabled, starting only the API and UI is an incomplete
+local runtime: it can enqueue safely but cannot advance queued jobs. Start exactly one worker lane
+with `make ip-asset-worker` when the existing API/infrastructure are already live, or use
+`make ip-asset-stack-up` for a fresh generation-capable stack. The worker remains running after the
+queue drains so later jobs are claimed automatically; do not start a second worker merely because
+the current queue is idle.
 
 ### 3. Contracts
 
@@ -119,6 +124,21 @@ Local Vite defaults to `http://127.0.0.1:5173`; the API is normally
 `http://127.0.0.1:8000`. CORS must allow only configured exact origins, methods
 `GET`/`POST`/`PUT`/`DELETE`/`OPTIONS`, and `Content-Type` plus `X-IP-Profile-Token`. Prefer same-origin
 reverse proxy for intranet deployment.
+
+#### Local runtime lifecycle
+
+- `generation_available=true` proves that the API has an enabled provider adapter. It is not a
+  worker heartbeat and does not prove queued jobs can advance.
+- With `IP_ASSET_GENERATION_ENABLED=true`, the normal local platform lifecycle includes one
+  `app.ip_asset_worker_main` lane alongside the API and UI. A durable `queued` row with no live
+  worker is expected to remain safe and unchanged, not fail or trigger an inline API provider call.
+- Start/restart recovery must reuse the durable queue. Never clone a job, call the provider directly,
+  or edit job status to bypass claim, lease, heartbeat, idempotency, retry, or completion fencing.
+- After startup, verify one effective worker child process, `generation_enabled=true`, and bounded
+  concurrency. A `conda run` wrapper plus its Python child is one worker, not two lanes.
+- Keep the worker alive after terminal completion. For authorized live recovery, monitor the exact
+  pre-existing job refs to terminal state and verify success output/membership or failure integrity
+  without logging credentials, provider bodies, full prompts, profile tokens, or object locations.
 
 #### Identity, naming, and storage
 
@@ -259,6 +279,9 @@ reverse proxy for intranet deployment.
 | Direct/ZIP download preparation fails                                      | No aggregate increment                                                                      |
 | Future-dated aggregate exists during a `30d` query                           | Exclude it; include only `[today - 29 days, today]`                                          |
 | Concurrent identical enqueue                                              | One durable job; both callers receive its safe identity                                    |
+| Generation configured but no worker is live                               | Job remains durably `queued`; API/UI stay responsive and make no inline provider call       |
+| Local generation-capable platform starts                                  | Start exactly one worker lane and confirm generation-enabled startup before accepting work   |
+| Queue drains while the local platform remains in use                       | Worker stays alive and polls idly for later jobs; do not launch another worker               |
 | Lease expires while provider runs                                         | Cancel/fence; no output asset or success transition                                        |
 | Generated raster invalid                                                  | Typed terminal/retry-classified failure; no asset                                          |
 | Unlisted browser origin sends preflight                                   | No allow-origin header                                                                     |
@@ -284,6 +307,13 @@ reverse proxy for intranet deployment.
   the explicit share action.
 - Bad personal flow: the raw token is stored or placed in a query key/log, a favorite grants private
   access, generated output is shared automatically, or ranking stores per-download actor events.
+- Good local operation: API, UI, PostgreSQL, MinIO, and one generation-enabled worker start together;
+  queued jobs reach durable terminal states and the same worker remains available after the queue
+  drains.
+- Base local operation: API and UI are live without a worker; submission remains safely queued and
+  the UI truthfully says it awaits the independent service.
+- Bad local operation: report provider availability as worker liveness, start a second lane for an
+  idle queue, manually rewrite a queued row, or call the provider outside the durable worker.
 
 ### 6. Tests Required
 
@@ -318,6 +348,12 @@ reverse proxy for intranet deployment.
   cancellation/fencing, retry exhaustion, and generation-disabled independence.
 - CLI: dry run reads no source bytes, live import is checksum-idempotent, invalid sources are bounded,
   second replay creates zero assets, and source files/manifest stay byte-identical.
+- Local live recovery (explicitly authorized only): snapshot exact queued refs/counts, prove no
+  worker exists, start one supported lane, observe generation-enabled startup, and verify each
+  authorized job reaches terminal state. Success requires one ready output and one matching
+  generated membership; failure requires no output/membership and only a safe error code. Verify
+  zero queued/running rows, no duplicate job fingerprints/idempotency identities, one surviving
+  worker lane, and healthy API/PostgreSQL/MinIO without issuing an extra provider request.
 - Final gates: focused hub tests, `make backend-check`, `make frontend-check`, migration/Doctor,
   OpenAPI drift, Compose render, scoped privacy scan, and `git diff --check`. Concurrent unrelated
   worktree failures must be identified rather than silently attributed to this feature.
@@ -390,6 +426,25 @@ return await repository.create_asset(metadata=suggestion)
 # The explicit transient endpoint returns advisory values only; the ordinary upload stays separate.
 normalized = normalize_ip_asset_recognition_request(validated_upload)
 return project_allowlisted_suggestion(await recognition_model.suggest(normalized))
+```
+
+#### Wrong
+
+```bash
+# API + UI advertise generation capability, but no process can claim the durable queue.
+make acquisition-api
+make ip-asset-ui
+```
+
+#### Correct
+
+```bash
+# Fresh local generation stack: API and exactly one worker, then the standalone UI.
+make ip-asset-stack-up
+make ip-asset-ui
+
+# If API/PostgreSQL/MinIO are already running, start only the missing worker once.
+make ip-asset-worker
 ```
 
 ## Design decision: dynamic partial index remains separate
