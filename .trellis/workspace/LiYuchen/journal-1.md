@@ -1573,3 +1573,24 @@ Added visible accessible creation feedback, honest independent-worker queue stat
 ### Status
 
 [OK] **Completed**
+
+
+## Session 70: IP 资产登录页 MVP
+
+**Date**: 2026-08-25
+**Task**: IP 资产登录页 MVP
+**Branch**: `main`
+
+### Summary
+
+为独立 IP 资产平台增加本地演示登录页、sessionStorage 会话门禁、安全返回目标和退出入口；保留现有本地素材名片，并通过 195 项前端测试、类型、Lint、OpenAPI 漂移、构建与桌面/移动检查。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f3c8b93` | (see git log) |
+
+### Status
+
+[OK] **Completed**
