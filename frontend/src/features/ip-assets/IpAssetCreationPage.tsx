@@ -66,6 +66,35 @@ const personalTabs: readonly Readonly<{
   { value: "favorite", label: "收藏" },
 ];
 
+type ReferenceSource = "all" | "favorite" | "uploaded" | "generated";
+
+const referenceSourceOptions: readonly Readonly<{
+  value: ReferenceSource;
+  label: string;
+  description: string;
+}>[] = [
+  {
+    value: "all",
+    label: "全部素材",
+    description: "共享图库内所有可用于生成的素材",
+  },
+  {
+    value: "favorite",
+    label: "我的收藏",
+    description: "我收藏且仍在共享图库的素材",
+  },
+  {
+    value: "uploaded",
+    label: "我的上传",
+    description: "我上传且已进入共享图库的素材",
+  },
+  {
+    value: "generated",
+    label: "我的共享 AI 作品",
+    description: "我生成并主动共享的作品",
+  },
+];
+
 export function IpAssetCreationPage() {
   const capabilities = useIpAssetCapabilities();
   const [profile, setProfile] = useState<LocalIpAssetProfile | null>(
@@ -75,6 +104,8 @@ export function IpAssetCreationPage() {
   const activeProfile = restoredProfile.isError ? null : profile;
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [referenceQuery, setReferenceQuery] = useState("");
+  const [referenceSource, setReferenceSource] =
+    useState<ReferenceSource>("all");
   const [references, setReferences] = useState<readonly IpAsset[]>([]);
   const [initialReferenceRef, setInitialReferenceRef] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("reference"),
@@ -104,21 +135,54 @@ export function IpAssetCreationPage() {
   );
   const library = useIpAssets(
     pickerFilters,
-    capabilities.data?.enabled === true,
+    capabilities.data?.enabled === true && referenceSource === "all",
     activeProfile,
   );
-  const personal = usePersonalIpAssets(activeProfile, personalSource);
-  const pickerAssets = useMemo(
-    () =>
-      library.data?.pages
-        .flatMap((page) => page.items)
-        .filter((asset) => asset.status === "ready") ?? [],
-    [library.data?.pages],
+  const referencePersonal = usePersonalIpAssets(
+    activeProfile,
+    referenceSource === "all" ? "favorite" : referenceSource,
+    capabilities.data?.enabled === true && referenceSource !== "all",
   );
+  const personal = usePersonalIpAssets(activeProfile, personalSource);
+  const pickerAssets = useMemo(() => {
+    const assets =
+      referenceSource === "all"
+        ? (library.data?.pages.flatMap((page) => page.items) ?? [])
+        : (referencePersonal.data?.pages.flatMap((page) =>
+            page.items.map((item) => ({
+              ...item.asset,
+              favorite: item.favorite,
+            })),
+          ) ?? []);
+    return projectReferenceCandidates(
+      assets,
+      referenceSource === "all" ? "" : referenceQuery,
+    );
+  }, [
+    library.data?.pages,
+    referencePersonal.data?.pages,
+    referenceQuery,
+    referenceSource,
+  ]);
   const personalItems = useMemo(
     () => personal.data?.pages.flatMap((page) => page.items) ?? [],
     [personal.data?.pages],
   );
+  const activeReferenceOption =
+    referenceSourceOptions.find((option) => option.value === referenceSource) ??
+    referenceSourceOptions[0]!;
+  const pickerIsLoading =
+    referenceSource === "all" ? library.isLoading : referencePersonal.isLoading;
+  const pickerIsError =
+    referenceSource === "all" ? library.isError : referencePersonal.isError;
+  const pickerHasNextPage =
+    referenceSource === "all"
+      ? library.hasNextPage
+      : referencePersonal.hasNextPage;
+  const pickerIsFetchingNextPage =
+    referenceSource === "all"
+      ? library.isFetchingNextPage
+      : referencePersonal.isFetchingNextPage;
 
   useEffect(() => {
     if (!restoredProfile.isError || profile === null) return;
@@ -143,8 +207,12 @@ export function IpAssetCreationPage() {
     return () => window.clearTimeout(timer);
   }, [initialReference.data, initialReferenceRef]);
 
-  const requireProfile = (action: () => void) => {
+  const requireProfile = (
+    action: () => void,
+    message = "请先建立浏览器本地名片，再继续这项操作。",
+  ) => {
     if (activeProfile === null) {
+      setAnnouncement(message);
       setShowProfileSetup(true);
       return;
     }
@@ -162,10 +230,82 @@ export function IpAssetCreationPage() {
         },
         {
           onSuccess: (result) =>
-            setAnnouncement(result.favorite ? "已加入收藏。" : "已取消收藏。"),
+            setAnnouncement(
+              result.favorite
+                ? `已收藏「${asset.canonical_name}」。`
+                : `已取消收藏「${asset.canonical_name}」。`,
+            ),
+          onError: () => setAnnouncement("收藏状态更新失败，请稍后重试。"),
         },
       );
     });
+
+  const changeReferenceSource = (nextSource: ReferenceSource) => {
+    const option = referenceSourceOptions.find(
+      (candidate) => candidate.value === nextSource,
+    );
+    if (option === undefined || nextSource === referenceSource) return;
+    if (nextSource !== "all" && activeProfile === null) {
+      setAnnouncement(`查看「${option.label}」前，请先建立浏览器本地名片。`);
+      setShowProfileSetup(true);
+      return;
+    }
+    setReferenceSource(nextSource);
+    setAnnouncement(`已切换到「${option.label}」，已选参考保持不变。`);
+  };
+
+  const toggleReference = (asset: IpAsset) => {
+    const selectedIndex = references.findIndex(
+      (item) => item.asset_ref === asset.asset_ref,
+    );
+    if (selectedIndex >= 0) {
+      setReferences(
+        references.filter((item) => item.asset_ref !== asset.asset_ref),
+      );
+      setAnnouncement(`已移除「${asset.canonical_name}」。`);
+      return;
+    }
+    if (references.length >= 3) {
+      setAnnouncement("最多选择三张参考图，请先移除一张再添加。");
+      return;
+    }
+    const nextOrdinal = references.length + 1;
+    setReferences([...references, asset]);
+    setAnnouncement(
+      `已将「${asset.canonical_name}」加入参考 0${nextOrdinal}。`,
+    );
+  };
+
+  const moveReference = (from: number, to: number) => {
+    const asset = references[from];
+    if (asset === undefined) return;
+    const moved = moveItem(references, from, to);
+    if (moved === references) return;
+    setReferences(moved);
+    setAnnouncement(`已将「${asset.canonical_name}」调整为参考 0${to + 1}。`);
+  };
+
+  const removeReference = (index: number) => {
+    const asset = references[index];
+    if (asset === undefined) return;
+    setReferences(references.filter((_item, position) => position !== index));
+    setAnnouncement(`已从参考胶片移除「${asset.canonical_name}」。`);
+  };
+
+  const loadMoreReferences = () => {
+    setAnnouncement(`正在加载更多「${activeReferenceOption.label}」。`);
+    const request =
+      referenceSource === "all"
+        ? library.fetchNextPage()
+        : referencePersonal.fetchNextPage();
+    void request.then((result) => {
+      setAnnouncement(
+        result.isError
+          ? "更多素材加载失败，请稍后重试。"
+          : `已加载更多「${activeReferenceOption.label}」。`,
+      );
+    });
+  };
 
   return (
     <section className={styles.studio} aria-labelledby="studio-title">
@@ -214,11 +354,18 @@ export function IpAssetCreationPage() {
           这台浏览器保存的素材名片已失效，请重新建立。
         </p>
       ) : null}
-      {announcement ? (
-        <p className={styles.visuallyHidden} role="status" aria-live="polite">
-          {announcement}
+      <div
+        className={styles.feedbackBar}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span aria-hidden="true">●</span>
+        <p>
+          {announcement ||
+            "操作反馈会显示在这里；选择素材后可在参考胶片中调整顺序。"}
         </p>
-      ) : null}
+      </div>
 
       <section
         className={styles.creationStage}
@@ -249,6 +396,7 @@ export function IpAssetCreationPage() {
                   ? generationAttempt.current.idempotencyKey
                   : createIdempotencyKey();
               generationAttempt.current = { signature, idempotencyKey };
+              setAnnouncement("正在保存创作任务，请勿重复提交。");
               generation.mutate(
                 {
                   prompt,
@@ -263,11 +411,15 @@ export function IpAssetCreationPage() {
                 {
                   onSuccess: (job) => {
                     setJobRef(job.job_ref);
-                    setAnnouncement("生成任务已建立，正在等待结果。");
+                    setAnnouncement(
+                      "创作任务已保存，正在等待独立后台生成服务领取。",
+                    );
                   },
+                  onError: () =>
+                    setAnnouncement("创作任务提交失败，修改前可直接重试。"),
                 },
               );
-            });
+            }, "生成结果需要保存到个人素材架，请先建立浏览器本地名片。");
           }}
         >
           <div className={styles.sectionNumber}>01 / 创作简报</div>
@@ -317,8 +469,20 @@ export function IpAssetCreationPage() {
 
           <ReferenceFilmstrip
             references={references}
-            onChange={setReferences}
+            onMove={moveReference}
+            onRemove={removeReference}
           />
+
+          {references.length === 3 ? (
+            <p className={styles.referenceLimit} role="note">
+              已选满 3 张参考图。若要加入其他素材，请先从参考胶片移除一张。
+            </p>
+          ) : (
+            <p className={styles.referenceGuidance}>
+              已选 {references.length} / 3 张；至少选择 1
+              张，顺序会影响模型参考优先级。
+            </p>
+          )}
 
           <button
             className={styles.generateButton}
@@ -331,7 +495,11 @@ export function IpAssetCreationPage() {
             <span aria-hidden="true">✦</span>
             {generation.isPending ? "正在建立任务…" : "生成 1:1 图片"}
           </button>
-          {capabilities.data?.generation_available === false ? (
+          {capabilities.data?.generation_available === true ? (
+            <p className={styles.capabilityNote}>
+              生图接口已配置。提交后任务会保存到队列，由独立后台生成服务处理；这里不表示该服务当前在线。
+            </p>
+          ) : capabilities.data?.generation_available === false ? (
             <p className={styles.capabilityNote}>
               当前生图服务未启用；参考选择、个人素材与收藏仍可使用。
             </p>
@@ -346,17 +514,24 @@ export function IpAssetCreationPage() {
         <OutputStage
           status={generationStatus.data}
           statusError={generationStatus.isError}
+          submitting={generation.isPending}
           output={output.data}
           profile={activeProfile}
           sharing={share.isPending}
           onShare={(assetRef) => {
             if (activeProfile === null) return;
+            setAnnouncement("正在将生成结果加入共享图库。");
             share.mutate(
               { token: activeProfile.token, assetRef },
-              { onSuccess: () => setAnnouncement("图片已加入共享图库。") },
+              {
+                onSuccess: () => setAnnouncement("图片已加入共享图库。"),
+                onError: () =>
+                  setAnnouncement("加入共享图库失败，请稍后重试。"),
+              },
             );
           }}
           onDownload={(asset) => {
+            setAnnouncement("正在准备生成结果原图。");
             void downloadIpAssetOriginal({
               asset,
               ...(activeProfile === null
@@ -389,51 +564,130 @@ export function IpAssetCreationPage() {
             />
           </label>
         </div>
-        {library.isLoading ? <p role="status">正在读取共享素材…</p> : null}
-        <div className={styles.referenceLibrary}>
-          {pickerAssets.map((asset) => {
-            const selectedIndex = references.findIndex(
-              (item) => item.asset_ref === asset.asset_ref,
-            );
-            const selected = selectedIndex >= 0;
-            return (
-              <article key={asset.asset_ref} className={styles.referenceCard}>
-                <SharedPreview asset={asset} />
-                <div>
-                  <small>
-                    {selected ? `参考 ${selectedIndex + 1}` : "共享素材"}
-                  </small>
-                  <strong>{asset.canonical_name}</strong>
-                  <div className={styles.referenceActions}>
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      disabled={!selected && references.length >= 3}
-                      onClick={() =>
-                        setReferences((current) =>
-                          selected
-                            ? current.filter(
-                                (item) => item.asset_ref !== asset.asset_ref,
-                              )
-                            : [...current, asset],
-                        )
-                      }
-                    >
-                      {selected ? "移出参考" : "加入参考"}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={asset.favorite}
-                      onClick={() => toggleFavorite(asset)}
-                    >
-                      {asset.favorite ? "取消收藏" : "收藏"}
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+        <div
+          className={styles.referenceSources}
+          role="group"
+          aria-label="创作素材来源"
+        >
+          {referenceSourceOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={referenceSource === option.value}
+              onClick={() => changeReferenceSource(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
+        <div className={styles.sourceSummary} id="active-reference-source">
+          <p>
+            <strong>{activeReferenceOption.label}</strong>
+            <span>{activeReferenceOption.description}</span>
+          </p>
+          <span>
+            当前显示 {pickerAssets.length} 张 · 已选 {references.length} / 3
+          </span>
+        </div>
+
+        {pickerIsLoading ? (
+          <p className={styles.pickerState} role="status">
+            正在读取「{activeReferenceOption.label}」…
+          </p>
+        ) : pickerIsError ? (
+          <div className={styles.pickerState} role="alert">
+            <p>这个素材分类读取失败，已选参考不受影响。</p>
+            <button
+              type="button"
+              onClick={() => {
+                setAnnouncement(
+                  `正在重新读取「${activeReferenceOption.label}」。`,
+                );
+                void (referenceSource === "all"
+                  ? library.refetch()
+                  : referencePersonal.refetch());
+              }}
+            >
+              重新读取
+            </button>
+          </div>
+        ) : pickerAssets.length === 0 ? (
+          <p className={styles.pickerState} role="status">
+            {referenceSource === "all"
+              ? "没有找到符合当前搜索的共享素材。"
+              : "这个分类暂时没有符合搜索的共享、可生成素材；私人未共享图片不会出现在这里。"}
+          </p>
+        ) : (
+          <div
+            className={styles.referenceLibrary}
+            aria-describedby="active-reference-source"
+          >
+            {pickerAssets.map((asset) => {
+              const selectedIndex = references.findIndex(
+                (item) => item.asset_ref === asset.asset_ref,
+              );
+              const selected = selectedIndex >= 0;
+              return (
+                <article
+                  key={asset.asset_ref}
+                  className={`${styles.referenceCard} ${selected ? styles.referenceCardSelected : ""}`}
+                >
+                  <div className={styles.referencePreview}>
+                    <SharedPreview asset={asset} />
+                    {selected ? (
+                      <span className={styles.selectionBadge}>
+                        <span aria-hidden="true">✓</span> 已选 · 参考 0
+                        {selectedIndex + 1}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div>
+                    <small>{selected ? "已进入参考胶片" : "共享素材"}</small>
+                    <strong>{asset.canonical_name}</strong>
+                    <div className={styles.referenceActions}>
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        disabled={!selected && references.length >= 3}
+                        onClick={() => toggleReference(asset)}
+                      >
+                        {selected ? "移出参考" : "加入参考"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={asset.favorite}
+                        disabled={
+                          favorites.isPending &&
+                          favorites.variables?.assetRef === asset.asset_ref
+                        }
+                        onClick={() => toggleFavorite(asset)}
+                      >
+                        {favorites.isPending &&
+                        favorites.variables?.assetRef === asset.asset_ref
+                          ? "保存中…"
+                          : asset.favorite
+                            ? "取消收藏"
+                            : "收藏"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        {pickerHasNextPage ? (
+          <button
+            className={styles.loadMore}
+            type="button"
+            disabled={pickerIsFetchingNextPage}
+            onClick={loadMoreReferences}
+          >
+            {pickerIsFetchingNextPage
+              ? "正在加载更多…"
+              : `加载更多${activeReferenceOption.label}`}
+          </button>
+        ) : null}
       </section>
 
       <section
@@ -482,22 +736,40 @@ export function IpAssetCreationPage() {
                 profile={activeProfile}
                 onFavorite={() => toggleFavorite(item.asset)}
                 onShare={() =>
-                  share.mutate(
-                    {
-                      token: activeProfile.token,
-                      assetRef: item.asset.asset_ref,
-                    },
-                    {
-                      onSuccess: () => setAnnouncement("图片已加入共享图库。"),
-                    },
-                  )
+                  (() => {
+                    setAnnouncement(
+                      `正在将「${item.asset.canonical_name}」加入共享图库。`,
+                    );
+                    share.mutate(
+                      {
+                        token: activeProfile.token,
+                        assetRef: item.asset.asset_ref,
+                      },
+                      {
+                        onSuccess: () =>
+                          setAnnouncement("图片已加入共享图库。"),
+                        onError: () =>
+                          setAnnouncement("加入共享图库失败，请稍后重试。"),
+                      },
+                    );
+                  })()
                 }
                 onDownload={() => {
+                  setAnnouncement(
+                    `正在准备「${item.asset.canonical_name}」原图。`,
+                  );
                   void downloadIpAssetOriginal({
                     asset: item.asset,
                     profileToken: activeProfile.token,
-                  });
+                  }).then(
+                    () => setAnnouncement("原图下载已开始。"),
+                    () => setAnnouncement("原图下载失败，请稍后重试。"),
+                  );
                 }}
+                sharing={
+                  share.isPending &&
+                  share.variables?.assetRef === item.asset.asset_ref
+                }
               />
             ))}
           </div>
@@ -520,10 +792,12 @@ export function IpAssetCreationPage() {
 
 function ReferenceFilmstrip({
   references,
-  onChange,
+  onMove,
+  onRemove,
 }: Readonly<{
   references: readonly IpAsset[];
-  onChange: (assets: readonly IpAsset[]) => void;
+  onMove: (from: number, to: number) => void;
+  onRemove: (index: number) => void;
 }>) {
   return (
     <section className={styles.filmstrip} aria-labelledby="filmstrip-title">
@@ -550,9 +824,7 @@ function ReferenceFilmstrip({
                     <button
                       type="button"
                       disabled={index === 0}
-                      onClick={() =>
-                        onChange(moveItem(references, index, index - 1))
-                      }
+                      onClick={() => onMove(index, index - 1)}
                       aria-label={`将 ${asset.canonical_name} 前移`}
                     >
                       ←
@@ -560,22 +832,14 @@ function ReferenceFilmstrip({
                     <button
                       type="button"
                       disabled={index === references.length - 1}
-                      onClick={() =>
-                        onChange(moveItem(references, index, index + 1))
-                      }
+                      onClick={() => onMove(index, index + 1)}
                       aria-label={`将 ${asset.canonical_name} 后移`}
                     >
                       →
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        onChange(
-                          references.filter(
-                            (_item, position) => position !== index,
-                          ),
-                        )
-                      }
+                      onClick={() => onRemove(index)}
                       aria-label={`移除 ${asset.canonical_name}`}
                     >
                       ×
@@ -594,6 +858,7 @@ function ReferenceFilmstrip({
 function OutputStage({
   status,
   statusError,
+  submitting,
   output,
   profile,
   sharing,
@@ -602,21 +867,50 @@ function OutputStage({
 }: Readonly<{
   status: ReturnType<typeof useIpAssetGeneration>["data"];
   statusError: boolean;
+  submitting: boolean;
   output: IpAsset | undefined;
   profile: LocalIpAssetProfile | null;
   sharing: boolean;
   onShare: (assetRef: string) => void;
   onDownload: (asset: IpAsset) => void;
 }>) {
+  const displayStatus = statusError
+    ? "状态读取失败"
+    : submitting
+      ? "正在提交"
+      : status === undefined
+        ? "等待创作"
+        : statusLabel(status.status);
+  const placeholderCopy = statusError
+    ? "暂时无法读取任务状态，系统会保留已经提交的任务；请稍后刷新页面确认。"
+    : submitting
+      ? "正在保存创作任务，完成后才会进入后台生成队列。"
+      : status?.status === "failed"
+        ? "本次生成没有完成。可以检查画面描述与参考素材后，使用同一简报重试。"
+        : status?.status === "queued"
+          ? "任务已保存，正在等待独立后台生成服务领取。后台服务未启动时，任务会继续安全排队。"
+          : status?.status === "running"
+            ? "后台生成服务已领取任务，模型正在组合参考素材与画面描述。"
+            : status?.status === "succeeded"
+              ? "图片已经生成，正在读取你的私人结果。"
+              : "完成简报并选择参考图后，作品会在这里出现。";
+  const visibleOutput = submitting ? undefined : output;
   return (
     <section
       className={styles.outputStage}
       aria-labelledby="output-stage-title"
+      aria-busy={
+        !statusError &&
+        (submitting ||
+          status?.status === "queued" ||
+          status?.status === "running")
+      }
     >
       <div className={styles.outputTopline}>
         <p className={styles.sectionNumber}>OUTPUT / 私人结果</p>
-        <span aria-live="polite">
-          {status === undefined ? "等待创作" : statusLabel(status.status)}
+        <span className={styles.outputStatus} aria-live="polite">
+          <i aria-hidden="true" />
+          {displayStatus}
         </span>
       </div>
       <h2 id="output-stage-title">生成结果</h2>
@@ -625,31 +919,27 @@ function OutputStage({
           任务状态读取失败。
         </p>
       ) : null}
-      {output === undefined ? (
+      {visibleOutput === undefined ? (
         <div className={styles.outputPlaceholder}>
           <span aria-hidden="true">✦</span>
-          <p>
-            {status?.status === "failed"
-              ? `生成失败：${status.error_code ?? "generation_failed"}`
-              : status?.status === "queued" || status?.status === "running"
-                ? "模型正在组合参考素材与画面描述…"
-                : "完成简报并选择参考图后，作品会在这里出现。"}
-          </p>
+          <p>{placeholderCopy}</p>
         </div>
       ) : (
         <div className={styles.outputReady}>
-          <PrivatePreview asset={output} profile={profile} eager />
-          <strong>{output.canonical_name}</strong>
-          <small>{output.shared ? "已在共享图库" : "仅在我的素材架"}</small>
+          <PrivatePreview asset={visibleOutput} profile={profile} eager />
+          <strong>{visibleOutput.canonical_name}</strong>
+          <small>
+            {visibleOutput.shared ? "已在共享图库" : "仅在我的素材架"}
+          </small>
           <div>
-            <button type="button" onClick={() => onDownload(output)}>
+            <button type="button" onClick={() => onDownload(visibleOutput)}>
               下载原图
             </button>
-            {!output.shared ? (
+            {!visibleOutput.shared ? (
               <button
                 type="button"
                 disabled={sharing}
-                onClick={() => onShare(output.asset_ref)}
+                onClick={() => onShare(visibleOutput.asset_ref)}
               >
                 {sharing ? "正在加入…" : "加入共享图库"}
               </button>
@@ -667,12 +957,14 @@ function PersonalAssetCard({
   onFavorite,
   onShare,
   onDownload,
+  sharing,
 }: Readonly<{
   item: IpAssetPersonalItem;
   profile: LocalIpAssetProfile;
   onFavorite: () => void;
   onShare: () => void;
   onDownload: () => void;
+  sharing: boolean;
 }>) {
   const generated = item.membership_sources.includes("generated");
   return (
@@ -700,8 +992,8 @@ function PersonalAssetCard({
             下载
           </button>
           {generated && !item.asset.shared ? (
-            <button type="button" onClick={onShare}>
-              加入共享
+            <button type="button" disabled={sharing} onClick={onShare}>
+              {sharing ? "正在加入…" : "加入共享"}
             </button>
           ) : null}
         </div>
@@ -815,6 +1107,44 @@ function PrivatePreviewLoader({
       loading={eager ? "eager" : "lazy"}
     />
   );
+}
+
+function projectReferenceCandidates(
+  assets: readonly IpAsset[],
+  query: string,
+): readonly IpAsset[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const unique = new Map<string, IpAsset>();
+  for (const asset of assets) {
+    if (!asset.shared || asset.status !== "ready") continue;
+    if (unique.has(asset.asset_ref)) continue;
+    if (
+      normalizedQuery.length > 0 &&
+      !referenceSearchText(asset).includes(normalizedQuery)
+    ) {
+      continue;
+    }
+    unique.set(asset.asset_ref, asset);
+  }
+  return [...unique.values()];
+}
+
+function referenceSearchText(asset: IpAsset): string {
+  return [
+    asset.canonical_name,
+    asset.character,
+    asset.asset_type,
+    asset.department,
+    asset.contributor,
+    asset.emotion,
+    asset.action,
+    asset.scene,
+    asset.intended_use,
+    asset.style,
+    ...asset.tags,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
 }
 
 function moveItem(

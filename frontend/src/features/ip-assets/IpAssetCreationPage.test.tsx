@@ -97,7 +97,7 @@ beforeEach(() => {
     created_at: "2026-08-24T08:00:00Z",
   });
   apiMocks.listIpAssets.mockResolvedValue({
-    items: [asset("one"), asset("two"), asset("three")],
+    items: [asset("one"), asset("two"), asset("three"), asset("four")],
     next_cursor: null,
   });
   apiMocks.listPersonalIpAssets.mockResolvedValue({
@@ -308,6 +308,348 @@ describe("IpAssetCreationPage", () => {
         },
         expect.anything(),
       ),
+    );
+    expect(screen.getByText("已收藏「小赛-参考-one.png」。")).toBeVisible();
+  });
+
+  it("switches among reference sources, keeps selection, and excludes private or unready rows", async () => {
+    const user = userEvent.setup();
+    const favorite = {
+      ...asset("favorite"),
+      canonical_name: "小赛-我的收藏-课堂.png",
+      favorite: true,
+    };
+    const privateFavorite = {
+      ...asset("private-favorite"),
+      canonical_name: "私人收藏-不可引用.png",
+      favorite: true,
+      shared: false,
+    };
+    const processingFavorite = {
+      ...asset("processing-favorite"),
+      canonical_name: "处理中收藏-不可引用.png",
+      favorite: true,
+      status: "processing" as const,
+    };
+    apiMocks.listPersonalIpAssets.mockImplementation(
+      ({ source }: { source: string }) =>
+        Promise.resolve({
+          items:
+            source === "favorite"
+              ? [favorite, privateFavorite, processingFavorite].map((item) => ({
+                  asset: item,
+                  favorite: true,
+                  membership_sources: ["favorite"],
+                }))
+              : [],
+          next_cursor: null,
+        }),
+    );
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const firstCard = (await screen.findByText("小赛-参考-one.png")).closest(
+      "article",
+    );
+    if (firstCard === null) throw new Error("first_reference_card_missing");
+    await user.click(
+      within(firstCard).getByRole("button", { name: "加入参考" }),
+    );
+    await user.click(screen.getByRole("button", { name: "我的收藏" }));
+
+    expect(await screen.findByText(favorite.canonical_name)).toBeVisible();
+    expect(screen.queryByText(privateFavorite.canonical_name)).toBeNull();
+    expect(screen.queryByText(processingFavorite.canonical_name)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "移除 小赛-参考-one.png" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText("已切换到「我的收藏」，已选参考保持不变。"),
+    ).toBeVisible();
+
+    await user.type(
+      screen.getByPlaceholderText("按名称、动作、场景筛选…"),
+      "不存在的素材",
+    );
+    expect(
+      await screen.findByText(/私人未共享图片不会出现在这里/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "移除 小赛-参考-one.png" }),
+    ).toBeVisible();
+  });
+
+  it("gates profile-scoped reference filters through the local profile dialog", async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    await user.click(screen.getByRole("button", { name: "我的收藏" }));
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: "建立这台浏览器的素材名片",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "全部素材" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(apiMocks.listPersonalIpAssets).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("查看「我的收藏」前，请先建立浏览器本地名片。"),
+    ).toBeVisible();
+  });
+
+  it.each([
+    ["我的上传", "uploaded" as const],
+    ["我的共享 AI 作品", "generated" as const],
+  ])("loads the %s reference source", async (label, source) => {
+    const user = userEvent.setup();
+    const sourceAsset = {
+      ...asset(source),
+      canonical_name: `小赛-${label}-素材.png`,
+      source_kind:
+        source === "generated"
+          ? ("ai_generated" as const)
+          : ("uploaded" as const),
+    };
+    apiMocks.listPersonalIpAssets.mockImplementation(
+      ({ source: requestedSource }: { source: string }) =>
+        Promise.resolve({
+          items:
+            requestedSource === source
+              ? [
+                  {
+                    asset: sourceAsset,
+                    favorite: false,
+                    membership_sources: [source],
+                  },
+                ]
+              : [],
+          next_cursor: null,
+        }),
+    );
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    await user.click(screen.getByRole("button", { name: label }));
+
+    expect(await screen.findByText(sourceAsset.canonical_name)).toBeVisible();
+    expect(apiMocks.listPersonalIpAssets).toHaveBeenCalledWith(
+      expect.objectContaining({ token: profile.token, source }),
+    );
+  });
+
+  it("marks selected cards, explains the three-reference limit, and announces reorder and removal", async () => {
+    const user = userEvent.setup();
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    for (const suffix of ["one", "two", "three"]) {
+      const card = (await screen.findByText(`小赛-参考-${suffix}.png`)).closest(
+        "article",
+      );
+      if (card === null) throw new Error("reference_card_missing");
+      await user.click(within(card).getByRole("button", { name: "加入参考" }));
+    }
+
+    expect(screen.getByText(/已选 · 参考 01/)).toBeVisible();
+    expect(screen.getByText(/已选 · 参考 02/)).toBeVisible();
+    expect(screen.getByText(/已选 · 参考 03/)).toBeVisible();
+    expect(screen.getByText(/已选满 3 张参考图/)).toBeVisible();
+    const fourthCard = screen
+      .getByText("小赛-参考-four.png")
+      .closest("article");
+    if (fourthCard === null) throw new Error("fourth_reference_card_missing");
+    expect(
+      within(fourthCard).getByRole("button", { name: "加入参考" }),
+    ).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("button", { name: "将 小赛-参考-one.png 后移" }),
+    );
+    expect(
+      screen.getByText("已将「小赛-参考-one.png」调整为参考 02。"),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "移除 小赛-参考-one.png" }),
+    );
+    expect(
+      screen.getByText("已从参考胶片移除「小赛-参考-one.png」。"),
+    ).toBeVisible();
+  });
+
+  it.each([
+    [
+      "queued" as const,
+      "任务已保存，正在等待独立后台生成服务领取。后台服务未启动时，任务会继续安全排队。",
+    ],
+    [
+      "running" as const,
+      "后台生成服务已领取任务，模型正在组合参考素材与画面描述。",
+    ],
+    [
+      "failed" as const,
+      "本次生成没有完成。可以检查画面描述与参考素材后，使用同一简报重试。",
+    ],
+  ])("shows honest %s generation state copy", async (status, copy) => {
+    const user = userEvent.setup();
+    apiMocks.createIpAssetGeneration.mockResolvedValue({
+      completed_at: null,
+      created: true,
+      created_at: "2026-08-24T08:00:00Z",
+      error_code: null,
+      generation_available: true,
+      job_ref: "ipg_demo",
+      output_asset_ref: null,
+      reference_asset_ref: "ipa_one",
+      reference_asset_refs: ["ipa_one"],
+      status: "queued",
+      status_url: "/api/v1/ip-assets/generations/ipg_demo",
+    });
+    apiMocks.getIpAssetGeneration.mockResolvedValue({
+      completed_at: null,
+      created: false,
+      created_at: "2026-08-24T08:00:00Z",
+      error_code: null,
+      generation_available: true,
+      job_ref: "ipg_demo",
+      output_asset_ref: null,
+      reference_asset_ref: "ipa_one",
+      reference_asset_refs: ["ipa_one"],
+      status,
+      status_url: "/api/v1/ip-assets/generations/ipg_demo",
+    });
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const card = (await screen.findByText("小赛-参考-one.png")).closest(
+      "article",
+    );
+    if (card === null) throw new Error("reference_card_missing");
+    await user.click(within(card).getByRole("button", { name: "加入参考" }));
+    await user.type(
+      screen.getByLabelText("画面描述"),
+      "小赛在科学课堂开心挥手，适合社群头图",
+    );
+    await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+
+    expect(await screen.findByText(copy)).toBeVisible();
+    expect(screen.queryByText(/\d+%|预计完成/)).toBeNull();
+    expect(screen.getByText(/这里不表示该服务当前在线/)).toBeVisible();
+  });
+
+  it("shows submission feedback before a job is stored", async () => {
+    const user = userEvent.setup();
+    let resolveGeneration: ((value: unknown) => void) | undefined;
+    apiMocks.createIpAssetGeneration.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGeneration = resolve;
+        }),
+    );
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const card = (await screen.findByText("小赛-参考-one.png")).closest(
+      "article",
+    );
+    if (card === null) throw new Error("reference_card_missing");
+    await user.click(within(card).getByRole("button", { name: "加入参考" }));
+    await user.type(
+      screen.getByLabelText("画面描述"),
+      "小赛在科学课堂开心挥手，适合社群头图",
+    );
+    await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+
+    expect(
+      await screen.findByText("正在保存创作任务，完成后才会进入后台生成队列。"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "正在建立任务…" }),
+    ).toBeDisabled();
+
+    resolveGeneration?.({
+      completed_at: null,
+      created: true,
+      created_at: "2026-08-24T08:00:00Z",
+      error_code: null,
+      generation_available: true,
+      job_ref: "ipg_demo",
+      output_asset_ref: null,
+      reference_asset_ref: "ipa_one",
+      reference_asset_refs: ["ipa_one"],
+      status: "queued",
+      status_url: "/api/v1/ip-assets/generations/ipg_demo",
+    });
+    expect(
+      await screen.findByText(/任务已保存，正在等待独立后台生成服务领取/),
+    ).toBeVisible();
+  });
+
+  it("keeps a bounded recoverable state when generation status cannot be read", async () => {
+    const user = userEvent.setup();
+    apiMocks.createIpAssetGeneration.mockResolvedValue({
+      completed_at: null,
+      created: true,
+      created_at: "2026-08-24T08:00:00Z",
+      error_code: null,
+      generation_available: true,
+      job_ref: "ipg_demo",
+      output_asset_ref: null,
+      reference_asset_ref: "ipa_one",
+      reference_asset_refs: ["ipa_one"],
+      status: "queued",
+      status_url: "/api/v1/ip-assets/generations/ipg_demo",
+    });
+    apiMocks.getIpAssetGeneration.mockRejectedValue(new Error("network"));
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const card = (await screen.findByText("小赛-参考-one.png")).closest(
+      "article",
+    );
+    if (card === null) throw new Error("reference_card_missing");
+    await user.click(within(card).getByRole("button", { name: "加入参考" }));
+    await user.type(
+      screen.getByLabelText("画面描述"),
+      "小赛在科学课堂开心挥手，适合社群头图",
+    );
+    await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+
+    expect(await screen.findByText("任务状态读取失败。")).toBeVisible();
+    expect(
+      screen.getByText(/暂时无法读取任务状态，系统会保留已经提交的任务/),
+    ).toBeVisible();
+  });
+
+  it("loads the next page for the active personal reference source", async () => {
+    const user = userEvent.setup();
+    apiMocks.listPersonalIpAssets.mockImplementation(
+      ({ source, cursor }: { source: string; cursor: string | null }) =>
+        Promise.resolve(
+          source === "favorite"
+            ? {
+                items: [
+                  {
+                    asset: asset(cursor === null ? "favorite-a" : "favorite-b"),
+                    favorite: true,
+                    membership_sources: ["favorite"],
+                  },
+                ],
+                next_cursor: cursor === null ? "page-two" : null,
+              }
+            : { items: [], next_cursor: null },
+        ),
+    );
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    await user.click(screen.getByRole("button", { name: "我的收藏" }));
+    expect(await screen.findByText("小赛-参考-favorite-a.png")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "加载更多我的收藏" }));
+
+    expect(await screen.findByText("小赛-参考-favorite-b.png")).toBeVisible();
+    expect(apiMocks.listPersonalIpAssets).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: profile.token,
+        source: "favorite",
+        cursor: "page-two",
+      }),
     );
   });
 });

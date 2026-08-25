@@ -35,12 +35,13 @@ useIpAssetDetail(assetRef, profile); // shared or owned safe detail
 useIpAssetPackageDownload(profile); // selected refs -> ZIP
 useCreateIpAssetGeneration(); // idempotent async enqueue
 useIpAssetGeneration(jobRef, profile); // terminal-aware private polling
-usePersonalIpAssets(profile, source); // all/generated/uploaded/favorite shelf
+usePersonalIpAssets(profile, source, enabled); // gated all/generated/uploaded/favorite infinite query
 useSetIpAssetFavorite();
 useShareIpAsset();
 useIpAssetLeaderboard(period); // anonymous aggregate only
 
-type ApplicationPath = "console" | "ip-assets" | "ip-assets-create" | "not-found";
+type ApplicationPath =
+  "console" | "ip-assets" | "ip-assets-create" | "not-found";
 resolveApplicationPath(pathname); // /ip-assets/create[/] is a separate standalone studio
 ```
 
@@ -109,6 +110,19 @@ resources.
   shared assets, supports reorder/removal, and sends exactly that order to the API. A detail deep link
   may prefill frame `01` using only a safe asset ref in `?reference=` after the ordinary shared-ready
   list has proved that asset is eligible; a private, missing, or unready deep link is ignored.
+- The creation reference picker exposes `全部素材`, `我的收藏`, `我的上传`, and
+  `我的共享 AI 作品`. The shared source uses the shared cursor query; profile sources use an
+  explicitly enabled personal cursor query, then project only `shared && status === "ready"`
+  assets without mutating cache rows. Personal-source text matching is local and bounded to safe
+  card metadata. Source/search/page changes never clear or reorder the independent filmstrip.
+  Choosing a personal source without a valid local profile opens setup and leaves the current
+  source unchanged.
+- Every meaningful studio action has visible, persistent feedback in a polite live region. A
+  selected reference changes the whole card surface and includes a textual `✓ 已选 · 参考 01–03`
+  badge; reaching three disables only further additions and shows a written limit explanation.
+  Add/remove/reorder, source switch, favorite, share, download, pagination, and enqueue actions
+  update that feedback surface; pending buttons also expose text and disabled state. Feedback must
+  not depend on color, motion, or a visually hidden toast.
 - Generation submission keeps one idempotency key for the same normalized profile/prompt/taxonomy/
   ordered-reference signature across transport or server retries. It creates a new key only when
   that signature changes, so a retry cannot accidentally enqueue a second provider job.
@@ -117,6 +131,11 @@ resources.
   generation-query family. A successful job exposes an action that opens the output asset. Disabled
   generation does not disable upload/search/download, reference selection, favorites, or personal
   browsing. Generated results are labeled private/personal by default and offer explicit “加入共享图库”.
+- The output stage distinguishes `submitting`, `queued`, `running`, `succeeded`, `failed`, and
+  status-read failure. `submitting` means the job is being stored; `queued` means it is durably
+  waiting for the independent background service; only `running` may say that the model has begun.
+  `generation_available` means provider capability is configured, never that the worker is online.
+  Do not invent percentages, queue position, completion estimates, heartbeat, or provider errors.
 - Detail and tool drawers trap keyboard focus, exclude controls inside closed `<details>` from the
   focus loop, close on Escape/backdrop/close button, and restore focus to the invoking control. Each
   drawer has an accessible name and does not nest conflicting landmarks.
@@ -143,42 +162,48 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 
 ### 4. Validation & Error Matrix
 
-| Condition                                              | Required UI behavior                                                                                |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| Root path `/` with flag on or off                      | Render the shared console without importing/rendering/mounting the IP page                          |
-| `/ip-assets` or `/ip-assets/create` with feature flag false | Render an independent unavailable page; do not load either feature page                          |
-| Unknown browser path                                   | Render the independent not-found state with one main/h1; do not fall back to the console            |
-| Production deep link without SPA rewrite               | Treat as hosting misconfiguration; configure `/ip-assets` -> `index.html`, not an in-app workaround |
-| Capabilities loading/error/disabled                    | Honest status or disabled panel; no crashing hooks                                                  |
-| Required taxonomy absent                               | Browser prevents submit; no invalid enum sent                                                       |
-| Upload rejected                                        | Bounded accessible error; selected file/form remain recoverable                                     |
-| File selected/previewed before recognition click       | No recognition request                                                                              |
-| Recognition unavailable                                | Disable only the recognition control; explain that manual upload remains available                  |
-| Recognition pending                                    | Prevent duplicate activation and expose a bounded progress label                                    |
-| Recognition succeeds                                   | Show an announced advisory status; prefill editable fields without changing department/contributor  |
-| Recognition fails                                      | Preserve selected file and manual values; show an accessible bounded error; do not submit           |
-| File changes during/after recognition                  | Ignore the old response and clear stale suggestion status/values                                    |
-| Exact duplicate                                        | Show existing canonical asset and refresh gallery without duplicate card                            |
-| Semantic unavailable                                   | Render metadata results plus explicit degradation reason                                            |
-| Invalid similar-image query                            | Accessible typed error, not “provider unavailable”                                                  |
-| Text/image search request fails                        | Keep the current gallery and expose a bounded `role="alert"` message                                |
-| Semantic response contains metadata-only merged hits   | Label the set “语义 + 元数据结果”; show similarity only on cards that actually have it              |
-| Search text input receives keyboard/pointer focus      | Draw one rounded composite focus ring; no child rectangle, clipping, or horizontal overflow         |
-| Processing/failed asset                                | Do not request preview bytes or allow selection/download/reference; render a named fallback         |
-| Ready preview fails to load                            | Replace the broken image with a named textual fallback                                              |
-| Preview URL crosses API origin or uses non-HTTP scheme | Refuse the resource URL                                                                             |
-| ZIP succeeds/fails                                     | Announce result via live region; revoke temporary URL                                               |
-| Generation queued/running                              | Poll and expose state; do not imply asset exists yet                                                |
-| Generation succeeds                                    | Stop polling, link/select output, refresh gallery                                                   |
-| Generation query reaches a terminal state              | Stop its timer; never invalidate the generation query from its own interval callback                |
-| Favorite/create/personal action without a local profile | Open honest first-use setup; do not send an empty or invented token                                 |
-| Stored profile malformed or restore is rejected         | Clear it, announce loss, and require setup again; never leak the rejected token                      |
-| Reference selection reaches three                       | Disable only further additions; retain reorder/remove                                               |
-| Deep-linked reference is private, missing, or unready   | Ignore it; never fetch private media or insert it into the filmstrip                                 |
-| Same generation form is retried after request failure   | Reuse the submission signature's idempotency key; do not enqueue a second job                        |
-| Private generated result succeeds                       | Show in output and personal shelf; do not expose through shared URL until explicit share             |
-| Drawer opened/closed by keyboard                       | Focus enters/traps, Escape closes, focus returns to trigger; closed disclosure controls are skipped |
-| Reduced-motion preference                              | Disable decorative transitions/animations                                                           |
+| Condition                                                   | Required UI behavior                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Root path `/` with flag on or off                           | Render the shared console without importing/rendering/mounting the IP page                             |
+| `/ip-assets` or `/ip-assets/create` with feature flag false | Render an independent unavailable page; do not load either feature page                                |
+| Unknown browser path                                        | Render the independent not-found state with one main/h1; do not fall back to the console               |
+| Production deep link without SPA rewrite                    | Treat as hosting misconfiguration; configure `/ip-assets` -> `index.html`, not an in-app workaround    |
+| Capabilities loading/error/disabled                         | Honest status or disabled panel; no crashing hooks                                                     |
+| Required taxonomy absent                                    | Browser prevents submit; no invalid enum sent                                                          |
+| Upload rejected                                             | Bounded accessible error; selected file/form remain recoverable                                        |
+| File selected/previewed before recognition click            | No recognition request                                                                                 |
+| Recognition unavailable                                     | Disable only the recognition control; explain that manual upload remains available                     |
+| Recognition pending                                         | Prevent duplicate activation and expose a bounded progress label                                       |
+| Recognition succeeds                                        | Show an announced advisory status; prefill editable fields without changing department/contributor     |
+| Recognition fails                                           | Preserve selected file and manual values; show an accessible bounded error; do not submit              |
+| File changes during/after recognition                       | Ignore the old response and clear stale suggestion status/values                                       |
+| Exact duplicate                                             | Show existing canonical asset and refresh gallery without duplicate card                               |
+| Semantic unavailable                                        | Render metadata results plus explicit degradation reason                                               |
+| Invalid similar-image query                                 | Accessible typed error, not “provider unavailable”                                                     |
+| Text/image search request fails                             | Keep the current gallery and expose a bounded `role="alert"` message                                   |
+| Semantic response contains metadata-only merged hits        | Label the set “语义 + 元数据结果”; show similarity only on cards that actually have it                 |
+| Search text input receives keyboard/pointer focus           | Draw one rounded composite focus ring; no child rectangle, clipping, or horizontal overflow            |
+| Processing/failed asset                                     | Do not request preview bytes or allow selection/download/reference; render a named fallback            |
+| Ready preview fails to load                                 | Replace the broken image with a named textual fallback                                                 |
+| Preview URL crosses API origin or uses non-HTTP scheme      | Refuse the resource URL                                                                                |
+| ZIP succeeds/fails                                          | Announce result via live region; revoke temporary URL                                                  |
+| Generation queued/running                                   | Poll and expose state; do not imply asset exists yet                                                   |
+| Generation succeeds                                         | Stop polling, link/select output, refresh gallery                                                      |
+| Generation query reaches a terminal state                   | Stop its timer; never invalidate the generation query from its own interval callback                   |
+| Favorite/create/personal action without a local profile     | Open honest first-use setup; do not send an empty or invented token                                    |
+| Stored profile malformed or restore is rejected             | Clear it, announce loss, and require setup again; never leak the rejected token                        |
+| Reference selection reaches three                           | Disable only further additions; retain reorder/remove                                                  |
+| Personal reference source chosen without profile            | Open local-profile setup and keep the current source; never query with an empty token                  |
+| Personal reference page contains private/unready rows       | Exclude them from candidates while retaining already selected filmstrip assets                         |
+| Reference source/search changes                             | Query/filter only the active source; preserve selection/order and expose loading/empty/error/load-more |
+| Deep-linked reference is private, missing, or unready       | Ignore it; never fetch private media or insert it into the filmstrip                                   |
+| Same generation form is retried after request failure       | Reuse the submission signature's idempotency key; do not enqueue a second job                          |
+| Generation submitting                                       | Say the job is being saved; do not claim it is queued or running yet                                   |
+| Generation queued                                           | Say the saved job awaits the independent background service; do not claim worker liveness              |
+| Generation running                                          | Say the worker claimed it and model generation began; do not show fake progress                        |
+| Private generated result succeeds                           | Show in output and personal shelf; do not expose through shared URL until explicit share               |
+| Drawer opened/closed by keyboard                            | Focus enters/traps, Escape closes, focus returns to trigger; closed disclosure controls are skipped    |
+| Reduced-motion preference                                   | Disable decorative transitions/animations                                                              |
 
 ### 5. Good / Base / Bad Cases
 
@@ -223,6 +248,10 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   explicit share, anonymous ranking periods, numbered/reordered 1..3 references, and generated
   private output language. Assert stable generation idempotency across an unchanged retry and
   rejection of private/unready `?reference=` deep links.
+- Studio reference picker: all/favorite/uploaded/shared-generated source switching, explicit query
+  gates, active-source pagination/search/error/empty states, shared-ready projection, selection
+  persistence, whole-card `01–03` markers, three-item limit, visible interaction feedback, and
+  honest submitting/queued/running/failed/status-error copy.
 - Hook: terminal generation status stops polling and invalidates only list/personal prefixes without
   recursively refetching the generation query.
 - Accessibility: axe, keyboard focus order, drawer trap/restore/Escape/backdrop behavior, closed

@@ -171,6 +171,7 @@ export function useBootstrapIpAssetProfile() {
 export function usePersonalIpAssets(
   profile: LocalIpAssetProfile | null,
   source: IpAssetPersonalSource,
+  enabled = true,
 ) {
   return useInfiniteQuery({
     queryKey: ipAssetKeys.personal(profile?.profileRef ?? "missing", source),
@@ -183,7 +184,7 @@ export function usePersonalIpAssets(
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    enabled: profile !== null,
+    enabled: profile !== null && enabled,
   });
 }
 
