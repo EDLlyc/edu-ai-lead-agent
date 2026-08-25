@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Authoritative frontend lint, type, test, build, accessibility, and generated-contract checks."}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "IP asset route isolation, capability, accessibility, and regression expectations."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Review login form, feedback, focus, keyboard, and logout accessibility."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Review session ownership, storage lifetime, and cleanup behavior."}

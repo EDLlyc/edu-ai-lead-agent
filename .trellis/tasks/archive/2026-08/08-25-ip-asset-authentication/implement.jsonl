@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend source-of-truth index and standalone SPA boundaries."}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Current standalone IP asset route, visual, profile, and accessibility contracts that the demo gate must preserve."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Accessible component composition, forms, focus, and feedback conventions for the login page and logout control."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Ownership and persistence rules for the narrow sessionStorage demo-login marker."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Strict TypeScript and runtime boundary requirements for storage and return-target parsing."}
