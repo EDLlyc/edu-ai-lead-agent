@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -11,6 +11,8 @@ from app.domain.ip_asset_recognition import (
 )
 from app.domain.ip_assets import (
     IpAssetCharacter,
+    IpAssetLeaderboardPeriod,
+    IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
     IpAssetSemanticStatus,
@@ -66,6 +68,7 @@ class IpAssetRecord:
     parent_asset_id: UUID | None
     created_at: datetime
     updated_at: datetime
+    shared_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +90,51 @@ class IpAssetPage:
     items: tuple[IpAssetRecord, ...]
     next_cursor_created_at: datetime | None
     next_cursor_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetProfileRecord:
+    id: UUID
+    profile_ref: str
+    display_name: str
+    department: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetPersonalItemRecord:
+    asset: IpAssetRecord
+    membership_sources: tuple[IpAssetMembershipSource, ...]
+    favorite: bool
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetPersonalPage:
+    items: tuple[IpAssetPersonalItemRecord, ...]
+    next_cursor_created_at: datetime | None
+    next_cursor_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetGenerationReferenceRecord:
+    asset_id: UUID
+    asset_ref: str
+    ordinal: int
+    source_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetLeaderboardItemRecord:
+    asset: IpAssetRecord
+    download_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetLeaderboardRecord:
+    period: IpAssetLeaderboardPeriod
+    generated_at: datetime
+    items: tuple[IpAssetLeaderboardItemRecord, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +163,9 @@ class IpAssetGenerationRecord:
     department: str
     contributor: str
     ratio: str
+    profile_id: UUID | None
     reference_asset_id: UUID | None
+    references: tuple[IpAssetGenerationReferenceRecord, ...]
     provider: str
     model: str
     status: str
@@ -148,6 +198,12 @@ class IpAssetRepository(Protocol):
 
     async def get_by_ref(self, asset_ref: str) -> IpAssetRecord | None: ...
 
+    async def get_shared_by_ref(self, asset_ref: str) -> IpAssetRecord | None: ...
+
+    async def get_accessible_by_ref(
+        self, asset_ref: str, *, profile_id: UUID | None
+    ) -> IpAssetRecord | None: ...
+
     async def get_by_id(self, asset_id: UUID) -> IpAssetRecord | None: ...
 
     async def create_asset(
@@ -159,9 +215,50 @@ class IpAssetRepository(Protocol):
         source_kind: IpAssetSource,
         parent_asset_id: UUID | None = None,
         semantic_enabled: bool,
+        shared: bool = True,
+        membership_profile_id: UUID | None = None,
+        membership_source: IpAssetMembershipSource | None = None,
     ) -> tuple[IpAssetRecord, bool]: ...
 
     async def list_assets(self, query: IpAssetQuery) -> IpAssetPage: ...
+
+    async def bootstrap_profile(
+        self, *, token_digest: str, display_name: str, department: str
+    ) -> tuple[IpAssetProfileRecord, bool]: ...
+
+    async def get_profile_by_token_digest(
+        self, token_digest: str
+    ) -> IpAssetProfileRecord | None: ...
+
+    async def list_personal_assets(
+        self,
+        *,
+        profile_id: UUID,
+        source: str,
+        cursor_created_at: datetime | None,
+        cursor_id: UUID | None,
+        limit: int,
+    ) -> IpAssetPersonalPage: ...
+
+    async def favorite_asset(self, *, profile_id: UUID, asset_ref: str, favorite: bool) -> bool: ...
+
+    async def favorite_asset_ids(
+        self, *, profile_id: UUID, asset_ids: tuple[UUID, ...]
+    ) -> frozenset[UUID]: ...
+
+    async def share_generated_asset(self, *, profile_id: UUID, asset_ref: str) -> IpAssetRecord: ...
+
+    async def increment_downloads(
+        self, *, asset_ids: tuple[UUID, ...], business_date: date
+    ) -> None: ...
+
+    async def leaderboard(
+        self,
+        *,
+        period: IpAssetLeaderboardPeriod,
+        start_date: date | None,
+        limit: int,
+    ) -> IpAssetLeaderboardRecord: ...
 
     async def find_near_duplicate(
         self, *, perceptual_hash: str, exclude_id: UUID | None = None
@@ -199,12 +296,15 @@ class IpAssetRepository(Protocol):
         prompt: str,
         metadata: IpAssetMetadata,
         ratio: str,
-        reference_asset_id: UUID | None,
+        profile_id: UUID | None,
+        references: tuple[tuple[UUID, str], ...],
         provider: str,
         model: str,
     ) -> tuple[IpAssetGenerationRecord, bool]: ...
 
-    async def get_generation(self, job_ref: str) -> IpAssetGenerationRecord | None: ...
+    async def get_generation(
+        self, job_ref: str, *, profile_id: UUID | None = None
+    ) -> IpAssetGenerationRecord | None: ...
 
     async def claim_generation_job(
         self, *, worker_id: str, lease_seconds: int, max_attempts: int

@@ -7436,6 +7436,11 @@
             "title": "Emotion",
             "type": "string"
           },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
           "has_alpha": {
             "title": "Has Alpha",
             "type": "boolean"
@@ -7470,6 +7475,10 @@
           },
           "semantic_status": {
             "$ref": "#/components/schemas/IpAssetSemanticStatus"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
           },
           "source_kind": {
             "$ref": "#/components/schemas/IpAssetSource"
@@ -7515,6 +7524,7 @@
           "orientation",
           "status",
           "semantic_status",
+          "shared",
           "created_at",
           "preview_url",
           "download_url"
@@ -7584,6 +7594,11 @@
             "title": "Emotion",
             "type": "string"
           },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
           "has_alpha": {
             "title": "Has Alpha",
             "type": "boolean"
@@ -7626,6 +7641,10 @@
           },
           "semantic_status": {
             "$ref": "#/components/schemas/IpAssetSemanticStatus"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
           },
           "source_kind": {
             "$ref": "#/components/schemas/IpAssetSource"
@@ -7671,6 +7690,7 @@
           "orientation",
           "status",
           "semantic_status",
+          "shared",
           "created_at",
           "preview_url",
           "download_url",
@@ -7679,6 +7699,24 @@
           "name_version"
         ],
         "title": "IpAssetDetailResponse",
+        "type": "object"
+      },
+      "IpAssetFavoriteResponse": {
+        "properties": {
+          "asset_ref": {
+            "title": "Asset Ref",
+            "type": "string"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "asset_ref",
+          "favorite"
+        ],
+        "title": "IpAssetFavoriteResponse",
         "type": "object"
       },
       "IpAssetGenerationRequest": {
@@ -7731,6 +7769,22 @@
               }
             ],
             "title": "Reference Asset Ref"
+          },
+          "reference_asset_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 3,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Asset Refs"
           }
         },
         "required": [
@@ -7796,6 +7850,24 @@
             ],
             "title": "Output Asset Ref"
           },
+          "reference_asset_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Asset Ref"
+          },
+          "reference_asset_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Asset Refs",
+            "type": "array"
+          },
           "status": {
             "enum": [
               "queued",
@@ -7815,11 +7887,64 @@
           "job_ref",
           "status",
           "created",
+          "reference_asset_refs",
           "status_url",
           "created_at",
           "completed_at"
         ],
         "title": "IpAssetGenerationResponse",
+        "type": "object"
+      },
+      "IpAssetLeaderboardItemResponse": {
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/IpAssetCardResponse"
+          },
+          "download_count": {
+            "minimum": 1.0,
+            "title": "Download Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset",
+          "download_count"
+        ],
+        "title": "IpAssetLeaderboardItemResponse",
+        "type": "object"
+      },
+      "IpAssetLeaderboardPeriod": {
+        "enum": [
+          "30d",
+          "all"
+        ],
+        "title": "IpAssetLeaderboardPeriod",
+        "type": "string"
+      },
+      "IpAssetLeaderboardResponse": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetLeaderboardItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "period": {
+            "$ref": "#/components/schemas/IpAssetLeaderboardPeriod"
+          }
+        },
+        "required": [
+          "period",
+          "generated_at",
+          "items"
+        ],
+        "title": "IpAssetLeaderboardResponse",
         "type": "object"
       },
       "IpAssetListResponse": {
@@ -7850,6 +7975,14 @@
         "title": "IpAssetListResponse",
         "type": "object"
       },
+      "IpAssetMembershipSource": {
+        "enum": [
+          "generated",
+          "uploaded"
+        ],
+        "title": "IpAssetMembershipSource",
+        "type": "string"
+      },
       "IpAssetOrientation": {
         "enum": [
           "square",
@@ -7858,6 +7991,119 @@
         ],
         "title": "IpAssetOrientation",
         "type": "string"
+      },
+      "IpAssetPersonalItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/IpAssetCardResponse"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "membership_sources": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetMembershipSource"
+            },
+            "title": "Membership Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "asset",
+          "membership_sources",
+          "favorite"
+        ],
+        "title": "IpAssetPersonalItemResponse",
+        "type": "object"
+      },
+      "IpAssetPersonalListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetPersonalItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "IpAssetPersonalListResponse",
+        "type": "object"
+      },
+      "IpAssetProfileCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "department": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Department",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "department"
+        ],
+        "title": "IpAssetProfileCreateRequest",
+        "type": "object"
+      },
+      "IpAssetProfileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "identity_boundary": {
+            "const": "browser_local_unverified",
+            "default": "browser_local_unverified",
+            "title": "Identity Boundary",
+            "type": "string"
+          },
+          "profile_ref": {
+            "title": "Profile Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_ref",
+          "display_name",
+          "department",
+          "created_at"
+        ],
+        "title": "IpAssetProfileResponse",
+        "type": "object"
       },
       "IpAssetRecognitionResponse": {
         "additionalProperties": false,
@@ -8021,6 +8267,24 @@
         ],
         "title": "IpAssetSemanticStatus",
         "type": "string"
+      },
+      "IpAssetShareResponse": {
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/IpAssetDetailResponse"
+          },
+          "shared": {
+            "const": true,
+            "default": true,
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "asset"
+        ],
+        "title": "IpAssetShareResponse",
+        "type": "object"
       },
       "IpAssetSource": {
         "enum": [
@@ -13133,6 +13397,22 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
           }
         ],
         "responses": {
@@ -13164,6 +13444,24 @@
       },
       "post": {
         "operationId": "upload_ip_asset_api_v1_ip_assets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -13226,6 +13524,24 @@
     "/api/v1/ip-assets/downloads": {
       "post": {
         "operationId": "download_ip_asset_zip_api_v1_ip_assets_downloads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -13265,6 +13581,24 @@
     "/api/v1/ip-assets/generations": {
       "post": {
         "operationId": "create_ip_asset_generation_api_v1_ip_assets_generations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -13315,6 +13649,22 @@
               "title": "Job Ref",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
           }
         ],
         "responses": {
@@ -13340,6 +13690,262 @@
           }
         },
         "summary": "Read Ip Asset Generation",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/leaderboard": {
+      "get": {
+        "operationId": "read_ip_asset_leaderboard_api_v1_ip_assets_leaderboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpAssetLeaderboardPeriod",
+              "default": "30d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetLeaderboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Ip Asset Leaderboard",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/profiles": {
+      "post": {
+        "operationId": "bootstrap_ip_asset_profile_api_v1_ip_assets_profiles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAssetProfileCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bootstrap Ip Asset Profile",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/profiles/me": {
+      "get": {
+        "operationId": "read_ip_asset_profile_api_v1_ip_assets_profiles_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Ip Asset Profile",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/profiles/me/assets": {
+      "get": {
+        "operationId": "list_personal_ip_assets_api_v1_ip_assets_profiles_me_assets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "generated",
+                "uploaded",
+                "favorite"
+              ],
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "maximum": 60,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetPersonalListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Personal Ip Assets",
         "tags": [
           "ip-assets"
         ]
@@ -13389,6 +13995,24 @@
     "/api/v1/ip-assets/search/image": {
       "post": {
         "operationId": "search_ip_assets_image_api_v1_ip_assets_search_image_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -13430,6 +14054,24 @@
     "/api/v1/ip-assets/search/text": {
       "post": {
         "operationId": "search_ip_assets_text_api_v1_ip_assets_search_text_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -13480,6 +14122,22 @@
               "title": "Asset Ref",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
           }
         ],
         "responses": {
@@ -13522,6 +14180,22 @@
               "title": "Asset Ref",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
           }
         ],
         "responses": {
@@ -13550,6 +14224,120 @@
         ]
       }
     },
+    "/api/v1/ip-assets/{asset_ref}/favorite": {
+      "delete": {
+        "operationId": "unfavorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetFavoriteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unfavorite Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      },
+      "put": {
+        "operationId": "favorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetFavoriteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Favorite Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
     "/api/v1/ip-assets/{asset_ref}/preview": {
       "get": {
         "operationId": "preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get",
@@ -13561,6 +14349,22 @@
             "schema": {
               "title": "Asset Ref",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
             }
           }
         ],
@@ -13585,6 +14389,64 @@
           }
         },
         "summary": "Preview Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/{asset_ref}/shared": {
+      "put": {
+        "operationId": "share_ip_asset_api_v1_ip_assets__asset_ref__shared_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetShareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Share Ip Asset",
         "tags": [
           "ip-assets"
         ]

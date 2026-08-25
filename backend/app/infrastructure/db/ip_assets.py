@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -15,8 +15,14 @@ from app.application.ports.ip_assets import (
     IpAssetEmbeddingClaim,
     IpAssetGenerationClaim,
     IpAssetGenerationRecord,
+    IpAssetGenerationReferenceRecord,
+    IpAssetLeaderboardItemRecord,
+    IpAssetLeaderboardRecord,
     IpAssetObjectDescriptor,
     IpAssetPage,
+    IpAssetPersonalItemRecord,
+    IpAssetPersonalPage,
+    IpAssetProfileRecord,
     IpAssetQuery,
     IpAssetRecord,
     IpAssetVectorHit,
@@ -25,6 +31,8 @@ from app.core.errors import ConflictError
 from app.domain.image_similarity import perceptual_hash_distance
 from app.domain.ip_assets import (
     IpAssetCharacter,
+    IpAssetLeaderboardPeriod,
+    IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
     IpAssetSemanticStatus,
@@ -37,10 +45,15 @@ from app.domain.ip_assets import (
 )
 from app.domain.visual_retrieval import VisualEmbeddingIdentity, VisualEmbeddingResult
 from app.infrastructure.db.models import (
+    IpAssetDownloadDailyModel,
     IpAssetEmbeddingJobModel,
     IpAssetEmbeddingModel,
+    IpAssetFavoriteModel,
     IpAssetGenerationJobModel,
+    IpAssetGenerationReferenceModel,
     IpAssetModel,
+    IpAssetProfileMembershipModel,
+    IpAssetProfileModel,
     IpAssetTagModel,
 )
 
@@ -66,6 +79,33 @@ class PostgresIpAssetRepository:
             )
             return await _record_or_none(session, model)
 
+    async def get_shared_by_ref(self, asset_ref: str) -> IpAssetRecord | None:
+        async with self._session_factory() as session:
+            model = await session.scalar(
+                select(IpAssetModel).where(
+                    IpAssetModel.asset_ref == asset_ref,
+                    IpAssetModel.shared_at.is_not(None),
+                )
+            )
+            return await _record_or_none(session, model)
+
+    async def get_accessible_by_ref(
+        self, asset_ref: str, *, profile_id: UUID | None
+    ) -> IpAssetRecord | None:
+        async with self._session_factory() as session:
+            statement = select(IpAssetModel).where(IpAssetModel.asset_ref == asset_ref)
+            if profile_id is None:
+                statement = statement.where(IpAssetModel.shared_at.is_not(None))
+            else:
+                membership = select(IpAssetProfileMembershipModel.id).where(
+                    IpAssetProfileMembershipModel.profile_id == profile_id,
+                    IpAssetProfileMembershipModel.asset_id == IpAssetModel.id,
+                )
+                statement = statement.where(
+                    or_(IpAssetModel.shared_at.is_not(None), membership.exists())
+                )
+            return await _record_or_none(session, await session.scalar(statement))
+
     async def get_by_id(self, asset_id: UUID) -> IpAssetRecord | None:
         async with self._session_factory() as session:
             model = await session.get(IpAssetModel, asset_id)
@@ -80,10 +120,21 @@ class PostgresIpAssetRepository:
         source_kind: IpAssetSource,
         parent_asset_id: UUID | None = None,
         semantic_enabled: bool,
+        shared: bool = True,
+        membership_profile_id: UUID | None = None,
+        membership_source: IpAssetMembershipSource | None = None,
     ) -> tuple[IpAssetRecord, bool]:
         existing = await self.get_by_sha256(upload.sha256)
         if existing is not None:
-            return existing, False
+            return (
+                await self._link_existing_asset(
+                    asset_id=existing.id,
+                    shared=shared,
+                    profile_id=membership_profile_id,
+                    source=membership_source,
+                ),
+                False,
+            )
         display_base, naming = canonical_name_base(metadata, upload.orientation)
         naming_key, slug_base = naming.split(":", 1)
         async with self._session_factory() as session:
@@ -96,9 +147,16 @@ class PostgresIpAssetRepository:
                     select(IpAssetModel).where(IpAssetModel.blob_sha256 == upload.sha256)
                 )
                 if duplicate is not None:
+                    await _apply_asset_relationships(
+                        session,
+                        asset=duplicate,
+                        shared=shared,
+                        profile_id=membership_profile_id,
+                        source=membership_source,
+                    )
                     tags = await _tags_for(session, (duplicate.id,))
                     record = _record(duplicate, tags.get(duplicate.id, ()))
-                    await session.rollback()
+                    await session.commit()
                     return record, False
                 await session.execute(
                     text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -150,6 +208,7 @@ class PostgresIpAssetRepository:
                     ),
                     failure_code=None,
                     parent_asset_id=parent_asset_id,
+                    shared_at=datetime.now(UTC) if shared else None,
                 )
                 session.add(model)
                 # Flush the parent first because these deliberately relationship-free ORM
@@ -167,21 +226,63 @@ class PostgresIpAssetRepository:
                             id=uuid4(), asset_id=asset_id, status="queued", attempt_count=0
                         )
                     )
+                await _apply_asset_relationships(
+                    session,
+                    asset=model,
+                    shared=shared,
+                    profile_id=membership_profile_id,
+                    source=membership_source,
+                )
                 await session.commit()
             except IntegrityError:
                 await session.rollback()
                 existing = await self.get_by_sha256(upload.sha256)
                 if existing is not None:
-                    return existing, False
+                    return (
+                        await self._link_existing_asset(
+                            asset_id=existing.id,
+                            shared=shared,
+                            profile_id=membership_profile_id,
+                            source=membership_source,
+                        ),
+                        False,
+                    )
                 raise
         created = await self.get_by_ref(model.asset_ref)
         if created is None:
             raise RuntimeError("created IP asset could not be projected")
         return created, True
 
+    async def _link_existing_asset(
+        self,
+        *,
+        asset_id: UUID,
+        shared: bool,
+        profile_id: UUID | None,
+        source: IpAssetMembershipSource | None,
+    ) -> IpAssetRecord:
+        async with self._session_factory() as session:
+            asset = await session.scalar(
+                select(IpAssetModel).where(IpAssetModel.id == asset_id).with_for_update()
+            )
+            if asset is None:
+                raise RuntimeError("existing IP asset disappeared")
+            await _apply_asset_relationships(
+                session,
+                asset=asset,
+                shared=shared,
+                profile_id=profile_id,
+                source=source,
+            )
+            await session.commit()
+        linked = await self.get_by_id(asset_id)
+        if linked is None:
+            raise RuntimeError("linked IP asset disappeared")
+        return linked
+
     async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
         async with self._session_factory() as session:
-            statement = select(IpAssetModel)
+            statement = select(IpAssetModel).where(IpAssetModel.shared_at.is_not(None))
             statement = _apply_filters(statement, query, include_keyword=True)
             if query.cursor_created_at is not None and query.cursor_id is not None:
                 statement = statement.where(
@@ -213,12 +314,279 @@ class PostgresIpAssetRepository:
                 next_cursor_id=last.id if last is not None else None,
             )
 
+    async def bootstrap_profile(
+        self, *, token_digest: str, display_name: str, department: str
+    ) -> tuple[IpAssetProfileRecord, bool]:
+        async with self._session_factory() as session:
+            profile_id = uuid4()
+            inserted = await session.scalar(
+                pg_insert(IpAssetProfileModel)
+                .values(
+                    id=profile_id,
+                    profile_ref=f"ipp_{uuid4().hex[:20]}",
+                    token_digest=token_digest,
+                    display_name=display_name,
+                    department=department,
+                )
+                .on_conflict_do_nothing(index_elements=["token_digest"])
+                .returning(IpAssetProfileModel.id)
+            )
+            await session.commit()
+        async with self._session_factory() as session:
+            profile = await session.scalar(
+                select(IpAssetProfileModel).where(IpAssetProfileModel.token_digest == token_digest)
+            )
+        if profile is None:
+            raise RuntimeError("IP asset profile bootstrap disappeared")
+        if profile.display_name != display_name or profile.department != department:
+            raise ConflictError("local profile token was reused with different profile labels")
+        return _profile_record(profile), inserted is not None
+
+    async def get_profile_by_token_digest(self, token_digest: str) -> IpAssetProfileRecord | None:
+        async with self._session_factory() as session:
+            profile = await session.scalar(
+                select(IpAssetProfileModel).where(IpAssetProfileModel.token_digest == token_digest)
+            )
+            return _profile_record(profile) if profile is not None else None
+
+    async def list_personal_assets(
+        self,
+        *,
+        profile_id: UUID,
+        source: str,
+        cursor_created_at: datetime | None,
+        cursor_id: UUID | None,
+        limit: int,
+    ) -> IpAssetPersonalPage:
+        membership = select(IpAssetProfileMembershipModel.id).where(
+            IpAssetProfileMembershipModel.profile_id == profile_id,
+            IpAssetProfileMembershipModel.asset_id == IpAssetModel.id,
+        )
+        favorite = select(IpAssetFavoriteModel.id).where(
+            IpAssetFavoriteModel.profile_id == profile_id,
+            IpAssetFavoriteModel.asset_id == IpAssetModel.id,
+        )
+        access_filter: ColumnElement[bool]
+        if source in {"generated", "uploaded"}:
+            membership = membership.where(IpAssetProfileMembershipModel.source == source)
+            access_filter = membership.exists()
+        elif source == "favorite":
+            access_filter = and_(
+                favorite.exists(),
+                or_(IpAssetModel.shared_at.is_not(None), membership.exists()),
+            )
+        else:
+            access_filter = or_(
+                membership.exists(),
+                and_(favorite.exists(), IpAssetModel.shared_at.is_not(None)),
+            )
+        async with self._session_factory() as session:
+            statement = select(IpAssetModel).where(access_filter)
+            if cursor_created_at is not None and cursor_id is not None:
+                statement = statement.where(
+                    or_(
+                        IpAssetModel.created_at < cursor_created_at,
+                        and_(
+                            IpAssetModel.created_at == cursor_created_at,
+                            IpAssetModel.id < cursor_id,
+                        ),
+                    )
+                )
+            models = tuple(
+                await session.scalars(
+                    statement.order_by(
+                        IpAssetModel.created_at.desc(), IpAssetModel.id.desc()
+                    ).limit(limit + 1)
+                )
+            )
+            has_more = len(models) > limit
+            selected = models[:limit]
+            asset_ids = tuple(model.id for model in selected)
+            tags = await _tags_for(session, asset_ids)
+            memberships = await _membership_sources_for(session, profile_id, asset_ids)
+            favorites = await _favorite_ids_for(session, profile_id, asset_ids)
+            items = tuple(
+                IpAssetPersonalItemRecord(
+                    asset=_record(model, tags.get(model.id, ())),
+                    membership_sources=memberships.get(model.id, ()),
+                    favorite=model.id in favorites,
+                )
+                for model in selected
+            )
+            last = selected[-1] if has_more and selected else None
+            return IpAssetPersonalPage(
+                items=items,
+                next_cursor_created_at=last.created_at if last is not None else None,
+                next_cursor_id=last.id if last is not None else None,
+            )
+
+    async def favorite_asset(self, *, profile_id: UUID, asset_ref: str, favorite: bool) -> bool:
+        async with self._session_factory() as session:
+            membership = select(IpAssetProfileMembershipModel.id).where(
+                IpAssetProfileMembershipModel.profile_id == profile_id,
+                IpAssetProfileMembershipModel.asset_id == IpAssetModel.id,
+            )
+            asset_id = await session.scalar(
+                select(IpAssetModel.id).where(
+                    IpAssetModel.asset_ref == asset_ref,
+                    IpAssetModel.status == IpAssetStatus.READY.value,
+                    or_(IpAssetModel.shared_at.is_not(None), membership.exists()),
+                )
+            )
+            if asset_id is None:
+                return False
+            if favorite:
+                await session.execute(
+                    pg_insert(IpAssetFavoriteModel)
+                    .values(id=uuid4(), profile_id=profile_id, asset_id=asset_id)
+                    .on_conflict_do_nothing(index_elements=["profile_id", "asset_id"])
+                )
+            else:
+                await session.execute(
+                    delete(IpAssetFavoriteModel).where(
+                        IpAssetFavoriteModel.profile_id == profile_id,
+                        IpAssetFavoriteModel.asset_id == asset_id,
+                    )
+                )
+            await session.commit()
+            return True
+
+    async def favorite_asset_ids(
+        self, *, profile_id: UUID, asset_ids: tuple[UUID, ...]
+    ) -> frozenset[UUID]:
+        if not asset_ids:
+            return frozenset()
+        async with self._session_factory() as session:
+            return frozenset(
+                await session.scalars(
+                    select(IpAssetFavoriteModel.asset_id).where(
+                        IpAssetFavoriteModel.profile_id == profile_id,
+                        IpAssetFavoriteModel.asset_id.in_(asset_ids),
+                    )
+                )
+            )
+
+    async def share_generated_asset(self, *, profile_id: UUID, asset_ref: str) -> IpAssetRecord:
+        async with self._session_factory() as session:
+            asset = await session.scalar(
+                select(IpAssetModel)
+                .join(
+                    IpAssetProfileMembershipModel,
+                    IpAssetProfileMembershipModel.asset_id == IpAssetModel.id,
+                )
+                .where(
+                    IpAssetModel.asset_ref == asset_ref,
+                    IpAssetProfileMembershipModel.profile_id == profile_id,
+                    IpAssetProfileMembershipModel.source == IpAssetMembershipSource.GENERATED.value,
+                )
+                .with_for_update()
+            )
+            if asset is None:
+                raise ConflictError("only a generated personal asset can be shared")
+            if asset.shared_at is None:
+                asset.shared_at = datetime.now(UTC)
+                asset.updated_at = asset.shared_at
+            await session.commit()
+        shared = await self.get_by_ref(asset_ref)
+        if shared is None:
+            raise RuntimeError("shared IP asset disappeared")
+        return shared
+
+    async def increment_downloads(
+        self, *, asset_ids: tuple[UUID, ...], business_date: date
+    ) -> None:
+        unique_ids = tuple(dict.fromkeys(asset_ids))
+        if not unique_ids:
+            return
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            shared_ids = tuple(
+                await session.scalars(
+                    select(IpAssetModel.id).where(
+                        IpAssetModel.id.in_(unique_ids),
+                        IpAssetModel.status == IpAssetStatus.READY.value,
+                        IpAssetModel.shared_at.is_not(None),
+                    )
+                )
+            )
+            for asset_id in shared_ids:
+                await session.execute(
+                    pg_insert(IpAssetDownloadDailyModel)
+                    .values(
+                        id=uuid4(),
+                        asset_id=asset_id,
+                        business_date=business_date,
+                        download_count=1,
+                        updated_at=now,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["asset_id", "business_date"],
+                        set_={
+                            "download_count": IpAssetDownloadDailyModel.download_count + 1,
+                            "updated_at": now,
+                        },
+                    )
+                )
+            await session.commit()
+
+    async def leaderboard(
+        self,
+        *,
+        period: IpAssetLeaderboardPeriod,
+        start_date: date | None,
+        limit: int,
+    ) -> IpAssetLeaderboardRecord:
+        async with self._session_factory() as session:
+            statement = (
+                select(IpAssetModel, func.sum(IpAssetDownloadDailyModel.download_count))
+                .join(
+                    IpAssetDownloadDailyModel,
+                    IpAssetDownloadDailyModel.asset_id == IpAssetModel.id,
+                )
+                .where(
+                    IpAssetModel.shared_at.is_not(None),
+                    IpAssetModel.status == IpAssetStatus.READY.value,
+                )
+            )
+            if start_date is not None:
+                statement = statement.where(
+                    IpAssetDownloadDailyModel.business_date >= start_date,
+                    IpAssetDownloadDailyModel.business_date <= start_date + timedelta(days=29),
+                )
+            rows = tuple(
+                (
+                    await session.execute(
+                        statement.group_by(IpAssetModel.id)
+                        .order_by(
+                            func.sum(IpAssetDownloadDailyModel.download_count).desc(),
+                            IpAssetModel.created_at.desc(),
+                            IpAssetModel.id.desc(),
+                        )
+                        .limit(limit)
+                    )
+                ).tuples()
+            )
+            tags = await _tags_for(session, tuple(model.id for model, _count in rows))
+            return IpAssetLeaderboardRecord(
+                period=period,
+                generated_at=datetime.now(UTC),
+                items=tuple(
+                    IpAssetLeaderboardItemRecord(
+                        asset=_record(model, tags.get(model.id, ())),
+                        download_count=int(count),
+                    )
+                    for model, count in rows
+                ),
+            )
+
     async def find_near_duplicate(
         self, *, perceptual_hash: str, exclude_id: UUID | None = None
     ) -> tuple[str, int] | None:
         async with self._session_factory() as session:
-            statement = select(IpAssetModel.asset_ref, IpAssetModel.perceptual_hash).order_by(
-                IpAssetModel.created_at.desc(), IpAssetModel.id.desc()
+            statement = (
+                select(IpAssetModel.asset_ref, IpAssetModel.perceptual_hash)
+                .order_by(IpAssetModel.created_at.desc(), IpAssetModel.id.desc())
+                .where(IpAssetModel.shared_at.is_not(None))
             )
             if exclude_id is not None:
                 statement = statement.where(IpAssetModel.id != exclude_id)
@@ -461,6 +829,7 @@ class PostgresIpAssetRepository:
                 .join(IpAssetEmbeddingModel, IpAssetEmbeddingModel.asset_id == IpAssetModel.id)
                 .where(
                     IpAssetModel.status == IpAssetStatus.READY.value,
+                    IpAssetModel.shared_at.is_not(None),
                     IpAssetEmbeddingModel.source_sha256 == IpAssetModel.blob_sha256,
                     IpAssetEmbeddingModel.provider == identity.provider,
                     IpAssetEmbeddingModel.model == identity.model,
@@ -495,7 +864,8 @@ class PostgresIpAssetRepository:
         prompt: str,
         metadata: IpAssetMetadata,
         ratio: str,
-        reference_asset_id: UUID | None,
+        profile_id: UUID | None,
+        references: tuple[tuple[UUID, str], ...],
         provider: str,
         model: str,
     ) -> tuple[IpAssetGenerationRecord, bool]:
@@ -514,7 +884,8 @@ class PostgresIpAssetRepository:
                     department=metadata.department,
                     contributor=metadata.contributor,
                     ratio=ratio,
-                    reference_asset_id=reference_asset_id,
+                    profile_id=profile_id,
+                    reference_asset_id=references[0][0] if references else None,
                     provider=provider,
                     model=model,
                     status="queued",
@@ -523,36 +894,65 @@ class PostgresIpAssetRepository:
                 .on_conflict_do_nothing()
                 .returning(IpAssetGenerationJobModel.id)
             )
+            if inserted_id is not None:
+                for ordinal, (asset_id, source_sha256) in enumerate(references):
+                    session.add(
+                        IpAssetGenerationReferenceModel(
+                            id=uuid4(),
+                            job_id=inserted_id,
+                            ordinal=ordinal,
+                            asset_id=asset_id,
+                            source_sha256=source_sha256,
+                        )
+                    )
             await session.commit()
         if inserted_id is not None:
             async with self._session_factory() as session:
                 created = await session.get(IpAssetGenerationJobModel, inserted_id)
                 if created is None:
                     raise RuntimeError("created IP asset generation job disappeared")
-                return _generation_record(created), True
+                return _generation_record(
+                    created, await _generation_references_for(session, created.id)
+                ), True
         async with self._session_factory() as session:
             matches = tuple(
                 await session.scalars(
                     select(IpAssetGenerationJobModel).where(
                         or_(
-                            IpAssetGenerationJobModel.idempotency_key == idempotency_key,
+                            and_(
+                                IpAssetGenerationJobModel.profile_id == profile_id,
+                                IpAssetGenerationJobModel.idempotency_key == idempotency_key,
+                            ),
                             IpAssetGenerationJobModel.request_fingerprint == request_fingerprint,
                         )
                     )
                 )
             )
-        if len(matches) != 1 or matches[0].request_fingerprint != request_fingerprint:
-            raise ConflictError("generation idempotency key was reused for another request")
-        return _generation_record(matches[0]), False
+            if len(matches) != 1 or matches[0].request_fingerprint != request_fingerprint:
+                raise ConflictError("generation idempotency key was reused for another request")
+            references_found = await _generation_references_for(session, matches[0].id)
+        return _generation_record(matches[0], references_found), False
 
-    async def get_generation(self, job_ref: str) -> IpAssetGenerationRecord | None:
+    async def get_generation(
+        self, job_ref: str, *, profile_id: UUID | None = None
+    ) -> IpAssetGenerationRecord | None:
         async with self._session_factory() as session:
-            model = await session.scalar(
-                select(IpAssetGenerationJobModel).where(
-                    IpAssetGenerationJobModel.job_ref == job_ref
-                )
+            statement = select(IpAssetGenerationJobModel).where(
+                IpAssetGenerationJobModel.job_ref == job_ref
             )
-            return _generation_record(model) if model is not None else None
+            if profile_id is not None:
+                statement = statement.where(
+                    or_(
+                        IpAssetGenerationJobModel.profile_id == profile_id,
+                        IpAssetGenerationJobModel.profile_id.is_(None),
+                    )
+                )
+            else:
+                statement = statement.where(IpAssetGenerationJobModel.profile_id.is_(None))
+            model = await session.scalar(statement)
+            if model is None:
+                return None
+            return _generation_record(model, await _generation_references_for(session, model.id))
 
     async def claim_generation_job(
         self, *, worker_id: str, lease_seconds: int, max_attempts: int
@@ -598,8 +998,11 @@ class PostgresIpAssetRepository:
             job.lease_expires_at = now + timedelta(seconds=lease_seconds)
             job.started_at = job.started_at or now
             job.error_code = None
+            references = await _generation_references_for(session, job.id)
             await session.commit()
-            return IpAssetGenerationClaim(job=_generation_record(job), lease_token=token)
+            return IpAssetGenerationClaim(
+                job=_generation_record(job, references), lease_token=token
+            )
 
     async def renew_generation_lease(
         self, *, claim: IpAssetGenerationClaim, lease_seconds: int
@@ -719,7 +1122,8 @@ class PostgresIpAssetRepository:
                             else IpAssetSemanticStatus.UNAVAILABLE.value
                         ),
                         failure_code=None,
-                        parent_asset_id=claim.job.reference_asset_id,
+                        parent_asset_id=job.reference_asset_id,
+                        shared_at=now if job.profile_id is None else None,
                     )
                 )
                 await session.flush()
@@ -735,6 +1139,18 @@ class PostgresIpAssetRepository:
                             id=uuid4(), asset_id=output_id, status="queued", attempt_count=0
                         )
                     )
+            if job.profile_id is not None:
+                await session.execute(
+                    pg_insert(IpAssetProfileMembershipModel)
+                    .values(
+                        id=uuid4(),
+                        profile_id=job.profile_id,
+                        asset_id=output_id,
+                        source=IpAssetMembershipSource.GENERATED.value,
+                        generation_job_id=job.id,
+                    )
+                    .on_conflict_do_nothing(index_elements=["profile_id", "asset_id", "source"])
+                )
             job.status = "succeeded"
             job.output_asset_id = output_id
             job.error_code = None
@@ -884,6 +1300,111 @@ def _tag_rows(metadata: IpAssetMetadata) -> tuple[tuple[str, str], ...]:
     )
 
 
+async def _apply_asset_relationships(
+    session: AsyncSession,
+    *,
+    asset: IpAssetModel,
+    shared: bool,
+    profile_id: UUID | None,
+    source: IpAssetMembershipSource | None,
+) -> None:
+    if shared and asset.shared_at is None:
+        asset.shared_at = datetime.now(UTC)
+        asset.updated_at = asset.shared_at
+    if profile_id is None or source is None:
+        return
+    await session.execute(
+        pg_insert(IpAssetProfileMembershipModel)
+        .values(
+            id=uuid4(),
+            profile_id=profile_id,
+            asset_id=asset.id,
+            source=source.value,
+            generation_job_id=None,
+        )
+        .on_conflict_do_nothing(index_elements=["profile_id", "asset_id", "source"])
+    )
+
+
+async def _membership_sources_for(
+    session: AsyncSession, profile_id: UUID, asset_ids: tuple[UUID, ...]
+) -> dict[UUID, tuple[IpAssetMembershipSource, ...]]:
+    if not asset_ids:
+        return {}
+    rows = tuple(
+        (
+            await session.execute(
+                select(
+                    IpAssetProfileMembershipModel.asset_id,
+                    IpAssetProfileMembershipModel.source,
+                )
+                .where(
+                    IpAssetProfileMembershipModel.profile_id == profile_id,
+                    IpAssetProfileMembershipModel.asset_id.in_(asset_ids),
+                )
+                .order_by(
+                    IpAssetProfileMembershipModel.asset_id,
+                    IpAssetProfileMembershipModel.source,
+                )
+            )
+        ).tuples()
+    )
+    grouped: dict[UUID, list[IpAssetMembershipSource]] = {}
+    for asset_id, source in rows:
+        grouped.setdefault(asset_id, []).append(IpAssetMembershipSource(source))
+    return {asset_id: tuple(values) for asset_id, values in grouped.items()}
+
+
+async def _favorite_ids_for(
+    session: AsyncSession, profile_id: UUID, asset_ids: tuple[UUID, ...]
+) -> frozenset[UUID]:
+    if not asset_ids:
+        return frozenset()
+    return frozenset(
+        await session.scalars(
+            select(IpAssetFavoriteModel.asset_id).where(
+                IpAssetFavoriteModel.profile_id == profile_id,
+                IpAssetFavoriteModel.asset_id.in_(asset_ids),
+            )
+        )
+    )
+
+
+async def _generation_references_for(
+    session: AsyncSession, job_id: UUID
+) -> tuple[IpAssetGenerationReferenceRecord, ...]:
+    rows = tuple(
+        (
+            await session.execute(
+                select(IpAssetGenerationReferenceModel, IpAssetModel.asset_ref)
+                .join(IpAssetModel, IpAssetModel.id == IpAssetGenerationReferenceModel.asset_id)
+                .where(IpAssetGenerationReferenceModel.job_id == job_id)
+                .order_by(IpAssetGenerationReferenceModel.ordinal)
+            )
+        ).tuples()
+    )
+    return tuple(
+        IpAssetGenerationReferenceRecord(
+            asset_id=reference.asset_id,
+            asset_ref=asset_ref,
+            ordinal=reference.ordinal,
+            source_sha256=reference.source_sha256,
+        )
+        for reference, asset_ref in rows
+    )
+
+
+def _profile_record(model: IpAssetProfileModel) -> IpAssetProfileRecord:
+    return IpAssetProfileRecord(
+        id=model.id,
+        profile_ref=model.profile_ref,
+        display_name=model.display_name,
+        department=model.department,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
 async def _tags_for(
     session: AsyncSession, asset_ids: tuple[UUID, ...]
 ) -> dict[UUID, tuple[str, ...]]:
@@ -951,10 +1472,14 @@ def _record(model: IpAssetModel, tags: tuple[str, ...]) -> IpAssetRecord:
         parent_asset_id=model.parent_asset_id,
         created_at=model.created_at,
         updated_at=model.updated_at,
+        shared_at=model.shared_at,
     )
 
 
-def _generation_record(model: IpAssetGenerationJobModel) -> IpAssetGenerationRecord:
+def _generation_record(
+    model: IpAssetGenerationJobModel,
+    references: tuple[IpAssetGenerationReferenceRecord, ...],
+) -> IpAssetGenerationRecord:
     return IpAssetGenerationRecord(
         id=model.id,
         job_ref=model.job_ref,
@@ -966,7 +1491,9 @@ def _generation_record(model: IpAssetGenerationJobModel) -> IpAssetGenerationRec
         department=model.department,
         contributor=model.contributor,
         ratio=model.ratio,
+        profile_id=model.profile_id,
         reference_asset_id=model.reference_asset_id,
+        references=references,
         provider=model.provider,
         model=model.model,
         status=model.status,

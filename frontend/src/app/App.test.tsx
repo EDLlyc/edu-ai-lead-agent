@@ -137,6 +137,16 @@ describe("brand knowledge workspace", () => {
     expect(screen.getByText("仅限本地开发")).toBeVisible();
   });
 
+  it("keeps the standalone IP asset hub outside the shared console tree", () => {
+    vi.stubEnv("VITE_IP_ASSET_HUB_ENABLED", "true");
+    renderApp();
+
+    expect(
+      screen.queryByRole("heading", { name: "IP 数字资产中心" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("公司内网 · 无登录")).not.toBeInTheDocument();
+  });
+
   it("positions brand retrieval as internal copy-generation context", async () => {
     renderApp();
 

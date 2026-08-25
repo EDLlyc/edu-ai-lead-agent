@@ -7,7 +7,9 @@ import json
 import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
 from typing import TypeVar
+from uuid import UUID
 
 from app.application.ports.image_generation import (
     ImageGenerationRequest,
@@ -18,8 +20,11 @@ from app.application.ports.ip_assets import (
     IpAssetEmbeddingClaim,
     IpAssetGenerationClaim,
     IpAssetGenerationRecord,
+    IpAssetLeaderboardRecord,
     IpAssetObjectDescriptor,
     IpAssetPage,
+    IpAssetPersonalPage,
+    IpAssetProfileRecord,
     IpAssetQuery,
     IpAssetRecord,
     IpAssetRepository,
@@ -40,16 +45,23 @@ from app.domain.ip_assets import (
     IP_ASSET_MAX_ZIP_ITEMS,
     IP_ASSET_SEARCH_VERSION,
     IpAssetCharacter,
+    IpAssetLeaderboardPeriod,
+    IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
     IpAssetSearchMode,
     IpAssetSearchVersion,
     IpAssetSource,
+    IpAssetStatus,
     IpAssetType,
     IpAssetValidationError,
     ValidatedIpAssetUpload,
     canonical_download_filename,
+    leaderboard_start_date,
+    normalize_generation_reference_refs,
     normalize_optional_text,
+    normalize_profile_metadata,
+    profile_token_digest,
     validate_ip_asset_upload,
 )
 from app.domain.visual_retrieval import (
@@ -82,6 +94,18 @@ class IpAssetSearchResult:
     degraded_reason: str | None
     search_version: IpAssetSearchVersion
     items: tuple[IpAssetSearchHit, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetPreparedDownload:
+    asset: IpAssetRecord
+    body: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetPreparedZip:
+    body: bytes
+    assets: tuple[IpAssetRecord, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +142,7 @@ class IpAssetService:
         body: bytes,
         metadata: IpAssetMetadata,
         source_kind: IpAssetSource = IpAssetSource.UPLOADED,
+        profile: IpAssetProfileRecord | None = None,
     ) -> IpAssetUploadResult:
         try:
             upload = await asyncio.to_thread(
@@ -132,6 +157,24 @@ class IpAssetService:
             raise IpAssetUploadRejectedError("invalid_ip_asset_metadata") from error
         existing = await self._repository.get_by_sha256(upload.sha256)
         if existing is not None:
+            existing, _created = await self._repository.create_asset(
+                upload=upload,
+                metadata=metadata,
+                descriptor=IpAssetObjectDescriptor(
+                    bucket=existing.bucket,
+                    object_key=existing.object_key,
+                    media_type=existing.media_type,
+                    byte_size=existing.byte_size,
+                    sha256=existing.blob_sha256,
+                ),
+                source_kind=source_kind,
+                semantic_enabled=self._embeddings is not None,
+                shared=True,
+                membership_profile_id=profile.id if profile is not None else None,
+                membership_source=(
+                    IpAssetMembershipSource.UPLOADED if profile is not None else None
+                ),
+            )
             return IpAssetUploadResult(
                 asset=existing,
                 duplicate=True,
@@ -145,6 +188,9 @@ class IpAssetService:
             descriptor=descriptor,
             source_kind=source_kind,
             semantic_enabled=self._embeddings is not None,
+            shared=True,
+            membership_profile_id=profile.id if profile is not None else None,
+            membership_source=(IpAssetMembershipSource.UPLOADED if profile is not None else None),
         )
         near = (
             await self._repository.find_near_duplicate(
@@ -163,14 +209,86 @@ class IpAssetService:
     async def list(self, query: IpAssetQuery) -> IpAssetPage:
         return await self._repository.list_assets(query)
 
-    async def get(self, asset_ref: str) -> IpAssetRecord:
-        asset = await self._repository.get_by_ref(asset_ref)
+    async def bootstrap_profile(
+        self, *, token: str, display_name: str, department: str
+    ) -> tuple[IpAssetProfileRecord, bool]:
+        try:
+            digest = profile_token_digest(token)
+            name, group = normalize_profile_metadata(display_name, department)
+        except ValueError as error:
+            raise IpAssetUploadRejectedError("invalid_ip_asset_metadata") from error
+        return await self._repository.bootstrap_profile(
+            token_digest=digest, display_name=name, department=group
+        )
+
+    async def profile_for_token(self, token: str) -> IpAssetProfileRecord | None:
+        try:
+            digest = profile_token_digest(token)
+        except ValueError:
+            return None
+        return await self._repository.get_profile_by_token_digest(digest)
+
+    async def personal_assets(
+        self,
+        *,
+        profile: IpAssetProfileRecord,
+        source: str,
+        cursor_created_at: datetime | None,
+        cursor_id: UUID | None,
+        limit: int,
+    ) -> IpAssetPersonalPage:
+        if source not in {"all", "generated", "uploaded", "favorite"}:
+            raise IpAssetUploadRejectedError("invalid_ip_asset_metadata")
+        return await self._repository.list_personal_assets(
+            profile_id=profile.id,
+            source=source,
+            cursor_created_at=cursor_created_at,
+            cursor_id=cursor_id,
+            limit=limit,
+        )
+
+    async def favorite(
+        self, *, profile: IpAssetProfileRecord, asset_ref: str, favorite: bool
+    ) -> None:
+        if not await self._repository.favorite_asset(
+            profile_id=profile.id, asset_ref=asset_ref, favorite=favorite
+        ):
+            raise NotFoundError("IP asset")
+
+    async def favorite_asset_ids(
+        self, *, profile: IpAssetProfileRecord, assets: tuple[IpAssetRecord, ...]
+    ) -> frozenset[UUID]:
+        return await self._repository.favorite_asset_ids(
+            profile_id=profile.id, asset_ids=tuple(asset.id for asset in assets)
+        )
+
+    async def share(self, *, profile: IpAssetProfileRecord, asset_ref: str) -> IpAssetRecord:
+        return await self._repository.share_generated_asset(
+            profile_id=profile.id, asset_ref=asset_ref
+        )
+
+    async def leaderboard(
+        self, *, period: IpAssetLeaderboardPeriod, timezone: str, limit: int
+    ) -> IpAssetLeaderboardRecord:
+        start = leaderboard_start_date(period=period, now=datetime.now(UTC), timezone=timezone)
+        return await self._repository.leaderboard(period=period, start_date=start, limit=limit)
+
+    async def get(
+        self, asset_ref: str, *, profile: IpAssetProfileRecord | None = None
+    ) -> IpAssetRecord:
+        asset = await self._repository.get_accessible_by_ref(
+            asset_ref, profile_id=profile.id if profile is not None else None
+        )
         if asset is None:
             raise NotFoundError("IP asset")
         return asset
 
-    async def original(self, asset_ref: str) -> tuple[IpAssetRecord, bytes]:
-        asset = await self.get(asset_ref)
+    async def original(
+        self, asset_ref: str, *, profile: IpAssetProfileRecord | None = None
+    ) -> tuple[IpAssetRecord, bytes]:
+        asset = await self.get(asset_ref, profile=profile)
+        if asset.status is not IpAssetStatus.READY:
+            raise NotFoundError("IP asset")
         descriptor = IpAssetObjectDescriptor(
             bucket=asset.bucket,
             object_key=asset.object_key,
@@ -180,19 +298,44 @@ class IpAssetService:
         )
         return asset, await self._store.get_verified(descriptor)
 
-    async def download_zip(self, refs: tuple[str, ...]) -> bytes:
+    async def download(
+        self,
+        asset_ref: str,
+        *,
+        profile: IpAssetProfileRecord | None,
+        business_date: date | None = None,
+    ) -> IpAssetPreparedDownload:
+        asset, body = await self.original(asset_ref, profile=profile)
+        if asset.shared_at is not None:
+            await self._repository.increment_downloads(
+                asset_ids=(asset.id,), business_date=business_date or datetime.now(UTC).date()
+            )
+        return IpAssetPreparedDownload(asset=asset, body=body)
+
+    async def download_zip(
+        self,
+        refs: tuple[str, ...],
+        *,
+        profile: IpAssetProfileRecord | None = None,
+        business_date: date | None = None,
+    ) -> IpAssetPreparedZip:
         unique = tuple(dict.fromkeys(refs))
         if not unique or len(unique) > IP_ASSET_MAX_ZIP_ITEMS:
             raise IpAssetUploadRejectedError("invalid_ip_asset_metadata")
         originals: list[tuple[IpAssetRecord, bytes]] = []
         total_bytes = 0
         for asset_ref in unique:
-            original = await self.original(asset_ref)
+            original = await self.original(asset_ref, profile=profile)
             total_bytes += len(original[1])
             if total_bytes > IP_ASSET_MAX_ZIP_BYTES:
                 raise IpAssetUploadRejectedError("image_too_large")
             originals.append(original)
-        return await asyncio.to_thread(_build_zip, originals)
+        body = await asyncio.to_thread(_build_zip, originals)
+        shared_ids = tuple(asset.id for asset, _body in originals if asset.shared_at is not None)
+        await self._repository.increment_downloads(
+            asset_ids=shared_ids, business_date=business_date or datetime.now(UTC).date()
+        )
+        return IpAssetPreparedZip(body=body, assets=tuple(asset for asset, _body in originals))
 
     async def search_text(
         self,
@@ -482,15 +625,21 @@ class IpAssetWorkerService:
     ) -> tuple[ValidatedIpAssetUpload, IpAssetObjectDescriptor, IpAssetMetadata]:
         if self._image_generator is None:
             raise ValueError("IP asset image generator is unavailable")
-        reference = await self._generation_reference(claim)
+        references = await self._generation_references(claim)
         result = await self._image_generator.generate(
             ImageGenerationRequest(
                 run_id=claim.job.id,
                 draft_version_id=claim.job.id,
                 prompt=claim.job.prompt,
                 request_fingerprint=claim.job.request_fingerprint,
-                references=(reference,) if reference is not None else (),
-                reference_mode="single_reference" if reference is not None else "legacy_single",
+                references=references,
+                reference_mode=(
+                    "legacy_single"
+                    if not references
+                    else (
+                        "single_reference" if len(references) == 1 else "budgeted_multi_reference"
+                    )
+                ),
             )
         )
         if (
@@ -521,28 +670,37 @@ class IpAssetWorkerService:
         )
         return upload, descriptor, metadata
 
-    async def _generation_reference(self, claim: IpAssetGenerationClaim) -> ImageReference | None:
-        if claim.job.reference_asset_id is None:
-            return None
-        record = await self._repository.get_by_id(claim.job.reference_asset_id)
-        if record is None:
-            raise ValueError("generation reference asset is unavailable")
-        descriptor = IpAssetObjectDescriptor(
-            bucket=record.bucket,
-            object_key=record.object_key,
-            media_type=record.media_type,
-            byte_size=record.byte_size,
-            sha256=record.blob_sha256,
-        )
-        body = await self._store.get_verified(descriptor)
-        return ImageReference(
-            role="identity_reference",
-            asset_id=record.asset_ref,
-            filename=canonical_download_filename(record.canonical_slug, record.media_type),
-            sha256=record.blob_sha256,
-            image_bytes=body,
-            selection_reason="user_selected_reference",
-        )
+    async def _generation_references(
+        self, claim: IpAssetGenerationClaim
+    ) -> tuple[ImageReference, ...]:
+        references: list[ImageReference] = []
+        for expected in claim.job.references:
+            record = await self._repository.get_by_id(expected.asset_id)
+            if (
+                record is None
+                or record.status.value != "ready"
+                or record.blob_sha256 != expected.source_sha256
+            ):
+                raise ValueError("generation reference asset is unavailable")
+            descriptor = IpAssetObjectDescriptor(
+                bucket=record.bucket,
+                object_key=record.object_key,
+                media_type=record.media_type,
+                byte_size=record.byte_size,
+                sha256=record.blob_sha256,
+            )
+            body = await self._store.get_verified(descriptor)
+            references.append(
+                ImageReference(
+                    role="identity_reference",
+                    asset_id=record.asset_ref,
+                    filename=canonical_download_filename(record.canonical_slug, record.media_type),
+                    sha256=record.blob_sha256,
+                    image_bytes=body,
+                    selection_reason=f"user_selected_reference_{expected.ordinal + 1}",
+                )
+            )
+        return tuple(references)
 
 
 async def enqueue_ip_asset_generation(
@@ -551,7 +709,8 @@ async def enqueue_ip_asset_generation(
     prompt: str,
     metadata: IpAssetMetadata,
     ratio: str,
-    reference_asset: IpAssetRecord | None,
+    profile: IpAssetProfileRecord,
+    reference_assets: tuple[IpAssetRecord, ...],
     idempotency_key: str,
     provider: str,
     model: str,
@@ -559,21 +718,37 @@ async def enqueue_ip_asset_generation(
     try:
         clean_prompt = validate_image_prompt(prompt)
         clean_key = normalize_optional_text(idempotency_key, maximum=128)
+        normalized_refs = normalize_generation_reference_refs(
+            tuple(asset.asset_ref for asset in reference_assets)
+        )
     except ValueError as error:
         raise IpAssetUploadRejectedError("invalid_ip_asset_metadata") from error
-    if not clean_key or ratio != "1:1":
+    if (
+        not clean_key
+        or ratio != "1:1"
+        or normalized_refs != tuple(asset.asset_ref for asset in reference_assets)
+        or any(
+            asset.status is not IpAssetStatus.READY or asset.shared_at is None
+            for asset in reference_assets
+        )
+    ):
         raise IpAssetUploadRejectedError("invalid_ip_asset_metadata")
     fingerprint = hashlib.sha256(
         "\0".join(
             (
-                "ip-asset-generation-v1",
+                "ip-asset-generation-v2-profile-multi-reference",
+                profile.profile_ref,
                 clean_prompt,
                 metadata.character.value,
                 metadata.asset_type.value,
                 metadata.department,
                 metadata.contributor,
                 ratio,
-                reference_asset.blob_sha256 if reference_asset is not None else "no-reference",
+                *(
+                    value
+                    for asset in reference_assets
+                    for value in (asset.asset_ref, asset.blob_sha256)
+                ),
                 provider,
                 model,
             )
@@ -585,7 +760,8 @@ async def enqueue_ip_asset_generation(
         prompt=clean_prompt,
         metadata=metadata,
         ratio=ratio,
-        reference_asset_id=reference_asset.id if reference_asset is not None else None,
+        profile_id=profile.id,
+        references=tuple((asset.id, asset.blob_sha256) for asset in reference_assets),
         provider=provider,
         model=model,
     )

@@ -4,10 +4,13 @@ import hashlib
 import io
 import re
 import unicodedata
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import PurePath
 from typing import Literal, TypeAlias
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PIL import Image, UnidentifiedImageError
 
@@ -20,6 +23,7 @@ IP_ASSET_MAX_PIXELS = 32_000_000
 IP_ASSET_MAX_FREE_TAGS = 20
 IP_ASSET_MAX_ZIP_ITEMS = 50
 IP_ASSET_MAX_ZIP_BYTES = 250 * 1024 * 1024
+IP_ASSET_MAX_GENERATION_REFERENCES = 3
 IP_ASSET_NAMING_VERSION = "ip-asset-name-v1"
 IpAssetSearchVersion: TypeAlias = Literal["ip-asset-hybrid-v2"]
 IP_ASSET_SEARCH_VERSION: IpAssetSearchVersion = "ip-asset-hybrid-v2"
@@ -27,6 +31,8 @@ IP_ASSET_SEARCH_VERSION: IpAssetSearchVersion = "ip-asset-hybrid-v2"
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 _SAFE_REF = re.compile(r"^ipa_[a-f0-9]{20}$")
 _SAFE_GENERATION_REF = re.compile(r"^ipg_[a-f0-9]{20}$")
+_SAFE_PROFILE_REF = re.compile(r"^ipp_[a-f0-9]{20}$")
+_PROFILE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 _SAFE_TAG = re.compile(r"^[^\x00-\x1f\x7f/\\]{1,40}$")
 _SPACE = re.compile(r"\s+")
 _FILENAME_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -80,6 +86,23 @@ class IpAssetOrientation(StrEnum):
 class IpAssetSearchMode(StrEnum):
     SEMANTIC = "semantic"
     DEGRADED_METADATA = "degraded_metadata"
+
+
+class IpAssetMembershipSource(StrEnum):
+    GENERATED = "generated"
+    UPLOADED = "uploaded"
+
+
+class IpAssetPersonalSource(StrEnum):
+    ALL = "all"
+    GENERATED = "generated"
+    UPLOADED = "uploaded"
+    FAVORITE = "favorite"
+
+
+class IpAssetLeaderboardPeriod(StrEnum):
+    THIRTY_DAYS = "30d"
+    ALL = "all"
 
 
 _CHARACTER_LABELS = {
@@ -186,6 +209,60 @@ def validate_generation_ref(value: str) -> str:
     if _SAFE_GENERATION_REF.fullmatch(normalized) is None:
         raise ValueError("IP asset generation reference is invalid")
     return normalized
+
+
+def validate_profile_ref(value: str) -> str:
+    normalized = value.strip().casefold()
+    if _SAFE_PROFILE_REF.fullmatch(normalized) is None:
+        raise ValueError("IP asset profile reference is invalid")
+    return normalized
+
+
+def profile_token_digest(value: str) -> str:
+    token = value.strip()
+    if _PROFILE_TOKEN.fullmatch(token) is None:
+        raise ValueError("IP asset profile token is invalid")
+    try:
+        decoded = urlsafe_b64decode(token + "=")
+    except ValueError as error:
+        raise ValueError("IP asset profile token is invalid") from error
+    if len(decoded) != 32:
+        raise ValueError("IP asset profile token is invalid")
+    canonical = urlsafe_b64encode(decoded).decode().rstrip("=")
+    if canonical != token:
+        raise ValueError("IP asset profile token is invalid")
+    return hashlib.sha256(decoded).hexdigest()
+
+
+def normalize_profile_metadata(display_name: str, department: str) -> tuple[str, str]:
+    name = normalize_optional_text(display_name, maximum=80)
+    group = normalize_optional_text(department, maximum=80)
+    if not name or not group:
+        raise ValueError("IP asset profile metadata is invalid")
+    return name, group
+
+
+def normalize_generation_reference_refs(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    normalized = tuple(validate_asset_ref(value) for value in values)
+    if not 1 <= len(normalized) <= IP_ASSET_MAX_GENERATION_REFERENCES:
+        raise ValueError("IP asset generation needs one to three references")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("IP asset generation references must be distinct")
+    return normalized
+
+
+def leaderboard_start_date(
+    *, period: IpAssetLeaderboardPeriod, now: datetime, timezone: str
+) -> date | None:
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("IP asset leaderboard time must be timezone-aware")
+    try:
+        current = now.astimezone(ZoneInfo(timezone)).date()
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("IP asset leaderboard timezone is invalid") from error
+    if period is IpAssetLeaderboardPeriod.ALL:
+        return None
+    return current - timedelta(days=29)
 
 
 def validate_ip_asset_upload(

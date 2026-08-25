@@ -25,6 +25,10 @@ const apiMocks = vi.hoisted(() => ({
   createIpAssetGeneration: vi.fn(),
   getIpAssetGeneration: vi.fn(),
   downloadIpAssetPackage: vi.fn(),
+  getIpAssetLeaderboard: vi.fn(),
+  restoreIpAssetProfile: vi.fn(),
+  bootstrapIpAssetProfile: vi.fn(),
+  setIpAssetFavorite: vi.fn(),
 }));
 
 vi.mock("./api", async (importOriginal) => ({
@@ -34,7 +38,10 @@ vi.mock("./api", async (importOriginal) => ({
 
 import { IpAssetHub } from "./IpAssetHub";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 
 const asset: IpAsset = {
   action: "挥手",
@@ -56,6 +63,8 @@ const asset: IpAsset = {
   preview_url: "/api/v1/ip-assets/ipa_demo0001/preview",
   scene: "",
   semantic_status: "unavailable",
+  shared: true,
+  favorite: false,
   source_kind: "uploaded",
   status: "ready",
   style: "3D",
@@ -102,6 +111,11 @@ function renderHub(
     next_cursor: null,
   });
   apiMocks.getIpAsset.mockResolvedValue(detail);
+  apiMocks.getIpAssetLeaderboard.mockResolvedValue({
+    period: "30d",
+    generated_at: "2026-08-24T08:00:00Z",
+    items: [{ asset, download_count: 7 }],
+  });
   apiMocks.searchIpAssetsText.mockResolvedValue({
     degraded_reason: "provider_unavailable",
     items: [{ asset, explanation: "角色与用途匹配", similarity: null }],
@@ -195,7 +209,7 @@ describe("IpAssetHub", () => {
   it("uploads a bounded image with self-reported metadata", async () => {
     const user = userEvent.setup();
     renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
     await user.click(screen.getByRole("button", { name: "上传图片" }));
 
     const file = new File([new Uint8Array([1, 2, 3])], "xiaosai.png", {
@@ -220,7 +234,7 @@ describe("IpAssetHub", () => {
   it("calls AI recognition only after an explicit click and keeps suggestions editable", async () => {
     const user = userEvent.setup();
     renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
     await user.click(screen.getByRole("button", { name: "上传图片" }));
 
     const file = new File([new Uint8Array([1, 2, 3])], "first.png", {
@@ -266,7 +280,7 @@ describe("IpAssetHub", () => {
   it("preserves manual fields on recognition failure and clears stale suggestions on file change", async () => {
     const user = userEvent.setup();
     renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
     await user.click(screen.getByRole("button", { name: "上传图片" }));
     await user.click(screen.getByText("补充描述信息"));
 
@@ -312,7 +326,7 @@ describe("IpAssetHub", () => {
   it("has no automatically detectable accessibility violations", async () => {
     const user = userEvent.setup();
     const { container } = renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
     await user.click(screen.getByRole("button", { name: "上传图片" }));
     const results = await axe(container);
     expect(results.violations).toEqual([]);
@@ -321,7 +335,7 @@ describe("IpAssetHub", () => {
   it("keeps manual upload available when AI recognition is disabled", async () => {
     const user = userEvent.setup();
     renderHub({ recognitionAvailable: false });
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
     await user.click(screen.getByRole("button", { name: "上传图片" }));
 
     const file = new File([new Uint8Array([1])], "manual.png", {
@@ -340,7 +354,7 @@ describe("IpAssetHub", () => {
     const user = userEvent.setup();
     apiMocks.downloadIpAssetPackage.mockResolvedValue(undefined);
     renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
 
     await user.click(screen.getByRole("checkbox", { name: /选择 小赛/ }));
     await user.click(screen.getByRole("button", { name: "下载 ZIP + 清单" }));
@@ -353,7 +367,7 @@ describe("IpAssetHub", () => {
   it("traps tool focus, closes with Escape and restores the opener", async () => {
     const user = userEvent.setup();
     renderHub();
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
 
     const uploadButton = screen.getByRole("button", { name: "上传图片" });
     uploadButton.focus();
@@ -394,7 +408,7 @@ describe("IpAssetHub", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "检索失败：asset_search_failed",
     );
-    expect(screen.getByText(asset.canonical_name)).toBeInTheDocument();
+    expect(screen.getAllByText(asset.canonical_name).length).toBeGreaterThan(0);
   });
 
   it("does not preview or package an asset until processing is ready", async () => {
@@ -417,64 +431,40 @@ describe("IpAssetHub", () => {
     ).toBeNull();
   });
 
-  it("links a completed generation job to its library detail", async () => {
+  it("links the shared library and asset detail to the dedicated creation studio", async () => {
     const user = userEvent.setup();
-    const job = {
-      completed_at: null,
-      created: true,
-      created_at: "2026-08-24T08:10:00Z",
-      error_code: null,
-      generation_available: true,
-      job_ref: "ipg_demo0001",
-      output_asset_ref: null,
-      status: "queued" as const,
-      status_url: "/api/v1/ip-assets/generations/ipg_demo0001",
-    };
-    apiMocks.createIpAssetGeneration.mockResolvedValue(job);
-    apiMocks.getIpAssetGeneration.mockResolvedValue({
-      ...job,
-      completed_at: "2026-08-24T08:11:00Z",
-      output_asset_ref: asset.asset_ref,
-      status: "succeeded",
-    });
     renderHub({ generationAvailable: true });
-    await screen.findByText(asset.canonical_name);
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
 
-    const assetButton = screen.getByRole("button", {
-      name: (accessibleName) => accessibleName.includes(asset.canonical_name),
-    });
+    expect(screen.getByRole("link", { name: "AI 创作" })).toHaveAttribute(
+      "href",
+      "/ip-assets/create",
+    );
+
+    const assetButton = within(screen.getByRole("region", { name: "全部图片" }))
+      .getAllByRole("button", {
+        name: (accessibleName) => accessibleName.includes(asset.canonical_name),
+      })
+      .find((button) => !button.hasAttribute("aria-pressed"));
+    if (assetButton === undefined) throw new Error("asset_card_missing");
     await user.click(assetButton);
-    await user.click(
-      await screen.findByRole("button", { name: "用作 AI 创作参考" }),
-    );
-    await user.click(screen.getByRole("button", { name: "关闭详情" }));
-
-    const createButton = screen
-      .getAllByRole("button", { name: "AI 创作" })
-      .at(0);
-    if (createButton === undefined) throw new Error("create_button_missing");
-    await user.click(createButton);
     expect(
-      within(screen.getByRole("dialog", { name: "AI 创作" })).getByText(
-        asset.canonical_name,
-      ),
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText("画面描述"),
-      "小赛在科学课堂开心挥手",
-    );
-    await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+      await screen.findByRole("link", { name: "用作 AI 创作参考" }),
+    ).toHaveAttribute("href", `/ip-assets/create?reference=${asset.asset_ref}`);
+  });
+
+  it("asks for a browser-local profile when a visitor favorites an asset", async () => {
+    const user = userEvent.setup();
+    renderHub();
+    await screen.findByRole("checkbox", { name: /选择 小赛/ });
 
     await user.click(
-      await screen.findByRole("button", { name: "查看生成图片" }),
+      screen.getByRole("button", { name: `收藏 ${asset.canonical_name}` }),
     );
+
     expect(
-      await screen.findByRole("dialog", { name: detail.canonical_name }),
+      screen.getByRole("dialog", { name: "建立这台浏览器的素材名片" }),
     ).toBeInTheDocument();
-    expect(apiMocks.getIpAsset).toHaveBeenCalledWith(
-      asset.asset_ref,
-      expect.anything(),
-    );
-    expect(apiMocks.getIpAssetGeneration).toHaveBeenCalledTimes(1);
+    expect(apiMocks.setIpAssetFavorite).not.toHaveBeenCalled();
   });
 });

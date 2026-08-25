@@ -11,11 +11,16 @@ const IpAssetPage = lazy(async () => {
   return { default: module.IpAssetPage };
 });
 
+const IpAssetCreationPage = lazy(async () => {
+  const module = await import("@/features/ip-assets/IpAssetCreationPage");
+  return { default: module.IpAssetCreationPage };
+});
+
 export function Application() {
   const route = resolveApplicationPath(window.location.pathname);
 
   if (route === "console") return <App />;
-  if (route === "ip-assets") {
+  if (route === "ip-assets" || route === "ip-assets-create") {
     if (!isIpAssetHubEnabled()) {
       return (
         <StandaloneDocument title="页面不可用">
@@ -26,10 +31,13 @@ export function Application() {
         </StandaloneDocument>
       );
     }
+    const creation = route === "ip-assets-create";
     return (
-      <StandaloneDocument title="IP 数字资产中心">
-        <Suspense fallback={<IpAssetPageLoading />}>
-          <IpAssetPage />
+      <StandaloneDocument
+        title={creation ? "AI 视觉创作室" : "IP 数字资产中心"}
+      >
+        <Suspense fallback={<IpAssetPageLoading creation={creation} />}>
+          {creation ? <IpAssetCreationPage /> : <IpAssetPage />}
         </Suspense>
       </StandaloneDocument>
     );
@@ -68,13 +76,21 @@ function StandaloneDocument({
   );
 }
 
-function IpAssetPageLoading() {
+function IpAssetPageLoading({
+  creation = false,
+}: Readonly<{ creation?: boolean }>) {
   return (
     <section className={styles.routeState} aria-labelledby="loading-title">
       <div className={styles.routeStateCard}>
         <p className={styles.routeStateKicker}>SAI VISUAL LIBRARY</p>
-        <h1 id="loading-title">正在载入 IP 数字资产中心</h1>
-        <p role="status">正在准备本地资产图库与检索工具…</p>
+        <h1 id="loading-title">
+          {creation ? "正在载入 AI 视觉创作室" : "正在载入 IP 数字资产中心"}
+        </h1>
+        <p role="status">
+          {creation
+            ? "正在准备参考素材与个人素材架…"
+            : "正在准备本地资产图库与检索工具…"}
+        </p>
       </div>
     </section>
   );

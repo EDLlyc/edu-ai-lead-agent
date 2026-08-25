@@ -168,6 +168,7 @@
 .downloadTray button,
 .detailActions button,
 .downloadLink,
+.creationLink,
 .recognitionButton,
 .toolPanel > button {
   display: inline-flex;
@@ -506,6 +507,141 @@
   margin-inline: auto;
 }
 
+.libraryLayout {
+  display: grid;
+  width: min(100%, 96rem);
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 17rem);
+  gap: clamp(1rem, 2vw, 1.75rem);
+  align-items: start;
+  margin-inline: auto;
+}
+
+.libraryLayout .galleryRegion {
+  width: 100%;
+}
+
+.leaderboard {
+  position: sticky;
+  inset-block-start: 1rem;
+  padding: 1rem;
+  background: #173d39;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 0.95rem;
+  box-shadow: 0 1rem 2.6rem rgb(21 59 56 / 14%);
+  color: #f8f2e6;
+}
+
+.leaderboardHeading {
+  display: grid;
+  gap: 0.8rem;
+  padding-block-end: 0.8rem;
+  border-block-end: 1px solid rgb(255 255 255 / 14%);
+}
+
+.leaderboardHeading p,
+.leaderboardHeading h2,
+.leaderboardNote,
+.leaderboardEmpty {
+  margin: 0;
+}
+
+.leaderboardHeading p {
+  color: #8fd2c7;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.leaderboardHeading h2 {
+  margin-block-start: 0.2rem;
+  font-size: 1.25rem;
+}
+
+.leaderboardTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+}
+
+.leaderboardTabs button {
+  min-height: 2rem;
+  color: #d6e8e2;
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.45rem;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.leaderboardTabs button[aria-pressed="true"] {
+  color: #173d39;
+  background: #f5d9c9;
+  border-color: #f5d9c9;
+}
+
+.leaderboard ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leaderboard li + li {
+  border-block-start: 1px solid rgb(255 255 255 / 10%);
+}
+
+.leaderboard li button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.8rem 0;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.leaderboard li button > span:first-child {
+  color: #d98262;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.leaderboard li button > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.leaderboard li strong {
+  overflow: hidden;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard li small,
+.leaderboardNote,
+.leaderboardEmpty {
+  color: #aac7c0;
+  font-size: 0.62rem;
+}
+
+.leaderboardNote {
+  padding-block-start: 0.8rem;
+  border-block-start: 1px solid rgb(255 255 255 / 14%);
+  line-height: 1.5;
+}
+
+.leaderboardEmpty {
+  padding-block: 1.25rem;
+}
+
 .galleryHeader {
   display: flex;
   align-items: end;
@@ -684,6 +820,29 @@
 .fileDrop:has(input:focus-visible) {
   outline: 3px solid var(--teal);
   outline-offset: 3px;
+}
+
+.favoriteButton {
+  position: absolute;
+  z-index: 3;
+  width: 2.4rem;
+  height: 2.4rem;
+  inset-inline-end: 0.55rem;
+  inset-block-end: 0.55rem;
+  display: grid;
+  place-items: center;
+  color: #9b523d;
+  background: rgb(255 250 245 / 94%);
+  border: 1px solid rgb(155 82 61 / 20%);
+  border-radius: 50%;
+  box-shadow: 0 0.25rem 0.8rem rgb(22 39 37 / 8%);
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.favoriteButton[aria-pressed="true"] {
+  color: #fff;
+  background: #bd6648;
 }
 
 .cardBody {
@@ -1283,6 +1442,25 @@
   border-color: var(--line-strong);
 }
 
+.creationLink {
+  color: #fff;
+  background: #bd6648;
+}
+
+.emptyActions a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 1rem;
+  color: #fff;
+  background: var(--teal);
+  border-radius: 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 @keyframes backdropIn {
   from {
     opacity: 0;
@@ -1297,6 +1475,18 @@
 }
 
 @media (max-width: 900px) {
+  .libraryLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .leaderboard {
+    position: static;
+    order: -1;
+  }
+
+  .leaderboard ol {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
   .header {
     grid-template-columns: 1fr;
   }

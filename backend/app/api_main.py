@@ -168,8 +168,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.browser_origins),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Request-ID"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Request-ID", "X-IP-Profile-Token"],
 )
 app.state.settings = settings
 app.state.session_factory = session_factory

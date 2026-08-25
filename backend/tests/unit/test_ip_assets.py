@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import zipfile
+from base64 import urlsafe_b64encode
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
@@ -13,13 +15,22 @@ from uuid import UUID
 import pytest
 from app.api.v1.routes import ip_assets as routes
 from app.application.ports.ip_assets import (
+    IpAssetLeaderboardItemRecord,
+    IpAssetLeaderboardRecord,
     IpAssetPage,
+    IpAssetPersonalItemRecord,
+    IpAssetPersonalPage,
+    IpAssetProfileRecord,
     IpAssetQuery,
     IpAssetRecord,
     IpAssetRepository,
+    IpAssetStore,
     IpAssetVectorHit,
 )
 from app.application.services.ip_assets import (
+    IpAssetPreparedDownload,
+    IpAssetPreparedZip,
+    IpAssetSearchHit,
     IpAssetSearchResult,
     IpAssetService,
     IpAssetUploadResult,
@@ -32,10 +43,12 @@ from app.application.services.ip_assets import (
     enqueue_ip_asset_generation,
 )
 from app.core.config import Settings
-from app.core.errors import ConflictError, IpAssetUploadRejectedError
+from app.core.errors import ConflictError, IpAssetUploadRejectedError, NotFoundError
 from app.domain.ip_assets import (
     IP_ASSET_SEARCH_VERSION,
     IpAssetCharacter,
+    IpAssetLeaderboardPeriod,
+    IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
     IpAssetSearchMode,
@@ -45,6 +58,9 @@ from app.domain.ip_assets import (
     IpAssetType,
     IpAssetValidationError,
     canonical_name_base,
+    leaderboard_start_date,
+    normalize_generation_reference_refs,
+    profile_token_digest,
     validate_ip_asset_upload,
 )
 from app.domain.visual_retrieval import (
@@ -53,6 +69,7 @@ from app.domain.visual_retrieval import (
     VisualEmbeddingResult,
 )
 from app.infrastructure.storage.minio_ip_asset_store import MinioIpAssetStore
+from app.schemas.ip_assets import IpAssetGenerationRequest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -105,6 +122,7 @@ def _asset() -> IpAssetRecord:
         parent_asset_id=None,
         created_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
         updated_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
+        shared_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
     )
 
 
@@ -125,14 +143,17 @@ class _FakeService:
     async def list(self, _query: object) -> IpAssetPage:
         return IpAssetPage(items=(self.asset,), next_cursor_created_at=None, next_cursor_id=None)
 
-    async def get(self, _asset_ref: str) -> IpAssetRecord:
+    async def get(self, _asset_ref: str, **_kwargs: object) -> IpAssetRecord:
         return self.asset
 
-    async def original(self, _asset_ref: str) -> tuple[IpAssetRecord, bytes]:
+    async def original(self, _asset_ref: str, **_kwargs: object) -> tuple[IpAssetRecord, bytes]:
         return self.asset, self.body
 
-    async def download_zip(self, _refs: tuple[str, ...]) -> bytes:
-        return _build_zip([(self.asset, self.body)])
+    async def download(self, _asset_ref: str, **_kwargs: object) -> IpAssetPreparedDownload:
+        return IpAssetPreparedDownload(asset=self.asset, body=self.body)
+
+    async def download_zip(self, _refs: tuple[str, ...], **_kwargs: object) -> IpAssetPreparedZip:
+        return IpAssetPreparedZip(body=_build_zip([(self.asset, self.body)]), assets=(self.asset,))
 
     async def search_text(self, **_kwargs: object) -> IpAssetSearchResult:
         return IpAssetSearchResult(
@@ -145,6 +166,70 @@ class _FakeService:
     async def search_image(self, **_kwargs: object) -> IpAssetSearchResult:
         assert self.search_semaphore is not None and self.search_semaphore.locked()
         return await self.search_text()
+
+
+class _ProfileFakeService(_FakeService):
+    def __init__(self) -> None:
+        super().__init__()
+        now = datetime(2026, 8, 24, 9, 0, tzinfo=UTC)
+        self.profile = IpAssetProfileRecord(
+            id=UUID("33333333-3333-4333-8333-333333333333"),
+            profile_ref="ipp_33333333333333333333",
+            display_name="内容同事",
+            department="品牌部",
+            created_at=now,
+            updated_at=now,
+        )
+        self.favorite_calls: list[tuple[str, bool]] = []
+
+    async def bootstrap_profile(self, **_kwargs: object):
+        return self.profile, True
+
+    async def profile_for_token(self, _token: str):
+        return self.profile
+
+    async def personal_assets(self, **_kwargs: object) -> IpAssetPersonalPage:
+        return IpAssetPersonalPage(
+            items=(
+                IpAssetPersonalItemRecord(
+                    asset=self.asset,
+                    membership_sources=(IpAssetMembershipSource.UPLOADED,),
+                    favorite=True,
+                ),
+            ),
+            next_cursor_created_at=None,
+            next_cursor_id=None,
+        )
+
+    async def search_text(self, **_kwargs: object) -> IpAssetSearchResult:
+        return IpAssetSearchResult(
+            mode=IpAssetSearchMode.DEGRADED_METADATA,
+            degraded_reason="semantic_disabled",
+            search_version=IP_ASSET_SEARCH_VERSION,
+            items=(
+                IpAssetSearchHit(
+                    asset=self.asset,
+                    similarity=None,
+                    explanation="元数据匹配",
+                ),
+            ),
+        )
+
+    async def favorite(self, *, asset_ref: str, favorite: bool, **_kwargs: object) -> None:
+        self.favorite_calls.append((asset_ref, favorite))
+
+    async def favorite_asset_ids(self, **_kwargs: object) -> frozenset[UUID]:
+        return frozenset({self.asset.id})
+
+    async def share(self, **_kwargs: object) -> IpAssetRecord:
+        return self.asset
+
+    async def leaderboard(self, **_kwargs: object) -> IpAssetLeaderboardRecord:
+        return IpAssetLeaderboardRecord(
+            period=IpAssetLeaderboardPeriod.THIRTY_DAYS,
+            generated_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
+            items=(IpAssetLeaderboardItemRecord(asset=self.asset, download_count=7),),
+        )
 
 
 @pytest.mark.parametrize("media_type", ["image/png", "image/jpeg", "image/webp"])
@@ -203,6 +288,92 @@ def test_canonical_name_uses_controlled_taxonomy_and_omits_missing_values() -> N
     assert naming.startswith(tuple("0123456789abcdef"))
 
 
+def test_profile_token_is_canonical_and_only_its_digest_is_derived() -> None:
+    raw = bytes(range(32))
+    token = urlsafe_b64encode(raw).decode().rstrip("=")
+
+    assert profile_token_digest(token) == hashlib.sha256(raw).hexdigest()
+    for invalid in (token + "=", token[:-1], "A" * 42 + "+"):
+        with pytest.raises(ValueError, match="profile token"):
+            profile_token_digest(invalid)
+
+
+def test_generation_references_preserve_order_and_reject_duplicates() -> None:
+    first = "ipa_11111111111111111111"
+    second = "ipa_22222222222222222222"
+
+    assert normalize_generation_reference_refs([second, first]) == (second, first)
+    with pytest.raises(ValueError, match="distinct"):
+        normalize_generation_reference_refs([first, first])
+    with pytest.raises(ValueError, match="one to three"):
+        normalize_generation_reference_refs([])
+
+
+def test_generation_request_accepts_legacy_single_reference_but_not_mixed_shapes() -> None:
+    base = {
+        "prompt": "小赛在科学课堂开心挥手",
+        "character": "xiao_sai",
+        "asset_type": "scene_illustration",
+        "idempotency_key": "request-1234",
+    }
+    legacy = IpAssetGenerationRequest(**base, reference_asset_ref="ipa_11111111111111111111")
+    assert legacy.reference_asset_ref == "ipa_11111111111111111111"
+
+    with pytest.raises(ValidationError):
+        IpAssetGenerationRequest(
+            **base,
+            reference_asset_ref="ipa_11111111111111111111",
+            reference_asset_refs=["ipa_22222222222222222222"],
+        )
+    with pytest.raises(ValidationError):
+        IpAssetGenerationRequest(
+            **base,
+            reference_asset_refs=[
+                "ipa_11111111111111111111",
+                "ipa_11111111111111111111",
+            ],
+        )
+
+
+def test_leaderboard_window_uses_business_timezone_and_includes_thirty_dates() -> None:
+    now = datetime(2026, 8, 23, 16, 30, tzinfo=UTC)
+
+    assert leaderboard_start_date(
+        period=IpAssetLeaderboardPeriod.THIRTY_DAYS,
+        now=now,
+        timezone="Asia/Shanghai",
+    ) == date(2026, 7, 26)
+    assert (
+        leaderboard_start_date(
+            period=IpAssetLeaderboardPeriod.ALL,
+            now=now,
+            timezone="Asia/Shanghai",
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_media_reads_require_a_ready_accessible_asset() -> None:
+    class Repository:
+        async def get_accessible_by_ref(self, *_args: object, **_kwargs: object) -> IpAssetRecord:
+            return replace(_asset(), status=IpAssetStatus.PROCESSING)
+
+    class Store:
+        async def get_verified(self, _descriptor: object) -> bytes:
+            raise AssertionError("non-ready media must not reach object storage")
+
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, Repository()),
+        store=cast(IpAssetStore, Store()),
+        embeddings=None,
+        identity=VisualEmbeddingIdentity(),
+    )
+
+    with pytest.raises(NotFoundError, match="IP asset"):
+        await service.original(_asset().asset_ref)
+
+
 def test_http_upload_list_preview_download_and_zip_are_safe() -> None:
     service = _FakeService()
     test_app = FastAPI()
@@ -211,6 +382,7 @@ def test_http_upload_list_preview_download_and_zip_are_safe() -> None:
         ip_asset_hub_enabled=True,
         ip_asset_generation_enabled=False,
         visual_semantic_enabled=False,
+        business_timezone="Asia/Shanghai",
     )
     test_app.state.ip_asset_service = service
     test_app.state.image_generator = None
@@ -262,6 +434,56 @@ def test_http_upload_list_preview_download_and_zip_are_safe() -> None:
     )
     assert similar.status_code == 200
     assert similar.json()["degraded_reason"] == "semantic_disabled"
+
+
+def test_http_profile_personal_favorite_and_anonymous_ranking_are_safely_projected() -> None:
+    service = _ProfileFakeService()
+    test_app = FastAPI()
+    test_app.include_router(routes.router, prefix="/api/v1")
+    test_app.state.settings = SimpleNamespace(
+        ip_asset_hub_enabled=True,
+        ip_asset_generation_enabled=False,
+        visual_semantic_enabled=False,
+        business_timezone="Asia/Shanghai",
+    )
+    test_app.state.ip_asset_service = service
+    test_app.state.image_generator = None
+    test_app.state.ip_asset_upload_semaphore = asyncio.Semaphore(1)
+    token = "A" * 43
+    headers = {"X-IP-Profile-Token": token}
+    client = TestClient(test_app)
+
+    created = client.post(
+        "/api/v1/ip-assets/profiles",
+        headers=headers,
+        json={"display_name": "内容同事", "department": "品牌部"},
+    )
+    assert created.status_code == 201
+    assert created.json()["identity_boundary"] == "browser_local_unverified"
+    assert token not in created.text
+
+    listed = client.get("/api/v1/ip-assets", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["favorite"] is True
+    searched = client.post(
+        "/api/v1/ip-assets/search/text",
+        headers=headers,
+        json={"message": "开心的小赛"},
+    )
+    assert searched.status_code == 200
+    assert searched.json()["items"][0]["asset"]["favorite"] is True
+    personal = client.get("/api/v1/ip-assets/profiles/me/assets", headers=headers)
+    assert personal.status_code == 200
+    assert personal.json()["items"][0]["membership_sources"] == ["uploaded"]
+
+    favorited = client.put(f"/api/v1/ip-assets/{service.asset.asset_ref}/favorite", headers=headers)
+    assert favorited.status_code == 200
+    assert service.favorite_calls == [(service.asset.asset_ref, True)]
+
+    ranking = client.get("/api/v1/ip-assets/leaderboard?period=30d")
+    assert ranking.status_code == 200
+    assert ranking.json()["items"][0]["download_count"] == 7
+    assert "profile" not in ranking.text.casefold()
 
 
 @pytest.mark.asyncio
@@ -549,6 +771,15 @@ async def test_generation_fingerprint_includes_persisted_descriptive_labels() ->
             return object(), True
 
     repository = Repository()
+    profile = IpAssetProfileRecord(
+        id=UUID("99999999-9999-4999-8999-999999999999"),
+        profile_ref="ipp_99999999999999999999",
+        display_name="同事甲",
+        department="教研部",
+        created_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 8, 24, 9, 0, tzinfo=UTC),
+    )
+    reference = _asset()
     await enqueue_ip_asset_generation(
         repository=cast(IpAssetRepository, repository),
         prompt="生成小赛在科学课堂讲解知识的方形插画",
@@ -559,7 +790,8 @@ async def test_generation_fingerprint_includes_persisted_descriptive_labels() ->
             contributor="同事甲",
         ),
         ratio="1:1",
-        reference_asset=None,
+        profile=profile,
+        reference_assets=(reference,),
         idempotency_key="generation-labels-one",
         provider="fake",
         model="gpt-image-2",
@@ -574,13 +806,50 @@ async def test_generation_fingerprint_includes_persisted_descriptive_labels() ->
             contributor="同事乙",
         ),
         ratio="1:1",
-        reference_asset=None,
+        profile=profile,
+        reference_assets=(reference,),
         idempotency_key="generation-labels-two",
         provider="fake",
         model="gpt-image-2",
     )
+    alternate_identity = replace(
+        reference,
+        id=UUID("22222222-2222-4222-8222-222222222222"),
+        asset_ref="ipa_22222222222222222222",
+    )
+    await enqueue_ip_asset_generation(
+        repository=cast(IpAssetRepository, repository),
+        prompt="生成小赛在科学课堂讲解知识的方形插画",
+        metadata=IpAssetMetadata(
+            character=IpAssetCharacter.XIAO_SAI,
+            asset_type=IpAssetType.SCENE_ILLUSTRATION,
+            department="教研部",
+            contributor="同事甲",
+        ),
+        ratio="1:1",
+        profile=profile,
+        reference_assets=(alternate_identity,),
+        idempotency_key="generation-labels-three",
+        provider="fake",
+        model="gpt-image-2",
+    )
 
-    assert len(set(repository.fingerprints)) == 2
+    assert len(set(repository.fingerprints)) == 3
+    with pytest.raises(IpAssetUploadRejectedError):
+        await enqueue_ip_asset_generation(
+            repository=cast(IpAssetRepository, repository),
+            prompt="生成小赛在科学课堂讲解知识的方形插画",
+            metadata=IpAssetMetadata(
+                character=IpAssetCharacter.XIAO_SAI,
+                asset_type=IpAssetType.SCENE_ILLUSTRATION,
+            ),
+            ratio="1:1",
+            profile=profile,
+            reference_assets=(replace(reference, shared_at=None),),
+            idempotency_key="generation-private-reference",
+            provider="fake",
+            model="gpt-image-2",
+        )
 
 
 @pytest.mark.asyncio
@@ -593,7 +862,7 @@ async def test_zip_download_stops_reading_when_aggregate_budget_is_exceeded(
         def __init__(self) -> None:
             self.calls: list[str] = []
 
-        async def original(self, asset_ref: str) -> tuple[IpAssetRecord, bytes]:
+        async def original(self, asset_ref: str, **_kwargs: object) -> tuple[IpAssetRecord, bytes]:
             self.calls.append(asset_ref)
             return _asset(), b"123456"
 
@@ -638,6 +907,18 @@ def test_main_api_installs_an_exact_noncredentialed_browser_origin_allowlist() -
     assert middleware.kwargs["allow_origins"] == list(api_main.settings.browser_origins)
     assert middleware.kwargs["allow_origins"] != ["*"]
     assert middleware.kwargs["allow_credentials"] is False
+    assert middleware.kwargs["allow_methods"] == [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS",
+    ]
+    assert middleware.kwargs["allow_headers"] == [
+        "Content-Type",
+        "X-Request-ID",
+        "X-IP-Profile-Token",
+    ]
 
     allowed_origin = api_main.settings.browser_origins[0]
     with TestClient(api_main.app) as client:
@@ -655,10 +936,20 @@ def test_main_api_installs_an_exact_noncredentialed_browser_origin_allowlist() -
                 "Access-Control-Request-Method": "GET",
             },
         )
+        profile_write = client.options(
+            "/api/v1/ip-assets/ipa_11111111111111111111/favorite",
+            headers={
+                "Origin": allowed_origin,
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "X-IP-Profile-Token",
+            },
+        )
 
     assert allowed.status_code == 200
     assert allowed.headers["access-control-allow-origin"] == allowed_origin
     assert "access-control-allow-origin" not in denied.headers
+    assert profile_write.status_code == 200
+    assert "x-ip-profile-token" in profile_write.headers["access-control-allow-headers"].casefold()
 
 
 @pytest.mark.asyncio

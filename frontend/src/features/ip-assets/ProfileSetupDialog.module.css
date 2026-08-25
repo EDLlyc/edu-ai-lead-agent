@@ -1,0 +1,116 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(13 44 42 / 58%);
+  backdrop-filter: blur(10px);
+}
+
+.dialog {
+  position: relative;
+  width: min(100%, 520px);
+  padding: clamp(28px, 5vw, 46px);
+  border: 1px solid rgb(35 105 99 / 30%);
+  border-radius: 28px;
+  background: #fffdf7;
+  box-shadow: 0 34px 90px rgb(7 43 39 / 32%);
+  color: #153b38;
+}
+
+.close {
+  position: absolute;
+  inset-block-start: 16px;
+  inset-inline-end: 16px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #e5f3ef;
+  color: #164f4a;
+  font-size: 1.5rem;
+}
+
+.kicker {
+  margin: 0 0 10px;
+  color: #b45d3f;
+  font:
+    700 0.72rem/1.2 ui-monospace,
+    monospace;
+  letter-spacing: 0.15em;
+}
+
+.dialog h2 {
+  margin: 0;
+  max-width: 390px;
+  font:
+    650 clamp(1.7rem, 4vw, 2.5rem) / 1.12 Georgia,
+    "Noto Serif SC",
+    serif;
+}
+
+.lead {
+  margin: 14px 0 24px;
+  color: #4e6966;
+  line-height: 1.7;
+}
+
+.dialog form,
+.dialog label {
+  display: grid;
+  gap: 9px;
+}
+
+.dialog form {
+  gap: 16px;
+}
+
+.dialog label span {
+  font-weight: 700;
+}
+
+.dialog input {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #b8cfca;
+  border-radius: 12px;
+  background: #fff;
+  color: #173d39;
+  font: inherit;
+}
+
+.dialog :focus-visible {
+  outline: 3px solid #1d8177;
+  outline-offset: 3px;
+}
+
+.boundary {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-inline-start: 3px solid #c86e4d;
+  background: #faeee6;
+  color: #68483e;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.submit {
+  min-height: 50px;
+  border: 0;
+  border-radius: 999px;
+  background: #176b63;
+  color: #fff;
+  font: 700 0.96rem/1 sans-serif;
+}
+
+.submit:disabled {
+  opacity: 0.55;
+}
+
+.error {
+  margin: 0;
+  color: #9b3f35;
+}

@@ -5,6 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const routeMocks = vi.hoisted(() => ({
   consoleRender: vi.fn(),
   ipAssetRender: vi.fn(),
+  creationRender: vi.fn(),
+}));
+
+vi.mock("@/features/ip-assets/IpAssetCreationPage", () => ({
+  IpAssetCreationPage: () => {
+    routeMocks.creationRender();
+    return <h1>AI 视觉创作室</h1>;
+  },
 }));
 
 vi.mock("./App", () => ({
@@ -62,6 +70,12 @@ describe("Application route composition", () => {
     expect(resolveApplicationPath("/")).toBe("console");
     expect(resolveApplicationPath("/ip-assets")).toBe("ip-assets");
     expect(resolveApplicationPath("/ip-assets/")).toBe("ip-assets");
+    expect(resolveApplicationPath("/ip-assets/create")).toBe(
+      "ip-assets-create",
+    );
+    expect(resolveApplicationPath("/ip-assets/create/")).toBe(
+      "ip-assets-create",
+    );
     expect(resolveApplicationPath("/ip-assets/archive")).toBe("not-found");
     expect(resolveApplicationPath("/unknown")).toBe("not-found");
   });
@@ -100,6 +114,22 @@ describe("Application route composition", () => {
       expect(routeMocks.consoleRender).not.toHaveBeenCalled();
       expect(routeMocks.ipAssetRender).toHaveBeenCalledOnce();
       await waitFor(() => expect(document.title).toBe("IP 数字资产中心"));
+    },
+  );
+
+  it.each(["/ip-assets/create", "/ip-assets/create/"])(
+    "renders the standalone creation studio at %s",
+    async (pathname) => {
+      renderPath(pathname, true);
+
+      expect(
+        await screen.findByRole("heading", { level: 1, name: "AI 视觉创作室" }),
+      ).toBeVisible();
+      expect(screen.queryByText("品牌知识")).not.toBeInTheDocument();
+      expect(routeMocks.consoleRender).not.toHaveBeenCalled();
+      expect(routeMocks.ipAssetRender).not.toHaveBeenCalled();
+      expect(routeMocks.creationRender).toHaveBeenCalledOnce();
+      await waitFor(() => expect(document.title).toBe("AI 视觉创作室"));
     },
   );
 

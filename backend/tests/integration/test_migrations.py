@@ -46,6 +46,11 @@ async def test_clean_database_is_at_alembic_head(
                     "ip_asset_embedding_jobs",
                     "ip_asset_embeddings",
                     "ip_asset_generation_jobs",
+                    "ip_asset_profiles",
+                    "ip_asset_profile_memberships",
+                    "ip_asset_favorites",
+                    "ip_asset_generation_references",
+                    "ip_asset_download_daily",
                     "official_account_generated_visuals",
                 )
             }
@@ -236,7 +241,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260824_0034"
+    assert revision == "20260824_0035"
     assert {
         "sources",
         "source_versions",
@@ -302,12 +307,24 @@ async def test_clean_database_is_at_alembic_head(
         "ip_asset_embedding_jobs",
         "ip_asset_embeddings",
         "ip_asset_generation_jobs",
+        "ip_asset_profiles",
+        "ip_asset_profile_memberships",
+        "ip_asset_favorites",
+        "ip_asset_generation_references",
+        "ip_asset_download_daily",
     }.issubset(tables)
     assert columns["ip_assets"]["object_key"]["nullable"] is False
+    assert columns["ip_assets"]["shared_at"]["nullable"] is True
     assert columns["ip_assets"]["blob_sha256"]["nullable"] is False
     assert columns["ip_asset_embedding_jobs"]["lease_token"]["nullable"] is True
     assert columns["ip_asset_embeddings"]["vector"]["nullable"] is False
     assert columns["ip_asset_generation_jobs"]["idempotency_key"]["nullable"] is False
+    assert columns["ip_asset_generation_jobs"]["profile_id"]["nullable"] is True
+    assert columns["ip_asset_profiles"]["token_digest"]["nullable"] is False
+    assert columns["ip_asset_profile_memberships"]["generation_job_id"]["nullable"] is True
+    assert columns["ip_asset_favorites"]["asset_id"]["nullable"] is False
+    assert columns["ip_asset_generation_references"]["ordinal"]["nullable"] is False
+    assert columns["ip_asset_download_daily"]["download_count"]["nullable"] is False
     for table in ("topic_selection_runs", "content_slot_runs"):
         assert columns[table]["rerank_config_snapshot"]["nullable"] is False
         assert columns[table]["rerank_config_fingerprint"]["nullable"] is False

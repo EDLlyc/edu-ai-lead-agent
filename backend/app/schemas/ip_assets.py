@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.ip_assets import (
     IpAssetCharacter,
+    IpAssetLeaderboardPeriod,
+    IpAssetMembershipSource,
     IpAssetOrientation,
     IpAssetSearchMode,
     IpAssetSearchVersion,
@@ -41,6 +43,8 @@ class IpAssetCardResponse(BaseModel):
     orientation: IpAssetOrientation
     status: IpAssetStatus
     semantic_status: IpAssetSemanticStatus
+    shared: bool
+    favorite: bool = False
     created_at: datetime
     preview_url: str
     download_url: str
@@ -55,6 +59,57 @@ class IpAssetDetailResponse(IpAssetCardResponse):
 class IpAssetListResponse(BaseModel):
     items: list[IpAssetCardResponse]
     next_cursor: str | None
+
+
+class IpAssetProfileCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=1, max_length=80)
+    department: str = Field(min_length=1, max_length=80)
+
+
+class IpAssetProfileResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_ref: str
+    display_name: str
+    department: str
+    identity_boundary: Literal["browser_local_unverified"] = "browser_local_unverified"
+    created_at: datetime
+
+
+class IpAssetPersonalItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset: IpAssetCardResponse
+    membership_sources: list[IpAssetMembershipSource]
+    favorite: bool
+
+
+class IpAssetPersonalListResponse(BaseModel):
+    items: list[IpAssetPersonalItemResponse]
+    next_cursor: str | None
+
+
+class IpAssetFavoriteResponse(BaseModel):
+    asset_ref: str
+    favorite: bool
+
+
+class IpAssetShareResponse(BaseModel):
+    asset: IpAssetDetailResponse
+    shared: Literal[True] = True
+
+
+class IpAssetLeaderboardItemResponse(BaseModel):
+    asset: IpAssetCardResponse
+    download_count: int = Field(ge=1)
+
+
+class IpAssetLeaderboardResponse(BaseModel):
+    period: IpAssetLeaderboardPeriod
+    generated_at: datetime
+    items: list[IpAssetLeaderboardItemResponse]
 
 
 class IpAssetUploadResponse(BaseModel):
@@ -123,7 +178,21 @@ class IpAssetGenerationRequest(BaseModel):
     contributor: str = Field(default="", max_length=80)
     ratio: Literal["1:1"] = "1:1"
     reference_asset_ref: str | None = Field(default=None, max_length=24)
+    reference_asset_refs: list[str] | None = Field(default=None, min_length=1, max_length=3)
     idempotency_key: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_reference_shape(self) -> IpAssetGenerationRequest:
+        if self.reference_asset_ref is not None and self.reference_asset_refs is not None:
+            raise ValueError("legacy and ordered reference fields cannot be combined")
+        refs = (
+            self.reference_asset_refs
+            if self.reference_asset_refs is not None
+            else ([self.reference_asset_ref] if self.reference_asset_ref is not None else [])
+        )
+        if not refs or len(set(refs)) != len(refs):
+            raise ValueError("one to three distinct references are required")
+        return self
 
 
 class IpAssetGenerationResponse(BaseModel):
@@ -132,6 +201,8 @@ class IpAssetGenerationResponse(BaseModel):
     created: bool
     generation_available: bool = True
     output_asset_ref: str | None = None
+    reference_asset_refs: list[str]
+    reference_asset_ref: str | None = None
     error_code: str | None = None
     status_url: str
     created_at: datetime

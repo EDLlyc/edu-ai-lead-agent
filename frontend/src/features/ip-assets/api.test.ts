@@ -20,7 +20,14 @@ vi.mock("@/lib/api/client", () => ({
   },
 }));
 
-import { ipAssetResourceUrl, recognizeIpAsset, uploadIpAsset } from "./api";
+import {
+  createIpAssetGeneration,
+  ipAssetResourceUrl,
+  recognizeIpAsset,
+  searchIpAssetsText,
+  uploadIpAsset,
+} from "./api";
+import { emptyIpAssetFilters } from "./api";
 
 describe("IP asset API adapter", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -106,5 +113,82 @@ describe("IP asset API adapter", () => {
     ];
     expect(request.bodySerializer().get("file")).toBe(file);
     expect(request.headers).toBeUndefined();
+  });
+
+  it("keeps ordered generation references and the local token in the header only", async () => {
+    clientMocks.POST.mockResolvedValue({
+      data: {
+        job_ref: "ipg_demo",
+        reference_asset_refs: ["ipa_two", "ipa_one"],
+        status: "queued",
+      },
+      error: undefined,
+    });
+    const token = "A".repeat(43);
+
+    await createIpAssetGeneration({
+      prompt: "小赛在科学课堂开心挥手",
+      character: "xiao_sai",
+      assetType: "scene_illustration",
+      department: "品牌部",
+      contributor: "内容同事",
+      referenceAssetRefs: ["ipa_two", "ipa_one"],
+      idempotencyKey: "ip-studio-test-key",
+      profileToken: token,
+    });
+
+    const calls = clientMocks.POST.mock.calls as unknown as Array<
+      [
+        string,
+        {
+          body: { reference_asset_refs: string[] };
+          params: { header: { "X-IP-Profile-Token": string } };
+        },
+      ]
+    >;
+    const request = calls[0];
+    if (request === undefined) throw new Error("generation_request_missing");
+    expect(request[0]).toBe("/api/v1/ip-assets/generations");
+    expect(request[1].body.reference_asset_refs).toEqual([
+      "ipa_two",
+      "ipa_one",
+    ]);
+    expect(request[1].params.header["X-IP-Profile-Token"]).toBe(token);
+    expect(JSON.stringify(request[1].body)).not.toContain(token);
+  });
+
+  it("sends a local profile token in search headers so favorite state can be projected", async () => {
+    clientMocks.POST.mockResolvedValue({
+      data: {
+        mode: "degraded_metadata",
+        degraded_reason: "semantic_disabled",
+        search_version: "ip-asset-search-v1",
+        items: [],
+      },
+      error: undefined,
+    });
+    const token = "B".repeat(43);
+
+    await searchIpAssetsText({
+      message: "开心的小赛",
+      priorTurns: [],
+      filters: emptyIpAssetFilters,
+      profileToken: token,
+    });
+
+    const calls = clientMocks.POST.mock.calls as unknown as Array<
+      [
+        string,
+        {
+          body: Record<string, unknown>;
+          params: { header: { "X-IP-Profile-Token": string } };
+        },
+      ]
+    >;
+    const request = calls[0];
+    if (request === undefined) throw new Error("search_request_missing");
+    expect(request[0]).toBe("/api/v1/ip-assets/search/text");
+    expect(request[1].params.header["X-IP-Profile-Token"]).toBe(token);
+    expect(JSON.stringify(request[1].body)).not.toContain(token);
   });
 });

@@ -13,23 +13,32 @@ import {
   type IpAsset,
   type IpAssetCharacter,
   type IpAssetFilters,
+  type IpAssetLeaderboard,
+  type IpAssetLeaderboardPeriod,
   type IpAssetOrientation,
   type IpAssetRecognition,
   type IpAssetSource,
   type IpAssetType,
 } from "./api";
 import {
-  useCreateIpAssetGeneration,
   useIpAssetCapabilities,
   useIpAssetDetail,
-  useIpAssetGeneration,
   useIpAssetImageSearch,
+  useIpAssetLeaderboard,
   useIpAssetPackageDownload,
   useIpAssets,
+  useRestoreIpAssetProfile,
+  useSetIpAssetFavorite,
   useIpAssetTextSearch,
   useRecognizeIpAsset,
   useUploadIpAsset,
 } from "./hooks";
+import { ProfileSetupDialog } from "./ProfileSetupDialog";
+import {
+  clearLocalIpAssetProfile,
+  loadLocalIpAssetProfile,
+  type LocalIpAssetProfile,
+} from "./profile";
 
 import styles from "./IpAssetHub.module.css";
 
@@ -90,39 +99,71 @@ const labels = {
 
 export function IpAssetHub() {
   const capabilities = useIpAssetCapabilities();
+  const [profile, setProfile] = useState<LocalIpAssetProfile | null>(
+    loadLocalIpAssetProfile,
+  );
+  const restoredProfile = useRestoreIpAssetProfile(profile);
+  const activeProfile = restoredProfile.isError ? null : profile;
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [filters, setFilters] = useState<IpAssetFilters>(emptyIpAssetFilters);
-  const assets = useIpAssets(filters, capabilities.data?.enabled === true);
+  const assets = useIpAssets(
+    filters,
+    capabilities.data?.enabled === true,
+    activeProfile,
+  );
   const textSearch = useIpAssetTextSearch();
   const imageSearch = useIpAssetImageSearch();
-  const packageDownload = useIpAssetPackageDownload();
+  const packageDownload = useIpAssetPackageDownload(activeProfile);
   const upload = useUploadIpAsset();
-  const generation = useCreateIpAssetGeneration();
+  const favorite = useSetIpAssetFavorite();
+  const [leaderboardPeriod, setLeaderboardPeriod] =
+    useState<IpAssetLeaderboardPeriod>("30d");
+  const leaderboard = useIpAssetLeaderboard(leaderboardPeriod);
   const [searchMessage, setSearchMessage] = useState("");
   const [priorTurns, setPriorTurns] = useState<readonly string[]>([]);
   const [selectedAssetRef, setSelectedAssetRef] = useState<string | null>(null);
-  const [referenceAsset, setReferenceAsset] = useState<IpAsset | null>(null);
   const [selectedRefs, setSelectedRefs] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [generationJobRef, setGenerationJobRef] = useState<string | null>(null);
-  const [activeTool, setActiveTool] = useState<"upload" | "create" | null>(
-    null,
-  );
-  const generationStatus = useIpAssetGeneration(generationJobRef);
-  const detail = useIpAssetDetail(selectedAssetRef);
+  const [activeTool, setActiveTool] = useState<"upload" | null>(null);
+  const detail = useIpAssetDetail(selectedAssetRef, activeProfile);
   const closeDetail = useCallback(() => setSelectedAssetRef(null), []);
   const closeTool = useCallback(() => setActiveTool(null), []);
   const searchResult = imageSearch.data ?? textSearch.data;
   const searchError = imageSearch.error ?? textSearch.error;
+  const [favoriteProjection, setFavoriteProjection] = useState<{
+    profileRef: string;
+    values: Readonly<Record<string, boolean>>;
+  } | null>(null);
   const displayedAssets = useMemo(() => {
+    const favoriteOverrides =
+      favoriteProjection !== null &&
+      favoriteProjection.profileRef === activeProfile?.profileRef
+        ? favoriteProjection.values
+        : {};
     const candidates =
       searchResult?.items.map((item) => item.asset) ??
       assets.data?.pages.flatMap((page) => page.items) ??
       [];
     return [
-      ...new Map(candidates.map((item) => [item.asset_ref, item])).values(),
+      ...new Map(
+        candidates.map((item) => {
+          const favoriteOverride = favoriteOverrides[item.asset_ref];
+          return [
+            item.asset_ref,
+            favoriteOverride === undefined
+              ? item
+              : { ...item, favorite: favoriteOverride },
+          ] as const;
+        }),
+      ).values(),
     ];
-  }, [assets.data?.pages, searchResult?.items]);
+  }, [
+    activeProfile?.profileRef,
+    assets.data?.pages,
+    favoriteProjection,
+    searchResult?.items,
+  ]);
   const searchMatches = useMemo(
     () =>
       new Map(
@@ -144,6 +185,39 @@ export function IpAssetHub() {
     setFilters((current) => ({ ...current, [key]: value }));
     textSearch.reset();
     imageSearch.reset();
+  };
+
+  useEffect(() => {
+    if (!restoredProfile.isError || profile === null) return;
+    clearLocalIpAssetProfile();
+  }, [profile, restoredProfile.isError]);
+
+  const toggleFavorite = (asset: IpAsset) => {
+    if (activeProfile === null) {
+      setShowProfileSetup(true);
+      return;
+    }
+    const nextFavorite = !asset.favorite;
+    favorite.mutate(
+      {
+        token: activeProfile.token,
+        assetRef: asset.asset_ref,
+        favorite: nextFavorite,
+      },
+      {
+        onSuccess: () => {
+          setFavoriteProjection((current) => ({
+            profileRef: activeProfile.profileRef,
+            values: {
+              ...(current?.profileRef === activeProfile.profileRef
+                ? current.values
+                : {}),
+              [asset.asset_ref]: nextFavorite,
+            },
+          }));
+        },
+      },
+    );
   };
 
   return (
@@ -171,20 +245,10 @@ export function IpAssetHub() {
             <span aria-hidden="true">↑</span>
             上传图片
           </button>
-          <button
-            type="button"
-            className={styles.primaryAction}
-            disabled={capabilities.data?.generation_available !== true}
-            title={
-              capabilities.data?.generation_available === true
-                ? undefined
-                : "当前未启用生图服务"
-            }
-            onClick={() => setActiveTool("create")}
-          >
+          <a className={styles.primaryAction} href="/ip-assets/create">
             <span aria-hidden="true">✦</span>
             AI 创作
-          </button>
+          </a>
         </div>
         <div className={styles.headerCopy}>
           <p className={styles.intro}>
@@ -237,7 +301,14 @@ export function IpAssetHub() {
               if (message.length === 0) return;
               imageSearch.reset();
               textSearch.mutate(
-                { message, priorTurns, filters },
+                {
+                  message,
+                  priorTurns,
+                  filters,
+                  ...(activeProfile === null
+                    ? {}
+                    : { profileToken: activeProfile.token }),
+                },
                 {
                   onSuccess: () => {
                     setPriorTurns((turns) => [...turns, message].slice(-4));
@@ -247,7 +318,13 @@ export function IpAssetHub() {
             }}
             onImageSearch={(file) => {
               textSearch.reset();
-              imageSearch.mutate({ file, filters });
+              imageSearch.mutate({
+                file,
+                filters,
+                ...(activeProfile === null
+                  ? {}
+                  : { profileToken: activeProfile.token }),
+              });
             }}
           />
 
@@ -290,78 +367,87 @@ export function IpAssetHub() {
             </div>
           ) : null}
 
-          <section
-            className={styles.galleryRegion}
-            aria-labelledby="library-title"
-          >
-            <div className={styles.galleryHeader}>
-              <div>
-                <p>共享资产库</p>
-                <h2 id="library-title">全部图片</h2>
-              </div>
-              <span>{displayedAssets.length} 项资产</span>
-            </div>
-
-            {assets.isLoading ? <p role="status">正在装载视觉档案…</p> : null}
-            {assets.isError ? (
-              <p className={styles.error} role="alert">
-                图库读取失败，请稍后重试。
-              </p>
-            ) : null}
-            {!assets.isLoading &&
-            !assets.isError &&
-            displayedAssets.length === 0 ? (
-              <div className={styles.empty}>
-                <div className={styles.emptyIllustration} aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
+          <div className={styles.libraryLayout}>
+            <section
+              className={styles.galleryRegion}
+              aria-labelledby="library-title"
+            >
+              <div className={styles.galleryHeader}>
                 <div>
-                  <strong>还没有找到合适的图片</strong>
-                  <p>可以调整检索条件，或上传第一张 IP 资产。</p>
+                  <p>共享资产库</p>
+                  <h2 id="library-title">全部图片</h2>
                 </div>
-                <div className={styles.emptyActions}>
-                  <button type="button" onClick={() => setActiveTool("upload")}>
-                    上传图片
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!capabilities.data.generation_available}
-                    onClick={() => setActiveTool("create")}
-                  >
-                    AI 创作
-                  </button>
-                </div>
+                <span>{displayedAssets.length} 项资产</span>
               </div>
-            ) : (
-              <AssetGrid
-                assets={displayedAssets}
-                searchMatches={searchMatches}
-                selectedRefs={selectedRefs}
-                activeRef={selectedAssetRef}
-                onOpen={setSelectedAssetRef}
-                onToggle={(assetRef) =>
-                  setSelectedRefs((current) => {
-                    const next = new Set(current);
-                    if (next.has(assetRef)) next.delete(assetRef);
-                    else next.add(assetRef);
-                    return next;
-                  })
-                }
-              />
-            )}
-            {searchResult === undefined && assets.hasNextPage ? (
-              <button
-                type="button"
-                className={styles.loadMore}
-                disabled={assets.isFetchingNextPage}
-                onClick={() => void assets.fetchNextPage()}
-              >
-                {assets.isFetchingNextPage ? "正在装载下一页…" : "继续装载图库"}
-              </button>
-            ) : null}
-          </section>
+
+              {assets.isLoading ? <p role="status">正在装载视觉档案…</p> : null}
+              {assets.isError ? (
+                <p className={styles.error} role="alert">
+                  图库读取失败，请稍后重试。
+                </p>
+              ) : null}
+              {!assets.isLoading &&
+              !assets.isError &&
+              displayedAssets.length === 0 ? (
+                <div className={styles.empty}>
+                  <div className={styles.emptyIllustration} aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div>
+                    <strong>还没有找到合适的图片</strong>
+                    <p>可以调整检索条件，或上传第一张 IP 资产。</p>
+                  </div>
+                  <div className={styles.emptyActions}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTool("upload")}
+                    >
+                      上传图片
+                    </button>
+                    <a href="/ip-assets/create">AI 创作</a>
+                  </div>
+                </div>
+              ) : (
+                <AssetGrid
+                  assets={displayedAssets}
+                  searchMatches={searchMatches}
+                  selectedRefs={selectedRefs}
+                  activeRef={selectedAssetRef}
+                  onOpen={setSelectedAssetRef}
+                  onFavorite={toggleFavorite}
+                  onToggle={(assetRef) =>
+                    setSelectedRefs((current) => {
+                      const next = new Set(current);
+                      if (next.has(assetRef)) next.delete(assetRef);
+                      else next.add(assetRef);
+                      return next;
+                    })
+                  }
+                />
+              )}
+              {searchResult === undefined && assets.hasNextPage ? (
+                <button
+                  type="button"
+                  className={styles.loadMore}
+                  disabled={assets.isFetchingNextPage}
+                  onClick={() => void assets.fetchNextPage()}
+                >
+                  {assets.isFetchingNextPage
+                    ? "正在装载下一页…"
+                    : "继续装载图库"}
+                </button>
+              ) : null}
+            </section>
+            <LeaderboardRail
+              entries={leaderboard.data?.items ?? []}
+              loading={leaderboard.isLoading}
+              period={leaderboardPeriod}
+              onOpen={setSelectedAssetRef}
+              onPeriodChange={setLeaderboardPeriod}
+            />
+          </div>
 
           {selectedRefs.size > 0 ? (
             <div
@@ -397,9 +483,8 @@ export function IpAssetHub() {
             <AssetDetail
               loading={detail.isLoading}
               asset={detail.data}
-              isReference={selectedAssetRef === referenceAsset?.asset_ref}
-              onUseAsReference={() => {
-                if (detail.data !== undefined) setReferenceAsset(detail.data);
+              onFavorite={() => {
+                if (detail.data !== undefined) toggleFavorite(detail.data);
               }}
               onClose={closeDetail}
             />
@@ -414,34 +499,86 @@ export function IpAssetHub() {
               <UploadPanel
                 mutation={upload}
                 recognitionAvailable={capabilities.data.recognition_available}
+                profile={activeProfile}
               />
             </ToolDialog>
           ) : null}
 
-          {activeTool === "create" ? (
-            <ToolDialog
-              labelledBy="ip-create-title"
-              eyebrow="AI 视觉创作"
-              onClose={closeTool}
-            >
-              <GenerationPanel
-                available={capabilities.data.generation_available}
-                referenceAsset={referenceAsset}
-                mutation={generation}
-                status={generationStatus.data}
-                statusError={generationStatus.error}
-                onCreated={setGenerationJobRef}
-                onClearReference={() => setReferenceAsset(null)}
-                onOpenOutput={(assetRef) => {
-                  closeTool();
-                  setSelectedAssetRef(assetRef);
-                }}
-              />
-            </ToolDialog>
+          {showProfileSetup ? (
+            <ProfileSetupDialog
+              onClose={() => setShowProfileSetup(false)}
+              onCreated={(created) => {
+                setProfile(created);
+                setShowProfileSetup(false);
+              }}
+            />
           ) : null}
         </>
       ) : null}
     </section>
+  );
+}
+
+function LeaderboardRail({
+  entries,
+  loading,
+  period,
+  onOpen,
+  onPeriodChange,
+}: Readonly<{
+  entries: IpAssetLeaderboard["items"];
+  loading: boolean;
+  period: IpAssetLeaderboardPeriod;
+  onOpen: (assetRef: string) => void;
+  onPeriodChange: (period: IpAssetLeaderboardPeriod) => void;
+}>) {
+  return (
+    <div className={styles.leaderboard} aria-labelledby="leaderboard-title">
+      <div className={styles.leaderboardHeading}>
+        <div>
+          <p>DOWNLOAD INDEX</p>
+          <h2 id="leaderboard-title">下载排行</h2>
+        </div>
+        <div className={styles.leaderboardTabs} aria-label="排行榜周期">
+          <button
+            type="button"
+            aria-pressed={period === "30d"}
+            onClick={() => onPeriodChange("30d")}
+          >
+            30 天
+          </button>
+          <button
+            type="button"
+            aria-pressed={period === "all"}
+            onClick={() => onPeriodChange("all")}
+          >
+            全部
+          </button>
+        </div>
+      </div>
+      {loading ? <p role="status">正在统计下载热度…</p> : null}
+      {!loading && entries.length === 0 ? (
+        <p className={styles.leaderboardEmpty}>还没有下载记录。</p>
+      ) : (
+        <ol>
+          {entries.map((entry, index) => (
+            <li key={entry.asset.asset_ref}>
+              <button
+                type="button"
+                onClick={() => onOpen(entry.asset.asset_ref)}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <span>
+                  <strong>{entry.asset.canonical_name}</strong>
+                  <small>{entry.download_count} 次下载</small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className={styles.leaderboardNote}>仅汇总次数，不记录下载者身份。</p>
+    </div>
   );
 }
 
@@ -627,6 +764,7 @@ function AssetGrid({
   selectedRefs,
   activeRef,
   onOpen,
+  onFavorite,
   onToggle,
 }: Readonly<{
   assets: readonly IpAsset[];
@@ -637,6 +775,7 @@ function AssetGrid({
   selectedRefs: ReadonlySet<string>;
   activeRef: string | null;
   onOpen: (assetRef: string) => void;
+  onFavorite: (asset: IpAsset) => void;
   onToggle: (assetRef: string) => void;
 }>) {
   return (
@@ -673,6 +812,19 @@ function AssetGrid({
                 />
                 <span aria-hidden="true" />
               </label>
+              <button
+                type="button"
+                className={styles.favoriteButton}
+                aria-label={
+                  asset.favorite
+                    ? `取消收藏 ${asset.canonical_name}`
+                    : `收藏 ${asset.canonical_name}`
+                }
+                aria-pressed={asset.favorite}
+                onClick={() => onFavorite(asset)}
+              >
+                {asset.favorite ? "♥" : "♡"}
+              </button>
             </div>
             <button
               type="button"
@@ -764,9 +916,11 @@ const emptyRecognitionMetadata: RecognitionMetadata = {
 function UploadPanel({
   mutation,
   recognitionAvailable,
+  profile,
 }: Readonly<{
   mutation: ReturnType<typeof useUploadIpAsset>;
   recognitionAvailable: boolean;
+  profile: LocalIpAssetProfile | null;
 }>) {
   const recognition = useRecognizeIpAsset();
   const [file, setFile] = useState<File | null>(null);
@@ -840,6 +994,7 @@ function UploadPanel({
           intendedUse: metadata.intendedUse,
           style: metadata.style,
           tags: metadata.tags,
+          ...(profile === null ? {} : { profileToken: profile.token }),
         });
       }}
     >
@@ -996,139 +1151,6 @@ function UploadPanel({
   );
 }
 
-function GenerationPanel({
-  available,
-  referenceAsset,
-  mutation,
-  status,
-  statusError,
-  onCreated,
-  onClearReference,
-  onOpenOutput,
-}: Readonly<{
-  available: boolean;
-  referenceAsset: IpAsset | null;
-  mutation: ReturnType<typeof useCreateIpAssetGeneration>;
-  status: ReturnType<typeof useIpAssetGeneration>["data"];
-  statusError: Error | null;
-  onCreated: (jobRef: string) => void;
-  onClearReference: () => void;
-  onOpenOutput: (assetRef: string) => void;
-}>) {
-  const [character, setCharacter] = useState<IpAssetCharacter>("xiao_sai");
-  const [assetType, setAssetType] = useState<IpAssetType>("scene_illustration");
-  return (
-    <form
-      className={styles.toolPanel}
-      aria-labelledby="ip-create-title"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        mutation.mutate(
-          {
-            prompt: formText(form, "prompt"),
-            character,
-            assetType,
-            department: formText(form, "department"),
-            contributor: formText(form, "contributor"),
-            referenceAssetRef: referenceAsset?.asset_ref ?? null,
-            idempotencyKey: createIdempotencyKey(),
-          },
-          { onSuccess: (job) => onCreated(job.job_ref) },
-        );
-      }}
-    >
-      <div className={styles.toolHeading}>
-        <h2 id="ip-create-title">AI 创作</h2>
-        <p>描述想要的画面，生成结果会自动进入同一个共享图库。</p>
-      </div>
-      {!available ? (
-        <p className={styles.unavailable}>
-          生图服务未启用；上传、检索与下载仍可正常使用。
-        </p>
-      ) : null}
-      <label>
-        <span>画面描述</span>
-        <textarea
-          name="prompt"
-          required
-          minLength={8}
-          maxLength={2000}
-          placeholder="描述角色、动作、场景与用途…"
-        />
-      </label>
-      <FilterSelect
-        label="IP 角色"
-        value={character}
-        options={characterOptions}
-        allowEmpty={false}
-        onChange={(value) => setCharacter(value as IpAssetCharacter)}
-      />
-      <FilterSelect
-        label="资产类型"
-        value={assetType}
-        options={assetTypeOptions}
-        allowEmpty={false}
-        onChange={(value) => setAssetType(value as IpAssetType)}
-      />
-      <label>
-        <span>部门（自填）</span>
-        <input name="department" maxLength={80} />
-      </label>
-      <label>
-        <span>创作者（自填）</span>
-        <input name="contributor" maxLength={80} />
-      </label>
-      <div className={styles.referenceSlot}>
-        <span>参考图片 · 最多 1 张</span>
-        {referenceAsset === null ? (
-          <p>打开一张图库图片即可将其作为参考。</p>
-        ) : (
-          <>
-            <strong>{referenceAsset.canonical_name}</strong>
-            <button type="button" onClick={onClearReference}>
-              移除参考
-            </button>
-          </>
-        )}
-      </div>
-      <button type="submit" disabled={!available || mutation.isPending}>
-        {mutation.isPending ? "正在创建任务…" : "生成 1:1 图片"}
-      </button>
-      <MutationFeedback error={mutation.error} success={null} />
-      {statusError !== null ? (
-        <p className={styles.error} role="alert">
-          无法读取生成任务状态，请稍后重试。
-        </p>
-      ) : null}
-      {status !== undefined ? (
-        <div className={styles.jobStatus}>
-          <p role="status">
-            生成任务 {status.job_ref.slice(-8)} /{" "}
-            {generationStatusLabel(status.status)}
-            {status.status === "failed" ? (
-              <small>
-                未生成图片：{status.error_code ?? "generation_failed"}
-              </small>
-            ) : null}
-          </p>
-          {status.status === "succeeded" && status.output_asset_ref != null ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (status.output_asset_ref != null)
-                  onOpenOutput(status.output_asset_ref);
-              }}
-            >
-              查看生成图片
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </form>
-  );
-}
-
 function ToolDialog({
   labelledBy,
   eyebrow,
@@ -1224,14 +1246,12 @@ function useDialogFocus(
 function AssetDetail({
   loading,
   asset,
-  isReference,
-  onUseAsReference,
+  onFavorite,
   onClose,
 }: Readonly<{
   loading: boolean;
   asset: ReturnType<typeof useIpAssetDetail>["data"];
-  isReference: boolean;
-  onUseAsReference: () => void;
+  onFavorite: () => void;
   onClose: () => void;
 }>) {
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -1308,9 +1328,19 @@ function AssetDetail({
                 >
                   下载不可变原件
                 </a>
-                <button type="button" onClick={onUseAsReference}>
-                  {isReference ? "已用作创作参考" : "用作 AI 创作参考"}
+                <button
+                  type="button"
+                  aria-pressed={asset.favorite}
+                  onClick={onFavorite}
+                >
+                  {asset.favorite ? "取消收藏" : "收藏图片"}
                 </button>
+                <a
+                  className={styles.creationLink}
+                  href={`/ip-assets/create?reference=${encodeURIComponent(asset.asset_ref)}`}
+                >
+                  用作 AI 创作参考
+                </a>
               </div>
             )}
           </>
@@ -1337,26 +1367,4 @@ function MutationFeedback({
       </p>
     );
   return null;
-}
-
-function createIdempotencyKey(): string {
-  if (typeof crypto.randomUUID === "function")
-    return `ip-ui-${crypto.randomUUID()}`;
-  return `ip-ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function generationStatusLabel(
-  status: "queued" | "running" | "succeeded" | "failed",
-): string {
-  return {
-    queued: "排队中",
-    running: "生成中",
-    succeeded: "已完成",
-    failed: "失败",
-  }[status];
-}
-
-function formText(form: FormData, key: string): string {
-  const value = form.get(key);
-  return typeof value === "string" ? value : "";
 }

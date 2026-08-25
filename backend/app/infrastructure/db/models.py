@@ -18,6 +18,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -4676,6 +4677,39 @@ class WeComDeliveryAttemptModel(Base):
     )
 
 
+class IpAssetProfileModel(Base):
+    __tablename__ = "ip_asset_profiles"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    profile_ref: Mapped[str] = mapped_column(String(24), nullable=False)
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    department: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("profile_ref ~ '^ipp_[a-f0-9]{20}$'", name="ck_ip_asset_profiles_ref"),
+        CheckConstraint(
+            "token_digest ~ '^[0-9a-f]{64}$'", name="ck_ip_asset_profiles_token_digest"
+        ),
+        CheckConstraint(
+            "char_length(display_name) BETWEEN 1 AND 80",
+            name="ck_ip_asset_profiles_display_name",
+        ),
+        CheckConstraint(
+            "char_length(department) BETWEEN 1 AND 80",
+            name="ck_ip_asset_profiles_department",
+        ),
+        UniqueConstraint("profile_ref", name="uq_ip_asset_profiles_ref"),
+        UniqueConstraint("token_digest", name="uq_ip_asset_profiles_token_digest"),
+    )
+
+
 class IpAssetModel(Base):
     __tablename__ = "ip_assets"
 
@@ -4720,6 +4754,7 @@ class IpAssetModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint("asset_ref ~ '^ipa_[a-f0-9]{20}$'", name="ck_ip_assets_ref"),
@@ -4765,6 +4800,7 @@ class IpAssetModel(Base):
         Index("ix_ip_assets_filters", "character", "asset_type", "source_kind", "orientation"),
         Index("ix_ip_assets_department", "department"),
         Index("ix_ip_assets_phash", "perceptual_hash"),
+        Index("ix_ip_assets_shared_gallery", "shared_at", "created_at", "id"),
     )
 
 
@@ -4914,6 +4950,15 @@ class IpAssetGenerationJobModel(Base):
     department: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
     contributor: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))
     ratio: Mapped[str] = mapped_column(String(20), nullable=False)
+    profile_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_profiles.id",
+            name="fk_ip_asset_generation_jobs_profile_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     reference_asset_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey(
@@ -4954,7 +4999,174 @@ class IpAssetGenerationJobModel(Base):
         CheckConstraint("ratio = '1:1'", name="ck_ip_asset_generation_jobs_ratio"),
         CheckConstraint("attempt_count >= 0", name="ck_ip_asset_generation_jobs_attempts"),
         UniqueConstraint("job_ref", name="uq_ip_asset_generation_jobs_ref"),
-        UniqueConstraint("idempotency_key", name="uq_ip_asset_generation_jobs_idempotency"),
+        UniqueConstraint(
+            "profile_id",
+            "idempotency_key",
+            name="uq_ip_asset_generation_jobs_profile_idempotency",
+        ),
         UniqueConstraint("request_fingerprint", name="uq_ip_asset_generation_jobs_fingerprint"),
+        Index(
+            "uq_ip_asset_generation_jobs_legacy_idempotency",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("profile_id IS NULL"),
+        ),
         Index("ix_ip_asset_generation_jobs_claim", "status", "available_at", "lease_expires_at"),
+    )
+
+
+class IpAssetGenerationReferenceModel(Base):
+    __tablename__ = "ip_asset_generation_references"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_generation_jobs.id",
+            name="fk_ip_asset_generation_references_job_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_assets.id",
+            name="fk_ip_asset_generation_references_asset_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "ordinal BETWEEN 0 AND 2", name="ck_ip_asset_generation_references_ordinal"
+        ),
+        CheckConstraint(
+            "source_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_ip_asset_generation_references_sha256",
+        ),
+        UniqueConstraint("job_id", "ordinal", name="uq_ip_asset_generation_references_ordinal"),
+        UniqueConstraint("job_id", "asset_id", name="uq_ip_asset_generation_references_asset"),
+        Index("ix_ip_asset_generation_references_job", "job_id", "ordinal"),
+    )
+
+
+class IpAssetProfileMembershipModel(Base):
+    __tablename__ = "ip_asset_profile_memberships"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    profile_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_profiles.id",
+            name="fk_ip_asset_profile_memberships_profile_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_assets.id",
+            name="fk_ip_asset_profile_memberships_asset_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    generation_job_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_generation_jobs.id",
+            name="fk_ip_asset_profile_memberships_generation_job_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('generated', 'uploaded')",
+            name="ck_ip_asset_profile_memberships_source",
+        ),
+        CheckConstraint(
+            "(source = 'generated' AND generation_job_id IS NOT NULL) OR "
+            "(source = 'uploaded' AND generation_job_id IS NULL)",
+            name="ck_ip_asset_profile_memberships_generation_shape",
+        ),
+        UniqueConstraint(
+            "profile_id",
+            "asset_id",
+            "source",
+            name="uq_ip_asset_profile_memberships_source",
+        ),
+        Index(
+            "ix_ip_asset_profile_memberships_profile",
+            "profile_id",
+            "created_at",
+            "asset_id",
+        ),
+    )
+
+
+class IpAssetFavoriteModel(Base):
+    __tablename__ = "ip_asset_favorites"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    profile_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_asset_profiles.id",
+            name="fk_ip_asset_favorites_profile_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("ip_assets.id", name="fk_ip_asset_favorites_asset_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "asset_id", name="uq_ip_asset_favorites_asset"),
+        Index("ix_ip_asset_favorites_profile", "profile_id", "created_at", "asset_id"),
+    )
+
+
+class IpAssetDownloadDailyModel(Base):
+    __tablename__ = "ip_asset_download_daily"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    asset_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "ip_assets.id",
+            name="fk_ip_asset_download_daily_asset_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    download_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("download_count > 0", name="ck_ip_asset_download_daily_count"),
+        UniqueConstraint("asset_id", "business_date", name="uq_ip_asset_download_daily_asset_date"),
+        Index("ix_ip_asset_download_daily_date", "business_date", "asset_id"),
     )

@@ -576,6 +576,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ip-assets/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Ip Asset Leaderboard */
+        get: operations["read_ip_asset_leaderboard_api_v1_ip_assets_leaderboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap Ip Asset Profile */
+        post: operations["bootstrap_ip_asset_profile_api_v1_ip_assets_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/profiles/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Ip Asset Profile */
+        get: operations["read_ip_asset_profile_api_v1_ip_assets_profiles_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/profiles/me/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personal Ip Assets */
+        get: operations["list_personal_ip_assets_api_v1_ip_assets_profiles_me_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ip-assets/recognitions": {
         parameters: {
             query?: never;
@@ -661,6 +729,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ip-assets/{asset_ref}/favorite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Favorite Ip Asset */
+        put: operations["favorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_put"];
+        post?: never;
+        /** Unfavorite Ip Asset */
+        delete: operations["unfavorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ip-assets/{asset_ref}/preview": {
         parameters: {
             query?: never;
@@ -671,6 +757,23 @@ export interface paths {
         /** Preview Ip Asset */
         get: operations["preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/{asset_ref}/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Share Ip Asset */
+        put: operations["share_ip_asset_api_v1_ip_assets__asset_ref__shared_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3791,6 +3894,11 @@ export interface components {
             download_url: string;
             /** Emotion */
             emotion: string;
+            /**
+             * Favorite
+             * @default false
+             */
+            favorite: boolean;
             /** Has Alpha */
             has_alpha: boolean;
             /** Height */
@@ -3808,6 +3916,8 @@ export interface components {
             /** Scene */
             scene: string;
             semantic_status: components["schemas"]["IpAssetSemanticStatus"];
+            /** Shared */
+            shared: boolean;
             source_kind: components["schemas"]["IpAssetSource"];
             status: components["schemas"]["IpAssetStatus"];
             /** Style */
@@ -3855,6 +3965,11 @@ export interface components {
             download_url: string;
             /** Emotion */
             emotion: string;
+            /**
+             * Favorite
+             * @default false
+             */
+            favorite: boolean;
             /** Has Alpha */
             has_alpha: boolean;
             /** Height */
@@ -3876,6 +3991,8 @@ export interface components {
             /** Scene */
             scene: string;
             semantic_status: components["schemas"]["IpAssetSemanticStatus"];
+            /** Shared */
+            shared: boolean;
             source_kind: components["schemas"]["IpAssetSource"];
             status: components["schemas"]["IpAssetStatus"];
             /** Style */
@@ -3884,6 +4001,13 @@ export interface components {
             tags: string[];
             /** Width */
             width: number;
+        };
+        /** IpAssetFavoriteResponse */
+        IpAssetFavoriteResponse: {
+            /** Asset Ref */
+            asset_ref: string;
+            /** Favorite */
+            favorite: boolean;
         };
         /** IpAssetGenerationRequest */
         IpAssetGenerationRequest: {
@@ -3911,6 +4035,8 @@ export interface components {
             ratio: "1:1";
             /** Reference Asset Ref */
             reference_asset_ref?: string | null;
+            /** Reference Asset Refs */
+            reference_asset_refs?: string[] | null;
         };
         /** IpAssetGenerationResponse */
         IpAssetGenerationResponse: {
@@ -3934,6 +4060,10 @@ export interface components {
             job_ref: string;
             /** Output Asset Ref */
             output_asset_ref?: string | null;
+            /** Reference Asset Ref */
+            reference_asset_ref?: string | null;
+            /** Reference Asset Refs */
+            reference_asset_refs: string[];
             /**
              * Status
              * @enum {string}
@@ -3941,6 +4071,28 @@ export interface components {
             status: "queued" | "running" | "succeeded" | "failed";
             /** Status Url */
             status_url: string;
+        };
+        /** IpAssetLeaderboardItemResponse */
+        IpAssetLeaderboardItemResponse: {
+            asset: components["schemas"]["IpAssetCardResponse"];
+            /** Download Count */
+            download_count: number;
+        };
+        /**
+         * IpAssetLeaderboardPeriod
+         * @enum {string}
+         */
+        IpAssetLeaderboardPeriod: "30d" | "all";
+        /** IpAssetLeaderboardResponse */
+        IpAssetLeaderboardResponse: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["IpAssetLeaderboardItemResponse"][];
+            period: components["schemas"]["IpAssetLeaderboardPeriod"];
         };
         /** IpAssetListResponse */
         IpAssetListResponse: {
@@ -3950,10 +4102,57 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * IpAssetMembershipSource
+         * @enum {string}
+         */
+        IpAssetMembershipSource: "generated" | "uploaded";
+        /**
          * IpAssetOrientation
          * @enum {string}
          */
         IpAssetOrientation: "square" | "portrait" | "landscape";
+        /** IpAssetPersonalItemResponse */
+        IpAssetPersonalItemResponse: {
+            asset: components["schemas"]["IpAssetCardResponse"];
+            /** Favorite */
+            favorite: boolean;
+            /** Membership Sources */
+            membership_sources: components["schemas"]["IpAssetMembershipSource"][];
+        };
+        /** IpAssetPersonalListResponse */
+        IpAssetPersonalListResponse: {
+            /** Items */
+            items: components["schemas"]["IpAssetPersonalItemResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** IpAssetProfileCreateRequest */
+        IpAssetProfileCreateRequest: {
+            /** Department */
+            department: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** IpAssetProfileResponse */
+        IpAssetProfileResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Department */
+            department: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Identity Boundary
+             * @default browser_local_unverified
+             * @constant
+             */
+            identity_boundary: "browser_local_unverified";
+            /** Profile Ref */
+            profile_ref: string;
+        };
         /** IpAssetRecognitionResponse */
         IpAssetRecognitionResponse: {
             /**
@@ -4027,6 +4226,16 @@ export interface components {
          * @enum {string}
          */
         IpAssetSemanticStatus: "queued" | "running" | "ready" | "unavailable" | "failed";
+        /** IpAssetShareResponse */
+        IpAssetShareResponse: {
+            asset: components["schemas"]["IpAssetDetailResponse"];
+            /**
+             * Shared
+             * @default true
+             * @constant
+             */
+            shared: true;
+        };
         /**
          * IpAssetSource
          * @enum {string}
@@ -6240,7 +6449,9 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6269,7 +6480,9 @@ export interface operations {
     upload_ip_asset_api_v1_ip_assets_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6322,7 +6535,9 @@ export interface operations {
     download_ip_asset_zip_api_v1_ip_assets_downloads_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6355,7 +6570,9 @@ export interface operations {
     create_ip_asset_generation_api_v1_ip_assets_generations_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6388,7 +6605,9 @@ export interface operations {
     read_ip_asset_generation_api_v1_ip_assets_generations__job_ref__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path: {
                 job_ref: string;
             };
@@ -6403,6 +6622,139 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IpAssetGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ip_asset_leaderboard_api_v1_ip_assets_leaderboard_get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["IpAssetLeaderboardPeriod"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetLeaderboardResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_ip_asset_profile_api_v1_ip_assets_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpAssetProfileCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ip_asset_profile_api_v1_ip_assets_profiles_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personal_ip_assets_api_v1_ip_assets_profiles_me_assets_get: {
+        parameters: {
+            query?: {
+                source?: "all" | "generated" | "uploaded" | "favorite";
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetPersonalListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6452,7 +6804,9 @@ export interface operations {
     search_ip_assets_image_api_v1_ip_assets_search_image_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6485,7 +6839,9 @@ export interface operations {
     search_ip_assets_text_api_v1_ip_assets_search_text_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6518,7 +6874,9 @@ export interface operations {
     read_ip_asset_api_v1_ip_assets__asset_ref__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path: {
                 asset_ref: string;
             };
@@ -6549,7 +6907,9 @@ export interface operations {
     download_ip_asset_api_v1_ip_assets__asset_ref__download_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path: {
                 asset_ref: string;
             };
@@ -6577,10 +6937,78 @@ export interface operations {
             };
         };
     };
+    favorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetFavoriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unfavorite_ip_asset_api_v1_ip_assets__asset_ref__favorite_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetFavoriteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preview_ip_asset_api_v1_ip_assets__asset_ref__preview_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
             path: {
                 asset_ref: string;
             };
@@ -6595,6 +7023,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_ip_asset_api_v1_ip_assets__asset_ref__shared_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetShareResponse"];
                 };
             };
             /** @description Validation Error */

@@ -175,6 +175,15 @@ class IpAssetRecognitionUnavailableError(AppError):
         )
 
 
+class IpAssetProfileRequiredError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "ip_asset_profile_required",
+            "Set up or restore the browser-local IP asset profile to continue",
+            401,
+        )
+
+
 class ProviderError(AppError):
     """Provider boundary failure with a stable, body-free public message."""
 

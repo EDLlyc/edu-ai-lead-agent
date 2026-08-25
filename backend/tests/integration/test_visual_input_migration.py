@@ -131,7 +131,7 @@ async def test_visual_input_v2_migration_backfills_v1_and_guards_downgrade(
             )
         finally:
             await connection.close()
-        assert revision == "20260824_0034"
+        assert revision == "20260824_0035"
         assert job_input_hash == checksum
         assert embedding_input_hash == checksum
 
@@ -152,7 +152,7 @@ async def test_visual_input_v2_migration_backfills_v1_and_guards_downgrade(
         try:
             assert (
                 await connection.fetchval("SELECT version_num FROM alembic_version")
-                == "20260824_0034"
+                == "20260824_0035"
             )
         finally:
             await connection.close()

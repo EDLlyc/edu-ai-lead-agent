@@ -17,6 +17,15 @@ export type IpAssetRecognition =
   components["schemas"]["IpAssetRecognitionResponse"];
 export type IpAssetGeneration =
   components["schemas"]["IpAssetGenerationResponse"];
+export type IpAssetProfile = components["schemas"]["IpAssetProfileResponse"];
+export type IpAssetPersonalItem =
+  components["schemas"]["IpAssetPersonalItemResponse"];
+export type IpAssetPersonalSource =
+  "all" | "generated" | "uploaded" | "favorite";
+export type IpAssetLeaderboard =
+  components["schemas"]["IpAssetLeaderboardResponse"];
+export type IpAssetLeaderboardPeriod =
+  components["schemas"]["IpAssetLeaderboardPeriod"];
 
 export type IpAssetFilters = Readonly<{
   query: string;
@@ -50,6 +59,7 @@ export type IpAssetUploadInput = Readonly<{
   intendedUse: string;
   style: string;
   tags: string;
+  profileToken?: string;
 }>;
 
 export type IpAssetGenerationInput = Readonly<{
@@ -58,8 +68,9 @@ export type IpAssetGenerationInput = Readonly<{
   assetType: IpAssetType;
   department: string;
   contributor: string;
-  referenceAssetRef: string | null;
+  referenceAssetRefs: readonly string[];
   idempotencyKey: string;
+  profileToken: string;
 }>;
 
 export async function getIpAssetCapabilities(
@@ -76,6 +87,7 @@ export async function getIpAssetCapabilities(
 export async function listIpAssets(
   filters: IpAssetFilters,
   cursor: string | null,
+  profileToken?: string,
   signal?: AbortSignal,
 ): Promise<components["schemas"]["IpAssetListResponse"]> {
   const { data, error } = await apiClient.GET("/api/v1/ip-assets", {
@@ -95,6 +107,9 @@ export async function listIpAssets(
           ? {}
           : { orientation: filters.orientation }),
       },
+      ...(profileToken === undefined
+        ? {}
+        : { header: { "X-IP-Profile-Token": profileToken } }),
     },
     ...(signal === undefined ? {} : { signal }),
   });
@@ -104,10 +119,16 @@ export async function listIpAssets(
 
 export async function getIpAsset(
   assetRef: string,
+  profileToken?: string,
   signal?: AbortSignal,
 ): Promise<IpAssetDetail> {
   const { data, error } = await apiClient.GET("/api/v1/ip-assets/{asset_ref}", {
-    params: { path: { asset_ref: assetRef } },
+    params: {
+      path: { asset_ref: assetRef },
+      ...(profileToken === undefined
+        ? {}
+        : { header: { "X-IP-Profile-Token": profileToken } }),
+    },
     ...(signal === undefined ? {} : { signal }),
   });
   if (data === undefined) throwIpAssetError(error, "asset_detail_failed");
@@ -131,6 +152,10 @@ export async function uploadIpAsset(
     tags: input.tags,
   };
   const { data, error } = await apiClient.POST("/api/v1/ip-assets", {
+    params:
+      input.profileToken === undefined
+        ? {}
+        : { header: { "X-IP-Profile-Token": input.profileToken } },
     body: wire,
     bodySerializer: () => {
       const form = new FormData();
@@ -174,6 +199,7 @@ export async function searchIpAssetsText(input: {
   message: string;
   priorTurns: readonly string[];
   filters: IpAssetFilters;
+  profileToken?: string;
 }): Promise<IpAssetSearchResponse> {
   const { data, error } = await apiClient.POST(
     "/api/v1/ip-assets/search/text",
@@ -197,6 +223,10 @@ export async function searchIpAssetsText(input: {
           ? {}
           : { orientation: input.filters.orientation }),
       },
+      params:
+        input.profileToken === undefined
+          ? {}
+          : { header: { "X-IP-Profile-Token": input.profileToken } },
     },
   );
   if (data === undefined) throwIpAssetError(error, "asset_search_failed");
@@ -206,6 +236,7 @@ export async function searchIpAssetsText(input: {
 export async function searchIpAssetsImage(input: {
   file: File;
   filters: IpAssetFilters;
+  profileToken?: string;
 }): Promise<IpAssetSearchResponse> {
   const wire = {
     file: input.file.name,
@@ -224,6 +255,10 @@ export async function searchIpAssetsImage(input: {
     "/api/v1/ip-assets/search/image",
     {
       body: wire,
+      params:
+        input.profileToken === undefined
+          ? {}
+          : { header: { "X-IP-Profile-Token": input.profileToken } },
       bodySerializer: () => {
         const form = new FormData();
         form.set("file", input.file);
@@ -256,8 +291,9 @@ export async function createIpAssetGeneration(
         contributor: input.contributor,
         ratio: "1:1",
         idempotency_key: input.idempotencyKey,
-        reference_asset_ref: input.referenceAssetRef,
+        reference_asset_refs: [...input.referenceAssetRefs],
       },
+      params: { header: { "X-IP-Profile-Token": input.profileToken } },
     },
   );
   if (data === undefined) throwIpAssetError(error, "generation_failed");
@@ -266,12 +302,18 @@ export async function createIpAssetGeneration(
 
 export async function getIpAssetGeneration(
   jobRef: string,
+  profileToken?: string,
   signal?: AbortSignal,
 ): Promise<IpAssetGeneration> {
   const { data, error } = await apiClient.GET(
     "/api/v1/ip-assets/generations/{job_ref}",
     {
-      params: { path: { job_ref: jobRef } },
+      params: {
+        path: { job_ref: jobRef },
+        ...(profileToken === undefined
+          ? {}
+          : { header: { "X-IP-Profile-Token": profileToken } }),
+      },
       ...(signal === undefined ? {} : { signal }),
     },
   );
@@ -281,17 +323,146 @@ export async function getIpAssetGeneration(
 
 export async function downloadIpAssetPackage(
   assetRefs: readonly string[],
+  profileToken?: string,
 ): Promise<void> {
   const response = await fetch(
     new URL("/api/v1/ip-assets/downloads", apiBaseUrl),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(profileToken === undefined
+          ? {}
+          : { "X-IP-Profile-Token": profileToken }),
+      },
       body: JSON.stringify({ asset_refs: assetRefs }),
     },
   );
   if (!response.ok) throw new Error("asset_download_failed");
   triggerBlobDownload(await response.blob(), "ip-assets.zip");
+}
+
+export async function bootstrapIpAssetProfile(input: {
+  token: string;
+  displayName: string;
+  department: string;
+}): Promise<IpAssetProfile> {
+  const { data, error } = await apiClient.POST("/api/v1/ip-assets/profiles", {
+    params: { header: { "X-IP-Profile-Token": input.token } },
+    body: { display_name: input.displayName, department: input.department },
+  });
+  if (data === undefined) throwIpAssetError(error, "profile_setup_failed");
+  return data;
+}
+
+export async function restoreIpAssetProfile(
+  token: string,
+  signal?: AbortSignal,
+): Promise<IpAssetProfile> {
+  const { data, error } = await apiClient.GET("/api/v1/ip-assets/profiles/me", {
+    params: { header: { "X-IP-Profile-Token": token } },
+    ...(signal === undefined ? {} : { signal }),
+  });
+  if (data === undefined) throwIpAssetError(error, "profile_restore_failed");
+  return data;
+}
+
+export async function listPersonalIpAssets(input: {
+  token: string;
+  source: IpAssetPersonalSource;
+  cursor: string | null;
+  signal?: AbortSignal;
+}): Promise<components["schemas"]["IpAssetPersonalListResponse"]> {
+  const { data, error } = await apiClient.GET(
+    "/api/v1/ip-assets/profiles/me/assets",
+    {
+      params: {
+        query: { source: input.source, cursor: input.cursor, limit: 60 },
+        header: { "X-IP-Profile-Token": input.token },
+      },
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    },
+  );
+  if (data === undefined) throwIpAssetError(error, "personal_assets_failed");
+  return data;
+}
+
+export async function setIpAssetFavorite(input: {
+  token: string;
+  assetRef: string;
+  favorite: boolean;
+}): Promise<components["schemas"]["IpAssetFavoriteResponse"]> {
+  const params = {
+    path: { asset_ref: input.assetRef },
+    header: { "X-IP-Profile-Token": input.token },
+  };
+  const result = input.favorite
+    ? await apiClient.PUT("/api/v1/ip-assets/{asset_ref}/favorite", { params })
+    : await apiClient.DELETE("/api/v1/ip-assets/{asset_ref}/favorite", {
+        params,
+      });
+  if (result.data === undefined)
+    throwIpAssetError(result.error, "favorite_failed");
+  return result.data;
+}
+
+export async function shareIpAsset(input: {
+  token: string;
+  assetRef: string;
+}): Promise<components["schemas"]["IpAssetShareResponse"]> {
+  const { data, error } = await apiClient.PUT(
+    "/api/v1/ip-assets/{asset_ref}/shared",
+    {
+      params: {
+        path: { asset_ref: input.assetRef },
+        header: { "X-IP-Profile-Token": input.token },
+      },
+    },
+  );
+  if (data === undefined) throwIpAssetError(error, "share_failed");
+  return data;
+}
+
+export async function getIpAssetLeaderboard(
+  period: IpAssetLeaderboardPeriod,
+  signal?: AbortSignal,
+): Promise<IpAssetLeaderboard> {
+  const { data, error } = await apiClient.GET("/api/v1/ip-assets/leaderboard", {
+    params: { query: { period, limit: 10 } },
+    ...(signal === undefined ? {} : { signal }),
+  });
+  if (data === undefined) throwIpAssetError(error, "leaderboard_failed");
+  return data;
+}
+
+export async function fetchIpAssetBlob(
+  path: string,
+  profileToken?: string,
+): Promise<Blob> {
+  const resolved = ipAssetResourceUrl(path);
+  if (resolved === null) throw new Error("asset_resource_invalid");
+  const response = await fetch(
+    resolved,
+    profileToken === undefined
+      ? {}
+      : { headers: { "X-IP-Profile-Token": profileToken } },
+  );
+  if (!response.ok) throw new Error("asset_resource_failed");
+  return response.blob();
+}
+
+export async function downloadIpAssetOriginal(input: {
+  asset: IpAsset;
+  profileToken?: string;
+}): Promise<void> {
+  const blob = await fetchIpAssetBlob(
+    input.asset.download_url,
+    input.profileToken,
+  );
+  triggerBlobDownload(
+    blob,
+    `${input.asset.canonical_name}.${extensionFor(input.asset.media_type)}`,
+  );
 }
 
 export function ipAssetResourceUrl(path: string): string | null {
@@ -313,6 +484,12 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function extensionFor(mediaType: IpAsset["media_type"]): string {
+  return { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }[
+    mediaType
+  ];
 }
 
 function throwIpAssetError(error: unknown, fallback: string): never {
