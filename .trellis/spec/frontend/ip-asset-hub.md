@@ -5,12 +5,13 @@
 ### 1. Scope / Trigger
 
 Use this contract for `frontend/src/features/ip-assets/`, the standalone route boundary in
-`frontend/src/app/Application.tsx`, generated API mapping, gallery/search state, upload/download,
-detail drawer, or generation-job UX.
+`frontend/src/app/Application.tsx`, generated API mapping, gallery/search state, browser-local profile,
+personal library/favorites, upload/download ranking, detail drawer, or dedicated creation-studio UX.
 
 The interface is company-internal and unauthenticated. It must visibly say so and must never imply
-that department/contributor labels are verified identity. It is feature-flagged off by default with
-`VITE_IP_ASSET_HUB_ENABLED=false`.
+that department/contributor labels or the browser-local profile are verified identity. The profile
+is a convenience grouping stored in one browser, with no password, recovery, or cross-device sync.
+It is feature-flagged off by default with `VITE_IP_ASSET_HUB_ENABLED=false`.
 
 ### 2. Signatures
 
@@ -25,18 +26,22 @@ type IpAssetFilters = {
   tag: string;
 };
 
-useIpAssets(filters, enabled); // cursor-backed gallery
+useIpAssets(filters, enabled, profile); // cursor-backed shared gallery + favorite projection
 useUploadIpAsset(); // multipart mutation
 useRecognizeIpAsset(); // explicit transient multipart suggestion mutation
 useIpAssetTextSearch(); // bounded session turns + filters
 useIpAssetImageSearch(); // transient multipart image
-useIpAssetDetail(assetRef); // safe detail
-useIpAssetPackageDownload(); // selected refs -> ZIP
+useIpAssetDetail(assetRef, profile); // shared or owned safe detail
+useIpAssetPackageDownload(profile); // selected refs -> ZIP
 useCreateIpAssetGeneration(); // idempotent async enqueue
-useIpAssetGeneration(jobRef); // terminal-aware polling
+useIpAssetGeneration(jobRef, profile); // terminal-aware private polling
+usePersonalIpAssets(profile, source); // all/generated/uploaded/favorite shelf
+useSetIpAssetFavorite();
+useShareIpAsset();
+useIpAssetLeaderboard(period); // anonymous aggregate only
 
-type ApplicationPath = "console" | "ip-assets" | "not-found";
-resolveApplicationPath(pathname); // / -> console, /ip-assets[/] -> ip-assets
+type ApplicationPath = "console" | "ip-assets" | "ip-assets-create" | "not-found";
+resolveApplicationPath(pathname); // /ip-assets/create[/] is a separate standalone studio
 ```
 
 The hub consumes only generated OpenAPI wire types through its feature API mapper. Preview/download
@@ -46,14 +51,16 @@ resources.
 ### 3. Contracts
 
 - The hub is a calm, image-first enterprise library: a compact product header, one prominent search
-  surface, horizontal primary filters, and a full-width responsive gallery. Upload and generation
-  use on-demand drawers instead of persistent side rails. The page keeps one logical heading order,
+  surface, horizontal primary filters, a responsive gallery, and a narrow editorial download-ranking
+  rail. Upload uses an on-demand drawer; AI creation links to the dedicated studio. The page keeps one logical heading order,
   accessible landmarks, high-contrast focus, responsive single-column fallbacks, and
   `prefers-reduced-motion` guards.
-- The hub exists only at `/ip-assets` (with an optional trailing slash) as a lazy standalone page.
+- The hub exists at `/ip-assets` and the studio at `/ip-assets/create` (both with an optional trailing
+  slash) as lazy standalone pages.
   The shared development console at `/` must not import, render, or mount `IpAssetPage`/`IpAssetHub`,
   even when the IP feature flag is enabled. The standalone document owns exactly one `main`, one
-  `h1`, a skip link, a route-specific loading state, and the title `IP 数字资产中心`; it must not
+  `h1`, a skip link, a route-specific loading state, and the matching title `IP 数字资产中心` or
+  `AI 视觉创作室`; neither may
   render the EAL console header, Brand Knowledge hero, other workbenches, shared footer, or grain.
 - `Application` resolves the pathname before composition. An unknown path or a disabled IP flag
   renders a standalone fail-closed state and never falls back to the shared console or loads the hub
@@ -74,21 +81,42 @@ resources.
 - Filters expose character, asset type, department, source/provenance, orientation, and tag.
 - TanStack Query owns list/detail/capability/job server state. Current chat turns, selected assets,
   detail focus origin, and form state are ephemeral browser state; no user chat history is persisted.
+- The browser creates exactly 32 random bytes using Web Crypto and stores the canonical unpadded
+  base64url token plus safe profile metadata under the versioned local-storage key. Query keys use
+  only `profile_ref`, never the token. The token appears only in the `X-IP-Profile-Token` request
+  header and is never placed in URL/search params, DOM text, analytics, or logs. Malformed or
+  server-rejected stored state is cleared and returns to first-use setup.
+- First-use setup is an accessible focus-trapped dialog. It states “no password / not identity /
+  current browser only / clearing data loses access”, reuses the same token for retries, and saves
+  local state only after server bootstrap succeeds. Favorite/personal/create actions open it when
+  needed; ordinary shared browsing/upload/download remain usable without it.
 - Cursor pagination appends stable pages and never replaces an existing gallery with duplicated
   rows. Filter/search changes reset incompatible cursor/search state.
 - Text/image semantic results may be `semantic` or `degraded_metadata`; the UI explains degradation
   without presenting it as failure or semantic confidence. Because `ip-asset-hybrid-v2` may attach
   metadata-only cards to a semantic response, the semantic-mode heading says “语义 + 元数据结果”
   instead of claiming every card is a vector hit. Per-result explanations and similarity, when
-  present, stay attached to their asset cards; search failures use an accessible alert while
+  present, stay attached to their asset cards; profile-aware search sends the token only as a header
+  and projects favorite state. A successful favorite mutation overlays the active result immediately
+  while invalidating all shared/detail/personal caches. Search failures use an accessible alert while
   preserving the existing gallery.
 - The composite chat search control owns one rounded `:focus-within` ring. Its child text input must
   not draw a second rectangular `:focus-visible` outline through that shell; keyboard focus remains
   visible through the parent ring on desktop and mobile.
+- The creation studio uses a teal/clay editorial composition rather than dashboard cards: an
+  asymmetric brief/output stage, shared reference library, and personal shelf. Its ordered reference
+  filmstrip always shows numbered frames `01`, `02`, `03`; it accepts one to three distinct ready
+  shared assets, supports reorder/removal, and sends exactly that order to the API. A detail deep link
+  may prefill frame `01` using only a safe asset ref in `?reference=` after the ordinary shared-ready
+  list has proved that asset is eligible; a private, missing, or unready deep link is ignored.
+- Generation submission keeps one idempotency key for the same normalized profile/prompt/taxonomy/
+  ordered-reference signature across transport or server retries. It creates a new key only when
+  that signature changes, so a retry cannot accidentally enqueue a second provider job.
 - Generation polls only `queued`/`running` jobs and stops on success/failure. Terminal success
-  invalidates only list queries from an effect; `refetchInterval` must never invalidate its own
+  invalidates shared-list and personal-shelf queries from an effect; `refetchInterval` must never invalidate its own
   generation-query family. A successful job exposes an action that opens the output asset. Disabled
-  generation does not disable upload/search/download.
+  generation does not disable upload/search/download, reference selection, favorites, or personal
+  browsing. Generated results are labeled private/personal by default and offer explicit “加入共享图库”.
 - Detail and tool drawers trap keyboard focus, exclude controls inside closed `<details>` from the
   focus loop, close on Escape/backdrop/close button, and restore focus to the invoking control. Each
   drawer has an accessible name and does not nest conflicting landmarks.
@@ -97,6 +125,12 @@ resources.
   also replaces the image with an explicitly named fallback.
 - Multi-select ZIP download has an `aria-live` success/failure message. Blob/object URLs are revoked
   after use.
+- Private preview/download requests use the profile header and object URLs that are revoked on
+  asset/profile change and unmount. A favorite is reversible with `aria-pressed`; it does not imply
+  private ownership. Uploads remain immediately shared and join the current profile's uploaded shelf
+  when a profile exists.
+- Download ranking switches between `30d` and `all`, shows only aggregate asset counts, and states
+  that no downloader identity is recorded. It becomes a horizontal/top module on narrow screens.
 - Every asset card carries meaningful alt text based on the canonical name; broken previews retain a
   textual fallback.
 - The UI contains no delete, archive, approve, publish, authentication, or public-share action.
@@ -112,7 +146,7 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Condition                                              | Required UI behavior                                                                                |
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | Root path `/` with flag on or off                      | Render the shared console without importing/rendering/mounting the IP page                          |
-| `/ip-assets` with feature flag false                   | Render an independent unavailable page; do not load the hub or fall back to the console             |
+| `/ip-assets` or `/ip-assets/create` with feature flag false | Render an independent unavailable page; do not load either feature page                          |
 | Unknown browser path                                   | Render the independent not-found state with one main/h1; do not fall back to the console            |
 | Production deep link without SPA rewrite               | Treat as hosting misconfiguration; configure `/ip-assets` -> `index.html`, not an in-app workaround |
 | Capabilities loading/error/disabled                    | Honest status or disabled panel; no crashing hooks                                                  |
@@ -137,6 +171,12 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Generation queued/running                              | Poll and expose state; do not imply asset exists yet                                                |
 | Generation succeeds                                    | Stop polling, link/select output, refresh gallery                                                   |
 | Generation query reaches a terminal state              | Stop its timer; never invalidate the generation query from its own interval callback                |
+| Favorite/create/personal action without a local profile | Open honest first-use setup; do not send an empty or invented token                                 |
+| Stored profile malformed or restore is rejected         | Clear it, announce loss, and require setup again; never leak the rejected token                      |
+| Reference selection reaches three                       | Disable only further additions; retain reorder/remove                                               |
+| Deep-linked reference is private, missing, or unready   | Ignore it; never fetch private media or insert it into the filmstrip                                 |
+| Same generation form is retried after request failure   | Reuse the submission signature's idempotency key; do not enqueue a second job                        |
+| Private generated result succeeds                       | Show in output and personal shelf; do not expose through shared URL until explicit share             |
 | Drawer opened/closed by keyboard                       | Focus enters/traps, Escape closes, focus returns to trigger; closed disclosure controls are skipped |
 | Reduced-motion preference                              | Disable decorative transitions/animations                                                           |
 
@@ -156,6 +196,10 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   values remain usable and the ordinary upload button stays independent.
 - Bad recognition: a file-input effect calls the model, an old response populates a replacement
   file, or suggestion success automatically submits the form.
+- Good studio: references `01–03` are visually ordered, the output stays private, and the creator
+  explicitly shares it after download/favorite review.
+- Bad studio: a generic dashboard replaces the editorial workspace, raw tokens enter query keys,
+  reference order is lost, or generation success silently publishes the result.
 
 ### 6. Tests Required
 
@@ -163,7 +207,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   degraded result, mutation body, and unknown/unsafe runtime values.
 - Feature flag: absent/false/off values fail closed; only explicit enabled value renders the hub.
 - Route composition: `/` excludes the IP page even with the flag enabled; `/ip-assets` and its
-  trailing-slash form render only the standalone page; disabled and unknown routes fail closed;
+  trailing-slash form render only the library; `/ip-assets/create[/]` renders only the studio;
+  disabled and unknown routes fail closed;
   standalone title cleanup remains correct under React StrictMode.
 - Component: capability states, no-auth/intranet wording, gallery/load-more, every filter, required
   taxonomy, upload/duplicate refresh, semantic fallback, transient image query, preview/download,
@@ -173,7 +218,12 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   click; editable advisory prefill; department/contributor isolation; no automatic submit; disabled
   and provider-failure independence; manual-value preservation; stale response reset on file change;
   announced success/failure and axe coverage.
-- Hook: terminal generation status stops polling and invalidates only the list-query prefix without
+- Profile/API/component: token generation/validation/local round-trip, no token in query keys,
+  first-use retry/save boundary, favorite toggle, personal tabs, private blob headers/revocation,
+  explicit share, anonymous ranking periods, numbered/reordered 1..3 references, and generated
+  private output language. Assert stable generation idempotency across an unchanged retry and
+  rejection of private/unready `?reference=` deep links.
+- Hook: terminal generation status stops polling and invalidates only list/personal prefixes without
   recursively refetching the generation query.
 - Accessibility: axe, keyboard focus order, drawer trap/restore/Escape/backdrop behavior, closed
   `<details>` exclusion, live announcements, one composite search focus ring with the child outline
@@ -286,9 +336,10 @@ File selection stays local; recognition and the later user-confirmed upload are 
 
 The hub uses warm off-white surfaces, dark ink text, restrained teal and warm status accents, fine
 borders, subtle depth, and one quiet orbital-line gesture. The gallery is the dominant surface;
-search and primary filters stay compact and horizontal, while upload, creation, and detail open only
-when requested in right-side drawers. This keeps a shared visual library approachable for every
-department and prevents forms or operational chrome from competing with the assets.
+search and primary filters stay compact and horizontal, while upload and detail open only when
+requested in right-side drawers. Creation is a separate editorial atelier: paper-like asymmetric
+briefing, dark sticky output stage, clay calls to action, and the unmistakable numbered `01–03`
+reference filmstrip. It must not look like a generic admin dashboard.
 
 Avoid oversized hero typography, thick black frames, hazard colors, coordinate rails, dense boxed
 filter consoles, or persistent upload/creation columns. The aesthetic must never trade away semantic

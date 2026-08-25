@@ -8,7 +8,7 @@ acquisition, factual-governance, material-package, and Enterprise WeChat deliver
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260824_0034`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260824_0035`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -179,7 +179,9 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260824_0034` (adds the visible-IP v3 generated-visual plan/prompt constraint while preserving
+  `20260824_0035` (adds browser-local IP profiles, personal memberships, favorites, ordered
+  generation references, explicit sharing state, and anonymous daily download aggregates), after
+  `20260824_0034` adds the visible-IP v3 generated-visual plan/prompt constraint while preserving
   v1/v2 rows and exact bytes), after `20260824_0033` adds nullable historical-safe block-anchor,
   provider-input normalization and
   exact 3:2 publication-profile identity to immutable official-account generated visuals after

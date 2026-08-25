@@ -5,13 +5,16 @@
 ### 1. Scope / Trigger
 
 Use this contract whenever code changes the Sai Xiansheng / Xiao Sai shared image library: upload,
-classification, canonical naming, gallery/search, preview/download, dynamic embeddings, seed import,
-or image-generation-to-library work.
+classification, canonical naming, gallery/search, browser-local personal collections, favorites,
+download ranking, preview/download, dynamic embeddings, seed import, or image-generation-to-library
+work.
 
 The hub is one company-intranet library. It has no login, verified uploader, approval workflow,
-department isolation, delete action, or public-sharing contract. `department` and `contributor` are
-self-reported labels only. Committed defaults keep the feature disabled, and public-Internet
-deployment is forbidden until a separate authenticated design is approved.
+department isolation, delete action, or public-sharing contract. A browser-local random profile
+token groups favorites, uploads, and generated assets but is not authentication or recoverable
+identity. `department` and `contributor` are self-reported labels only. Committed defaults keep the
+feature disabled, and public-Internet deployment is forbidden until a separate authenticated design
+is approved.
 
 This dynamic library is not the immutable approved `VisualAssetCatalog`. Reuse the fixed visual
 embedding adapter and normalization policy, but never weaken or reuse the static catalog's
@@ -25,25 +28,38 @@ All routes live under `/api/v1/ip-assets`:
 
 ```text
 GET  /capabilities
+POST /profiles                   local token + display_name + department -> idempotent profile
+GET  /profiles/me                restore local profile by token
+GET  /profiles/me/assets         personal all/generated/uploaded/favorite collection
+GET  /leaderboard?period=30d|all anonymous aggregate counts only
 GET  /?query=&character=&asset_type=&department=&source_kind=&orientation=&tag=&cursor=&limit=
 POST /                         multipart file + required character + required asset_type + metadata
 POST /recognitions             transient multipart image -> advisory upload-field suggestions
 GET  /{asset_ref}
 GET  /{asset_ref}/preview
 GET  /{asset_ref}/download
+PUT  /{asset_ref}/favorite
+DELETE /{asset_ref}/favorite
+PUT  /{asset_ref}/shared         explicitly share an owned generated result
 POST /downloads               {asset_refs: string[]}
 POST /search/text              bounded message, prior_turns, filters, limit
 POST /search/image             transient multipart image + filters
-POST /generations              prompt, character, asset_type, optional reference, idempotency_key
+POST /generations              prompt, taxonomy, ordered 1..3 references, idempotency_key
 GET  /generations/{job_ref}
 ```
+
+Profile-aware routes use `X-IP-Profile-Token`. Optional-token routes ignore no profile and reject an
+invalid supplied token. Required-token routes return the typed profile-setup-required response. The
+raw token is never logged, returned, or persisted by the backend. Shared list, detail, and text/image
+search accept the header optionally so the current browser receives an accurate `favorite` projection
+without changing anonymous shared visibility.
 
 Upload accepts only verified PNG/JPEG/WebP up to 25 MiB, maximum edge 8192, and maximum 32 million
 decoded pixels. Generation is the existing provider's proved `1:1`/1024x1024 contract.
 
 #### Database
 
-Alembic `20260824_0031` adds:
+Alembic `20260824_0031` adds the base hub. Current additive revision `20260824_0035` adds:
 
 ```text
 ip_assets
@@ -52,11 +68,18 @@ ip_asset_derivatives
 ip_asset_embedding_jobs
 ip_asset_embeddings      vector(2048)
 ip_asset_generation_jobs
+ip_asset_profiles
+ip_asset_profile_memberships
+ip_asset_favorites
+ip_asset_generation_references
+ip_asset_download_daily
 ```
 
 `ip_assets.blob_sha256` is globally unique. `(naming_key, name_version)` is unique. Embeddings bind
-asset/source checksum plus exact provider/model/dimension/input-policy identity. Generation jobs
-bind unique idempotency key and request fingerprint.
+asset/source checksum plus exact provider/model/dimension/input-policy identity. Generation
+idempotency is scoped by profile (with a separate unique legacy-null path), the request fingerprint
+includes the profile and ordered reference checksums, and reference rows preserve ordinals `0..2`.
+`ip_assets.shared_at IS NULL` is private-to-membership; all historical assets are backfilled shared.
 
 #### Commands
 
@@ -94,12 +117,15 @@ manifest files.
 
 Local Vite defaults to `http://127.0.0.1:5173`; the API is normally
 `http://127.0.0.1:8000`. CORS must allow only configured exact origins, methods
-`GET`/`POST`/`OPTIONS`, and required content/idempotency headers. Prefer same-origin reverse proxy
-for intranet deployment.
+`GET`/`POST`/`PUT`/`DELETE`/`OPTIONS`, and `Content-Type` plus `X-IP-Profile-Token`. Prefer same-origin
+reverse proxy for intranet deployment.
 
 #### Identity, naming, and storage
 
-- Browser identity is `ipa_<20 lowercase hex>`. Full database UUID, checksum, bucket, object key,
+- Asset browser identity is `ipa_<20 lowercase hex>`. A local profile has safe identity
+  `ipp_<20 lowercase hex>` and is found from `sha256(decoded_random_token)`; only that digest is
+  durable. The token is canonical unpadded base64url for exactly 32 random bytes. Full database UUID,
+  raw profile token, checksum, bucket, object key,
   provider body/request ID, vector, credential, and filesystem path never appear in list/search.
 - Required taxonomy is controlled `character` plus `asset_type`; optional metadata is normalized
   and bounded.
@@ -123,12 +149,24 @@ for intranet deployment.
   leave those assets permanently undiscoverable by vectors or create duplicate jobs.
 - Generation completion is one lease-fenced repository transaction: verify the current lease,
   create or reuse the exact output asset, link it, and mark the job succeeded atomically.
+- The lease-locked generation row and its persisted ordered-reference rows are the completion source
+  of truth. A worker claim is an execution snapshot only; completion must not derive profile
+  membership, private/shared visibility, or reference lineage from stale claim fields.
 - A stale/expired worker must not publish an asset. Heartbeat loss cancels the provider task when
   possible and fences all persistence.
 - Concurrent replay recovers from uniqueness conflicts by loading the matching row; the same
   idempotency key with a different fingerprint is a conflict, never a 500 or silent reuse.
-- The generation fingerprint includes prompt, taxonomy, ratio, reference checksum, provider/model,
-  department, and contributor so distinct descriptive inputs cannot alias.
+- The generation fingerprint includes profile identity, prompt, taxonomy, ratio, every ordered
+  `(asset_ref, source_checksum)` pair, provider/model, department, and contributor so reordered or
+  identity-distinct references cannot alias even when blobs are byte-identical. New API jobs require
+  one to three distinct, ready, shared references. The legacy single-reference field remains
+  input-compatible but may not be combined with the ordered field.
+- A profile-owned generated output completes as `shared_at=NULL` and gets one generated membership
+  in the same fenced transaction. It becomes shared only through an explicit owner action. Legacy
+  profile-less worker jobs retain the historical shared-output behavior.
+- Completion enqueues semantic indexing only when it inserts a new output asset and must do so
+  independently of whether the job has a profile. Reusing an exact-byte asset creates the required
+  membership/job link but never creates a duplicate embedding job.
 
 #### Search and content delivery
 
@@ -152,6 +190,24 @@ for intranet deployment.
   media type, length, ETag, private/no-store cache policy, and safe disposition.
 - ZIP download is bounded by count and aggregate bytes and contains verified originals plus a UTF-8
   manifest.
+- Every media, download, favorite, share, and generation-reference path first requires
+  `status='ready'`. Access reads then use `(shared_at IS NOT NULL) OR owned-membership`; public
+  gallery/search/vector/reference paths always require shared rows. A favorite is an annotation,
+  never an access grant: favorite-backed personal queries must still join a shared row or an owned
+  membership, including when legacy/orphan favorite rows exist.
+- Download counters increment only after every requested body is prepared successfully. One request
+  counts each shared asset once, stores only `(asset_id, business_date, count)`, and never stores an
+  actor/profile/IP/UA/event row. The `30d` window is the exact inclusive interval
+  `[today - 29 days, today]` in the configured IANA timezone and therefore excludes future-dated
+  aggregates; `all` has no date bound.
+
+#### Migration rollback
+
+- `0035 -> 0034` is permitted only when all profile/personal/ranking state is empty and every
+  ordered reference is exactly the legacy ordinal-zero reference. The downgrade must refuse before
+  dropping anything when profiles, profile-linked jobs, private assets, download aggregates,
+  non-legacy reference order/identity, or duplicate cross-profile idempotency keys would lose data
+  or violate the restored global constraint.
 
 #### Advisory upload recognition
 
@@ -194,6 +250,14 @@ for intranet deployment.
 | Prior turn conflicts with the current role/type                           | Current turn wins unless an explicit request filter already owns that dimension            |
 | Embedding identity mismatch                                               | Exclude incompatible vector and record typed failure                                       |
 | Same idempotency key, different generation fingerprint                    | Conflict; no second provider job                                                           |
+| Missing/invalid local profile token on a required route                    | Typed setup-required response; no private data or provider work                             |
+| Ordered generation references empty, duplicated, over three, or not shared | Typed rejection; no generation job                                                         |
+| One reference changes order or checksum                                    | Distinct request fingerprint and immutable reference rows                                   |
+| Worker claim profile/reference differs from the locked job row              | Persist using the locked row; stale claim metadata grants no visibility or membership       |
+| Non-owner favorites or shares a private result                             | Not found/conflict; no visibility or ownership change                                       |
+| Favorite row exists without shared visibility or owned membership           | Exclude from personal results; do not load media                                             |
+| Direct/ZIP download preparation fails                                      | No aggregate increment                                                                      |
+| Future-dated aggregate exists during a `30d` query                           | Exclude it; include only `[today - 29 days, today]`                                          |
 | Concurrent identical enqueue                                              | One durable job; both callers receive its safe identity                                    |
 | Lease expires while provider runs                                         | Cancel/fence; no output asset or success transition                                        |
 | Generated raster invalid                                                  | Typed terminal/retry-classified failure; no asset                                          |
@@ -215,6 +279,11 @@ for intranet deployment.
   remain usable without repository, MinIO, or job work.
 - Bad recognition: file selection silently calls the provider, raw model output reaches the API, or
   a suggestion creates or classifies an asset without a separate user upload.
+- Good personal flow: a browser creates an unverified local profile, a generated result appears only
+  on its personal shelf, can be favorited/downloaded there, and enters the shared gallery only after
+  the explicit share action.
+- Bad personal flow: the raw token is stored or placed in a query key/log, a favorite grants private
+  access, generated output is shared automatically, or ranking stores per-download actor events.
 
 ### 6. Tests Required
 
@@ -230,6 +299,15 @@ for intranet deployment.
   tag filters, compatible vector isolation/order, idempotency conflicts, lease expiry/heartbeat loss,
   atomic generation completion, concurrent/idempotent unavailable-asset backfill, and downgrade
   refusal with data.
+- Personal-library integration: canonical token digest/idempotent bootstrap, upload membership,
+  ordered 1..3 reference persistence, profile-scoped replay, private completion, owner-only access,
+  explicit share, favorite semantics, anonymous daily upsert, 30-day/all ranking, and clean
+  `0035 -> 0034` downgrade when the new state is empty.
+- Adversarial personal-library regression: orphan favorite rows do not expose private assets;
+  future-dated aggregates do not enter `30d`; stale claim profile/reference fields cannot override
+  the lease-locked job; a legacy profile-less generation still enqueues a new output embedding; an
+  exact-byte output reuse does not enqueue another embedding; and `0035 -> 0034` refuses before any
+  destructive change whenever new personal/private/ranking/multi-reference state exists.
 - Search unit/live-corpus: assert metadata-only hits merge with partial vector results, exact
   emotion/action/scene evidence outranks weak cosine-only hits, explicit filters beat inferred
   terms, the current turn beats conflicting history, safe keyword fields remain searchable without
