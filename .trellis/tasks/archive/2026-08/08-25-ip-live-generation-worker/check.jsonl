@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "Verify worker liveness, queue/lease safety, terminal state, output membership, and no duplicate enqueue."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Operational verification and privacy/security quality gates."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Ensure credentials, provider bodies, prompts, and private storage paths are not exposed."}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Verify the processed job no longer remains indefinitely queued and terminal UI semantics remain truthful."}
