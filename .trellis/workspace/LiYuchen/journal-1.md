@@ -1594,3 +1594,24 @@ Added visible accessible creation feedback, honest independent-worker queue stat
 ### Status
 
 [OK] **Completed**
+
+
+## Session 71: 恢复 IP 真实生图队列
+
+**Date**: 2026-08-25
+**Task**: 恢复 IP 真实生图队列
+**Branch**: `main`
+
+### Summary
+
+启动并保留一个真实 Comfly/gpt-image-2 IP 生图 Worker，处理两条既有队列任务：火箭图成功进入原用户私人素材仓库，另一条安全失败为 provider_rejected；队列清空、无重复调用，并把本地平台必须同时启动 Worker 的约定写入规范。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4dd9ccc` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 70
+- **Total Sessions**: 71
 - **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1596 | Active |
+| `journal-1.md` | ~1617 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 71 | 2026-08-25 | 恢复 IP 真实生图队列 | `4dd9ccc` | `main` |
 | 70 | 2026-08-25 | IP 资产登录页 MVP | `f3c8b93` | `main` |
 | 69 | 2026-08-25 | Refine IP creation feedback and reference filters | `94b09b3` | `main` |
 | 68 | 2026-08-25 | Deliver personal IP asset creation workspace | `44dfbcd`, `718a264` | `main` |
