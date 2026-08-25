@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "Primary backend contract for immutable IP assets, safe refs, generation leases, verified media, search visibility, CORS, OpenAPI, and focused quality gates."}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Primary frontend contract for the standalone hub, generated API mapping, image-first UX, polling, media URLs, accessibility, and disabled states."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Migration, model parity, short transaction, uniqueness, concurrency, and PostgreSQL integration requirements for the new relationship and aggregate tables."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Typed conflict, unavailable, access, retry, and safe error-projection rules for profiles, generation, media, and download accounting."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Generated OpenAPI types, API mapper boundaries, strict TypeScript, and no handwritten wire-contract rules."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "TanStack Query ownership, scoped query keys, mutation invalidation, local UI state, and terminal polling rules."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component composition, CSS Modules, accessible dialogs/forms/actions, and responsive UI behavior."}
+{"file": ".trellis/tasks/08-24-ip-ai-creation-personal-library/research/current-ip-asset-seams.md", "reason": "Evidence-backed current model, service, route, download, frontend routing, single-reference, and migration seams that the implementation must change compatibly."}

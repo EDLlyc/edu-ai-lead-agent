@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "Verify shared/personal visibility, immutable deduplication, lease fencing, safe media, generation compatibility, CORS, privacy, and backend quality contracts."}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "Verify standalone route isolation, image-first interactions, honest disabled behavior, polling, resource safety, responsiveness, and accessibility."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify additive migration/backfill behavior, model parity, short transactions, concurrency-safe uniqueness/upserts, and rollback safety."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify generated-contract use, strict mapper boundaries, token-free query keys, and frontend type safety."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify formatting, lint, strict types, component tests, automated accessibility, generated API drift, and production build gates."}
+{"file": ".trellis/tasks/08-24-ip-ai-creation-personal-library/research/current-ip-asset-seams.md", "reason": "Independently compare the final implementation with the original one-reference, shared-output, uncounted-download, and route boundaries."}
