@@ -1615,3 +1615,36 @@ Added visible accessible creation feedback, honest independent-worker queue stat
 ### Status
 
 [OK] **Completed**
+
+
+## Session 72: 恢复 IP 本地服务
+
+**Date**: 2026-08-26
+**Task**: 恢复 IP 本地服务
+**Branch**: `main`
+
+### Summary
+
+恢复独立 IP 资产平台的 API、Vite 前端和唯一生成 Worker；完成浏览器、接口、存储、队列和持续存活验收，未触发生图调用。
+
+### Main Changes
+
+- 以标准 Compose 产物恢复 acquisition-api 和单 ip-asset-worker，并保持 restart=unless-stopped
+- 在持久会话启动独立 Vite 前端，登录后验证 42 项共享资产和 AI 创作入口
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] API health/capabilities、UI 和真实浏览器登录流程通过；PostgreSQL/MinIO 健康
+- [OK] queued=0、running=0，历史任务仍为 4 succeeded/1 failed；没有创建、领取或调用 provider
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 另开任务修复 backend-migrate 未继承图片提供方环境导致冷启动失败的 Compose/Settings 契约
