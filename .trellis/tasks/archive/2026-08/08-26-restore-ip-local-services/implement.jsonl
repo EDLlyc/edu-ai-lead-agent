@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "独立进程与运行时边界"}
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "IP 资产平台本地启动、单 Worker 与生成生命周期规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "安全启动与日志脱敏规范"}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "独立路由、登录门禁与队列界面验收规范"}

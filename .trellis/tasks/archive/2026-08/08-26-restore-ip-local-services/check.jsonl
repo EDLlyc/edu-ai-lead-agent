@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "核验规范化启动、单 Worker 和零意外生成调用"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "运行恢复的质量与回归检查"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核验日志不泄露凭据和供应商响应"}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "核验登录页、资产库和创作页可访问"}
