@@ -41,6 +41,7 @@ class OfficialAccountVersionIdentity:
     visual_selector_version: str | None = None
     generated_visual_plan_version: str | None = None
     generated_visual_prompt_version: str | None = None
+    context_media_plan_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +220,14 @@ class OfficialAccountSourceMedia:
     catalog_version: str | None = None
     source_master_sha256: str | None = None
     generated_visual_id: UUID | None = None
+    source_article_image_id: UUID | None = None
+    source_page_url: str | None = None
+    image_url: str | None = None
+    credit: str | None = None
+    rights_status: str | None = None
+    context_only_not_evidence: bool = False
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,7 +236,7 @@ class OfficialAccountMediaRequest:
     render_version_id: UUID
     source_image_artifact_id: UUID | None
     fixture_id: str | None
-    role: Literal["body", "cover"]
+    role: Literal["body", "cover", "context"]
     ordinal: int
     source_sha256: str
     media_type: str
@@ -238,12 +247,13 @@ class OfficialAccountMediaRequest:
     catalog_asset_ref: str | None = None
     catalog_version: str | None = None
     source_master_sha256: str | None = None
+    source_article_image_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class OfficialAccountMediaResult:
     local_media_id: str
-    role: Literal["body", "cover"]
+    role: Literal["body", "cover", "context"]
     ordinal: int
     media_url: str
     media_type: str
@@ -256,6 +266,12 @@ class OfficialAccountMediaResult:
     selection_method: Literal["deterministic_tag", "multimodal_embedding"] | None = None
     similarity_band: Literal["very_high", "high", "medium", "low"] | None = None
     alt_text: str | None = None
+    provenance_kind: str | None = None
+    source_page_url: str | None = None
+    caption: str | None = None
+    credit: str | None = None
+    rights_status: str | None = None
+    context_only_not_evidence: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +293,7 @@ class OfficialAccountDraftRequest:
     cover_media: OfficialAccountMediaResult
     request_fingerprint: str
     body_media_items: tuple[OfficialAccountMediaResult, ...] = ()
+    context_media_items: tuple[OfficialAccountMediaResult, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,6 +366,7 @@ class OfficialAccountMediaSemanticRanker(Protocol):
         sections: tuple[GeneratedArticleSection, ...],
         candidates: tuple[OfficialAccountSourceMedia, ...],
         enabled: bool,
+        media_plan_version: str,
     ) -> OfficialAccountMediaSelectionResult: ...
 
 
@@ -383,6 +401,11 @@ class OfficialAccountRunRepository(Protocol):
         claimed: ClaimedOfficialAccountRun,
     ) -> tuple[OfficialAccountSourceMedia, ...]: ...
 
+    async def load_news_context_candidates(
+        self,
+        claimed: ClaimedOfficialAccountRun,
+    ) -> tuple[OfficialAccountSourceMedia, ...]: ...
+
     async def get_article(self, run_id: UUID) -> StoredOfficialAccountArticle | None: ...
 
     async def get_render(self, run_id: UUID) -> StoredOfficialAccountRender | None: ...
@@ -390,14 +413,14 @@ class OfficialAccountRunRepository(Protocol):
     async def get_media(
         self,
         run_id: UUID,
-        role: Literal["body", "cover"],
+        role: Literal["body", "cover", "context"],
         ordinal: int = 0,
     ) -> tuple[UUID, OfficialAccountMediaResult] | None: ...
 
     async def list_media(
         self,
         run_id: UUID,
-        role: Literal["body", "cover"] | None = None,
+        role: Literal["body", "cover", "context"] | None = None,
     ) -> tuple[tuple[UUID, OfficialAccountMediaResult], ...]: ...
 
     async def get_draft(self, run_id: UUID) -> object | None: ...

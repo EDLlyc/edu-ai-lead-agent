@@ -14,6 +14,7 @@ from app.application.services.official_account_media_semantic import (
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_VERSION,
     OFFICIAL_ACCOUNT_STYLE_VERSION,
@@ -236,6 +237,43 @@ async def test_complete_fake_41_index_semantically_reorders_balanced_plan() -> N
     ]
     assert all(item.selection_method == "multimodal_embedding" for item in result.assignments)
     assert len(result.snapshot.query_fingerprints) == 3
+
+
+@pytest.mark.asyncio
+async def test_v4_semantic_ranker_queries_and_assigns_exactly_five_distinct_blocks() -> None:
+    sections = (
+        *_sections(),
+        GeneratedArticleSection(
+            heading="把下一次问题留下来",
+            blocks=(
+                ArticleParagraphBlock(
+                    kind="paragraph",
+                    text="把尚未解释的现象写下来，作为下一次观察的起点。",
+                ),
+            ),
+        ),
+    )
+    embeddings = _FakeEmbeddings()
+    index = _FakeIndex()
+    ranker = HybridOfficialAccountMediaSemanticRanker(
+        repository=index,  # type: ignore[arg-type]
+        embeddings_factory=lambda: embeddings,
+        catalog_provider=_FakeCatalog(),  # type: ignore[arg-type]
+    )
+
+    result = await ranker.select(
+        topic_title="家庭科学探究",
+        sections=sections,
+        candidates=_candidates(),
+        enabled=True,
+        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    )
+
+    assert embeddings.calls == 5
+    assert index.search_calls == 5
+    assert result.snapshot.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+    assert tuple(item.section_index for item in result.assignments) == (0, 1, 2, 3, 4)
+    assert len({item.candidate_id for item in result.assignments}) == 5
 
 
 @pytest.mark.asyncio

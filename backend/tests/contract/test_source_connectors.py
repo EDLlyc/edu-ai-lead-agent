@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -373,6 +374,55 @@ def test_cas_uses_visible_list_date_instead_of_internal_url_date() -> None:
 
     assert item.url == url
     assert item.published_at == datetime(2026, 7, 27, 16, tzinfo=UTC)
+
+
+def test_cas_current_editor_root_excludes_chrome_and_extracts_its_relative_image() -> None:
+    seed = next(item for item in SOURCE_SEEDS if item.connector_key == "cas_research_v1")
+    legacy_seed = replace(seed, connector_version="1.0.0", parser_version="1.0.0")
+    profile = _profile("cas_research_v1")
+    connector = get_connector(profile.connector_key)
+    url = "https://www.cas.cn/syky/202608/t20260821_1234567.shtml"
+    response = FetchedResponse(
+        requested_url=url,
+        final_url=url,
+        status_code=200,
+        media_type="text/html",
+        body=(
+            "<html><head><title>科研团队发布材料研究进展</title></head><body>"
+            '<header><img src="/images/site-header.png" alt="网站页眉"></header>'
+            '<nav><img src="./navigation.png" alt="栏目导航"></nav>'
+            '<div class="trs_editor_view TRS_UEDITOR trs_paper_default trs_web">'
+            f"<p>{'科研团队围绕新型材料开展系统研究，并通过多组实验验证关键性能。' * 24}</p>"  # noqa: RUF001
+            '<img src="./W020260821315381919840.png" alt="科研实验现场">'
+            "</div>"
+            '<div class="content"><img src="./recommendation.png" alt="相关推荐"></div>'
+            "</body></html>"
+        ).encode(),
+        sha256="cas-current-detail",
+        fetched_at=datetime.now(UTC),
+    )
+
+    document = connector.extract(
+        response,
+        DiscoveredItem(source_item_id="t20260821_1234567.shtml", url=url),
+        profile,
+    )
+
+    assert seed.connector_version == seed.parser_version == "1.0.1"
+    assert seed.source_id == legacy_seed.source_id
+    assert seed.source_version_id != legacy_seed.source_version_id
+    assert document.parser_version == "1.0.1"
+    assert document.extraction_metadata["selector"] == ".trs_editor_view"
+    assert 718 <= document.extraction_metadata["character_count"] <= 1_233
+    assert "网站页眉" not in document.clean_text
+    assert "栏目导航" not in document.clean_text
+    assert [(image.role, image.image_url, image.alt_text) for image in document.source_images] == [
+        (
+            "body",
+            "https://www.cas.cn/syky/202608/W020260821315381919840.png",
+            "科研实验现场",
+        )
+    ]
 
 
 def test_stdaily_uses_latest_dated_technology_news_and_skips_pinned_topic() -> None:

@@ -53,6 +53,7 @@ from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
 from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 from app.infrastructure.storage.minio_ip_asset_store import MinioIpAssetStore
+from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
 from app.schemas.common import ErrorDetail, ErrorEnvelope
 
 settings = get_settings()
@@ -79,6 +80,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _app.state.brand_original_store = MinioBrandOriginalStore(settings)
     _app.state.brand_embedding_model = None
     _app.state.image_store = MinioImageStore(settings)
+    _app.state.snapshot_store = MinioSnapshotStore(settings)
     _app.state.image_generator = None
     _app.state.visual_retrieval_service = None
     _app.state.ip_asset_service = None

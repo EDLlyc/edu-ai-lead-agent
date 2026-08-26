@@ -20,10 +20,14 @@ OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V1_VERSION = "official-account-article-schema-v1
 OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION = "official-account-article-schema-v2-multi-image"
 OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V3_VERSION = "official-account-article-schema-v3-semantic-media"
 OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION = "official-account-article-schema-v4-multimodal-media"
+OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION = "official-account-article-schema-v5-news-context"
 OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION = "official-account-media-plan-v1-deterministic"
 OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION = "official-account-media-plan-v2-semantic-balanced"
 OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION: Literal["official-account-media-plan-v3-multimodal-hybrid"] = (
     "official-account-media-plan-v3-multimodal-hybrid"
+)
+OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION: Literal["official-account-media-plan-v4-five-blocks"] = (
+    "official-account-media-plan-v4-five-blocks"
 )
 OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION: Literal["official-account-visual-query-v1"] = (
     "official-account-visual-query-v1"
@@ -35,7 +39,11 @@ OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V1_VERSION = "official-account-generator-v1"
 OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V2_VERSION = "official-account-generator-v2"
 OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V3_VERSION = "official-account-generator-v3-parent-field-guide"
 OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION = "official-account-generator-v4-reader-copy"
-OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION = "official-account-generator-v5-structured-output"
+OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION = "official-account-generator-v5-structured-output"
+OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION = "official-account-generator-v6-length-buffer"
+OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION = (
+    "official-account-generator-v7-five-to-seven-sections"
+)
 OFFICIAL_ACCOUNT_AUDITOR_PROMPT_V1_VERSION = "official-account-auditor-v1"
 OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION = "official-account-auditor-v2-structured-output"
 OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION = "official-account-audit-schema-v1"
@@ -64,6 +72,9 @@ OFFICIAL_ACCOUNT_TEMPLATE_V6_VERSION = "wechat-science-field-guide-template-v6-s
 OFFICIAL_ACCOUNT_RENDERER_VERSION = "wechat-html-renderer-v7-multimodal-media"
 OFFICIAL_ACCOUNT_STYLE_VERSION = "wechat-inline-science-field-guide-v7-multimodal-media"
 OFFICIAL_ACCOUNT_TEMPLATE_VERSION = "wechat-science-field-guide-template-v7-multimodal-media"
+OFFICIAL_ACCOUNT_RENDERER_V8_VERSION = "wechat-html-renderer-v8-news-context"
+OFFICIAL_ACCOUNT_STYLE_V8_VERSION = "wechat-inline-science-field-guide-v8-news-context"
+OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION = "wechat-science-field-guide-template-v8-news-context"
 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V1_VERSION = "official-account-local-adapter-v1"
 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION = (
     "official-account-local-adapter-v2-distinct-fixture-cover"
@@ -75,6 +86,13 @@ OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION = (
     "official-account-local-adapter-v4-publication-derivatives"
 )
 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION = "official-account-local-adapter-v5-multimodal-media"
+OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION = "official-account-local-adapter-v6-news-context"
+OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION = (
+    "official-account-local-adapter-v7-disjoint-attempt-ordinals"
+)
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION: Literal[
+    "official-account-news-context-selection-v1"
+] = "official-account-news-context-selection-v1"
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V1_VERSION = "official-account-generated-visual-plan-v1"
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V1_VERSION = "official-account-generated-visual-prompt-v1"
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V2_VERSION = (
@@ -99,6 +117,12 @@ def body_media_placeholder(ordinal: int) -> str:
     if ordinal < 0 or ordinal > 4:
         raise ValueError("official-account body-media ordinal must be between zero and four")
     return f"__OFFICIAL_ACCOUNT_BODY_MEDIA_{ordinal}__"
+
+
+def context_media_placeholder(ordinal: int) -> str:
+    if ordinal < 0 or ordinal > 1:
+        raise ValueError("official-account context-media ordinal must be zero or one")
+    return f"__OFFICIAL_ACCOUNT_CONTEXT_MEDIA_{ordinal}__"
 
 
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
@@ -367,7 +391,10 @@ class ArticleMediaSelectionItem(_FrozenModel):
 
 
 class ArticleMediaSelectionSnapshot(_FrozenModel):
-    media_plan_version: Literal["official-account-media-plan-v3-multimodal-hybrid"]
+    media_plan_version: Literal[
+        "official-account-media-plan-v3-multimodal-hybrid",
+        "official-account-media-plan-v4-five-blocks",
+    ]
     visual_query_version: Literal["official-account-visual-query-v1"]
     visual_selector_version: Literal["official-account-visual-selector-v3-multimodal-hybrid"]
     status: Literal["semantic_ready", "semantic_unavailable", "single_candidate"]
@@ -423,6 +450,50 @@ class ArticleMediaSelectionSnapshot(_FrozenModel):
         return self
 
 
+class ArticleNewsContextMediaItem(_FrozenModel):
+    ordinal: int = Field(ge=0, le=1)
+    section_index: int = Field(ge=0, le=6)
+    source_article_image_id: UUID
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    width: int = Field(ge=320, le=8192)
+    height: int = Field(ge=180, le=8192)
+    alt_text: str = Field(min_length=1, max_length=200)
+    caption: str | None = Field(default=None, max_length=300)
+    credit: str | None = Field(default=None, max_length=200)
+    source_page_url: str = Field(min_length=1, max_length=2_048)
+    rights_status: Literal["publish_permission_unverified"]
+    context_only_not_evidence: Literal[True] = True
+
+    @model_validator(mode="after")
+    def validate_urls(self) -> ArticleNewsContextMediaItem:
+        _validated_source_url(self.source_page_url)
+        return self
+
+
+class ArticleNewsContextMediaSnapshot(_FrozenModel):
+    selection_version: Literal["official-account-news-context-selection-v1"]
+    status: Literal["not_present", "partial", "ready"]
+    items: tuple[ArticleNewsContextMediaItem, ...] = Field(default=(), max_length=2)
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> ArticleNewsContextMediaSnapshot:
+        expected_status = (
+            "not_present" if not self.items else "partial" if len(self.items) == 1 else "ready"
+        )
+        if self.status != expected_status:
+            raise ValueError("news-context status does not match selected items")
+        if tuple(item.ordinal for item in self.items) != tuple(range(len(self.items))):
+            raise ValueError("news-context ordinals must be contiguous")
+        if len({item.section_index for item in self.items}) != len(self.items):
+            raise ValueError("news-context section anchors must be distinct")
+        if len({item.source_article_image_id for item in self.items}) != len(self.items):
+            raise ValueError("news-context image references must be distinct")
+        if len({item.sha256 for item in self.items}) != len(self.items):
+            raise ValueError("news-context image checksums must be distinct")
+        return self
+
+
 class ArticleQualitySummary(_FrozenModel):
     inherited_copy_validation_passed: bool
     inherited_copy_audit_accepted: bool
@@ -444,9 +515,26 @@ class ArticleVersionBundle(_FrozenModel):
     media_plan_version: str | None = Field(default=None, min_length=1, max_length=80)
     visual_query_version: str | None = Field(default=None, min_length=1, max_length=80)
     visual_selector_version: str | None = Field(default=None, min_length=1, max_length=80)
+    context_media_plan_version: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=80,
+        exclude_if=lambda value: value is None,
+    )
 
 
-ArticleVersionKind = Literal["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"]
+ArticleVersionKind = Literal[
+    "v1",
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "v6",
+    "v7",
+    "v8",
+    "v9",
+    "v10",
+]
 
 
 def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersionKind | None:
@@ -491,6 +579,7 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
     has_no_visual_selector = (
         versions.visual_query_version is None and versions.visual_selector_version is None
     )
+    has_no_context_media = versions.context_media_plan_version is None
     historical_render_kind: dict[tuple[str, str, str], ArticleVersionKind] = {
         (
             OFFICIAL_ACCOUNT_RENDERER_V1_VERSION,
@@ -519,6 +608,7 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V1_VERSION
         and versions.media_plan_version is None
         and has_no_visual_selector
+        and has_no_context_media
         and versions.local_adapter_version
         in {OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V1_VERSION, OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION}
     ):
@@ -529,6 +619,7 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION
         and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION
         and has_no_visual_selector
+        and has_no_context_media
         and render_versions
         == (
             OFFICIAL_ACCOUNT_RENDERER_V5_VERSION,
@@ -548,6 +639,7 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V3_VERSION
         and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION
         and has_no_visual_selector
+        and has_no_context_media
         and render_versions
         == (
             OFFICIAL_ACCOUNT_RENDERER_V6_VERSION,
@@ -568,6 +660,7 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
         and versions.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
         and versions.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+        and has_no_context_media
         and render_versions
         == (
             OFFICIAL_ACCOUNT_RENDERER_VERSION,
@@ -581,13 +674,14 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         audit_versions == current_audit_versions
         and generation_versions
         == (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
             OFFICIAL_ACCOUNT_RULE_VERSION,
         )
         and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION
         and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
         and versions.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
         and versions.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+        and has_no_context_media
         and render_versions
         == (
             OFFICIAL_ACCOUNT_RENDERER_VERSION,
@@ -597,6 +691,48 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
         and versions.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
     ):
         return "v8"
+    if (
+        audit_versions == current_audit_versions
+        and generation_versions
+        in {
+            (OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION, OFFICIAL_ACCOUNT_RULE_VERSION),
+            (OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION, OFFICIAL_ACCOUNT_RULE_VERSION),
+        }
+        and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
+        and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+        and versions.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
+        and versions.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+        and versions.context_media_plan_version == OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
+        and render_versions
+        == (
+            OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+            OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+            OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+        )
+        and versions.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION
+    ):
+        return "v9"
+    if (
+        audit_versions == current_audit_versions
+        and generation_versions
+        == (
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+            OFFICIAL_ACCOUNT_RULE_VERSION,
+        )
+        and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
+        and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+        and versions.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
+        and versions.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+        and versions.context_media_plan_version == OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
+        and render_versions
+        == (
+            OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+            OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+            OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+        )
+        and versions.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
+    ):
+        return "v10"
     return None
 
 
@@ -614,13 +750,16 @@ class ArticlePackage(_FrozenModel):
     quality: ArticleQualitySummary
     versions: ArticleVersionBundle
     media_selection: ArticleMediaSelectionSnapshot | None = None
+    news_context_media: ArticleNewsContextMediaSnapshot | None = None
     content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_media_selection_version(self) -> ArticlePackage:
         version_kind = article_version_bundle_kind(self.versions)
-        if (version_kind in {"v7", "v8"}) != (self.media_selection is not None):
-            raise ValueError("only v7/v8 articles require a media selection snapshot")
+        if (version_kind in {"v7", "v8", "v9", "v10"}) != (self.media_selection is not None):
+            raise ValueError("only v7/v8/v9/v10 articles require a media selection snapshot")
+        if (version_kind in {"v9", "v10"}) != (self.news_context_media is not None):
+            raise ValueError("only v9/v10 articles require a news-context snapshot")
         if self.media_selection is not None:
             if (
                 self.media_selection.media_plan_version != self.versions.media_plan_version
@@ -755,11 +894,14 @@ def article_package_fingerprint(article: ArticlePackage) -> str:
             "media_plan_version",
             "visual_query_version",
             "visual_selector_version",
+            "context_media_plan_version",
         ):
             if versions.get(field) is None:
                 versions.pop(field, None)
     if payload.get("media_selection") is None:
         payload.pop("media_selection", None)
+    if payload.get("news_context_media") is None:
+        payload.pop("news_context_media", None)
     return fingerprint(payload)
 
 
@@ -819,6 +961,23 @@ def _plan_body_media_slots_v3(*, section_count: int, candidate_count: int) -> tu
     return placements
 
 
+def _plan_body_media_slots_v4(*, section_count: int, candidate_count: int) -> tuple[int, ...]:
+    if section_count < 3 or section_count > 7:
+        raise ValueError("official-account media plan requires three to seven sections")
+    if candidate_count < 1 or candidate_count > 41:
+        raise ValueError("official-account multimodal plan requires one to 41 candidates")
+    target_count = min(candidate_count, 5, section_count)
+    if target_count == 1:
+        return (0,)
+    placements = tuple(
+        (ordinal * (section_count - 1) + (target_count - 1) // 2) // (target_count - 1)
+        for ordinal in range(target_count)
+    )
+    if len(set(placements)) != target_count:
+        raise ValueError("official-account five-block media plan could not balance slots")
+    return placements
+
+
 def plan_body_media_slots(
     *,
     section_count: int,
@@ -838,6 +997,11 @@ def plan_body_media_slots(
         )
     if media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION:
         return _plan_body_media_slots_v3(
+            section_count=section_count,
+            candidate_count=candidate_count,
+        )
+    if media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION:
+        return _plan_body_media_slots_v4(
             section_count=section_count,
             candidate_count=candidate_count,
         )
@@ -988,12 +1152,13 @@ def assign_multimodal_body_media(
     sections: tuple[GeneratedArticleSection | ArticleSection, ...],
     candidates: tuple[SemanticMediaCandidate, ...],
     similarity_matrix: tuple[dict[str, float], ...],
+    media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
 ) -> tuple[SemanticMediaAssignment, ...]:
     """Maximum-weight bounded assignment without factorial candidate enumeration."""
     placements = plan_body_media_slots(
         section_count=len(sections),
         candidate_count=len(candidates),
-        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+        media_plan_version=media_plan_version,
     )
     if len(similarity_matrix) != len(placements):
         raise ValueError("multimodal similarity matrix does not cover every placement")
@@ -1127,6 +1292,51 @@ def assign_deterministic_body_media_v3(
     return tuple(deterministic)
 
 
+def assign_deterministic_body_media_v4(
+    *,
+    sections: tuple[GeneratedArticleSection | ArticleSection, ...],
+    candidates: tuple[SemanticMediaCandidate, ...],
+) -> tuple[SemanticMediaAssignment, ...]:
+    """Apply the frozen selector with the additive five-block placement policy."""
+    placements = plan_body_media_slots(
+        section_count=len(sections),
+        candidate_count=len(candidates),
+        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    )
+    zero_matrix = tuple(
+        {candidate.candidate_id: 0.0 for candidate in candidates} for _ in placements
+    )
+    semantic = assign_multimodal_body_media(
+        sections=sections,
+        candidates=candidates,
+        similarity_matrix=zero_matrix,
+        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    )
+    deterministic: list[SemanticMediaAssignment] = []
+    for item in semantic:
+        reason: Literal[
+            "semantic_heading_match",
+            "semantic_body_match",
+            "stable_fallback",
+        ]
+        if item.score_band == "heading":
+            reason = "semantic_heading_match"
+        elif item.score_band == "body":
+            reason = "semantic_body_match"
+        else:
+            reason = "stable_fallback"
+        deterministic.append(
+            item.model_copy(
+                update={
+                    "reason_code": reason,
+                    "selection_method": "deterministic_tag",
+                    "similarity_band": None,
+                }
+            )
+        )
+    return tuple(deterministic)
+
+
 def build_article_package(
     *,
     draft: GeneratedArticleDraft,
@@ -1136,12 +1346,15 @@ def build_article_package(
     body_media_candidate_count: int = 1,
     semantic_media_assignments: tuple[SemanticMediaAssignment, ...] = (),
     media_selection: ArticleMediaSelectionSnapshot | None = None,
+    news_context_media: ArticleNewsContextMediaSnapshot | None = None,
 ) -> ArticlePackage:
     version_kind = article_version_bundle_kind(versions)
+    if version_kind == "v10" and not 5 <= len(draft.sections) <= 7:
+        raise ValueError("official-account v10 article requires five to seven sections")
     is_historical_v1 = version_kind in {"v1", "v2", "v3", "v4"}
     is_historical_v2 = version_kind == "v5"
     is_semantic_v3 = version_kind == "v6"
-    is_multimodal_v4 = version_kind in {"v7", "v8"}
+    is_multimodal_v4 = version_kind in {"v7", "v8", "v9", "v10"}
     if (
         not is_historical_v1
         and not is_historical_v2
@@ -1176,7 +1389,11 @@ def build_article_package(
         expected = plan_body_media_slots(
             section_count=len(draft.sections),
             candidate_count=body_media_candidate_count,
-            media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            media_plan_version=(
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+                if version_kind == "v10"
+                else OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+            ),
         )
         if (
             placements != expected
@@ -1287,6 +1504,7 @@ def build_article_package(
         ),
         versions=versions,
         media_selection=media_selection,
+        news_context_media=news_context_media,
         content_fingerprint="0" * 64,
     )
     return provisional.model_copy(
@@ -1429,10 +1647,13 @@ def validate_article_package(
         article.versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V3_VERSION
         and article.versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION
     )
-    multimodal_schema_v4 = (
-        article.versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION
-        and article.versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
-    )
+    multimodal_schema = article.versions.article_schema_version in {
+        OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
+        OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+    } and article.versions.media_plan_version in {
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    }
     expected_body_ordinals = tuple(range(len(body_slots)))
     slots_valid = (
         len(cover_slots) == 1
@@ -1446,7 +1667,7 @@ def validate_article_package(
             (historical_schema_v1 and len(body_slots) == 1)
             or (historical_schema_v2 and 1 <= len(body_slots) <= 5)
             or (semantic_schema_v3 and 1 <= len(body_slots) <= 5)
-            or (multimodal_schema_v4 and 1 <= len(body_slots) <= 5)
+            or (multimodal_schema and 1 <= len(body_slots) <= 5)
         )
     )
     if not slots_valid:
@@ -1923,6 +2144,11 @@ _RENDER_VERSION_V7 = (
     OFFICIAL_ACCOUNT_STYLE_VERSION,
     OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
 )
+_RENDER_VERSION_V8 = (
+    OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+    OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+    OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+)
 
 
 def _render_wechat_html_v1(article: ArticlePackage) -> str:
@@ -2183,6 +2409,7 @@ def _render_wechat_html_v4(
     *,
     multi_image: bool = False,
     reader_copy: bool = False,
+    news_context: bool = False,
 ) -> str:
     parts = [f'<section style="{_STYLE_V4["root"]}">']
     parts.append(f'<section style="{_STYLE_V4["masthead"]}">')
@@ -2245,6 +2472,49 @@ def _render_wechat_html_v4(
                     f"{caption if reader_copy else '观察记录 · ' + caption}</p>"
                 )
                 parts.append("</section>")
+        if news_context:
+            snapshot = article.news_context_media
+            if snapshot is None:
+                raise ValueError("v9 renderer requires a news-context snapshot")
+            context_item = next(
+                (item for item in snapshot.items if item.section_index == index - 1),
+                None,
+            )
+            if context_item is not None:
+                alt_text = escape(context_item.alt_text, quote=True)
+                parts.append(
+                    '<figure data-media-role="news-context" '
+                    'data-context-only-not-evidence="true" '
+                    'style="margin:26px 0 30px;padding:10px;background:#f5f7fb;'
+                    'border:1px solid #d8e0ef;border-radius:14px;">'
+                )
+                parts.append(
+                    f'<img src="{context_media_placeholder(context_item.ordinal)}" '
+                    f'alt="{alt_text}" style="display:block;width:100%;height:auto;'
+                    'border-radius:9px;object-fit:contain;">'
+                )
+                caption = context_item.caption or context_item.alt_text
+                parts.append(
+                    '<figcaption style="padding:10px 4px 2px;color:#526179;font-size:12px;'
+                    'line-height:1.7;">'
+                    f"{escape(caption)}"
+                )
+                if context_item.credit:
+                    parts.append(f" · {escape(context_item.credit)}")
+                parts.append("<br>")
+                source_page_url = escape(
+                    _validated_source_url(context_item.source_page_url), quote=True
+                )
+                parts.append(
+                    '<a rel="noopener noreferrer" referrerpolicy="no-referrer" '
+                    f'href="{source_page_url}" '
+                    'style="color:#175cd3;text-decoration:underline;">新闻原文</a>'
+                )
+                parts.append(
+                    '<span style="display:inline-block;margin-left:8px;color:#b54708;'
+                    'font-weight:700;">发布权限未验证 · 仅作上下文参考，非事实证据</span>'
+                )
+                parts.append("</figcaption></figure>")
         parts.append("</section>")
     parts.append(f'<section style="{_STYLE_V4["conclusion"]}">')
     parts.append(f'<p style="{_STYLE_V4["conclusion_label"]}">给家长的三句话</p>')
@@ -2315,10 +2585,22 @@ def render_wechat_html(
             multi_image=True,
             reader_copy=True,
         )
+    elif selected_versions == _RENDER_VERSION_V8:
+        canonical_html = _render_wechat_html_v4(
+            article,
+            multi_image=True,
+            reader_copy=True,
+            news_context=True,
+        )
     else:
         raise ValueError("official-account render version bundle is unsupported")
     expected_body_slots = tuple(slot for slot in article.media_slots if slot.role == "body")
-    if selected_versions in {_RENDER_VERSION_V5, _RENDER_VERSION_V6, _RENDER_VERSION_V7}:
+    if selected_versions in {
+        _RENDER_VERSION_V5,
+        _RENDER_VERSION_V6,
+        _RENDER_VERSION_V7,
+        _RENDER_VERSION_V8,
+    }:
         if any(
             canonical_html.count(body_media_placeholder(slot.ordinal)) != 1
             for slot in expected_body_slots
@@ -2329,6 +2611,18 @@ def render_wechat_html(
             raise ValueError("canonical article render has an invalid multi-image placeholder set")
     elif canonical_html.count(OFFICIAL_ACCOUNT_BODY_MEDIA_PLACEHOLDER) != 1:
         raise ValueError("canonical article render must contain exactly one body-media placeholder")
+    if selected_versions == _RENDER_VERSION_V8:
+        context_items = article.news_context_media.items if article.news_context_media else ()
+        if any(
+            canonical_html.count(context_media_placeholder(item.ordinal)) != 1
+            for item in context_items
+        ) or any(
+            context_media_placeholder(ordinal) in canonical_html
+            for ordinal in range(len(context_items), 2)
+        ):
+            raise ValueError(
+                "canonical article render has an invalid context-media placeholder set"
+            )
     render_fingerprint = fingerprint(
         article.content_fingerprint,
         *selected_versions,
@@ -2376,6 +2670,27 @@ def resolve_body_media_placeholders(
         resolved = resolved.replace(placeholder, escape(media_url, quote=True))
     if any(body_media_placeholder(ordinal) in resolved for ordinal in range(5)):
         raise ValueError("resolved local draft HTML still contains a media placeholder")
+    return resolved
+
+
+def resolve_context_media_placeholders(
+    canonical_html: str,
+    media: tuple[tuple[int, str], ...],
+) -> str:
+    if len(media) > 2:
+        raise ValueError("local article accepts at most two news-context media results")
+    if tuple(item[0] for item in media) != tuple(range(len(media))):
+        raise ValueError("local article context media must be ordered and contiguous")
+    resolved = canonical_html
+    for ordinal, media_url in media:
+        placeholder = context_media_placeholder(ordinal)
+        if resolved.count(placeholder) != 1:
+            raise ValueError("canonical HTML has an invalid context-media placeholder set")
+        if not media_url.startswith("/api/v1/official-account-local/media/"):
+            raise ValueError("local article context media URL is outside the controlled API path")
+        resolved = resolved.replace(placeholder, escape(media_url, quote=True))
+    if any(context_media_placeholder(ordinal) in resolved for ordinal in range(2)):
+        raise ValueError("resolved local draft HTML still contains a context-media placeholder")
     return resolved
 
 

@@ -25,6 +25,7 @@ from app.application.services.official_account_local import OfficialAccountLocal
 from app.core.errors import AppError, ConflictError, LocalDraftResultUnknownError
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V2
 from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_V1_VERSION,
@@ -34,26 +35,38 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V1_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+    OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V1_VERSION,
+    OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_VERSION,
     OFFICIAL_ACCOUNT_RULE_V1_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     OFFICIAL_ACCOUNT_STYLE_V1_VERSION,
+    OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
     OFFICIAL_ACCOUNT_STYLE_VERSION,
     OFFICIAL_ACCOUNT_TEMPLATE_V1_VERSION,
+    OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
     OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
 )
 from app.infrastructure.db.models import (
+    OfficialAccountArticleAttemptModel,
     OfficialAccountArticleRunModel,
     OfficialAccountLocalMediaModel,
 )
-from app.infrastructure.db.official_account_local import PostgresOfficialAccountRepository
+from app.infrastructure.db.official_account_local import (
+    PostgresOfficialAccountRepository,
+    _adapter_v7_staging_attempt_ordinal,
+    _add_workflow_attempt,
+)
 from app.infrastructure.official_account_local import (
     DeterministicFakeOfficialAccountArticleAuditor,
     DeterministicFakeOfficialAccountArticleGenerator,
@@ -118,7 +131,7 @@ def _v8_identity(*, suffix: str = "v8") -> OfficialAccountVersionIdentity:
     return OfficialAccountVersionIdentity(
         provider="fake",
         model="official-account-fixture-v1",
-        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
         article_schema_version=OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
         media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
         auditor_prompt_version=OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
@@ -131,6 +144,31 @@ def _v8_identity(*, suffix: str = "v8") -> OfficialAccountVersionIdentity:
         visual_query_version=OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
         visual_selector_version=OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
         default_author="赛先生" if suffix == "v8" else f"赛先生·{suffix}",
+        min_characters=1_200 + len(suffix),
+        target_min_characters=1_800,
+        target_max_characters=2_600,
+        max_characters=4_000,
+    )
+
+
+def _v10_identity(*, suffix: str = "v10") -> OfficialAccountVersionIdentity:
+    return OfficialAccountVersionIdentity(
+        provider="fake",
+        model="official-account-fixture-v1",
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+        article_schema_version=OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+        auditor_prompt_version=OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
+        audit_schema_version=OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
+        rule_version=OFFICIAL_ACCOUNT_RULE_VERSION,
+        renderer_version=OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+        style_version=OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+        template_version=OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+        local_adapter_version=OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
+        visual_query_version=OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
+        visual_selector_version=OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
+        context_media_plan_version=OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+        default_author="赛先生" if suffix == "v10" else f"赛先生·{suffix}",
         min_characters=1_200 + len(suffix),
         target_min_characters=1_800,
         target_max_characters=2_600,
@@ -411,6 +449,90 @@ async def test_explicit_retry_reopens_confirmed_retryable_failure(
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
+async def test_adapter_v7_body_context_and_failure_attempt_namespaces_do_not_collide(
+    integration_context: IntegrationContext,
+) -> None:
+    repository = PostgresOfficialAccountRepository(integration_context.session_factory)
+    run, created = await repository.enqueue_fixture(
+        identity=_v10_identity(suffix="attempt-namespace-v10")
+    )
+    assert created is True
+    claimed = await repository.claim(
+        worker_id="attempt-namespace-worker",
+        lease_seconds=60,
+        max_attempts=1,
+    )
+    assert claimed is not None and claimed.run_id == run.id
+    body_ordinal = _adapter_v7_staging_attempt_ordinal(
+        attempt_number=claimed.attempt_number,
+        role="body",
+        ordinal=0,
+    )
+    context_ordinal = _adapter_v7_staging_attempt_ordinal(
+        attempt_number=claimed.attempt_number,
+        role="context",
+        ordinal=0,
+    )
+    failure_ordinal = _adapter_v7_staging_attempt_ordinal(
+        attempt_number=claimed.attempt_number,
+        role="failure",
+    )
+    assert len({body_ordinal, context_ordinal, failure_ordinal}) == 3
+
+    async with integration_context.session_factory() as session:
+        stored_run = await session.get(OfficialAccountArticleRunModel, run.id)
+        assert stored_run is not None
+        stored_run.current_stage = "staging_body_media"
+        _add_workflow_attempt(
+            session,
+            claimed=claimed,
+            stage="staging_body_media",
+            request_fingerprint="a" * 64,
+            ordinal=body_ordinal,
+            safe_metadata={"role": "body", "ordinal": 0},
+        )
+        _add_workflow_attempt(
+            session,
+            claimed=claimed,
+            stage="staging_body_media",
+            request_fingerprint="b" * 64,
+            ordinal=context_ordinal,
+            safe_metadata={"role": "context", "ordinal": 0},
+        )
+        await session.commit()
+
+    assert await repository.fail(
+        claimed=claimed,
+        error_code="official_account_media_stage_failed",
+        retryable=False,
+        retry_base_seconds=0,
+        max_attempts=1,
+    )
+    async with integration_context.session_factory() as session:
+        attempts = tuple(
+            await session.scalars(
+                select(OfficialAccountArticleAttemptModel)
+                .where(
+                    OfficialAccountArticleAttemptModel.run_id == run.id,
+                    OfficialAccountArticleAttemptModel.stage == "staging_body_media",
+                )
+                .order_by(OfficialAccountArticleAttemptModel.ordinal)
+            )
+        )
+
+    assert tuple(item.ordinal for item in attempts) == (
+        body_ordinal,
+        context_ordinal,
+        failure_ordinal,
+    )
+    assert tuple(item.safe_metadata.get("role") for item in attempts[:2]) == (
+        "body",
+        "context",
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
 async def test_editorial_review_migration_refuses_lossy_downgrade(
     integration_context: IntegrationContext,
 ) -> None:
@@ -439,13 +561,13 @@ async def test_editorial_review_migration_refuses_lossy_downgrade(
 
         async with integration_context.engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "20260824_0035"
+        assert revision == "20260825_0036"
     finally:
         await asyncio.to_thread(command.upgrade, Config("backend/alembic.ini"), "head")
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260824_0035"
+    assert revision == "20260825_0036"
 
 
 @pytest.mark.integration
@@ -618,12 +740,16 @@ async def test_multimodal_article_migration_refuses_v4_lossy_downgrade(
     assert stored.article.media_selection is not None
 
     try:
-        # A prior v8 artifact in the shared integration database is an earlier, equally
-        # lossless-refusing boundary.  A v7 artifact reaches the v4 fence on a clean
-        # database; neither outcome may permit a destructive downgrade.
+        # A newer selected-news v9/v10 artifact or a prior v8 artifact in the shared
+        # integration database is an earlier, equally lossless-refusing boundary.  A v7
+        # artifact reaches the v4 fence on a clean database; none may permit a destructive
+        # downgrade.
         with pytest.raises(
             Exception,
-            match=r"cannot downgrade official-account (?:structured-output|multimodal)",
+            match=(
+                r"cannot downgrade (?:selected-news source-image artifacts|"
+                r"official-account (?:structured-output|multimodal))"
+            ),
         ):
             await asyncio.to_thread(
                 command.downgrade,
@@ -635,7 +761,7 @@ async def test_multimodal_article_migration_refuses_v4_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260824_0035"
+    assert revision == "20260825_0036"
 
 
 @pytest.mark.integration
@@ -661,7 +787,15 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
     assert artifact_version == 5
 
     try:
-        with pytest.raises(Exception, match="cannot downgrade official-account structured-output"):
+        # The current 0036 head can refuse first when selected-news v9/v10 artifacts share
+        # the integration database.  Both guards preserve the immutable v5 row under test.
+        with pytest.raises(
+            Exception,
+            match=(
+                r"cannot downgrade (?:selected-news source-image artifacts|"
+                r"official-account structured-output)"
+            ),
+        ):
             await asyncio.to_thread(
                 command.downgrade,
                 Config("backend/alembic.ini"),
@@ -672,7 +806,7 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260824_0035"
+    assert revision == "20260825_0036"
 
 
 @pytest.mark.integration

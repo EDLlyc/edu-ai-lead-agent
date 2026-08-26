@@ -516,7 +516,10 @@
             ]
           },
           "media_plan_version": {
-            "const": "official-account-media-plan-v3-multimodal-hybrid",
+            "enum": [
+              "official-account-media-plan-v3-multimodal-hybrid",
+              "official-account-media-plan-v4-five-blocks"
+            ],
             "title": "Media Plan Version",
             "type": "string"
           },
@@ -598,121 +601,6 @@
           "role"
         ],
         "title": "ArticleMediaSlot",
-        "type": "object"
-      },
-      "ArticlePackage": {
-        "additionalProperties": false,
-        "properties": {
-          "author": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Author",
-            "type": "string"
-          },
-          "claims": {
-            "items": {
-              "$ref": "#/components/schemas/GeneratedArticleClaim"
-            },
-            "maxItems": 40,
-            "minItems": 1,
-            "title": "Claims",
-            "type": "array"
-          },
-          "conclusion": {
-            "maxLength": 1200,
-            "minLength": 1,
-            "title": "Conclusion",
-            "type": "string"
-          },
-          "content_fingerprint": {
-            "pattern": "^[0-9a-f]{64}$",
-            "title": "Content Fingerprint",
-            "type": "string"
-          },
-          "digest": {
-            "maxLength": 240,
-            "minLength": 1,
-            "title": "Digest",
-            "type": "string"
-          },
-          "lead": {
-            "maxLength": 1200,
-            "minLength": 1,
-            "title": "Lead",
-            "type": "string"
-          },
-          "media_selection": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ArticleMediaSelectionSnapshot"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "media_slots": {
-            "items": {
-              "$ref": "#/components/schemas/ArticleMediaSlot"
-            },
-            "maxItems": 6,
-            "minItems": 2,
-            "title": "Media Slots",
-            "type": "array"
-          },
-          "quality": {
-            "$ref": "#/components/schemas/ArticleQualitySummary"
-          },
-          "sections": {
-            "items": {
-              "$ref": "#/components/schemas/ArticleSection"
-            },
-            "maxItems": 7,
-            "minItems": 3,
-            "title": "Sections",
-            "type": "array"
-          },
-          "sources": {
-            "items": {
-              "$ref": "#/components/schemas/ArticleSourceProjection"
-            },
-            "maxItems": 40,
-            "minItems": 1,
-            "title": "Sources",
-            "type": "array"
-          },
-          "title": {
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "topic_title": {
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Topic Title",
-            "type": "string"
-          },
-          "versions": {
-            "$ref": "#/components/schemas/ArticleVersionBundle"
-          }
-        },
-        "required": [
-          "title",
-          "digest",
-          "author",
-          "lead",
-          "sections",
-          "conclusion",
-          "claims",
-          "sources",
-          "media_slots",
-          "topic_title",
-          "quality",
-          "versions",
-          "content_fingerprint"
-        ],
-        "title": "ArticlePackage",
         "type": "object"
       },
       "ArticleParagraphBlock": {
@@ -987,6 +875,19 @@
             "minLength": 1,
             "title": "Auditor Prompt Version",
             "type": "string"
+          },
+          "context_media_plan_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Media Plan Version"
           },
           "generator_prompt_version": {
             "maxLength": 80,
@@ -9187,6 +9088,111 @@
         "title": "ObservationResponse",
         "type": "object"
       },
+      "OfficialAccountArticleResponse": {
+        "additionalProperties": false,
+        "description": "Safe article projection; internal source-image row IDs never cross the API.",
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/GeneratedArticleClaim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "content_fingerprint": {
+            "title": "Content Fingerprint",
+            "type": "string"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "lead": {
+            "title": "Lead",
+            "type": "string"
+          },
+          "media_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleMediaSelectionSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media_slots": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleMediaSlot"
+            },
+            "title": "Media Slots",
+            "type": "array"
+          },
+          "news_context_media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountNewsContextResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality": {
+            "$ref": "#/components/schemas/ArticleQualitySummary"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleSourceProjection"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_title": {
+            "title": "Topic Title",
+            "type": "string"
+          },
+          "versions": {
+            "$ref": "#/components/schemas/ArticleVersionBundle"
+          }
+        },
+        "required": [
+          "title",
+          "digest",
+          "author",
+          "lead",
+          "sections",
+          "conclusion",
+          "claims",
+          "sources",
+          "media_slots",
+          "topic_title",
+          "quality",
+          "versions",
+          "content_fingerprint"
+        ],
+        "title": "OfficialAccountArticleResponse",
+        "type": "object"
+      },
       "OfficialAccountAuditVerdict": {
         "additionalProperties": false,
         "properties": {
@@ -9778,7 +9784,7 @@
           "alt_text": {
             "anyOf": [
               {
-                "maxLength": 160,
+                "maxLength": 200,
                 "type": "string"
               },
               {
@@ -9805,6 +9811,35 @@
             "title": "Byte Size",
             "type": "integer"
           },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "context_only_not_evidence": {
+            "default": false,
+            "title": "Context Only Not Evidence",
+            "type": "boolean"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
           "local_media_id": {
             "title": "Local Media Id",
             "type": "string"
@@ -9822,10 +9857,41 @@
             "title": "Ordinal",
             "type": "integer"
           },
+          "provenance_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "source_news",
+                  "approved_catalog",
+                  "generated_visual",
+                  "image_artifact",
+                  "fixture"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance Kind"
+          },
+          "rights_status": {
+            "anyOf": [
+              {
+                "const": "publish_permission_unverified",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rights Status"
+          },
           "role": {
             "enum": [
               "body",
-              "cover"
+              "cover",
+              "context"
             ],
             "title": "Role",
             "type": "string"
@@ -9909,6 +9975,18 @@
               }
             ],
             "title": "Similarity Band"
+          },
+          "source_page_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Url"
           }
         },
         "required": [
@@ -10036,6 +10114,143 @@
         "title": "OfficialAccountMediaSelectionResponse",
         "type": "object"
       },
+      "OfficialAccountNewsContextItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "context_only_not_evidence": {
+            "const": true,
+            "title": "Context Only Not Evidence",
+            "type": "boolean"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "height": {
+            "maximum": 8192.0,
+            "minimum": 180.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "media_type": {
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "rights_status": {
+            "const": "publish_permission_unverified",
+            "title": "Rights Status",
+            "type": "string"
+          },
+          "section_index": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Section Index",
+            "type": "integer"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_page_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source Page Url",
+            "type": "string"
+          },
+          "width": {
+            "maximum": 8192.0,
+            "minimum": 320.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ordinal",
+          "section_index",
+          "sha256",
+          "media_type",
+          "width",
+          "height",
+          "alt_text",
+          "source_page_url",
+          "rights_status",
+          "context_only_not_evidence"
+        ],
+        "title": "OfficialAccountNewsContextItemResponse",
+        "type": "object"
+      },
+      "OfficialAccountNewsContextResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountNewsContextItemResponse"
+            },
+            "maxItems": 2,
+            "title": "Items",
+            "type": "array"
+          },
+          "selection_version": {
+            "const": "official-account-news-context-selection-v1",
+            "title": "Selection Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_present",
+              "partial",
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selection_version",
+          "status",
+          "items"
+        ],
+        "title": "OfficialAccountNewsContextResponse",
+        "type": "object"
+      },
       "OfficialAccountRunCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -10079,7 +10294,7 @@
           "article": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ArticlePackage"
+                "$ref": "#/components/schemas/OfficialAccountArticleResponse"
               },
               {
                 "type": "null"
@@ -10135,6 +10350,24 @@
               }
             ],
             "title": "Completed At"
+          },
+          "context_images": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountMediaResponse"
+            },
+            "maxItems": 2,
+            "title": "Context Images",
+            "type": "array"
+          },
+          "context_media_status": {
+            "default": "not_present",
+            "enum": [
+              "not_present",
+              "partial",
+              "ready"
+            ],
+            "title": "Context Media Status",
+            "type": "string"
           },
           "cover_image": {
             "anyOf": [

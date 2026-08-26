@@ -14,7 +14,30 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.errors import ParseError, PolicyRejectedError
 from app.core.security import validate_allowlist
-from app.domain.entities import DiscoveredItem, ExtractedDocument, FetchedResponse, SourceProfile
+from app.domain.entities import (
+    DiscoveredItem,
+    ExtractedDocument,
+    FetchedResponse,
+    SourceImageReference,
+    SourceProfile,
+)
+
+SOURCE_IMAGE_EXTRACTION_VERSION = "source-image-extractor-v1"
+_SOURCE_IMAGE_LIMIT = 5
+_IMAGE_FILE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+_NON_EDITORIAL_IMAGE_HINTS = (
+    "avatar",
+    "badge",
+    "banner",
+    "icon",
+    "logo",
+    "nav",
+    "qr",
+    "qrcode",
+    "share",
+    "sprite",
+    "tracking",
+)
 
 
 class SourceConnector(Protocol):
@@ -89,6 +112,148 @@ def _extract_title(soup: BeautifulSoup) -> str | None:
     if soup.title:
         return soup.title.get_text(" ", strip=True).split("_")[0].strip()
     return None
+
+
+def _bounded_text(value: str | None, limit: int) -> str | None:
+    normalized = " ".join((value or "").split())
+    return normalized[:limit] or None
+
+
+def _image_url_from_node(node: Tag) -> str | None:
+    for attribute in ("data-src", "data-original", "data-lazy-src", "src"):
+        value = str(node.get(attribute) or "").strip()
+        if value:
+            return value
+    srcset = str(node.get("srcset") or "").strip()
+    if srcset:
+        return srcset.split(",", 1)[0].strip().split(" ", 1)[0]
+    return None
+
+
+def _approved_source_image_url(
+    raw_url: str,
+    *,
+    detail_url: str,
+    profile: SourceProfile,
+) -> str | None:
+    candidate = urljoin(detail_url, raw_url.strip())
+    parts = urlsplit(candidate)
+    detail_parts = urlsplit(detail_url)
+    if (
+        parts.query
+        or parts.fragment
+        or parts.hostname is None
+        or detail_parts.hostname is None
+        or parts.hostname.rstrip(".").casefold() != detail_parts.hostname.rstrip(".").casefold()
+        or parts.path.casefold().endswith((".svg", ".gif"))
+    ):
+        return None
+    try:
+        approved = validate_allowlist(
+            candidate,
+            allowed_hosts=profile.allowed_hosts,
+            allowed_path_prefixes=profile.allowed_path_prefixes,
+            allow_http_fallback=False,
+        )
+    except PolicyRejectedError:
+        return None
+    approved_parts = urlsplit(approved)
+    if approved_parts.scheme != "https" or approved_parts.query:
+        return None
+    return urlunsplit((approved_parts.scheme, approved_parts.netloc, approved_parts.path, "", ""))
+
+
+def _looks_editorial_image(node: Tag, raw_url: str) -> bool:
+    identity = " ".join(
+        str(node.get(attribute) or "") for attribute in ("class", "id", "alt", "title")
+    ).casefold()
+    path = urlsplit(raw_url).path.casefold()
+    if any(hint in identity or hint in path for hint in _NON_EDITORIAL_IMAGE_HINTS):
+        return False
+    try:
+        width = int(str(node.get("width") or "0").removesuffix("px"))
+        height = int(str(node.get("height") or "0").removesuffix("px"))
+    except ValueError:
+        width = height = 0
+    if width and height and (width < 240 or height < 135):
+        return False
+    return not path or path.endswith(_IMAGE_FILE_SUFFIXES) or "." not in path.rsplit("/", 1)[-1]
+
+
+def _figure_metadata(node: Tag) -> tuple[str | None, str | None]:
+    figure = node.find_parent("figure")
+    caption_node = figure.find("figcaption") if isinstance(figure, Tag) else None
+    caption = _bounded_text(
+        caption_node.get_text(" ", strip=True) if isinstance(caption_node, Tag) else None,
+        300,
+    )
+    credit = None
+    for candidate in (
+        figure.select_one("[class*='credit'], [class*='source'], [class*='author']")
+        if isinstance(figure, Tag)
+        else None,
+        node.find_next_sibling(class_=re.compile(r"credit|source|author", re.I)),
+    ):
+        if isinstance(candidate, Tag):
+            credit = _bounded_text(candidate.get_text(" ", strip=True), 200)
+            if credit:
+                break
+    return caption, credit
+
+
+def _extract_source_images(
+    *,
+    soup: BeautifulSoup,
+    content_root: Tag | None,
+    detail_url: str,
+    profile: SourceProfile,
+) -> tuple[SourceImageReference, ...]:
+    candidates: list[tuple[str, str, str | None, str | None, str | None]] = []
+    og_image = soup.select_one("meta[property='og:image'], meta[name='og:image']")
+    if isinstance(og_image, Tag) and og_image.get("content"):
+        candidates.append((str(og_image.get("content")), "lead", None, None, None))
+    if content_root is not None:
+        for node in content_root.find_all("img"):
+            if not isinstance(node, Tag):
+                continue
+            raw_url = _image_url_from_node(node)
+            if raw_url is None or not _looks_editorial_image(node, raw_url):
+                continue
+            caption, credit = _figure_metadata(node)
+            candidates.append(
+                (
+                    raw_url,
+                    "body",
+                    _bounded_text(str(node.get("alt") or ""), 200),
+                    caption,
+                    credit,
+                )
+            )
+    references: list[SourceImageReference] = []
+    seen: set[str] = set()
+    for raw_url, role, alt_text, caption, credit in candidates:
+        approved = _approved_source_image_url(
+            raw_url,
+            detail_url=detail_url,
+            profile=profile,
+        )
+        if approved is None or approved in seen:
+            continue
+        seen.add(approved)
+        references.append(
+            SourceImageReference(
+                image_url=approved,
+                source_page_url=detail_url,
+                ordinal=len(references),
+                role=role,
+                alt_text=alt_text,
+                caption=caption,
+                credit=credit,
+            )
+        )
+        if len(references) >= _SOURCE_IMAGE_LIMIT:
+            break
+    return tuple(references)
 
 
 class GovernmentJsonConnector:
@@ -251,6 +416,7 @@ class HtmlConnector:
         title = _extract_title(soup) or item.title
         selected_text: str | None = None
         selected_selector: str | None = None
+        selected_root: Tag | None = None
         for selector in self._content_selectors:
             node = soup.select_one(selector)
             if node is not None:
@@ -258,6 +424,7 @@ class HtmlConnector:
                 if len(text) >= 80:
                     selected_text = text
                     selected_selector = selector
+                    selected_root = node
                     break
         if selected_text is None and self._use_trafilatura_fallback:
             selected_text = trafilatura.extract(
@@ -310,6 +477,12 @@ class HtmlConnector:
                 "selector": selected_selector,
                 "character_count": len(selected_text.strip()),
             },
+            source_images=_extract_source_images(
+                soup=soup,
+                content_root=selected_root,
+                detail_url=response.final_url,
+                profile=profile,
+            ),
         )
 
 
@@ -382,7 +555,8 @@ CONNECTORS: dict[str, SourceConnector] = {
         _path_matches(r"/[0-9a-fA-F]{32}\.htm$"), (".article", ".content", "main")
     ),
     "cas_research_v1": HtmlConnector(
-        _path_matches(r"\.shtml$"), (".TRS_Editor", ".content", "article", "main")
+        _path_matches(r"\.shtml$"),
+        (".trs_editor_view", ".TRS_Editor", ".content", "article", "main"),
     ),
     "sensetime_news_v1": HtmlConnector(
         _path_matches(r"/cn/news/\d+/?$"), ("article", ".news-detail", ".content", "main")

@@ -45,9 +45,12 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     ArticlePackage,
     ArticleValidationIssue,
@@ -62,7 +65,9 @@ from app.domain.official_account_local import (
 from app.infrastructure.db.models import (
     ImageArtifactModel,
     MaterialPackageModel,
+    MaterialPackageSourceImageModel,
     OfficialAccountArticleAttemptModel,
+    OfficialAccountArticleContextImageModel,
     OfficialAccountArticleRunModel,
     OfficialAccountArticleVersionModel,
     OfficialAccountGeneratedVisualModel,
@@ -71,6 +76,8 @@ from app.infrastructure.db.models import (
     OfficialAccountLocalMediaModel,
     OfficialAccountManualReviewModel,
     OfficialAccountRenderVersionModel,
+    SourceArticleImageModel,
+    SourceSnapshotModel,
 )
 from app.infrastructure.official_account_local import (
     FIXTURE_BODY_ALT_TEXTS,
@@ -90,6 +97,9 @@ from app.infrastructure.official_account_local import (
 
 _SAFE_ERROR = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
 _TERMINAL_STATUSES = frozenset({"review_required", "ready", "failed", "result_unknown"})
+_ADAPTER_V7_ATTEMPT_STRIDE = 100
+_ADAPTER_V7_CONTEXT_OFFSET = 20
+_ADAPTER_V7_FAILURE_OFFSET = 90
 _ARTICLE_ARTIFACT_VERSION_BY_FAMILY: dict[str, int] = {
     "v1": 1,
     "v2": 1,
@@ -99,7 +109,27 @@ _ARTICLE_ARTIFACT_VERSION_BY_FAMILY: dict[str, int] = {
     "v6": 3,
     "v7": 4,
     "v8": 5,
+    "v9": 6,
+    "v10": 6,
 }
+
+
+def _adapter_v7_staging_attempt_ordinal(
+    *,
+    attempt_number: int,
+    role: Literal["body", "context", "failure"],
+    ordinal: int = 0,
+) -> int:
+    if attempt_number < 1:
+        raise ValueError("official-account attempt number must be positive")
+    base = attempt_number * _ADAPTER_V7_ATTEMPT_STRIDE
+    if role == "body" and 0 <= ordinal <= 4:
+        return base + ordinal
+    if role == "context" and 0 <= ordinal <= 1:
+        return base + _ADAPTER_V7_CONTEXT_OFFSET + ordinal
+    if role == "failure" and ordinal == 0:
+        return base + _ADAPTER_V7_FAILURE_OFFSET
+    raise ValueError("official-account adapter v7 attempt ordinal is invalid")
 
 
 def _article_artifact_version(article: ArticlePackage) -> int:
@@ -124,9 +154,14 @@ class PostgresOfficialAccountRepository:
                 OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
                 OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                 OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
             },
             semantic_media=identity.media_plan_version
-            in {OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION, OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION},
+            in {
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+            },
         )
         return await self._enqueue(
             material_package_id=None,
@@ -184,7 +219,7 @@ class PostgresOfficialAccountRepository:
                 request_fingerprint=request_fingerprint,
                 provider=identity.provider,
                 model=identity.model,
-                version_bundle=asdict(identity),
+                version_bundle=_identity_payload(identity),
                 status="queued",
                 current_stage="queued",
                 error_retryable=False,
@@ -543,7 +578,7 @@ class PostgresOfficialAccountRepository:
     async def get_media(
         self,
         run_id: UUID,
-        role: Literal["body", "cover"],
+        role: Literal["body", "cover", "context"],
         ordinal: int = 0,
     ) -> tuple[UUID, OfficialAccountMediaResult] | None:
         async with self._session_factory() as session:
@@ -560,7 +595,7 @@ class PostgresOfficialAccountRepository:
     async def list_media(
         self,
         run_id: UUID,
-        role: Literal["body", "cover"] | None = None,
+        role: Literal["body", "cover", "context"] | None = None,
     ) -> tuple[tuple[UUID, OfficialAccountMediaResult], ...]:
         conditions = [
             OfficialAccountLocalMediaModel.run_id == run_id,
@@ -681,6 +716,7 @@ class PostgresOfficialAccountRepository:
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                     ),
                     semantic_media=(
@@ -688,6 +724,7 @@ class PostgresOfficialAccountRepository:
                         in {
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                     ),
                 )
@@ -754,6 +791,7 @@ class PostgresOfficialAccountRepository:
             OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
         }:
             return (await self.load_source_media(claimed),)
         async with self._session_factory() as session:
@@ -765,6 +803,7 @@ class PostgresOfficialAccountRepository:
                 semantic_media = claimed.identity.media_plan_version in {
                     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                 }
                 checksums = (
                     FIXTURE_BODY_PUBLICATION_SHA256S
@@ -797,7 +836,10 @@ class PostgresOfficialAccountRepository:
                         candidate_id=(
                             checksum[:16]
                             if claimed.identity.media_plan_version
-                            == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+                            in {
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+                            }
                             else f"fixture-publication-{checksum}"
                             if semantic_media
                             else ""
@@ -811,13 +853,19 @@ class PostgresOfficialAccountRepository:
                         catalog_version=(
                             "official-account-fixture-catalog-v1"
                             if claimed.identity.media_plan_version
-                            == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+                            in {
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+                            }
                             else None
                         ),
                         source_master_sha256=(
                             FIXTURE_BODY_IMAGE_SHA256S[ordinal]
                             if claimed.identity.media_plan_version
-                            == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+                            in {
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+                            }
                             else None
                         ),
                     )
@@ -855,6 +903,7 @@ class PostgresOfficialAccountRepository:
                         in {
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                         else ""
                     ),
@@ -864,6 +913,7 @@ class PostgresOfficialAccountRepository:
                         in {
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                         else ()
                     ),
@@ -873,6 +923,7 @@ class PostgresOfficialAccountRepository:
                         in {
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                         else ""
                     ),
@@ -882,11 +933,92 @@ class PostgresOfficialAccountRepository:
                         in {
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
                             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
                         }
                         else ""
                     ),
                 ),
             )
+
+    async def load_news_context_candidates(
+        self,
+        claimed: ClaimedOfficialAccountRun,
+    ) -> tuple[OfficialAccountSourceMedia, ...]:
+        async with self._session_factory() as session:
+            run = await session.get(OfficialAccountArticleRunModel, claimed.run_id)
+            _assert_read_lease(run, claimed)
+            if run is None:
+                raise OfficialAccountLeaseLostError()
+            if run.generation_mode == "fixture":
+                return ()
+            if run.material_package_id is None:
+                raise RuntimeError("live official-account run has no material package")
+            rows = tuple(
+                (
+                    await session.execute(
+                        select(
+                            MaterialPackageSourceImageModel,
+                            SourceArticleImageModel,
+                            SourceSnapshotModel,
+                        )
+                        .join(
+                            SourceArticleImageModel,
+                            SourceArticleImageModel.id
+                            == MaterialPackageSourceImageModel.source_article_image_id,
+                        )
+                        .join(
+                            SourceSnapshotModel,
+                            SourceSnapshotModel.id == SourceArticleImageModel.image_snapshot_id,
+                        )
+                        .where(
+                            MaterialPackageSourceImageModel.package_id == run.material_package_id,
+                            SourceArticleImageModel.status == "ready",
+                        )
+                        .order_by(MaterialPackageSourceImageModel.ordinal)
+                    )
+                ).tuples()
+            )
+            candidates: list[OfficialAccountSourceMedia] = []
+            for link, image, snapshot in rows:
+                if (
+                    image.image_snapshot_id != snapshot.id
+                    or snapshot.kind != "image"
+                    or image.sha256 is None
+                    or image.media_type is None
+                    or image.byte_size is None
+                    or image.width is None
+                    or image.height is None
+                    or image.final_image_url is None
+                    or image.sha256 != snapshot.sha256
+                    or image.media_type != snapshot.media_type
+                    or image.byte_size != snapshot.byte_size
+                    or image.rights_status != "publish_permission_unverified"
+                ):
+                    raise ConflictError("source news image snapshot metadata changed")
+                candidates.append(
+                    OfficialAccountSourceMedia(
+                        source_image_artifact_id=None,
+                        fixture_id=None,
+                        source_article_image_id=image.id,
+                        media_type=image.media_type,
+                        byte_size=image.byte_size,
+                        sha256=image.sha256,
+                        ordinal=link.ordinal,
+                        semantic_label="新闻原图",
+                        selection_reason="evidence_snapshot_lineage_v1",
+                        candidate_id=str(image.id),
+                        alt_text=image.alt_text or image.caption or "新闻原图",
+                        caption_text=image.caption or "",
+                        credit=image.credit,
+                        source_page_url=image.source_page_url,
+                        image_url=image.final_image_url,
+                        rights_status=image.rights_status,
+                        context_only_not_evidence=True,
+                        width=image.width,
+                        height=image.height,
+                    )
+                )
+            return tuple(candidates)
 
     async def persist_article(
         self,
@@ -917,7 +1049,7 @@ class PostgresOfficialAccountRepository:
                 id=article_id,
                 run_id=run.id,
                 version=_article_artifact_version(article),
-                article_payload=article.model_dump(mode="json"),
+                article_payload=_article_payload(article),
                 content_fingerprint=article.content_fingerprint,
                 provider=result.provider,
                 model=result.model,
@@ -939,6 +1071,31 @@ class PostgresOfficialAccountRepository:
             )
             session.add(article_row)
             await session.flush()
+            if article.news_context_media is not None:
+                if run.material_package_id is None:
+                    if article.news_context_media.items:
+                        raise RuntimeError("fixture article cannot bind source-news context media")
+                else:
+                    session.add_all(
+                        OfficialAccountArticleContextImageModel(
+                            id=uuid4(),
+                            run_id=run.id,
+                            material_package_id=run.material_package_id,
+                            article_version_id=article_id,
+                            source_article_image_id=item.source_article_image_id,
+                            ordinal=item.ordinal,
+                            section_index=item.section_index,
+                            selection_version=article.news_context_media.selection_version,
+                            alt_text=item.alt_text,
+                            caption=item.caption,
+                            credit=item.credit,
+                            source_page_url=item.source_page_url,
+                            rights_status=item.rights_status,
+                            context_only_not_evidence=True,
+                            sha256=item.sha256,
+                        )
+                        for item in article.news_context_media.items
+                    )
             session.add(
                 OfficialAccountArticleAttemptModel(
                     id=uuid4(),
@@ -1109,8 +1266,9 @@ class PostgresOfficialAccountRepository:
                 or result.byte_size != source_media.byte_size
             )
             if (
-                result.role not in {"body", "cover"}
+                result.role not in {"body", "cover", "context"}
                 or (result.role == "cover" and result.ordinal != 0)
+                or (result.role == "context" and not 0 <= result.ordinal <= 1)
                 or body_mismatch
             ):
                 raise RuntimeError(
@@ -1132,6 +1290,29 @@ class PostgresOfficialAccountRepository:
                     or generated.sha256 != result.sha256
                 ):
                     raise RuntimeError("generated visual media lineage is invalid")
+            elif source_media.source_article_image_id is not None:
+                context_image = await session.get(
+                    SourceArticleImageModel, source_media.source_article_image_id
+                )
+                context_plan = await session.scalar(
+                    select(OfficialAccountArticleContextImageModel).where(
+                        OfficialAccountArticleContextImageModel.run_id == run.id,
+                        OfficialAccountArticleContextImageModel.source_article_image_id
+                        == source_media.source_article_image_id,
+                        OfficialAccountArticleContextImageModel.ordinal == result.ordinal,
+                    )
+                )
+                if (
+                    result.role != "context"
+                    or context_image is None
+                    or context_plan is None
+                    or context_image.status != "ready"
+                    or context_image.sha256 != result.sha256
+                    or context_image.media_type != result.media_type
+                    or context_image.byte_size != result.byte_size
+                    or context_plan.sha256 != result.sha256
+                ):
+                    raise RuntimeError("source-news context media lineage is invalid")
             elif source_media.source_image_artifact_id is None and source_media.fixture_id is None:
                 raise RuntimeError("official-account media source lineage is incomplete")
             existing = await session.scalar(
@@ -1150,6 +1331,7 @@ class PostgresOfficialAccountRepository:
                 source_image_artifact_id=source_media.source_image_artifact_id,
                 fixture_id=source_media.fixture_id,
                 generated_visual_id=source_media.generated_visual_id,
+                source_article_image_id=source_media.source_article_image_id,
                 role=result.role,
                 ordinal=result.ordinal,
                 request_fingerprint=request_fingerprint,
@@ -1167,6 +1349,8 @@ class PostgresOfficialAccountRepository:
                     if source_media.catalog_asset_ref is not None
                     else "generated_visual"
                     if source_media.generated_visual_id is not None
+                    else "source_news"
+                    if source_media.source_article_image_id is not None
                     else "image_artifact",
                     **(
                         {
@@ -1190,6 +1374,20 @@ class PostgresOfficialAccountRepository:
                         if source_media.selection_reason_code is not None
                         else {}
                     ),
+                    **(
+                        {
+                            "semantic_label": "新闻原图",
+                            "alt_text": source_media.alt_text,
+                            "assigned_section_index": source_media.assigned_section_index,
+                            "source_page_url": source_media.source_page_url,
+                            "caption": source_media.caption_text or None,
+                            "credit": source_media.credit,
+                            "rights_status": source_media.rights_status,
+                            "context_only_not_evidence": True,
+                        }
+                        if source_media.source_article_image_id is not None
+                        else {}
+                    ),
                 },
                 status="ready",
                 error_code=None,
@@ -1201,27 +1399,43 @@ class PostgresOfficialAccountRepository:
                     run.active_body_media_id = row.id
                 run.current_stage = "staging_body_media"
                 stage = "staging_body_media"
+            elif result.role == "context":
+                run.current_stage = "staging_body_media"
+                stage = "staging_body_media"
             else:
                 run.active_cover_media_id = row.id
                 run.current_stage = "creating_local_draft"
                 stage = "staging_cover"
             run.updated_at = datetime.now(UTC)
+            adapter_version = run.version_bundle.get("local_adapter_version")
+            stage_ordinal = (
+                _adapter_v7_staging_attempt_ordinal(
+                    attempt_number=claimed.attempt_number,
+                    role=cast(Literal["body", "context"], result.role),
+                    ordinal=result.ordinal,
+                )
+                if adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
+                and result.role in {"body", "context"}
+                else claimed.attempt_number * 10 + result.ordinal
+                if (
+                    result.role == "body"
+                    and adapter_version
+                    in {
+                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
+                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
+                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                    }
+                )
+                or result.role == "context"
+                else None
+            )
             _add_workflow_attempt(
                 session,
                 claimed=claimed,
                 stage=stage,
                 request_fingerprint=request_fingerprint,
-                ordinal=(
-                    claimed.attempt_number * 10 + result.ordinal
-                    if result.role == "body"
-                    and run.version_bundle.get("local_adapter_version")
-                    in {
-                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
-                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
-                        OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
-                    }
-                    else None
-                ),
+                ordinal=stage_ordinal,
                 safe_metadata={
                     "role": result.role,
                     "ordinal": result.ordinal,
@@ -1373,6 +1587,7 @@ class PostgresOfficialAccountRepository:
             run.error_code = safe_error
             run.updated_at = now
             _clear_lease(run)
+            adapter_version = run.version_bundle.get("local_adapter_version")
             session.add(
                 OfficialAccountArticleAttemptModel(
                     id=uuid4(),
@@ -1381,9 +1596,15 @@ class PostgresOfficialAccountRepository:
                     stage=stage,
                     capability="workflow",
                     ordinal=(
-                        claimed.attempt_number * 10 + 9
+                        _adapter_v7_staging_attempt_ordinal(
+                            attempt_number=claimed.attempt_number,
+                            role="failure",
+                        )
                         if stage == "staging_body_media"
-                        and run.version_bundle.get("local_adapter_version")
+                        and adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
+                        else claimed.attempt_number * 10 + 9
+                        if stage == "staging_body_media"
+                        and adapter_version
                         in {
                             OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
                             OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
@@ -1598,6 +1819,7 @@ def _resume_stage(run: OfficialAccountArticleRunModel) -> str:
             OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
             OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
             OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
         }
         and run.active_cover_media_id is None
     ):
@@ -1653,9 +1875,21 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
                 if bundle.get("generated_visual_prompt_version") is not None
                 else None
             ),
+            context_media_plan_version=(
+                str(bundle["context_media_plan_version"])
+                if bundle.get("context_media_plan_version") is not None
+                else None
+            ),
         )
     except (KeyError, TypeError, ValueError):
         raise RuntimeError("official-account run version bundle is invalid") from None
+
+
+def _identity_payload(identity: OfficialAccountVersionIdentity) -> dict[str, object]:
+    payload = asdict(identity)
+    if payload.get("context_media_plan_version") is None:
+        payload.pop("context_media_plan_version", None)
+    return payload
 
 
 def _bundle_integer(bundle: dict[str, object], key: str) -> int:
@@ -1695,6 +1929,16 @@ def _stored_article(row: OfficialAccountArticleVersionModel) -> StoredOfficialAc
         latency_ms=row.latency_ms,
         created_at=row.created_at,
     )
+
+
+def _article_payload(article: ArticlePackage) -> dict[str, object]:
+    payload = article.model_dump(mode="json")
+    versions = payload.get("versions")
+    if isinstance(versions, dict) and versions.get("context_media_plan_version") is None:
+        versions.pop("context_media_plan_version", None)
+    if payload.get("news_context_media") is None:
+        payload.pop("news_context_media", None)
+    return payload
 
 
 def _stored_render(row: OfficialAccountRenderVersionModel) -> StoredOfficialAccountRender:
@@ -1870,7 +2114,7 @@ def _media_result(row: OfficialAccountLocalMediaModel) -> OfficialAccountMediaRe
     selection_method = row.descriptor.get("selection_method")
     return OfficialAccountMediaResult(
         local_media_id=row.local_media_id,
-        role=cast(Literal["body", "cover"], row.role),
+        role=cast(Literal["body", "cover", "context"], row.role),
         ordinal=row.ordinal,
         media_url=f"/api/v1/official-account-local/media/{row.local_media_id}",
         media_type=row.media_type,
@@ -1909,6 +2153,28 @@ def _media_result(row: OfficialAccountLocalMediaModel) -> OfficialAccountMediaRe
         alt_text=(
             str(row.descriptor["alt_text"]) if row.descriptor.get("alt_text") is not None else None
         ),
+        provenance_kind=(
+            str(row.descriptor["source_kind"])
+            if row.descriptor.get("source_kind") is not None
+            else None
+        ),
+        source_page_url=(
+            str(row.descriptor["source_page_url"])
+            if row.descriptor.get("source_page_url") is not None
+            else None
+        ),
+        caption=(
+            str(row.descriptor["caption"]) if row.descriptor.get("caption") is not None else None
+        ),
+        credit=(
+            str(row.descriptor["credit"]) if row.descriptor.get("credit") is not None else None
+        ),
+        rights_status=(
+            str(row.descriptor["rights_status"])
+            if row.descriptor.get("rights_status") is not None
+            else None
+        ),
+        context_only_not_evidence=(row.descriptor.get("context_only_not_evidence") is True),
     )
 
 

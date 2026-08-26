@@ -10,7 +10,9 @@ from app.domain.entities import (
     ExtractedDocument,
     FetchedResponse,
     SnapshotDescriptor,
+    SourceImageReference,
     SourceProfile,
+    ValidatedSourceImage,
 )
 from app.domain.enums import JobStatus, ObservationOutcome, RunTrigger
 
@@ -36,6 +38,13 @@ class CursorState:
 class PersistedCandidate:
     candidate_id: UUID
     outcome: ObservationOutcome
+
+
+@dataclass(frozen=True, slots=True)
+class SourceArticleImageIntent:
+    id: UUID
+    status: str
+    request_fingerprint: str
 
 
 class AcquisitionRepository(Protocol):
@@ -100,6 +109,33 @@ class AcquisitionRepository(Protocol):
         fetched_at: datetime,
     ) -> PersistedCandidate: ...
 
+    async def reserve_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        candidate_id: UUID,
+        detail_snapshot_id: UUID,
+        reference: SourceImageReference,
+    ) -> SourceArticleImageIntent: ...
+
+    async def complete_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        intent_id: UUID,
+        image_snapshot_id: UUID,
+        image: ValidatedSourceImage,
+    ) -> None: ...
+
+    async def fail_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        intent_id: UUID,
+        error_code: str,
+        rejected: bool = False,
+    ) -> None: ...
+
     async def observe(
         self,
         *,
@@ -153,3 +189,9 @@ class Fetcher(Protocol):
 
 class SnapshotStore(Protocol):
     async def put_immutable(self, body: bytes, media_type: str) -> SnapshotDescriptor: ...
+
+
+class SourceImageFetcher(Protocol):
+    async def fetch(
+        self, reference: SourceImageReference, profile: SourceProfile
+    ) -> ValidatedSourceImage: ...

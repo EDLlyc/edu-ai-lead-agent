@@ -62,6 +62,8 @@ from app.schemas.copy_generation import (
 
 logger = structlog.get_logger()
 
+_EXACT_CLAIM_SPAN_GENERATOR_PROMPT_VERSIONS = frozenset({"moments-generator-v19-exact-claim-span"})
+
 
 def build_copy_version_bundle(
     settings: Settings, *, scoring_profile: str | None = None
@@ -668,6 +670,23 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
     repair = _bounded_repair_issue_payload(request.repair_issues)
     previous = request.previous_draft.model_dump(mode="json") if request.previous_draft else None
     format_contract = _copy_format_contract(request.version_bundle.rule_version)
+    exact_claim_span_contract = (
+        "copywriting与claims必须保持逐字符可审计的一致性：每个claims[].text都必须作为一个连续子串原样出现在"
+        "copywriting中，包括完全相同的逗号、句号和其他标点；不得同义改写、拆分或用前后包装文字改变该连续文本。"
+        "先在正文中确定主张文本，再将正文中完全相同的连续文本复制到claims[].text；输出JSON前逐条检查"
+        "claim.text in copywriting。"
+        "修复时，如果<REQUIRED_EXACT_CLAIMS>非空，必须让其中每个text按原样连续出现在copywriting中，并保留对应"
+        "claim_id；不得通过删除主张或改变其kind、evidence_ids、brand_chunk_ids来规避校验。"
+        if _uses_exact_claim_span_contract(request.version_bundle.generator_prompt_version)
+        else ""
+    )
+    required_exact_claims_section = (
+        "<REQUIRED_EXACT_CLAIMS>"
+        f"{_prompt_json(_bounded_required_exact_claim_payload(request))}"
+        "</REQUIRED_EXACT_CLAIMS>\n"
+        if _uses_exact_claim_span_contract(request.version_bundle.generator_prompt_version)
+        else ""
+    )
     evidence_language_contract = (
         "EVIDENCE中的exact_quote始终是可追溯的原文引文；governed_statement是可选的中文治理事实，"
         "只可用于支持中文表达，不得写成原文引语，也不得取代evidence_id、exact_quote或原文URL。"
@@ -681,6 +700,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         "external_fact只能引用<EVIDENCE>中的evidence_id；brand_statement只能引用<BRAND>中的"
         "brand_chunk_id；opinion不得包含可核验事实。external_fact应贴近证据原句，不得使用首个、"
         "唯一、行业最高级等强宣传表述。"
+        f"{exact_claim_span_contract}"
         "请使用没有技术背景的家长也能看懂的中文，少用术语；首次出现人工智能、机器人、科创等词时，"
         f"用生活化语言说明它在解决什么问题。{format_contract}"
         "正文逻辑必须回答两个问题：孩子为什么值得学习科学、科创、"
@@ -695,6 +715,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         f"<EVIDENCE>{_prompt_json(evidence)}</EVIDENCE>\n"
         f"<BRAND>{_prompt_json(brand)}</BRAND>\n"
         f"<REPAIR>{_prompt_json(repair)}</REPAIR>\n"
+        f"{required_exact_claims_section}"
         f"<PREVIOUS>{_prompt_json(previous)}</PREVIOUS>"
     )
 
@@ -821,6 +842,33 @@ def _prompt_json(value: object) -> str:
 
 _REPAIR_ISSUE_LIMIT = 12
 _REPAIR_ISSUE_MESSAGE_LIMIT = 240
+
+
+def _uses_exact_claim_span_contract(generator_prompt_version: str) -> bool:
+    return generator_prompt_version in _EXACT_CLAIM_SPAN_GENERATOR_PROMPT_VERSIONS
+
+
+def _bounded_required_exact_claim_payload(
+    request: DraftGenerationRequest,
+) -> list[dict[str, str]]:
+    """Resolve only failed exact-span claims from the immutable previous draft."""
+
+    if request.previous_draft is None:
+        return []
+    claim_by_id = {claim.id: claim for claim in request.previous_draft.claims}
+    required: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for issue in request.repair_issues:
+        if issue.code != "claim_not_in_copy" or issue.claim_id is None or issue.claim_id in seen:
+            continue
+        claim = claim_by_id.get(issue.claim_id)
+        if claim is None:
+            continue
+        required.append({"claim_id": claim.id, "text": claim.text})
+        seen.add(claim.id)
+        if len(required) == _REPAIR_ISSUE_LIMIT:
+            break
+    return required
 
 
 def _bounded_repair_issue_payload(issues: tuple[CopyIssue, ...]) -> list[dict[str, object]]:

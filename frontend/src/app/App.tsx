@@ -4,6 +4,7 @@ import { BrandKnowledgePanel } from "@/features/brand/BrandKnowledgePanel";
 import { ContentEditionBoard } from "@/features/content-edition/ContentEditionBoard";
 import { isAgentWorkbenchEnabled } from "@/features/agent-workbench/featureFlag";
 import { MaterialPackagePanel } from "@/features/material/MaterialPackagePanel";
+import { isOfficialAccountLocalEnabled } from "@/features/official-account-local/featureFlag";
 import { PreviewPanel } from "@/features/preview/PreviewPanel";
 
 import styles from "./App.module.css";
@@ -16,9 +17,19 @@ const LocalAgentWorkbenchPanel = import.meta.env.DEV
     })
   : null;
 
+const LocalOfficialAccountPanel = import.meta.env.DEV
+  ? lazy(async () => {
+      const module =
+        await import("@/features/official-account-local/OfficialAccountLocalPanel");
+      return { default: module.OfficialAccountLocalPanel };
+    })
+  : null;
+
 export function App() {
   const showAgentWorkbench =
     LocalAgentWorkbenchPanel !== null && isAgentWorkbenchEnabled();
+  const showOfficialAccountLocal =
+    LocalOfficialAccountPanel !== null && isOfficialAccountLocalEnabled();
 
   return (
     <>
@@ -82,6 +93,21 @@ export function App() {
             }
           >
             <LocalAgentWorkbenchPanel />
+          </Suspense>
+        ) : null}
+
+        {showOfficialAccountLocal && LocalOfficialAccountPanel !== null ? (
+          <Suspense
+            fallback={
+              <section
+                className={styles.statusSection}
+                aria-label="公众号本地草稿台"
+              >
+                <p role="status">正在载入公众号本地草稿台…</p>
+              </section>
+            }
+          >
+            <LocalOfficialAccountPanel />
           </Suspense>
         ) : null}
 

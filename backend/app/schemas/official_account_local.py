@@ -8,8 +8,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.official_account_local import (
+    ArticleMediaSelectionSnapshot,
+    ArticleMediaSlot,
     ArticlePackage,
+    ArticleQualitySummary,
+    ArticleSection,
+    ArticleSourceProjection,
     ArticleValidationIssue,
+    ArticleVersionBundle,
+    GeneratedArticleClaim,
     OfficialAccountAuditVerdict,
 )
 
@@ -131,7 +138,7 @@ class OfficialAccountValidationResponse(_StrictModel):
 
 class OfficialAccountMediaResponse(_StrictModel):
     local_media_id: str
-    role: Literal["body", "cover"]
+    role: Literal["body", "cover", "context"]
     ordinal: int = Field(ge=0)
     media_url: str
     media_type: str
@@ -151,7 +158,22 @@ class OfficialAccountMediaResponse(_StrictModel):
     ) = None
     selection_method: Literal["deterministic_tag", "multimodal_embedding"] | None = None
     similarity_band: Literal["very_high", "high", "medium", "low"] | None = None
-    alt_text: str | None = Field(default=None, max_length=160)
+    alt_text: str | None = Field(default=None, max_length=200)
+    provenance_kind: (
+        Literal[
+            "source_news",
+            "approved_catalog",
+            "generated_visual",
+            "image_artifact",
+            "fixture",
+        ]
+        | None
+    ) = None
+    source_page_url: str | None = Field(default=None, max_length=2_048)
+    caption: str | None = Field(default=None, max_length=300)
+    credit: str | None = Field(default=None, max_length=200)
+    rights_status: Literal["publish_permission_unverified"] | None = None
+    context_only_not_evidence: bool = False
 
 
 class OfficialAccountEmbeddingIdentityResponse(_StrictModel):
@@ -250,14 +272,72 @@ class OfficialAccountManualReviewResponse(_StrictModel):
     editorially_approved: bool = False
 
 
+class OfficialAccountNewsContextItemResponse(_StrictModel):
+    ordinal: int = Field(ge=0, le=1)
+    section_index: int = Field(ge=0, le=6)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    width: int = Field(ge=320, le=8192)
+    height: int = Field(ge=180, le=8192)
+    alt_text: str = Field(min_length=1, max_length=200)
+    caption: str | None = Field(default=None, max_length=300)
+    credit: str | None = Field(default=None, max_length=200)
+    source_page_url: str = Field(min_length=1, max_length=2_048)
+    rights_status: Literal["publish_permission_unverified"]
+    context_only_not_evidence: Literal[True]
+
+
+class OfficialAccountNewsContextResponse(_StrictModel):
+    selection_version: Literal["official-account-news-context-selection-v1"]
+    status: Literal["not_present", "partial", "ready"]
+    items: tuple[OfficialAccountNewsContextItemResponse, ...] = Field(max_length=2)
+
+
+class OfficialAccountArticleResponse(_StrictModel):
+    """Safe article projection; internal source-image row IDs never cross the API."""
+
+    title: str
+    digest: str
+    author: str
+    lead: str
+    sections: tuple[ArticleSection, ...]
+    conclusion: str
+    claims: tuple[GeneratedArticleClaim, ...]
+    sources: tuple[ArticleSourceProjection, ...]
+    media_slots: tuple[ArticleMediaSlot, ...]
+    topic_title: str
+    quality: ArticleQualitySummary
+    versions: ArticleVersionBundle
+    media_selection: ArticleMediaSelectionSnapshot | None = None
+    news_context_media: OfficialAccountNewsContextResponse | None = None
+    content_fingerprint: str
+
+    @classmethod
+    def from_domain(cls, article: ArticlePackage) -> OfficialAccountArticleResponse:
+        payload = article.model_dump(mode="python")
+        context = article.news_context_media
+        if context is not None:
+            payload["news_context_media"] = {
+                "selection_version": context.selection_version,
+                "status": context.status,
+                "items": [
+                    item.model_dump(mode="python", exclude={"source_article_image_id"})
+                    for item in context.items
+                ],
+            }
+        return cls.model_validate(payload)
+
+
 class OfficialAccountRunDetailResponse(OfficialAccountRunSummaryResponse):
-    article: ArticlePackage | None
+    article: OfficialAccountArticleResponse | None
     validation: OfficialAccountValidationResponse | None
     audit: OfficialAccountAuditVerdict | None
     usage: OfficialAccountUsageResponse | None
     media: list[OfficialAccountMediaResponse]
     body_image: OfficialAccountMediaResponse | None
     body_images: list[OfficialAccountMediaResponse]
+    context_images: list[OfficialAccountMediaResponse] = Field(default_factory=list, max_length=2)
+    context_media_status: Literal["not_present", "partial", "ready"] = "not_present"
     cover_image: OfficialAccountMediaResponse | None
     media_selection: OfficialAccountMediaSelectionResponse
     generated_visuals: list[OfficialAccountGeneratedVisualResponse] = Field(default_factory=list)

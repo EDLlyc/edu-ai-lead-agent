@@ -127,7 +127,9 @@ from app.infrastructure.db.models import (
     ImageSimilarityAttemptModel,
     ImageVisualPlanReservationModel,
     MaterialPackageModel,
+    MaterialPackageSourceImageModel,
     MaterialReviewModel,
+    SourceArticleImageModel,
     TopicScoreModel,
 )
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
@@ -155,6 +157,72 @@ def _provider_rejection_log_context(error: ImageProviderRejectedError) -> dict[s
 class MaterialPackageResult:
     package: MaterialPackageModel
     image: ImageArtifactModel
+
+
+async def _link_selected_source_images(
+    session: AsyncSession,
+    *,
+    package_id: UUID,
+    source_snapshot: list[dict[str, Any]],
+) -> tuple[MaterialPackageSourceImageModel, ...]:
+    """Freeze at most two ready images reachable through exact evidence snapshots."""
+
+    ordered_snapshot_ids: list[UUID] = []
+    for item in source_snapshot:
+        raw_snapshot_id = item.get("snapshot_id")
+        if not isinstance(raw_snapshot_id, str):
+            continue
+        try:
+            snapshot_id = UUID(raw_snapshot_id)
+        except ValueError:
+            continue
+        if snapshot_id not in ordered_snapshot_ids:
+            ordered_snapshot_ids.append(snapshot_id)
+    if not ordered_snapshot_ids:
+        return ()
+    rows = tuple(
+        (
+            await session.execute(
+                select(SourceArticleImageModel).where(
+                    SourceArticleImageModel.detail_snapshot_id.in_(ordered_snapshot_ids),
+                    SourceArticleImageModel.status == "ready",
+                )
+            )
+        ).scalars()
+    )
+    snapshot_order = {
+        snapshot_id: ordinal for ordinal, snapshot_id in enumerate(ordered_snapshot_ids)
+    }
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            snapshot_order[row.detail_snapshot_id],
+            0 if row.role == "lead" else 1,
+            row.ordinal,
+            row.sha256 or "",
+            str(row.id),
+        ),
+    )
+    selected: list[SourceArticleImageModel] = []
+    checksums: set[str] = set()
+    for row in ordered:
+        if row.sha256 is None or row.sha256 in checksums:
+            continue
+        checksums.add(row.sha256)
+        selected.append(row)
+        if len(selected) == 2:
+            break
+    links = tuple(
+        MaterialPackageSourceImageModel(
+            package_id=package_id,
+            ordinal=ordinal,
+            source_article_image_id=row.id,
+            selection_reason="evidence_snapshot_lineage_v1",
+        )
+        for ordinal, row in enumerate(selected)
+    )
+    session.add_all(links)
+    return links
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,6 +627,12 @@ async def enqueue_material_package(
                 for ordinal, reference in enumerate(prepared.reserved_references)
             )
             session.add_all((image, package, *reference_rows))
+            await session.flush()
+            await _link_selected_source_images(
+                session,
+                package_id=package_id,
+                source_snapshot=accepted.source_snapshot,
+            )
             await session.commit()
         except IntegrityError as error:
             await session.rollback()
@@ -1088,6 +1162,11 @@ async def _enqueue_controlled_material_package(
             # before their composite-FK reference children while keeping one short transaction.
             await session.flush()
             session.add_all(reference_rows)
+            await _link_selected_source_images(
+                session,
+                package_id=package_id,
+                source_snapshot=accepted.source_snapshot,
+            )
             await session.commit()
         except IntegrityError as error:
             await session.rollback()

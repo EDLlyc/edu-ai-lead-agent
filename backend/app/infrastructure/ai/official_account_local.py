@@ -30,6 +30,8 @@ from app.core.errors import (
 )
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     GeneratedArticleDraft,
@@ -196,7 +198,11 @@ class ZhipuOfficialAccountArticleGenerator:
             schema_name="GeneratedArticleDraft",
             include_schema_in_initial_system=(
                 request.identity.generator_prompt_version
-                == OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION
+                in {
+                    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+                    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+                    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                }
                 and request.identity.rule_version == OFFICIAL_ACCOUNT_RULE_VERSION
             ),
         )

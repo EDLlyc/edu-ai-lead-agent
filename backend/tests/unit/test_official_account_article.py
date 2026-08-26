@@ -24,11 +24,15 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V2_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V3_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V4_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V5_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V6_VERSION,
@@ -287,6 +291,59 @@ def test_generation_prompt_v4_requires_natural_reader_copy() -> None:
     )
 
 
+def test_generation_prompt_v5_remains_byte_compatible() -> None:
+    v5 = replace(
+        identity(),
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    )
+    prompt = build_generation_prompt(_generation_request(v5))
+
+    assert "输出JSON前必须按系统确定性口径逐项自检正文字符数" not in prompt
+    encoded = prompt.encode("utf-8")
+    assert len(encoded) == 3_027
+    assert sha256(encoded).hexdigest() == (
+        "2a07ca0b9d04369d37954ad0f8b40d9f8969f1f693750367b970b695dd6068dd"
+    )
+
+
+def test_generation_prompt_v6_requires_length_buffer_and_self_check() -> None:
+    v6 = replace(
+        identity(),
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+    )
+    prompt = build_generation_prompt(_generation_request(v6))
+
+    assert "只计算lead、每个section.heading" in prompt
+    assert "paragraph.text、quote.text、bullet_list.items中的每一项和conclusion" in prompt
+    assert "移除所有空白字符后求和" in prompt
+    assert "不计算title、digest、author、claims、claim_refs、来源信息或图片字段" in prompt
+    assert "计算结果必须落在目标1800--2600字符内" in prompt
+    assert "主动留出长度缓冲" in prompt
+    assert "不得贴近1200字符硬下限" in prompt
+    assert "若自检不足目标下限" in prompt
+    assert "先扩展有依据的解释、行动步骤或适用边界" in prompt
+    assert "再重新计数" in prompt
+    assert "确认达标后才输出JSON" in prompt
+    encoded = prompt.encode("utf-8")
+    assert len(encoded) == 3_596
+    assert sha256(encoded).hexdigest() == (
+        "a04356273f93ed88e7743fb31f318d10c954e0633805b2ba0bbd5f7de0afdf76"
+    )
+
+
+def test_generation_prompt_v7_preserves_length_buffer_and_requires_five_to_seven_sections() -> None:
+    v7 = replace(
+        identity(),
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+    )
+    prompt = build_generation_prompt(_generation_request(v7))
+
+    assert "只计算lead、每个section.heading" in prompt
+    assert "主动留出长度缓冲" in prompt
+    assert "文章必须包含5--7个section" in prompt
+    assert "五个互不重复的块级配图位置" in prompt
+
+
 def test_generation_prompt_v1_remains_byte_compatible() -> None:
     legacy = replace(
         identity(),
@@ -446,6 +503,20 @@ def test_current_media_plan_is_deterministic_and_safely_degrades_live_one_image(
         candidate_count=3,
         media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     ) == (0, 1, 3)
+
+
+@pytest.mark.parametrize("section_count", (5, 6, 7))
+def test_media_plan_v4_yields_five_distinct_balanced_blocks(section_count: int) -> None:
+    placements = plan_body_media_slots(
+        section_count=section_count,
+        candidate_count=41,
+        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    )
+
+    assert len(placements) == 5
+    assert len(set(placements)) == 5
+    assert placements[0] == 0
+    assert placements[-1] == section_count - 1
 
 
 @pytest.mark.asyncio

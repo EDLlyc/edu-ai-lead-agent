@@ -9,14 +9,21 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.ports.acquisition import ClaimedJob, CursorState, PersistedCandidate
+from app.application.ports.acquisition import (
+    ClaimedJob,
+    CursorState,
+    PersistedCandidate,
+    SourceArticleImageIntent,
+)
 from app.core.errors import ConflictError, LeaseLostError, NotFoundError
 from app.domain.content_slots import ContentSlot
 from app.domain.entities import (
     ExtractedDocument,
     FetchedResponse,
     SnapshotDescriptor,
+    SourceImageReference,
     SourceProfile,
+    ValidatedSourceImage,
 )
 from app.domain.enums import JobStatus, ObservationOutcome, RunStatus, RunTrigger, SourceTier
 from app.domain.value_objects import sha256_bytes, stable_key
@@ -25,6 +32,7 @@ from app.infrastructure.db.models import (
     AcquisitionJobModel,
     AcquisitionRunModel,
     EvidenceCandidateModel,
+    SourceArticleImageModel,
     SourceCursorModel,
     SourceFetchLeaseModel,
     SourceModel,
@@ -613,6 +621,157 @@ async def persist_candidate(
     return candidate, ObservationOutcome.UNCHANGED
 
 
+async def reserve_source_article_image(
+    session: AsyncSession,
+    *,
+    claimed: ClaimedJob,
+    candidate_id: UUID,
+    detail_snapshot_id: UUID,
+    reference: SourceImageReference,
+) -> SourceArticleImageModel:
+    await assert_active_lease(session, claimed=claimed, require_source_lease=True)
+    candidate = await session.get(EvidenceCandidateModel, candidate_id)
+    detail = await session.get(SourceSnapshotModel, detail_snapshot_id)
+    if (
+        candidate is None
+        or candidate.source_version_id != claimed.profile.source_version_id
+        or candidate.primary_snapshot_id != detail_snapshot_id
+        or detail is None
+        or detail.kind != "detail"
+        or detail.source_version_id != claimed.profile.source_version_id
+        or reference.source_page_url != detail.final_url
+    ):
+        raise ConflictError("source image detail lineage is invalid")
+    discovery_fingerprint = stable_key(
+        "source-article-image-v1",
+        detail_snapshot_id,
+        reference.ordinal,
+        reference.image_url,
+        reference.extraction_version,
+    )
+    row_id = uuid4()
+    inserted_id = await session.scalar(
+        insert(SourceArticleImageModel)
+        .values(
+            id=row_id,
+            candidate_id=candidate_id,
+            detail_snapshot_id=detail_snapshot_id,
+            source_version_id=claimed.profile.source_version_id,
+            image_snapshot_id=None,
+            discovery_fingerprint=discovery_fingerprint,
+            source_page_url=reference.source_page_url,
+            image_url=reference.image_url,
+            final_image_url=None,
+            ordinal=reference.ordinal,
+            role=reference.role,
+            alt_text=reference.alt_text,
+            caption=reference.caption,
+            credit=reference.credit,
+            extraction_version=reference.extraction_version,
+            status="discovered",
+            failure_code=None,
+            rights_status="publish_permission_unverified",
+            media_type=None,
+            byte_size=None,
+            sha256=None,
+            width=None,
+            height=None,
+            retrieved_at=None,
+            updated_at=_utcnow(),
+        )
+        .on_conflict_do_nothing(constraint="uq_source_article_images_discovery_fingerprint")
+        .returning(SourceArticleImageModel.id)
+    )
+    await session.commit()
+    row = await session.get(SourceArticleImageModel, inserted_id or row_id)
+    if row is None:
+        row = await session.scalar(
+            select(SourceArticleImageModel).where(
+                SourceArticleImageModel.discovery_fingerprint == discovery_fingerprint
+            )
+        )
+    if row is None:
+        raise ConflictError("source image discovery could not be persisted idempotently")
+    if (
+        row.candidate_id != candidate_id
+        or row.detail_snapshot_id != detail_snapshot_id
+        or row.image_url != reference.image_url
+        or row.ordinal != reference.ordinal
+    ):
+        raise ConflictError("source image discovery identity changed")
+    return row
+
+
+async def complete_source_article_image(
+    session: AsyncSession,
+    *,
+    claimed: ClaimedJob,
+    intent_id: UUID,
+    image_snapshot_id: UUID,
+    image: ValidatedSourceImage,
+) -> None:
+    await assert_active_lease(session, claimed=claimed, require_source_lease=True)
+    row = await session.scalar(
+        select(SourceArticleImageModel)
+        .where(SourceArticleImageModel.id == intent_id)
+        .with_for_update()
+    )
+    snapshot = await session.get(SourceSnapshotModel, image_snapshot_id)
+    if row is None or snapshot is None:
+        raise ConflictError("source image intent or snapshot is unavailable")
+    if row.status == "ready":
+        if row.image_snapshot_id != image_snapshot_id or row.sha256 != image.response.sha256:
+            raise ConflictError("ready source image result changed")
+        await session.rollback()
+        return
+    if (
+        row.status != "discovered"
+        or row.source_version_id != claimed.profile.source_version_id
+        or snapshot.kind != "image"
+        or snapshot.source_version_id != row.source_version_id
+        or snapshot.sha256 != image.response.sha256
+        or snapshot.byte_size != len(image.response.body)
+        or image.response.requested_url != row.image_url
+    ):
+        raise ConflictError("source image completion lineage is invalid")
+    row.image_snapshot_id = image_snapshot_id
+    row.final_image_url = image.response.final_url
+    row.status = "ready"
+    row.media_type = image.response.media_type
+    row.byte_size = len(image.response.body)
+    row.sha256 = image.response.sha256
+    row.width = image.width
+    row.height = image.height
+    row.retrieved_at = image.response.fetched_at
+    row.updated_at = _utcnow()
+    await session.commit()
+
+
+async def fail_source_article_image(
+    session: AsyncSession,
+    *,
+    claimed: ClaimedJob,
+    intent_id: UUID,
+    error_code: str,
+    rejected: bool,
+) -> None:
+    await assert_active_lease(session, claimed=claimed, require_source_lease=True)
+    row = await session.scalar(
+        select(SourceArticleImageModel)
+        .where(SourceArticleImageModel.id == intent_id)
+        .with_for_update()
+    )
+    if row is None:
+        raise ConflictError("source image intent is unavailable")
+    if row.status != "discovered":
+        await session.rollback()
+        return
+    row.status = "rejected" if rejected else "failed"
+    row.failure_code = error_code[:80]
+    row.updated_at = _utcnow()
+    await session.commit()
+
+
 async def add_observation(
     session: AsyncSession,
     *,
@@ -1075,6 +1234,62 @@ class PostgresAcquisitionRepository:
                 fetched_at=fetched_at,
             )
             return PersistedCandidate(candidate.id, outcome)
+
+    async def reserve_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        candidate_id: UUID,
+        detail_snapshot_id: UUID,
+        reference: SourceImageReference,
+    ) -> SourceArticleImageIntent:
+        async with self._factory() as session:
+            row = await reserve_source_article_image(
+                session,
+                claimed=claimed,
+                candidate_id=candidate_id,
+                detail_snapshot_id=detail_snapshot_id,
+                reference=reference,
+            )
+            return SourceArticleImageIntent(
+                id=row.id,
+                status=row.status,
+                request_fingerprint=row.discovery_fingerprint,
+            )
+
+    async def complete_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        intent_id: UUID,
+        image_snapshot_id: UUID,
+        image: ValidatedSourceImage,
+    ) -> None:
+        async with self._factory() as session:
+            await complete_source_article_image(
+                session,
+                claimed=claimed,
+                intent_id=intent_id,
+                image_snapshot_id=image_snapshot_id,
+                image=image,
+            )
+
+    async def fail_source_image(
+        self,
+        *,
+        claimed: ClaimedJob,
+        intent_id: UUID,
+        error_code: str,
+        rejected: bool = False,
+    ) -> None:
+        async with self._factory() as session:
+            await fail_source_article_image(
+                session,
+                claimed=claimed,
+                intent_id=intent_id,
+                error_code=error_code,
+                rejected=rejected,
+            )
 
     async def observe(
         self,

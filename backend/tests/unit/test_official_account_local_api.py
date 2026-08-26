@@ -326,6 +326,10 @@ def test_openapi_exposes_only_local_simulation_operations() -> None:
     assert "body_images" in serialized
     assert "media_selection" in serialized
     assert "body_image" in serialized
+    assert "context_images" in serialized
+    assert "rights_status" in serialized
+    assert "source_page_url" in serialized
+    assert "source_article_image_id" not in str(document).lower()
     assert "approved" in serialized
     assert "rejected" in serialized
     assert "reviewer_label" in serialized
@@ -336,6 +340,25 @@ def test_openapi_exposes_only_local_simulation_operations() -> None:
     assert "vector" not in generated_visual
     assert "object_key" not in generated_visual
     assert not any("generated-visual" in path for path in paths)
+
+
+def test_context_media_api_accepts_the_full_bounded_alt_text() -> None:
+    response = OfficialAccountMediaResponse(
+        local_media_id="local-media-context-safe",
+        role="context",
+        ordinal=0,
+        media_url="/api/v1/official-account-local/media/local-media-context-safe",
+        media_type="image/jpeg",
+        byte_size=1,
+        sha256="a" * 64,
+        alt_text="图" * 200,
+        provenance_kind="source_news",
+        source_page_url="https://source.example/news/article",
+        rights_status="publish_permission_unverified",
+        context_only_not_evidence=True,
+    )
+
+    assert len(response.alt_text or "") == 200
 
 
 def test_multimodal_media_reason_is_a_valid_safe_api_projection() -> None:

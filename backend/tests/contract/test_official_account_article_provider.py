@@ -24,10 +24,13 @@ from app.core.errors import (
     provider_validation_issues_metadata,
 )
 from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_V1_VERSION,
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     GeneratedArticleDraft,
@@ -86,10 +89,45 @@ def _v8_generation_request() -> OfficialAccountGenerationRequest:
     request = _generation_request()
     identity = replace(
         request.identity,
-        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
         article_schema_version=OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
         auditor_prompt_version=OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
         rule_version=OFFICIAL_ACCOUNT_RULE_VERSION,
+    )
+    return replace(
+        request,
+        identity=identity,
+        request_fingerprint=run_request_fingerprint(
+            source_fingerprint=request.source.source_fingerprint,
+            generation_mode="live",
+            identity=identity,
+        ),
+    )
+
+
+def _v9_generation_request() -> OfficialAccountGenerationRequest:
+    request = _v8_generation_request()
+    identity = replace(
+        request.identity,
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+        article_schema_version=OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+    )
+    return replace(
+        request,
+        identity=identity,
+        request_fingerprint=run_request_fingerprint(
+            source_fingerprint=request.source.source_fingerprint,
+            generation_mode="live",
+            identity=identity,
+        ),
+    )
+
+
+def _v10_generation_request() -> OfficialAccountGenerationRequest:
+    request = _v9_generation_request()
+    identity = replace(
+        request.identity,
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     )
     return replace(
         request,
@@ -221,6 +259,52 @@ async def test_live_v8_generator_puts_canonical_schema_in_initial_system_message
         generator, _auditor = _models(client)
         result = await generator.generate(generation_request)
 
+    assert result.validation_corrections == 0
+
+
+@pytest.mark.asyncio
+async def test_live_v9_generator_keeps_schema_first_with_v6_length_buffer_prompt() -> None:
+    generation_request = _v9_generation_request()
+    valid = await _valid_draft_json(generation_request)
+    expected_schema = canonical_json(GeneratedArticleDraft.model_json_schema(mode="validation"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        system = str(payload["messages"][0]["content"])
+        user = str(payload["messages"][1]["content"])
+        assert f"<OUTPUT_SCHEMA>{expected_schema}</OUTPUT_SCHEMA>" in system
+        assert user == build_generation_prompt(generation_request)
+        assert "输出JSON前必须按系统确定性口径逐项自检正文字符数" in user
+        assert "主动留出长度缓冲" in user
+        return _completion(valid, request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        generator, _auditor = _models(client)
+        result = await generator.generate(generation_request)
+
+    assert result.validation_corrections == 0
+
+
+@pytest.mark.asyncio
+async def test_live_v10_generator_keeps_schema_first_and_requires_five_to_seven_sections() -> None:
+    generation_request = _v10_generation_request()
+    valid = await _valid_draft_json(generation_request)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        system = str(payload["messages"][0]["content"])
+        user = str(payload["messages"][1]["content"])
+        assert "<OUTPUT_SCHEMA>" in system
+        assert user == build_generation_prompt(generation_request)
+        assert "主动留出长度缓冲" in user
+        assert "文章必须包含5--7个section" in user
+        return _completion(valid, request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        generator, _auditor = _models(client)
+        result = await generator.generate(generation_request)
+
+    assert 5 <= len(result.draft.sections) <= 7
     assert result.validation_corrections == 0
 
 

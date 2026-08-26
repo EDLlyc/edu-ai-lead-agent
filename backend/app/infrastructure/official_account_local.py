@@ -25,11 +25,15 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V2_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V3_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V1_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
     OFFICIAL_ACCOUNT_RULE_V1_VERSION,
     OFFICIAL_ACCOUNT_RULE_V2_VERSION,
@@ -352,11 +356,20 @@ class DeterministicFakeOfficialAccountArticleGenerator:
                 OFFICIAL_ACCOUNT_RULE_VERSION,
             ),
             (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+                OFFICIAL_ACCOUNT_RULE_VERSION,
+            ),
+            (
                 OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
                 OFFICIAL_ACCOUNT_RULE_VERSION,
             ),
         }:
             draft = _reader_fixture_draft(draft)
+        elif generation_versions == (
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+            OFFICIAL_ACCOUNT_RULE_VERSION,
+        ):
+            draft = _five_section_fixture_draft(_reader_fixture_draft(draft))
         elif generation_versions not in {
             (OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V1_VERSION, OFFICIAL_ACCOUNT_RULE_V1_VERSION),
             (OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V2_VERSION, OFFICIAL_ACCOUNT_RULE_V2_VERSION),
@@ -423,6 +436,21 @@ def _reader_fixture_draft(draft: GeneratedArticleDraft) -> GeneratedArticleDraft
     return draft.model_copy(update={"sections": tuple(sections)})
 
 
+def _five_section_fixture_draft(draft: GeneratedArticleDraft) -> GeneratedArticleDraft:
+    if len(draft.sections) != 4 or len(draft.sections[-1].blocks) != 4:
+        raise ValueError("official-account v7 fixture section shape changed")
+    final_section = draft.sections[-1]
+    sections = (
+        *draft.sections[:-1],
+        final_section.model_copy(update={"blocks": final_section.blocks[:2]}),
+        GeneratedArticleSection(
+            heading="把严谨和鼓励放在一起，让下一次探索自然发生",
+            blocks=final_section.blocks[2:],
+        ),
+    )
+    return draft.model_copy(update={"sections": sections})
+
+
 class DeterministicFakeOfficialAccountArticleAuditor:
     def __init__(self, *, model: str = "official-account-fixture-v1") -> None:
         self._model = model
@@ -461,12 +489,37 @@ class LocalOfficialAccountMediaAdapter:
             OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
             OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
             OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
         }:
             raise ValueError("official-account local media adapter version is unsupported")
         if request.role == "cover" and request.ordinal != 0:
             raise ValueError("official-account cover media supports ordinal zero only")
         if request.role == "body" and not 0 <= request.ordinal <= 4:
             raise ValueError("official-account body media ordinal is outside zero to four")
+        if request.role == "context" and not 0 <= request.ordinal <= 1:
+            raise ValueError("official-account context media ordinal is outside zero to one")
+        if request.role == "context":
+            if (
+                request.local_adapter_version
+                not in {
+                    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
+                }
+                or request.source_article_image_id is None
+                or request.source_image_artifact_id is not None
+                or request.fixture_id is not None
+                or request.catalog_asset_id is not None
+                or request.catalog_asset_ref is not None
+                or request.catalog_version is not None
+                or request.source_master_sha256 is not None
+                or request.media_type not in {"image/jpeg", "image/png", "image/webp"}
+                or request.byte_size <= 0
+                or len(request.source_sha256) != 64
+            ):
+                raise ValueError("source-news context media lineage is invalid")
+        elif request.source_article_image_id is not None:
+            raise ValueError("source-news media may only use the context role")
         if (
             request.local_adapter_version
             in {
@@ -489,6 +542,8 @@ class LocalOfficialAccountMediaAdapter:
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
             }
         ):
             if (
@@ -506,7 +561,13 @@ class LocalOfficialAccountMediaAdapter:
                     and request.source_sha256 not in FIXTURE_BODY_PUBLICATION_SHA256S
                 )
                 or (
-                    request.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
+                    (
+                        request.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
+                        or request.local_adapter_version
+                        == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION
+                        or request.local_adapter_version
+                        == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
+                    )
                     and (
                         request.source_sha256 != FIXTURE_IMAGE_SHA256
                         or request.media_type != FIXTURE_IMAGE_MEDIA_TYPE
@@ -518,6 +579,8 @@ class LocalOfficialAccountMediaAdapter:
             if request.local_adapter_version in {
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
             }:
                 media_type = FIXTURE_COVER_PUBLICATION_MEDIA_TYPE
                 byte_size = FIXTURE_COVER_PUBLICATION_BYTE_SIZE
@@ -547,6 +610,8 @@ class LocalOfficialAccountMediaAdapter:
             in {
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
                 OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
             }
         ):
             catalog_index = (
@@ -569,7 +634,12 @@ class LocalOfficialAccountMediaAdapter:
         )
         if any(value is not None for value in catalog_lineage):
             if (
-                request.local_adapter_version != OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
+                request.local_adapter_version
+                not in {
+                    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+                    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+                    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
+                }
                 or request.role != "body"
                 or request.source_image_artifact_id is not None
                 or request.catalog_asset_ref is None
@@ -619,6 +689,22 @@ class LocalOfficialAccountDraftAdapter:
             raise ValueError("local draft media roles are not interchangeable")
         if len({item.sha256 for item in body_media}) != len(body_media):
             raise ValueError("local draft body media checksums must be distinct")
+        context_media = request.context_media_items
+        if len(context_media) > 2 or tuple(item.ordinal for item in context_media) != tuple(
+            range(len(context_media))
+        ):
+            raise ValueError("local draft context media must be ordered and contiguous")
+        if any(
+            item.role != "context"
+            or item.provenance_kind != "source_news"
+            or item.rights_status != "publish_permission_unverified"
+            or not item.context_only_not_evidence
+            or item.source_page_url is None
+            for item in context_media
+        ):
+            raise ValueError("local draft context media provenance is invalid")
+        if len({item.sha256 for item in context_media}) != len(context_media):
+            raise ValueError("local draft context media checksums must be distinct")
         return OfficialAccountDraftResult(
             local_draft_id=f"local-draft-{request.request_fingerprint[:24]}",
             simulation=True,

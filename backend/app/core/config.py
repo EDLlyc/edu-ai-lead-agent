@@ -16,18 +16,19 @@ from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
 from app.domain.official_account_local import (
-    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
-    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
-    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
-    OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
-    OFFICIAL_ACCOUNT_RENDERER_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+    OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
-    OFFICIAL_ACCOUNT_STYLE_VERSION,
-    OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
+    OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+    OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
 )
@@ -201,7 +202,7 @@ class Settings(BaseSettings):
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
     copy_pipeline_version: str = ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
-    copy_generator_prompt_version: str = "moments-generator-v18-xiaosai-insight"
+    copy_generator_prompt_version: str = "moments-generator-v19-exact-claim-span"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
     copy_auditor_prompt_version: str = "moments-auditor-v18-xiaosai-insight"
     copy_audit_schema_version: str = "moments-audit-schema-v1"
@@ -219,18 +220,23 @@ class Settings(BaseSettings):
     official_account_local_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
     official_account_local_max_attempts: int = Field(default=3, ge=1, le=6)
     official_account_local_retry_base_seconds: int = Field(default=10, ge=1, le=600)
-    official_account_local_generator_prompt_version: str = OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION
-    official_account_local_article_schema_version: str = OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION
-    official_account_local_media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+    official_account_local_generator_prompt_version: str = (
+        OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION
+    )
+    official_account_local_article_schema_version: str = OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
+    official_account_local_media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
     official_account_local_auditor_prompt_version: str = OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION
     official_account_local_audit_schema_version: str = OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION
     official_account_local_rule_version: str = OFFICIAL_ACCOUNT_RULE_VERSION
-    official_account_local_renderer_version: str = OFFICIAL_ACCOUNT_RENDERER_VERSION
-    official_account_local_style_version: str = OFFICIAL_ACCOUNT_STYLE_VERSION
-    official_account_local_template_version: str = OFFICIAL_ACCOUNT_TEMPLATE_VERSION
-    official_account_local_adapter_version: str = OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION
+    official_account_local_renderer_version: str = OFFICIAL_ACCOUNT_RENDERER_V8_VERSION
+    official_account_local_style_version: str = OFFICIAL_ACCOUNT_STYLE_V8_VERSION
+    official_account_local_template_version: str = OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION
+    official_account_local_adapter_version: str = OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
     official_account_local_visual_query_version: str = OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
     official_account_local_visual_selector_version: str = OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+    official_account_local_context_media_plan_version: str = (
+        OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
+    )
     official_account_local_visual_semantic_enabled: bool = False
     official_account_local_generated_visuals_enabled: bool = False
     official_account_local_generated_visual_plan_version: str = (
@@ -541,20 +547,22 @@ class Settings(BaseSettings):
             self.official_account_local_adapter_version,
             self.official_account_local_visual_query_version,
             self.official_account_local_visual_selector_version,
+            self.official_account_local_context_media_plan_version,
         )
         if self.official_account_local_enabled and official_account_versions != (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
-            OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
-            OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+            OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
             OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
             OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
             OFFICIAL_ACCOUNT_RULE_VERSION,
-            OFFICIAL_ACCOUNT_RENDERER_VERSION,
-            OFFICIAL_ACCOUNT_STYLE_VERSION,
-            OFFICIAL_ACCOUNT_TEMPLATE_VERSION,
-            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+            OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+            OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+            OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
             OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
             OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
+            OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
         ):
             raise ValueError("official-account current version bundle is unsupported")
         if (
@@ -869,6 +877,7 @@ class Settings(BaseSettings):
             self.official_account_local_adapter_version,
             self.official_account_local_visual_query_version,
             self.official_account_local_visual_selector_version,
+            self.official_account_local_context_media_plan_version,
             self.official_account_local_generated_visual_plan_version,
             self.official_account_local_generated_visual_prompt_version,
             self.image_prompt_version,

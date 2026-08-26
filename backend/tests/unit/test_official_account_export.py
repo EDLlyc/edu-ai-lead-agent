@@ -1,15 +1,19 @@
+# ruff: noqa: RUF001 -- Chinese punctuation is intentional in reader-facing export assertions.
+
 from __future__ import annotations
 
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
+from io import BytesIO
 from uuid import UUID, uuid4
 from zipfile import ZipFile
 
 import pytest
 from app.application.ports.official_account_local import (
     OfficialAccountMediaRequest,
+    OfficialAccountMediaResult,
     StoredOfficialAccountManualReview,
 )
 from app.application.services.official_account_export import (
@@ -19,17 +23,26 @@ from app.application.services.official_account_export import (
     run_wechat_draft_preflight,
 )
 from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V1_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V3_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V4_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+    OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+    OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+    OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+    ArticleNewsContextMediaItem,
+    ArticleNewsContextMediaSnapshot,
     OfficialAccountAuditVerdict,
     article_version_bundle_kind,
     fingerprint,
     render_wechat_html,
     resolve_body_media_placeholder,
     resolve_body_media_placeholders,
+    resolve_context_media_placeholders,
 )
 from app.infrastructure.official_account_local import (
     FIXTURE_BODY_IMAGE_BYTE_SIZES,
@@ -315,6 +328,103 @@ async def _multimodal_bundle_input() -> ReviewBundleInput:
     )
 
 
+async def _news_context_bundle_input(
+    *,
+    alt_text: str = "暗腔实验装置新闻原图",
+    caption: str | None = "科学家利用暗腔开展超导实验",
+    cover_bytes: bytes | None = None,
+) -> ReviewBundleInput:
+    base = await _multimodal_bundle_input()
+    context_bytes = fixture_cover_path().read_bytes()
+    context_sha256 = sha256(context_bytes).hexdigest()
+    context_item = ArticleNewsContextMediaItem(
+        ordinal=0,
+        section_index=0,
+        source_article_image_id=uuid4(),
+        sha256=context_sha256,
+        media_type="image/png",
+        width=1923,
+        height=818,
+        alt_text=alt_text,
+        caption=caption,
+        credit="中国科学院",
+        source_page_url="https://www.cas.cn/syky/202608/t20260821_5099999.shtml",
+        rights_status="publish_permission_unverified",
+        context_only_not_evidence=True,
+    )
+    versions = base.article.versions.model_copy(
+        update={
+            "article_schema_version": OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+            "renderer_version": OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+            "style_version": OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+            "template_version": OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+            "local_adapter_version": OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
+            "context_media_plan_version": OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+        }
+    )
+    article = base.article.model_copy(
+        update={
+            "versions": versions,
+            "news_context_media": ArticleNewsContextMediaSnapshot(
+                selection_version=OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+                status="partial",
+                items=(context_item,),
+            ),
+        }
+    )
+    rendered = render_wechat_html(article)
+    resolved_html = resolve_context_media_placeholders(
+        resolve_body_media_placeholders(
+            rendered.canonical_html,
+            tuple((item.ordinal, item.media_url) for item in base.body_media_items),
+        ),
+        ((0, "/api/v1/official-account-local/media/context-test"),),
+    )
+    context_media = OfficialAccountMediaResult(
+        local_media_id="context-test",
+        role="context",
+        ordinal=0,
+        media_url="/api/v1/official-account-local/media/context-test",
+        media_type="image/png",
+        byte_size=len(context_bytes),
+        sha256=context_sha256,
+        assigned_section_index=0,
+        alt_text=context_item.alt_text,
+        provenance_kind="persisted_source_snapshot",
+        source_page_url=context_item.source_page_url,
+        caption=context_item.caption,
+        credit=context_item.credit,
+        rights_status=context_item.rights_status,
+        context_only_not_evidence=True,
+    )
+    draft_fingerprint = "a" * 64
+    cover_media = base.cover_media
+    if cover_bytes is not None:
+        cover_media = replace(
+            cover_media,
+            media_type="image/png",
+            byte_size=len(cover_bytes),
+            sha256=sha256(cover_bytes).hexdigest(),
+        )
+    return replace(
+        base,
+        generation_mode="live",
+        article=article,
+        resolved_html=resolved_html,
+        draft_request_fingerprint=draft_fingerprint,
+        resolved_fingerprint=fingerprint(
+            rendered.render_fingerprint,
+            draft_fingerprint,
+            resolved_html,
+        ),
+        render_fingerprint=rendered.render_fingerprint,
+        cover_media=cover_media,
+        cover_bytes=cover_bytes if cover_bytes is not None else base.cover_bytes,
+        context_media_items=(context_media,),
+        context_bytes_items=(context_bytes,),
+    )
+
+
 @pytest.mark.asyncio
 async def test_conservative_preflight_is_local_versioned_and_keeps_review_pending() -> None:
     bundle = await _bundle_input()
@@ -345,6 +455,168 @@ async def test_conservative_preflight_is_local_versioned_and_keeps_review_pendin
         "controlled_local_media_reference"
     )
     assert "/api/" not in report.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_v9_live_local_export_keeps_body_images_and_adds_snapshot_context(
+    tmp_path,
+) -> None:
+    bundle = await _news_context_bundle_input()
+
+    result = export_live_local_review_bundle(bundle, output_directory=tmp_path)
+
+    assert result.preflight.passed is True
+    article_body = (result.bundle_directory / "article-body.html").read_text(encoding="utf-8")
+    assert article_body.count('src="assets/body-') == len(bundle.body_media_items)
+    assert article_body.count('src="assets/context-') == 1
+    assert 'src="assets/context-00.png"' in article_body
+    assert "/api/" not in article_body
+    assert (result.bundle_directory / "assets/context-00.png").read_bytes() == (
+        bundle.context_bytes_items[0]
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["bundle_version"] == (
+        "official-account-live-local-review-bundle-v3-news-context-export-polish"
+    )
+    assert manifest["export_presentation"] == {
+        "context_boundary": "context_only_not_evidence",
+        "context_display_sources": ["persisted_source"],
+        "context_display_version": "official-account-context-display-fallback-v1",
+        "cover_derivative_applied": False,
+        "cover_derivative_version": ("official-account-cover-export-derivative-v1-top-biased"),
+        "runtime_article_immutable": True,
+        "runtime_render_immutable": True,
+        "version": "official-account-news-context-export-polish-v1",
+    }
+    assert len(manifest["media"]["body_images"]) == len(bundle.body_media_items)
+    assert manifest["media"]["context_images"] == [
+        {
+            "alt_text": "暗腔实验装置新闻原图",
+            "assigned_section_index": 0,
+            "byte_size": len(bundle.context_bytes_items[0]),
+            "caption": "科学家利用暗腔开展超导实验",
+            "context_only_not_evidence": True,
+            "credit": "中国科学院",
+            "display_text_source": "persisted_source",
+            "display_text_version": "official-account-context-display-fallback-v1",
+            "dimensions": {"height": 818, "width": 1923},
+            "media_type": "image/png",
+            "ordinal": 0,
+            "path": "assets/context-00.png",
+            "rights_status": "publish_permission_unverified",
+            "role": "context",
+            "sha256": sha256(bundle.context_bytes_items[0]).hexdigest(),
+            "source_page_url": ("https://www.cas.cn/syky/202608/t20260821_5099999.shtml"),
+        }
+    ]
+    exported_cover = (result.bundle_directory / manifest["media"]["cover"]["path"]).read_bytes()
+    assert exported_cover == bundle.cover_bytes
+    assert manifest["media"]["cover"]["sha256"] == bundle.cover_media.sha256
+    assert manifest["media"]["cover"]["export_derivative"]["applied"] is False
+    article_json = json.loads(
+        (result.bundle_directory / "article.json").read_text(encoding="utf-8")
+    )
+    assert "source_article_image_id" not in json.dumps(article_json)
+    sources = json.loads((result.bundle_directory / "sources.json").read_text(encoding="utf-8"))
+    assert sources["news_context_media"][0]["source_page_url"].startswith("https://")
+    assert sources["news_context_media"][0]["context_only_not_evidence"] is True
+    assert sources["news_context_media"][0]["display_text_source"] == "persisted_source"
+    assert "暗腔实验装置新闻原图" in article_body
+    assert "科学家利用暗腔开展超导实验" in article_body
+    preflight_by_code = {item.code: item for item in result.preflight.records}
+    assert preflight_by_code["context_0_media_type_allowlisted"].passed is True
+    assert preflight_by_code["context_0_media_local_byte_limit"].passed is True
+    assert preflight_by_code["context_image_dimensions_readable"].passed is True
+
+
+@pytest.mark.asyncio
+async def test_v9_live_local_export_derives_square_cover_and_generic_cas_display_text(
+    tmp_path,
+) -> None:
+    square = Image.new("RGB", (1024, 1024), (35, 142, 91))
+    square.paste((205, 48, 48), (0, 0, 1024, 240))
+    square.paste((35, 142, 91), (0, 240, 1024, 760))
+    square.paste((45, 86, 180), (0, 760, 1024, 1024))
+    encoded = BytesIO()
+    square.save(encoded, format="PNG")
+    source_cover = encoded.getvalue()
+    bundle = await _news_context_bundle_input(
+        alt_text="新闻原图",
+        caption=None,
+        cover_bytes=source_cover,
+    )
+
+    result = export_live_local_review_bundle(bundle, output_directory=tmp_path)
+    repeated = export_live_local_review_bundle(bundle, output_directory=tmp_path)
+
+    assert repeated.reused is True
+    assert repeated.zip_sha256 == result.zip_sha256
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    cover_manifest = manifest["media"]["cover"]
+    cover_path = result.bundle_directory / cover_manifest["path"]
+    derived_cover = cover_path.read_bytes()
+    assert derived_cover != source_cover
+    assert cover_manifest["dimensions"] == {"width": 1024, "height": 436}
+    assert cover_manifest["byte_size"] == len(derived_cover)
+    assert cover_manifest["sha256"] == sha256(derived_cover).hexdigest()
+    assert cover_manifest["export_derivative"] == {
+        "applied": True,
+        "crop_box": {"bottom": 632, "left": 0, "right": 1024, "top": 196},
+        "crop_policy": "top_biased_one_third_or_centered_horizontal",
+        "source_byte_size": len(source_cover),
+        "source_media_type": "image/png",
+        "source_sha256": sha256(source_cover).hexdigest(),
+        "target_ratio": "2.35:1",
+        "version": "official-account-cover-export-derivative-v1-top-biased",
+    }
+    with Image.open(cover_path) as image:
+        assert image.size == (1024, 436)
+        assert image.getpixel((10, 0)) == (205, 48, 48)
+        assert image.getexif() == {}
+
+    title = bundle.article.title
+    heading = bundle.article.sections[0].heading
+    expected_alt = f"新闻上下文图片：{title}；对应章节：{heading}"
+    expected_caption = f"新闻上下文 · {title} · 对应章节：{heading}（仅作上下文参考，非事实证据）"
+    article_body = (result.bundle_directory / "article-body.html").read_text(encoding="utf-8")
+    preview = (result.bundle_directory / "preview.html").read_text(encoding="utf-8")
+    assert expected_alt in article_body
+    assert expected_caption in article_body
+    assert "发布权限未验证 · 仅作上下文参考，非事实证据" in article_body
+    assert expected_alt in preview
+    assert expected_caption in preview
+    assert "新闻原图" not in article_body
+    assert article_body.count('src="assets/body-') == len(bundle.body_media_items)
+    assert article_body.count('src="assets/context-00.png"') == 1
+    assert "/api/" not in article_body
+
+    context_manifest = manifest["media"]["context_images"][0]
+    assert context_manifest["alt_text"] == expected_alt
+    assert context_manifest["caption"] == expected_caption
+    assert context_manifest["display_text_source"] == "export_semantic_fallback"
+    sources = json.loads((result.bundle_directory / "sources.json").read_text(encoding="utf-8"))
+    assert sources["news_context_media"][0]["alt_text"] == expected_alt
+    assert sources["news_context_media"][0]["caption"] == expected_caption
+    assert sources["news_context_media"][0]["context_only_not_evidence"] is True
+    immutable_article = json.loads(
+        (result.bundle_directory / "article.json").read_text(encoding="utf-8")
+    )
+    immutable_context = immutable_article["article"]["news_context_media"]["items"][0]
+    assert immutable_context["alt_text"] == "新闻原图"
+    assert immutable_context["caption"] is None
+    assert immutable_article["export_presentation"]["runtime_article_immutable"] is True
+    readme = (result.bundle_directory / "README.md").read_text(encoding="utf-8")
+    assert "`article.json` 仍保存不可变运行时 Article 快照" in readme
+
+    preflight_by_code = {item.code: item for item in result.preflight.records}
+    assert preflight_by_code["cover_wide_ratio_advisory"].passed is True
+    assert preflight_by_code["cover_media_local_byte_limit"].observed == len(derived_cover)
+    file_manifest = next(
+        item for item in manifest["files"] if item["path"] == cover_manifest["path"]
+    )
+    assert file_manifest["byte_size"] == len(derived_cover)
+    assert file_manifest["sha256"] == sha256(derived_cover).hexdigest()
 
 
 @pytest.mark.asyncio

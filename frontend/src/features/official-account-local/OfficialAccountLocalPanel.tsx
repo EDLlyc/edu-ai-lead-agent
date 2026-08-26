@@ -745,7 +745,17 @@ function MediaAndPreview({
             </ol>
           </div>
         ) : null}
-        <div className={styles.mediaGrid} aria-label="正文图片与封面画廊">
+        <div className={styles.contextStatus} role="status">
+          <strong>新闻原图</strong>
+          <span>
+            {detail.contextMediaStatus === "ready"
+              ? "已从入选新闻的持久化快照加入 2 张上下文图片。"
+              : detail.contextMediaStatus === "partial"
+                ? "已从入选新闻的持久化快照加入 1 张上下文图片。"
+                : "本次素材包没有可用的新闻原图，正文继续使用公司 IP 图。"}
+          </span>
+        </div>
+        <div className={styles.mediaGrid} aria-label="新闻原图、公司 IP 图与封面画廊">
           {detail.media.map((media) => (
             <figure
               key={media.id}
@@ -786,6 +796,23 @@ function MediaAndPreview({
                       ? ""
                       : ` · ${media.similarityBandLabel}`}
                   </span>
+                ) : null}
+                {media.caption !== null ? <span>{media.caption}</span> : null}
+                {media.credit !== null ? <small>图片署名：{media.credit}</small> : null}
+                {media.role === "context" ? (
+                  <strong className={styles.rightsWarning} role="note">
+                    发布权限未验证 · 仅作上下文参考，不是事实证据
+                  </strong>
+                ) : null}
+                {media.sourcePageUrl !== null ? (
+                  <a
+                    href={media.sourcePageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    referrerPolicy="no-referrer"
+                  >
+                    查看新闻原文（新窗口）
+                  </a>
                 ) : null}
                 <code>{media.id}</code>
                 <small>SHA {media.sha256.slice(0, 12)}</small>

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from app.domain.entities import SnapshotDescriptor
 from app.infrastructure.official_account_local import (
     fixture_body_publication_path,
     fixture_cover_path,
@@ -167,3 +168,88 @@ async def test_generated_body_visual_resolves_from_content_addressed_store() -> 
     wrong_run = SimpleNamespace(**{**visual.__dict__, "run_id": uuid4()})
     with pytest.raises(OfficialAccountMediaIntegrityError, match="metadata does not match"):
         await resolver.read_verified_bytes(session=_Session(wrong_run), media=media)
+
+
+@pytest.mark.asyncio
+async def test_news_context_media_reads_only_the_verified_source_snapshot() -> None:
+    body = fixture_body_publication_path(0).read_bytes()
+    checksum = sha256(body).hexdigest()
+    source_image_id = uuid4()
+    snapshot_id = uuid4()
+    run_id = uuid4()
+    source_image = SimpleNamespace(
+        image_snapshot_id=snapshot_id,
+        status="ready",
+        rights_status="publish_permission_unverified",
+        sha256=checksum,
+        media_type="image/jpeg",
+        byte_size=len(body),
+    )
+    snapshot = SimpleNamespace(
+        id=snapshot_id,
+        kind="image",
+        bucket="private-snapshots",
+        object_key=f"source-snapshots/sha256/{checksum[:2]}/{checksum}",
+        media_type="image/jpeg",
+        byte_size=len(body),
+        sha256=checksum,
+    )
+    context_plan = SimpleNamespace(
+        sha256=checksum,
+        rights_status="publish_permission_unverified",
+        context_only_not_evidence=True,
+    )
+
+    class ContextSession(_Session):
+        async def get(self, model: object, identifier: object) -> object | None:
+            model_name = getattr(model, "__name__", "")
+            if model_name == "SourceArticleImageModel" and identifier == source_image_id:
+                return source_image
+            if model_name == "SourceSnapshotModel" and identifier == snapshot_id:
+                return snapshot
+            return None
+
+        async def scalar(self, _statement: object) -> object:
+            return context_plan
+
+    class SnapshotStore:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def get_verified(self, descriptor: SnapshotDescriptor) -> bytes:
+            self.calls += 1
+            assert descriptor.sha256 == checksum
+            assert descriptor.media_type == "image/jpeg"
+            return body
+
+    media = SimpleNamespace(
+        local_media_id="local-media-context",
+        descriptor={"source_kind": "source_news"},
+        fixture_id=None,
+        source_image_artifact_id=None,
+        generated_visual_id=None,
+        source_article_image_id=source_image_id,
+        run_id=run_id,
+        render_version_id=uuid4(),
+        role="context",
+        ordinal=0,
+        media_type="image/jpeg",
+        byte_size=len(body),
+        sha256=checksum,
+    )
+    store = SnapshotStore()
+    session = ContextSession()
+    resolver = OfficialAccountLocalMediaResolver(
+        image_asset_manifest=None,
+        image_store=None,
+        snapshot_store=store,  # type: ignore[arg-type]
+    )
+
+    assert await resolver.read_verified_bytes(session=session, media=media) == body
+    assert store.calls == 1
+    assert session.rollback_count == 1
+
+    changed = SimpleNamespace(**{**media.__dict__, "media_type": "image/png"})
+    with pytest.raises(OfficialAccountMediaIntegrityError, match="metadata does not match"):
+        await resolver.read_verified_bytes(session=ContextSession(), media=changed)
+    assert store.calls == 1

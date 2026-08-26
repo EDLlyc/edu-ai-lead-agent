@@ -14,6 +14,7 @@ from app.core.logging import configure_logging
 from app.infrastructure.db.repositories import PostgresAcquisitionRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.ingestion.fetcher import SafeHttpFetcher
+from app.infrastructure.ingestion.source_image_fetcher import SafeSourceImageFetcher
 from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
 
 logger = structlog.get_logger()
@@ -29,6 +30,7 @@ async def run_worker() -> None:
         SafeHttpFetcher(settings),
         MinioSnapshotStore(settings),
         settings,
+        source_image_fetcher=SafeSourceImageFetcher(settings),
     )
     worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
     stop = asyncio.Event()

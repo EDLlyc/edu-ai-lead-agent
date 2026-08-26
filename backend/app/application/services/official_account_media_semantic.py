@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, cast
 
 from app.application.ports.official_account_local import (
     OfficialAccountCatalogMediaProvider,
@@ -10,6 +10,7 @@ from app.application.ports.official_account_local import (
 )
 from app.application.ports.visual_retrieval import VisualEmbeddingModel, VisualIndexRepository
 from app.domain.official_account_local import (
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
@@ -20,6 +21,7 @@ from app.domain.official_account_local import (
     SemanticMediaAssignment,
     SemanticMediaCandidate,
     assign_deterministic_body_media_v3,
+    assign_deterministic_body_media_v4,
     assign_multimodal_body_media,
     serialize_official_account_visual_query,
 )
@@ -98,7 +100,13 @@ class HybridOfficialAccountMediaSemanticRanker:
         sections: tuple[GeneratedArticleSection, ...],
         candidates: tuple[OfficialAccountSourceMedia, ...],
         enabled: bool,
+        media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     ) -> OfficialAccountMediaSelectionResult:
+        if media_plan_version not in {
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+        }:
+            raise ValueError("official-account multimodal media-plan version is unsupported")
         semantic_candidates = tuple(_semantic_candidate(item) for item in candidates)
         if len(semantic_candidates) == 1:
             return self._fallback(
@@ -107,6 +115,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="single_candidate",
                 reason="single_candidate",
+                media_plan_version=media_plan_version,
             )
         if not enabled:
             return self._fallback(
@@ -115,6 +124,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason="disabled",
+                media_plan_version=media_plan_version,
             )
         catalog_version, catalog_assets = _catalog_identity(candidates)
         try:
@@ -123,7 +133,7 @@ class HybridOfficialAccountMediaSemanticRanker:
             placements = plan_body_media_slots(
                 section_count=len(sections),
                 candidate_count=len(candidates),
-                media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+                media_plan_version=media_plan_version,
             )
             queries = tuple(
                 serialize_official_account_visual_query(
@@ -139,6 +149,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason="input_normalization_failed",
+                media_plan_version=media_plan_version,
             )
         try:
             complete = await self._repository.prove_complete_catalog(
@@ -155,6 +166,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason="index_incomplete",
+                media_plan_version=media_plan_version,
             )
         embeddings = self._embeddings_factory()
         similarity_rows: list[dict[str, float]] = []
@@ -207,6 +219,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 sections=sections,
                 candidates=semantic_candidates,
                 similarity_matrix=tuple(similarity_rows),
+                media_plan_version=media_plan_version,
             )
         except VisualIndexUnavailableError as error:
             if error.reason == VisualRetrievalUnavailableReason.CATALOG_CHANGED:
@@ -224,6 +237,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                     semantic_candidates=refreshed_semantic,
                     status="semantic_unavailable",
                     reason="catalog_changed",
+                    media_plan_version=media_plan_version,
                 )
             return self._fallback(
                 sections=sections,
@@ -231,6 +245,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason=_closed_reason(error.reason),
+                media_plan_version=media_plan_version,
             )
         except VisualEmbeddingError as error:
             return self._fallback(
@@ -239,6 +254,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason=_closed_reason(error.reason),
+                media_plan_version=media_plan_version,
             )
         except ValueError:
             return self._fallback(
@@ -247,6 +263,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason="invalid_provider_output",
+                media_plan_version=media_plan_version,
             )
         except Exception:
             return self._fallback(
@@ -255,6 +272,7 @@ class HybridOfficialAccountMediaSemanticRanker:
                 semantic_candidates=semantic_candidates,
                 status="semantic_unavailable",
                 reason="provider_unavailable",
+                media_plan_version=media_plan_version,
             )
         snapshot = self._snapshot(
             candidates=candidates,
@@ -262,6 +280,7 @@ class HybridOfficialAccountMediaSemanticRanker:
             status="semantic_ready",
             reason=None,
             query_fingerprints=tuple(query_fingerprints),
+            media_plan_version=media_plan_version,
         )
         return OfficialAccountMediaSelectionResult(
             assignments=assignments,
@@ -277,10 +296,18 @@ class HybridOfficialAccountMediaSemanticRanker:
         semantic_candidates: tuple[SemanticMediaCandidate, ...],
         status: Literal["semantic_unavailable", "single_candidate"],
         reason: _FallbackReason,
+        media_plan_version: str,
     ) -> OfficialAccountMediaSelectionResult:
-        assignments = assign_deterministic_body_media_v3(
-            sections=sections,
-            candidates=semantic_candidates,
+        assignments = (
+            assign_deterministic_body_media_v4(
+                sections=sections,
+                candidates=semantic_candidates,
+            )
+            if media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+            else assign_deterministic_body_media_v3(
+                sections=sections,
+                candidates=semantic_candidates,
+            )
         )
         snapshot = self._snapshot(
             candidates=candidates,
@@ -288,6 +315,7 @@ class HybridOfficialAccountMediaSemanticRanker:
             status=status,
             reason=reason,
             query_fingerprints=(),
+            media_plan_version=media_plan_version,
         )
         return OfficialAccountMediaSelectionResult(
             assignments=assignments,
@@ -303,10 +331,17 @@ class HybridOfficialAccountMediaSemanticRanker:
         status: Literal["semantic_ready", "semantic_unavailable", "single_candidate"],
         reason: (_FallbackReason | None),
         query_fingerprints: tuple[str, ...],
+        media_plan_version: str,
     ) -> ArticleMediaSelectionSnapshot:
         by_ref = {item.candidate_id: item for item in candidates}
         return ArticleMediaSelectionSnapshot(
-            media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            media_plan_version=cast(
+                Literal[
+                    "official-account-media-plan-v3-multimodal-hybrid",
+                    "official-account-media-plan-v4-five-blocks",
+                ],
+                media_plan_version,
+            ),
             visual_query_version=OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
             visual_selector_version=OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
             status=status,

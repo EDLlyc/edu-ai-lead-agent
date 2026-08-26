@@ -32,10 +32,14 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
-    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V2_VERSION,
+    OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+    OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     OFFICIAL_ACCOUNT_STYLE_VERSION,
@@ -99,7 +103,7 @@ def _current_identity() -> OfficialAccountVersionIdentity:
     return OfficialAccountVersionIdentity(
         provider=historical.provider,
         model=historical.model,
-        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
         article_schema_version=OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
         auditor_prompt_version=OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
         audit_schema_version=historical.audit_schema_version,
@@ -134,6 +138,7 @@ def _current_identity() -> OfficialAccountVersionIdentity:
         "official_account_local_adapter_version",
         "official_account_local_visual_query_version",
         "official_account_local_visual_selector_version",
+        "official_account_local_context_media_plan_version",
     ),
 )
 def test_settings_reject_each_unknown_or_mixed_current_version(field_name: str) -> None:
@@ -164,9 +169,15 @@ def test_cli_identity_carries_the_complete_current_visual_version_bundle() -> No
         model="official-account-fixture-v1",
     )
 
-    assert identity.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+    assert settings.official_account_local_generator_prompt_version == (
+        OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION
+    )
+    assert identity.generator_prompt_version == OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION
+    assert identity.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+    assert identity.local_adapter_version == OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION
     assert identity.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
     assert identity.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
+    assert identity.context_media_plan_version == OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
 
 
 class _MemoryRepository:
@@ -449,13 +460,22 @@ class _CountingSemanticRanker:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def select(self, *, topic_title, sections, candidates, enabled):
+    async def select(
+        self,
+        *,
+        topic_title,
+        sections,
+        candidates,
+        enabled,
+        media_plan_version,
+    ):
         del topic_title, enabled
         self.calls += 1
         return official_account_service._fallback_v7_selection(
             sections=sections,
             candidates=candidates,
             reason="disabled",
+            media_plan_version=media_plan_version,
         )
 
 

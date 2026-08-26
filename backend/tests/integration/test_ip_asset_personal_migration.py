@@ -90,7 +90,7 @@ async def test_personal_library_migration_backfills_shared_assets_and_refuses_da
         try:
             assert (
                 await connection.fetchval("SELECT version_num FROM alembic_version")
-                == "20260824_0035"
+                == "20260825_0036"
             )
             await connection.execute("DELETE FROM ip_asset_profiles")
         finally:

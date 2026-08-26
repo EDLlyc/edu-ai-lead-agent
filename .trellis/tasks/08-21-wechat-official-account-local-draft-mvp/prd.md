@@ -377,3 +377,201 @@
   three metadata-free 3:2 images and local visual inspection passing visible-IP/no-text/no-logo/no-watermark checks.
 - [x] Article/embedding/Comfly/WeChat/WeCom/publish calls are zero and no secret, provider body, prompt or private path
   enters the output bundle.
+
+## Approved follow-up — reference-learned editorial repackage (2026-08-24)
+
+- Learn only the public reference article's aggregate editorial method: current-news hook, parent questions,
+  policy-at-a-glance summary, short mobile paragraphs, staged interpretation and balanced image placement. Never
+  copy its prose, HTML, artwork or exact red/yellow visual treatment.
+- Assemble an original six-unit article from the existing two Ministry of Education evidence snapshots. Keep all
+  external policy statements bound to those evidence IDs, label family guidance as interpretation and meet the
+  existing 1,800--2,600-character target.
+- Reuse the three already-paid, metadata-free 1536x1024 visible-IP JPEGs byte-for-byte. The repackage performs zero
+  source, model, embedding, image-provider, WeChat, WeCom or publish requests and preserves its source bundle.
+- Add a new renderer/style/template identity with a warm-paper editorial direction, accessible semantic images,
+  escaped text, allowlisted HTTPS sources and a mobile-first 320--430 px preview. Historical renderers and output
+  directories remain unchanged.
+- Export a fresh local-only directory and deterministic ZIP with source-asset provenance, checksums, zero-call
+  counters and pending/unpublished truth. Any source manifest, evidence, image or quality mismatch fails closed.
+
+### Editorial-repackage acceptance
+
+- [x] Offline tests prove bounded article length, six editorial units, fact/interpretation bindings, HTML escaping,
+  exact three-image reuse, source-bundle integrity and zero external-call metadata.
+- [x] A new local output passes 430 px and 320 px visual inspection without overflow, clipped text, duplicate image
+  placement or missing IP characters; its previous news/IP bundle remains byte-identical.
+- [x] Focused format, lint, typecheck, tests, manifest/ZIP checks and diff checks pass without any provider or
+  WeChat/WeCom request.
+
+## Approved refinement — high-rhythm science-magazine v3 (2026-08-24)
+
+- Preserve the complete editorial v2 module, output directory and ZIP. Add a distinct v3 article/render/style/
+  template/export identity and a fresh output directory; do not restyle or overwrite v2 in place.
+- Address the demonstrated visual-form gap rather than merely shortening paragraphs. Remove the oversized reading
+  map and repeated generic section motif; give the six units distinct deterministic modules: hero scene, policy
+  signal tiles, parent question cards, learning-loop rail, AI/child boundary panel, 20-minute action timeline and
+  a strong closing takeaway.
+- Use an original bold science-magazine system with deep navy, white/ivory, cobalt, orange and restrained yellow.
+  It may learn information rhythm from the public reference but must not copy its prose, artwork or exact styling.
+- Reader-facing facts and interpretations must still originate in a validated structured Article Package. Static
+  renderer labels may describe layout only; all dynamic text and highlight spans are escaped, source links remain
+  the two pinned HTTPS Ministry of Education URLs, and the three body slots remain exact local assets.
+- Reuse the three inspected visible-IP JPEGs byte-for-byte and make the first scene the hero. Perform zero source,
+  model, embedding, image-provider, WeChat, WeCom or publish requests; retain pending/local-only/copy-ready false/
+  unpublished truth and label the three paid image calls as inherited provenance only.
+
+### Science-magazine v3 acceptance
+
+- [x] The v3 HTML exposes at least six visually distinct information modules, has exactly one `h1`, three semantic
+  images and no v2 `READING MAP`/`FIELD NOTE` motif; all untrusted text remains escaped.
+- [x] A fresh deterministic local bundle reuses all three source JPEG bytes exactly and leaves both v1 and v2 trees
+  unchanged. Its run/manifest records every current external-call counter as zero.
+- [x] Chromium inspection at 430 px and 320 px shows no horizontal overflow or clipped text, three loaded images,
+  zero external requests and materially clearer hero/section/action hierarchy than v2.
+- [x] Focused Ruff, format, PyCompile, mypy, pytest, manifest/ZIP integrity and diff checks pass; no commit or social
+  adapter change is made.
+
+## Approved refinement — approved-catalog five-image v4 (2026-08-25)
+
+- Preserve the complete v1, editorial v2 and science-magazine v3 modules, output directories and ZIP bytes. Add a
+  sibling provider-free v4 Article Package, renderer/export identity and fresh output directory; never replace an
+  existing output.
+- Keep the three already-paid 1536x1024 visible-IP JPEGs byte-for-byte, then add exactly two publication derivatives
+  resolved through `LocalOfficialAccountCatalogMediaProvider` from the approved 41-item catalog. Arbitrary local
+  files, raw catalog IDs, private paths and source masters are forbidden at the export boundary.
+- Bind public catalog ref `1bb84f2abb140b8f` to the parent-question block and ref `bab27fe77a8edff4` to the AI/child
+  boundary. Revalidate catalog version, source-master checksum, publication checksum and bytes immediately before
+  export; reject catalog drift, duplicate checksums, a selected historical reference, or any incomplete five-image
+  plan.
+- Use five deterministic body slots in reading order: existing generated scenes in sections 1, 3 and 5, with the
+  two approved IP cutaways inserted in sections 2 and 4. Alt text must describe each exact editorial purpose, and
+  each placeholder and output asset must occur once.
+- Retain the bold navy/cobalt/orange science-magazine system while giving the two catalog cutaways a distinct
+  editorial treatment that respects their square composition. Keep one `h1`, escaped dynamic text, two pinned HTTPS
+  evidence links, strict local CSP, 320--430 px mobile layout and no external image URL.
+- The v4 run performs zero source, article-model, embedding, image-provider, Comfly, ToApis, WeChat, WeCom or publish
+  requests. Catalog selection is deterministic from the already-approved local manifest and adds no image-level
+  human-review action; the independent article review/publish boundary remains pending/local-only/copy-ready false/
+  unpublished.
+
+### Approved-catalog five-image v4 acceptance
+
+- [x] Offline tests prove exact v4 identities and five-image placement, byte-exact reuse of the three generated
+  JPEGs, provider-derived bytes for both catalog assets, fail-closed catalog drift and a zero-network execution path.
+- [x] The new bundle contains exactly five distinct local images, safe public catalog provenance only, deterministic
+  manifest/ZIP bytes and zero current call counters while leaving v1--v3 tree hashes unchanged.
+- [x] Chromium inspection at 430 px and 320 px shows five loaded images, one `h1`, no horizontal overflow, no clipped
+  text and zero external requests; the two additional IP cutaways are visibly associated with their text blocks.
+- [x] Focused Ruff, format, PyCompile, mypy, pytest, task/manifest/ZIP and diff checks pass. No provider, WeChat,
+  WeCom or publish adapter is called, and no commit is created.
+
+## Approved refinement — live semantic-reference generated v5 (2026-08-25)
+
+- Preserve every v1--v4 module, output tree and archive byte-for-byte. Add one operator-only v5 sibling and a fresh
+  local output directory; never replace the two v4 catalog cutaways in place.
+- Reuse the existing complete current 41-item approved company-IP catalog index and the frozen Qwen3-VL embedding
+  identity. Serialize the exact parent-question and AI/child text blocks as two bounded queries, prove complete
+  index coverage before constructing the live client, make at most one paid embedding request per block and select
+  only eligible approved company-IP references. Any incomplete/mixed index or provider/catalog drift fails closed
+  before image generation; no deterministic hidden substitution is permitted for this explicit live run.
+- For each successful semantic selection, normalize its approved publication reference through the existing
+  provider-input contract and make exactly one ToApis single-reference image request with the visible 小赛／赛先生
+  protagonist requirement. Persist a safe exclusive local intent before each paid request, use one attempt with no
+  hidden retry, and treat an ambiguous timeout as `result_unknown`.
+- Validate and store only metadata-free exact 1536x1024 JPEG publication derivatives. The five v5 body images are
+  the three inherited inspected scenes plus two newly generated 3:2 block-bound scenes; all five use semantic alt
+  text and the same science-magazine mobile composition. Export only bounded public refs, versions, similarity
+  bands, checksums and call counts—never vectors, queries, prompts, provider bodies, secrets or private paths.
+- This is a local review artifact only. Article manual review remains pending, copy-ready and published remain
+  false, and WeChat, WeCom and every publish/send adapter must stay unconstructed and at zero calls.
+
+### Live semantic-reference generated v5 acceptance
+
+- [x] Two exact block queries complete with the configured Qwen3-VL identity against one proven-complete current
+  catalog index; the safe projection records two semantic selections and no private retrieval data.
+- [x] Exactly two exclusive ToApis intents produce two distinct metadata-free 1536x1024 JPEGs with one attempt per
+  image, or stop truthfully on a typed/unknown result without installing a plausible ready bundle.
+- [x] A new local v5 bundle contains five 3:2 scenes, safe semantic/generated provenance, deterministic local HTML
+  and ZIP, pending/unpublished truth, zero WeChat/WeCom/publish calls and unchanged v1--v4 tree hashes.
+- [x] Focused no-network tests prove preflight, no-retry, redaction, atomic export and historical preservation;
+  Ruff, format, PyCompile, mypy, pytest, manifest/ZIP and 430/320 browser checks pass without committing.
+
+## Approved refinement — official-source news-context photos v6 (2026-08-25)
+
+- Preserve every v1--v5 module, output directory, image and ZIP byte-for-byte. Add one provider-free v6 sibling and
+  a fresh local output; do not replace any of the five v5 小赛／赛先生 scenes.
+- Acquire exactly two pinned JPEGs from exact HTTPS Ministry of Education URLs only during an explicit operator
+  export. One is a related national basic-education conference scene and one is the official “人工智能+教育” press
+  conference scene. Validate host, URL, media signature, dimensions, byte bound and pinned SHA-256 before export;
+  tests inject bytes and make zero network requests.
+- Treat both photos as contextual editorial figures, not as Article Package evidence and not as brand assets. Keep
+  the five frozen Article Package media slots unchanged, and add a separate typed, versioned news-photo projection
+  that binds each local asset to its exact source page, image URL, caption, credit, topic relation and checksum.
+- Preserve the source pixels and visible official watermark. Do not crop, retouch, recompress or remove attribution.
+  Render each photo at natural aspect ratio with an explicit “关联新闻现场” label and source/photographer caption.
+- Reuse the complete v5 Article Package, five local JPEGs and science-magazine hierarchy. Insert the basic-education
+  photo near the opening policy context and the AI press-conference photo beside the AI/child boundary so all seven
+  images remain tied to adjacent text rather than forming a detached gallery.
+- The v6 bundle is local-review-only, manual review remains pending, `copy_ready=false` and `published=false`.
+  Because public re-use permission has not been established, every reader/operator projection must say that image
+  republication permission requires confirmation before public release. No image/embedding/LLM provider, WeChat,
+  WeCom or publish client may be constructed.
+
+### Official-source news-context v6 acceptance
+
+- [x] The v6 output contains five byte-identical v5 IP scenes plus two distinct pinned official news photos, each
+  loaded from a relative local path and rendered once at its natural aspect ratio.
+- [x] Provenance records exact source page/image URL, original caption/credit, SHA-256, dimensions and
+  `publish_permission_unverified`; HTML/README visibly retain the permission warning and do not call a photo evidence.
+- [x] Mocked tests prove allowlist/signature/dimension/checksum failures close the export, default test execution makes
+  zero network requests, and output/ZIP creation is atomic, non-overwriting and deterministic.
+- [ ] A single explicit local export performs exactly two official image GETs, preserves v1--v5 tree hashes, and
+  passes Ruff, format, PyCompile, mypy, pytest plus 430/320 browser checks with seven loaded images, no overflow and
+  zero social/publish requests. No commit is created.
+  The first live GET received a known non-200 and stopped without retry or partial output. V6 was then exported from
+  the two previously acquired checksum-matching official bytes, truthfully recording 0 successful GETs in that
+  export, 2 validated cache reads and 1 failed pre-export GET; every remaining gate passed.
+
+## Approved refinement — selected-news source-image acquisition v7 (2026-08-25)
+
+- Replace the one-off pinned-photo demonstration with a reusable acquisition-owned source-image pipeline. When a
+  governed detail page is accepted, its connector extracts a bounded ordered set of lead/body image references from
+  that exact page. The acquisition worker may fetch those references only through the source profile's existing
+  HTTPS host/path allowlist, DNS/redirect fencing and durable source-request pacing. It never performs web search or
+  follows an arbitrary image URL supplied by a model.
+- Persist every discovered/fetched image as typed provenance bound to the exact detail snapshot. Store the source
+  page/image URL, parser/extractor identity, ordinal, role, bounded caption/credit, immutable image snapshot,
+  checksum, MIME, dimensions, byte size, status and safe failure code. A ready image remains contextual editorial
+  media, never evidence or brand knowledge. Default rights state is `publish_permission_unverified` unless a future
+  explicit governed rights source establishes otherwise.
+- Article acceptance must not depend on image availability. Unsupported, tiny, animated, oversized, cross-host,
+  malformed or unavailable images degrade to safe no-image/partial-image metadata without dropping the news item.
+  JPEG/PNG/WebP source pixels are preserved; do not crop, retouch, remove watermarks or invent photographer credit.
+- A new frozen official-account family consumes only ready source images reachable through the selected material
+  package's existing evidence `snapshot_id` lineage. It deterministically chooses at most two distinct news images,
+  persists the selection before render and inserts them as additional natural-aspect contextual figures near the
+  best matching sections. The existing five company-IP/generated body visuals and cover are not replaced.
+- Source-news figures use a separate role/placeholder/local-media path from Article Package body slots. Reader/API/UI
+  projections include semantic alt text, source caption/link, contextual-not-evidence labeling and rights state.
+  Unknown-rights figures keep the run local-review-only and cannot produce a copy-ready bundle containing them.
+- Historical acquisition snapshots, candidates, material packages, Article v1--v8 families, render/media/export
+  bytes and recovery remain unchanged. The new acquisition extractor, Article/render/adapter identities and database
+  rows are additive and fail closed on mixed identities.
+- Default fixtures and tests inject detail HTML and image bytes and make zero external requests. Production source
+  image GETs occur only in the ordinary acquisition worker; official-account generation/recovery performs zero
+  source GETs. No WeChat, WeCom, publish/send, embedding or image-generation call is introduced by this refinement.
+
+### Selected-news source-image acceptance
+
+- [ ] Connector fixtures prove deterministic `og:image`/article-figure extraction, relative URL normalization,
+      caption bounds, duplicate removal and exact source allowlisting without a network request.
+- [ ] The acquisition worker persists durable ready/failed image provenance, preserves accepted news on every image
+      failure, respects request pacing, and stores only validated bounded JPEG/PNG/WebP bytes as immutable snapshots.
+- [ ] A selected material package resolves images only through its evidence snapshot lineage; unrelated source images
+      cannot enter the article, and repeated generation/recovery performs zero source-image GETs.
+- [ ] The new local preview retains all five IP/generated scenes and adds up to two distinct natural-aspect news
+      figures with caption/source/rights warning; no source image is called evidence or a brand asset.
+- [ ] API/OpenAPI/development workbench expose only safe context-media fields and show partial/unavailable and
+      unverified-rights states. Unknown rights cannot yield a clean copy-ready export containing those figures.
+- [ ] Migration `20260825_0036` advances from the verified unique `20260824_0035` head; focused unit/contract/
+      PostgreSQL/API/frontend tests and format/lint/typecheck pass with sockets blocked and no social request.

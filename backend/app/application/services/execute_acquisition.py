@@ -5,6 +5,7 @@ import random
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import structlog
 
@@ -13,6 +14,7 @@ from app.application.ports.acquisition import (
     ClaimedJob,
     Fetcher,
     SnapshotStore,
+    SourceImageFetcher,
 )
 from app.core.config import Settings
 from app.core.errors import (
@@ -40,7 +42,7 @@ from app.domain.editorial_relevance import (
     evaluate_science_ai_education_relevance,
     evaluate_science_tech_editorial_relevance,
 )
-from app.domain.entities import DiscoveredItem
+from app.domain.entities import DiscoveredItem, SourceImageReference
 from app.domain.enums import JobStatus, ObservationOutcome
 from app.domain.freshness import FreshnessDecision, evaluate_publication_freshness
 from app.domain.science_relevance import (
@@ -79,6 +81,7 @@ class AcquisitionExecutor:
         snapshot_store: SnapshotStore,
         settings: Settings,
         *,
+        source_image_fetcher: SourceImageFetcher | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[], float] = random.random,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -87,6 +90,7 @@ class AcquisitionExecutor:
         self._fetcher = fetcher
         self._snapshot_store = snapshot_store
         self._settings = settings
+        self._source_image_fetcher = source_image_fetcher
         self._sleep = sleep
         self._jitter = jitter
         self._clock = clock
@@ -553,6 +557,15 @@ class AcquisitionExecutor:
                         http_status=detail_response.status_code,
                         metadata=relevance_metadata,
                     )
+                    if self._source_image_fetcher is not None and document.source_images:
+                        image_bytes = await self._acquire_source_images(
+                            claimed=claimed,
+                            lease_lost=lease_lost,
+                            candidate_id=persisted.candidate_id,
+                            detail_snapshot_id=snapshot_id,
+                            references=document.source_images,
+                        )
+                        byte_count += image_bytes
                     item_count += 1
                     if persisted.outcome is ObservationOutcome.NEW:
                         new_count += 1
@@ -822,6 +835,76 @@ class AcquisitionExecutor:
             if source_lease:
                 await self._repository.release_source_lease(claimed)
         return True
+
+    async def _acquire_source_images(
+        self,
+        *,
+        claimed: ClaimedJob,
+        lease_lost: asyncio.Event,
+        candidate_id: UUID,
+        detail_snapshot_id: UUID,
+        references: tuple[SourceImageReference, ...],
+    ) -> int:
+        """Persist every bounded discovery and fetch at most two optional images."""
+
+        fetched_bytes = 0
+        for reference in references[:5]:
+            intent = await self._repository.reserve_source_image(
+                claimed=claimed,
+                candidate_id=candidate_id,
+                detail_snapshot_id=detail_snapshot_id,
+                reference=reference,
+            )
+            if reference.ordinal >= 2 or intent.status != "discovered":
+                continue
+            try:
+                await self._wait_for_source_request(claimed, lease_lost)
+                assert self._source_image_fetcher is not None
+                image = await self._source_image_fetcher.fetch(reference, claimed.profile)
+                self._ensure_lease(lease_lost)
+                stored = await self._snapshot_store.put_immutable(
+                    image.response.body,
+                    image.response.media_type or "application/octet-stream",
+                )
+                self._ensure_lease(lease_lost)
+                image_snapshot_id = await self._repository.save_snapshot(
+                    claimed=claimed,
+                    profile=claimed.profile,
+                    kind="image",
+                    response=image.response,
+                    stored=stored,
+                )
+                await self._repository.complete_source_image(
+                    claimed=claimed,
+                    intent_id=intent.id,
+                    image_snapshot_id=image_snapshot_id,
+                    image=image,
+                )
+                fetched_bytes += len(image.response.body)
+            except LeaseLostError:
+                raise
+            except AppError as error:
+                await self._repository.fail_source_image(
+                    claimed=claimed,
+                    intent_id=intent.id,
+                    error_code=error.code,
+                    rejected=isinstance(error, PolicyRejectedError),
+                )
+            except Exception:
+                logger.exception(
+                    "source_image_acquisition_internal_failure",
+                    acquisition_run_id=str(claimed.run_id),
+                    job_id=str(claimed.job_id),
+                    source_id=str(claimed.profile.source_id),
+                    source_article_image_id=str(intent.id),
+                    image_ordinal=reference.ordinal,
+                )
+                # Only typed acquisition failures are an optional per-image degradation.
+                # Storage, repository, and programming failures must keep the discovery intent
+                # replayable and fail the parent attempt so the ordinary lease-safe retry path
+                # can recover instead of persisting a misleading terminal image failure.
+                raise
+        return fetched_bytes
 
     @staticmethod
     def _ensure_lease(lease_lost: asyncio.Event) -> None:

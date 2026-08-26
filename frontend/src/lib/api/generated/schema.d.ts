@@ -1355,9 +1355,9 @@ export interface components {
             embedding_identity?: components["schemas"]["ArticleMediaEmbeddingIdentity"] | null;
             /**
              * Media Plan Version
-             * @constant
+             * @enum {string}
              */
-            media_plan_version: "official-account-media-plan-v3-multimodal-hybrid";
+            media_plan_version: "official-account-media-plan-v3-multimodal-hybrid" | "official-account-media-plan-v4-five-blocks";
             /**
              * Query Fingerprints
              * @default []
@@ -1396,34 +1396,6 @@ export interface components {
              * @enum {string}
              */
             slot_key: "body-0" | "body-1" | "body-2" | "body-3" | "body-4" | "cover-0";
-        };
-        /** ArticlePackage */
-        ArticlePackage: {
-            /** Author */
-            author: string;
-            /** Claims */
-            claims: components["schemas"]["GeneratedArticleClaim"][];
-            /** Conclusion */
-            conclusion: string;
-            /** Content Fingerprint */
-            content_fingerprint: string;
-            /** Digest */
-            digest: string;
-            /** Lead */
-            lead: string;
-            media_selection?: components["schemas"]["ArticleMediaSelectionSnapshot"] | null;
-            /** Media Slots */
-            media_slots: components["schemas"]["ArticleMediaSlot"][];
-            quality: components["schemas"]["ArticleQualitySummary"];
-            /** Sections */
-            sections: components["schemas"]["ArticleSection"][];
-            /** Sources */
-            sources: components["schemas"]["ArticleSourceProjection"][];
-            /** Title */
-            title: string;
-            /** Topic Title */
-            topic_title: string;
-            versions: components["schemas"]["ArticleVersionBundle"];
         };
         /** ArticleParagraphBlock */
         ArticleParagraphBlock: {
@@ -1514,6 +1486,8 @@ export interface components {
             audit_schema_version: string;
             /** Auditor Prompt Version */
             auditor_prompt_version: string;
+            /** Context Media Plan Version */
+            context_media_plan_version?: string | null;
             /** Generator Prompt Version */
             generator_prompt_version: string;
             /** Local Adapter Version */
@@ -4576,6 +4550,38 @@ export interface components {
             /** Snapshot Id */
             snapshot_id: string | null;
         };
+        /**
+         * OfficialAccountArticleResponse
+         * @description Safe article projection; internal source-image row IDs never cross the API.
+         */
+        OfficialAccountArticleResponse: {
+            /** Author */
+            author: string;
+            /** Claims */
+            claims: components["schemas"]["GeneratedArticleClaim"][];
+            /** Conclusion */
+            conclusion: string;
+            /** Content Fingerprint */
+            content_fingerprint: string;
+            /** Digest */
+            digest: string;
+            /** Lead */
+            lead: string;
+            media_selection?: components["schemas"]["ArticleMediaSelectionSnapshot"] | null;
+            /** Media Slots */
+            media_slots: components["schemas"]["ArticleMediaSlot"][];
+            news_context_media?: components["schemas"]["OfficialAccountNewsContextResponse"] | null;
+            quality: components["schemas"]["ArticleQualitySummary"];
+            /** Sections */
+            sections: components["schemas"]["ArticleSection"][];
+            /** Sources */
+            sources: components["schemas"]["ArticleSourceProjection"][];
+            /** Title */
+            title: string;
+            /** Topic Title */
+            topic_title: string;
+            versions: components["schemas"]["ArticleVersionBundle"];
+        };
         /** OfficialAccountAuditVerdict */
         OfficialAccountAuditVerdict: {
             /** Accepted */
@@ -4818,6 +4824,15 @@ export interface components {
             assigned_section_index?: number | null;
             /** Byte Size */
             byte_size: number;
+            /** Caption */
+            caption?: string | null;
+            /**
+             * Context Only Not Evidence
+             * @default false
+             */
+            context_only_not_evidence: boolean;
+            /** Credit */
+            credit?: string | null;
             /** Local Media Id */
             local_media_id: string;
             /** Media Type */
@@ -4826,11 +4841,15 @@ export interface components {
             media_url: string;
             /** Ordinal */
             ordinal: number;
+            /** Provenance Kind */
+            provenance_kind?: ("source_news" | "approved_catalog" | "generated_visual" | "image_artifact" | "fixture") | null;
+            /** Rights Status */
+            rights_status?: "publish_permission_unverified" | null;
             /**
              * Role
              * @enum {string}
              */
-            role: "body" | "cover";
+            role: "body" | "cover" | "context";
             /** Score Band */
             score_band?: ("heading" | "body" | "fallback") | null;
             /** Selection Method */
@@ -4843,6 +4862,8 @@ export interface components {
             sha256: string;
             /** Similarity Band */
             similarity_band?: ("very_high" | "high" | "medium" | "low") | null;
+            /** Source Page Url */
+            source_page_url?: string | null;
         };
         /** OfficialAccountMediaSelectionResponse */
         OfficialAccountMediaSelectionResponse: {
@@ -4876,6 +4897,57 @@ export interface components {
             /** Visual Selector Version */
             visual_selector_version?: string | null;
         };
+        /** OfficialAccountNewsContextItemResponse */
+        OfficialAccountNewsContextItemResponse: {
+            /** Alt Text */
+            alt_text: string;
+            /** Caption */
+            caption?: string | null;
+            /**
+             * Context Only Not Evidence
+             * @constant
+             */
+            context_only_not_evidence: true;
+            /** Credit */
+            credit?: string | null;
+            /** Height */
+            height: number;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/jpeg" | "image/png" | "image/webp";
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Rights Status
+             * @constant
+             */
+            rights_status: "publish_permission_unverified";
+            /** Section Index */
+            section_index: number;
+            /** Sha256 */
+            sha256: string;
+            /** Source Page Url */
+            source_page_url: string;
+            /** Width */
+            width: number;
+        };
+        /** OfficialAccountNewsContextResponse */
+        OfficialAccountNewsContextResponse: {
+            /** Items */
+            items: components["schemas"]["OfficialAccountNewsContextItemResponse"][];
+            /**
+             * Selection Version
+             * @constant
+             */
+            selection_version: "official-account-news-context-selection-v1";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_present" | "partial" | "ready";
+        };
         /** OfficialAccountRunCreateRequest */
         OfficialAccountRunCreateRequest: {
             /**
@@ -4888,7 +4960,7 @@ export interface components {
         };
         /** OfficialAccountRunDetailResponse */
         OfficialAccountRunDetailResponse: {
-            article: components["schemas"]["ArticlePackage"] | null;
+            article: components["schemas"]["OfficialAccountArticleResponse"] | null;
             /** Attempt Count */
             attempt_count: number;
             audit: components["schemas"]["OfficialAccountAuditVerdict"] | null;
@@ -4903,6 +4975,14 @@ export interface components {
             boundary_label: "本地模拟，未同步公众号";
             /** Completed At */
             completed_at: string | null;
+            /** Context Images */
+            context_images?: components["schemas"]["OfficialAccountMediaResponse"][];
+            /**
+             * Context Media Status
+             * @default not_present
+             * @enum {string}
+             */
+            context_media_status: "not_present" | "partial" | "ready";
             cover_image: components["schemas"]["OfficialAccountMediaResponse"] | null;
             /**
              * Created At

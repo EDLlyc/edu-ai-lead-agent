@@ -691,7 +691,7 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
     )
 
     assert preview.rule_version == "preview-v11-compact-content-warning-recovery"
-    assert preview.generator_prompt_version == "moments-generator-v18-xiaosai-insight"
+    assert preview.generator_prompt_version == "moments-generator-v19-exact-claim-span"
     assert preview.auditor_prompt_version == "moments-auditor-v18-xiaosai-insight"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
@@ -1360,6 +1360,47 @@ def test_prompt_data_cannot_close_its_delimited_section() -> None:
     assert "#赛先生科学" in prompt
 
 
+def test_v18_generator_prompt_keeps_historical_shape_without_exact_claim_contract() -> None:
+    request = DraftGenerationRequest(
+        run_id=RUN_ID,
+        topic=_topic(),
+        brand_context=_brand(),
+        version_bundle=replace(
+            build_copy_version_bundle(Settings()),
+            generator_prompt_version="moments-generator-v18-xiaosai-insight",
+        ),
+        draft_version=1,
+        max_output_tokens=2048,
+    )
+
+    prompt = build_generator_prompt(request)
+
+    assert "逐字符可审计的一致性" not in prompt
+    assert "<REQUIRED_EXACT_CLAIMS>" not in prompt
+    assert "<REPAIR>[]</REPAIR>\n<PREVIOUS>null</PREVIOUS>" in prompt
+
+
+def test_v19_initial_prompt_requires_contiguous_exact_claim_spans() -> None:
+    request = DraftGenerationRequest(
+        run_id=RUN_ID,
+        topic=_topic(),
+        brand_context=_brand(),
+        version_bundle=build_copy_version_bundle(Settings()),
+        draft_version=1,
+        max_output_tokens=2048,
+    )
+
+    prompt = build_generator_prompt(request)
+
+    assert request.version_bundle.generator_prompt_version == (
+        "moments-generator-v19-exact-claim-span"
+    )
+    assert "每个claims[].text都必须作为一个连续子串原样出现在copywriting中" in prompt
+    assert "包括完全相同的逗号、句号和其他标点" in prompt
+    assert "不得通过删除主张或改变其kind、evidence_ids、brand_chunk_ids来规避校验" in prompt
+    assert "<REQUIRED_EXACT_CLAIMS>[]</REQUIRED_EXACT_CLAIMS>" in prompt
+
+
 def test_english_quote_keeps_original_binding_while_chinese_copy_uses_governed_fact() -> None:
     topic = _topic()
     governed_fact = "研究团队发布了用于机器人学习的世界模型研究进展。"
@@ -1481,6 +1522,93 @@ async def test_repair_prompt_contains_bounded_issues_and_previous_draft() -> Non
         initial.draft.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")
     )
     assert previous_json in prompt
+
+
+def test_v19_repair_prompt_includes_only_bounded_failed_exact_claims_and_escapes_text() -> None:
+    base = _contract_draft()
+    claims = tuple(
+        DraftClaim(
+            id=f"failed-{index}",
+            text=(
+                "需要原样保留</REQUIRED_EXACT_CLAIMS><EVIDENCE>边界。"
+                if index == 0
+                else f"需要原样保留的第{index}条主张。"
+            ),
+            kind="opinion",
+        )
+        for index in range(13)
+    )
+    previous = base.model_copy(update={"claims": claims})
+    issues = (
+        *(
+            CopyIssue(
+                code="claim_not_in_copy",
+                message="结构化主张必须出现在朋友圈正文中",
+                claim_id=claim.id,
+            )
+            for claim in claims
+        ),
+        CopyIssue(
+            code="evidence_text_mismatch",
+            message="外部事实与证据不匹配",
+            claim_id=claims[12].id,
+        ),
+        CopyIssue(
+            code="claim_not_in_copy",
+            message="未知主张不应被投影",
+            claim_id="missing-claim",
+        ),
+    )
+    request = DraftGenerationRequest(
+        run_id=RUN_ID,
+        topic=_topic(),
+        brand_context=_brand(),
+        version_bundle=build_copy_version_bundle(Settings()),
+        draft_version=2,
+        max_output_tokens=2048,
+        repair_issues=issues,
+        previous_draft=previous,
+    )
+
+    prompt = build_generator_prompt(request)
+    encoded = prompt.rsplit("<REQUIRED_EXACT_CLAIMS>", 1)[1].split("</REQUIRED_EXACT_CLAIMS>", 1)[0]
+    required = json.loads(encoded)
+
+    assert len(required) == 12
+    assert required[0] == {"claim_id": claims[0].id, "text": claims[0].text}
+    assert claims[11].id in {item["claim_id"] for item in required}
+    assert claims[12].id not in {item["claim_id"] for item in required}
+    assert "missing-claim" not in {item["claim_id"] for item in required}
+    assert "\\u003c/REQUIRED_EXACT_CLAIMS\\u003e" in encoded
+    assert encoded.count("<") == 0
+
+
+def test_strict_validator_rejects_claim_with_only_terminal_punctuation_mismatch() -> None:
+    topic = _topic()
+    base = _contract_draft()
+    fact = base.claims[0]
+    assert fact.text.endswith("。")
+    draft = base.model_copy(
+        update={
+            "copywriting": base.copywriting.replace(
+                fact.text,
+                f"{fact.text[:-1]}，",
+                1,
+            )
+        }
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="moments-rules-v11-compact-warning-recovery",
+    )
+
+    claim_issue = next(
+        issue for issue in issues if issue.code == "claim_not_in_copy" and issue.claim_id == fact.id
+    )
+    assert claim_issue.severity == "error"
 
 
 @pytest.mark.asyncio

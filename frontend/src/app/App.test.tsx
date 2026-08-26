@@ -96,7 +96,14 @@ const apiMocks = vi.hoisted(() => {
 });
 
 vi.mock("@/features/brand/api", () => apiMocks);
-
+vi.mock("@/features/official-account-local/OfficialAccountLocalPanel", () => ({
+  OfficialAccountLocalPanel: () => (
+    <section>
+      <h2>公众号本地草稿台</h2>
+      <p>本地模拟，未同步公众号</p>
+    </section>
+  ),
+}));
 import { App } from "./App";
 
 afterEach(() => {
@@ -132,9 +139,23 @@ describe("brand knowledge workspace", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Agent 研究工作台" }),
+      await screen.findByRole(
+        "heading",
+        { name: "Agent 研究工作台" },
+        { timeout: 5_000 },
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("仅限本地开发")).toBeVisible();
+  });
+
+  it("loads the local article workbench only after its development opt-in", async () => {
+    vi.stubEnv("VITE_OFFICIAL_ACCOUNT_LOCAL_ENABLED", "true");
+    renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "公众号本地草稿台" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("本地模拟，未同步公众号")).toBeVisible();
   });
 
   it("keeps the standalone IP asset hub outside the shared console tree", () => {

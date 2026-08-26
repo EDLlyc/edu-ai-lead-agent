@@ -3,7 +3,7 @@ from __future__ import annotations
 # ruff: noqa: RUF001 -- Chinese punctuation is intentional in model instructions.
 import asyncio
 from dataclasses import asdict, replace
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 import structlog
@@ -55,27 +55,36 @@ from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V1_PNG_ONLY
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V3_VERSION,
+    OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V1_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V2_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V3_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
+    OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     OFFICIAL_ACCOUNT_RULE_V1_VERSION,
     OFFICIAL_ACCOUNT_RULE_V2_VERSION,
     OFFICIAL_ACCOUNT_RULE_V3_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
+    ArticleBulletListBlock,
     ArticleMediaSelectionItem,
     ArticleMediaSelectionSnapshot,
+    ArticleNewsContextMediaItem,
+    ArticleNewsContextMediaSnapshot,
+    ArticleParagraphBlock,
     ArticleSection,
     ArticleVersionBundle,
     GeneratedArticleSection,
     OfficialAccountSourceSnapshot,
     SemanticMediaCandidate,
     assign_deterministic_body_media_v3,
+    assign_deterministic_body_media_v4,
     assign_semantic_body_media,
     build_article_package,
     canonical_json,
@@ -83,6 +92,7 @@ from app.domain.official_account_local import (
     render_wechat_html,
     resolve_body_media_placeholder,
     resolve_body_media_placeholders,
+    resolve_context_media_placeholders,
     validate_article_package,
 )
 
@@ -103,6 +113,7 @@ def article_version_bundle(identity: OfficialAccountVersionIdentity) -> ArticleV
         media_plan_version=identity.media_plan_version,
         visual_query_version=identity.visual_query_version,
         visual_selector_version=identity.visual_selector_version,
+        context_media_plan_version=identity.context_media_plan_version,
     )
 
 
@@ -123,6 +134,8 @@ def run_request_fingerprint(
         identity_payload.pop("generated_visual_plan_version", None)
     if identity_payload.get("generated_visual_prompt_version") is None:
         identity_payload.pop("generated_visual_prompt_version", None)
+    if identity_payload.get("context_media_plan_version") is None:
+        identity_payload.pop("context_media_plan_version", None)
     return fingerprint(
         "official-account-local-run-v1",
         source_fingerprint,
@@ -206,11 +219,21 @@ def build_generation_prompt(request: OfficialAccountGenerationRequest) -> str:
             OFFICIAL_ACCOUNT_RULE_VERSION,
         ),
         (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
             OFFICIAL_ACCOUNT_RULE_VERSION,
         ),
     }:
         return _build_generation_prompt_v4(request, data)
+    if generation_versions == (
+        OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+        OFFICIAL_ACCOUNT_RULE_VERSION,
+    ):
+        return _build_generation_prompt_v6(request, data)
+    if generation_versions == (
+        OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+        OFFICIAL_ACCOUNT_RULE_VERSION,
+    ):
+        return _build_generation_prompt_v7(request, data)
     raise ValueError("official-account generator prompt/rule version bundle is unsupported")
 
 
@@ -323,6 +346,43 @@ def _build_generation_prompt_v4(
     )
 
 
+def _build_generation_prompt_v6(
+    request: OfficialAccountGenerationRequest,
+    data: dict[str, object],
+) -> str:
+    historical_prompt = _build_generation_prompt_v4(request, data)
+    author_marker = f"<AUTHOR>{request.identity.default_author}</AUTHOR>"
+    prefix, marker, suffix = historical_prompt.partition(author_marker)
+    if not marker:
+        raise ValueError("official-account generator author marker is missing")
+    length_contract = (
+        "输出JSON前必须按系统确定性口径逐项自检正文字符数：只计算lead、每个section.heading、"
+        "paragraph.text、quote.text、bullet_list.items中的每一项和conclusion，移除所有空白字符后求和；"
+        "不计算title、digest、author、claims、claim_refs、来源信息或图片字段。"
+        f"计算结果必须落在目标{request.identity.target_min_characters}--"
+        f"{request.identity.target_max_characters}字符内，并主动留出长度缓冲，不得贴近"
+        f"{request.identity.min_characters}字符硬下限。若自检不足目标下限，先扩展有依据的解释、"
+        "行动步骤或适用边界，再重新计数；确认达标后才输出JSON。"
+    )
+    return f"{prefix}{length_contract}{marker}{suffix}"
+
+
+def _build_generation_prompt_v7(
+    request: OfficialAccountGenerationRequest,
+    data: dict[str, object],
+) -> str:
+    buffered_prompt = _build_generation_prompt_v6(request, data)
+    author_marker = f"<AUTHOR>{request.identity.default_author}</AUTHOR>"
+    prefix, marker, suffix = buffered_prompt.partition(author_marker)
+    if not marker:
+        raise ValueError("official-account generator author marker is missing")
+    section_contract = (
+        "文章必须包含5--7个section；每个section都应对应一个不同的正文内容块，"
+        "使应用能够稳定安排五个互不重复的块级配图位置。"
+    )
+    return f"{prefix}{section_contract}{marker}{suffix}"
+
+
 def build_audit_prompt(request: OfficialAccountAuditRequest) -> str:
     allowlists = {
         "evidence": [
@@ -430,11 +490,24 @@ def _fallback_v7_selection(
     sections: tuple[GeneratedArticleSection, ...],
     candidates: tuple[OfficialAccountSourceMedia, ...],
     reason: Literal["disabled", "single_candidate", "catalog_changed"],
+    media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
 ) -> OfficialAccountMediaSelectionResult:
+    if media_plan_version not in {
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    }:
+        raise ValueError("official-account fallback media-plan version is unsupported")
     semantic_candidates = tuple(_semantic_candidate(candidate) for candidate in candidates)
-    assignments = assign_deterministic_body_media_v3(
-        sections=sections,
-        candidates=semantic_candidates,
+    assignments = (
+        assign_deterministic_body_media_v4(
+            sections=sections,
+            candidates=semantic_candidates,
+        )
+        if media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+        else assign_deterministic_body_media_v3(
+            sections=sections,
+            candidates=semantic_candidates,
+        )
     )
     by_ref = {candidate.candidate_id: candidate for candidate in candidates}
     catalog_versions = {
@@ -458,7 +531,13 @@ def _fallback_v7_selection(
         ),
     )
     snapshot = ArticleMediaSelectionSnapshot(
-        media_plan_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+        media_plan_version=cast(
+            Literal[
+                "official-account-media-plan-v3-multimodal-hybrid",
+                "official-account-media-plan-v4-five-blocks",
+            ],
+            media_plan_version,
+        ),
         visual_query_version="official-account-visual-query-v1",
         visual_selector_version="official-account-visual-selector-v3-multimodal-hybrid",
         status="single_candidate" if reason == "single_candidate" else "semantic_unavailable",
@@ -514,6 +593,105 @@ def _select_v7_source_media(
             )
         )
     return tuple(selected)
+
+
+def _news_context_terms(value: str) -> set[str]:
+    normalized = "".join(character.casefold() for character in value if character.isalnum())
+    return {
+        normalized[index : index + 2]
+        for index in range(max(0, len(normalized) - 1))
+        if normalized[index : index + 2]
+    }
+
+
+def select_news_context_media(
+    *,
+    topic_title: str,
+    sections: tuple[GeneratedArticleSection, ...],
+    candidates: tuple[OfficialAccountSourceMedia, ...],
+) -> ArticleNewsContextMediaSnapshot:
+    eligible = tuple(
+        candidate
+        for candidate in candidates
+        if candidate.source_article_image_id is not None
+        and candidate.source_page_url is not None
+        and candidate.image_url is not None
+        and candidate.rights_status == "publish_permission_unverified"
+        and candidate.context_only_not_evidence
+        and candidate.media_type in {"image/jpeg", "image/png", "image/webp"}
+        and candidate.width is not None
+        and candidate.height is not None
+    )[:2]
+    used_sections: set[int] = set()
+    items: list[ArticleNewsContextMediaItem] = []
+    for ordinal, candidate in enumerate(eligible):
+        candidate_text = " ".join(
+            value
+            for value in (topic_title, candidate.alt_text, candidate.caption_text, candidate.credit)
+            if value
+        )
+        candidate_terms = _news_context_terms(candidate_text)
+        scored_sections = sorted(
+            (
+                (
+                    -len(
+                        candidate_terms
+                        & _news_context_terms(
+                            " ".join(
+                                [
+                                    section.heading,
+                                    *(
+                                        block.text
+                                        if isinstance(block, ArticleParagraphBlock)
+                                        else " ".join(block.items)
+                                        if isinstance(block, ArticleBulletListBlock)
+                                        else block.text
+                                        for block in section.blocks
+                                    ),
+                                ]
+                            )
+                        )
+                    ),
+                    section_index,
+                )
+                for section_index, section in enumerate(sections)
+                if section_index not in used_sections
+            )
+        )
+        section_index = scored_sections[0][1] if scored_sections else ordinal
+        used_sections.add(section_index)
+        alt_text = (candidate.alt_text or candidate.caption_text or f"{topic_title}相关新闻现场")[
+            :200
+        ]
+        assert candidate.source_article_image_id is not None
+        assert candidate.source_page_url is not None
+        assert candidate.image_url is not None
+        assert candidate.width is not None and candidate.height is not None
+        items.append(
+            ArticleNewsContextMediaItem(
+                ordinal=ordinal,
+                section_index=section_index,
+                source_article_image_id=candidate.source_article_image_id,
+                sha256=candidate.sha256,
+                media_type=cast(
+                    Literal["image/jpeg", "image/png", "image/webp"],
+                    candidate.media_type,
+                ),
+                width=candidate.width,
+                height=candidate.height,
+                alt_text=alt_text,
+                caption=candidate.caption_text or None,
+                credit=candidate.credit,
+                source_page_url=candidate.source_page_url,
+                rights_status="publish_permission_unverified",
+                context_only_not_evidence=True,
+            )
+        )
+    return ArticleNewsContextMediaSnapshot(
+        selection_version="official-account-news-context-selection-v1",
+        status="not_present" if not items else "partial" if len(items) == 1 else "ready",
+        items=tuple(items),
+    )
 
 
 class OfficialAccountLocalExecutor:
@@ -639,11 +817,20 @@ class OfficialAccountLocalExecutor:
         is_multimodal_media = (
             identity.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION
             and identity.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
+        ) or (
+            identity.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
+            and identity.media_plan_version
+            in {OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION, OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION}
+        )
+        is_news_context_media = (
+            identity.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
+            and identity.context_media_plan_version == "official-account-news-context-selection-v1"
         )
         is_multi_image = (
             is_historical_multi_image or is_current_semantic_media or is_multimodal_media
         )
         source_media_candidates: tuple[OfficialAccountSourceMedia, ...] = ()
+        news_context_candidates: tuple[OfficialAccountSourceMedia, ...] = ()
         if is_multi_image:
             if (
                 is_multimodal_media
@@ -665,6 +852,8 @@ class OfficialAccountLocalExecutor:
                 )
             if not source_media_candidates:
                 raise ValueError("official-account multi-image article has no eligible body image")
+        if is_news_context_media and claimed.generation_mode == "live":
+            news_context_candidates = await self._repository.load_news_context_candidates(claimed)
         run_fingerprint = run_request_fingerprint(
             source_fingerprint=source.source_fingerprint,
             generation_mode=claimed.generation_mode,
@@ -710,12 +899,14 @@ class OfficialAccountLocalExecutor:
                         enabled=(
                             self._visual_semantic_enabled and claimed.generation_mode == "live"
                         ),
+                        media_plan_version=identity.media_plan_version or "",
                     )
                 else:
                     selection = _fallback_v7_selection(
                         sections=result.draft.sections,
                         candidates=source_media_candidates,
                         reason="disabled",
+                        media_plan_version=identity.media_plan_version or "",
                     )
                 source_media_candidates = selection.candidates
             semantic_assignments = (
@@ -738,6 +929,15 @@ class OfficialAccountLocalExecutor:
                 body_media_candidate_count=(len(source_media_candidates) if is_multi_image else 1),
                 semantic_media_assignments=semantic_assignments,
                 media_selection=selection.snapshot if selection is not None else None,
+                news_context_media=(
+                    select_news_context_media(
+                        topic_title=source.topic_title,
+                        sections=result.draft.sections,
+                        candidates=news_context_candidates,
+                    )
+                    if is_news_context_media
+                    else None
+                ),
             )
             validation_issues = validate_article_package(
                 package,
@@ -856,7 +1056,9 @@ class OfficialAccountLocalExecutor:
             if body is None:
                 fingerprint_version = (
                     (
-                        "official-account-local-media-v4-multimodal"
+                        "official-account-local-media-v5-news-context"
+                        if is_news_context_media
+                        else "official-account-local-media-v4-multimodal"
                         if is_multimodal_media
                         else "official-account-local-media-v3-semantic"
                         if is_current_semantic_media
@@ -920,6 +1122,69 @@ class OfficialAccountLocalExecutor:
             raise ValueError("official-account staged body media ordinals are incomplete")
         if len({result.sha256 for _id, result in body_items}) != len(body_items):
             raise ValueError("official-account staged body media checksums are not distinct")
+        context_items: list[tuple[UUID, OfficialAccountMediaResult]] = []
+        if is_news_context_media:
+            snapshot = article.article.news_context_media
+            if snapshot is None:
+                raise ValueError("official-account v9 article lacks context selection")
+            by_source_id = {
+                candidate.source_article_image_id: candidate
+                for candidate in news_context_candidates
+                if candidate.source_article_image_id is not None
+            }
+            for item in snapshot.items:
+                context_source = by_source_id.get(item.source_article_image_id)
+                if (
+                    context_source is None
+                    or context_source.sha256 != item.sha256
+                    or context_source.rights_status != item.rights_status
+                    or context_source.source_page_url != item.source_page_url
+                ):
+                    raise ValueError("official-account context media lineage changed")
+                context_source = replace(
+                    context_source,
+                    ordinal=item.ordinal,
+                    assigned_section_index=item.section_index,
+                    alt_text=item.alt_text,
+                    caption_text=item.caption or "",
+                )
+                context = await self._repository.get_media(claimed.run_id, "context", item.ordinal)
+                if context is None:
+                    context_fingerprint = fingerprint(
+                        "official-account-local-context-media-v1",
+                        rendered.render_fingerprint,
+                        item.source_article_image_id,
+                        item.sha256,
+                        item.ordinal,
+                        item.section_index,
+                        identity.local_adapter_version,
+                    )
+                    context_result = await self._media_adapter.stage(
+                        OfficialAccountMediaRequest(
+                            run_id=claimed.run_id,
+                            render_version_id=rendered.id,
+                            source_image_artifact_id=None,
+                            fixture_id=None,
+                            role="context",
+                            ordinal=item.ordinal,
+                            source_sha256=item.sha256,
+                            media_type=item.media_type,
+                            byte_size=context_source.byte_size,
+                            local_adapter_version=identity.local_adapter_version,
+                            request_fingerprint=context_fingerprint,
+                            source_article_image_id=item.source_article_image_id,
+                        )
+                    )
+                    context = await self._repository.persist_media(
+                        claimed=claimed,
+                        render=rendered,
+                        source_media=context_source,
+                        request_fingerprint=context_fingerprint,
+                        result=context_result,
+                    )
+                    if context is None:
+                        return
+                context_items.append(context)
         cover = await self._repository.get_media(claimed.run_id, "cover", 0)
         if cover is None:
             cover_source = (
@@ -930,7 +1195,9 @@ class OfficialAccountLocalExecutor:
             cover_fingerprint = fingerprint(
                 (
                     (
-                        "official-account-local-media-v4-multimodal"
+                        "official-account-local-media-v5-news-context"
+                        if is_news_context_media
+                        else "official-account-local-media-v4-multimodal"
                         if is_multimodal_media
                         else "official-account-local-media-v3-semantic"
                         if is_current_semantic_media
@@ -989,9 +1256,16 @@ class OfficialAccountLocalExecutor:
                 body_result.media_url,
             )
         )
+        if is_news_context_media:
+            resolved_html = resolve_context_media_placeholders(
+                resolved_html,
+                tuple((result.ordinal, result.media_url) for _media_id, result in context_items),
+            )
         draft_fingerprint = fingerprint(
             (
-                "official-account-local-draft-v2-multi-image"
+                "official-account-local-draft-v5-news-context"
+                if is_news_context_media
+                else "official-account-local-draft-v2-multi-image"
                 if is_historical_multi_image
                 else "official-account-local-draft-v4-multimodal"
                 if is_multimodal_media
@@ -1007,6 +1281,7 @@ class OfficialAccountLocalExecutor:
                 else body_result.local_media_id
             ),
             cover_result.local_media_id,
+            tuple(result.local_media_id for _media_id, result in context_items),
             identity.local_adapter_version,
             resolved_html,
         )
@@ -1022,6 +1297,7 @@ class OfficialAccountLocalExecutor:
                 cover_media=cover_result,
                 request_fingerprint=draft_fingerprint,
                 body_media_items=body_results,
+                context_media_items=tuple(result for _media_id, result in context_items),
             )
         )
         await self._repository.persist_draft(

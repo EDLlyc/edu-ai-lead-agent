@@ -732,6 +732,11 @@
   border-color: var(--oa-accent);
 }
 
+.mediaGrid figure[data-role="context"] {
+  border-color: #d99b38;
+  background: #fff8e8;
+}
+
 .mediaGrid img {
   display: block;
   width: 100%;
@@ -741,6 +746,13 @@
 
 .mediaGrid figure[data-role="cover"] img {
   aspect-ratio: 2.35 / 1;
+}
+
+.mediaGrid figure[data-role="context"] img {
+  aspect-ratio: auto;
+  max-height: 28rem;
+  object-fit: contain;
+  background: #f5f7fb;
 }
 
 .mediaGrid figcaption {
@@ -755,6 +767,21 @@
 .previewFrame code {
   overflow-wrap: anywhere;
   color: #08736e;
+}
+
+.contextStatus {
+  display: grid;
+  gap: 0.3rem;
+  margin-block: 0.8rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #d99b38;
+  border-radius: 0.6rem;
+  background: #fff8e8;
+  color: #714b0c;
+}
+
+.rightsWarning {
+  color: #9a3412;
 }
 
 .previewFrame {

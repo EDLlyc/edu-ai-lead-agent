@@ -14,6 +14,7 @@ from app.core.errors import AppError, ConflictError, NotFoundError
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
+    OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     ArticlePackage,
 )
@@ -35,6 +36,7 @@ from app.infrastructure.official_account_media import (
 )
 from app.schemas.official_account_local import (
     EligibleMaterialPackageResponse,
+    OfficialAccountArticleResponse,
     OfficialAccountCapabilitiesResponse,
     OfficialAccountDraftResponse,
     OfficialAccountEmbeddingIdentityResponse,
@@ -167,6 +169,7 @@ async def read_article_run(
     article = await repository.get_article(run_id)
     media_rows = await repository.list_media(run_id)
     body_rows = tuple(item for item in media_rows if item[1].role == "body")
+    context_rows = tuple(item for item in media_rows if item[1].role == "context")
     cover_row = next((item for item in media_rows if item[1].role == "cover"), None)
     draft = await repository.get_draft(run_id)
     manual_review = await repository.get_manual_review(run_id)
@@ -174,7 +177,11 @@ async def read_article_run(
     summary = _summary(run)
     return OfficialAccountRunDetailResponse(
         **summary.model_dump(),
-        article=article.article if article is not None else None,
+        article=(
+            OfficialAccountArticleResponse.from_domain(article.article)
+            if article is not None
+            else None
+        ),
         validation=(
             OfficialAccountValidationResponse(
                 passed=article.validation_passed,
@@ -198,6 +205,12 @@ async def read_article_run(
         media=[_media(result) for _media_id, result in media_rows],
         body_image=_media(body_rows[0][1]) if body_rows else None,
         body_images=[_media(result) for _media_id, result in body_rows],
+        context_images=[_media(result) for _media_id, result in context_rows],
+        context_media_status=(
+            article.article.news_context_media.status
+            if article is not None and article.article.news_context_media is not None
+            else "not_present"
+        ),
         cover_image=_media(cover_row[1]) if cover_row is not None else None,
         media_selection=_media_selection(
             run,
@@ -269,6 +282,7 @@ async def read_local_media(
     resolver = OfficialAccountLocalMediaResolver(
         image_asset_manifest=getattr(request.app.state.settings, "image_asset_manifest", None),
         image_store=getattr(request.app.state, "image_store", None),
+        snapshot_store=getattr(request.app.state, "snapshot_store", None),
     )
     try:
         persisted_media = persisted_media_snapshot(row)
@@ -367,6 +381,7 @@ def _identity(
         local_adapter_version=settings.official_account_local_adapter_version,
         visual_query_version=settings.official_account_local_visual_query_version,
         visual_selector_version=settings.official_account_local_visual_selector_version,
+        context_media_plan_version=settings.official_account_local_context_media_plan_version,
         generated_visual_plan_version=(
             settings.official_account_local_generated_visual_plan_version
             if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
@@ -424,6 +439,12 @@ def _media(result: Any) -> OfficialAccountMediaResponse:
         selection_method=result.selection_method,
         similarity_band=result.similarity_band,
         alt_text=result.alt_text,
+        provenance_kind=result.provenance_kind,
+        source_page_url=result.source_page_url,
+        caption=result.caption,
+        credit=result.credit,
+        rights_status=result.rights_status,
+        context_only_not_evidence=result.context_only_not_evidence,
     )
 
 
@@ -489,7 +510,10 @@ def _media_selection(
     article: ArticlePackage | None,
 ) -> OfficialAccountMediaSelectionResponse:
     current_plan = run.version_bundle.get("media_plan_version")
-    if current_plan == OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION:
+    if current_plan in {
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+        OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    }:
         snapshot = article.media_selection if article is not None else None
         planned_body_count = len(snapshot.assignments) if snapshot is not None else body_count
         semantic_ready = snapshot is not None and snapshot.status == "semantic_ready"
@@ -503,7 +527,7 @@ def _media_selection(
             "相似度不是审稿结论，最终仍需由人工明确批准或退回。",
         ]
         return OfficialAccountMediaSelectionResponse(
-            policy_version=OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
+            policy_version=str(current_plan),
             # The selection snapshot is persisted before generated-image provider I/O.  It is
             # therefore the safe target count while no body-media rows have been staged yet.
             body_image_count=planned_body_count,

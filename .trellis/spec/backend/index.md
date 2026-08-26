@@ -28,6 +28,7 @@ tests.
 | [Database Guidelines](./database-guidelines.md) | PostgreSQL, pgvector, SQLAlchemy 2 async, and Alembic |
 | [Local Agent Workbench](./agent-workbench.md) | One typed read-only registry for bounded Agent, MCP stdio, deterministic eval, and a loopback-only API |
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |
+| [Official-Account Editorial Repackage](./official-account-editorial-repackage.md) | Frozen offline repackages plus durable V10 five-visual/news-context generation, disjoint staging attempts, polished deterministic local export, and permanent no-publish truth |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |

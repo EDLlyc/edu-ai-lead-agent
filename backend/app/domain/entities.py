@@ -53,6 +53,23 @@ class DiscoveredItem:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceImageReference:
+    """A bounded, policy-approved image occurrence extracted from one detail page.
+
+    This value carries provenance only.  It is not evidence and extraction performs no I/O.
+    """
+
+    image_url: str
+    source_page_url: str
+    ordinal: int
+    role: str
+    alt_text: str | None = None
+    caption: str | None = None
+    credit: str | None = None
+    extraction_version: str = "source-image-extractor-v1"
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractedDocument:
     source_item_id: str
     original_url: str
@@ -63,6 +80,7 @@ class ExtractedDocument:
     language: str
     parser_version: str
     extraction_metadata: dict[str, Any] = field(default_factory=dict)
+    source_images: tuple[SourceImageReference, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,3 +90,10 @@ class SnapshotDescriptor:
     media_type: str
     byte_size: int
     sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedSourceImage:
+    response: FetchedResponse
+    width: int
+    height: int

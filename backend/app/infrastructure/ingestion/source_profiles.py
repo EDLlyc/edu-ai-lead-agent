@@ -85,6 +85,8 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
         ("/",),
         "manual_review",
         3.0,
+        connector_version="1.0.1",
+        parser_version="1.0.1",
     ),
     SourceSeed(
         "sensetime-news",

@@ -14,12 +14,17 @@ from hashlib import sha256
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.entities import SnapshotDescriptor
 from app.infrastructure.db.models import (
     ImageArtifactModel,
+    OfficialAccountArticleContextImageModel,
     OfficialAccountGeneratedVisualModel,
     OfficialAccountLocalMediaModel,
+    SourceArticleImageModel,
+    SourceSnapshotModel,
 )
 from app.infrastructure.official_account_catalog import LocalOfficialAccountCatalogMediaProvider
 from app.infrastructure.official_account_local import (
@@ -40,6 +45,7 @@ from app.infrastructure.official_account_local import (
     fixture_media_path,
 )
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
+from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
 
 
 class OfficialAccountMediaIntegrityError(ValueError):
@@ -60,6 +66,7 @@ class OfficialAccountPersistedMedia:
     sha256: str
     descriptor: dict[str, Any]
     generated_visual_id: UUID | None = None
+    source_article_image_id: UUID | None = None
     run_id: UUID | None = None
     render_version_id: UUID | None = None
 
@@ -81,6 +88,7 @@ def persisted_media_snapshot(
         sha256=media.sha256,
         descriptor=dict(descriptor),
         generated_visual_id=getattr(media, "generated_visual_id", None),
+        source_article_image_id=getattr(media, "source_article_image_id", None),
         run_id=getattr(media, "run_id", None),
         render_version_id=getattr(media, "render_version_id", None),
     )
@@ -94,9 +102,11 @@ class OfficialAccountLocalMediaResolver:
         *,
         image_asset_manifest: str | None,
         image_store: MinioImageStore | None,
+        snapshot_store: MinioSnapshotStore | None = None,
     ) -> None:
         self._image_asset_manifest = image_asset_manifest
         self._image_store = image_store
+        self._snapshot_store = snapshot_store
 
     async def read_verified_bytes(
         self,
@@ -114,6 +124,8 @@ class OfficialAccountLocalMediaResolver:
             return await self._read_catalog_bytes(snapshot)
         if snapshot.descriptor.get("source_kind") == "generated_visual":
             return await self._read_generated_visual_bytes(session=session, media=snapshot)
+        if snapshot.descriptor.get("source_kind") == "source_news":
+            return await self._read_news_context_bytes(session=session, media=snapshot)
         if snapshot.fixture_id is not None:
             await _release_read_transaction(session)
             return await self._read_fixture_bytes(snapshot)
@@ -220,6 +232,69 @@ class OfficialAccountLocalMediaResolver:
                 "generated visual source image is unavailable"
             ) from error
         _assert_bytes_match(media, body, "generated visual metadata does not match")
+        return body
+
+    async def _read_news_context_bytes(
+        self,
+        *,
+        session: AsyncSession,
+        media: OfficialAccountPersistedMedia,
+    ) -> bytes:
+        if (
+            media.source_article_image_id is None
+            or media.run_id is None
+            or media.source_image_artifact_id is not None
+            or media.fixture_id is not None
+            or media.generated_visual_id is not None
+            or media.role != "context"
+            or not 0 <= media.ordinal <= 1
+            or self._snapshot_store is None
+        ):
+            raise OfficialAccountMediaIntegrityError("source-news media lineage is invalid")
+        source_image = await session.get(SourceArticleImageModel, media.source_article_image_id)
+        context_plan = await session.scalar(
+            select(OfficialAccountArticleContextImageModel).where(
+                OfficialAccountArticleContextImageModel.run_id == media.run_id,
+                OfficialAccountArticleContextImageModel.source_article_image_id
+                == media.source_article_image_id,
+                OfficialAccountArticleContextImageModel.ordinal == media.ordinal,
+            )
+        )
+        if source_image is None or source_image.image_snapshot_id is None:
+            raise OfficialAccountMediaIntegrityError("source-news image is unavailable")
+        snapshot = await session.get(SourceSnapshotModel, source_image.image_snapshot_id)
+        if (
+            context_plan is None
+            or snapshot is None
+            or source_image.status != "ready"
+            or source_image.rights_status != "publish_permission_unverified"
+            or snapshot.kind != "image"
+            or source_image.sha256 != media.sha256
+            or source_image.media_type != media.media_type
+            or source_image.byte_size != media.byte_size
+            or source_image.sha256 != snapshot.sha256
+            or source_image.media_type != snapshot.media_type
+            or source_image.byte_size != snapshot.byte_size
+            or context_plan.sha256 != media.sha256
+            or context_plan.rights_status != "publish_permission_unverified"
+            or context_plan.context_only_not_evidence is not True
+        ):
+            raise OfficialAccountMediaIntegrityError("source-news media metadata does not match")
+        descriptor = SnapshotDescriptor(
+            bucket=snapshot.bucket,
+            object_key=snapshot.object_key,
+            media_type=snapshot.media_type,
+            byte_size=snapshot.byte_size,
+            sha256=snapshot.sha256,
+        )
+        await _release_read_transaction(session)
+        try:
+            body = await self._snapshot_store.get_verified(descriptor)
+        except Exception as error:
+            raise OfficialAccountMediaIntegrityError(
+                "source-news snapshot is unavailable"
+            ) from error
+        _assert_bytes_match(media, body, "source-news media metadata does not match")
         return body
 
     async def _read_source_image_bytes(

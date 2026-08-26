@@ -13,6 +13,7 @@ type ManualReviewRequest =
   components["schemas"]["OfficialAccountManualReviewRequest"];
 type ManualReviewResponse =
   components["schemas"]["OfficialAccountManualReviewResponse"];
+type MediaResponse = components["schemas"]["OfficialAccountMediaResponse"];
 
 export type OfficialAccountStatus = RunSummaryResponse["status"];
 export type OfficialAccountStage = RunSummaryResponse["current_stage"];
@@ -65,31 +66,39 @@ export type OfficialAccountRunSummaryViewModel = Readonly<{
   simulation: true;
 }>;
 
+export type OfficialAccountMediaViewModel = Readonly<{
+  id: string;
+  role: "body" | "cover" | "context";
+  roleLabel: string;
+  ordinal: number;
+  url: string | null;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+  semanticLabel: string | null;
+  assignedSectionIndex: number | null;
+  scoreBand: "heading" | "body" | "fallback" | null;
+  selectionReasonCode: string | null;
+  selectionMethod: "deterministic_tag" | "multimodal_embedding" | null;
+  selectionMethodLabel: string | null;
+  similarityBand: "very_high" | "high" | "medium" | "low" | null;
+  similarityBandLabel: string | null;
+  altText: string | null;
+  provenanceKind: MediaResponse["provenance_kind"];
+  sourcePageUrl: string | null;
+  caption: string | null;
+  credit: string | null;
+  rightsStatus: MediaResponse["rights_status"];
+  contextOnlyNotEvidence: boolean;
+}>;
+
 export type OfficialAccountRunDetailViewModel = Readonly<{
   summary: OfficialAccountRunSummaryViewModel;
   article: RunDetailResponse["article"];
   validation: RunDetailResponse["validation"];
   audit: RunDetailResponse["audit"];
   usage: RunDetailResponse["usage"];
-  media: readonly Readonly<{
-    id: string;
-    role: "body" | "cover";
-    roleLabel: string;
-    ordinal: number;
-    url: string | null;
-    mediaType: string;
-    byteSize: number;
-    sha256: string;
-    semanticLabel: string | null;
-    assignedSectionIndex: number | null;
-    scoreBand: "heading" | "body" | "fallback" | null;
-    selectionReasonCode: string | null;
-    selectionMethod: "deterministic_tag" | "multimodal_embedding" | null;
-    selectionMethodLabel: string | null;
-    similarityBand: "very_high" | "high" | "medium" | "low" | null;
-    similarityBandLabel: string | null;
-    altText: string | null;
-  }>[];
+  media: readonly OfficialAccountMediaViewModel[];
   bodyImages: readonly Readonly<{
     id: string;
     ordinal: number;
@@ -98,6 +107,8 @@ export type OfficialAccountRunDetailViewModel = Readonly<{
     byteSize: number;
     sha256: string;
   }>[];
+  contextImages: readonly OfficialAccountMediaViewModel[];
+  contextMediaStatus: "not_present" | "partial" | "ready";
   primaryBodyImageId: string | null;
   coverImageId: string | null;
   mediaSelection: Readonly<{
@@ -342,33 +353,7 @@ export function mapRunDetail(
     validation: response.validation,
     audit: response.audit,
     usage: response.usage,
-    media: response.media.map((item) => ({
-      id: item.local_media_id,
-      role: item.role,
-      roleLabel:
-        item.role === "body"
-          ? `正文图片 ${String(item.ordinal + 1).padStart(2, "0")}`
-          : "封面",
-      ordinal: item.ordinal,
-      url: resolveApiResourceUrl(item.media_url),
-      mediaType: item.media_type,
-      byteSize: item.byte_size,
-      sha256: item.sha256,
-      semanticLabel: item.semantic_label ?? null,
-      assignedSectionIndex: item.assigned_section_index ?? null,
-      scoreBand: item.score_band ?? null,
-      selectionReasonCode: item.selection_reason_code ?? null,
-      selectionMethod: item.selection_method ?? null,
-      selectionMethodLabel:
-        item.selection_method === "multimodal_embedding"
-          ? "多模态语义匹配"
-          : item.selection_method === "deterministic_tag"
-            ? "确定性标签回退"
-            : null,
-      similarityBand: item.similarity_band ?? null,
-      similarityBandLabel: similarityBandLabel(item.similarity_band ?? null),
-      altText: item.alt_text ?? null,
-    })),
+    media: response.media.map(mapMedia),
     bodyImages: response.body_images.map((item) => ({
       id: item.local_media_id,
       ordinal: item.ordinal,
@@ -377,6 +362,8 @@ export function mapRunDetail(
       byteSize: item.byte_size,
       sha256: item.sha256,
     })),
+    contextImages: (response.context_images ?? []).map(mapMedia),
+    contextMediaStatus: response.context_media_status ?? "not_present",
     primaryBodyImageId: response.body_image?.local_media_id ?? null,
     coverImageId: response.cover_image?.local_media_id ?? null,
     mediaSelection: {
@@ -449,6 +436,44 @@ export function mapRunDetail(
             createdAtLabel: formatDateTime(response.draft.created_at),
           },
     manualReview: mapManualReview(response.manual_review),
+  };
+}
+
+function mapMedia(item: MediaResponse): OfficialAccountMediaViewModel {
+  return {
+    id: item.local_media_id,
+    role: item.role,
+    roleLabel:
+      item.role === "context"
+        ? `新闻原图 ${String(item.ordinal + 1).padStart(2, "0")}`
+        : item.role === "body"
+          ? `公司 IP 图 ${String(item.ordinal + 1).padStart(2, "0")}`
+          : "封面",
+    ordinal: item.ordinal,
+    url: resolveApiResourceUrl(item.media_url),
+    mediaType: item.media_type,
+    byteSize: item.byte_size,
+    sha256: item.sha256,
+    semanticLabel: item.semantic_label ?? null,
+    assignedSectionIndex: item.assigned_section_index ?? null,
+    scoreBand: item.score_band ?? null,
+    selectionReasonCode: item.selection_reason_code ?? null,
+    selectionMethod: item.selection_method ?? null,
+    selectionMethodLabel:
+      item.selection_method === "multimodal_embedding"
+        ? "多模态语义匹配"
+        : item.selection_method === "deterministic_tag"
+          ? "确定性标签回退"
+          : null,
+    similarityBand: item.similarity_band ?? null,
+    similarityBandLabel: similarityBandLabel(item.similarity_band ?? null),
+    altText: item.alt_text ?? null,
+    provenanceKind: item.provenance_kind ?? null,
+    sourcePageUrl: item.source_page_url ?? null,
+    caption: item.caption ?? null,
+    credit: item.credit ?? null,
+    rightsStatus: item.rights_status ?? null,
+    contextOnlyNotEvidence: item.context_only_not_evidence,
   };
 }
 

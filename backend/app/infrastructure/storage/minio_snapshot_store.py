@@ -39,6 +39,11 @@ class MinioSnapshotStore:
         await asyncio.to_thread(self._put_or_verify, descriptor, body)
         return descriptor
 
+    async def get_verified(self, descriptor: SnapshotDescriptor) -> bytes:
+        """Read one immutable source snapshot without exposing its private location."""
+
+        return await asyncio.to_thread(self._get_verified, descriptor)
+
     def _put_or_verify(self, descriptor: SnapshotDescriptor, body: bytes) -> None:
         try:
             stat = self._client.stat_object(descriptor.bucket, descriptor.object_key)
@@ -61,3 +66,26 @@ class MinioSnapshotStore:
             content_type=descriptor.media_type,
             metadata={"sha256": descriptor.sha256},
         )
+
+    def _get_verified(self, descriptor: SnapshotDescriptor) -> bytes:
+        expected_key = f"source-snapshots/sha256/{descriptor.sha256[:2]}/{descriptor.sha256}"
+        if descriptor.bucket != self._bucket or descriptor.object_key != expected_key:
+            raise ConflictError("source snapshot object is outside the immutable store")
+        if descriptor.byte_size <= 0 or descriptor.byte_size > 15 * 1024 * 1024:
+            raise ConflictError("source snapshot object exceeds the context-image limit")
+        response = self._client.get_object(descriptor.bucket, descriptor.object_key)
+        try:
+            chunks: list[bytes] = []
+            byte_count = 0
+            for chunk in response.stream(64 * 1024):
+                byte_count += len(chunk)
+                if byte_count > 15 * 1024 * 1024:
+                    raise ConflictError("stored source snapshot exceeds the context-image limit")
+                chunks.append(chunk)
+            body = b"".join(chunks)
+        finally:
+            response.close()
+            response.release_conn()
+        if len(body) != descriptor.byte_size or sha256_bytes(body) != descriptor.sha256:
+            raise ConflictError("stored source snapshot checksum does not match metadata")
+        return body

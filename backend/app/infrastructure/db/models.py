@@ -344,11 +344,117 @@ class SourceSnapshotModel(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("kind IN ('list', 'detail')", name="ck_source_snapshots_kind"),
+        CheckConstraint("kind IN ('list', 'detail', 'image')", name="ck_source_snapshots_kind"),
         CheckConstraint("byte_size >= 0", name="ck_source_snapshots_byte_size"),
         UniqueConstraint("provenance_key", name="uq_source_snapshots_provenance_key"),
         Index("ix_source_snapshots_object", "bucket", "object_key"),
         Index("ix_source_snapshots_source_version_id", "source_version_id"),
+    )
+
+
+class SourceArticleImageModel(Base):
+    __tablename__ = "source_article_images"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "evidence_candidates.id",
+            name="fk_source_article_images_candidate_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    detail_snapshot_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_snapshots.id",
+            name="fk_source_article_images_detail_snapshot_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    source_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_versions.id",
+            name="fk_source_article_images_source_version_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    image_snapshot_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_snapshots.id",
+            name="fk_source_article_images_image_snapshot_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    discovery_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    final_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    alt_text: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    caption: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    credit: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    extraction_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    rights_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default=text("'publish_permission_unverified'")
+    )
+    media_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("ordinal BETWEEN 0 AND 4", name="ck_source_article_images_ordinal"),
+        CheckConstraint("role IN ('lead', 'body')", name="ck_source_article_images_role"),
+        CheckConstraint(
+            "status IN ('discovered', 'ready', 'failed', 'rejected')",
+            name="ck_source_article_images_status",
+        ),
+        CheckConstraint(
+            "rights_status = 'publish_permission_unverified'",
+            name="ck_source_article_images_rights",
+        ),
+        CheckConstraint(
+            "(status = 'ready' AND image_snapshot_id IS NOT NULL AND final_image_url IS NOT NULL "
+            "AND media_type IN ('image/jpeg', 'image/png', 'image/webp') AND byte_size > 0 "
+            "AND sha256 ~ '^[0-9a-f]{64}$' AND width BETWEEN 320 AND 8192 "
+            "AND height BETWEEN 180 AND 8192 AND width::bigint * height::bigint <= 40000000 "
+            "AND failure_code IS NULL AND retrieved_at IS NOT NULL) OR "
+            "(status = 'discovered' AND image_snapshot_id IS NULL AND final_image_url IS NULL "
+            "AND media_type IS NULL AND byte_size IS NULL AND sha256 IS NULL "
+            "AND width IS NULL AND height IS NULL AND failure_code IS NULL "
+            "AND retrieved_at IS NULL) OR "
+            "(status IN ('failed', 'rejected') AND image_snapshot_id IS NULL "
+            "AND final_image_url IS NULL AND retrieved_at IS NULL "
+            "AND media_type IS NULL AND byte_size IS NULL AND sha256 IS NULL "
+            "AND width IS NULL AND height IS NULL AND failure_code IS NOT NULL)",
+            name="ck_source_article_images_result_shape",
+        ),
+        UniqueConstraint(
+            "detail_snapshot_id", "ordinal", name="uq_source_article_images_detail_ordinal"
+        ),
+        UniqueConstraint(
+            "discovery_fingerprint", name="uq_source_article_images_discovery_fingerprint"
+        ),
+        Index("ix_source_article_images_candidate", "candidate_id", "status", "ordinal"),
+        Index("ix_source_article_images_detail", "detail_snapshot_id", "status", "ordinal"),
     )
 
 
@@ -3644,6 +3750,50 @@ class MaterialPackageModel(Base):
     )
 
 
+class MaterialPackageSourceImageModel(Base):
+    __tablename__ = "material_package_source_images"
+
+    package_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "material_packages.id",
+            name="fk_material_package_source_images_package_id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_article_image_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_article_images.id",
+            name="fk_material_package_source_images_source_image_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    selection_reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "ordinal BETWEEN 0 AND 1", name="ck_material_package_source_images_ordinal"
+        ),
+        CheckConstraint(
+            "selection_reason = 'evidence_snapshot_lineage_v1'",
+            name="ck_material_package_source_images_reason",
+        ),
+        UniqueConstraint(
+            "package_id",
+            "source_article_image_id",
+            name="uq_material_package_source_images_identity",
+        ),
+        Index("ix_material_package_source_images_source", "source_article_image_id"),
+    )
+
+
 class MaterialReviewModel(Base):
     __tablename__ = "material_reviews"
 
@@ -3759,6 +3909,9 @@ class OfficialAccountArticleRunModel(Base):
             name="ck_official_account_article_runs_version_bundle_object",
         ),
         UniqueConstraint("request_fingerprint", name="uq_official_account_article_runs_request"),
+        UniqueConstraint(
+            "id", "material_package_id", name="uq_official_account_article_runs_id_material"
+        ),
         ForeignKeyConstraint(
             ["active_article_version_id", "id"],
             ["official_account_article_versions.id", "official_account_article_versions.run_id"],
@@ -3847,7 +4000,7 @@ class OfficialAccountArticleVersionModel(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "version IN (1, 2, 3, 4, 5)",
+            "version IN (1, 2, 3, 4, 5, 6)",
             name="ck_official_account_article_versions_version",
         ),
         CheckConstraint(
@@ -3871,6 +4024,78 @@ class OfficialAccountArticleVersionModel(Base):
             name="uq_official_account_article_versions_generation_request",
         ),
         Index("ix_official_account_article_versions_run_id", "run_id"),
+    )
+
+
+class OfficialAccountArticleContextImageModel(Base):
+    __tablename__ = "official_account_article_context_images"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    material_package_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    article_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    source_article_image_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    section_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    selection_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    alt_text: Mapped[str] = mapped_column(String(200), nullable=False)
+    caption: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    credit: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source_page_url: Mapped[str] = mapped_column(Text, nullable=False)
+    rights_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    context_only_not_evidence: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["article_version_id", "run_id"],
+            ["official_account_article_versions.id", "official_account_article_versions.run_id"],
+            name="fk_official_context_images_article_run",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["run_id", "material_package_id"],
+            [
+                "official_account_article_runs.id",
+                "official_account_article_runs.material_package_id",
+            ],
+            name="fk_official_context_images_run_material",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["material_package_id", "source_article_image_id"],
+            [
+                "material_package_source_images.package_id",
+                "material_package_source_images.source_article_image_id",
+            ],
+            name="fk_official_context_images_package_source",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("ordinal BETWEEN 0 AND 1", name="ck_official_context_images_ordinal"),
+        CheckConstraint("section_index BETWEEN 0 AND 6", name="ck_official_context_images_section"),
+        CheckConstraint(
+            "selection_version = 'official-account-news-context-selection-v1'",
+            name="ck_official_context_images_selection_version",
+        ),
+        CheckConstraint(
+            "rights_status = 'publish_permission_unverified' AND context_only_not_evidence = true",
+            name="ck_official_context_images_rights_boundary",
+        ),
+        CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'", name="ck_official_context_images_sha256"),
+        UniqueConstraint(
+            "article_version_id", "ordinal", name="uq_official_context_images_article_ordinal"
+        ),
+        UniqueConstraint(
+            "article_version_id",
+            "source_article_image_id",
+            name="uq_official_context_images_article_source",
+        ),
+        Index("ix_official_context_images_run", "run_id", "ordinal"),
     )
 
 
@@ -4205,6 +4430,15 @@ class OfficialAccountLocalMediaModel(Base):
         ),
         nullable=True,
     )
+    source_article_image_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "source_article_images.id",
+            name="fk_official_account_local_media_source_article_image_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -4220,18 +4454,25 @@ class OfficialAccountLocalMediaModel(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("role IN ('body', 'cover')", name="ck_official_account_local_media_role"),
         CheckConstraint(
-            "(role = 'body' AND ordinal BETWEEN 0 AND 4) OR (role = 'cover' AND ordinal = 0)",
+            "role IN ('body', 'cover', 'context')", name="ck_official_account_local_media_role"
+        ),
+        CheckConstraint(
+            "(role = 'body' AND ordinal BETWEEN 0 AND 4) OR "
+            "(role = 'cover' AND ordinal = 0) OR "
+            "(role = 'context' AND ordinal BETWEEN 0 AND 1)",
             name="ck_official_account_local_media_ordinal",
         ),
         CheckConstraint(
             "(source_image_artifact_id IS NOT NULL AND fixture_id IS NULL "
-            "AND generated_visual_id IS NULL) OR "
+            "AND generated_visual_id IS NULL AND source_article_image_id IS NULL) OR "
             "(source_image_artifact_id IS NULL AND fixture_id IS NOT NULL "
-            "AND generated_visual_id IS NULL) OR "
+            "AND generated_visual_id IS NULL AND source_article_image_id IS NULL) OR "
             "(source_image_artifact_id IS NULL AND fixture_id IS NULL "
-            "AND generated_visual_id IS NOT NULL)",
+            "AND generated_visual_id IS NOT NULL AND source_article_image_id IS NULL) OR "
+            "(source_image_artifact_id IS NULL AND fixture_id IS NULL "
+            "AND generated_visual_id IS NULL AND source_article_image_id IS NOT NULL "
+            "AND role = 'context')",
             name="ck_official_account_local_media_source_xor",
         ),
         CheckConstraint(

@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.application.ports.official_account_local import (
@@ -38,6 +38,7 @@ from app.domain.official_account_local import (
     OfficialAccountAuditVerdict,
     article_version_bundle_kind,
     body_media_placeholder,
+    context_media_placeholder,
     fingerprint,
 )
 
@@ -47,6 +48,25 @@ OFFICIAL_ACCOUNT_REVIEW_BUNDLE_V2_VERSION = "official-account-review-bundle-v2-m
 OFFICIAL_ACCOUNT_REVIEW_BUNDLE_V3_VERSION = "official-account-review-bundle-v3-editorial"
 OFFICIAL_ACCOUNT_REVIEW_BUNDLE_VERSION = "official-account-review-bundle-v4-multimodal-media"
 OFFICIAL_ACCOUNT_LIVE_LOCAL_REVIEW_BUNDLE_VERSION = "official-account-live-local-review-bundle-v1"
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_REVIEW_BUNDLE_VERSION = (
+    "official-account-review-bundle-v5-news-context"
+)
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_LIVE_LOCAL_REVIEW_BUNDLE_VERSION = (
+    "official-account-live-local-review-bundle-v2-news-context"
+)
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_POLISHED_REVIEW_BUNDLE_VERSION = (
+    "official-account-review-bundle-v6-news-context-export-polish"
+)
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_POLISHED_LIVE_LOCAL_REVIEW_BUNDLE_VERSION = (
+    "official-account-live-local-review-bundle-v3-news-context-export-polish"
+)
+OFFICIAL_ACCOUNT_NEWS_CONTEXT_EXPORT_POLISH_VERSION = (
+    "official-account-news-context-export-polish-v1"
+)
+OFFICIAL_ACCOUNT_COVER_EXPORT_DERIVATIVE_VERSION = (
+    "official-account-cover-export-derivative-v1-top-biased"
+)
+OFFICIAL_ACCOUNT_CONTEXT_DISPLAY_FALLBACK_VERSION = "official-account-context-display-fallback-v1"
 
 _CONSERVATIVE_FIELD_SOURCE = "conservative_public_reference_unverified_by_account"
 _LOCAL_SAFETY_SOURCE = "local_safety_contract"
@@ -58,12 +78,28 @@ _DIGEST_LIMIT = 120
 _HTML_CHARACTER_LIMIT = 20_000
 _HTML_BYTE_LIMIT = 1_048_576
 _MEDIA_BYTE_LIMIT = 10 * 1_048_576
+_EXPORT_IMAGE_MAX_DIMENSION = 8_192
+_EXPORT_IMAGE_MAX_PIXELS = 32_000_000
+_COVER_TARGET_RATIO = 2.35
+_COVER_RATIO_TOLERANCE = 0.08
 _ALLOWED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
+_GENERIC_CAS_CONTEXT_TEXT = frozenset(
+    {
+        "文章配图",
+        "原文配图",
+        "新闻原图",
+        "新闻图片",
+        "新闻现场图",
+        "相关新闻图片",
+    }
+)
 _ALLOWED_TAG_ATTRIBUTES = {
     "a": frozenset({"href", "referrerpolicy", "rel", "style"}),
     "blockquote": frozenset({"style"}),
     "br": frozenset(),
     "em": frozenset(),
+    "figcaption": frozenset({"style"}),
+    "figure": frozenset({"data-context-only-not-evidence", "data-media-role", "style"}),
     "h1": frozenset({"style"}),
     "h2": frozenset({"style"}),
     "img": frozenset({"alt", "src", "style"}),
@@ -125,6 +161,8 @@ class ReviewBundleInput:
     cover_bytes: bytes
     body_media_items: tuple[OfficialAccountMediaResult, ...] = ()
     body_bytes_items: tuple[bytes, ...] = ()
+    context_media_items: tuple[OfficialAccountMediaResult, ...] = ()
+    context_bytes_items: tuple[bytes, ...] = ()
     manual_review: StoredOfficialAccountManualReview | None = None
 
 
@@ -136,6 +174,21 @@ class ReviewBundleExportResult:
     manifest_path: Path
     preflight: WechatDraftPreflightReport
     reused: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ExportCoverAsset:
+    media: OfficialAccountMediaResult
+    body: bytes
+    dimensions: tuple[int, int]
+    applied: bool
+    crop_box: tuple[int, int, int, int] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExportContextMedia:
+    media: OfficialAccountMediaResult
+    display_text_source: Literal["persisted_source", "export_semantic_fallback"]
 
 
 class _ArticleHtmlInspector(HTMLParser):
@@ -179,6 +232,8 @@ def run_wechat_draft_preflight(
     cover_dimensions: tuple[int, int] | None,
     body_media_items: tuple[OfficialAccountMediaResult, ...] = (),
     body_dimensions_items: tuple[tuple[int, int] | None, ...] = (),
+    context_media_items: tuple[OfficialAccountMediaResult, ...] = (),
+    context_dimensions_items: tuple[tuple[int, int] | None, ...] = (),
     manual_review_status: Literal["pending", "approved", "rejected"] = "pending",
     editorially_approved: bool = False,
 ) -> WechatDraftPreflightReport:
@@ -244,8 +299,10 @@ def run_wechat_draft_preflight(
     record(
         code="html_media_placeholder_resolved",
         field="resolved_html",
-        passed=not any(body_media_placeholder(index) in resolved_html for index in range(5)),
-        observed=sum(resolved_html.count(body_media_placeholder(index)) for index in range(5)),
+        passed=not any(body_media_placeholder(index) in resolved_html for index in range(5))
+        and not any(context_media_placeholder(index) in resolved_html for index in range(2)),
+        observed=sum(resolved_html.count(body_media_placeholder(index)) for index in range(5))
+        + sum(resolved_html.count(context_media_placeholder(index)) for index in range(2)),
         limit=0,
         source_status=_LOCAL_SAFETY_SOURCE,
     )
@@ -287,16 +344,27 @@ def run_wechat_draft_preflight(
         limit="HTTPS links or non-link sanitized fixture source",
         source_status=_LOCAL_SAFETY_SOURCE,
     )
+    expected_media_urls = {item.media_url for item in (*body_media_all, *context_media_items)}
+    controlled_media_references = (
+        inspector.image_sources == [item.media_url for item in body_media_all]
+        if not context_media_items
+        else len(inspector.image_sources) == len(expected_media_urls)
+        and set(inspector.image_sources) == expected_media_urls
+    )
     record(
         code="body_media_reference_controlled",
         field="resolved_html.img",
-        passed=inspector.image_sources == [item.media_url for item in body_media_all],
+        passed=controlled_media_references,
         observed=(
             "controlled_local_media_reference"
-            if inspector.image_sources == [item.media_url for item in body_media_all]
+            if controlled_media_references
             else "uncontrolled_or_missing_media_reference"
         ),
-        limit="one to five ordered controlled local media references",
+        limit=(
+            "five ordered body and up to two controlled context media references"
+            if context_media_items
+            else "one to five ordered controlled local media references"
+        ),
         source_status=_LOCAL_SAFETY_SOURCE,
     )
 
@@ -329,6 +397,22 @@ def run_wechat_draft_preflight(
         limit=False,
         source_status=_LOCAL_SAFETY_SOURCE,
     )
+    if context_media_items:
+        record(
+            code="context_media_role",
+            field="context_media.role",
+            passed=(
+                tuple(item.role for item in context_media_items)
+                == ("context",) * len(context_media_items)
+                and tuple(item.ordinal for item in context_media_items)
+                == tuple(range(len(context_media_items)))
+                and len({item.sha256 for item in context_media_items}) == len(context_media_items)
+                and all(item.context_only_not_evidence for item in context_media_items)
+            ),
+            observed=",".join(f"{item.role}:{item.ordinal}" for item in context_media_items),
+            limit="zero to two ordered contextual-not-evidence media references",
+            source_status=_INTERNAL_SCHEMA_SOURCE,
+        )
     for media in (*body_media_all, cover_media):
         record(
             code=f"{media.role}_media_type_allowlisted",
@@ -346,6 +430,23 @@ def run_wechat_draft_preflight(
             limit=_MEDIA_BYTE_LIMIT,
             source_status=_LOCAL_SAFETY_SOURCE,
         )
+    for media in context_media_items:
+        record(
+            code=f"context_{media.ordinal}_media_type_allowlisted",
+            field=f"context_media[{media.ordinal}].media_type",
+            passed=media.media_type in _ALLOWED_MEDIA_TYPES,
+            observed=media.media_type,
+            limit=",".join(sorted(_ALLOWED_MEDIA_TYPES)),
+            source_status=_LOCAL_SAFETY_SOURCE,
+        )
+        record(
+            code=f"context_{media.ordinal}_media_local_byte_limit",
+            field=f"context_media[{media.ordinal}].byte_size",
+            passed=0 < media.byte_size <= _MEDIA_BYTE_LIMIT,
+            observed=media.byte_size,
+            limit=_MEDIA_BYTE_LIMIT,
+            source_status=_LOCAL_SAFETY_SOURCE,
+        )
     record(
         code="body_image_dimensions_readable",
         field="body_media.dimensions",
@@ -357,6 +458,18 @@ def run_wechat_draft_preflight(
         limit="positive width x height for every body image",
         source_status=_LOCAL_SAFETY_SOURCE,
     )
+    if context_media_items:
+        record(
+            code="context_image_dimensions_readable",
+            field="context_media.dimensions",
+            passed=(
+                len(context_dimensions_items) == len(context_media_items)
+                and all(item is not None for item in context_dimensions_items)
+            ),
+            observed=",".join(_dimensions_value(item) for item in context_dimensions_items),
+            limit="positive natural width x height for every context image",
+            source_status=_LOCAL_SAFETY_SOURCE,
+        )
     cover_ratio_ok = False
     if cover_dimensions is not None and cover_dimensions[1] > 0:
         cover_ratio_ok = abs((cover_dimensions[0] / cover_dimensions[1]) - 2.35) <= 0.08
@@ -438,7 +551,7 @@ def _export_review_bundle(
     live_local: bool,
 ) -> ReviewBundleExportResult:
     bundle_kind = article_version_bundle_kind(bundle.article.versions)
-    is_current_bundle = bundle_kind in {"v6", "v7", "v8"}
+    is_current_bundle = bundle_kind in {"v6", "v7", "v8", "v9", "v10"}
     if not live_local and not is_current_bundle and mode != "review":
         raise ValueError("historical review bundles do not support copy-ready mode")
     if (
@@ -447,6 +560,7 @@ def _export_review_bundle(
         and (bundle.manual_review is None or bundle.manual_review.decision != "approved")
     ):
         raise ValueError("copy-ready export requires an approved manual review")
+    _assert_copy_ready_context_rights(bundle.article, mode=mode)
     output_root = output_directory.expanduser().resolve()
     if output_root == Path(output_root.anchor):
         raise ValueError("review bundle output directory cannot be a filesystem root")
@@ -517,6 +631,24 @@ def _export_review_bundle(
         raise
 
 
+def _assert_copy_ready_context_rights(
+    article: ArticlePackage,
+    *,
+    mode: Literal["review", "copy-ready"],
+) -> None:
+    if (
+        mode == "copy-ready"
+        and article.news_context_media is not None
+        and any(
+            item.rights_status == "publish_permission_unverified"
+            for item in article.news_context_media.items
+        )
+    ):
+        raise ValueError(
+            "copy-ready export cannot contain source images with unverified publication rights"
+        )
+
+
 def _validate_bundle_input(bundle: ReviewBundleInput) -> None:
     if bundle.run_status != "ready":
         raise ValueError("only a ready fixture run can be exported")
@@ -541,8 +673,10 @@ def _validate_review_bundle_common(bundle: ReviewBundleInput) -> None:
     if article_version_bundle_kind(bundle.article.versions) is None:
         raise ValueError("review bundle article version identity is unsupported")
     body_media, body_bytes = _bundle_body_items(bundle)
+    context_media, context_bytes = _bundle_context_items(bundle)
     for media, body in (
         *zip(body_media, body_bytes, strict=True),
+        *zip(context_media, context_bytes, strict=True),
         (bundle.cover_media, bundle.cover_bytes),
     ):
         if len(body) != media.byte_size or sha256(body).hexdigest() != media.sha256:
@@ -705,16 +839,41 @@ def _write_bundle_v3(
     assets = root / "assets"
     assets.mkdir()
     body_media, body_bytes = _bundle_body_items(bundle)
+    context_media, context_bytes = _bundle_context_items(bundle)
+    news_context_export_polish = bool(context_media) and article_version_bundle_kind(
+        bundle.article.versions
+    ) in {"v9", "v10"}
+    export_context_items = (
+        _export_context_media_items(bundle.article, context_media)
+        if news_context_export_polish
+        else tuple(
+            _ExportContextMedia(media=item, display_text_source="persisted_source")
+            for item in context_media
+        )
+    )
+    export_context_media = tuple(item.media for item in export_context_items)
+    export_cover = _export_cover_asset(
+        bundle.cover_media,
+        bundle.cover_bytes,
+        derive_if_needed=news_context_export_polish,
+    )
     body_paths = tuple(
         f"assets/body-{media.ordinal:02d}{_media_extension(media.media_type)}"
         for media in body_media
     )
-    cover_path = f"assets/cover-wide{_media_extension(bundle.cover_media.media_type)}"
+    cover_path = f"assets/cover-wide{_media_extension(export_cover.media.media_type)}"
+    context_paths = tuple(
+        f"assets/context-{media.ordinal:02d}{_media_extension(media.media_type)}"
+        for media in context_media
+    )
     for relative, body in zip(body_paths, body_bytes, strict=True):
         (root / relative).write_bytes(body)
-    (root / cover_path).write_bytes(bundle.cover_bytes)
+    for relative, body in zip(context_paths, context_bytes, strict=True):
+        (root / relative).write_bytes(body)
+    (root / cover_path).write_bytes(export_cover.body)
     body_dimensions = tuple(_image_dimensions(body) for body in body_bytes)
-    cover_dimensions = _image_dimensions(bundle.cover_bytes)
+    cover_dimensions = export_cover.dimensions
+    context_dimensions = tuple(_image_dimensions(body) for body in context_bytes)
 
     manual_status: Literal["pending", "approved", "rejected"] = (
         bundle.manual_review.decision if bundle.manual_review is not None else "pending"
@@ -724,11 +883,13 @@ def _write_bundle_v3(
         article=bundle.article,
         resolved_html=bundle.resolved_html,
         body_media=bundle.body_media,
-        cover_media=bundle.cover_media,
+        cover_media=export_cover.media,
         body_dimensions=body_dimensions[0],
         cover_dimensions=cover_dimensions,
         body_media_items=body_media,
         body_dimensions_items=body_dimensions,
+        context_media_items=context_media,
+        context_dimensions_items=context_dimensions,
         manual_review_status=manual_status,
         editorially_approved=copy_ready,
     )
@@ -737,6 +898,9 @@ def _write_bundle_v3(
             bundle.resolved_html,
             body_media=body_media,
             body_paths=body_paths,
+            context_media=context_media,
+            export_context_media=export_context_media,
+            context_paths=context_paths,
             manual_status=manual_status,
         )
         if live_local
@@ -744,6 +908,9 @@ def _write_bundle_v3(
             bundle.resolved_html,
             body_media=body_media,
             body_paths=body_paths,
+            context_media=context_media,
+            export_context_media=export_context_media,
+            context_paths=context_paths,
             manual_status=manual_status,
             copy_ready=copy_ready,
         )
@@ -787,7 +954,17 @@ def _write_bundle_v3(
                     if live_local
                     else {}
                 ),
-                "article": bundle.article,
+                **(
+                    {
+                        "export_presentation": _export_presentation_projection(
+                            export_cover=export_cover,
+                            context_items=export_context_items,
+                        )
+                    }
+                    if news_context_export_polish
+                    else {}
+                ),
+                "article": _safe_article_export_projection(bundle.article),
             }
         ),
         encoding="utf-8",
@@ -797,6 +974,15 @@ def _write_bundle_v3(
             {
                 "sources": bundle.article.sources,
                 "claims": bundle.article.claims,
+                **(
+                    {
+                        "news_context_media": _safe_context_provenance(
+                            export_context_items,
+                        )
+                    }
+                    if context_media
+                    else {}
+                ),
                 "source_boundary": (
                     "Persisted source and claim bindings are included for local human review only."
                     if live_local
@@ -844,6 +1030,7 @@ def _write_bundle_v3(
             bundle,
             preflight=preflight,
             manual_status=manual_status,
+            export_polished=news_context_export_polish,
         )
         if live_local
         else _bundle_readme_v3(
@@ -851,6 +1038,7 @@ def _write_bundle_v3(
             preflight=preflight,
             manual_status=manual_status,
             copy_ready=copy_ready,
+            export_polished=news_context_export_polish,
         ),
         encoding="utf-8",
     )
@@ -867,8 +1055,16 @@ def _write_bundle_v3(
     )
     manifest = {
         "bundle_version": (
-            OFFICIAL_ACCOUNT_LIVE_LOCAL_REVIEW_BUNDLE_VERSION
+            OFFICIAL_ACCOUNT_NEWS_CONTEXT_POLISHED_LIVE_LOCAL_REVIEW_BUNDLE_VERSION
+            if live_local and news_context_export_polish
+            else OFFICIAL_ACCOUNT_NEWS_CONTEXT_POLISHED_REVIEW_BUNDLE_VERSION
+            if news_context_export_polish
+            else OFFICIAL_ACCOUNT_NEWS_CONTEXT_LIVE_LOCAL_REVIEW_BUNDLE_VERSION
+            if live_local and context_media
+            else OFFICIAL_ACCOUNT_LIVE_LOCAL_REVIEW_BUNDLE_VERSION
             if live_local
+            else OFFICIAL_ACCOUNT_NEWS_CONTEXT_REVIEW_BUNDLE_VERSION
+            if context_media
             else OFFICIAL_ACCOUNT_REVIEW_BUNDLE_VERSION
             if article_version_bundle_kind(bundle.article.versions) in {"v7", "v8"}
             else OFFICIAL_ACCOUNT_REVIEW_BUNDLE_V3_VERSION
@@ -894,6 +1090,16 @@ def _write_bundle_v3(
                 "published": False,
             }
             if live_local
+            else {}
+        ),
+        **(
+            {
+                "export_presentation": _export_presentation_projection(
+                    export_cover=export_cover,
+                    context_items=export_context_items,
+                )
+            }
+            if news_context_export_polish
             else {}
         ),
         "mobile_screenshot_status": "not_run",
@@ -931,10 +1137,37 @@ def _write_bundle_v3(
                     strict=True,
                 )
             ],
-            "cover": _media_manifest(
-                bundle.cover_media,
-                cover_path,
-                dimensions=cover_dimensions,
+            "cover": (
+                _cover_media_manifest(
+                    export_cover,
+                    source_media=bundle.cover_media,
+                    path=cover_path,
+                )
+                if news_context_export_polish
+                else _media_manifest(
+                    bundle.cover_media,
+                    cover_path,
+                    dimensions=cover_dimensions,
+                )
+            ),
+            **(
+                {
+                    "context_images": [
+                        _context_media_manifest(
+                            export_item,
+                            path,
+                            dimensions=dimensions,
+                        )
+                        for export_item, path, dimensions in zip(
+                            export_context_items,
+                            context_paths,
+                            context_dimensions,
+                            strict=True,
+                        )
+                    ]
+                }
+                if context_media
+                else {}
             ),
         },
         "files": [_file_manifest(path, root=root) for path in payload_files],
@@ -979,6 +1212,9 @@ def _editorial_article_body(
     *,
     body_media: tuple[OfficialAccountMediaResult, ...],
     body_paths: tuple[str, ...],
+    context_media: tuple[OfficialAccountMediaResult, ...],
+    export_context_media: tuple[OfficialAccountMediaResult, ...],
+    context_paths: tuple[str, ...],
     manual_status: Literal["pending", "approved", "rejected"],
     copy_ready: bool,
 ) -> str:
@@ -988,9 +1224,13 @@ def _editorial_article_body(
         if rewritten.count(source) != 1:
             raise ValueError("resolved article has an invalid controlled body media reference")
         rewritten = rewritten.replace(source, f'src="{relative_path}"')
-    if "/api/" in rewritten or any(
-        body_media_placeholder(index) in rewritten for index in range(5)
-    ):
+    rewritten = _rewrite_context_media(
+        rewritten,
+        context_media=context_media,
+        export_context_media=export_context_media,
+        context_paths=context_paths,
+    )
+    if _has_runtime_media_dependency(rewritten):
         raise ValueError("exported article body retained a runtime media dependency")
     if copy_ready:
         return rewritten
@@ -1008,6 +1248,9 @@ def _live_local_article_body(
     *,
     body_media: tuple[OfficialAccountMediaResult, ...],
     body_paths: tuple[str, ...],
+    context_media: tuple[OfficialAccountMediaResult, ...],
+    export_context_media: tuple[OfficialAccountMediaResult, ...],
+    context_paths: tuple[str, ...],
     manual_status: Literal["pending", "approved", "rejected"],
 ) -> str:
     """Rewrite a persisted live draft only to offline relative media paths."""
@@ -1018,9 +1261,13 @@ def _live_local_article_body(
         if rewritten.count(source) != 1:
             raise ValueError("resolved article has an invalid controlled body media reference")
         rewritten = rewritten.replace(source, f'src="{relative_path}"')
-    if "/api/" in rewritten or any(
-        body_media_placeholder(index) in rewritten for index in range(5)
-    ):
+    rewritten = _rewrite_context_media(
+        rewritten,
+        context_media=context_media,
+        export_context_media=export_context_media,
+        context_paths=context_paths,
+    )
+    if _has_runtime_media_dependency(rewritten):
         raise ValueError("exported article body retained a runtime media dependency")
     review_banner = (
         '<section style="margin:0 0 18px;padding:12px 14px;background-color:#fff4e8;'
@@ -1030,6 +1277,88 @@ def _live_local_article_body(
         f"人工审稿状态：{manual_status}</section>"
     )
     return review_banner + rewritten
+
+
+def _rewrite_context_media(
+    resolved_html: str,
+    *,
+    context_media: tuple[OfficialAccountMediaResult, ...],
+    export_context_media: tuple[OfficialAccountMediaResult, ...],
+    context_paths: tuple[str, ...],
+) -> str:
+    rewritten = resolved_html
+    for media, export_media, relative_path in zip(
+        context_media,
+        export_context_media,
+        context_paths,
+        strict=True,
+    ):
+        source = f'src="{escape(media.media_url, quote=True)}"'
+        if rewritten.count(source) != 1:
+            raise ValueError("resolved article has an invalid controlled context media reference")
+        rewritten = rewritten.replace(source, f'src="{relative_path}"')
+        rewritten = _rewrite_context_figure_display_text(
+            rewritten,
+            source_media=media,
+            export_media=export_media,
+            relative_path=relative_path,
+        )
+    return rewritten
+
+
+def _rewrite_context_figure_display_text(
+    resolved_html: str,
+    *,
+    source_media: OfficialAccountMediaResult,
+    export_media: OfficialAccountMediaResult,
+    relative_path: str,
+) -> str:
+    image_source = f'src="{relative_path}"'
+    image_position = resolved_html.find(image_source)
+    if image_position < 0 or resolved_html.find(image_source, image_position + 1) >= 0:
+        raise ValueError("exported context media reference is not unique")
+    figure_start = resolved_html.rfind(
+        '<figure data-media-role="news-context"',
+        0,
+        image_position,
+    )
+    figure_end = resolved_html.find("</figure>", image_position)
+    if figure_start < 0 or figure_end < 0:
+        raise ValueError("exported context media is outside its controlled figure")
+    figure_end += len("</figure>")
+    figure = resolved_html[figure_start:figure_end]
+
+    source_alt = source_media.alt_text or ""
+    export_alt = export_media.alt_text or ""
+    source_alt_attribute = f'alt="{escape(source_alt, quote=True)}"'
+    if figure.count(source_alt_attribute) != 1:
+        raise ValueError("exported context media has an invalid source alt attribute")
+    figure = figure.replace(
+        source_alt_attribute,
+        f'alt="{escape(export_alt, quote=True)}"',
+        1,
+    )
+
+    caption_tag = figure.find("<figcaption ")
+    caption_text_start = figure.find(">", caption_tag) + 1 if caption_tag >= 0 else -1
+    source_caption = escape(source_media.caption or source_alt)
+    export_caption = escape(export_media.caption or export_alt)
+    if caption_text_start <= 0 or not figure.startswith(source_caption, caption_text_start):
+        raise ValueError("exported context media has an invalid source caption")
+    figure = (
+        figure[:caption_text_start]
+        + export_caption
+        + figure[caption_text_start + len(source_caption) :]
+    )
+    return resolved_html[:figure_start] + figure + resolved_html[figure_end:]
+
+
+def _has_runtime_media_dependency(resolved_html: str) -> bool:
+    return (
+        "/api/" in resolved_html
+        or any(body_media_placeholder(index) in resolved_html for index in range(5))
+        or any(context_media_placeholder(index) in resolved_html for index in range(2))
+    )
 
 
 def _preview_document_v3(article_body: str, *, copy_ready: bool) -> str:
@@ -1096,6 +1425,231 @@ def _bundle_body_items(
     if bodies[0] != bundle.body_bytes:
         raise ValueError("review bundle primary body bytes are not ordinal zero")
     return media, bodies
+
+
+def _bundle_context_items(
+    bundle: ReviewBundleInput,
+) -> tuple[tuple[OfficialAccountMediaResult, ...], tuple[bytes, ...]]:
+    media = bundle.context_media_items
+    bodies = bundle.context_bytes_items
+    if len(media) > 2 or len(media) != len(bodies):
+        raise ValueError("review bundle context media collection is invalid")
+    if tuple(item.role for item in media) != ("context",) * len(media):
+        raise ValueError("review bundle context media roles are invalid")
+    if tuple(item.ordinal for item in media) != tuple(range(len(media))):
+        raise ValueError("review bundle context media ordinals must be contiguous and ordered")
+    if len({item.sha256 for item in media}) != len(media):
+        raise ValueError("review bundle context media checksums must be distinct")
+    snapshot = bundle.article.news_context_media
+    if snapshot is None:
+        if media:
+            raise ValueError("review bundle context media requires an article selection snapshot")
+        return media, bodies
+    if len(snapshot.items) != len(media):
+        raise ValueError("review bundle context media does not match the article selection")
+    for selected, persisted in zip(snapshot.items, media, strict=True):
+        if (
+            selected.ordinal != persisted.ordinal
+            or selected.section_index != persisted.assigned_section_index
+            or selected.sha256 != persisted.sha256
+            or selected.media_type != persisted.media_type
+            or selected.alt_text != persisted.alt_text
+            or selected.caption != persisted.caption
+            or selected.credit != persisted.credit
+            or selected.source_page_url != persisted.source_page_url
+            or selected.rights_status != persisted.rights_status
+            or selected.context_only_not_evidence != persisted.context_only_not_evidence
+        ):
+            raise ValueError("review bundle context media provenance changed during export")
+    return media, bodies
+
+
+def _export_context_media_items(
+    article: ArticlePackage,
+    media: tuple[OfficialAccountMediaResult, ...],
+) -> tuple[_ExportContextMedia, ...]:
+    exported: list[_ExportContextMedia] = []
+    for item in media:
+        hostname = (urlsplit(item.source_page_url or "").hostname or "").casefold()
+        is_cas_source = hostname == "cas.cn" or hostname.endswith(".cas.cn")
+        source_alt = item.alt_text or ""
+        source_caption = item.caption or ""
+        alt_is_generic = is_cas_source and _is_generic_cas_context_text(source_alt)
+        caption_is_generic = is_cas_source and (
+            not source_caption or _is_generic_cas_context_text(source_caption)
+        )
+        if not alt_is_generic and not (caption_is_generic and not source_alt):
+            exported.append(
+                _ExportContextMedia(
+                    media=item,
+                    display_text_source="persisted_source",
+                )
+            )
+            continue
+
+        section_index = item.assigned_section_index
+        if section_index is None or not 0 <= section_index < len(article.sections):
+            raise ValueError("context-media export fallback requires a valid section anchor")
+        title = _bounded_export_display_text(article.title, limit=72)
+        heading = _bounded_export_display_text(
+            article.sections[section_index].heading,
+            limit=80,
+        )
+        fallback_alt = f"新闻上下文图片：{title}；对应章节：{heading}"[:200]
+        fallback_caption = (
+            f"新闻上下文 · {title} · 对应章节：{heading}（仅作上下文参考，非事实证据）"
+        )[:300]
+        exported.append(
+            _ExportContextMedia(
+                media=replace(
+                    item,
+                    alt_text=fallback_alt if alt_is_generic else item.alt_text,
+                    caption=(
+                        fallback_caption if alt_is_generic and caption_is_generic else item.caption
+                    ),
+                ),
+                display_text_source="export_semantic_fallback",
+            )
+        )
+    return tuple(exported)
+
+
+def _is_generic_cas_context_text(value: str) -> bool:
+    normalized = "".join(character for character in value.strip() if character.isalnum())
+    return normalized in _GENERIC_CAS_CONTEXT_TEXT
+
+
+def _bounded_export_display_text(value: str, *, limit: int) -> str:
+    normalized = " ".join(value.split()).strip("，。；：、 ")
+    if not normalized:
+        raise ValueError("context-media export fallback requires non-empty article display text")
+    return normalized[:limit].rstrip("，。；：、 ")
+
+
+def _export_cover_asset(
+    media: OfficialAccountMediaResult,
+    body: bytes,
+    *,
+    derive_if_needed: bool,
+) -> _ExportCoverAsset:
+    dimensions = _image_dimensions(body)
+    if dimensions is None:
+        raise ValueError("review bundle cover dimensions are unreadable")
+    width, height = dimensions
+    if (
+        width > _EXPORT_IMAGE_MAX_DIMENSION
+        or height > _EXPORT_IMAGE_MAX_DIMENSION
+        or width * height > _EXPORT_IMAGE_MAX_PIXELS
+    ):
+        raise ValueError("review bundle cover exceeds the safe export raster bound")
+    ratio = width / height
+    if not derive_if_needed or abs(ratio - _COVER_TARGET_RATIO) <= _COVER_RATIO_TOLERANCE:
+        return _ExportCoverAsset(
+            media=media,
+            body=body,
+            dimensions=dimensions,
+            applied=False,
+            crop_box=None,
+        )
+
+    with Image.open(BytesIO(body)) as source:
+        source.load()
+        raster = ImageOps.exif_transpose(source)
+        width, height = raster.size
+        ratio = width / height
+        if ratio < _COVER_TARGET_RATIO:
+            target_height = max(1, min(height, (width * 100 + 117) // 235))
+            top = (height - target_height) // 3
+            crop_box = (0, top, width, top + target_height)
+        else:
+            target_width = max(1, min(width, (height * 235 + 50) // 100))
+            left = (width - target_width) // 2
+            crop_box = (left, 0, left + target_width, height)
+        cropped = raster.crop(crop_box)
+        derived_body = _encode_export_cover(cropped, media_type=media.media_type)
+
+    if not 0 < len(derived_body) <= _MEDIA_BYTE_LIMIT:
+        raise ValueError("review bundle cover derivative exceeds the local byte bound")
+    derived_dimensions = _image_dimensions(derived_body)
+    if (
+        derived_dimensions is None
+        or abs((derived_dimensions[0] / derived_dimensions[1]) - _COVER_TARGET_RATIO) > 0.01
+    ):
+        raise ValueError("review bundle cover derivative does not match the wide profile")
+    derived_media_type = _detected_image_media_type(derived_body)
+    if derived_media_type != media.media_type:
+        raise ValueError("review bundle cover derivative changed its media type")
+    derived_media = replace(
+        media,
+        byte_size=len(derived_body),
+        sha256=sha256(derived_body).hexdigest(),
+    )
+    return _ExportCoverAsset(
+        media=derived_media,
+        body=derived_body,
+        dimensions=derived_dimensions,
+        applied=True,
+        crop_box=crop_box,
+    )
+
+
+def _encode_export_cover(image: Image.Image, *, media_type: str) -> bytes:
+    output = BytesIO()
+    if media_type == "image/png":
+        has_alpha = image.mode in {"LA", "RGBA"} or "transparency" in image.info
+        normalized = image.convert("RGBA" if has_alpha else "RGB")
+        normalized.save(output, format="PNG", compress_level=9, optimize=False)
+    elif media_type == "image/jpeg":
+        image.convert("RGB").save(
+            output,
+            format="JPEG",
+            quality=92,
+            subsampling=0,
+            optimize=False,
+            progressive=False,
+        )
+    elif media_type == "image/webp":
+        has_alpha = image.mode in {"LA", "RGBA"} or "transparency" in image.info
+        normalized = image.convert("RGBA" if has_alpha else "RGB")
+        normalized.save(output, format="WEBP", lossless=True, method=6, exact=True)
+    else:
+        raise ValueError("review bundle cover media type cannot be derived")
+    return output.getvalue()
+
+
+def _safe_article_export_projection(article: ArticlePackage) -> ArticlePackage | dict[str, object]:
+    if article.news_context_media is None:
+        return article
+    projection = article.model_dump(mode="json")
+    news_context = projection.get("news_context_media")
+    if isinstance(news_context, dict):
+        items = news_context.get("items")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    item.pop("source_article_image_id", None)
+    return projection
+
+
+def _safe_context_provenance(
+    media: tuple[_ExportContextMedia, ...],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "role": item.media.role,
+            "ordinal": item.media.ordinal,
+            "assigned_section_index": item.media.assigned_section_index,
+            "alt_text": item.media.alt_text,
+            "caption": item.media.caption,
+            "credit": item.media.credit,
+            "source_page_url": item.media.source_page_url,
+            "rights_status": item.media.rights_status,
+            "context_only_not_evidence": item.media.context_only_not_evidence,
+            "display_text_source": item.display_text_source,
+            "display_text_version": OFFICIAL_ACCOUNT_CONTEXT_DISPLAY_FALLBACK_VERSION,
+        }
+        for item in media
+    ]
 
 
 def _article_markdown(article: ArticlePackage) -> str:
@@ -1249,6 +1803,7 @@ def _bundle_readme_v3(
     preflight: WechatDraftPreflightReport,
     manual_status: Literal["pending", "approved", "rejected"],
     copy_ready: bool,
+    export_polished: bool = False,
 ) -> str:
     if copy_ready:
         heading = "# COPY-READY — 人工审稿已批准"
@@ -1259,6 +1814,13 @@ def _bundle_readme_v3(
     else:
         heading = f"# NOT READY FOR PUBLICATION — 人工审稿状态：{manual_status}"
         purpose = "这是本地模拟草稿的人工复核包，不是可发布包。"
+    presentation_note = (
+        "\n导出展示采用版本化新闻上下文优化：非横版封面生成 2.35:1 顶部偏置派生图；"
+        "通用 CAS 图注仅在导出 HTML、manifest 与 sources 展示层补充为文章标题和对应章节语义。"
+        "`article.json` 仍保存不可变运行时 Article 快照；上下文图片不作为事实证据。\n"
+        if export_polished
+        else ""
+    )
     return (
         f"{heading}\n\n"
         f"{purpose}\n"
@@ -1273,7 +1835,7 @@ def _bundle_readme_v3(
         "- Simulation: `true`（未同步公众号）\n\n"
         "打开 `preview.html` 可离线查看；`article.md` 适合逐段核对；"
         "`review.json`、`preflight.json`、`sources.json` 与 `manifest.json` 保存来源、"
-        "版本、最终审稿事件和文件哈希。\n"
+        f"版本、最终审稿事件和文件哈希。{presentation_note}\n"
     )
 
 
@@ -1282,7 +1844,15 @@ def _bundle_readme_live_local(
     *,
     preflight: WechatDraftPreflightReport,
     manual_status: Literal["pending", "approved", "rejected"],
+    export_polished: bool = False,
 ) -> str:
+    presentation_note = (
+        "\n导出展示采用版本化新闻上下文优化：非横版封面生成 2.35:1 顶部偏置派生图；"
+        "通用 CAS 图注仅在导出 HTML、manifest 与 sources 展示层补充为文章标题和对应章节语义。"
+        "`article.json` 仍保存不可变运行时 Article 快照；上下文图片不作为事实证据。\n"
+        if export_polished
+        else ""
+    )
     return (
         "# LOCAL ONLY · 未同步公众号\n\n"
         "这是一次经显式命令确认的真实文章本地审阅导出。它只写入当前机器的目录，"
@@ -1300,7 +1870,8 @@ def _bundle_readme_live_local(
         "- Simulation: `true`（未同步公众号）\n\n"
         "打开 `preview.html` 可离线查看；`article-body.html` 是使用相对本地图片重写后的"
         "持久化草稿 HTML；`article.md`、`article.json`、`sources.json`、`review.json`、"
-        "`preflight.json` 与 `manifest.json` 保留审阅所需的来源、版本、状态和文件哈希。\n"
+        f"`preflight.json` 与 `manifest.json` 保留审阅所需的来源、版本、状态和文件哈希。"
+        f"{presentation_note}\n"
     )
 
 
@@ -1348,6 +1919,84 @@ def _media_manifest(
     if dimensions is not None:
         result["dimensions"] = {"width": dimensions[0], "height": dimensions[1]}
     return result
+
+
+def _context_media_manifest(
+    export_item: _ExportContextMedia,
+    path: str,
+    *,
+    dimensions: tuple[int, int] | None,
+) -> dict[str, object]:
+    media = export_item.media
+    result = _media_manifest(media, path, dimensions=dimensions)
+    result.update(
+        {
+            "assigned_section_index": media.assigned_section_index,
+            "alt_text": media.alt_text,
+            "caption": media.caption,
+            "credit": media.credit,
+            "source_page_url": media.source_page_url,
+            "rights_status": media.rights_status,
+            "context_only_not_evidence": media.context_only_not_evidence,
+            "display_text_source": export_item.display_text_source,
+            "display_text_version": OFFICIAL_ACCOUNT_CONTEXT_DISPLAY_FALLBACK_VERSION,
+        }
+    )
+    return result
+
+
+def _cover_media_manifest(
+    export_cover: _ExportCoverAsset,
+    *,
+    source_media: OfficialAccountMediaResult,
+    path: str,
+) -> dict[str, object]:
+    result = _media_manifest(
+        export_cover.media,
+        path,
+        dimensions=export_cover.dimensions,
+    )
+    result["export_derivative"] = {
+        "version": OFFICIAL_ACCOUNT_COVER_EXPORT_DERIVATIVE_VERSION,
+        "applied": export_cover.applied,
+        "target_ratio": "2.35:1",
+        "crop_policy": (
+            "top_biased_one_third_or_centered_horizontal"
+            if export_cover.applied
+            else "preserved_already_wide"
+        ),
+        "crop_box": (
+            {
+                "left": export_cover.crop_box[0],
+                "top": export_cover.crop_box[1],
+                "right": export_cover.crop_box[2],
+                "bottom": export_cover.crop_box[3],
+            }
+            if export_cover.crop_box is not None
+            else None
+        ),
+        "source_media_type": source_media.media_type,
+        "source_byte_size": source_media.byte_size,
+        "source_sha256": source_media.sha256,
+    }
+    return result
+
+
+def _export_presentation_projection(
+    *,
+    export_cover: _ExportCoverAsset,
+    context_items: tuple[_ExportContextMedia, ...],
+) -> dict[str, object]:
+    return {
+        "version": OFFICIAL_ACCOUNT_NEWS_CONTEXT_EXPORT_POLISH_VERSION,
+        "runtime_article_immutable": True,
+        "runtime_render_immutable": True,
+        "cover_derivative_version": OFFICIAL_ACCOUNT_COVER_EXPORT_DERIVATIVE_VERSION,
+        "cover_derivative_applied": export_cover.applied,
+        "context_display_version": OFFICIAL_ACCOUNT_CONTEXT_DISPLAY_FALLBACK_VERSION,
+        "context_display_sources": [item.display_text_source for item in context_items],
+        "context_boundary": "context_only_not_evidence",
+    }
 
 
 def _file_manifest(path: Path, *, root: Path) -> dict[str, object]:

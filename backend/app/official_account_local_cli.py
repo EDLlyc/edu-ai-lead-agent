@@ -34,6 +34,7 @@ from app.infrastructure.official_account_media import (
     persisted_media_snapshot,
 )
 from app.infrastructure.storage.minio_image_store import MinioImageStore
+from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
 
 _TERMINAL_STATUSES = frozenset({"review_required", "ready", "failed", "result_unknown"})
 
@@ -163,18 +164,21 @@ async def _export_fixture_review_bundle(
     render = await repository.get_render(run_id)
     draft = await repository.get_draft(run_id)
     body_items = await repository.list_media(run_id, "body")
+    context_items = await repository.list_media(run_id, "context")
     cover = await repository.get_media(run_id, "cover")
     manual_review = await repository.get_manual_review(run_id)
     if article is None or render is None or draft is None or not body_items or cover is None:
         raise ValueError("ready fixture run is missing a required immutable artifact")
     body_results = tuple(result for _media_id, result in body_items)
+    context_results = tuple(result for _media_id, result in context_items)
     body_result = body_results[0]
     _, cover_result = cover
-    body_bytes_items, cover_bytes = await _read_verified_export_media(
+    body_bytes_items, context_bytes_items, cover_bytes = await _read_verified_export_media(
         session_factory=session_factory,
         settings=settings,
         run_id=run_id,
         body_results=body_results,
+        context_results=context_results,
         cover_result=cover_result,
     )
     bundle = ReviewBundleInput(
@@ -196,6 +200,8 @@ async def _export_fixture_review_bundle(
         cover_bytes=cover_bytes,
         body_media_items=body_results,
         body_bytes_items=body_bytes_items,
+        context_media_items=context_results,
+        context_bytes_items=context_bytes_items,
         manual_review=manual_review,
     )
     result = await asyncio.to_thread(
@@ -242,8 +248,9 @@ async def _read_verified_export_media(
     settings: Settings,
     run_id: UUID,
     body_results: tuple[OfficialAccountMediaResult, ...],
+    context_results: tuple[OfficialAccountMediaResult, ...],
     cover_result: OfficialAccountMediaResult,
-) -> tuple[tuple[bytes, ...], bytes]:
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...], bytes]:
     """Read persisted media through the API's shared integrity boundary only."""
 
     async with session_factory() as session:
@@ -261,7 +268,7 @@ async def _read_verified_export_media(
             )
         ).all()
         by_id = {row.local_media_id: persisted_media_snapshot(row) for row in rows}
-        expected = (*body_results, cover_result)
+        expected = (*body_results, *context_results, cover_result)
         if any(result.local_media_id not in by_id for result in expected):
             raise ValueError("ready run media rows are incomplete")
         resolver = OfficialAccountLocalMediaResolver(
@@ -272,6 +279,11 @@ async def _read_verified_export_media(
                     row.source_image_artifact_id is not None or row.generated_visual_id is not None
                     for row in by_id.values()
                 )
+                else None
+            ),
+            snapshot_store=(
+                MinioSnapshotStore(settings)
+                if any(row.source_article_image_id is not None for row in by_id.values())
                 else None
             ),
         )
@@ -290,7 +302,13 @@ async def _read_verified_export_media(
                 payloads.append(await resolver.read_verified_bytes(session=session, media=media))
             except OfficialAccountMediaIntegrityError as error:
                 raise ValueError("ready run media integrity check failed") from error
-    return tuple(payloads[:-1]), payloads[-1]
+    body_count = len(body_results)
+    context_count = len(context_results)
+    return (
+        tuple(payloads[:body_count]),
+        tuple(payloads[body_count : body_count + context_count]),
+        payloads[-1],
+    )
 
 
 def _resolve_local_manifest_path(configured_path: str | None) -> str | None:
@@ -347,6 +365,7 @@ def _identity(
         max_characters=settings.official_account_local_max_characters,
         visual_query_version=settings.official_account_local_visual_query_version,
         visual_selector_version=settings.official_account_local_visual_selector_version,
+        context_media_plan_version=settings.official_account_local_context_media_plan_version,
         generated_visual_plan_version=(
             settings.official_account_local_generated_visual_plan_version
             if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled

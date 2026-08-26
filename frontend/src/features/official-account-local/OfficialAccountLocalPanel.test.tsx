@@ -4,6 +4,7 @@ import { axe } from "jest-axe";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  OfficialAccountMediaViewModel,
   OfficialAccountRunDetailViewModel,
   OfficialAccountRunSummaryViewModel,
 } from "./api";
@@ -30,6 +31,32 @@ const run: OfficialAccountRunSummaryViewModel = {
   errorRetryable: false,
   createdAtLabel: "2026/8/21 08:00:00",
   simulation: true,
+};
+
+const contextMedia: OfficialAccountMediaViewModel = {
+  id: "local-media-context-safe",
+  role: "context",
+  roleLabel: "新闻原图 01",
+  ordinal: 0,
+  url: "http://127.0.0.1:8000/context.jpg",
+  mediaType: "image/jpeg",
+  byteSize: 120,
+  sha256: "9".repeat(64),
+  semanticLabel: "新闻原图",
+  assignedSectionIndex: 0,
+  scoreBand: null,
+  selectionReasonCode: "evidence_snapshot_lineage_v1",
+  selectionMethod: null,
+  selectionMethodLabel: null,
+  similarityBand: null,
+  similarityBandLabel: null,
+  altText: "新闻现场中的科学教育活动",
+  provenanceKind: "source_news",
+  sourcePageUrl: "https://source.example/news/article",
+  caption: "新闻现场",
+  credit: "来源机构",
+  rightsStatus: "publish_permission_unverified",
+  contextOnlyNotEvidence: true,
 };
 
 const detail: OfficialAccountRunDetailViewModel = {
@@ -128,6 +155,12 @@ const detail: OfficialAccountRunDetailViewModel = {
       selectionMethodLabel: "多模态语义匹配",
       similarityBand: "high",
       similarityBandLabel: "相似度：高",
+      provenanceKind: "generated_visual",
+      sourcePageUrl: null,
+      caption: null,
+      credit: null,
+      rightsStatus: null,
+      contextOnlyNotEvidence: false,
     },
     {
       id: "local-media-body-safe-1",
@@ -147,6 +180,12 @@ const detail: OfficialAccountRunDetailViewModel = {
       selectionMethodLabel: "多模态语义匹配",
       similarityBand: "medium",
       similarityBandLabel: "相似度：中",
+      provenanceKind: "generated_visual",
+      sourcePageUrl: null,
+      caption: null,
+      credit: null,
+      rightsStatus: null,
+      contextOnlyNotEvidence: false,
     },
     {
       id: "local-media-body-safe-2",
@@ -166,6 +205,12 @@ const detail: OfficialAccountRunDetailViewModel = {
       selectionMethodLabel: "多模态语义匹配",
       similarityBand: "high",
       similarityBandLabel: "相似度：高",
+      provenanceKind: "generated_visual",
+      sourcePageUrl: null,
+      caption: null,
+      credit: null,
+      rightsStatus: null,
+      contextOnlyNotEvidence: false,
     },
     {
       id: "local-media-cover-safe",
@@ -185,7 +230,14 @@ const detail: OfficialAccountRunDetailViewModel = {
       selectionMethodLabel: null,
       similarityBand: null,
       similarityBandLabel: null,
+      provenanceKind: "image_artifact",
+      sourcePageUrl: null,
+      caption: null,
+      credit: null,
+      rightsStatus: null,
+      contextOnlyNotEvidence: false,
     },
+    contextMedia,
   ],
   bodyImages: [
     {
@@ -213,6 +265,8 @@ const detail: OfficialAccountRunDetailViewModel = {
       sha256: "3".repeat(64),
     },
   ],
+  contextImages: [contextMedia],
+  contextMediaStatus: "partial",
   primaryBodyImageId: "local-media-body-safe",
   coverImageId: "local-media-cover-safe",
   mediaSelection: {
@@ -354,6 +408,12 @@ describe("official-account local workbench", () => {
     expect(screen.getByText("local-media-body-safe-1")).toBeVisible();
     expect(screen.getByText("local-media-body-safe-2")).toBeVisible();
     expect(screen.getByText("local-media-cover-safe")).toBeVisible();
+    expect(screen.getByText("local-media-context-safe")).toBeVisible();
+    expect(screen.getByText("新闻原图 01")).toBeVisible();
+    expect(screen.getByText(/发布权限未验证/)).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "查看新闻原文（新窗口）" }),
+    ).toHaveAttribute("href", "https://source.example/news/article");
     expect(screen.getByText("自动选图：3 张正文图")).toBeVisible();
     expect(
       screen.getByText(

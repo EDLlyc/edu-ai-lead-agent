@@ -287,3 +287,130 @@ the runtime implementation and is never part of default CI.
       Logo, QR code or watermark. Record 3 attempted / 3 succeeded / 0 retry and zero Comfly/WeChat/WeCom/publish.
 - [x] Run focused Ruff, compile, mypy, 113 backend unit/worker/integration tests, migration upgrade/current/head and
       clean-upgrade test, output redaction/HTML/ZIP integrity checks and `git diff --check`.
+
+## Phase 18 — Reference-learned offline editorial repackage
+
+- [x] Record bounded aggregate structure/design observations from the user-supplied public article without saving
+      its prose, HTML or artwork in the repository.
+- [x] Add a versioned offline assembler/renderer that verifies the existing ready news/IP bundle, creates an
+      original six-unit 1,800--2,600-character Article Package and reuses the three inspected JPEGs byte-for-byte.
+- [x] Export a new warm-paper mobile preview, HTML/Markdown, evidence/visual/reference-learning/run projections,
+      manifest, README and deterministic ZIP. Preserve pending/local-only/unpublished state and zero calls in this
+      repackage.
+- [x] Add focused no-network tests for content/evidence boundaries, escaping, source validation, exact image reuse,
+      atomic non-overwrite export and archive integrity.
+- [x] Inspect 430 px and 320 px previews and run focused Ruff, mypy, pytest, output-integrity and diff checks without
+      calling any provider, WeChat, WeCom or publish path.
+
+## Phase 19 — High-rhythm science-magazine v3
+
+- [x] Compare the v2 render with the bounded public-reference metrics and record that repeated information forms,
+      not paragraph length, are the primary remaining quality gap.
+- [x] Add a sibling provider-free v3 assembler/renderer/exporter that reuses v2 source validation and preserves all
+      v1/v2 files and identities.
+- [x] Implement the hero, policy tiles, question cards, learning-loop rail, AI/child boundary, 20-minute timeline and
+      closing takeaway from validated Article blocks with escaped allowlisted emphasis.
+- [x] Add focused tests for exact v3 versions, structured module shapes, escaping, three single-use placeholders,
+      exact JPEG reuse, zero-call projections, atomic no-overwrite export and deterministic ZIP.
+- [x] Export the fresh v3 directory, inspect 430 px and 320 px screenshots, verify v1/v2 tree hashes and run focused
+      format/lint/type/test/output/diff gates without any external or social request.
+
+## Phase 20 — Approved-catalog five-image v4
+
+- [x] Freeze the v1--v3 modules, tests, directories and ZIPs; add one sibling v4 assembler/renderer/exporter with
+      exact new article/render/style/template/adapter identities and no-clobber output semantics.
+- [x] Load the complete local 41-item approved catalog through `LocalOfficialAccountCatalogMediaProvider`; select
+      only refs `1bb84f2abb140b8f` and `bab27fe77a8edff4`, revalidate them, and read publication bytes through the
+      adapter without exposing private paths, raw IDs or source masters.
+- [x] Extend the structured Article Package to exact body slots 0--4, placing the thinking cutaway in the parent
+      questions and the AI/observation cutaway in the AI/child boundary while retaining the original three section
+      placements and bytes.
+- [x] Add two square-safe editorial cutaway modules, semantic alt text and single-use placeholders without weakening
+      v3's one-`h1`, escaped text, pinned source, mobile CSP or distinct-module validation.
+- [x] Export a fresh `output/official-account-news-ip-editorial-20260825-v4` bundle with five JPEGs, safe visual
+      provenance, Article Package, HTML/Markdown, evidence, run, manifest, README and deterministic ZIP; record all
+      current provider/social call counters as zero and inherited paid calls as historical provenance only.
+- [x] Add no-network tests for version/shape/slot validation, exact three-image reuse, provider-derived catalog bytes,
+      catalog drift/duplicate rejection, safe metadata, atomic no-overwrite behavior and deterministic archive.
+- [x] Run focused Ruff, format, PyCompile, mypy and pytest; verify v1--v3 tree hashes, task/manifest/ZIP integrity and
+      430/320 Chromium behavior with five loaded images, one `h1`, no overflow and zero external requests. Do not
+      call a provider, WeChat, WeCom or publish path, and do not commit.
+
+## Phase 21 — Live semantic-reference generated v5
+
+- [x] Freeze and record v1--v4 tree hashes; add a sibling v5 module/test and fresh output identity without editing
+      or replacing any historical output.
+- [x] Preflight the current 41-item catalog and exact active Qwen3-VL index identity before client construction;
+      build two bounded exact-block queries and retrieve two distinct eligible public references with one query
+      call per block, full-result fencing and safe redacted selection metadata.
+- [x] Reuse the approved reference normalizer and ToApis single-reference generator. Write one exclusive safe local
+      intent per placement, enforce one attempt/no hidden retry, map timeout to `result_unknown`, and never issue a
+      third image call or construct Comfly/WeChat/WeCom/publish clients.
+- [x] Normalize both successful provider rasters into distinct metadata-free exact 1536x1024 JPEGs; assemble five
+      block-bound 3:2 scenes, semantic alt text and a v5 renderer that preserves v3/v4 mobile hierarchy and source/
+      escaping/CSP contracts.
+- [x] Add no-network unit coverage for query bounds, complete-index preflight, semantic result fencing, intent
+      exclusivity, timeout/no-retry, raster profile, redaction, exact three-image inheritance, atomic no-clobber
+      export and deterministic ZIP.
+- [x] Run focused tests and static gates before any paid call. Then run the explicit live command once, export the
+      fresh local v5 bundle, inspect both new scenes and the 430/320 preview, verify manifest/ZIP/call ledgers and
+      v1--v4 tree hashes. Do not call social adapters, do not publish and do not commit.
+
+## Phase 22 — Official-source contextual news-photo v6
+
+- [x] Freeze v1--v5 modules, outputs and ZIPs; document the two exact official source/image URLs, captions, credits,
+      dimensions, hashes and publication-permission boundary in a task research note.
+- [x] Add one sibling v6 exporter with a typed two-photo projection, injected no-network test fetcher and an exact
+      HTTPS Ministry allowlist. Validate bounded JPEG bytes/dimensions/checksums and preserve source bytes/watermarks.
+- [x] Reuse the validated v5 bundle and five IP images byte-for-byte, add two stable contextual-photo modules and
+      seven-image visual/provenance/manifest projections without expanding the frozen five-slot Article Package.
+- [x] Add focused tests for allowlisting, response validation, exact v5 reuse, escaping, rights warning, atomic
+      no-clobber export, deterministic ZIP and zero-network defaults.
+- [ ] Run static/focused gates before one explicit two-GET official-photo export. Inspect 430/320 HTML with seven
+      loaded local images, verify v1--v5 tree hashes and exact call ledgers, update the backend editorial spec, and
+      make no embedding/generation/social/publish request or commit.
+      Static/browser/output gates passed. The live origin returned a known non-200 on the first GET; no retry was
+      made. The installed v6 bundle uses the two earlier validated official bytes and records the cache/failure
+      ledger explicitly, so only the exact two-successful-GET subcondition remains open.
+
+## Phase 23 — Selected-news source-image acquisition v7
+
+- [x] Freeze current acquisition fixtures and official-account v1--v8 identities. Add typed bounded source-image
+      extraction to HTML connectors with no I/O, stable `og:image`/content-figure order, captions, URL normalization,
+      deduplication and exact source-profile host/path policy.
+- [x] Add an injected safe image fetcher and validator for JPEG/PNG/WebP. In the acquisition executor reserve intent,
+      honor durable source pacing, fetch outside transactions, validate immutable bytes and degrade per-image failure
+      without discarding an accepted news item. Existing tests/default fixture construct no image network client.
+- [x] Add migration `20260825_0036` from verified unique head `20260824_0035`, the `source_article_images` model and
+      repository reserve/complete/query contracts, `source_snapshots.kind=image`, named constraints and migration/
+      metadata/real-PostgreSQL tests. Do not mutate prior snapshots or candidates.
+- [x] Freeze source-image handoff in `material_package_source_images`, joined only through the package's exact
+      evidence occurrence/detail-snapshot lineage; topic selection remains network-free and old package snapshots
+      remain byte-compatible.
+- [x] Add the exact Article v9/context-selection/render v8/local-adapter v6 family plus typed
+      `official_account_article_context_images` lineage. Select at most two ready images only through material-package
+      evidence snapshot IDs, persist the plan, and preserve all five existing company-IP/generated body visuals.
+- [x] Extend local media with a separate context role/source-image FK, immutable snapshot-byte resolution, exact
+      placeholder replacement and natural-aspect contextual modules. Zero/one/two source images must be deterministic;
+      checksum/lineage drift fails closed and recovery performs zero source GETs.
+- [x] Add safe API/OpenAPI/generated-type/development-workbench context-media projections, semantic alt/caption/
+      source/rights labels and visible unavailable/partial state. Keep private storage and extraction internals out;
+      forbid copy-ready output containing `publish_permission_unverified` context media.
+- [x] Add connector/fetcher/executor/repository/renderer/media/API/frontend tests with injected HTML/image bytes and
+      blocked sockets. Assert unrelated snapshot rejection, historical replay, default zero egress, five IP images
+      plus up to two news images, and zero WeChat/WeCom/publish/embedding/generation calls.
+- [x] Run focused Ruff/format/PyCompile/mypy/pytest, Alembic unique-head/upgrade/metadata checks, OpenAPI generation
+      and drift, frontend lint/typecheck/tests/build, Compose/task/diff checks, then independent `trellis-check`.
+      Do not call a real source, image/model provider, WeChat or WeCom, do not overwrite prior output and do not commit.
+
+### Phase 23 live-source acceptance follow-up (2026-08-25)
+
+- [x] Run one Ministry and one CAS source-only acquisition against the real governed endpoints. Confirm the Ministry
+      pages safely yield no editorial images and that CAS text succeeds while old selectors intentionally yield no
+      page-wide image fallback.
+- [x] Add the narrow current CAS `.trs_editor_view` selector before the preserved historical selectors; bump only
+      the CAS connector/parser pair to `1.0.1` and add an offline chrome-exclusion/source-version regression.
+- [x] Activate the new immutable CAS source version and run bounded acceptance
+      `21f485c1-59a0-4b9b-83bf-1ea915d08375`: one accepted article, one ready unchanged 600×316 PNG snapshot,
+      verified size/MIME/SHA/decode, local five-file review artifact, zero model/image-generation/WeChat/WeCom calls,
+      focused 40-test/Ruff/diff gates passed, and no commit.
