@@ -1648,3 +1648,24 @@ Added visible accessible creation feedback, honest independent-worker queue stat
 ### Next Steps
 
 - 另开任务修复 backend-migrate 未继承图片提供方环境导致冷启动失败的 Compose/Settings 契约
+
+
+## Session 73: Complete local official-account news draft MVP
+
+**Date**: 2026-08-26
+**Task**: Complete local official-account news draft MVP
+**Branch**: `main`
+
+### Summary
+
+Implemented and validated the durable selected-news image pipeline, V10 five-IP-visual local article workflow, strict copy claim spans, source-context media, disjoint staging ordinals, deterministic polished export, frontend/OpenAPI contracts, real local provider acceptance, and zero-social local bundles.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a1b811d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
