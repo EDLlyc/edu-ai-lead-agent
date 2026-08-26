@@ -1,2 +1,0 @@
-{"file":".trellis/spec/backend/agent-workbench.md","reason":"Required safety and test matrix for verifying fixture compatibility, bounded tool behavior and PostgreSQL read-only guarantees."}
-{"file":".trellis/tasks/08-24-real-data-agent-mcp/prd.md","reason":"User-approved local development PostgreSQL scope, all-four-tool coverage and explicit out-of-scope boundaries."}
