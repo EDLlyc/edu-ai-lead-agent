@@ -166,6 +166,29 @@ make official-account-local-demo
 
 浏览器打开 `http://127.0.0.1:5173`，进入“公众号本地草稿台”。按 `Ctrl-C` 停止本次 Compose
 前台进程；持久化数据库用于重复打开同一模拟草稿。界面和 API 始终标注“本地模拟，未同步公众号”。
+
+#### 微信公众号编辑器本地交接
+
+开发工作台可在运行 `ready` 且最终人工审稿不可变批准后，生成一条独立的小赛蓝编辑器交接投影。
+`make official-account-local-demo` 会显式打开该开发能力；手工启动时必须同时满足：
+
+```dotenv
+APP_ENV=development
+OFFICIAL_ACCOUNT_LOCAL_ENABLED=true
+OFFICIAL_ACCOUNT_EDITOR_HANDOFF_ENABLED=true
+VITE_OFFICIAL_ACCOUNT_LOCAL_ENABLED=true
+```
+
+后端和前端任一 flag 关闭，或 `APP_ENV` 不是 `development`，交接区与交接资源都会 fail closed。
+工作台提供微信兼容纯正文复制、sandbox 预览、正文图/新闻上下文图/2.35:1 封面独立下载和确定性 ZIP。
+ZIP 包含 `article-body.html`、`preview.html`、Markdown/JSON 安全投影、来源/权利/审稿/预检/移动端状态、
+主题、manifest 和相对 `assets/`；同一批准输入重复读取保持正文和 ZIP 字节一致。
+
+这仍是本地手工交接，不是微信草稿：正式进入微信公众号编辑器后需要重新上传正文图，并单独设置封面。
+系统不读取 AppID、AppSecret 或 token，也不上传、发布或群发。带
+`publish_permission_unverified` 的新闻原图会按当前交接策略直接保留，同时在正文、rights manifest、
+预检和 UI 中持续显示“发布权未验证”；该提示不代表图片已经授权，也不放宽历史 `copy-ready` 导出规则。
+
 新创建的运行默认使用 `wechat-html-renderer-v7-multimodal-media` 科学田野手册版式：首屏先说明家长阅读价值，并从
 文章已有章节标题确定性生成 3--5 项“家长先看”阅读地图；正文用 `PART 01` 信息轨、关键判断和
 家庭实践卡组织层次，结语只拆分已有文本为最多三张行动卡。较长段落只在中文句末做确定性拆分。

@@ -939,6 +939,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Editor Handoff */
+        get: operations["read_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/assets/{asset_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Editor Handoff Asset */
+        get: operations["read_editor_handoff_asset_api_v1_official_account_local_article_runs__run_id__editor_handoff_assets__asset_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/body": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Editor Handoff Body */
+        get: operations["read_editor_handoff_body_api_v1_official_account_local_article_runs__run_id__editor_handoff_body_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Editor Handoff Bundle */
+        get: operations["download_editor_handoff_bundle_api_v1_official_account_local_article_runs__run_id__editor_handoff_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Editor Handoff */
+        get: operations["preview_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/official-account-local/article-runs/{run_id}/manual-review": {
         parameters: {
             query?: never;
@@ -4605,6 +4690,11 @@ export interface components {
              * @constant
              */
             boundary_label: "本地模拟，未同步公众号";
+            /**
+             * Editor Handoff Enabled
+             * @default false
+             */
+            editor_handoff_enabled: boolean;
             /** Eligible Material Packages */
             eligible_material_packages?: components["schemas"]["EligibleMaterialPackageResponse"][];
             /** Enabled */
@@ -4673,6 +4763,179 @@ export interface components {
              * @enum {string}
              */
             state: "ready" | "failed" | "result_unknown";
+        };
+        /** OfficialAccountEditorHandoffCheckResponse */
+        OfficialAccountEditorHandoffCheckResponse: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /** Field */
+            field: string;
+            /** Passed */
+            passed: boolean;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+        };
+        /** OfficialAccountEditorHandoffIdentityResponse */
+        OfficialAccountEditorHandoffIdentityResponse: {
+            /**
+             * Bundle Version
+             * @constant
+             */
+            bundle_version: "official-account-editor-handoff-bundle-v1";
+            /**
+             * Preflight Version
+             * @constant
+             */
+            preflight_version: "wechat-editor-handoff-preflight-v1";
+            /**
+             * Renderer Version
+             * @constant
+             */
+            renderer_version: "wechat-editor-handoff-renderer-v1-gzh-xiaosai";
+            /**
+             * Rights Policy Version
+             * @constant
+             */
+            rights_policy_version: "editor-handoff-context-rights-v1-direct-use-disclosed";
+            /**
+             * Style Version
+             * @constant
+             */
+            style_version: "wechat-editor-handoff-style-v1-xiaosai-blue";
+            /**
+             * Template Version
+             * @constant
+             */
+            template_version: "wechat-editor-handoff-template-v1-moyu-layout";
+            /**
+             * Theme Id
+             * @constant
+             */
+            theme_id: "xiaosai-moyu-layout-v1";
+            /** Theme Sha256 */
+            theme_sha256: string;
+        };
+        /** OfficialAccountEditorHandoffMediaResponse */
+        OfficialAccountEditorHandoffMediaResponse: {
+            /** Alt Text */
+            alt_text: string;
+            /** Assigned Section Index */
+            assigned_section_index?: number | null;
+            /** Byte Size */
+            byte_size: number;
+            /**
+             * Context Only Not Evidence
+             * @default false
+             */
+            context_only_not_evidence: boolean;
+            /** Credit */
+            credit?: string | null;
+            /** Download Url */
+            download_url: string;
+            /** Height */
+            height: number;
+            /**
+             * Media Type
+             * @enum {string}
+             */
+            media_type: "image/jpeg" | "image/png" | "image/webp";
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Rights Status */
+            rights_status?: "publish_permission_unverified" | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "body" | "context" | "cover";
+            /** Sha256 */
+            sha256: string;
+            /** Source Page Url */
+            source_page_url?: string | null;
+            /** Width */
+            width: number;
+        };
+        /** OfficialAccountEditorHandoffMobileResponse */
+        OfficialAccountEditorHandoffMobileResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_run" | "passed";
+            /**
+             * Viewports
+             * @default [
+             *       320,
+             *       430
+             *     ]
+             */
+            viewports: [
+                320 | 430,
+                320 | 430
+            ];
+        };
+        /** OfficialAccountEditorHandoffResponse */
+        OfficialAccountEditorHandoffResponse: {
+            /** Blocking Codes */
+            blocking_codes: string[];
+            /** Body Url */
+            body_url?: string | null;
+            /**
+             * Boundary Label
+             * @default 本地交接，未同步公众号
+             * @constant
+             */
+            boundary_label: "本地交接，未同步公众号";
+            /** Bundle Filename */
+            bundle_filename?: string | null;
+            /** Bundle Sha256 */
+            bundle_sha256?: string | null;
+            /** Bundle Url */
+            bundle_url?: string | null;
+            /** Checks */
+            checks: components["schemas"]["OfficialAccountEditorHandoffCheckResponse"][];
+            /** Copy Ready */
+            copy_ready: boolean;
+            /** Fingerprint */
+            fingerprint?: string | null;
+            identity?: components["schemas"]["OfficialAccountEditorHandoffIdentityResponse"] | null;
+            /**
+             * Local Only
+             * @default true
+             * @constant
+             */
+            local_only: true;
+            /** Media */
+            media: components["schemas"]["OfficialAccountEditorHandoffMediaResponse"][];
+            mobile_validation: components["schemas"]["OfficialAccountEditorHandoffMobileResponse"];
+            /** Preview Url */
+            preview_url?: string | null;
+            /**
+             * Published
+             * @default false
+             * @constant
+             */
+            published: false;
+            /**
+             * Simulation
+             * @default true
+             * @constant
+             */
+            simulation: true;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "blocked" | "ready";
+            /** Warning Codes */
+            warning_codes: string[];
         };
         /** OfficialAccountEmbeddingIdentityResponse */
         OfficialAccountEmbeddingIdentityResponse: {
@@ -7489,6 +7752,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OfficialAccountRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfficialAccountEditorHandoffResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_editor_handoff_asset_api_v1_official_account_local_article_runs__run_id__editor_handoff_assets__asset_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                asset_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_editor_handoff_body_api_v1_official_account_local_article_runs__run_id__editor_handoff_body_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_editor_handoff_bundle_api_v1_official_account_local_article_runs__run_id__editor_handoff_bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

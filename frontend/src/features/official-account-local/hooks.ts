@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFixtureArticleRun,
   createLiveArticleRun,
+  getOfficialAccountEditorHandoff,
   getOfficialAccountCapabilities,
   getOfficialAccountRun,
   listOfficialAccountRuns,
@@ -19,6 +20,8 @@ export const officialAccountLocalKeys = {
   list: () => [...officialAccountLocalKeys.all, "list"] as const,
   detail: (id: string) =>
     [...officialAccountLocalKeys.all, "detail", id] as const,
+  editorHandoff: (id: string) =>
+    [...officialAccountLocalKeys.all, "editor-handoff", id] as const,
 } as const;
 
 export function useOfficialAccountCapabilities() {
@@ -53,6 +56,18 @@ export function useOfficialAccountRun(runId: string | null) {
   });
 }
 
+export function useOfficialAccountEditorHandoff(
+  runId: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: officialAccountLocalKeys.editorHandoff(runId ?? ""),
+    queryFn: ({ signal }) =>
+      getOfficialAccountEditorHandoff(runId ?? "", signal),
+    enabled: enabled && runId !== null && runId.length > 0,
+  });
+}
+
 export function useCreateFixtureArticleRun() {
   return useRunMutation(createFixtureArticleRun);
 }
@@ -74,6 +89,9 @@ export function useOfficialAccountManualReview() {
         client.invalidateQueries({ queryKey: officialAccountLocalKeys.list() }),
         client.invalidateQueries({
           queryKey: officialAccountLocalKeys.detail(input.runId),
+        }),
+        client.invalidateQueries({
+          queryKey: officialAccountLocalKeys.editorHandoff(input.runId),
         }),
       ]);
     },

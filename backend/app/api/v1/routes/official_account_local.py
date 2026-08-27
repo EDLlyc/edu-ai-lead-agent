@@ -2,14 +2,21 @@ from __future__ import annotations
 
 # ruff: noqa: RUF001 -- Chinese punctuation is intentional in safe UI explanations.
 from typing import Annotated, Any, cast
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_session
 from app.application.ports.official_account_local import OfficialAccountVersionIdentity
+from app.application.services.official_account_editor_handoff import (
+    PREVIEW_SCRIPT_CSP_HASH,
+    EditorHandoffArtifact,
+    OfficialAccountEditorHandoffService,
+)
 from app.core.errors import AppError, ConflictError, NotFoundError
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
@@ -39,6 +46,11 @@ from app.schemas.official_account_local import (
     OfficialAccountArticleResponse,
     OfficialAccountCapabilitiesResponse,
     OfficialAccountDraftResponse,
+    OfficialAccountEditorHandoffCheckResponse,
+    OfficialAccountEditorHandoffIdentityResponse,
+    OfficialAccountEditorHandoffMediaResponse,
+    OfficialAccountEditorHandoffMobileResponse,
+    OfficialAccountEditorHandoffResponse,
     OfficialAccountEmbeddingIdentityResponse,
     OfficialAccountGeneratedVisualResponse,
     OfficialAccountManualReviewRequest,
@@ -112,6 +124,7 @@ async def capabilities(
         generated_visuals_enabled=bool(
             getattr(settings, "official_account_local_generated_visuals_enabled", False)
         ),
+        editor_handoff_enabled=_editor_handoff_available(settings),
     )
 
 
@@ -243,6 +256,154 @@ async def record_manual_review(
     return _manual_review(review, idempotent_replay=not created)
 
 
+@router.get(
+    "/article-runs/{run_id}/editor-handoff",
+    response_model=OfficialAccountEditorHandoffResponse,
+)
+async def read_editor_handoff(
+    run_id: UUID,
+    request: Request,
+    response: Response,
+) -> OfficialAccountEditorHandoffResponse:
+    _require_editor_handoff_enabled(request)
+    response.headers.update(_private_headers())
+    inspection = await _editor_handoff_service(request).inspect(run_id)
+    artifact = inspection.artifact
+    base = _editor_handoff_base(run_id)
+    return OfficialAccountEditorHandoffResponse(
+        state=inspection.state,
+        copy_ready=artifact is not None,
+        fingerprint=artifact.fingerprint if artifact is not None else None,
+        identity=(
+            OfficialAccountEditorHandoffIdentityResponse.model_validate(
+                artifact.identity.model_dump(mode="json")
+            )
+            if artifact is not None
+            else None
+        ),
+        checks=[
+            OfficialAccountEditorHandoffCheckResponse.model_validate(item.model_dump(mode="json"))
+            for item in inspection.checks
+        ],
+        blocking_codes=list(inspection.blocking_codes),
+        warning_codes=list(inspection.warning_codes),
+        media=(
+            [
+                OfficialAccountEditorHandoffMediaResponse(
+                    name=item.path.removeprefix("assets/"),
+                    role=item.role,
+                    ordinal=item.ordinal,
+                    download_url=f"{base}/assets/{item.path.removeprefix('assets/')}",
+                    media_type=item.media_type,
+                    byte_size=item.byte_size,
+                    sha256=item.sha256,
+                    width=item.width,
+                    height=item.height,
+                    alt_text=item.alt_text,
+                    assigned_section_index=item.assigned_section_index,
+                    source_page_url=item.source_page_url,
+                    credit=item.credit,
+                    rights_status=item.rights_status,
+                    context_only_not_evidence=item.context_only_not_evidence,
+                )
+                for item in artifact.media
+            ]
+            if artifact is not None
+            else []
+        ),
+        mobile_validation=OfficialAccountEditorHandoffMobileResponse(status="not_run"),
+        body_url=f"{base}/body" if artifact is not None else None,
+        preview_url=f"{base}/preview" if artifact is not None else None,
+        bundle_url=f"{base}/bundle" if artifact is not None else None,
+        bundle_filename=artifact.bundle_filename if artifact is not None else None,
+        bundle_sha256=artifact.zip_sha256 if artifact is not None else None,
+    )
+
+
+@router.get("/article-runs/{run_id}/editor-handoff/body", response_class=HTMLResponse)
+async def read_editor_handoff_body(run_id: UUID, request: Request) -> Response:
+    artifact = await _require_editor_handoff_artifact(run_id, request)
+    return Response(
+        content=artifact.body_html,
+        media_type="text/html",
+        headers={
+            **_private_headers(),
+            "Content-Security-Policy": (
+                "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'self'; object-src 'none'"
+            ),
+            "X-Content-SHA256": _sha256_hex(artifact.body_html),
+        },
+    )
+
+
+@router.get("/article-runs/{run_id}/editor-handoff/preview", response_class=HTMLResponse)
+async def preview_editor_handoff(run_id: UUID, request: Request) -> Response:
+    artifact = await _require_editor_handoff_artifact(run_id, request)
+    return Response(
+        content=artifact.preview_html,
+        media_type="text/html",
+        headers={
+            **_private_headers(),
+            "Content-Security-Policy": (
+                "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
+                f"script-src 'sha256-{PREVIEW_SCRIPT_CSP_HASH}'; connect-src 'none'; "
+                "base-uri 'none'; form-action 'none'; "
+                f"frame-ancestors {_editor_handoff_frame_ancestors(request)}; object-src 'none'"
+            ),
+            "X-Content-SHA256": _sha256_hex(artifact.preview_html),
+        },
+    )
+
+
+@router.get(
+    "/article-runs/{run_id}/editor-handoff/assets/{asset_name}",
+    response_class=Response,
+)
+async def read_editor_handoff_asset(
+    run_id: UUID,
+    asset_name: str,
+    request: Request,
+) -> Response:
+    artifact = await _require_editor_handoff_artifact(run_id, request)
+    asset = next(
+        (item for item in artifact.media if item.path == f"assets/{asset_name}"),
+        None,
+    )
+    if asset is None:
+        raise NotFoundError("official-account editor handoff asset")
+    body = artifact.files.get(asset.path)
+    if body is None or _sha256_hex(body) != asset.sha256:
+        raise AppError(
+            "handoff_asset_integrity_failed",
+            "official-account editor handoff asset integrity failed",
+            409,
+        )
+    return Response(
+        content=body,
+        media_type=asset.media_type,
+        headers={
+            **_private_headers(),
+            "Content-Disposition": f'attachment; filename="{asset_name}"',
+            "X-Content-SHA256": asset.sha256,
+        },
+    )
+
+
+@router.get("/article-runs/{run_id}/editor-handoff/bundle", response_class=Response)
+async def download_editor_handoff_bundle(run_id: UUID, request: Request) -> Response:
+    artifact = await _require_editor_handoff_artifact(run_id, request)
+    return Response(
+        content=artifact.zip_bytes,
+        media_type="application/zip",
+        headers={
+            **_private_headers(),
+            "Content-Disposition": f'attachment; filename="{artifact.bundle_filename}"',
+            "X-Content-SHA256": artifact.zip_sha256,
+        },
+    )
+
+
 @router.post(
     "/article-runs/{run_id}/retry",
     response_model=OfficialAccountRunSummaryResponse,
@@ -341,6 +502,79 @@ async def preview_local_draft(
 def _require_enabled(request: Request) -> None:
     if not request.app.state.settings.official_account_local_enabled:
         raise ConflictError("official-account local drafting is disabled")
+
+
+def _editor_handoff_available(settings: Any) -> bool:
+    return bool(
+        settings.official_account_local_enabled
+        and getattr(settings, "official_account_editor_handoff_enabled", False)
+        and getattr(settings, "app_env", None) == "development"
+    )
+
+
+def _require_editor_handoff_enabled(request: Request) -> None:
+    _require_enabled(request)
+    if not _editor_handoff_available(request.app.state.settings):
+        raise AppError(
+            "editor_handoff_disabled",
+            "official-account editor handoff is development-only and disabled",
+            409,
+        )
+
+
+def _editor_handoff_service(request: Request) -> OfficialAccountEditorHandoffService:
+    settings = request.app.state.settings
+    return OfficialAccountEditorHandoffService(
+        session_factory=request.app.state.session_factory,
+        resolver=OfficialAccountLocalMediaResolver(
+            image_asset_manifest=getattr(settings, "image_asset_manifest", None),
+            image_store=getattr(request.app.state, "image_store", None),
+            snapshot_store=getattr(request.app.state, "snapshot_store", None),
+        ),
+    )
+
+
+async def _require_editor_handoff_artifact(
+    run_id: UUID,
+    request: Request,
+) -> EditorHandoffArtifact:
+    _require_editor_handoff_enabled(request)
+    return await _editor_handoff_service(request).require_artifact(run_id)
+
+
+def _editor_handoff_base(run_id: UUID) -> str:
+    return f"/api/v1/official-account-local/article-runs/{run_id}/editor-handoff"
+
+
+def _private_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+    }
+
+
+def _editor_handoff_frame_ancestors(request: Request) -> str:
+    sources = ["'self'"]
+    for origin in getattr(request.app.state.settings, "browser_origins", ()):
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme in {"http", "https"}
+            and parsed.netloc
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.path in {"", "/"}
+            and not parsed.query
+            and not parsed.fragment
+        ):
+            sources.append(f"{parsed.scheme}://{parsed.netloc}")
+    return " ".join(dict.fromkeys(sources))
+
+
+def _sha256_hex(body: bytes) -> str:
+    from hashlib import sha256
+
+    return sha256(body).hexdigest()
 
 
 def _live_provider_available(settings: Any) -> bool:

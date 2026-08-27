@@ -39,6 +39,7 @@ React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types
 | [State Management](./state-management.md) | Server, local, URL, and narrowly shared client state |
 | [Type Safety](./type-safety.md) | Strict TypeScript, generated OpenAPI types, and runtime boundaries |
 | [Local Agent Workbench UI](./agent-workbench.md) | Development-only generated-contract trace UI, safe citations, accessibility, and production tree-shaking |
+| [Official-Account Editor Handoff](./official-account-editor-handoff.md) | Development-only approved-run gates, Xiaosai preview, rich clipboard, local downloads, and permanent no-publish truth |
 | [Quality Guidelines](./quality-guidelines.md) | Tests, accessibility, generated-contract drift, and review gates |
 | [Brand Knowledge Workspace](./brand-knowledge-workspace.md) | Implemented upload, status, activation, generation-context diagnostics, generated types, accessibility, and manual-only boundary |
 | [IP Digital Asset Hub UI](./ip-asset-hub.md) | No-auth intranet gallery, upload, multimodal search, download, generation, accessibility, and safe resource URL contracts |

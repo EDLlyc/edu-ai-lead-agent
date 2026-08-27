@@ -86,6 +86,7 @@ official-account-local-worker:
 
 official-account-local-demo:
 	OFFICIAL_ACCOUNT_LOCAL_ENABLED=true \
+	OFFICIAL_ACCOUNT_EDITOR_HANDOFF_ENABLED=true \
 	OFFICIAL_ACCOUNT_LOCAL_VISUAL_SEMANTIC_ENABLED=false \
 	VISUAL_EMBEDDING_PROVIDER_MODE=disabled \
 	AI_PROVIDER_MODE=disabled \

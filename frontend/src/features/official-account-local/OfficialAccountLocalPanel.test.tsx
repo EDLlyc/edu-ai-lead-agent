@@ -336,6 +336,7 @@ vi.mock("./hooks", () => ({
       visualSemanticEnabled: false,
       visualSemanticProviderMode: "disabled",
       generatedVisualsEnabled: false,
+      editorHandoffEnabled: false,
     },
     isLoading: false,
     isError: false,
@@ -348,6 +349,11 @@ vi.mock("./hooks", () => ({
     data: detail,
     isLoading: false,
     isError: false,
+  }),
+  useOfficialAccountEditorHandoff: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
   }),
   useCreateFixtureArticleRun: () => ({
     mutate: hookMocks.fixtureMutate,

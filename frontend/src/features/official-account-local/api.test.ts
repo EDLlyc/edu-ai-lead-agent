@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { components } from "@/lib/api/generated/schema";
 
-import { mapCapabilities, mapRunDetail, mapRunSummary } from "./api";
+import {
+  mapCapabilities,
+  mapEditorHandoff,
+  mapRunDetail,
+  mapRunSummary,
+} from "./api";
 import { shouldPollOfficialAccountRun } from "./hooks";
 
 type RunDetail = components["schemas"]["OfficialAccountRunDetailResponse"];
@@ -53,13 +58,83 @@ describe("official-account local API mapping", () => {
       visual_semantic_enabled: false,
       visual_semantic_provider_mode: "disabled",
       generated_visuals_enabled: false,
+      editor_handoff_enabled: true,
     });
     const run = mapRunSummary(summary);
 
     expect(capabilities.eligibleMaterials[0]?.title).toBe("合格素材");
     expect(capabilities.liveAvailable).toBe(false);
+    expect(capabilities.editorHandoffEnabled).toBe(true);
     expect(run.statusLabel).toBe("本地草稿就绪");
     expect(run.modeLabel).toContain("离线");
+  });
+
+  it("maps editor handoff gates, safe URLs and direct-use rights disclosure", () => {
+    const handoff = mapEditorHandoff({
+      state: "ready",
+      copy_ready: true,
+      simulation: true,
+      local_only: true,
+      published: false,
+      boundary_label: "本地交接，未同步公众号",
+      fingerprint: "f".repeat(64),
+      identity: {
+        renderer_version: "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
+        style_version: "wechat-editor-handoff-style-v1-xiaosai-blue",
+        template_version: "wechat-editor-handoff-template-v1-moyu-layout",
+        bundle_version: "official-account-editor-handoff-bundle-v1",
+        preflight_version: "wechat-editor-handoff-preflight-v1",
+        rights_policy_version:
+          "editor-handoff-context-rights-v1-direct-use-disclosed",
+        theme_id: "xiaosai-moyu-layout-v1",
+        theme_sha256: "a".repeat(64),
+      },
+      checks: [
+        {
+          code: "context_image_rights_unverified_direct_use",
+          severity: "warning",
+          passed: false,
+          field: "assets/context-00.jpg",
+          detail: "按当前本地策略直接使用，发布权未验证",
+        },
+      ],
+      blocking_codes: [],
+      warning_codes: ["context_image_rights_unverified_direct_use"],
+      media: [
+        {
+          name: "context-00.jpg",
+          role: "context",
+          ordinal: 0,
+          download_url:
+            "/api/v1/official-account-local/article-runs/run/editor-handoff/assets/context-00.jpg",
+          media_type: "image/jpeg",
+          byte_size: 128,
+          sha256: "b".repeat(64),
+          width: 1200,
+          height: 800,
+          alt_text: "新闻现场",
+          assigned_section_index: 0,
+          source_page_url: "https://example.invalid/news",
+          credit: "来源机构",
+          rights_status: "publish_permission_unverified",
+          context_only_not_evidence: true,
+        },
+      ],
+      mobile_validation: { status: "not_run", viewports: [320, 430] },
+      body_url: "/safe/body",
+      preview_url: "javascript:alert(1)",
+      bundle_url: "/safe/bundle",
+      bundle_filename: "wechat-editor-handoff-safe.zip",
+      bundle_sha256: "c".repeat(64),
+    });
+
+    expect(handoff.copyReady).toBe(true);
+    expect(handoff.checks[0]?.label).toBe("新闻图片权利");
+    expect(handoff.media[0]?.rightsStatus).toBe(
+      "publish_permission_unverified",
+    );
+    expect(handoff.previewUrl).toBeNull();
+    expect(handoff.bundleUrl).toContain("/safe/bundle");
   });
 
   it("normalizes only safe API media and preview URLs", () => {

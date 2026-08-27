@@ -851,3 +851,119 @@ context_attempt = _adapter_v7_staging_attempt_ordinal(
 assert body_attempt != context_attempt
 export_review_bundle(immutable_ready_run_projection, fresh_output_dir)
 ```
+
+## Editor-handoff V1: approved local WeChat editor projection
+
+### 1. Additive identity and read-only ownership
+
+The editor handoff is a downstream, development-only projection. It does not join the V1--V10
+Article renderer tuple and must not change historical review/copy-ready bytes. Its fixed identities
+are `wechat-editor-handoff-renderer-v1-gzh-xiaosai`,
+`wechat-editor-handoff-style-v1-xiaosai-blue`,
+`wechat-editor-handoff-template-v1-moyu-layout`,
+`official-account-editor-handoff-bundle-v1`,
+`wechat-editor-handoff-preflight-v1`, and
+`editor-handoff-context-rights-v1-direct-use-disclosed`.
+
+`backend/app/domain/official_account_editor_handoff.py` owns the pure Article Package renderer and
+preflight. The Xiaosai theme tokens are a project-owned static definition with a canonical SHA-256;
+runtime code never reads a personal skill directory or accepts caller-supplied HTML, Markdown, CSS,
+or template paths. `OfficialAccountEditorHandoffService` only rereads the existing run, Article,
+render, draft, immutable review and media snapshots, verifies their lineage and bytes, and builds an
+in-memory projection. It writes no row/object, creates no job, and constructs no model, embedding,
+image, news, WeChat, or WeCom client.
+
+### 2. Eligibility and preflight
+
+The endpoint is available only when `APP_ENV=development`, `OFFICIAL_ACCOUNT_LOCAL_ENABLED=true`,
+and `OFFICIAL_ACCOUNT_EDITOR_HANDOFF_ENABLED=true`. Artifact resources require a ready run, a
+supported and fingerprint-valid Article Package, passed deterministic validation, accepted model
+audit, a fixed render, a ready simulated draft whose resolved fingerprint matches its immutable
+render lineage, and an approved manual review whose request fingerprint matches its immutable
+review input. Pending, rejected, failed, `result_unknown`, incomplete, or tampered state returns a
+stable blocking code and no plausible body/ZIP.
+
+The render gate must also prove that `render.article_version_id` equals the selected Article
+version and recompute both canonical HTML and `render_fingerprint` with that Article's frozen
+historical renderer identity. Presence of a render row alone is never sufficient approval lineage.
+
+The pure body is one `<section>` fragment using controlled tags, attributes, inline CSS, HTTPS
+source links, `span leaf`, and package-relative assets. It contains one to five distinct body images,
+all selected context images at their Article section anchors, and no cover. Across body, context and
+cover, paths and content hashes are unique; the single cover is exactly or deterministically cropped
+to the 2.35:1 tolerance. Placeholders, remote/private/API image references, dangerous markup and a
+preview/body mismatch are blocking.
+The HTML preflight parses exactly one balanced root, rejects duplicate attributes or duplicate
+image references, and permits only the renderer's enumerated inline CSS properties in addition to
+the unsafe-value blacklist.
+
+`publish_permission_unverified` context images are intentionally retained only in this new handoff.
+They produce the nonblocking `context_image_rights_unverified_direct_use` warning and retain source,
+credit and `context_only_not_evidence=true` in HTML/API/rights/manifest. This never means licensed,
+cleared or evidence, and historical copy-ready export continues to reject the same rights state.
+Runtime mobile status stays honestly `not_run`; a loopback-only Playwright fixture records 320/430
+browser evidence separately.
+
+### 3. HTTP and bundle contract
+
+The existing local router adds typed metadata, body, preview, asset and ZIP GET resources. Metadata
+returns blocked state as a displayable 200 projection; artifact resources fail closed. Responses use
+`private, no-store`, `nosniff` and `no-referrer`; body/preview use restrictive CSP and asset/ZIP
+downloads use generated attachment names. OpenAPI must contain no publish/send/account/AppID/
+AppSecret/token fields.
+
+The deterministic ZIP contains body/preview, Markdown and safe Article JSON, sources, rights,
+review, preflight, honest mobile status, canonical theme, README, manifest and generated relative
+assets. Member order, timestamp, mode and compression are fixed; every path is traversal-safe and
+every member is reread byte-for-byte after construction. The manifest binds run/request/content/
+render/draft/review/theme identities, file hashes and media metadata. Rebuilding the same immutable
+input must return the same handoff fingerprint, body bytes and ZIP SHA-256.
+
+### 4. Validation and error matrix
+
+| Condition | Required result |
+|---|---|
+| Environment or either handoff flag is disabled | Return a stable development-only conflict; do not build artifacts |
+| Run/draft/review is incomplete, rejected, failed or result-unknown | Metadata reports a typed blocking code; body/preview/assets/ZIP fail closed |
+| Article/render/draft/review lineage or fingerprint differs | Reject as integrity failure before returning copyable bytes |
+| HTML has multiple roots, duplicate attributes/images, unknown CSS, remote images or private paths | Preflight error; `copy_ready=false` |
+| Context rights are `publish_permission_unverified` | Retain the image and source under this V1 policy; return a nonblocking warning |
+| Asset, manifest member or ZIP path/hash/size differs | Reject the artifact; never return a plausible partial package |
+
+### 5. Good, base and bad cases
+
+- Good: a ready simulated run with an immutable matching approval returns one stable metadata
+  projection and byte-identical body, preview, assets and ZIP across repeated reads.
+- Base: pending approval remains inspectable through typed metadata and existing local media, but
+  no handoff artifact resource claims copy readiness.
+- Bad: accepting a render merely because a row exists, allowing an unlisted CSS property, or
+  rewriting an unverified rights status to licensed bypasses the handoff integrity boundary.
+
+### 6. Tests required
+
+- Unit-test renderer escaping, one-root/span-leaf/CSS/image allowlists, exact body/context placement,
+  cover ratio, rights warnings, deterministic fingerprints and ZIP verification.
+- API-test both development gates, every run/review state, Article/render/draft/review tampering,
+  security headers, CSP origins, safe asset names and the absence of publish/credential contracts.
+- Preserve historical Article/export/media goldens. Run generated OpenAPI drift checks and assert
+  default tests construct no provider, news, WeChat or WeCom client.
+- Run the project-independent gzh validator and loopback Playwright at 320/430 px with every
+  non-loopback request blocked.
+
+### 7. Wrong versus correct
+
+Wrong:
+
+```python
+if render is not None and review.decision == "approved":
+    return build_handoff(render.resolved_html)
+```
+
+Correct:
+
+```python
+artifact = await service.build(run_id)
+# The service revalidates Article/render/draft/review lineage and media bytes, then renders from the
+# structured Article Package under the additive handoff identity.
+return artifact
+```

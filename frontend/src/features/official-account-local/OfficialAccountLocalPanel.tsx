@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import {
+  type OfficialAccountEditorHandoffViewModel,
   type OfficialAccountManualReviewDecision,
   type OfficialAccountManualReviewViewModel,
   type OfficialAccountRunDetailViewModel,
@@ -11,11 +12,13 @@ import {
   useCreateFixtureArticleRun,
   useCreateLiveArticleRun,
   useOfficialAccountCapabilities,
+  useOfficialAccountEditorHandoff,
   useOfficialAccountManualReview,
   useOfficialAccountRun,
   useOfficialAccountRuns,
   useRetryOfficialAccountRun,
 } from "./hooks";
+import { OfficialAccountEditorHandoff } from "./OfficialAccountEditorHandoff";
 
 import styles from "./OfficialAccountLocalPanel.module.css";
 
@@ -46,6 +49,10 @@ export function OfficialAccountLocalPanel() {
     materialPackageId || capabilities.data?.eligibleMaterials[0]?.id || "";
   const effectiveSelectedRunId = selectedRunId ?? runs.data?.[0]?.id ?? null;
   const detail = useOfficialAccountRun(effectiveSelectedRunId);
+  const editorHandoff = useOfficialAccountEditorHandoff(
+    effectiveSelectedRunId,
+    capabilities.data?.editorHandoffEnabled === true,
+  );
 
   const busy = fixtureMutation.isPending || liveMutation.isPending;
   const mutationError =
@@ -202,6 +209,12 @@ export function OfficialAccountLocalPanel() {
                   : null
               }
               reviewing={manualReviewMutation.isPending}
+              editorHandoff={editorHandoff.data}
+              editorHandoffLoading={editorHandoff.isLoading}
+              editorHandoffError={editorHandoff.error}
+              editorHandoffEnabled={
+                capabilities.data?.editorHandoffEnabled === true
+              }
               onReview={(decision, reviewerLabel, note) =>
                 manualReviewMutation.mutate({
                   runId: detail.data.summary.id,
@@ -270,6 +283,10 @@ function RunDetail({
   reviewResult,
   reviewError,
   reviewing,
+  editorHandoff,
+  editorHandoffLoading,
+  editorHandoffError,
+  editorHandoffEnabled,
   onReview,
 }: Readonly<{
   detail: OfficialAccountRunDetailViewModel;
@@ -278,6 +295,10 @@ function RunDetail({
   reviewResult: OfficialAccountManualReviewViewModel | undefined;
   reviewError: Error | null;
   reviewing: boolean;
+  editorHandoff: OfficialAccountEditorHandoffViewModel | undefined;
+  editorHandoffLoading: boolean;
+  editorHandoffError: Error | null;
+  editorHandoffEnabled: boolean;
   onReview: (
     decision: OfficialAccountManualReviewDecision,
     reviewerLabel: string,
@@ -386,6 +407,14 @@ function RunDetail({
             onReview={onReview}
           />
           <MediaAndPreview detail={detail} />
+          {editorHandoffEnabled ? (
+            <OfficialAccountEditorHandoff
+              runId={detail.summary.id}
+              handoff={editorHandoff}
+              loading={editorHandoffLoading}
+              error={editorHandoffError}
+            />
+          ) : null}
         </>
       )}
     </article>
@@ -755,7 +784,10 @@ function MediaAndPreview({
                 : "本次素材包没有可用的新闻原图，正文继续使用公司 IP 图。"}
           </span>
         </div>
-        <div className={styles.mediaGrid} aria-label="新闻原图、公司 IP 图与封面画廊">
+        <div
+          className={styles.mediaGrid}
+          aria-label="新闻原图、公司 IP 图与封面画廊"
+        >
           {detail.media.map((media) => (
             <figure
               key={media.id}
@@ -798,7 +830,9 @@ function MediaAndPreview({
                   </span>
                 ) : null}
                 {media.caption !== null ? <span>{media.caption}</span> : null}
-                {media.credit !== null ? <small>图片署名：{media.credit}</small> : null}
+                {media.credit !== null ? (
+                  <small>图片署名：{media.credit}</small>
+                ) : null}
                 {media.role === "context" ? (
                   <strong className={styles.rightsWarning} role="note">
                     发布权限未验证 · 仅作上下文参考，不是事实证据

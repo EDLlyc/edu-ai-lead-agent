@@ -3,20 +3,28 @@ from __future__ import annotations
 # ruff: noqa: RUF001 -- Chinese punctuation is intentional in the boundary assertion.
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import cast
 from uuid import uuid4
 
 import pytest
 from app.api.v1.routes.official_account_local import (
+    _editor_handoff_available,
     _media_selection,
     capabilities,
+    download_editor_handoff_bundle,
+    preview_editor_handoff,
     preview_local_draft,
+    read_editor_handoff,
+    read_editor_handoff_asset,
+    read_editor_handoff_body,
     read_local_media,
     record_manual_review,
 )
 from app.api_main import app
 from app.application.ports.official_account_local import StoredOfficialAccountManualReview
+from app.core.errors import AppError
 from app.domain.official_account_local import OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION
 from app.infrastructure.official_account_local import (
     FIXTURE_BODY_IMAGE_BYTE_SIZES,
@@ -38,8 +46,9 @@ from app.schemas.official_account_local import (
     OfficialAccountManualReviewRequest,
     OfficialAccountMediaResponse,
 )
-from fastapi import Request
+from fastapi import Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests.unit.test_official_account_editor_handoff import _artifact
 
 
 class _NoQuerySession:
@@ -73,6 +82,28 @@ def _request(*, enabled: bool) -> SimpleNamespace:
     )
 
 
+def _handoff_request(*, app_env: str = "development", handoff_enabled: bool = True) -> Request:
+    return cast(
+        Request,
+        SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    settings=SimpleNamespace(
+                        official_account_local_enabled=True,
+                        official_account_editor_handoff_enabled=handoff_enabled,
+                        app_env=app_env,
+                        image_asset_manifest=None,
+                        browser_origins=("http://127.0.0.1:5173",),
+                    ),
+                    session_factory=object(),
+                    image_store=None,
+                    snapshot_store=None,
+                )
+            )
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_capabilities_fail_closed_without_querying_when_disabled() -> None:
     result = await capabilities(
@@ -85,6 +116,103 @@ async def test_capabilities_fail_closed_without_querying_when_disabled() -> None
     assert result.live_available is False
     assert result.simulation is True
     assert result.boundary_label == "本地模拟，未同步公众号"
+    assert result.editor_handoff_enabled is False
+
+
+def test_editor_handoff_capability_requires_both_opt_in_and_development() -> None:
+    assert _editor_handoff_available(_handoff_request().app.state.settings) is True
+    assert (
+        _editor_handoff_available(_handoff_request(app_env="production").app.state.settings)
+        is False
+    )
+    assert (
+        _editor_handoff_available(_handoff_request(handoff_enabled=False).app.state.settings)
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_editor_handoff_routes_are_typed_private_and_integrity_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = await _artifact()
+
+    class Service:
+        async def inspect(self, run_id: object) -> SimpleNamespace:
+            assert run_id == artifact.run_id
+            return SimpleNamespace(
+                state="ready",
+                artifact=artifact,
+                checks=artifact.preflight.checks,
+                blocking_codes=artifact.preflight.blocking_codes,
+                warning_codes=artifact.preflight.warning_codes,
+            )
+
+        async def require_artifact(self, run_id: object):
+            assert run_id == artifact.run_id
+            return artifact
+
+    monkeypatch.setattr(
+        "app.api.v1.routes.official_account_local._editor_handoff_service",
+        lambda _request: Service(),
+    )
+    request = _handoff_request()
+
+    metadata_response = Response()
+    metadata = await read_editor_handoff(artifact.run_id, request, metadata_response)
+    assert metadata.state == "ready"
+    assert metadata.copy_ready is True
+    assert metadata.published is False
+    assert metadata.bundle_sha256 == artifact.zip_sha256
+    assert metadata.mobile_validation.status == "not_run"
+    assert metadata_response.headers["cache-control"] == "private, no-store"
+    assert metadata_response.headers["x-content-type-options"] == "nosniff"
+    assert metadata_response.headers["referrer-policy"] == "no-referrer"
+
+    body = await read_editor_handoff_body(artifact.run_id, request)
+    assert body.body == artifact.body_html
+    assert body.headers["cache-control"] == "private, no-store"
+    assert body.headers["x-content-sha256"] == sha256(artifact.body_html).hexdigest()
+    assert "default-src 'none'" in body.headers["content-security-policy"]
+
+    preview = await preview_editor_handoff(artifact.run_id, request)
+    assert preview.body == artifact.preview_html
+    assert "connect-src 'none'" in preview.headers["content-security-policy"]
+    assert "script-src 'sha256-" in preview.headers["content-security-policy"]
+    assert (
+        "frame-ancestors 'self' http://127.0.0.1:5173" in preview.headers["content-security-policy"]
+    )
+
+    asset = artifact.media[0]
+    asset_response = await read_editor_handoff_asset(
+        artifact.run_id,
+        asset.path.removeprefix("assets/"),
+        request,
+    )
+    assert asset_response.body == artifact.files[asset.path]
+    assert asset_response.headers["content-disposition"].startswith("attachment;")
+    assert asset_response.headers["x-content-sha256"] == asset.sha256
+
+    bundle = await download_editor_handoff_bundle(artifact.run_id, request)
+    assert bundle.body == artifact.zip_bytes
+    assert bundle.headers["x-content-sha256"] == artifact.zip_sha256
+    assert artifact.bundle_filename in bundle.headers["content-disposition"]
+
+    with pytest.raises(AppError) as unknown:
+        await read_editor_handoff_asset(artifact.run_id, "../manifest.json", request)
+    assert unknown.value.code == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_editor_handoff_artifact_routes_fail_closed_outside_development() -> None:
+    with pytest.raises(AppError) as captured:
+        await read_editor_handoff_body(
+            uuid4(),
+            _handoff_request(app_env="production"),
+        )
+
+    assert captured.value.code == "editor_handoff_disabled"
+    assert captured.value.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -315,14 +443,19 @@ def test_openapi_exposes_only_local_simulation_operations() -> None:
     }
     serialized = str({"paths": paths, "schemas": schemas}).lower()
 
-    assert len(paths) == 7
+    assert len(paths) == 12
     assert "/api/v1/official-account-local/article-runs/{run_id}/manual-review" in paths
+    assert "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff" in paths
+    assert "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/bundle" in paths
     assert "/publish" not in serialized
     assert "/send" not in serialized
     assert "appid" not in serialized
     assert "appsecret" not in serialized
     assert "access_token" not in serialized
     assert "simulation" in serialized
+    assert "context_image_rights_unverified_direct_use" not in serialized
+    assert "editor_handoff_enabled" in serialized
+    assert "published" in serialized
     assert "body_images" in serialized
     assert "media_selection" in serialized
     assert "body_image" in serialized

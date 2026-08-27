@@ -213,6 +213,7 @@ class Settings(BaseSettings):
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
 
     official_account_local_enabled: bool = False
+    official_account_editor_handoff_enabled: bool = False
     official_account_local_worker_enabled: bool = False
     official_account_local_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
     official_account_local_worker_concurrency: int = Field(default=1, ge=1, le=4)

@@ -9241,6 +9241,11 @@
             "title": "Boundary Label",
             "type": "string"
           },
+          "editor_handoff_enabled": {
+            "default": false,
+            "title": "Editor Handoff Enabled",
+            "type": "boolean"
+          },
           "eligible_material_packages": {
             "items": {
               "$ref": "#/components/schemas/EligibleMaterialPackageResponse"
@@ -9362,6 +9367,448 @@
           "created_at"
         ],
         "title": "OfficialAccountDraftResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffCheckResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 100,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "field": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "passed",
+          "field",
+          "detail"
+        ],
+        "title": "OfficialAccountEditorHandoffCheckResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffIdentityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_version": {
+            "const": "official-account-editor-handoff-bundle-v1",
+            "title": "Bundle Version",
+            "type": "string"
+          },
+          "preflight_version": {
+            "const": "wechat-editor-handoff-preflight-v1",
+            "title": "Preflight Version",
+            "type": "string"
+          },
+          "renderer_version": {
+            "const": "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
+            "title": "Renderer Version",
+            "type": "string"
+          },
+          "rights_policy_version": {
+            "const": "editor-handoff-context-rights-v1-direct-use-disclosed",
+            "title": "Rights Policy Version",
+            "type": "string"
+          },
+          "style_version": {
+            "const": "wechat-editor-handoff-style-v1-xiaosai-blue",
+            "title": "Style Version",
+            "type": "string"
+          },
+          "template_version": {
+            "const": "wechat-editor-handoff-template-v1-moyu-layout",
+            "title": "Template Version",
+            "type": "string"
+          },
+          "theme_id": {
+            "const": "xiaosai-moyu-layout-v1",
+            "title": "Theme Id",
+            "type": "string"
+          },
+          "theme_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Theme Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "renderer_version",
+          "style_version",
+          "template_version",
+          "bundle_version",
+          "preflight_version",
+          "rights_policy_version",
+          "theme_id",
+          "theme_sha256"
+        ],
+        "title": "OfficialAccountEditorHandoffIdentityResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffMediaResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "alt_text": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Alt Text",
+            "type": "string"
+          },
+          "assigned_section_index": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Section Index"
+          },
+          "byte_size": {
+            "exclusiveMinimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "context_only_not_evidence": {
+            "default": false,
+            "title": "Context Only Not Evidence",
+            "type": "boolean"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "height": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "media_type": {
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^(?:body-0[0-4]|context-0[01]|cover-wide)\\.(?:jpg|png|webp)$",
+            "title": "Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 49.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "rights_status": {
+            "anyOf": [
+              {
+                "const": "publish_permission_unverified",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rights Status"
+          },
+          "role": {
+            "enum": [
+              "body",
+              "context",
+              "cover"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_page_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page Url"
+          },
+          "width": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "ordinal",
+          "download_url",
+          "media_type",
+          "byte_size",
+          "sha256",
+          "width",
+          "height",
+          "alt_text"
+        ],
+        "title": "OfficialAccountEditorHandoffMediaResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffMobileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "not_run",
+              "passed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "viewports": {
+            "default": [
+              320,
+              430
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "enum": [
+                  320,
+                  430
+                ],
+                "type": "integer"
+              },
+              {
+                "enum": [
+                  320,
+                  430
+                ],
+                "type": "integer"
+              }
+            ],
+            "title": "Viewports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "OfficialAccountEditorHandoffMobileResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Codes",
+            "type": "array"
+          },
+          "body_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Url"
+          },
+          "boundary_label": {
+            "const": "本地交接，未同步公众号",
+            "default": "本地交接，未同步公众号",
+            "title": "Boundary Label",
+            "type": "string"
+          },
+          "bundle_filename": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Filename"
+          },
+          "bundle_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Sha256"
+          },
+          "bundle_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Url"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountEditorHandoffCheckResponse"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "copy_ready": {
+            "title": "Copy Ready",
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint"
+          },
+          "identity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountEditorHandoffIdentityResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "local_only": {
+            "const": true,
+            "default": true,
+            "title": "Local Only",
+            "type": "boolean"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountEditorHandoffMediaResponse"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "mobile_validation": {
+            "$ref": "#/components/schemas/OfficialAccountEditorHandoffMobileResponse"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Url"
+          },
+          "published": {
+            "const": false,
+            "default": false,
+            "title": "Published",
+            "type": "boolean"
+          },
+          "simulation": {
+            "const": true,
+            "default": true,
+            "title": "Simulation",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "blocked",
+              "ready"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "warning_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "copy_ready",
+          "checks",
+          "blocking_codes",
+          "warning_codes",
+          "media",
+          "mobile_validation"
+        ],
+        "title": "OfficialAccountEditorHandoffResponse",
         "type": "object"
       },
       "OfficialAccountEmbeddingIdentityResponse": {
@@ -15168,6 +15615,216 @@
           }
         },
         "summary": "Read Article Run",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff": {
+      "get": {
+        "operationId": "read_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfficialAccountEditorHandoffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Editor Handoff",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/assets/{asset_name}": {
+      "get": {
+        "operationId": "read_editor_handoff_asset_api_v1_official_account_local_article_runs__run_id__editor_handoff_assets__asset_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_name",
+            "required": true,
+            "schema": {
+              "title": "Asset Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Editor Handoff Asset",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/body": {
+      "get": {
+        "operationId": "read_editor_handoff_body_api_v1_official_account_local_article_runs__run_id__editor_handoff_body_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Editor Handoff Body",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/bundle": {
+      "get": {
+        "operationId": "download_editor_handoff_bundle_api_v1_official_account_local_article_runs__run_id__editor_handoff_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Editor Handoff Bundle",
+        "tags": [
+          "official-account-local"
+        ]
+      }
+    },
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/preview": {
+      "get": {
+        "operationId": "preview_editor_handoff_api_v1_official_account_local_article_runs__run_id__editor_handoff_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Editor Handoff",
         "tags": [
           "official-account-local"
         ]

@@ -14,6 +14,8 @@ type ManualReviewRequest =
 type ManualReviewResponse =
   components["schemas"]["OfficialAccountManualReviewResponse"];
 type MediaResponse = components["schemas"]["OfficialAccountMediaResponse"];
+type EditorHandoffResponse =
+  components["schemas"]["OfficialAccountEditorHandoffResponse"];
 
 export type OfficialAccountStatus = RunSummaryResponse["status"];
 export type OfficialAccountStage = RunSummaryResponse["current_stage"];
@@ -47,6 +49,50 @@ export type OfficialAccountCapabilitiesViewModel = Readonly<{
   visualSemanticEnabled: boolean;
   visualSemanticProviderMode: CapabilitiesResponse["visual_semantic_provider_mode"];
   generatedVisualsEnabled: boolean;
+  editorHandoffEnabled: boolean;
+}>;
+
+export type OfficialAccountEditorHandoffViewModel = Readonly<{
+  state: EditorHandoffResponse["state"];
+  copyReady: boolean;
+  boundaryLabel: string;
+  fingerprint: string | null;
+  identity: Readonly<{
+    rendererVersion: string;
+    styleVersion: string;
+    themeId: string;
+    themeSha256: string;
+  }> | null;
+  checks: readonly Readonly<{
+    code: string;
+    label: string;
+    severity: "info" | "warning" | "error";
+    passed: boolean;
+    detail: string;
+  }>[];
+  blockingCodes: readonly string[];
+  warningCodes: readonly string[];
+  media: readonly Readonly<{
+    name: string;
+    role: "body" | "context" | "cover";
+    roleLabel: string;
+    ordinal: number;
+    downloadUrl: string | null;
+    mediaType: string;
+    byteSize: number;
+    sha256: string;
+    dimensionsLabel: string;
+    altText: string;
+    sourcePageUrl: string | null;
+    credit: string | null;
+    rightsStatus: "publish_permission_unverified" | null;
+  }>[];
+  mobileStatus: "not_run" | "passed";
+  bodyUrl: string | null;
+  previewUrl: string | null;
+  bundleUrl: string | null;
+  bundleFilename: string | null;
+  bundleSha256: string | null;
 }>;
 
 export type OfficialAccountRunSummaryViewModel = Readonly<{
@@ -231,6 +277,32 @@ export async function getOfficialAccountRun(
   return mapRunDetail(data);
 }
 
+export async function getOfficialAccountEditorHandoff(
+  runId: string,
+  signal?: AbortSignal,
+): Promise<OfficialAccountEditorHandoffViewModel> {
+  const { data, error } = await apiClient.GET(
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff",
+    {
+      params: { path: { run_id: runId } },
+      ...(signal === undefined ? {} : { signal }),
+    },
+  );
+  if (data === undefined) throwApiError(error, "editor_handoff_failed");
+  return mapEditorHandoff(data);
+}
+
+export async function getOfficialAccountEditorHandoffBody(
+  runId: string,
+): Promise<string> {
+  const { data, error } = await apiClient.GET(
+    "/api/v1/official-account-local/article-runs/{run_id}/editor-handoff/body",
+    { params: { path: { run_id: runId } }, parseAs: "text" },
+  );
+  if (data === undefined) throwApiError(error, "editor_handoff_body_failed");
+  return data;
+}
+
 export async function createFixtureArticleRun(): Promise<OfficialAccountRunSummaryViewModel> {
   return createRun({
     source: {
@@ -314,7 +386,107 @@ export function mapCapabilities(
     visualSemanticEnabled: response.visual_semantic_enabled,
     visualSemanticProviderMode: response.visual_semantic_provider_mode,
     generatedVisualsEnabled: response.generated_visuals_enabled,
+    editorHandoffEnabled: response.editor_handoff_enabled,
   };
+}
+
+export function mapEditorHandoff(
+  response: EditorHandoffResponse,
+): OfficialAccountEditorHandoffViewModel {
+  return {
+    state: response.state,
+    copyReady: response.copy_ready,
+    boundaryLabel: response.boundary_label,
+    fingerprint: response.fingerprint ?? null,
+    identity:
+      response.identity == null
+        ? null
+        : {
+            rendererVersion: response.identity.renderer_version,
+            styleVersion: response.identity.style_version,
+            themeId: response.identity.theme_id,
+            themeSha256: response.identity.theme_sha256,
+          },
+    checks: response.checks.map((item) => ({
+      code: item.code,
+      label: editorHandoffCheckLabel(item.code),
+      severity: item.severity,
+      passed: item.passed,
+      detail: item.detail,
+    })),
+    blockingCodes: response.blocking_codes,
+    warningCodes: response.warning_codes,
+    media: response.media.map((item) => ({
+      name: item.name,
+      role: item.role,
+      roleLabel:
+        item.role === "body"
+          ? `正文图 ${String(item.ordinal + 1).padStart(2, "0")}`
+          : item.role === "context"
+            ? `新闻原图 ${String(item.ordinal + 1).padStart(2, "0")}`
+            : "2.35:1 封面",
+      ordinal: item.ordinal,
+      downloadUrl: resolveApiResourceUrl(item.download_url),
+      mediaType: item.media_type,
+      byteSize: item.byte_size,
+      sha256: item.sha256,
+      dimensionsLabel: `${item.width} × ${item.height}`,
+      altText: item.alt_text,
+      sourcePageUrl: item.source_page_url ?? null,
+      credit: item.credit ?? null,
+      rightsStatus: item.rights_status ?? null,
+    })),
+    mobileStatus: response.mobile_validation.status,
+    bodyUrl:
+      response.body_url == null
+        ? null
+        : resolveApiResourceUrl(response.body_url),
+    previewUrl:
+      response.preview_url == null
+        ? null
+        : resolveApiResourceUrl(response.preview_url),
+    bundleUrl:
+      response.bundle_url == null
+        ? null
+        : resolveApiResourceUrl(response.bundle_url),
+    bundleFilename: response.bundle_filename ?? null,
+    bundleSha256: response.bundle_sha256 ?? null,
+  };
+}
+
+function editorHandoffCheckLabel(code: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    run_ready: "运行状态",
+    article_present: "结构化文章",
+    article_version_supported: "文章版本",
+    article_fingerprint_valid: "内容指纹",
+    deterministic_validation_passed: "规则校验",
+    model_audit_accepted: "模型审校",
+    render_present: "固定渲染",
+    simulated_draft_ready: "本地草稿",
+    draft_fingerprint_valid: "草稿谱系",
+    immutable_review_approved: "最终人工审稿",
+    immutable_review_pending: "最终人工审稿",
+    immutable_review_rejected: "最终人工审稿",
+    review_fingerprint_valid: "审稿指纹",
+    pure_section_fragment: "微信正文片段",
+    forbidden_markup_absent: "危险标记",
+    placeholder_absent: "占位符",
+    private_reference_absent: "私有路径",
+    wechat_markup_allowlist: "微信标签与样式",
+    span_leaf_complete: "粘贴样式保护",
+    controlled_relative_images: "图片引用",
+    body_image_count_valid: "正文图片数量",
+    body_images_unique: "正文图片去重",
+    media_images_unique: "全部图片去重",
+    cover_ratio_valid: "封面比例",
+    asset_paths_unique: "资源路径",
+    preview_body_exact_match: "预览与正文一致性",
+    context_image_rights_unverified_direct_use: "新闻图片权利",
+    mobile_browser_validation_not_run: "移动端浏览器验收",
+    handoff_integrity_failed: "交接包完整性",
+  };
+  return labels[code] ?? code;
 }
 
 export function mapRunSummary(

@@ -72,6 +72,7 @@ class OfficialAccountCapabilitiesResponse(_StrictModel):
     visual_semantic_enabled: bool = False
     visual_semantic_provider_mode: Literal["disabled", "fake", "alibaba"] = "disabled"
     generated_visuals_enabled: bool = False
+    editor_handoff_enabled: bool = False
 
 
 class OfficialAccountRunSummaryResponse(_StrictModel):
@@ -343,3 +344,66 @@ class OfficialAccountRunDetailResponse(OfficialAccountRunSummaryResponse):
     generated_visuals: list[OfficialAccountGeneratedVisualResponse] = Field(default_factory=list)
     draft: OfficialAccountDraftResponse | None
     manual_review: OfficialAccountManualReviewResponse
+
+
+class OfficialAccountEditorHandoffIdentityResponse(_StrictModel):
+    renderer_version: Literal["wechat-editor-handoff-renderer-v1-gzh-xiaosai"]
+    style_version: Literal["wechat-editor-handoff-style-v1-xiaosai-blue"]
+    template_version: Literal["wechat-editor-handoff-template-v1-moyu-layout"]
+    bundle_version: Literal["official-account-editor-handoff-bundle-v1"]
+    preflight_version: Literal["wechat-editor-handoff-preflight-v1"]
+    rights_policy_version: Literal["editor-handoff-context-rights-v1-direct-use-disclosed"]
+    theme_id: Literal["xiaosai-moyu-layout-v1"]
+    theme_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class OfficialAccountEditorHandoffCheckResponse(_StrictModel):
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=100)
+    severity: Literal["info", "warning", "error"]
+    passed: bool
+    field: str = Field(min_length=1, max_length=120)
+    detail: str = Field(min_length=1, max_length=500)
+
+
+class OfficialAccountEditorHandoffMediaResponse(_StrictModel):
+    name: str = Field(pattern=r"^(?:body-0[0-4]|context-0[01]|cover-wide)\.(?:jpg|png|webp)$")
+    role: Literal["body", "context", "cover"]
+    ordinal: int = Field(ge=0, le=49)
+    download_url: str
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    byte_size: int = Field(gt=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    width: int = Field(ge=1, le=8192)
+    height: int = Field(ge=1, le=8192)
+    alt_text: str = Field(min_length=1, max_length=200)
+    assigned_section_index: int | None = Field(default=None, ge=0, le=6)
+    source_page_url: str | None = Field(default=None, max_length=2048)
+    credit: str | None = Field(default=None, max_length=200)
+    rights_status: Literal["publish_permission_unverified"] | None = None
+    context_only_not_evidence: bool = False
+
+
+class OfficialAccountEditorHandoffMobileResponse(_StrictModel):
+    status: Literal["not_run", "passed"]
+    viewports: tuple[Literal[320, 430], Literal[320, 430]] = (320, 430)
+
+
+class OfficialAccountEditorHandoffResponse(_StrictModel):
+    state: Literal["blocked", "ready"]
+    copy_ready: bool
+    simulation: Literal[True] = True
+    local_only: Literal[True] = True
+    published: Literal[False] = False
+    boundary_label: Literal["本地交接，未同步公众号"] = "本地交接，未同步公众号"
+    fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    identity: OfficialAccountEditorHandoffIdentityResponse | None = None
+    checks: list[OfficialAccountEditorHandoffCheckResponse]
+    blocking_codes: list[str]
+    warning_codes: list[str]
+    media: list[OfficialAccountEditorHandoffMediaResponse]
+    mobile_validation: OfficialAccountEditorHandoffMobileResponse
+    body_url: str | None = None
+    preview_url: str | None = None
+    bundle_url: str | None = None
+    bundle_filename: str | None = Field(default=None, max_length=120)
+    bundle_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
