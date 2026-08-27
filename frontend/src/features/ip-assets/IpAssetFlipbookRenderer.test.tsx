@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IpAssetFlipbookPage } from "./flipbookDraft";
+import flipbookStylesheet from "./IpAssetFlipbookRenderer.module.css?inline";
 
 const pageFlipMocks = vi.hoisted(() => ({
   flipNext: vi.fn(),
@@ -13,20 +14,35 @@ const pageFlipMocks = vi.hoisted(() => ({
   turnToPage: vi.fn(),
 }));
 
+const pageFlipEvents = vi.hoisted(() => ({
+  onFlip: undefined as ((event: unknown) => void) | undefined,
+  onChangeOrientation: undefined as ((event: unknown) => void) | undefined,
+}));
+
 vi.mock("react-pageflip", async () => {
   const React = await import("react");
   const MockFlipBook = React.forwardRef(function MockFlipBook(
-    props: Readonly<{ children?: React.ReactNode; onInit?: () => void }>,
+    props: Readonly<{
+      children?: React.ReactNode;
+      onFlip?: (event: unknown) => void;
+      onChangeOrientation?: (event: unknown) => void;
+      onInit?: (event: unknown) => void;
+    }>,
     ref: React.ForwardedRef<unknown>,
   ) {
-    const { children, onInit } = props;
+    const { children, onChangeOrientation, onFlip, onInit } = props;
+    pageFlipEvents.onFlip = onFlip;
+    pageFlipEvents.onChangeOrientation = onChangeOrientation;
     React.useImperativeHandle(ref, () => ({
       pageFlip: () => ({
         ...pageFlipMocks,
         getCurrentPageIndex: () => 0,
       }),
     }));
-    React.useEffect(() => onInit?.(), [onInit]);
+    React.useEffect(
+      () => onInit?.({ data: { page: 0, mode: "portrait" } }),
+      [onInit],
+    );
     return <div data-testid="pageflip-book">{children}</div>;
   });
   return { default: MockFlipBook };
@@ -41,6 +57,8 @@ const pages = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  pageFlipEvents.onFlip = undefined;
+  pageFlipEvents.onChangeOrientation = undefined;
 });
 
 afterEach(() => {
@@ -48,8 +66,10 @@ afterEach(() => {
 });
 
 describe("IpAssetFlipbookRenderer", () => {
-  it("renders a cover, contained photos, parity leaf and back cover", () => {
-    render(<IpAssetFlipbookRenderer pages={pages} title="科学伙伴相册" />);
+  it("renders valid page classes and keeps engine leaves absolutely positioned", () => {
+    const { container } = render(
+      <IpAssetFlipbookRenderer pages={pages} title="科学伙伴相册" />,
+    );
 
     expect(screen.getByLabelText(/第 1 页，封面：小赛挥手/)).toHaveAttribute(
       "data-density",
@@ -66,6 +86,30 @@ describe("IpAssetFlipbookRenderer", () => {
     );
     expect(screen.getAllByRole("img")).toHaveLength(2);
     expect(screen.getByText("第 1 / 4 页")).toBeVisible();
+    expect(container.querySelector('[class~="undefined"]')).toBeNull();
+    expect(flipbookStylesheet).toMatch(
+      /\.[^{\s]+\.stf__item\s*\{[^}]*position:\s*absolute;/s,
+    );
+  });
+
+  it("reports desktop interior spreads while keeping covers as single pages", () => {
+    render(<IpAssetFlipbookRenderer pages={pages} title="科学伙伴相册" />);
+
+    act(() => pageFlipEvents.onChangeOrientation?.({ data: "landscape" }));
+    expect(screen.getByText("第 1 / 4 页")).toBeVisible();
+
+    act(() => pageFlipEvents.onFlip?.({ data: 1 }));
+    expect(screen.getByText("第 2–3 / 4 页")).toBeVisible();
+
+    act(() => pageFlipEvents.onFlip?.({ data: 3 }));
+    expect(screen.getByText("第 4 / 4 页")).toBeVisible();
+  });
+
+  it("reports a single page in portrait orientation", () => {
+    render(<IpAssetFlipbookRenderer pages={pages} title="科学伙伴相册" />);
+
+    act(() => pageFlipEvents.onFlip?.({ data: 1 }));
+    expect(screen.getByText("第 2 / 4 页")).toBeVisible();
   });
 
   it("uses explicit controls and locks them while a turn is pending", async () => {

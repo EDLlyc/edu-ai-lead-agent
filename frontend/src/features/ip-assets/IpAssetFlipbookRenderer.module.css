@@ -123,6 +123,10 @@
   user-select: none;
 }
 
+.leaf:global(.stf__item) {
+  position: absolute;
+}
+
 .frontCover {
   padding: clamp(16px, 2.5vw, 30px);
   color: #f7f1e2;

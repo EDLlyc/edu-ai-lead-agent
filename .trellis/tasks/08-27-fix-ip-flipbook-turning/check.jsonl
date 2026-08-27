@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "核验相册交互、无后端写入与响应式约束"}
+{"file": ".trellis/tasks/08-27-fix-ip-flipbook-turning/research/browser-diagnosis.md", "reason": "按连续动画帧与已证实根因独立验收"}

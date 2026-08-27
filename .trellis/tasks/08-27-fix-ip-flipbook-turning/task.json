@@ -1,0 +1,28 @@
+{
+  "id": "fix-ip-flipbook-turning",
+  "name": "fix-ip-flipbook-turning",
+  "title": "修复 IP 相册翻页交互",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "frontend",
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-27",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "description": "修复 IP 相册翻页动画定位、无效内页 class 与桌面跨页状态反馈"
+  }
+}

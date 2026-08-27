@@ -188,10 +188,18 @@ resources.
   page order/back-cover parity is deterministic. The editor keeps title/reorder/removal local, labels
   the first image as the cover, pauses below two images, and never invokes recognition, semantic
   search, download counting, image generation, or another backend mutation.
+- Each project-owned flipbook leaf must remain absolutely positioned after the renderer adds its
+  global `.stf__item` class. `page-flip` writes absolute positioning for static leaves but omits it
+  while drawing hard/soft animation frames; a project rule such as `.leaf { position: relative; }`
+  therefore sends the turning leaf back into document flow and makes it disappear or enter from the
+  stage edge. Scope the invariant to the compound local-leaf/global-engine selector, never patch
+  `node_modules`, and never emit a missing CSS Module key as a literal `undefined` class token.
 - Flipbook controls support mouse/touch, previous/next buttons, ArrowLeft/ArrowRight, Space, Home,
   and End; controls lock while the renderer is not in `read` state. The page exposes visible position
   and live turn/reorder feedback, named image-failure fallbacks, visible focus, narrow single-page
-  reflow, and reduced-motion behavior without cropping or stretching assets. Reduced-motion direct
+  reflow, and reduced-motion behavior without cropping or stretching assets. Landscape interior
+  spreads label the complete visible range (for example `2–3`); portrait leaves and isolated front/
+  back covers label one page. Reduced-motion direct
   turns use `turnToNextPage`/`turnToPrevPage` without first setting a synthetic `flipping` state:
   those direct methods are not guaranteed to emit a later `read` transition, so pre-locking would
   leave every control permanently disabled.
@@ -259,6 +267,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Flipbook image request fails                                                        | Replace that leaf image with its canonical named textual fallback                                       |
 | Flipbook order falls below two after removal                                        | Keep local editing visible, pause the renderer, and link back to gallery selection                      |
 | Reduced-motion user activates previous/next                                         | Turn directly while staying `read`; keep `aria-busy=false` and controls usable                          |
+| Flipbook engine enters hard/soft animation drawing                                  | Every project leaf remains absolutely positioned inside the stage; no leaf enters normal document flow  |
+| Flipbook orientation is landscape on an interior spread                             | Label the full visible page range; portrait and isolated covers keep a single-page label                |
 
 ### 5. Good / Base / Bad Cases
 
@@ -319,7 +329,10 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   ready/shared/distinct/safe projection; copy-on-read and Strict Mode-safe clear; no URL/storage/API
   handoff; exact lazy route/login recovery; immutable title/order/removal behavior; deterministic
   hard/soft/blank/back leaves; contain sizing; turn locking; keyboard controls; named image failure;
-  narrow reflow; reduced motion; and refresh/direct-entry recovery.
+  narrow reflow; reduced motion; compiled compound-selector positioning; no `undefined` class token;
+  orientation-aware single/range status; and refresh/direct-entry recovery. A real-browser regression
+  must inspect continuous animation frames because a terminal-state screenshot can fast-forward a
+  finite animation and cannot prove that a turning leaf stayed inside the book.
 - Contract/final: generated OpenAPI drift, Prettier, ESLint, strict TypeScript, Vitest, production
   build, plus one local browser smoke through the exact CORS/same-origin deployment path.
 
@@ -449,6 +462,28 @@ controller.flipNext();
 
 Only the animated path waits for the renderer state machine; the direct path stays immediately
 operable.
+
+#### Wrong
+
+```css
+.leaf {
+  position: relative;
+}
+```
+
+The engine's hard/soft animation draw paths replace inline `cssText` without preserving absolute
+positioning, so the turning leaf re-enters normal document flow.
+
+#### Correct
+
+```css
+.leaf:global(.stf__item) {
+  position: absolute;
+}
+```
+
+The compound selector applies only to project leaves owned by the page-flip engine and keeps every
+animation frame in the renderer coordinate system.
 
 ## Design decision: calm enterprise library, not a control console
 

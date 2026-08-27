@@ -33,6 +33,7 @@ type FlipbookHandle = Readonly<{
 }>;
 
 type PageFlipState = "user_fold" | "fold_corner" | "flipping" | "read";
+type PageOrientation = "portrait" | "landscape";
 
 export function IpAssetFlipbookRenderer({
   pages,
@@ -44,6 +45,7 @@ export function IpAssetFlipbookRenderer({
   const bookRef = useRef<FlipbookHandle | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [flipState, setFlipState] = useState<PageFlipState>("read");
+  const [orientation, setOrientation] = useState<PageOrientation>("portrait");
   const reducedMotion = usePrefersReducedMotion();
   const leaves = useMemo(() => buildIpAssetFlipbookLeaves(pages), [pages]);
   const pageRatio = useMemo(
@@ -54,16 +56,27 @@ export function IpAssetFlipbookRenderer({
   const pageHeight = 700;
   const pageWidth = Math.round(pageHeight * pageRatio);
   const minWidth = Math.round(300 * pageRatio);
-  const currentPosition = Math.min(currentPage + 1, leaves.length);
+  const currentPosition = getVisiblePagePosition(
+    currentPage,
+    leaves.length,
+    orientation,
+  );
   const canGoPrevious = currentPage > 0 && flipState === "read";
   const canGoNext = currentPage < leaves.length - 1 && flipState === "read";
 
   const getController = useCallback(() => bookRef.current?.pageFlip(), []);
-  const handleInit = useCallback(() => {
-    const controller = getController();
-    setCurrentPage(controller?.getCurrentPageIndex() ?? 0);
-    setFlipState("read");
-  }, [getController]);
+  const handleInit = useCallback(
+    (event: unknown) => {
+      const controller = getController();
+      const data = readEventData(event);
+      setCurrentPage(
+        controller?.getCurrentPageIndex() ?? readInitialPage(data) ?? 0,
+      );
+      if (isBookState(data)) setOrientation(data.mode);
+      setFlipState("read");
+    },
+    [getController],
+  );
   const previous = () => {
     const controller = getController();
     if (!canGoPrevious || controller === undefined) return;
@@ -122,7 +135,7 @@ export function IpAssetFlipbookRenderer({
           aria-live="polite"
           aria-atomic="true"
         >
-          第 {currentPosition} / {leaves.length} 页
+          第 {formatPagePosition(currentPosition)} / {leaves.length} 页
           {flipState === "read" ? "" : " · 翻页中"}
         </p>
       </div>
@@ -173,6 +186,10 @@ export function IpAssetFlipbookRenderer({
           onChangeState={(event: unknown) => {
             const data = readEventData(event);
             if (isPageFlipState(data)) setFlipState(data);
+          }}
+          onChangeOrientation={(event: unknown) => {
+            const data = readEventData(event);
+            if (isPageOrientation(data)) setOrientation(data);
           }}
           onInit={handleInit}
         >
@@ -235,7 +252,7 @@ const FlipbookLeaf = forwardRef<
   return (
     <div
       ref={ref}
-      className={`${styles.leaf} ${isCover ? styles.frontCover : styles.imageLeaf}`}
+      className={isCover ? `${styles.leaf} ${styles.frontCover}` : styles.leaf}
       data-density={leaf.density}
       role="group"
       aria-label={`第 ${leafNumber} 页${isCover ? "，封面" : ""}：${leaf.page.canonicalName}`}
@@ -288,6 +305,49 @@ function isPageFlipState(value: unknown): value is PageFlipState {
     value === "flipping" ||
     value === "read"
   );
+}
+
+function isPageOrientation(value: unknown): value is PageOrientation {
+  return value === "portrait" || value === "landscape";
+}
+
+function isBookState(
+  value: unknown,
+): value is Readonly<{ page: number; mode: PageOrientation }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "page" in value &&
+    typeof value.page === "number" &&
+    "mode" in value &&
+    isPageOrientation(value.mode)
+  );
+}
+
+function readInitialPage(value: unknown): number | undefined {
+  return isBookState(value) ? value.page : undefined;
+}
+
+function getVisiblePagePosition(
+  currentPage: number,
+  pageCount: number,
+  orientation: PageOrientation,
+): Readonly<{ start: number; end: number }> {
+  const start = Math.min(Math.max(currentPage + 1, 1), pageCount);
+  const isInteriorSpread =
+    orientation === "landscape" && start > 1 && start < pageCount;
+  return {
+    start,
+    end: isInteriorSpread ? Math.min(start + 1, pageCount) : start,
+  };
+}
+
+function formatPagePosition(
+  position: Readonly<{ start: number; end: number }>,
+): string {
+  return position.start === position.end
+    ? String(position.start)
+    : `${position.start}\u2013${position.end}`;
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
