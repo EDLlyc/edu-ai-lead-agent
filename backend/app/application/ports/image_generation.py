@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.image_generation import validate_image_prompt
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V1_PNG_ONLY
 
 
@@ -32,6 +33,19 @@ class ImageGenerationRequest:
     references: tuple[ImageReference, ...] = ()
     reference_mode: str = "legacy_single"
     provider_request_fingerprint: str | None = None
+    unrestricted_prompt_length: bool = False
+
+
+def validate_image_generation_request_prompt(request: ImageGenerationRequest) -> str:
+    """Normalize one request prompt under its explicit application-level length policy."""
+
+    if request.unrestricted_prompt_length:
+        return validate_image_prompt(
+            request.prompt,
+            minimum_length=None,
+            maximum_length=None,
+        )
+    return validate_image_prompt(request.prompt)
 
 
 @dataclass(frozen=True, slots=True)

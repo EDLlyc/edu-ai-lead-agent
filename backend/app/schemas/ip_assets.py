@@ -172,7 +172,7 @@ class IpAssetZipRequest(BaseModel):
 class IpAssetGenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    prompt: str = Field(min_length=8, max_length=2_000)
+    prompt: str
     character: IpAssetCharacter
     asset_type: IpAssetType
     department: str = Field(default="", max_length=80)

@@ -317,7 +317,13 @@ export function IpAssetCreationPage() {
       <header className={styles.header}>
         <div className={styles.topBar}>
           <a className={styles.backLink} href="/ip-assets">
-            ← 返回共享图库
+            <span className={styles.backGlyph} aria-hidden="true">
+              ←
+            </span>
+            <span className={styles.backCopy}>
+              <small>ASSET LIBRARY</small>
+              <strong>返回共享图库</strong>
+            </span>
           </a>
           <IpAssetLogoutButton className={styles.logoutButton} />
         </div>
@@ -428,7 +434,7 @@ export function IpAssetCreationPage() {
             }, "生成结果需要保存到个人素材架，请先建立浏览器本地名片。");
           }}
         >
-          <div className={styles.sectionNumber}>01 / 创作简报</div>
+          <SectionMarker index="01" label="创作简报" />
           <h2 id="creation-stage-title">把画面说清楚</h2>
           <div className={styles.promptField}>
             <div>
@@ -451,8 +457,6 @@ export function IpAssetCreationPage() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               required
-              minLength={8}
-              maxLength={2000}
               placeholder="例如：小赛在未来感科学课堂演示火箭实验，开心、明亮、适合公众号头图…"
             />
           </div>
@@ -573,7 +577,7 @@ export function IpAssetCreationPage() {
       >
         <div className={styles.pickerHeading}>
           <div>
-            <p className={styles.sectionNumber}>02 / 参考图库</p>
+            <SectionMarker index="02" label="参考图库" />
             <h2 id="reference-library-title">选择创作素材</h2>
           </div>
           <label>
@@ -718,7 +722,7 @@ export function IpAssetCreationPage() {
       >
         <div className={styles.shelfHeading}>
           <div>
-            <p className={styles.sectionNumber}>03 / 我的素材架</p>
+            <SectionMarker index="03" label="我的素材架" />
             <h2 id="personal-shelf-title">继续使用，不必重新寻找</h2>
           </div>
           <div className={styles.tabs} role="tablist" aria-label="个人素材来源">
@@ -809,6 +813,19 @@ export function IpAssetCreationPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function SectionMarker({
+  index,
+  label,
+}: Readonly<{ index: string; label: string }>) {
+  return (
+    <div className={styles.sectionMarker}>
+      <span className={styles.sectionIndex}>{index}</span>
+      <span className={styles.sectionRule} aria-hidden="true" />
+      <span className={styles.sectionLabel}>{label}</span>
+    </div>
   );
 }
 
@@ -929,7 +946,7 @@ function OutputStage({
       }
     >
       <div className={styles.outputTopline}>
-        <p className={styles.sectionNumber}>OUTPUT / 私人结果</p>
+        <SectionMarker index="OUTPUT" label="私人结果" />
         <span className={styles.outputStatus} aria-live="polite">
           <i aria-hidden="true" />
           {displayStatus}

@@ -21,6 +21,7 @@ from app.application.ports.image_generation import (
     ImageGenerationRequest,
     ImageGenerationResult,
     ImageReference,
+    validate_image_generation_request_prompt,
 )
 from app.core.errors import (
     ImageOutputValidationError,
@@ -45,7 +46,6 @@ from app.domain.image_generation import (
     IMAGE_SIZE,
     IMAGE_WIDTH,
     image_checksum,
-    validate_image_prompt,
 )
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V1_PNG_ONLY,
@@ -185,7 +185,7 @@ class DeterministicFakeImageGenerator:
         self._model = model
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
-        prompt = validate_image_prompt(request.prompt)
+        prompt = validate_image_generation_request_prompt(request)
         body = _solid_png(request.request_fingerprint, prompt)
         return ImageGenerationResult(
             provider="fake",
@@ -256,7 +256,7 @@ class ToApisImageGenerator:
         # prevents a sequence of per-request retries from outliving the durable worker lease.
         try:
             async with asyncio.timeout(self._provider_window_seconds):
-                prompt = validate_image_prompt(request.prompt)
+                prompt = validate_image_generation_request_prompt(request)
                 upload_id: str | None = None
                 upload_url: str | None = None
                 references = _provider_references(request)
@@ -529,7 +529,7 @@ class OpenAICompatibleImageGenerator:
         try:
             async with asyncio.timeout(self._provider_window_seconds):
                 try:
-                    prompt = validate_image_prompt(request.prompt)
+                    prompt = validate_image_generation_request_prompt(request)
                 except ValueError:
                     raise ImageOutputValidationError() from None
                 payload = self._payload(prompt, request)

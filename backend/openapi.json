@@ -7658,8 +7658,6 @@
             "type": "string"
           },
           "prompt": {
-            "maxLength": 2000,
-            "minLength": 8,
             "title": "Prompt",
             "type": "string"
           },

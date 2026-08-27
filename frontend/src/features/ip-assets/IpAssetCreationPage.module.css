@@ -6,12 +6,17 @@
   --paper: #f7f3e9;
   --paper-deep: #ede7d8;
   --clay: #bd6648;
+  --font-ui:
+    "Aptos", "Segoe UI Variable", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: Georgia, "Songti SC", "Noto Serif SC", serif;
   min-height: 100vh;
   padding: clamp(20px, 4vw, 58px);
   background:
     radial-gradient(circle at 84% 3%, rgb(63 174 160 / 18%), transparent 28rem),
     linear-gradient(135deg, #fbf8ef 0%, var(--paper) 55%, #eef4ee 100%);
   color: var(--ink);
+  font-family: var(--font-ui);
 }
 
 .studio *,
@@ -49,10 +54,57 @@
 .backLink {
   display: inline-flex;
   min-height: 44px;
+  gap: 11px;
   align-items: center;
+  padding: 6px 15px 6px 6px;
+  border: 1px solid rgb(25 102 94 / 24%);
+  border-radius: 15px;
+  background: rgb(255 253 247 / 72%);
   color: var(--teal);
-  font-weight: 750;
+  box-shadow: 0 9px 26px rgb(33 76 70 / 8%);
   text-decoration: none;
+}
+
+.backLink:hover {
+  border-color: rgb(25 102 94 / 42%);
+  background: #fffdf7;
+  box-shadow: 0 12px 30px rgb(33 76 70 / 12%);
+}
+
+.backGlyph {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 10px;
+  background: var(--teal);
+  color: #fffef8;
+  font-size: 1.1rem;
+  font-weight: 680;
+}
+
+.backCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.05;
+}
+
+.backCopy small {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 720;
+  letter-spacing: 0.13em;
+}
+
+.backCopy strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 760;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
 }
 
 .topBar {
@@ -86,8 +138,7 @@
   border-block-end: 1px solid rgb(24 92 85 / 24%);
 }
 
-.kicker,
-.sectionNumber {
+.kicker {
   margin: 0 0 12px;
   color: var(--clay);
   font:
@@ -98,12 +149,53 @@
   text-transform: uppercase;
 }
 
+.sectionMarker {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  gap: 10px;
+  align-items: center;
+  margin-block-end: 12px;
+  font-family: var(--font-ui);
+}
+
+.sectionIndex {
+  display: inline-grid;
+  min-width: 44px;
+  min-height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding-inline: 9px;
+  border: 1px solid rgb(189 102 72 / 44%);
+  border-radius: 4px 10px 4px 10px;
+  background: rgb(255 253 247 / 76%);
+  color: #9f4f36;
+  font-size: 0.69rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 820;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.sectionRule {
+  width: clamp(24px, 4vw, 62px);
+  flex: 0 1 62px;
+  border-block-start: 1px solid rgb(24 92 85 / 34%);
+}
+
+.sectionLabel {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.77rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 .header h1 {
   margin: 0;
-  font:
-    650 clamp(2.8rem, 7vw, 6.8rem) / 0.94 Georgia,
-    "Noto Serif SC",
-    serif;
+  font: 650 clamp(2.8rem, 7vw, 6.8rem) / 0.94 var(--font-display);
   letter-spacing: -0.055em;
 }
 
@@ -131,10 +223,7 @@
 }
 
 .profileCard strong {
-  font:
-    650 1.45rem/1.2 Georgia,
-    "Noto Serif SC",
-    serif;
+  font: 650 1.45rem/1.2 var(--font-display);
 }
 
 .profileCard p {
@@ -213,10 +302,7 @@
 .picker h2,
 .personalShelf h2 {
   margin: 0;
-  font:
-    650 clamp(1.7rem, 3vw, 3rem) / 1.06 Georgia,
-    "Noto Serif SC",
-    serif;
+  font: 650 clamp(1.7rem, 3vw, 3rem) / 1.06 var(--font-display);
   letter-spacing: -0.025em;
 }
 
@@ -369,15 +455,20 @@
   z-index: 2;
   inset: 14px auto auto 14px;
   display: grid;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 35px;
+  min-height: 28px;
   place-items: center;
-  border-radius: 50%;
-  background: var(--clay);
-  color: #fff;
-  font:
-    800 0.72rem/1 ui-monospace,
-    monospace;
+  border: 1px solid rgb(189 102 72 / 45%);
+  border-radius: 4px 9px 4px 9px;
+  background: rgb(255 253 247 / 92%);
+  color: #914831;
+  box-shadow: 0 5px 16px rgb(56 46 34 / 14%);
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 820;
+  letter-spacing: 0.08em;
+  line-height: 1;
 }
 
 .emptyFrame {
@@ -449,17 +540,34 @@
   box-shadow: 0 28px 70px rgb(13 66 61 / 22%);
 }
 
-.outputStage .sectionNumber {
-  color: #f4ad8c;
+.outputStage .sectionMarker {
+  flex: 1 1 220px;
+  margin-block-end: 0;
+}
+
+.outputStage .sectionIndex {
+  border-color: rgb(244 173 140 / 62%);
+  background: rgb(255 255 255 / 7%);
+  color: #ffc3a5;
+}
+
+.outputStage .sectionRule {
+  border-color: rgb(255 255 255 / 32%);
+}
+
+.outputStage .sectionLabel {
+  color: #f4e8df;
 }
 
 .outputTopline {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
+  align-items: center;
 }
 
-.outputTopline span {
+.outputTopline > .outputStatus {
   color: #cfe7e1;
   font-weight: 700;
 }
@@ -828,6 +936,20 @@
 
   .optionGrid {
     grid-template-columns: 1fr;
+  }
+
+  .backLink {
+    padding-inline-end: 12px;
+  }
+
+  .backGlyph {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .outputTopline {
+    align-items: flex-start;
   }
 
   .filmstrip ol {

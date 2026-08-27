@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import Text, inspect, text
 
 from .conftest import IntegrationContext
 
@@ -241,7 +241,8 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260825_0036"
+    assert revision == "20260827_0037"
+    assert isinstance(columns["ip_asset_generation_jobs"]["prompt"]["type"], Text)
     assert {
         "sources",
         "source_versions",

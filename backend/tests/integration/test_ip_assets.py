@@ -353,7 +353,7 @@ async def test_fake_generation_worker_ingests_exactly_one_shared_library_asset(
     job, created = await repository.enqueue_generation(
         idempotency_key=idempotency_key,
         request_fingerprint="e" * 64,
-        prompt="为科学课堂生成一张小赛开心讲解知识的方形插画",
+        prompt="图" * 2_001,
         metadata=IpAssetMetadata(
             character=IpAssetCharacter.XIAO_SAI,
             asset_type=IpAssetType.SCENE_ILLUSTRATION,

@@ -48,6 +48,9 @@ useSetIpAssetFavorite();
 useShareIpAsset();
 useIpAssetLeaderboard(period); // anonymous aggregate only
 
+// Native required is kept; the IP creation brief has no minlength/maxlength attributes.
+<textarea name="prompt" required />;
+
 type ApplicationPath =
   | "console"
   | "ip-assets"
@@ -145,6 +148,15 @@ resources.
   shared assets, supports reorder/removal, and sends exactly that order to the API. A detail deep link
   may prefill frame `01` using only a safe asset ref in `?reference=` after the ordinary shared-ready
   list has proved that asset is eligible; a private, missing, or unready deep link is ignored.
+- The creation brief textarea is native-required but has no browser character-count minimum or
+  maximum. One non-whitespace character and descriptions longer than 2000 characters can submit;
+  the backend remains authoritative for normalized blank and prohibited-instruction rejection. Do
+  not add a counter or claim that the external provider guarantees arbitrary request size.
+- Creation metadata uses one local professional sans stack with tabular numerals: section markers
+  split index/rule/label, the dark output marker splits `OUTPUT`/rule/`私人结果`, and filmstrip
+  `01–03` badges share the numeric language without looking like section badges. The stable
+  `/ip-assets` return link is a two-line native link with a directional tile, `ASSET LIBRARY`
+  context, and `返回共享图库`; it never depends on browser history or remote fonts/icons.
 - The creation reference picker exposes `全部素材`, `我的收藏`, `我的上传`, and
   `我的共享 AI 作品`. The shared source uses the shared cursor query; profile sources use an
   explicitly enabled personal cursor query, then project only `shared && status === "ready"`
@@ -266,6 +278,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Preview URL crosses API origin or uses non-HTTP scheme                              | Refuse the resource URL                                                                                 |
 | ZIP succeeds/fails                                                                  | Announce result via live region; revoke temporary URL                                                   |
 | Generation queued/running                                                           | Poll and expose state; do not imply asset exists yet                                                    |
+| Creation prompt has one non-whitespace character or exceeds 2000 characters         | Native required permits submit; send the complete value without client truncation                       |
+| Creation prompt is empty                                                            | Native required blocks submit; do not enqueue                                                           |
 | Generation succeeds                                                                 | Stop polling, link/select output, refresh gallery                                                       |
 | Generation query reaches a terminal state                                           | Stop its timer; never invalidate the generation query from its own interval callback                    |
 | Favorite/create/personal action without a local profile                             | Open honest first-use setup; do not send an empty or invented token                                     |
@@ -312,6 +326,9 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   file, or suggestion success automatically submits the form.
 - Good studio: references `01–03` are visually ordered, the output stays private, and the creator
   explicitly shares it after download/favorite review.
+- Good studio typography: the return link reads as one accessible control, section/output labels
+  have a restrained sans hierarchy, and tabular `01–03` badges remain distinct at 390px without
+  horizontal overflow.
 - Bad studio: a generic dashboard replaces the editorial workspace, raw tokens enter query keys,
   reference order is lost, or generation success silently publishes the result.
 
@@ -347,6 +364,10 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   gates, active-source pagination/search/error/empty states, shared-ready projection, selection
   persistence, whole-card `01–03` markers, three-item limit, visible interaction feedback, and
   honest submitting/queued/running/failed/status-error copy.
+- Studio prompt/typography: textarea is required with neither `minlength` nor `maxlength`; one and
+  more than 2000 characters reach the mutation unchanged; normalized blank still fails at the
+  backend; return link exposes both context and destination; section/output/frame labels use
+  tabular numerals, remain AA-readable, and do not overflow at desktop or 390px.
 - Hook: terminal generation status stops polling and invalidates only list/personal prefixes without
   recursively refetching the generation query.
 - Accessibility: axe, keyboard focus order, drawer trap/restore/Escape/backdrop behavior, closed
@@ -533,6 +554,25 @@ Gallery cards repeatedly decode the original and present an uncalibrated diagnos
 
 The lightweight card media and qualitative evidence preserve honest demo behavior; detail and
 download actions still use their controlled original routes.
+
+#### Wrong
+
+```tsx
+<textarea required minLength={8} maxLength={2000} />
+<a href="/ip-assets">← 返回</a>
+<p>01 / 创作简报</p>
+```
+
+#### Correct
+
+```tsx
+<textarea required />
+<a href="/ip-assets" className={styles.backLink}>
+  <span aria-hidden="true">←</span>
+  <span>ASSET LIBRARY · 返回共享图库</span>
+</a>
+<SectionMarker index="01" label="创作简报" />
+```
 
 ## Design decision: calm enterprise library, not a control console
 

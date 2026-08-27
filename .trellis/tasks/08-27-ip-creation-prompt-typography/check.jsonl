@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Verify IP-only prompt behavior, preserved safety checks, fingerprinting and worker/provider propagation."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Verify professional typography, native navigation, responsive layout and accessible creation behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify focused backend tests, generated OpenAPI and regression boundaries."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify axe, component behavior, formatting, lint, strict types and production build."}
+{"file":".trellis/tasks/08-27-ip-creation-prompt-typography/prd.md","reason":"Verify every observable acceptance criterion and out-of-scope boundary."}

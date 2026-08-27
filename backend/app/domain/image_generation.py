@@ -15,6 +15,7 @@ IMAGE_PIPELINE_VERSION = "image-pipeline-v1"
 # Keep enough room for the combined IP identity/action/style references.  This is a bounded
 # transport budget, not a provider spend limit; the request-size cap remains independently enforced.
 IMAGE_REFERENCE_BUDGET_BYTES = 6 * 1024 * 1024
+_PROMPT_MINIMUM = 8
 _PROMPT_LIMIT = 2_000
 _UNSAFE_PROMPT = re.compile(
     r"(?:未成年人真人正脸|儿童真实正脸|裸露儿童|血腥|武器伤害|学生身份证|水印|二维码|仿制|重绘logo|重新绘制标志)",
@@ -22,9 +23,18 @@ _UNSAFE_PROMPT = re.compile(
 )
 
 
-def validate_image_prompt(prompt: str) -> str:
+def validate_image_prompt(
+    prompt: str,
+    *,
+    minimum_length: int | None = _PROMPT_MINIMUM,
+    maximum_length: int | None = _PROMPT_LIMIT,
+) -> str:
     value = " ".join(prompt.split())
-    if not 8 <= len(value) <= _PROMPT_LIMIT:
+    if not value:
+        raise ValueError("image prompt must not be blank")
+    if minimum_length is not None and len(value) < minimum_length:
+        raise ValueError("image prompt must be between 8 and 2000 characters")
+    if maximum_length is not None and len(value) > maximum_length:
         raise ValueError("image prompt must be between 8 and 2000 characters")
     if _UNSAFE_PROMPT.search(value):
         raise ValueError("image prompt contains a prohibited visual instruction")

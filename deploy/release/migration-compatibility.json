@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260825_0036",
+  "alembic_head": "20260827_0037",
   "reviewed": false,
   "previous_application_compatible": false,
   "reason": "No forward-schema compatibility is declared; automatic rollback is allowed only when the production Alembic head remains unchanged."

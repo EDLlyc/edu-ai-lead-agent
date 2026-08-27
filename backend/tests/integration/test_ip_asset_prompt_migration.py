@@ -17,12 +17,12 @@ from .conftest import IntegrationContext
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_personal_library_migration_backfills_shared_assets_and_refuses_data_loss(
+async def test_ip_prompt_migration_preserves_text_and_refuses_lossy_downgrade(
     integration_context: IntegrationContext,
 ) -> None:
     base_url = make_url(integration_context.settings.database_url.get_secret_value())
     admin_url = base_url.set(drivername="postgresql", database="postgres")
-    database_name = f"edu_ai_ip_personal_migration_{uuid4().hex}"
+    database_name = f"edu_ai_ip_prompt_migration_{uuid4().hex}"
     admin_dsn = admin_url.render_as_string(hide_password=False)
     admin = await asyncpg.connect(admin_dsn)
     await admin.execute(f'CREATE DATABASE "{database_name}"')
@@ -37,78 +37,86 @@ async def test_personal_library_migration_backfills_shared_assets_and_refuses_da
     get_settings.cache_clear()
     try:
         config = Config("backend/alembic.ini")
-        await asyncio.to_thread(command.upgrade, config, "20260824_0034")
-        asset_id = uuid4()
+        await asyncio.to_thread(command.upgrade, config, "20260825_0036")
+        job_id = uuid4()
+        short_prompt = "升级前保留的 IP 创作提示词"
         connection = await asyncpg.connect(postgres_url)
         try:
             await connection.execute(
                 """
-                INSERT INTO ip_assets (
-                    id, asset_ref, blob_sha256, perceptual_hash, safe_original_filename,
-                    media_type, byte_size, width, height, has_alpha, orientation,
-                    bucket, object_key, naming_key, canonical_name, canonical_slug,
-                    name_version, character, asset_type, source_kind, department,
-                    contributor, emotion, action, scene, intended_use, style,
-                    status, semantic_status
+                INSERT INTO ip_asset_generation_jobs (
+                    id, job_ref, idempotency_key, request_fingerprint, prompt,
+                    character, asset_type, ratio, provider, model, status
                 ) VALUES (
-                    $1, 'ipa_11111111111111111111', $2, '0000000000000000', 'legacy.png',
-                    'image/png', 128, 64, 64, true, 'square',
-                    'private-bucket', 'ip-assets/originals/sha256/aa/legacy.png', $3,
-                    '小赛-表情包-方图-v001', 'xiao-sai-meme-square-v001', 1,
-                    'xiao_sai', 'meme_sticker', 'uploaded', '', '', '', '', '', '', '',
-                    'ready', 'unavailable'
+                    $1, 'ipg_11111111111111111111', 'prompt-migration-before-upgrade',
+                    $2, $3, 'xiao_sai', 'scene_illustration', '1:1',
+                    'fake', 'gpt-image-2', 'queued'
                 )
                 """,
-                asset_id,
+                job_id,
                 "a" * 64,
-                "b" * 64,
+                short_prompt,
             )
         finally:
             await connection.close()
 
         await asyncio.to_thread(command.upgrade, config, "head")
+        long_prompt = "图" * 2_001
         connection = await asyncpg.connect(postgres_url)
         try:
-            assert await connection.fetchval(
-                "SELECT shared_at IS NOT NULL FROM ip_assets WHERE id = $1", asset_id
+            assert (
+                await connection.fetchval(
+                    "SELECT prompt FROM ip_asset_generation_jobs WHERE id = $1", job_id
+                )
+                == short_prompt
             )
             await connection.execute(
-                """
-                INSERT INTO ip_asset_profiles (
-                    id, profile_ref, token_digest, display_name, department
-                ) VALUES ($1, 'ipp_22222222222222222222', $2, '本地同事', '品牌部')
-                """,
-                uuid4(),
-                "c" * 64,
+                "UPDATE ip_asset_generation_jobs SET prompt = $1 WHERE id = $2",
+                long_prompt,
+                job_id,
             )
         finally:
             await connection.close()
 
-        with pytest.raises(DBAPIError, match="personal-library data exists"):
-            await asyncio.to_thread(command.downgrade, config, "20260824_0034")
+        with pytest.raises(DBAPIError, match="prompts exceed 2000 characters"):
+            await asyncio.to_thread(command.downgrade, config, "20260825_0036")
         connection = await asyncpg.connect(postgres_url)
         try:
             assert (
                 await connection.fetchval("SELECT version_num FROM alembic_version")
                 == "20260827_0037"
             )
-            await connection.execute("DELETE FROM ip_asset_profiles")
+            assert (
+                await connection.fetchval(
+                    "SELECT prompt FROM ip_asset_generation_jobs WHERE id = $1", job_id
+                )
+                == long_prompt
+            )
+            await connection.execute(
+                "UPDATE ip_asset_generation_jobs SET prompt = $1 WHERE id = $2",
+                short_prompt,
+                job_id,
+            )
         finally:
             await connection.close()
 
-        await asyncio.to_thread(command.downgrade, config, "20260824_0034")
+        await asyncio.to_thread(command.downgrade, config, "20260825_0036")
         connection = await asyncpg.connect(postgres_url)
         try:
-            assert await connection.fetchval(
-                "SELECT EXISTS (SELECT 1 FROM ip_assets WHERE id = $1)", asset_id
+            column_type = await connection.fetchval(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_name = 'ip_asset_generation_jobs' AND column_name = 'prompt'
+                """
             )
-            assert not await connection.fetchval(
-                "SELECT EXISTS ("
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'ip_assets' AND column_name = 'shared_at')"
+            prompt = await connection.fetchval(
+                "SELECT prompt FROM ip_asset_generation_jobs WHERE id = $1", job_id
             )
         finally:
             await connection.close()
+        assert column_type == "character varying"
+        assert prompt == short_prompt
     finally:
         if previous_url is None:
             os.environ.pop("DATABASE_URL", None)

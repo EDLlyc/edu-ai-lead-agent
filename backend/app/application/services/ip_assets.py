@@ -695,6 +695,7 @@ class IpAssetWorkerService:
                 prompt=claim.job.prompt,
                 request_fingerprint=claim.job.request_fingerprint,
                 references=references,
+                unrestricted_prompt_length=True,
                 reference_mode=(
                     "legacy_single"
                     if not references
@@ -778,7 +779,11 @@ async def enqueue_ip_asset_generation(
     model: str,
 ) -> tuple[IpAssetGenerationRecord, bool]:
     try:
-        clean_prompt = validate_image_prompt(prompt)
+        clean_prompt = validate_image_prompt(
+            prompt,
+            minimum_length=None,
+            maximum_length=None,
+        )
         clean_key = normalize_optional_text(idempotency_key, maximum=128)
         normalized_refs = normalize_generation_reference_refs(
             tuple(asset.asset_ref for asset in reference_assets)

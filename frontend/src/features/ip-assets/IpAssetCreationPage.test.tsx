@@ -140,6 +140,32 @@ describe("IpAssetCreationPage", () => {
     ).toBeVisible();
     expect(apiMocks.createIpAssetGeneration).not.toHaveBeenCalled();
   });
+
+  it("keeps the IP brief required without browser character-count bounds", async () => {
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const prompt =
+      await screen.findByLabelText<HTMLTextAreaElement>("画面描述");
+    expect(prompt).toBeRequired();
+    expect(prompt).not.toHaveAttribute("minlength");
+    expect(prompt).not.toHaveAttribute("maxlength");
+  });
+
+  it("uses an accessible library return control and professional section labels", async () => {
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    const backLink = await screen.findByRole("link", {
+      name: /ASSET LIBRARY 返回共享图库/,
+    });
+    expect(backLink).toHaveAttribute("href", "/ip-assets");
+    expect(within(backLink).getByText("ASSET LIBRARY")).toBeVisible();
+    expect(within(backLink).getByText("返回共享图库")).toBeVisible();
+    expect(screen.getByText("创作简报")).toBeVisible();
+    expect(screen.getByText("OUTPUT")).toBeVisible();
+    expect(screen.getByText("私人结果")).toBeVisible();
+    expect(creationStylesheet).toMatch(/font-variant-numeric:\s*tabular-nums/);
+  });
+
   it("keeps its editorial studio responsive and motion-safe", () => {
     expect(creationStylesheet).toMatch(/@media\s*\(max-width:\s*900px\)/);
     expect(creationStylesheet).toMatch(/@media\s*\(max-width:\s*620px\)/);

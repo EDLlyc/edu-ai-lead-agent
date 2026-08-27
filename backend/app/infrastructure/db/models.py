@@ -5185,7 +5185,7 @@ class IpAssetGenerationJobModel(Base):
     job_ref: Mapped[str] = mapped_column(String(24), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
-    prompt: Mapped[str] = mapped_column(String(2000), nullable=False)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
     character: Mapped[str] = mapped_column(String(30), nullable=False)
     asset_type: Mapped[str] = mapped_column(String(40), nullable=False)
     department: Mapped[str] = mapped_column(String(80), nullable=False, server_default=text("''"))

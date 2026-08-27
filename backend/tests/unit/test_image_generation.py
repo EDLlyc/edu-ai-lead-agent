@@ -9,7 +9,11 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from app.application.ports.image_generation import ImageGenerationRequest, ImageReference
+from app.application.ports.image_generation import (
+    ImageGenerationRequest,
+    ImageReference,
+    validate_image_generation_request_prompt,
+)
 from app.core.config import Settings
 from app.core.errors import (
     ImageOutputValidationError,
@@ -17,6 +21,7 @@ from app.core.errors import (
     ImageProviderRejectedError,
     ProviderAuthenticationError,
 )
+from app.domain.image_generation import validate_image_prompt
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
     normalize_image_provider_reference,
@@ -41,6 +46,51 @@ async def test_fake_image_is_deterministic_and_1024_square() -> None:
     second = await DeterministicFakeImageGenerator().generate(request)
     assert first.image_bytes == second.image_bytes
     assert (first.width, first.height, first.media_type) == (1024, 1024, "image/png")
+
+
+def test_image_prompt_default_remains_bounded_while_ip_policy_is_non_blank_only() -> None:
+    with pytest.raises(ValueError, match="between 8 and 2000"):
+        validate_image_prompt("短")
+    with pytest.raises(ValueError, match="between 8 and 2000"):
+        validate_image_prompt("a" * 2_001)
+
+    one_character = ImageGenerationRequest(
+        uuid4(),
+        uuid4(),
+        "图",
+        "one-character",
+        unrestricted_prompt_length=True,
+    )
+    long_prompt = ImageGenerationRequest(
+        uuid4(),
+        uuid4(),
+        "图" * 2_001,
+        "long-prompt",
+        unrestricted_prompt_length=True,
+    )
+    assert validate_image_generation_request_prompt(one_character) == "图"
+    assert validate_image_generation_request_prompt(long_prompt) == "图" * 2_001
+
+    for prompt in ("", " \n\t "):
+        request = ImageGenerationRequest(
+            uuid4(),
+            uuid4(),
+            prompt,
+            "blank",
+            unrestricted_prompt_length=True,
+        )
+        with pytest.raises(ValueError, match="must not be blank"):
+            validate_image_generation_request_prompt(request)
+
+    unsafe = ImageGenerationRequest(
+        uuid4(),
+        uuid4(),
+        "水印",
+        "unsafe",
+        unrestricted_prompt_length=True,
+    )
+    with pytest.raises(ValueError, match="prohibited visual instruction"):
+        validate_image_generation_request_prompt(unsafe)
 
 
 def _reference_jpeg() -> bytes:

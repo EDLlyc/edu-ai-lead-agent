@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Owns IP generation request, worker, fingerprint and provider compatibility contracts."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Owns the dedicated editorial creation studio, typography, accessibility and responsive contracts."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The prompt policy crosses React, OpenAPI, application validation, durable jobs and provider adapters."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"The shared validator and adapter boundary must be extended without duplicating provider logic."}
+{"file":".trellis/tasks/08-27-ip-creation-prompt-typography/design.md","reason":"Defines the approved IP-only extended prompt policy and typography direction."}

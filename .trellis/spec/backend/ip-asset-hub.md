@@ -45,7 +45,7 @@ PUT  /{asset_ref}/shared         explicitly share an owned generated result
 POST /downloads               {asset_refs: string[]}
 POST /search/text              bounded message, prior_turns, filters, limit
 POST /search/image             transient multipart image + filters
-POST /generations              prompt, taxonomy, ordered 1..3 references, idempotency_key
+POST /generations              non-blank unbounded-length prompt, taxonomy, ordered 1..3 references, idempotency_key
 GET  /generations/{job_ref}
 ```
 
@@ -60,7 +60,9 @@ decoded pixels. Generation is the existing provider's proved `1:1`/1024x1024 con
 
 #### Database
 
-Alembic `20260824_0031` adds the base hub. Current additive revision `20260824_0035` adds:
+Alembic `20260824_0031` adds the base hub, `20260824_0035` adds the personal library, and current
+additive revision `20260827_0037` widens `ip_asset_generation_jobs.prompt` from `varchar(2000)` to
+`TEXT` so the IP-only non-blank prompt contract is durable:
 
 ```text
 ip_assets
@@ -188,6 +190,11 @@ reverse proxy for intranet deployment.
   identity-distinct references cannot alias even when blobs are byte-identical. New API jobs require
   one to three distinct, ready, shared references. The legacy single-reference field remains
   input-compatible but may not be combined with the ordered field.
+- IP generation normalizes whitespace and rejects a blank prompt, but applies no product-level
+  minimum or maximum character count. Its provider-neutral request explicitly opts into that policy,
+  and fake, ToAPIs, and OpenAI-compatible adapters validate through the same request helper. The
+  shared image-generation default remains 8..2000 characters for every non-IP caller; never remove
+  the shared default merely to support the IP studio.
 - A profile-owned generated output completes as `shared_at=NULL` and gets one generated membership
   in the same fenced transaction. It becomes shared only through an explicit owner action. Legacy
   profile-less worker jobs retain the historical shared-output behavior.
@@ -236,6 +243,9 @@ reverse proxy for intranet deployment.
 
 #### Migration rollback
 
+- `0037 -> 0036` first refuses when any stored IP generation prompt exceeds 2000 characters. It
+  never truncates a long prompt before restoring `varchar(2000)`; after long rows are removed or
+  shortened explicitly, the downgrade may proceed while preserving all remaining text.
 - `0035 -> 0034` is permitted only when all profile/personal/ranking state is empty and every
   ordered reference is exactly the legacy ordinal-zero reference. The downgrade must refuse before
   dropping anything when profiles, profile-linked jobs, private assets, download aggregates,
@@ -286,6 +296,9 @@ reverse proxy for intranet deployment.
 | Prior turn conflicts with the current role/type                            | Current turn wins unless an explicit request filter already owns that dimension            |
 | Embedding identity mismatch                                                | Exclude incompatible vector and record typed failure                                       |
 | Same idempotency key, different generation fingerprint                     | Conflict; no second provider job                                                           |
+| IP generation prompt is one non-blank character or exceeds 2000 characters | Normalize and persist the complete prompt; the IP worker/provider path accepts it          |
+| IP generation prompt normalizes to blank                                   | Typed rejection; no job, fingerprint, or provider request                                  |
+| Non-IP generation prompt falls outside 8..2000 characters                  | Preserve the shared default rejection                                                      |
 | Missing/invalid local profile token on a required route                    | Typed setup-required response; no private data or provider work                            |
 | Ordered generation references empty, duplicated, over three, or not shared | Typed rejection; no generation job                                                         |
 | One reference changes order or checksum                                    | Distinct request fingerprint and immutable reference rows                                  |
@@ -302,6 +315,7 @@ reverse proxy for intranet deployment.
 | Generated raster invalid                                                   | Typed terminal/retry-classified failure; no asset                                          |
 | Unlisted browser origin sends preflight                                    | No allow-origin header                                                                     |
 | Downgrade while hub data exists                                            | Refuse; never silently delete shared assets                                                |
+| `0037 -> 0036` with a stored prompt longer than 2000 characters            | Refuse before type change; never truncate prompt text                                      |
 
 ### 5. Good / Base / Bad Cases
 
@@ -321,6 +335,9 @@ reverse proxy for intranet deployment.
 - Good personal flow: a browser creates an unverified local profile, a generated result appears only
   on its personal shelf, can be favorited/downloaded there, and enters the shared gallery only after
   the explicit share action.
+- Good creation prompt: the IP studio stores and fingerprints a one-character or long non-blank
+  visual brief exactly after whitespace normalization, while unrelated image workflows retain their
+  established 8..2000-character boundary.
 - Bad personal flow: the raw token is stored or placed in a query key/log, a favorite grants private
   access, generated output is shared automatically, or ranking stores per-download actor events.
 - Good local operation: API, UI, PostgreSQL, MinIO, and one generation-enabled worker start together;
@@ -364,6 +381,13 @@ reverse proxy for intranet deployment.
   preview/download never return object locations.
 - Fake provider: one successful generated asset, retryable/terminal failure classification,
   cancellation/fencing, retry exhaustion, and generation-disabled independence.
+- Prompt-policy unit/integration: shared validation rejects fewer than eight or more than 2000
+  characters by default; IP request validation accepts one and more than 2000 non-blank characters;
+  blank/unsafe prompts still fail; enqueue fingerprints the complete normalized prompt; worker
+  propagation reaches fake/ToAPIs/OpenAI-compatible adapters with the explicit unrestricted policy.
+- Migration `0037`: upgrade preserves existing prompt text and produces DB/ORM `TEXT` parity;
+  downgrade refuses without truncation when a long row exists, then succeeds to `varchar(2000)` only
+  after the long value is explicitly made compatible.
 - CLI: dry run reads no source bytes, live import is checksum-idempotent, invalid sources are bounded,
   second replay creates zero assets, and source files/manifest stay byte-identical.
 - Thumbnail unit/integration/API: deterministic <=640 WebP, alpha preservation, no upscale, exact
@@ -489,6 +513,26 @@ headers = {
     "Cache-Control": "private, max-age=604800, immutable",
     "Vary": "X-IP-Profile-Token",
 }
+```
+
+#### Wrong
+
+```python
+# Removing only API metadata still fails when the worker adapter or VARCHAR column sees the prompt.
+prompt: str
+clean_prompt = validate_image_prompt(prompt)
+```
+
+#### Correct
+
+```python
+# The IP boundary opts into non-blank unrestricted length end to end; other callers keep defaults.
+clean_prompt = validate_image_prompt(prompt, minimum_length=None, maximum_length=None)
+request = ImageGenerationRequest(
+    prompt=clean_prompt,
+    unrestricted_prompt_length=True,
+    # ...durable job identity and references...
+)
 ```
 
 ## Design decision: dynamic partial index remains separate

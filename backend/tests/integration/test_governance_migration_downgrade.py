@@ -179,7 +179,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             )
         finally:
             await populated.close()
-        assert revision_after_slot_refusal == "20260825_0036"
+        assert revision_after_slot_refusal == "20260827_0037"
         with pytest.raises(RuntimeError, match="governance or checkpoint data exists"):
             await asyncio.to_thread(command.downgrade, config, "20260729_0003")
         populated = await asyncpg.connect(
@@ -192,7 +192,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             await populated.execute("DELETE FROM governance_runs")
         finally:
             await populated.close()
-        assert revision_after_refusal == "20260825_0036"
+        assert revision_after_refusal == "20260827_0037"
         await asyncio.to_thread(command.downgrade, config, "20260729_0003")
 
         downgraded_url = make_url(test_url)

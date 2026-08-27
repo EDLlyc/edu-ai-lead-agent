@@ -389,6 +389,74 @@ def test_generation_request_accepts_legacy_single_reference_but_not_mixed_shapes
         )
 
 
+@pytest.mark.parametrize("prompt", ["图", "图" * 2_001])
+def test_generation_request_accepts_any_non_blank_prompt_length(prompt: str) -> None:
+    request = IpAssetGenerationRequest(
+        prompt=prompt,
+        character="xiao_sai",
+        asset_type="scene_illustration",
+        idempotency_key="request-unbounded-prompt",
+        reference_asset_refs=["ipa_11111111111111111111"],
+    )
+
+    assert request.prompt == prompt
+
+
+@pytest.mark.asyncio
+async def test_generation_enqueue_normalizes_any_non_blank_prompt_length() -> None:
+    class Repository:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        async def enqueue_generation(self, **kwargs: object) -> tuple[object, bool]:
+            self.prompts.append(cast(str, kwargs["prompt"]))
+            return object(), True
+
+    now = datetime(2026, 8, 24, 9, 0, tzinfo=UTC)
+    profile = IpAssetProfileRecord(
+        id=UUID("99999999-9999-4999-8999-999999999999"),
+        profile_ref="ipp_99999999999999999999",
+        display_name="同事甲",
+        department="教研部",
+        created_at=now,
+        updated_at=now,
+    )
+    repository = Repository()
+    for index, prompt in enumerate(("  图  ", "图" * 2_001), start=1):
+        await enqueue_ip_asset_generation(
+            repository=cast(IpAssetRepository, repository),
+            prompt=prompt,
+            metadata=IpAssetMetadata(
+                character=IpAssetCharacter.XIAO_SAI,
+                asset_type=IpAssetType.SCENE_ILLUSTRATION,
+            ),
+            ratio="1:1",
+            profile=profile,
+            reference_assets=(_asset(),),
+            idempotency_key=f"generation-unbounded-{index}",
+            provider="fake",
+            model="gpt-image-2",
+        )
+
+    assert repository.prompts == ["图", "图" * 2_001]
+
+    with pytest.raises(IpAssetUploadRejectedError):
+        await enqueue_ip_asset_generation(
+            repository=cast(IpAssetRepository, repository),
+            prompt=" \n\t ",
+            metadata=IpAssetMetadata(
+                character=IpAssetCharacter.XIAO_SAI,
+                asset_type=IpAssetType.SCENE_ILLUSTRATION,
+            ),
+            ratio="1:1",
+            profile=profile,
+            reference_assets=(_asset(),),
+            idempotency_key="generation-blank",
+            provider="fake",
+            model="gpt-image-2",
+        )
+
+
 def test_leaderboard_window_uses_business_timezone_and_includes_thirty_dates() -> None:
     now = datetime(2026, 8, 23, 16, 30, tzinfo=UTC)
 
