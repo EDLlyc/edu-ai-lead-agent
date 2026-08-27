@@ -1071,7 +1071,8 @@
   inset-inline-end: clamp(1rem, 4vw, 3rem);
   inset-block-end: 1.25rem;
   display: flex;
-  max-width: calc(100vw - 2rem);
+  max-width: min(52rem, calc(100vw - 2rem));
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
   padding: 0.55rem;
@@ -1089,14 +1090,33 @@
 }
 
 .downloadTray button {
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   color: #fff;
   background: var(--teal);
 }
 
-.downloadTray button:nth-of-type(2) {
+.downloadTray .flipbookButton {
+  background: #a9553d;
+  border-color: #a9553d;
+}
+
+.downloadTray .flipbookButton:disabled {
+  color: #877871;
+  background: #ede6df;
+  border-color: #d8cbc2;
+}
+
+.downloadTray .clearSelectionButton {
   color: var(--muted);
   background: transparent;
+}
+
+.selectionGuide {
+  flex-basis: 100%;
+  padding: 0.1rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
 }
 
 .dialogBackdrop {

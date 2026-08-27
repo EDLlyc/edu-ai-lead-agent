@@ -40,6 +40,12 @@ import {
   loadLocalIpAssetProfile,
   type LocalIpAssetProfile,
 } from "./profile";
+import {
+  createIpAssetFlipbookDraft,
+  IP_ASSET_FLIPBOOK_MAX_PAGES,
+  IP_ASSET_FLIPBOOK_MIN_PAGES,
+  openIpAssetFlipbook,
+} from "./flipbookDraft";
 
 import styles from "./IpAssetHub.module.css";
 
@@ -123,9 +129,10 @@ export function IpAssetHub() {
   const [searchMessage, setSearchMessage] = useState("");
   const [priorTurns, setPriorTurns] = useState<readonly string[]>([]);
   const [selectedAssetRef, setSelectedAssetRef] = useState<string | null>(null);
-  const [selectedRefs, setSelectedRefs] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [selectedAssets, setSelectedAssets] = useState<
+    ReadonlyMap<string, IpAsset>
+  >(() => new Map());
+  const [flipbookMessage, setFlipbookMessage] = useState("");
   const [activeTool, setActiveTool] = useState<"upload" | null>(null);
   const detail = useIpAssetDetail(selectedAssetRef, activeProfile);
   const closeDetail = useCallback(() => setSelectedAssetRef(null), []);
@@ -178,6 +185,27 @@ export function IpAssetHub() {
       ),
     [searchResult?.items],
   );
+  const flipbookSelectionAllowed =
+    selectedAssets.size >= IP_ASSET_FLIPBOOK_MIN_PAGES &&
+    selectedAssets.size <= IP_ASSET_FLIPBOOK_MAX_PAGES;
+  const flipbookSelectionGuide =
+    selectedAssets.size < IP_ASSET_FLIPBOOK_MIN_PAGES
+      ? `再选择 ${IP_ASSET_FLIPBOOK_MIN_PAGES - selectedAssets.size} 张图片即可制作相册`
+      : selectedAssets.size > IP_ASSET_FLIPBOOK_MAX_PAGES
+        ? `相册最多使用 ${IP_ASSET_FLIPBOOK_MAX_PAGES} 张，请移除 ${selectedAssets.size - IP_ASSET_FLIPBOOK_MAX_PAGES} 张`
+        : `已满足 ${IP_ASSET_FLIPBOOK_MIN_PAGES}–${IP_ASSET_FLIPBOOK_MAX_PAGES} 张相册范围`;
+
+  const openSelectedFlipbook = () => {
+    try {
+      const draft = createIpAssetFlipbookDraft([...selectedAssets.values()]);
+      setFlipbookMessage("");
+      openIpAssetFlipbook(draft);
+    } catch {
+      setFlipbookMessage(
+        "这些图片暂时无法制作相册，请清空后重新选择可用的共享图片。",
+      );
+    }
+  };
 
   const updateFilter = <Key extends keyof IpAssetFilters>(
     key: Key,
@@ -415,18 +443,22 @@ export function IpAssetHub() {
                 <AssetGrid
                   assets={displayedAssets}
                   searchMatches={searchMatches}
-                  selectedRefs={selectedRefs}
+                  selectedAssets={selectedAssets}
                   activeRef={selectedAssetRef}
                   onOpen={setSelectedAssetRef}
                   onFavorite={toggleFavorite}
-                  onToggle={(assetRef) =>
-                    setSelectedRefs((current) => {
-                      const next = new Set(current);
-                      if (next.has(assetRef)) next.delete(assetRef);
-                      else next.add(assetRef);
+                  onToggle={(asset) => {
+                    setFlipbookMessage("");
+                    setSelectedAssets((current) => {
+                      const next = new Map(current);
+                      if (next.has(asset.asset_ref)) {
+                        next.delete(asset.asset_ref);
+                      } else {
+                        next.set(asset.asset_ref, asset);
+                      }
                       return next;
-                    })
-                  }
+                    });
+                  }}
                 />
               )}
               {searchResult === undefined && assets.hasNextPage ? (
@@ -451,23 +483,53 @@ export function IpAssetHub() {
             />
           </div>
 
-          {selectedRefs.size > 0 ? (
+          {selectedAssets.size > 0 ? (
             <div
               className={styles.downloadTray}
               role="region"
-              aria-label="批量下载"
+              aria-label="已选资产操作"
             >
-              <span>{selectedRefs.size} 项已选择</span>
+              <span>{selectedAssets.size} 项已选择</span>
+              <button
+                type="button"
+                className={styles.flipbookButton}
+                disabled={!flipbookSelectionAllowed}
+                aria-describedby="flipbook-selection-guide"
+                onClick={openSelectedFlipbook}
+              >
+                制作翻页相册
+              </button>
               <button
                 type="button"
                 disabled={packageDownload.isPending}
-                onClick={() => packageDownload.mutate([...selectedRefs])}
+                onClick={() =>
+                  packageDownload.mutate([...selectedAssets.keys()])
+                }
               >
                 {packageDownload.isPending ? "正在打包…" : "下载 ZIP + 清单"}
               </button>
-              <button type="button" onClick={() => setSelectedRefs(new Set())}>
+              <button
+                type="button"
+                className={styles.clearSelectionButton}
+                onClick={() => {
+                  setSelectedAssets(new Map());
+                  setFlipbookMessage("");
+                }}
+              >
                 清空
               </button>
+              <span
+                className={styles.selectionGuide}
+                id="flipbook-selection-guide"
+                aria-live="polite"
+              >
+                {flipbookSelectionGuide}
+              </span>
+              {flipbookMessage === "" ? null : (
+                <span className={styles.error} role="alert">
+                  {flipbookMessage}
+                </span>
+              )}
               {packageDownload.isError ? (
                 <span className={styles.error} role="alert">
                   ZIP 下载失败，请稍后重试。
@@ -763,7 +825,7 @@ function FilterSelect({
 function AssetGrid({
   assets,
   searchMatches,
-  selectedRefs,
+  selectedAssets,
   activeRef,
   onOpen,
   onFavorite,
@@ -774,11 +836,11 @@ function AssetGrid({
     string,
     Readonly<{ explanation: string; similarity: number | null }>
   >;
-  selectedRefs: ReadonlySet<string>;
+  selectedAssets: ReadonlyMap<string, IpAsset>;
   activeRef: string | null;
   onOpen: (assetRef: string) => void;
   onFavorite: (asset: IpAsset) => void;
-  onToggle: (assetRef: string) => void;
+  onToggle: (asset: IpAsset) => void;
 }>) {
   return (
     <div className={styles.assetGrid} aria-label="IP 图片列表">
@@ -804,13 +866,13 @@ function AssetGrid({
                 <input
                   type="checkbox"
                   aria-label={
-                    asset.status === "ready"
+                    asset.status === "ready" && asset.shared
                       ? `选择 ${asset.canonical_name}`
                       : `${asset.canonical_name} 暂不可选择`
                   }
-                  checked={selectedRefs.has(asset.asset_ref)}
-                  disabled={asset.status !== "ready"}
-                  onChange={() => onToggle(asset.asset_ref)}
+                  checked={selectedAssets.has(asset.asset_ref)}
+                  disabled={asset.status !== "ready" || !asset.shared}
+                  onChange={() => onToggle(asset)}
                 />
                 <span aria-hidden="true" />
               </label>

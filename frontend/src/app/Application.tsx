@@ -23,6 +23,11 @@ const IpAssetCreationPage = lazy(async () => {
   return { default: module.IpAssetCreationPage };
 });
 
+const IpAssetFlipbookPage = lazy(async () => {
+  const module = await import("@/features/ip-assets/IpAssetFlipbookPage");
+  return { default: module.IpAssetFlipbookPage };
+});
+
 export function Application() {
   const location = useApplicationLocation();
   const route = resolveApplicationPath(location.pathname);
@@ -31,6 +36,7 @@ export function Application() {
   if (
     route === "ip-assets" ||
     route === "ip-assets-create" ||
+    route === "ip-assets-flipbook" ||
     route === "ip-assets-login"
   ) {
     if (!isIpAssetHubEnabled()) {
@@ -67,12 +73,28 @@ export function Application() {
       );
     }
     const creation = route === "ip-assets-create";
+    const flipbook = route === "ip-assets-flipbook";
+    const title = creation
+      ? "AI 视觉创作室"
+      : flipbook
+        ? "IP 翻页相册"
+        : "IP 数字资产中心";
     return (
-      <StandaloneDocument
-        title={creation ? "AI 视觉创作室" : "IP 数字资产中心"}
-      >
-        <Suspense fallback={<IpAssetPageLoading creation={creation} />}>
-          {creation ? <IpAssetCreationPage /> : <IpAssetPage />}
+      <StandaloneDocument title={title}>
+        <Suspense
+          fallback={
+            <IpAssetPageLoading
+              page={creation ? "creation" : flipbook ? "flipbook" : "library"}
+            />
+          }
+        >
+          {creation ? (
+            <IpAssetCreationPage />
+          ) : flipbook ? (
+            <IpAssetFlipbookPage />
+          ) : (
+            <IpAssetPage />
+          )}
         </Suspense>
       </StandaloneDocument>
     );
@@ -131,20 +153,26 @@ function StandaloneDocument({
 }
 
 function IpAssetPageLoading({
-  creation = false,
-}: Readonly<{ creation?: boolean }>) {
+  page,
+}: Readonly<{ page: "library" | "creation" | "flipbook" }>) {
+  const heading =
+    page === "creation"
+      ? "正在载入 AI 视觉创作室"
+      : page === "flipbook"
+        ? "正在装订 IP 翻页相册"
+        : "正在载入 IP 数字资产中心";
+  const status =
+    page === "creation"
+      ? "正在准备参考素材与个人素材架…"
+      : page === "flipbook"
+        ? "正在准备相册编排与翻页预览…"
+        : "正在准备本地资产图库与检索工具…";
   return (
     <section className={styles.routeState} aria-labelledby="loading-title">
       <div className={styles.routeStateCard}>
         <p className={styles.routeStateKicker}>SAI VISUAL LIBRARY</p>
-        <h1 id="loading-title">
-          {creation ? "正在载入 AI 视觉创作室" : "正在载入 IP 数字资产中心"}
-        </h1>
-        <p role="status">
-          {creation
-            ? "正在准备参考素材与个人素材架…"
-            : "正在准备本地资产图库与检索工具…"}
-        </p>
+        <h1 id="loading-title">{heading}</h1>
+        <p role="status">{status}</p>
       </div>
     </section>
   );

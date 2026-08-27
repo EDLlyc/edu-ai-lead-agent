@@ -7,6 +7,7 @@ const routeMocks = vi.hoisted(() => ({
   consoleRender: vi.fn(),
   ipAssetRender: vi.fn(),
   creationRender: vi.fn(),
+  flipbookRender: vi.fn(),
 }));
 
 vi.mock("@/features/ip-assets/IpAssetCreationPage", () => ({
@@ -37,6 +38,13 @@ vi.mock("@/features/ip-assets/IpAssetPage", () => ({
         <p>公司内网 · 演示登录</p>
       </section>
     );
+  },
+}));
+
+vi.mock("@/features/ip-assets/IpAssetFlipbookPage", () => ({
+  IpAssetFlipbookPage: () => {
+    routeMocks.flipbookRender();
+    return <h1>把灵感，装订成一本相册。</h1>;
   },
 }));
 
@@ -92,6 +100,12 @@ describe("Application route composition", () => {
     );
     expect(resolveApplicationPath("/ip-assets/create/")).toBe(
       "ip-assets-create",
+    );
+    expect(resolveApplicationPath("/ip-assets/flipbook")).toBe(
+      "ip-assets-flipbook",
+    );
+    expect(resolveApplicationPath("/ip-assets/flipbook/")).toBe(
+      "ip-assets-flipbook",
     );
     expect(resolveApplicationPath("/ip-assets/login")).toBe("ip-assets-login");
     expect(resolveApplicationPath("/ip-assets/login/")).toBe("ip-assets-login");
@@ -228,6 +242,62 @@ describe("Application route composition", () => {
       await waitFor(() => expect(document.title).toBe("AI 视觉创作室"));
     },
   );
+
+  it.each(["/ip-assets/flipbook", "/ip-assets/flipbook/"])(
+    "renders the standalone flipbook at %s",
+    async (pathname) => {
+      renderPath(pathname, true);
+
+      expect(
+        await screen.findByRole("heading", {
+          level: 1,
+          name: "把灵感，装订成一本相册。",
+        }),
+      ).toBeVisible();
+      expect(screen.queryByText("品牌知识")).not.toBeInTheDocument();
+      expect(screen.getAllByRole("main")).toHaveLength(1);
+      expect(routeMocks.consoleRender).not.toHaveBeenCalled();
+      expect(routeMocks.ipAssetRender).not.toHaveBeenCalled();
+      expect(routeMocks.creationRender).not.toHaveBeenCalled();
+      expect(routeMocks.flipbookRender).toHaveBeenCalledOnce();
+      await waitFor(() => expect(document.title).toBe("IP 翻页相册"));
+    },
+  );
+
+  it("gates the flipbook route and restores only its safe path after login", async () => {
+    const user = userEvent.setup();
+    renderPath("/ip-assets/flipbook", true, false, false);
+
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: "让每一张 IP 图片，都能被再次找到。",
+      }),
+    ).toBeVisible();
+    expect(routeMocks.flipbookRender).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("用户名"), "内容同事");
+    await user.type(screen.getByLabelText("密码"), "demo-only-password");
+    await user.click(screen.getByRole("button", { name: "进入资产中心" }));
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "把灵感，装订成一本相册。",
+      }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe("/ip-assets/flipbook");
+    expect(window.location.search).toBe("");
+    expect(routeMocks.flipbookRender).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the flipbook route fail-closed when the IP feature is disabled", () => {
+    renderPath("/ip-assets/flipbook", false);
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "页面不可用" }),
+    ).toBeVisible();
+    expect(routeMocks.flipbookRender).not.toHaveBeenCalled();
+  });
 
   it("fails closed at the standalone path when its flag is disabled", async () => {
     renderPath("/ip-assets");

@@ -40,6 +40,8 @@ describe("IP asset demo access", () => {
       "/ip-assets/create/?reference=ipa_demo#ignored",
       "/ip-assets/create/?reference=ipa_demo",
     ],
+    ["/ip-assets/flipbook", "/ip-assets/flipbook"],
+    ["/ip-assets/flipbook/", "/ip-assets/flipbook/"],
   ])("accepts a known in-product return target %s", (candidate, expected) => {
     expect(safeIpAssetReturnTarget(candidate)).toBe(expected);
   });

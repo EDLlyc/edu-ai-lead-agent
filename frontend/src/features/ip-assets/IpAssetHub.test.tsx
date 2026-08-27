@@ -13,6 +13,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IpAsset, IpAssetDetail } from "./api";
 import ipAssetHubStylesheet from "./IpAssetHub.module.css?inline";
+import {
+  clearStagedIpAssetFlipbookDraft,
+  readStagedIpAssetFlipbookDraft,
+} from "./flipbookDraft";
 
 const apiMocks = vi.hoisted(() => ({
   getIpAssetCapabilities: vi.fn(),
@@ -41,6 +45,8 @@ import { IpAssetHub } from "./IpAssetHub";
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  clearStagedIpAssetFlipbookDraft();
+  window.history.replaceState(null, "", "/ip-assets");
 });
 
 const asset: IpAsset = {
@@ -365,6 +371,56 @@ describe("IpAssetHub", () => {
     );
   });
 
+  it("keeps ordered selection for ZIP and opens a safe in-memory flipbook draft", async () => {
+    const user = userEvent.setup();
+    const first = albumAsset(1, "小赛挥手.png");
+    const second = albumAsset(2, "赛先生读书.png");
+    renderHub({ listItems: [first, second] });
+
+    await user.click(
+      await screen.findByRole("checkbox", { name: "选择 小赛挥手.png" }),
+    );
+    expect(screen.getByRole("button", { name: "制作翻页相册" })).toBeDisabled();
+    expect(screen.getByText("再选择 1 张图片即可制作相册")).toBeVisible();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "选择 赛先生读书.png" }),
+    );
+    expect(screen.getByRole("button", { name: "制作翻页相册" })).toBeEnabled();
+    expect(screen.getByText("已满足 2–20 张相册范围")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "制作翻页相册" }));
+
+    expect(window.location.pathname).toBe("/ip-assets/flipbook");
+    expect(window.location.search).toBe("");
+    expect(
+      readStagedIpAssetFlipbookDraft()?.pages.map((page) => page.assetRef),
+    ).toEqual([first.asset_ref, second.asset_ref]);
+    expect(apiMocks.downloadIpAssetPackage).not.toHaveBeenCalled();
+    expect(apiMocks.createIpAssetGeneration).not.toHaveBeenCalled();
+  });
+
+  it("leaves ZIP selection unbounded while disabling albums above twenty images", async () => {
+    const listItems = Array.from({ length: 21 }, (_, index) =>
+      albumAsset(index + 1, `相册图片-${index + 1}.png`),
+    );
+    renderHub({ listItems });
+
+    const checkboxes = await screen.findAllByRole("checkbox", {
+      name: /选择 相册图片-/,
+    });
+    checkboxes.forEach((checkbox) => fireEvent.click(checkbox));
+
+    expect(screen.getByText("21 项已选择")).toBeVisible();
+    expect(screen.getByRole("button", { name: "制作翻页相册" })).toBeDisabled();
+    expect(screen.getByText("相册最多使用 20 张，请移除 1 张")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "下载 ZIP + 清单" }),
+    ).toBeEnabled();
+    expect(window.location.pathname).toBe("/ip-assets");
+    expect(readStagedIpAssetFlipbookDraft()).toBeNull();
+  });
+
   it("traps tool focus, closes with Escape and restores the opener", async () => {
     const user = userEvent.setup();
     renderHub();
@@ -469,3 +525,15 @@ describe("IpAssetHub", () => {
     expect(apiMocks.setIpAssetFavorite).not.toHaveBeenCalled();
   });
 });
+
+function albumAsset(index: number, canonicalName: string): IpAsset {
+  const suffix = index.toString(16).padStart(20, "0");
+  const assetRef = `ipa_${suffix}`;
+  return {
+    ...asset,
+    asset_ref: assetRef,
+    canonical_name: canonicalName,
+    download_url: `/api/v1/ip-assets/${assetRef}/download`,
+    preview_url: `/api/v1/ip-assets/${assetRef}/preview`,
+  };
+}

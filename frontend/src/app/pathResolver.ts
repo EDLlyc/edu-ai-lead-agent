@@ -2,6 +2,7 @@ export type ApplicationPath =
   | "console"
   | "ip-assets"
   | "ip-assets-create"
+  | "ip-assets-flipbook"
   | "ip-assets-login"
   | "not-found";
 
@@ -12,6 +13,12 @@ export function resolveApplicationPath(pathname: string): ApplicationPath {
   }
   if (pathname === "/ip-assets/create" || pathname === "/ip-assets/create/") {
     return "ip-assets-create";
+  }
+  if (
+    pathname === "/ip-assets/flipbook" ||
+    pathname === "/ip-assets/flipbook/"
+  ) {
+    return "ip-assets-flipbook";
   }
   if (pathname === "/ip-assets/login" || pathname === "/ip-assets/login/") {
     return "ip-assets-login";

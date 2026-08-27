@@ -7,6 +7,8 @@ const allowedReturnPaths = new Set([
   "/ip-assets/",
   "/ip-assets/create",
   "/ip-assets/create/",
+  "/ip-assets/flipbook",
+  "/ip-assets/flipbook/",
 ]);
 
 function getSessionStorage(): Storage | null {
