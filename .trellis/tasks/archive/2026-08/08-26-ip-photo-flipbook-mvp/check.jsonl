@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "全范围核验 IP 独立站行为与安全边界"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端测试、构建、无障碍与浏览器验收"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件边界和交互可访问性复核"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "严格类型和边界验证复核"}
+{"file": ".trellis/tasks/08-26-ip-photo-flipbook-mvp/research/external-flipbook-assessment.md", "reason": "核验无未授权复制和依赖适配结论"}

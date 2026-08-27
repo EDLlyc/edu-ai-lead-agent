@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端路由与包级实现边界"}
+{"file": ".trellis/spec/frontend/ip-asset-hub.md", "reason": "IP 资产站独立路由、选择、资源安全与无障碍契约"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "项目组件拆分、CSS Modules 与无障碍规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "即时草稿与最小客户端状态所有权"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "严格 TypeScript 与生成 API 类型边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用现有选择、路由和资源解析模式"}
+{"file": ".trellis/tasks/08-26-ip-photo-flipbook-mvp/research/external-flipbook-assessment.md", "reason": "外部 skill、许可、依赖和适配结论"}
