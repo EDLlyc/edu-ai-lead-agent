@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from app.application.ports.image_generation import ImageGenerationRequest, ImageGenerationResult
 from app.application.ports.ip_assets import IpAssetQuery
-from app.application.services.ip_assets import IpAssetWorkerService
+from app.application.services.ip_assets import IpAssetService, IpAssetWorkerService
 from app.core.errors import ConflictError
 from app.domain.ip_assets import (
     IpAssetCharacter,
@@ -28,6 +28,7 @@ from app.domain.visual_retrieval import (
 from app.infrastructure.ai.image_generation import DeterministicFakeImageGenerator
 from app.infrastructure.db.ip_assets import PostgresIpAssetRepository
 from app.infrastructure.db.models import (
+    IpAssetDerivativeModel,
     IpAssetEmbeddingJobModel,
     IpAssetFavoriteModel,
     IpAssetGenerationJobModel,
@@ -52,6 +53,73 @@ def _vector(index: int) -> tuple[float, ...]:
     values = [0.0] * 2048
     values[index] = 1.0
     return tuple(values)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_thumbnail_derivative_is_concurrent_idempotent_and_source_bound(
+    integration_context: IntegrationContext,
+) -> None:
+    repository = PostgresIpAssetRepository(integration_context.session_factory)
+    store = MinioIpAssetStore(integration_context.settings)
+    random_value = uuid4().int
+    upload = validate_ip_asset_upload(
+        filename="thumbnail-source.png",
+        declared_media_type="image/png",
+        body=_png(
+            (
+                random_value & 255,
+                (random_value >> 8) & 255,
+                (random_value >> 16) & 255,
+            )
+        ),
+    )
+    descriptor = await store.put_immutable(upload)
+    asset, created = await repository.create_asset(
+        upload=upload,
+        metadata=IpAssetMetadata(
+            character=IpAssetCharacter.XIAO_SAI,
+            asset_type=IpAssetType.MEME_STICKER,
+            department="thumbnail-integration",
+        ),
+        descriptor=descriptor,
+        source_kind=IpAssetSource.UPLOADED,
+        semantic_enabled=False,
+    )
+    assert created is True
+    service = IpAssetService(
+        repository=repository,
+        store=store,
+        embeddings=None,
+        identity=VisualEmbeddingIdentity(),
+    )
+    try:
+        results = await asyncio.gather(*(service.thumbnail(asset.asset_ref) for _ in range(4)))
+
+        assert len({item.derivative.sha256 for item in results}) == 1
+        assert all(item.derivative.source_sha256 == asset.blob_sha256 for item in results)
+        assert all(item.derivative.media_type == "image/webp" for item in results)
+        assert all(
+            item.derivative.width <= 640 and item.derivative.height <= 640 for item in results
+        )
+        async with integration_context.session_factory() as session:
+            derivatives = tuple(
+                await session.scalars(
+                    select(IpAssetDerivativeModel).where(
+                        IpAssetDerivativeModel.asset_id == asset.id
+                    )
+                )
+            )
+            assert len(derivatives) == 1
+            derivatives[0].source_sha256 = "f" * 64
+            await session.commit()
+
+        with pytest.raises(ConflictError, match="source"):
+            await service.thumbnail(asset.asset_ref)
+    finally:
+        async with integration_context.session_factory() as session:
+            await session.execute(delete(IpAssetModel).where(IpAssetModel.id == asset.id))
+            await session.commit()
 
 
 @pytest.mark.integration

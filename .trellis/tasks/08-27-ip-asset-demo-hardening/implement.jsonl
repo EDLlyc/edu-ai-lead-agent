@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Owns immutable storage, derivative, preview, search and local runtime contracts."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Owns standalone gallery, search, profile, creation and flipbook UX contracts."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The thumbnail URL and generated OpenAPI field cross backend, API and frontend boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse the existing derivative table, media access and shared card renderer rather than duplicating paths."}
+{"file":".trellis/tasks/08-27-ip-asset-demo-hardening/design.md","reason":"Defines the approved thumbnail, presentation and preflight design."}

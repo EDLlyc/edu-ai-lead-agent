@@ -12,7 +12,7 @@ from pathlib import PurePath
 from typing import Literal, TypeAlias
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.domain.image_similarity import perceptual_dhash
 from app.domain.image_validation import validate_image_output
@@ -25,6 +25,8 @@ IP_ASSET_MAX_ZIP_ITEMS = 50
 IP_ASSET_MAX_ZIP_BYTES = 250 * 1024 * 1024
 IP_ASSET_MAX_GENERATION_REFERENCES = 3
 IP_ASSET_NAMING_VERSION = "ip-asset-name-v1"
+IP_ASSET_THUMBNAIL_MAX_EDGE = 640
+IP_ASSET_THUMBNAIL_POLICY_VERSION = "ip-asset-thumbnail-v1"
 IpAssetSearchVersion: TypeAlias = Literal["ip-asset-hybrid-v2"]
 IP_ASSET_SEARCH_VERSION: IpAssetSearchVersion = "ip-asset-hybrid-v2"
 
@@ -173,6 +175,16 @@ class ValidatedIpAssetUpload:
     perceptual_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class IpAssetThumbnail:
+    body: bytes
+    media_type: Literal["image/webp"]
+    byte_size: int
+    width: int
+    height: int
+    sha256: str
+
+
 def normalize_optional_text(value: str, *, maximum: int) -> str:
     normalized = _SPACE.sub(" ", unicodedata.normalize("NFKC", value)).strip()
     if len(normalized) > maximum or _CONTROL_CHARACTERS.search(normalized):
@@ -313,6 +325,45 @@ def validate_ip_asset_upload(
         orientation=orientation_for(width, height),
         sha256=hashlib.sha256(body).hexdigest(),
         perceptual_hash=perceptual_dhash(body),
+    )
+
+
+def build_ip_asset_thumbnail(body: bytes) -> IpAssetThumbnail:
+    """Create the deterministic, metadata-free card derivative from verified original bytes."""
+    try:
+        Image.MAX_IMAGE_PIXELS = IP_ASSET_MAX_PIXELS
+        with Image.open(io.BytesIO(body)) as opened:
+            opened.seek(0)
+            opened.load()
+            transposed = ImageOps.exif_transpose(opened)
+            has_alpha = "A" in transposed.getbands() or "transparency" in transposed.info
+            raster = transposed.convert("RGBA" if has_alpha else "RGB")
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as error:
+        raise IpAssetValidationError("invalid_raster") from error
+
+    raster.thumbnail(
+        (IP_ASSET_THUMBNAIL_MAX_EDGE, IP_ASSET_THUMBNAIL_MAX_EDGE),
+        Image.Resampling.LANCZOS,
+    )
+    output = io.BytesIO()
+    raster.save(
+        output,
+        format="WEBP",
+        quality=82,
+        method=6,
+        exact=has_alpha,
+    )
+    thumbnail = output.getvalue()
+    if not thumbnail or len(thumbnail) > IP_ASSET_MAX_BYTES:
+        raise IpAssetValidationError("invalid_raster")
+    width, height = raster.size
+    return IpAssetThumbnail(
+        body=thumbnail,
+        media_type="image/webp",
+        byte_size=len(thumbnail),
+        width=width,
+        height=height,
+        sha256=hashlib.sha256(thumbnail).hexdigest(),
     )
 
 

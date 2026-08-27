@@ -440,6 +440,16 @@
   line-height: 1.8;
 }
 
+@media (min-width: 1051px) and (max-height: 1050px) {
+  .heroCopy {
+    padding-block: 28px;
+  }
+
+  .workspace {
+    margin-block-start: 32px;
+  }
+}
+
 @media (max-width: 1050px) {
   .workspace {
     grid-template-columns: 1fr;

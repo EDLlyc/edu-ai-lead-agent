@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Verify storage/access/search/runtime compatibility and no fake liveness."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Verify responsive, accessible and honest standalone demo behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify tests, generated contracts, safety and integration gates."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify accessibility, strict types, generated API, tests and build."}
+{"file":".trellis/tasks/08-27-ip-asset-demo-hardening/prd.md","reason":"Verify every observable demo-hardening acceptance criterion."}

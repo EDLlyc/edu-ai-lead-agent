@@ -12,6 +12,7 @@ from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.application.ports.ip_assets import (
+    IpAssetDerivativeRecord,
     IpAssetEmbeddingClaim,
     IpAssetGenerationClaim,
     IpAssetGenerationRecord,
@@ -45,6 +46,7 @@ from app.domain.ip_assets import (
 )
 from app.domain.visual_retrieval import VisualEmbeddingIdentity, VisualEmbeddingResult
 from app.infrastructure.db.models import (
+    IpAssetDerivativeModel,
     IpAssetDownloadDailyModel,
     IpAssetEmbeddingJobModel,
     IpAssetEmbeddingModel,
@@ -110,6 +112,72 @@ class PostgresIpAssetRepository:
         async with self._session_factory() as session:
             model = await session.get(IpAssetModel, asset_id)
             return await _record_or_none(session, model)
+
+    async def get_derivative(
+        self, *, asset_id: UUID, policy_version: str, kind: str
+    ) -> IpAssetDerivativeRecord | None:
+        async with self._session_factory() as session:
+            model = await session.scalar(
+                select(IpAssetDerivativeModel).where(
+                    IpAssetDerivativeModel.asset_id == asset_id,
+                    IpAssetDerivativeModel.policy_version == policy_version,
+                    IpAssetDerivativeModel.kind == kind,
+                )
+            )
+            return _derivative_record(model) if model is not None else None
+
+    async def create_derivative(
+        self,
+        *,
+        asset_id: UUID,
+        policy_version: str,
+        kind: str,
+        source_sha256: str,
+        descriptor: IpAssetObjectDescriptor,
+        width: int,
+        height: int,
+    ) -> IpAssetDerivativeRecord:
+        if kind != "thumbnail":
+            raise ValueError("IP asset derivative kind is unsupported")
+        async with self._session_factory() as session:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {"key": f"ip-asset-derivative:{asset_id}:{policy_version}:{kind}"},
+            )
+            existing = await session.scalar(
+                select(IpAssetDerivativeModel).where(
+                    IpAssetDerivativeModel.asset_id == asset_id,
+                    IpAssetDerivativeModel.policy_version == policy_version,
+                    IpAssetDerivativeModel.kind == kind,
+                )
+            )
+            if existing is not None:
+                _assert_derivative_matches(
+                    existing,
+                    source_sha256=source_sha256,
+                    descriptor=descriptor,
+                    width=width,
+                    height=height,
+                )
+                await session.commit()
+                return _derivative_record(existing)
+            model = IpAssetDerivativeModel(
+                id=uuid4(),
+                asset_id=asset_id,
+                policy_version=policy_version,
+                kind=kind,
+                source_sha256=source_sha256,
+                media_type=descriptor.media_type,
+                byte_size=descriptor.byte_size,
+                width=width,
+                height=height,
+                bucket=descriptor.bucket,
+                object_key=descriptor.object_key,
+                sha256=descriptor.sha256,
+            )
+            session.add(model)
+            await session.commit()
+            return _derivative_record(model)
 
     async def create_asset(
         self,
@@ -1403,6 +1471,43 @@ def _profile_record(model: IpAssetProfileModel) -> IpAssetProfileRecord:
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
+
+
+def _derivative_record(model: IpAssetDerivativeModel) -> IpAssetDerivativeRecord:
+    return IpAssetDerivativeRecord(
+        asset_id=model.asset_id,
+        policy_version=model.policy_version,
+        kind=model.kind,
+        source_sha256=model.source_sha256,
+        media_type=model.media_type,
+        byte_size=model.byte_size,
+        width=model.width,
+        height=model.height,
+        bucket=model.bucket,
+        object_key=model.object_key,
+        sha256=model.sha256,
+    )
+
+
+def _assert_derivative_matches(
+    model: IpAssetDerivativeModel,
+    *,
+    source_sha256: str,
+    descriptor: IpAssetObjectDescriptor,
+    width: int,
+    height: int,
+) -> None:
+    if (
+        model.source_sha256 != source_sha256
+        or model.media_type != descriptor.media_type
+        or model.byte_size != descriptor.byte_size
+        or model.width != width
+        or model.height != height
+        or model.bucket != descriptor.bucket
+        or model.object_key != descriptor.object_key
+        or model.sha256 != descriptor.sha256
+    ):
+        raise ConflictError("IP asset derivative does not match immutable content")
 
 
 async def _tags_for(

@@ -363,6 +363,43 @@
   font-size: 0.68rem;
 }
 
+.examplePrompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-block-start: 0.7rem;
+  padding-inline: 0.35rem;
+}
+
+.examplePrompts > span {
+  color: var(--faint);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.examplePrompts button {
+  min-height: 2rem;
+  padding-inline: 0.65rem;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border: 1px solid rgb(15 118 110 / 16%);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+
+.examplePrompts button:hover {
+  background: #cce9e1;
+}
+
+.exampleNotice {
+  display: block;
+  margin: 0.45rem 0 0 0.4rem;
+  color: var(--teal-dark);
+  font-size: 0.66rem;
+}
+
 .filterToolbar {
   display: flex;
   flex-wrap: wrap;
@@ -775,11 +812,11 @@
 .selector {
   position: absolute;
   z-index: 3;
-  width: 2.4rem;
-  height: 2.4rem;
+  min-width: 3.65rem;
+  min-height: 2.25rem;
   inset-block-start: 0.55rem;
   inset-inline-end: 0.55rem;
-  border-radius: 50%;
+  border-radius: 999px;
   cursor: pointer;
 }
 
@@ -793,32 +830,24 @@
 .selector span {
   position: absolute;
   inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.65rem;
+  color: var(--teal-dark);
   background: rgb(255 255 255 / 92%);
   border: 1px solid #b6c3be;
-  border-radius: 50%;
+  border-radius: 999px;
   box-shadow: 0 0.25rem 0.8rem rgb(22 39 37 / 8%);
-}
-
-.selector span::after {
-  position: absolute;
-  width: 0.7rem;
-  height: 0.38rem;
-  inset-block-start: 0.82rem;
-  inset-inline-start: 0.76rem;
-  border-block-end: 2px solid #fff;
-  border-inline-start: 2px solid #fff;
-  content: "";
-  opacity: 0;
-  transform: rotate(-45deg);
+  font-size: 0.64rem;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .selector:has(input:checked) span {
+  color: #fff;
   background: var(--teal);
   border-color: var(--teal);
-}
-
-.selector:has(input:checked) span::after {
-  opacity: 1;
 }
 
 .selector:has(input:disabled) {
@@ -1512,7 +1541,6 @@
 
   .leaderboard {
     position: static;
-    order: -1;
   }
 
   .leaderboard ol {

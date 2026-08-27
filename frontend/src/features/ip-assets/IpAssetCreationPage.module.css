@@ -228,6 +228,25 @@
   font-weight: 700;
 }
 
+.promptField > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.promptField > div button {
+  min-height: 36px;
+  padding-inline: 14px;
+  color: var(--teal);
+  background: #e5f3ee;
+  border: 1px solid rgb(25 102 94 / 28%);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 .promptField textarea {
   width: 100%;
   min-height: 170px;

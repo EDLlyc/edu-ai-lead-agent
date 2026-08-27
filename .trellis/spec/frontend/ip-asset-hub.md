@@ -28,6 +28,12 @@ type IpAssetFilters = {
   tag: string;
 };
 
+type IpAssetCardResponse = {
+  thumbnail_url: string; // lightweight gallery and picker media
+  preview_url: string; // controlled original-quality detail/flipbook media
+  download_url: string; // counted original download
+};
+
 useIpAssets(filters, enabled, profile); // cursor-backed shared gallery + favorite projection
 useUploadIpAsset(); // multipart mutation
 useRecognizeIpAsset(); // explicit transient multipart suggestion mutation
@@ -111,17 +117,25 @@ resources.
 - First-use setup is an accessible focus-trapped dialog. It states “no password / not identity /
   current browser only / clearing data loses access”, reuses the same token for retries, and saves
   local state only after server bootstrap succeeds. Favorite/personal/create actions open it when
-  needed; ordinary shared browsing/upload/download remain usable without it.
+  needed; ordinary shared browsing/upload/download remain usable without it. A one-click demo preset
+  may fill `演示用户` / `品牌中心`, but it uses the same freshly generated random token and retry-safe
+  bootstrap path as manual setup; it never reuses login fields or implies verified identity.
 - Cursor pagination appends stable pages and never replaces an existing gallery with duplicated
-  rows. Filter/search changes reset incompatible cursor/search state.
+  rows. Filter/search changes reset incompatible cursor/search state. The shared and personal gallery
+  request sixteen cards per page; text/image search requests at most eight results. Gallery,
+  leaderboard, and shared reference-picker cards load `thumbnail_url`, while detail, private media,
+  original download, and flipbook handoff retain their controlled original routes.
 - Text/image semantic results may be `semantic` or `degraded_metadata`; the UI explains degradation
   without presenting it as failure or semantic confidence. Because `ip-asset-hybrid-v2` may attach
   metadata-only cards to a semantic response, the semantic-mode heading says “语义 + 元数据结果”
-  instead of claiming every card is a vector hit. Per-result explanations and similarity, when
-  present, stay attached to their asset cards; profile-aware search sends the token only as a header
+  instead of claiming every card is a vector hit. Raw cosine values remain API diagnostics and never
+  render as percentages or calibrated confidence. Vector-backed cards use the qualitative explanation
+  `画面语义相关`, while exact metadata reasons remain visible. Profile-aware search sends the token only as a header
   and projects favorite state. A successful favorite mutation overlays the active result immediately
   while invalidating all shared/detail/personal caches. Search failures use an accessible alert while
   preserving the existing gallery.
+- The search surface exposes three keyboard-operable example-query chips. Activating one fills the
+  input and announces feedback but does not submit, mutate chat turns, or issue a hidden request.
 - The composite chat search control owns one rounded `:focus-within` ring. Its child text input must
   not draw a second rectangular `:focus-visible` outline through that shell; keyboard focus remains
   visible through the parent ring on desktop and mobile.
@@ -170,13 +184,16 @@ resources.
   private ownership. Uploads remain immediately shared and join the current profile's uploaded shelf
   when a profile exists.
 - Download ranking switches between `30d` and `all`, shows only aggregate asset counts, and states
-  that no downloader identity is recorded. It becomes a horizontal/top module on narrow screens.
+  that no downloader identity is recorded. Below 900px it becomes a horizontal module after the
+  gallery so ranking never displaces assets from the mobile first screen.
 - Every asset card carries meaningful alt text based on the canonical name; broken previews retain a
   textual fallback.
 - Gallery selection has one ordered asset collection: checkbox state and ZIP download use the same
   owner, while the album action projects its values in insertion order. ZIP selection remains
   unbounded by album rules; the album action alone requires 2--20 distinct `ready && shared` assets
   with safe same-API previews, positive dimensions, controlled refs, and non-empty canonical names.
+  Every eligible card exposes a persistent textual `选择` / `✓ 已选` state; selection feedback never
+  relies on color, a checkbox dot, or motion alone.
 - The flipbook handoff is a copied, validated module-memory draft only. It never enters URL state,
   session/local storage, a backend request, or query-cache mutation. History navigation stages the
   draft before changing the exact standalone route; the destination reads it in a state initializer
@@ -197,7 +214,9 @@ resources.
 - Flipbook controls support mouse/touch, previous/next buttons, ArrowLeft/ArrowRight, Space, Home,
   and End; controls lock while the renderer is not in `read` state. The page exposes visible position
   and live turn/reorder feedback, named image-failure fallbacks, visible focus, narrow single-page
-  reflow, and reduced-motion behavior without cropping or stretching assets. Landscape interior
+  reflow, and reduced-motion behavior without cropping or stretching assets. Previous/next buttons
+  remain inside the preview stage: at its side edges on desktop and in a clear lower-stage control
+  area on narrow screens, without covering the book or requiring a page scroll. Landscape interior
   spreads label the complete visible range (for example `2–3`); portrait leaves and isolated front/
   back covers label one page. Reduced-motion direct
   turns use `turnToNextPage`/`turnToPrevPage` without first setting a synthetic `flipping` state:
@@ -239,6 +258,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Invalid similar-image query                                                         | Accessible typed error, not “provider unavailable”                                                      |
 | Text/image search request fails                                                     | Keep the current gallery and expose a bounded `role="alert"` message                                    |
 | Semantic response contains metadata-only merged hits                                | Label the set “语义 + 元数据结果”; show similarity only on cards that actually have it                  |
+| Search response contains numeric cosine values                                      | Keep them out of visible copy; show qualitative semantic evidence plus exact metadata reasons           |
+| Example-query chip activated                                                        | Fill and announce only; do not submit or create a request until the user explicitly searches            |
 | Search text input receives keyboard/pointer focus                                   | Draw one rounded composite focus ring; no child rectangle, clipping, or horizontal overflow             |
 | Processing/failed asset                                                             | Do not request preview bytes or allow selection/download/reference; render a named fallback             |
 | Ready preview fails to load                                                         | Replace the broken image with a named textual fallback                                                  |
@@ -269,12 +290,15 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Reduced-motion user activates previous/next                                         | Turn directly while staying `read`; keep `aria-busy=false` and controls usable                          |
 | Flipbook engine enters hard/soft animation drawing                                  | Every project leaf remains absolutely positioned inside the stage; no leaf enters normal document flow  |
 | Flipbook orientation is landscape on an interior spread                             | Label the full visible page range; portrait and isolated covers keep a single-page label                |
+| Viewport is below 900px                                                             | Render gallery assets before the horizontal download ranking module                                     |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: a colleague focuses one clean rounded chat control, asks for a happy Xiaosai image, sees
   exact metadata and vector-backed matches honestly distinguished, opens the detail drawer by
   keyboard, downloads it, and gets an announced success message.
+- Good demo: the first sixteen cards use cached WebP thumbnails, an example chip fills without a
+  request, search returns at most eight qualitative results, and mobile users see assets before ranking.
 - Base: embeddings and generation are disabled. The gallery, upload, metadata filters, preview, and
   downloads remain fully usable with clear capability notices.
 - Bad: the text input draws a rectangular outline through its rounded shell, the heading labels a
@@ -306,7 +330,9 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 - Component: capability states, demo-login/intranet wording, gallery/load-more, every filter, required
   taxonomy, upload/duplicate refresh, semantic fallback, transient image query, preview/download,
   per-card match explanations, search alerts, non-ready preview/selection guards, ZIP feedback,
-  generation polling/output navigation, and empty/error cases.
+  generation polling/output navigation, and empty/error cases. Assert sixteen-card gallery pages,
+  thumbnail card sources, eight-result searches, qualitative vector explanations, no raw percentage,
+  example-chip fill-without-request, textual selection state, and gallery-before-ranking mobile order.
 - Recognition mapper/component: multipart contains only the selected file; no call before explicit
   click; editable advisory prefill; department/contributor isolation; no automatic submit; disabled
   and provider-failure independence; manual-value preservation; stale response reset on file change;
@@ -315,7 +341,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   first-use retry/save boundary, favorite toggle, personal tabs, private blob headers/revocation,
   explicit share, anonymous ranking periods, numbered/reordered 1..3 references, and generated
   private output language. Assert stable generation idempotency across an unchanged retry and
-  rejection of private/unready `?reference=` deep links.
+  rejection of private/unready `?reference=` deep links. The demo preset must use the ordinary random
+  token/bootstrap path and must not submit login credentials.
 - Studio reference picker: all/favorite/uploaded/shared-generated source switching, explicit query
   gates, active-source pagination/search/error/empty states, shared-ready projection, selection
   persistence, whole-card `01–03` markers, three-item limit, visible interaction feedback, and
@@ -329,7 +356,8 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   ready/shared/distinct/safe projection; copy-on-read and Strict Mode-safe clear; no URL/storage/API
   handoff; exact lazy route/login recovery; immutable title/order/removal behavior; deterministic
   hard/soft/blank/back leaves; contain sizing; turn locking; keyboard controls; named image failure;
-  narrow reflow; reduced motion; compiled compound-selector positioning; no `undefined` class token;
+  narrow reflow; in-stage desktop and mobile controls; reduced motion; compiled compound-selector
+  positioning; no `undefined` class token;
   orientation-aware single/range status; and refresh/direct-entry recovery. A real-browser regression
   must inspect continuous animation frames because a terminal-state screenshot can fast-forward a
   finite animation and cannot prove that a turning leaf stayed inside the book.
@@ -484,6 +512,27 @@ positioning, so the turning leaf re-enters normal document flow.
 
 The compound selector applies only to project leaves owned by the page-flip engine and keeps every
 animation frame in the renderer coordinate system.
+
+#### Wrong
+
+```tsx
+<img src={asset.preview_url} alt={asset.canonical_name} />
+<span>{Math.round((result.similarity ?? 0) * 100)}% 匹配</span>
+```
+
+Gallery cards repeatedly decode the original and present an uncalibrated diagnostic as confidence.
+
+#### Correct
+
+```tsx
+<img src={asset.thumbnail_url} alt={asset.canonical_name} />;
+{
+  result.similarity !== null ? <span>画面语义相关</span> : null;
+}
+```
+
+The lightweight card media and qualitative evidence preserve honest demo behavior; detail and
+download actions still use their controlled original routes.
 
 ## Design decision: calm enterprise library, not a control console
 

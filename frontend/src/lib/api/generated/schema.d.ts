@@ -781,6 +781,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ip-assets/{asset_ref}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Thumbnail Ip Asset */
+        get: operations["thumbnail_ip_asset_api_v1_ip_assets__asset_ref__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/material-packages": {
         parameters: {
             query?: never;
@@ -3983,6 +4000,8 @@ export interface components {
             style: string;
             /** Tags */
             tags: string[];
+            /** Thumbnail Url */
+            thumbnail_url: string;
             /** Width */
             width: number;
         };
@@ -4058,6 +4077,8 @@ export interface components {
             style: string;
             /** Tags */
             tags: string[];
+            /** Thumbnail Url */
+            thumbnail_url: string;
             /** Width */
             width: number;
         };
@@ -7399,6 +7420,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IpAssetShareResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    thumbnail_ip_asset_api_v1_ip_assets__asset_ref__thumbnail_get: {
+        parameters: {
+            query?: {
+                v?: number;
+            };
+            header?: {
+                "X-IP-Profile-Token"?: string | null;
+            };
+            path: {
+                asset_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": unknown;
                 };
             };
             /** @description Validation Error */

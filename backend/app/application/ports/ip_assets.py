@@ -18,6 +18,7 @@ from app.domain.ip_assets import (
     IpAssetSemanticStatus,
     IpAssetSource,
     IpAssetStatus,
+    IpAssetThumbnail,
     IpAssetType,
     ValidatedIpAssetUpload,
 )
@@ -30,6 +31,21 @@ class IpAssetObjectDescriptor:
     object_key: str
     media_type: str
     byte_size: int
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetDerivativeRecord:
+    asset_id: UUID
+    policy_version: str
+    kind: str
+    source_sha256: str
+    media_type: str
+    byte_size: int
+    width: int
+    height: int
+    bucket: str
+    object_key: str
     sha256: str
 
 
@@ -186,6 +202,10 @@ class IpAssetGenerationClaim:
 class IpAssetStore(Protocol):
     async def put_immutable(self, upload: ValidatedIpAssetUpload) -> IpAssetObjectDescriptor: ...
 
+    async def put_thumbnail(
+        self, thumbnail: IpAssetThumbnail, *, policy_version: str
+    ) -> IpAssetObjectDescriptor: ...
+
     async def get_verified(self, descriptor: IpAssetObjectDescriptor) -> bytes: ...
 
 
@@ -205,6 +225,22 @@ class IpAssetRepository(Protocol):
     ) -> IpAssetRecord | None: ...
 
     async def get_by_id(self, asset_id: UUID) -> IpAssetRecord | None: ...
+
+    async def get_derivative(
+        self, *, asset_id: UUID, policy_version: str, kind: str
+    ) -> IpAssetDerivativeRecord | None: ...
+
+    async def create_derivative(
+        self,
+        *,
+        asset_id: UUID,
+        policy_version: str,
+        kind: str,
+        source_sha256: str,
+        descriptor: IpAssetObjectDescriptor,
+        width: int,
+        height: int,
+    ) -> IpAssetDerivativeRecord: ...
 
     async def create_asset(
         self,

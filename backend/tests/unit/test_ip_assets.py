@@ -15,6 +15,7 @@ from uuid import UUID
 import pytest
 from app.api.v1.routes import ip_assets as routes
 from app.application.ports.ip_assets import (
+    IpAssetDerivativeRecord,
     IpAssetLeaderboardItemRecord,
     IpAssetLeaderboardRecord,
     IpAssetPage,
@@ -29,6 +30,7 @@ from app.application.ports.ip_assets import (
 )
 from app.application.services.ip_assets import (
     IpAssetPreparedDownload,
+    IpAssetPreparedThumbnail,
     IpAssetPreparedZip,
     IpAssetSearchHit,
     IpAssetSearchResult,
@@ -46,6 +48,7 @@ from app.core.config import Settings
 from app.core.errors import ConflictError, IpAssetUploadRejectedError, NotFoundError
 from app.domain.ip_assets import (
     IP_ASSET_SEARCH_VERSION,
+    IP_ASSET_THUMBNAIL_POLICY_VERSION,
     IpAssetCharacter,
     IpAssetLeaderboardPeriod,
     IpAssetMembershipSource,
@@ -57,6 +60,7 @@ from app.domain.ip_assets import (
     IpAssetStatus,
     IpAssetType,
     IpAssetValidationError,
+    build_ip_asset_thumbnail,
     canonical_name_base,
     leaderboard_start_date,
     normalize_generation_reference_refs,
@@ -148,6 +152,26 @@ class _FakeService:
 
     async def original(self, _asset_ref: str, **_kwargs: object) -> tuple[IpAssetRecord, bytes]:
         return self.asset, self.body
+
+    async def thumbnail(self, _asset_ref: str, **_kwargs: object) -> IpAssetPreparedThumbnail:
+        thumbnail = build_ip_asset_thumbnail(self.body)
+        return IpAssetPreparedThumbnail(
+            asset=self.asset,
+            derivative=IpAssetDerivativeRecord(
+                asset_id=self.asset.id,
+                policy_version=IP_ASSET_THUMBNAIL_POLICY_VERSION,
+                kind="thumbnail",
+                source_sha256=self.asset.blob_sha256,
+                media_type=thumbnail.media_type,
+                byte_size=thumbnail.byte_size,
+                width=thumbnail.width,
+                height=thumbnail.height,
+                bucket="private-bucket",
+                object_key="private-derivative-key",
+                sha256=thumbnail.sha256,
+            ),
+            body=thumbnail.body,
+        )
 
     async def download(self, _asset_ref: str, **_kwargs: object) -> IpAssetPreparedDownload:
         return IpAssetPreparedDownload(asset=self.asset, body=self.body)
@@ -258,6 +282,36 @@ def test_upload_validation_rejects_declared_signature_mismatch() -> None:
         )
 
     assert captured.value.code == "media_type_signature_mismatch"
+
+
+def test_thumbnail_is_deterministic_bounded_webp_without_upscaling() -> None:
+    source = _raster(size=(1_200, 800))
+
+    first = build_ip_asset_thumbnail(source)
+    replay = build_ip_asset_thumbnail(source)
+    small = build_ip_asset_thumbnail(_raster(size=(64, 48)))
+
+    assert first.body == replay.body
+    assert first.sha256 == replay.sha256
+    assert first.media_type == "image/webp"
+    assert first.width == 640
+    assert first.height == 427
+    assert (small.width, small.height) == (64, 48)
+    with Image.open(io.BytesIO(first.body)) as decoded:
+        assert decoded.format == "WEBP"
+        assert decoded.size == (640, 427)
+
+
+def test_thumbnail_preserves_transparent_pixels() -> None:
+    output = io.BytesIO()
+    Image.new("RGBA", (800, 800), (244, 196, 48, 0)).save(output, format="PNG")
+
+    thumbnail = build_ip_asset_thumbnail(output.getvalue())
+
+    with Image.open(io.BytesIO(thumbnail.body)) as decoded:
+        assert decoded.size == (640, 640)
+        assert "A" in decoded.getbands()
+        assert decoded.getchannel("A").getextrema() == (0, 0)
 
 
 @pytest.mark.parametrize("media_type", ["image/png", "image/jpeg", "image/webp"])
@@ -403,6 +457,7 @@ def test_http_upload_list_preview_download_and_zip_are_safe() -> None:
     assert listed.status_code == 200
     payload = listed.json()
     assert payload["items"][0]["asset_ref"] == service.asset.asset_ref
+    assert payload["items"][0]["thumbnail_url"].endswith("/thumbnail?v=1")
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "private-bucket" not in serialized
     assert "private-object-key" not in serialized
@@ -413,6 +468,18 @@ def test_http_upload_list_preview_download_and_zip_are_safe() -> None:
     assert preview.content == service.body
     assert preview.headers["content-disposition"] == "inline"
     assert preview.headers["cache-control"] == "private, no-store"
+
+    thumbnail = client.get(f"/api/v1/ip-assets/{service.asset.asset_ref}/thumbnail?v=1")
+    assert thumbnail.status_code == 200
+    assert thumbnail.headers["content-type"] == "image/webp"
+    assert thumbnail.headers["content-disposition"] == "inline"
+    assert thumbnail.headers["cache-control"] == "private, max-age=604800, immutable"
+    assert thumbnail.headers["etag"]
+    assert thumbnail.headers["vary"] == "X-IP-Profile-Token"
+    thumbnail_operation = client.app.openapi()["paths"]["/api/v1/ip-assets/{asset_ref}/thumbnail"][
+        "get"
+    ]
+    assert set(thumbnail_operation["responses"]["200"]["content"]) == {"image/webp"}
 
     download = client.get(f"/api/v1/ip-assets/{service.asset.asset_ref}/download")
     assert download.status_code == 200

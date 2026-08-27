@@ -46,6 +46,23 @@ make ip-asset-ui
 
 打开共享图库 `http://127.0.0.1:5173/ip-assets`，或打开独立创作室 `http://127.0.0.1:5173/ip-assets/create`。两者都不会挂载到根路径的共享开发控制台。能力探针位于 `GET /api/v1/ip-assets/capabilities`；即使 provider 关闭，上传、分类浏览、元数据检索、收藏、个人素材架、预览、单图下载和 ZIP 下载也应可用。
 
+正式演示前运行只读预检：
+
+```bash
+make ip-asset-demo-preflight
+```
+
+预检会核对 API 能力、PostgreSQL、MinIO、恰好一个 IP worker、首个图库分页、版本化 WebP 缩略图缓存，以及一次只读文本检索。它不会建立名片、上传资产、创建生图任务、增加下载次数或收藏。`generation_available=true` 只说明 provider 已配置；只有预检确认一个 worker 实例后，才表示当前本地队列有人领取。若 API 与 worker 由终端手工启动，PostgreSQL 与 MinIO 仍需由 `make infra-up` 管理；预检会把 `conda run` 包装进程及其 Python 子进程识别为同一个 worker lane。
+
+推荐的现场演示路径：
+
+1. 使用任意非空用户名和密码通过当前标签页的演示入口。
+2. 点击示例问题完成自然语言找图，预览、选择并收藏一张图片。
+3. 上传一张非敏感小图，主动点击“AI 辅助识别”，确认建议后再上传。
+4. 选择 2–4 张共享图片制作翻页相册。
+5. 在 AI 创作室一键建立“演示用户 / 品牌中心”本地名片，载入示例简报并选择参考图。
+6. 提交一次真实生图，确认结果进入个人素材架；是否加入共享图库仍由演示者明确决定。
+
 Vite 本地服务会把 `/ip-assets` 深链交给 SPA。正式内网部署时，静态服务器或反向代理也必须把 `/ip-assets`、`/ip-assets/create`（及其尾斜杠形式）回退到前端 `index.html`，同时保留 `/api/` 路径转发给后端；否则直接刷新独立页面会得到服务器 404。
 
 本地 Vite 与 API 使用不同端口，因此 API 只为 `APP_BROWSER_ORIGINS` 中逐个列出的精确来源返回 CORS 响应；禁止配置 `*`。内网部署若不使用同源反向代理，必须把实际 HTTPS/HTTP 前端来源加入这个逗号分隔白名单，并同步设置浏览器可访问的 `VITE_API_BASE_URL`。

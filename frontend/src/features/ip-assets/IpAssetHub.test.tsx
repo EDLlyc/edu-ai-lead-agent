@@ -66,6 +66,7 @@ const asset: IpAsset = {
   intended_use: "社群",
   media_type: "image/png",
   orientation: "square",
+  thumbnail_url: "/api/v1/ip-assets/ipa_demo0001/thumbnail?v=1",
   preview_url: "/api/v1/ip-assets/ipa_demo0001/preview",
   scene: "",
   semantic_status: "unavailable",
@@ -158,13 +159,36 @@ describe("IpAssetHub", () => {
     expect(ipAssetHubStylesheet).toMatch(
       /input:focus-visible\s*\{[^}]*outline:\s*none/s,
     );
+    expect(ipAssetHubStylesheet).not.toMatch(
+      /\.leaderboard\s*\{[^}]*order:\s*-1/s,
+    );
+  });
+
+  it("fills an example prompt without starting a hidden search", async () => {
+    const user = userEvent.setup();
+    renderHub();
+    const prompt = "小赛开心庆祝，适合社群推送的透明底图片";
+
+    await user.click(await screen.findByRole("button", { name: prompt }));
+
+    expect(screen.getByLabelText("自然语言找图")).toHaveValue(prompt);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "示例问题已填入，可以继续修改或开始找图",
+    );
+    expect(apiMocks.searchIpAssetsText).not.toHaveBeenCalled();
   });
 
   it("describes hybrid search results honestly", async () => {
     const user = userEvent.setup();
     apiMocks.searchIpAssetsText.mockResolvedValueOnce({
       degraded_reason: null,
-      items: [{ asset, explanation: "文字匹配: 开心", similarity: null }],
+      items: [
+        {
+          asset,
+          explanation: "文字匹配: 开心; 画面语义相关",
+          similarity: 0.08,
+        },
+      ],
       mode: "semantic",
       search_version: "ip-asset-hybrid-v2",
     });
@@ -173,6 +197,8 @@ describe("IpAssetHub", () => {
     await user.click(screen.getByRole("button", { name: "开始找图" }));
 
     expect(await screen.findByText("语义 + 元数据结果")).toBeInTheDocument();
+    expect(screen.getByText("含画面语义线索")).toBeVisible();
+    expect(screen.queryByText(/8% 相似|语义相似度 0\.08/)).toBeNull();
   });
 
   it("shows the demo-login boundary, gallery and provider-independent controls", async () => {
@@ -201,7 +227,7 @@ describe("IpAssetHub", () => {
     await user.keyboard("{Escape}");
     expect(
       await screen.findByRole("img", { name: /小赛-表情包-开心-挥手/ }),
-    ).toHaveAttribute("src", expect.stringContaining("/api/v1/ip-assets/"));
+    ).toHaveAttribute("src", expect.stringContaining("/thumbnail?v=1"));
 
     await user.type(
       screen.getByLabelText("自然语言找图"),
@@ -364,6 +390,7 @@ describe("IpAssetHub", () => {
     await screen.findByRole("checkbox", { name: /选择 小赛/ });
 
     await user.click(screen.getByRole("checkbox", { name: /选择 小赛/ }));
+    expect(screen.getByText("✓ 已选")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "下载 ZIP + 清单" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -524,6 +551,44 @@ describe("IpAssetHub", () => {
     ).toBeInTheDocument();
     expect(apiMocks.setIpAssetFavorite).not.toHaveBeenCalled();
   });
+
+  it("creates the preset demo profile through the same browser-local bootstrap", async () => {
+    const user = userEvent.setup();
+    apiMocks.bootstrapIpAssetProfile.mockResolvedValue({
+      created_at: "2026-08-27T08:00:00Z",
+      department: "品牌中心",
+      display_name: "演示用户",
+      identity_boundary: "browser_local_unverified",
+      profile_ref: "ipp_11111111111111111111",
+    });
+    renderHub();
+    await user.click(
+      await screen.findByRole("button", {
+        name: `收藏 ${asset.canonical_name}`,
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "一键使用演示名片" }));
+
+    await waitFor(() =>
+      expect(apiMocks.bootstrapIpAssetProfile).toHaveBeenCalledTimes(1),
+    );
+    const input = apiMocks.bootstrapIpAssetProfile.mock.calls[0]?.[0] as
+      | {
+          displayName: string;
+          department: string;
+          token: string;
+        }
+      | undefined;
+    expect(input).toMatchObject({
+      displayName: "演示用户",
+      department: "品牌中心",
+    });
+    expect(input?.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(
+      screen.queryByRole("dialog", { name: "建立这台浏览器的素材名片" }),
+    ).toBeNull();
+  });
 });
 
 function albumAsset(index: number, canonicalName: string): IpAsset {
@@ -534,6 +599,7 @@ function albumAsset(index: number, canonicalName: string): IpAsset {
     asset_ref: assetRef,
     canonical_name: canonicalName,
     download_url: `/api/v1/ip-assets/${assetRef}/download`,
+    thumbnail_url: `/api/v1/ip-assets/${assetRef}/thumbnail?v=1`,
     preview_url: `/api/v1/ip-assets/${assetRef}/preview`,
   };
 }

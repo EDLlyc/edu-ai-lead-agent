@@ -54,6 +54,7 @@ const asset = (suffix: string): IpAsset => ({
   intended_use: "社群",
   media_type: "image/png",
   orientation: "square",
+  thumbnail_url: `/api/v1/ip-assets/ipa_${suffix}/thumbnail?v=1`,
   preview_url: `/api/v1/ip-assets/ipa_${suffix}/preview`,
   scene: "课堂",
   semantic_status: "ready",
@@ -123,6 +124,22 @@ beforeEach(() => {
 });
 
 describe("IpAssetCreationPage", () => {
+  it("loads a demo brief without submitting a generation", async () => {
+    const user = userEvent.setup();
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+
+    await user.click(
+      await screen.findByRole("button", { name: "载入示例简报" }),
+    );
+
+    expect(
+      screen.getByLabelText<HTMLTextAreaElement>("画面描述").value,
+    ).toContain("未来科学课堂");
+    expect(
+      screen.getByText(/示例创作简报已填入.*尚未提交生成任务/),
+    ).toBeVisible();
+    expect(apiMocks.createIpAssetGeneration).not.toHaveBeenCalled();
+  });
   it("keeps its editorial studio responsive and motion-safe", () => {
     expect(creationStylesheet).toMatch(/@media\s*\(max-width:\s*900px\)/);
     expect(creationStylesheet).toMatch(/@media\s*\(max-width:\s*620px\)/);

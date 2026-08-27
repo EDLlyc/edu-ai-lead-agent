@@ -90,6 +90,9 @@ describe("IpAssetFlipbookRenderer", () => {
     expect(flipbookStylesheet).toMatch(
       /\.[^{\s]+\.stf__item\s*\{[^}]*position:\s*absolute;/s,
     );
+    expect(flipbookStylesheet).toMatch(
+      /@media\s*\(max-width:\s*720px\)[\s\S]*?\.[^{\s]*stageControls[^{\s]*\s*\{[^}]*inset:\s*auto\s+8px\s+14px;[^}]*transform:\s*none;/s,
+    );
   });
 
   it("reports desktop interior spreads while keeping covers as single pages", () => {
@@ -118,6 +121,9 @@ describe("IpAssetFlipbookRenderer", () => {
 
     const previous = screen.getByRole("button", { name: "上一页" });
     const next = screen.getByRole("button", { name: "下一页" });
+    expect(
+      previous.closest('[aria-label="翻页控制"]')?.parentElement,
+    ).toHaveAttribute("aria-label", "科学伙伴相册翻页区域");
     expect(previous).toBeDisabled();
     expect(next).toBeEnabled();
 

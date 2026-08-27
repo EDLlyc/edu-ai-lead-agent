@@ -121,6 +121,7 @@ function makeAsset(assetRef: string, canonicalName: string): IpAsset {
     intended_use: "社群",
     media_type: "image/png",
     orientation: "portrait",
+    thumbnail_url: `/api/v1/ip-assets/${assetRef}/thumbnail?v=1`,
     preview_url: `/api/v1/ip-assets/${assetRef}/preview`,
     scene: "",
     semantic_status: "unavailable",

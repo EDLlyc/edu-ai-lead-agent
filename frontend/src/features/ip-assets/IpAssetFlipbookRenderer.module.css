@@ -15,7 +15,7 @@
 
 .previewHeading p,
 .previewHeading h2,
-.controls p {
+.controlsHint {
   margin: 0;
 }
 
@@ -272,42 +272,50 @@
   box-shadow: inset 18px 0 30px rgb(72 25 18 / 18%);
 }
 
-.controls {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
+.stageControls {
+  position: absolute;
+  z-index: 4;
+  inset: 50% 18px auto;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
-.controls button {
+.stageControls button {
   display: inline-flex;
-  min-height: 46px;
+  min-width: 52px;
+  min-height: 52px;
   gap: 10px;
   align-items: center;
   justify-content: center;
-  padding: 0 18px;
+  padding: 0 16px;
   color: #fdfaf1;
-  background: #176b63;
-  border: 1px solid #176b63;
+  background: rgb(23 107 99 / 94%);
+  border: 1px solid rgb(255 255 255 / 45%);
   border-radius: 999px;
+  box-shadow: 0 10px 30px rgb(21 58 54 / 24%);
   font: inherit;
   font-weight: 760;
   cursor: pointer;
+  pointer-events: auto;
 }
 
-.controls button:disabled {
+.stageControls button:disabled {
   color: #7a8f8b;
-  background: #e5e9e3;
+  background: rgb(229 233 227 / 88%);
   border-color: #c9d3cd;
+  box-shadow: none;
   cursor: not-allowed;
 }
 
-.controls button:focus-visible {
+.stageControls button:focus-visible {
   outline: 3px solid #147f76;
   outline-offset: 3px;
 }
 
-.controls p {
+.controlsHint {
+  margin: 0;
   color: #526f6c;
   font-size: 0.8rem;
   text-align: center;
@@ -333,17 +341,16 @@
     display: none;
   }
 
-  .controls {
-    grid-template-columns: 1fr 1fr;
+  .stageControls {
+    inset: auto 8px 14px;
+    transform: none;
   }
 
-  .controls p {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .controls button {
-    width: 100%;
+  .stageControls button {
+    min-width: 48px;
+    min-height: 48px;
+    padding-inline: 12px;
+    font-size: 0.78rem;
   }
 }
 

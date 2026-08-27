@@ -7398,6 +7398,10 @@
             "title": "Tags",
             "type": "array"
           },
+          "thumbnail_url": {
+            "title": "Thumbnail Url",
+            "type": "string"
+          },
           "width": {
             "title": "Width",
             "type": "integer"
@@ -7427,6 +7431,7 @@
           "semantic_status",
           "shared",
           "created_at",
+          "thumbnail_url",
           "preview_url",
           "download_url"
         ],
@@ -7564,6 +7569,10 @@
             "title": "Tags",
             "type": "array"
           },
+          "thumbnail_url": {
+            "title": "Thumbnail Url",
+            "type": "string"
+          },
           "width": {
             "title": "Width",
             "type": "integer"
@@ -7593,6 +7602,7 @@
           "semantic_status",
           "shared",
           "created_at",
+          "thumbnail_url",
           "preview_url",
           "download_url",
           "safe_original_filename",
@@ -15127,6 +15137,72 @@
           }
         },
         "summary": "Share Ip Asset",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/{asset_ref}/thumbnail": {
+      "get": {
+        "operationId": "thumbnail_ip_asset_api_v1_ip_assets__asset_ref__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_ref",
+            "required": true,
+            "schema": {
+              "title": "Asset Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1,
+              "minimum": 1,
+              "title": "V",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-IP-Profile-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ip-Profile-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/webp": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Thumbnail Ip Asset",
         "tags": [
           "ip-assets"
         ]

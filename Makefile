@@ -10,6 +10,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	official-account-local-worker official-account-local-demo \
 	official-account-local-live-smoke official-account-local-export \
 	ip-asset-worker ip-asset-import-dry-run ip-asset-stack-up ip-asset-ui \
+	ip-asset-demo-preflight \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
 	topic-rerank-eval \
 	brand-retrieval-eval \
@@ -130,6 +131,9 @@ ip-asset-ui:
 	VITE_IP_ASSET_HUB_ENABLED=true npm run dev --prefix frontend -- \
 		--host 127.0.0.1 --port 5173 --strictPort
 
+ip-asset-demo-preflight:
+	$(PY_RUN) python scripts/ip_asset_demo_preflight.py
+
 governance-fake-check:
 	$(PY_RUN) pytest backend/tests/unit/test_governance_delivery.py \
 		backend/tests/integration/test_governance_api_e2e.py -q
@@ -231,13 +235,13 @@ backend-format-check:
 backend-lint:
 	$(PY_RUN) ruff check backend deploy/release \
 		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
-		scripts/capture_agent_workbench.py
+		scripts/capture_agent_workbench.py scripts/ip_asset_demo_preflight.py
 
 backend-typecheck:
 	$(PY_RUN) mypy backend/app backend/scripts deploy/release/contract.py \
 		deploy/release/deploy.py deploy/release/release_tool.py \
 		scripts/build_brand_asset_manifest.py scripts/annotate_brand_visual_assets.py \
-		scripts/capture_agent_workbench.py
+		scripts/capture_agent_workbench.py scripts/ip_asset_demo_preflight.py
 
 backend-test:
 	$(PY_RUN) pytest backend

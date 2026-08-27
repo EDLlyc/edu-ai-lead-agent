@@ -96,6 +96,9 @@ const referenceSourceOptions: readonly Readonly<{
   },
 ];
 
+const demoCreationBrief =
+  "小赛在明亮的未来科学课堂里演示火箭实验，开心挥手，保留角色原有 3D 形象与配色，画面简洁、有活力，适合作为微信公众号方形配图，不添加文字或标志。";
+
 export function IpAssetCreationPage() {
   const capabilities = useIpAssetCapabilities();
   const [profile, setProfile] = useState<LocalIpAssetProfile | null>(
@@ -114,6 +117,7 @@ export function IpAssetCreationPage() {
   const initialReference = useIpAssetDetail(initialReferenceRef, activeProfile);
   const [character, setCharacter] = useState<IpAssetCharacter>("xiao_sai");
   const [assetType, setAssetType] = useState<IpAssetType>("scene_illustration");
+  const [prompt, setPrompt] = useState("");
   const [jobRef, setJobRef] = useState<string | null>(null);
   const [personalSource, setPersonalSource] =
     useState<IpAssetPersonalSource>("all");
@@ -379,14 +383,12 @@ export function IpAssetCreationPage() {
           className={styles.briefPanel}
           onSubmit={(event) => {
             event.preventDefault();
-            const form = new FormData(event.currentTarget);
             requireProfile(() => {
               if (activeProfile === null) return;
               if (references.length < 1 || references.length > 3) {
                 setAnnouncement("请先选择一至三张参考图。");
                 return;
               }
-              const prompt = formText(form, "prompt");
               const signature = JSON.stringify({
                 prompt,
                 character,
@@ -428,16 +430,32 @@ export function IpAssetCreationPage() {
         >
           <div className={styles.sectionNumber}>01 / 创作简报</div>
           <h2 id="creation-stage-title">把画面说清楚</h2>
-          <label className={styles.promptField}>
-            <span>画面描述</span>
+          <div className={styles.promptField}>
+            <div>
+              <label htmlFor="ip-asset-generation-prompt">画面描述</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrompt(demoCreationBrief);
+                  setAnnouncement(
+                    "示例创作简报已填入，可以继续修改；尚未提交生成任务。",
+                  );
+                }}
+              >
+                载入示例简报
+              </button>
+            </div>
             <textarea
+              id="ip-asset-generation-prompt"
               name="prompt"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
               required
               minLength={8}
               maxLength={2000}
               placeholder="例如：小赛在未来感科学课堂演示火箭实验，开心、明亮、适合公众号头图…"
             />
-          </label>
+          </div>
           <div className={styles.optionGrid}>
             <label>
               <span>IP 角色</span>
@@ -1008,7 +1026,7 @@ function PersonalAssetCard({
 
 function SharedPreview({ asset }: Readonly<{ asset: IpAsset }>) {
   const [failed, setFailed] = useState(false);
-  const url = ipAssetResourceUrl(asset.preview_url);
+  const url = ipAssetResourceUrl(asset.thumbnail_url);
   return url === null || failed ? (
     <span
       className={styles.previewFallback}
@@ -1035,7 +1053,7 @@ function PrivatePreview({
   eager?: boolean;
 }>) {
   if (asset.shared) {
-    const url = ipAssetResourceUrl(asset.preview_url);
+    const url = ipAssetResourceUrl(asset.thumbnail_url);
     return url === null ? (
       <span
         className={styles.previewFallback}
@@ -1179,9 +1197,4 @@ function statusLabel(
     succeeded: "已完成",
     failed: "失败",
   }[status];
-}
-
-function formText(form: FormData, key: string): string {
-  const value = form.get(key);
-  return typeof value === "string" ? value : "";
 }

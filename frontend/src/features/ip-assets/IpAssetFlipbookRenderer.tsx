@@ -202,19 +202,19 @@ export function IpAssetFlipbookRenderer({
             />
           ))}
         </HTMLFlipBook>
+        <div className={styles.stageControls} aria-label="翻页控制">
+          <button type="button" disabled={!canGoPrevious} onClick={previous}>
+            <span aria-hidden="true">←</span>
+            <span>上一页</span>
+          </button>
+          <button type="button" disabled={!canGoNext} onClick={next}>
+            <span>下一页</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
       </div>
 
-      <div className={styles.controls} aria-label="翻页控制">
-        <button type="button" disabled={!canGoPrevious} onClick={previous}>
-          <span aria-hidden="true">←</span>
-          上一页
-        </button>
-        <p>支持拖拽页角、触摸滑动与方向键</p>
-        <button type="button" disabled={!canGoNext} onClick={next}>
-          下一页
-          <span aria-hidden="true">→</span>
-        </button>
-      </div>
+      <p className={styles.controlsHint}>支持拖拽页角、触摸滑动与方向键</p>
     </section>
   );
 }

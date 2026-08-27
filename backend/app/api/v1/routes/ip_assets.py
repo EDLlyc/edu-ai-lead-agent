@@ -550,6 +550,34 @@ async def preview_ip_asset(
     )
 
 
+@router.get(
+    "/{asset_ref}/thumbnail",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"image/webp": {}}}},
+)
+async def thumbnail_ip_asset(
+    asset_ref: str,
+    request: Request,
+    v: Annotated[int, Query(ge=1, le=1)] = 1,
+    profile_token: Annotated[str | None, Header(alias="X-IP-Profile-Token")] = None,
+) -> StreamingResponse:
+    del v
+    service = _service(request)
+    profile = await _optional_profile(service, profile_token)
+    prepared = await service.thumbnail(_safe_asset_ref(asset_ref), profile=profile)
+    return StreamingResponse(
+        _single_chunk(prepared.body),
+        media_type="image/webp",
+        headers={
+            "Content-Length": str(len(prepared.body)),
+            "ETag": f'"{prepared.derivative.sha256}"',
+            "Cache-Control": "private, max-age=604800, immutable",
+            "Content-Disposition": "inline",
+            "Vary": "X-IP-Profile-Token",
+        },
+    )
+
+
 @router.get("/{asset_ref}/download")
 async def download_ip_asset(
     asset_ref: str,
@@ -648,6 +676,7 @@ def _card(asset: IpAssetRecord, *, favorite: bool = False) -> IpAssetCardRespons
         shared=asset.shared_at is not None,
         favorite=favorite,
         created_at=asset.created_at,
+        thumbnail_url=f"/api/v1/ip-assets/{asset.asset_ref}/thumbnail?v=1",
         preview_url=f"/api/v1/ip-assets/{asset.asset_ref}/preview",
         download_url=f"/api/v1/ip-assets/{asset.asset_ref}/download",
     )

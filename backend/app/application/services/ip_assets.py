@@ -17,6 +17,7 @@ from app.application.ports.image_generation import (
     ImageReference,
 )
 from app.application.ports.ip_assets import (
+    IpAssetDerivativeRecord,
     IpAssetEmbeddingClaim,
     IpAssetGenerationClaim,
     IpAssetGenerationRecord,
@@ -33,6 +34,7 @@ from app.application.ports.ip_assets import (
 )
 from app.application.ports.visual_retrieval import VisualEmbeddingModel
 from app.core.errors import (
+    ConflictError,
     ImageOutputValidationError,
     IpAssetUploadRejectedError,
     NotFoundError,
@@ -44,6 +46,7 @@ from app.domain.ip_assets import (
     IP_ASSET_MAX_ZIP_BYTES,
     IP_ASSET_MAX_ZIP_ITEMS,
     IP_ASSET_SEARCH_VERSION,
+    IP_ASSET_THUMBNAIL_POLICY_VERSION,
     IpAssetCharacter,
     IpAssetLeaderboardPeriod,
     IpAssetMembershipSource,
@@ -56,6 +59,7 @@ from app.domain.ip_assets import (
     IpAssetType,
     IpAssetValidationError,
     ValidatedIpAssetUpload,
+    build_ip_asset_thumbnail,
     canonical_download_filename,
     leaderboard_start_date,
     normalize_generation_reference_refs,
@@ -109,6 +113,13 @@ class IpAssetPreparedZip:
 
 
 @dataclass(frozen=True, slots=True)
+class IpAssetPreparedThumbnail:
+    asset: IpAssetRecord
+    derivative: IpAssetDerivativeRecord
+    body: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class _MetadataSearchHit:
     asset: IpAssetRecord
     score: float
@@ -133,6 +144,7 @@ class IpAssetService:
         self._store = store
         self._embeddings = embeddings
         self._identity = identity
+        self._thumbnail_semaphore = asyncio.Semaphore(2)
 
     async def upload(
         self,
@@ -297,6 +309,56 @@ class IpAssetService:
             sha256=asset.blob_sha256,
         )
         return asset, await self._store.get_verified(descriptor)
+
+    async def thumbnail(
+        self, asset_ref: str, *, profile: IpAssetProfileRecord | None = None
+    ) -> IpAssetPreparedThumbnail:
+        asset = await self.get(asset_ref, profile=profile)
+        if asset.status is not IpAssetStatus.READY:
+            raise NotFoundError("IP asset")
+        async with self._thumbnail_semaphore:
+            derivative = await self._repository.get_derivative(
+                asset_id=asset.id,
+                policy_version=IP_ASSET_THUMBNAIL_POLICY_VERSION,
+                kind="thumbnail",
+            )
+            if derivative is None:
+                original_descriptor = IpAssetObjectDescriptor(
+                    bucket=asset.bucket,
+                    object_key=asset.object_key,
+                    media_type=asset.media_type,
+                    byte_size=asset.byte_size,
+                    sha256=asset.blob_sha256,
+                )
+                original = await self._store.get_verified(original_descriptor)
+                try:
+                    thumbnail = await asyncio.to_thread(build_ip_asset_thumbnail, original)
+                except IpAssetValidationError as error:
+                    raise ConflictError("IP asset thumbnail could not be derived") from error
+                descriptor = await self._store.put_thumbnail(
+                    thumbnail,
+                    policy_version=IP_ASSET_THUMBNAIL_POLICY_VERSION,
+                )
+                derivative = await self._repository.create_derivative(
+                    asset_id=asset.id,
+                    policy_version=IP_ASSET_THUMBNAIL_POLICY_VERSION,
+                    kind="thumbnail",
+                    source_sha256=asset.blob_sha256,
+                    descriptor=descriptor,
+                    width=thumbnail.width,
+                    height=thumbnail.height,
+                )
+            if derivative.source_sha256 != asset.blob_sha256:
+                raise ConflictError("IP asset derivative source does not match the original")
+            descriptor = IpAssetObjectDescriptor(
+                bucket=derivative.bucket,
+                object_key=derivative.object_key,
+                media_type=derivative.media_type,
+                byte_size=derivative.byte_size,
+                sha256=derivative.sha256,
+            )
+            body = await self._store.get_verified(descriptor)
+        return IpAssetPreparedThumbnail(asset=asset, derivative=derivative, body=body)
 
     async def download(
         self,
@@ -950,7 +1012,7 @@ def _explanation(
     if matches:
         parts.append("文字匹配: " + "、".join(matches[:4]))
     if similarity is not None:
-        parts.append(f"语义相似度 {similarity:.2f}")
+        parts.append("画面语义相关")
     explanation = "; ".join(parts) or "按分类与文字元数据匹配"
     if len(explanation) <= 240:
         return explanation

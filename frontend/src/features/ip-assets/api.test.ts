@@ -23,7 +23,10 @@ vi.mock("@/lib/api/client", () => ({
 import {
   createIpAssetGeneration,
   ipAssetResourceUrl,
+  listIpAssets,
+  listPersonalIpAssets,
   recognizeIpAsset,
+  searchIpAssetsImage,
   searchIpAssetsText,
   uploadIpAsset,
 } from "./api";
@@ -38,6 +41,26 @@ describe("IP asset API adapter", () => {
     );
     expect(ipAssetResourceUrl("https://attacker.invalid/a.png")).toBeNull();
     expect(ipAssetResourceUrl("javascript:alert(1)")).toBeNull();
+  });
+
+  it("bounds gallery and personal-library pages to sixteen cards", async () => {
+    clientMocks.GET.mockResolvedValue({
+      data: { items: [], next_cursor: null },
+      error: undefined,
+    });
+
+    await listIpAssets(emptyIpAssetFilters, null);
+    await listPersonalIpAssets({
+      token: "A".repeat(43),
+      source: "all",
+      cursor: null,
+    });
+
+    const calls = clientMocks.GET.mock.calls as unknown as Array<
+      [string, { params: { query: { limit: number } } }]
+    >;
+    expect(calls[0]?.[1].params.query.limit).toBe(16);
+    expect(calls[1]?.[1].params.query.limit).toBe(16);
   });
 
   it("serializes uploads as multipart without inventing auth headers", async () => {
@@ -188,7 +211,31 @@ describe("IP asset API adapter", () => {
     const request = calls[0];
     if (request === undefined) throw new Error("search_request_missing");
     expect(request[0]).toBe("/api/v1/ip-assets/search/text");
+    expect(request[1].body.limit).toBe(8);
     expect(request[1].params.header["X-IP-Profile-Token"]).toBe(token);
     expect(JSON.stringify(request[1].body)).not.toContain(token);
+  });
+
+  it("bounds transient image search to eight results", async () => {
+    clientMocks.POST.mockResolvedValue({
+      data: {
+        mode: "semantic",
+        degraded_reason: null,
+        search_version: "ip-asset-hybrid-v2",
+        items: [],
+      },
+      error: undefined,
+    });
+    const file = new File([new Uint8Array([1])], "query.png", {
+      type: "image/png",
+    });
+
+    await searchIpAssetsImage({ file, filters: emptyIpAssetFilters });
+
+    const [, request] = clientMocks.POST.mock.calls[0] as [
+      string,
+      { bodySerializer: () => FormData },
+    ];
+    expect(request.bodySerializer().get("limit")).toBe("8");
   });
 });

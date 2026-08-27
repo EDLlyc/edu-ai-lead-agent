@@ -92,6 +92,12 @@ const orientationOptions: readonly Readonly<{
   { value: "landscape", label: "横图" },
 ];
 
+const exampleSearchPrompts = [
+  "小赛开心庆祝，适合社群推送的透明底图片",
+  "赛先生在实验室认真思考，适合科学课堂",
+  "赛先生与小赛一起探索太空，用于公众号封面",
+] as const;
+
 const labels = {
   character: Object.fromEntries(
     characterOptions.map((item) => [item.value, item.label]),
@@ -670,6 +676,7 @@ function SearchConsole({
   onTextSearch: () => void;
   onImageSearch: (file: File) => void;
 }>) {
+  const [exampleNotice, setExampleNotice] = useState("");
   return (
     <section className={styles.searchConsole} aria-labelledby="ip-search-title">
       <form
@@ -706,6 +713,26 @@ function SearchConsole({
             ? "多模态检索已连接 · 明确的角色与类型会优先匹配"
             : "当前使用分类与关键词检索 · 向量服务恢复后自动增强"}
         </small>
+        <div className={styles.examplePrompts} aria-label="示例找图问题">
+          <span>试试这样问</span>
+          {exampleSearchPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => {
+                onMessageChange(prompt);
+                setExampleNotice("示例问题已填入，可以继续修改或开始找图。");
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+        {exampleNotice === "" ? null : (
+          <small className={styles.exampleNotice} role="status">
+            {exampleNotice}
+          </small>
+        )}
       </form>
       <div className={styles.filterToolbar} aria-label="图库筛选">
         <FilterSelect
@@ -874,7 +901,13 @@ function AssetGrid({
                   disabled={asset.status !== "ready" || !asset.shared}
                   onChange={() => onToggle(asset)}
                 />
-                <span aria-hidden="true" />
+                <span aria-hidden="true">
+                  {asset.status !== "ready" || !asset.shared
+                    ? "不可选"
+                    : selectedAssets.has(asset.asset_ref)
+                      ? "✓ 已选"
+                      : "选择"}
+                </span>
               </label>
               <button
                 type="button"
@@ -905,7 +938,7 @@ function AssetGrid({
                   <small>匹配理由</small>
                   {match.explanation}
                   {match.similarity === null ? null : (
-                    <small>{Math.round(match.similarity * 100)}% 相似</small>
+                    <small>含画面语义线索</small>
                   )}
                 </span>
               )}
@@ -928,8 +961,9 @@ function AssetPreview({
   detail = false,
 }: Readonly<{ asset: IpAsset; detail?: boolean }>) {
   const [failed, setFailed] = useState(false);
+  const previewPath = detail ? asset.preview_url : asset.thumbnail_url;
   const preview =
-    asset.status === "ready" ? ipAssetResourceUrl(asset.preview_url) : null;
+    asset.status === "ready" ? ipAssetResourceUrl(previewPath) : null;
   const unavailableMessage =
     asset.status === "processing"
       ? "图片正在处理，暂不可预览"

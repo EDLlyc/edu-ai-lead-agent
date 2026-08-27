@@ -36,6 +36,7 @@ GET  /?query=&character=&asset_type=&department=&source_kind=&orientation=&tag=&
 POST /                         multipart file + required character + required asset_type + metadata
 POST /recognitions             transient multipart image -> advisory upload-field suggestions
 GET  /{asset_ref}
+GET  /{asset_ref}/thumbnail?v=1
 GET  /{asset_ref}/preview
 GET  /{asset_ref}/download
 PUT  /{asset_ref}/favorite
@@ -88,6 +89,7 @@ make ip-asset-worker                         # worker only; API/infrastructure a
 make ip-asset-import-dry-run MAX_ASSETS=500
 make ip-asset-stack-up                       # API + one worker for a generation-capable local stack
 make ip-asset-ui                             # start the standalone UI after the stack
+make ip-asset-demo-preflight                 # read-only local demo readiness proof
 ```
 
 `python -m app.ip_asset_import_main` is explicit and dry-run capable. It must never modify source
@@ -154,6 +156,11 @@ reverse proxy for intranet deployment.
 - Originals are immutable under the exact key
   `ip-assets/originals/sha256/{sha256[:2]}/{sha256}.{ext}`. Existing objects are read back and
   byte/checksum verified; metadata alone is not proof.
+- Gallery thumbnails use fixed policy `ip-asset-thumbnail-v1`: EXIF-normalized, metadata-free,
+  non-upscaled WebP with maximum edge 640. The content-addressed object lives at
+  `ip-assets/derivatives/ip-asset-thumbnail-v1/sha256/{sha256[:2]}/{sha256}.webp`; the existing
+  derivative row binds source checksum, policy, dimensions, descriptor, and derivative checksum.
+  Concurrent first reads converge on one verified row/object, and any mismatch is a conflict.
 - Raster validation rejects signature/media mismatch, decompression bombs, dimension/pixel/byte
   overflow, malformed decodes, and trailing payload after the canonical PNG/JPEG/WebP end.
 - Exact SHA-256 replay returns the existing asset. Perceptual near duplicates warn but do not block.
@@ -202,12 +209,18 @@ reverse proxy for intranet deployment.
 - Metadata ranking covers canonical name, safe original filename, department, contributor,
   emotion, action, scene, intended use, style, and tags. Explanations may state that an original
   filename matched but never copy that detail-only filename into the search response.
+- Numeric cosine remains in the typed API for compatibility and diagnostics, but the demo UI does
+  not present it as calibrated confidence. Explanations use `画面语义相关` whenever vector evidence
+  exists, including semantic-only hits, while exact metadata reasons remain explicit.
 - Invalid image-query bytes are rejected even when semantic search is disabled. Valid image-query
   bytes are transient and never persisted.
 - Semantic/provider failure returns explicit `degraded_metadata` results rather than breaking normal
   library use.
-- Preview/download read the immutable object through verified storage and return bounded content,
-  media type, length, ETag, private/no-store cache policy, and safe disposition.
+- Preview/download read the immutable original through verified storage and return bounded content,
+  media type, length, ETag, private/no-store cache policy, and safe disposition. The versioned
+  thumbnail route uses the same shared-or-owned access check, returns `image/webp`, a strong ETag,
+  `Cache-Control: private, max-age=604800, immutable`, and `Vary: X-IP-Profile-Token`, and never
+  increments download aggregates.
 - ZIP download is bounded by count and aggregate bytes and contains verified originals plus a UTF-8
   manifest.
 - Every media, download, favorite, share, and generation-reference path first requires
@@ -252,40 +265,43 @@ reverse proxy for intranet deployment.
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                                 | Required result                                                                            |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Hub disabled                                                              | Typed conflict/capability-disabled response; no repository/storage/provider work           |
-| Recognition disabled or runtime adapter absent                            | `recognition_available=false`; typed unavailable response and manual upload remains usable |
-| File selected or locally previewed without explicit recognition action    | No provider request and no durable state                                                   |
-| Recognition raster invalid or exceeds validation/normalization bounds     | Typed rejection before provider work; no durable state                                     |
-| Recognition provider timeout/rejection/unavailability or invalid JSON     | Safe typed error; no raw provider content and no durable state                             |
-| Recognition returns extra keys, department/contributor, or unknown enums  | Discard unsafe extras or reject the suggestion; never make them durable                    |
-| Missing/blank required taxonomy                                           | Request validation error; no object or row                                                 |
-| Unsupported, malformed, trailing-payload, oversized, or pixel-bomb raster | Typed upload/query rejection; no durable state                                             |
-| Exact duplicate upload                                                    | Existing asset, `duplicate=true`, no second original/asset                                 |
-| Existing MinIO key has wrong bytes/metadata/path                          | Conflict; never trust or overwrite it                                                      |
-| Semantic provider disabled/unavailable                                    | `degraded_metadata`; gallery/filter/download remain usable                                 |
-| Only part of the library has compatible vectors                           | Merge vector and metadata hits; do not hide unindexed relevant assets                      |
-| Semantics enabled after provider-free uploads                             | Worker startup creates one bounded job per eligible unavailable asset; replay creates zero |
-| Prior turn conflicts with the current role/type                           | Current turn wins unless an explicit request filter already owns that dimension            |
-| Embedding identity mismatch                                               | Exclude incompatible vector and record typed failure                                       |
-| Same idempotency key, different generation fingerprint                    | Conflict; no second provider job                                                           |
-| Missing/invalid local profile token on a required route                    | Typed setup-required response; no private data or provider work                             |
+| Condition                                                                  | Required result                                                                            |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Hub disabled                                                               | Typed conflict/capability-disabled response; no repository/storage/provider work           |
+| Recognition disabled or runtime adapter absent                             | `recognition_available=false`; typed unavailable response and manual upload remains usable |
+| File selected or locally previewed without explicit recognition action     | No provider request and no durable state                                                   |
+| Thumbnail derivative missing                                               | Derive from the verified original and converge on one versioned row/object                 |
+| Thumbnail source/descriptor/policy differs from the immutable source       | Conflict; never serve or silently replace the mismatched derivative                        |
+| Shared and profile-scoped thumbnail responses share a browser cache        | Separate by `Vary: X-IP-Profile-Token`; a token never becomes an access grant              |
+| Recognition raster invalid or exceeds validation/normalization bounds      | Typed rejection before provider work; no durable state                                     |
+| Recognition provider timeout/rejection/unavailability or invalid JSON      | Safe typed error; no raw provider content and no durable state                             |
+| Recognition returns extra keys, department/contributor, or unknown enums   | Discard unsafe extras or reject the suggestion; never make them durable                    |
+| Missing/blank required taxonomy                                            | Request validation error; no object or row                                                 |
+| Unsupported, malformed, trailing-payload, oversized, or pixel-bomb raster  | Typed upload/query rejection; no durable state                                             |
+| Exact duplicate upload                                                     | Existing asset, `duplicate=true`, no second original/asset                                 |
+| Existing MinIO key has wrong bytes/metadata/path                           | Conflict; never trust or overwrite it                                                      |
+| Semantic provider disabled/unavailable                                     | `degraded_metadata`; gallery/filter/download remain usable                                 |
+| Only part of the library has compatible vectors                            | Merge vector and metadata hits; do not hide unindexed relevant assets                      |
+| Semantics enabled after provider-free uploads                              | Worker startup creates one bounded job per eligible unavailable asset; replay creates zero |
+| Prior turn conflicts with the current role/type                            | Current turn wins unless an explicit request filter already owns that dimension            |
+| Embedding identity mismatch                                                | Exclude incompatible vector and record typed failure                                       |
+| Same idempotency key, different generation fingerprint                     | Conflict; no second provider job                                                           |
+| Missing/invalid local profile token on a required route                    | Typed setup-required response; no private data or provider work                            |
 | Ordered generation references empty, duplicated, over three, or not shared | Typed rejection; no generation job                                                         |
-| One reference changes order or checksum                                    | Distinct request fingerprint and immutable reference rows                                   |
-| Worker claim profile/reference differs from the locked job row              | Persist using the locked row; stale claim metadata grants no visibility or membership       |
-| Non-owner favorites or shares a private result                             | Not found/conflict; no visibility or ownership change                                       |
-| Favorite row exists without shared visibility or owned membership           | Exclude from personal results; do not load media                                             |
-| Direct/ZIP download preparation fails                                      | No aggregate increment                                                                      |
-| Future-dated aggregate exists during a `30d` query                           | Exclude it; include only `[today - 29 days, today]`                                          |
-| Concurrent identical enqueue                                              | One durable job; both callers receive its safe identity                                    |
-| Generation configured but no worker is live                               | Job remains durably `queued`; API/UI stay responsive and make no inline provider call       |
-| Local generation-capable platform starts                                  | Start exactly one worker lane and confirm generation-enabled startup before accepting work   |
-| Queue drains while the local platform remains in use                       | Worker stays alive and polls idly for later jobs; do not launch another worker               |
-| Lease expires while provider runs                                         | Cancel/fence; no output asset or success transition                                        |
-| Generated raster invalid                                                  | Typed terminal/retry-classified failure; no asset                                          |
-| Unlisted browser origin sends preflight                                   | No allow-origin header                                                                     |
-| Downgrade while hub data exists                                           | Refuse; never silently delete shared assets                                                |
+| One reference changes order or checksum                                    | Distinct request fingerprint and immutable reference rows                                  |
+| Worker claim profile/reference differs from the locked job row             | Persist using the locked row; stale claim metadata grants no visibility or membership      |
+| Non-owner favorites or shares a private result                             | Not found/conflict; no visibility or ownership change                                      |
+| Favorite row exists without shared visibility or owned membership          | Exclude from personal results; do not load media                                           |
+| Direct/ZIP download preparation fails                                      | No aggregate increment                                                                     |
+| Future-dated aggregate exists during a `30d` query                         | Exclude it; include only `[today - 29 days, today]`                                        |
+| Concurrent identical enqueue                                               | One durable job; both callers receive its safe identity                                    |
+| Generation configured but no worker is live                                | Job remains durably `queued`; API/UI stay responsive and make no inline provider call      |
+| Local generation-capable platform starts                                   | Start exactly one worker lane and confirm generation-enabled startup before accepting work |
+| Queue drains while the local platform remains in use                       | Worker stays alive and polls idly for later jobs; do not launch another worker             |
+| Lease expires while provider runs                                          | Cancel/fence; no output asset or success transition                                        |
+| Generated raster invalid                                                   | Typed terminal/retry-classified failure; no asset                                          |
+| Unlisted browser origin sends preflight                                    | No allow-origin header                                                                     |
+| Downgrade while hub data exists                                            | Refuse; never silently delete shared assets                                                |
 
 ### 5. Good / Base / Bad Cases
 
@@ -310,6 +326,8 @@ reverse proxy for intranet deployment.
 - Good local operation: API, UI, PostgreSQL, MinIO, and one generation-enabled worker start together;
   queued jobs reach durable terminal states and the same worker remains available after the queue
   drains.
+- Good demo media: the first gallery page requests at most sixteen versioned WebP thumbnails, then
+  refresh reuses the private immutable browser cache while detail/flipbook/download retain originals.
 - Base local operation: API and UI are live without a worker; submission remains safely queued and
   the UI truthfully says it awaits the independent service.
 - Bad local operation: report provider availability as worker liveness, start a second lane for an
@@ -348,6 +366,14 @@ reverse proxy for intranet deployment.
   cancellation/fencing, retry exhaustion, and generation-disabled independence.
 - CLI: dry run reads no source bytes, live import is checksum-idempotent, invalid sources are bounded,
   second replay creates zero assets, and source files/manifest stay byte-identical.
+- Thumbnail unit/integration/API: deterministic <=640 WebP, alpha preservation, no upscale, exact
+  derivative-key verification, concurrent first-read convergence in real PostgreSQL/MinIO, source
+  mismatch rejection, shared/private access, strong ETag, one-week private immutable caching,
+  `Vary`, generated OpenAPI `image/webp`, and no download-count mutation.
+- Demo preflight: loopback-only URLs without credentials, exactly one effective worker, healthy
+  PostgreSQL/MinIO, sixteen ready gallery cards, WebP signature/cache/ETag/`Vary`, and one bounded
+  semantic search of at most eight results. It creates no business asset/profile/favorite/download/
+  generation state; first thumbnail access may materialize only its deterministic derivative cache.
 - Local live recovery (explicitly authorized only): snapshot exact queued refs/counts, prove no
   worker exists, start one supported lane, observe generation-enabled startup, and verify each
   authorized job reaches terminal state. Success requires one ready output and one matching
@@ -445,6 +471,24 @@ make ip-asset-ui
 
 # If API/PostgreSQL/MinIO are already running, start only the missing worker once.
 make ip-asset-worker
+```
+
+#### Wrong
+
+```python
+# A gallery card reloads the multi-megabyte original on every visit.
+thumbnail_url = f"/api/v1/ip-assets/{asset_ref}/preview"
+```
+
+#### Correct
+
+```python
+# Cards use the versioned derivative; original preview/download paths remain unchanged.
+thumbnail_url = f"/api/v1/ip-assets/{asset_ref}/thumbnail?v=1"
+headers = {
+    "Cache-Control": "private, max-age=604800, immutable",
+    "Vary": "X-IP-Profile-Token",
+}
 ```
 
 ## Design decision: dynamic partial index remains separate

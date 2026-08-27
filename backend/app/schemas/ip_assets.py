@@ -46,6 +46,7 @@ class IpAssetCardResponse(BaseModel):
     shared: bool
     favorite: bool = False
     created_at: datetime
+    thumbnail_url: str
     preview_url: str
     download_url: str
 

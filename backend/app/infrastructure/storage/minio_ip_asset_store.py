@@ -11,7 +11,12 @@ from minio.error import S3Error
 from app.application.ports.ip_assets import IpAssetObjectDescriptor
 from app.core.config import Settings
 from app.core.errors import ConflictError
-from app.domain.ip_assets import IP_ASSET_MAX_BYTES, ValidatedIpAssetUpload
+from app.domain.ip_assets import (
+    IP_ASSET_MAX_BYTES,
+    IP_ASSET_THUMBNAIL_POLICY_VERSION,
+    IpAssetThumbnail,
+    ValidatedIpAssetUpload,
+)
 
 
 class MinioIpAssetStore:
@@ -41,6 +46,27 @@ class MinioIpAssetStore:
             sha256=upload.sha256,
         )
         await asyncio.to_thread(self._put_or_verify, descriptor, upload.body)
+        return descriptor
+
+    async def put_thumbnail(
+        self, thumbnail: IpAssetThumbnail, *, policy_version: str
+    ) -> IpAssetObjectDescriptor:
+        if policy_version != IP_ASSET_THUMBNAIL_POLICY_VERSION:
+            raise ValueError("IP asset thumbnail policy is unsupported")
+        if not thumbnail.body or len(thumbnail.body) > IP_ASSET_MAX_BYTES:
+            raise ValueError("IP asset thumbnail exceeded the configured limit")
+        key = (
+            f"ip-assets/derivatives/{policy_version}/sha256/"
+            f"{thumbnail.sha256[:2]}/{thumbnail.sha256}.webp"
+        )
+        descriptor = IpAssetObjectDescriptor(
+            bucket=self._bucket,
+            object_key=key,
+            media_type=thumbnail.media_type,
+            byte_size=thumbnail.byte_size,
+            sha256=thumbnail.sha256,
+        )
+        await asyncio.to_thread(self._put_or_verify, descriptor, thumbnail.body)
         return descriptor
 
     async def get_verified(self, descriptor: IpAssetObjectDescriptor) -> bytes:
@@ -81,12 +107,18 @@ class MinioIpAssetStore:
             "image/jpeg": "jpg",
             "image/webp": "webp",
         }.get(descriptor.media_type)
-        expected_key = (
+        expected_original_key = (
             f"ip-assets/originals/sha256/{descriptor.sha256[:2]}/{descriptor.sha256}.{extension}"
             if extension is not None
             else ""
         )
-        if descriptor.object_key != expected_key:
+        expected_derivative_key = (
+            f"ip-assets/derivatives/{IP_ASSET_THUMBNAIL_POLICY_VERSION}/sha256/"
+            f"{descriptor.sha256[:2]}/{descriptor.sha256}.webp"
+            if descriptor.media_type == "image/webp"
+            else ""
+        )
+        if descriptor.object_key not in {expected_original_key, expected_derivative_key}:
             raise ConflictError("IP asset object key is not content addressed")
         response = self._client.get_object(descriptor.bucket, descriptor.object_key)
         try:

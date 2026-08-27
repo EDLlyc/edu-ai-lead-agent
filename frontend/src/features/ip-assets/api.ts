@@ -97,7 +97,7 @@ export async function listIpAssets(
         department: filters.department,
         tag: filters.tag,
         cursor,
-        limit: 60,
+        limit: 16,
         ...(filters.character === "" ? {} : { character: filters.character }),
         ...(filters.assetType === "" ? {} : { asset_type: filters.assetType }),
         ...(filters.sourceKind === ""
@@ -209,7 +209,7 @@ export async function searchIpAssetsText(input: {
         prior_turns: [...input.priorTurns].slice(-4),
         department: input.filters.department,
         tag: input.filters.tag,
-        limit: 40,
+        limit: 8,
         ...(input.filters.character === ""
           ? {}
           : { character: input.filters.character }),
@@ -240,7 +240,7 @@ export async function searchIpAssetsImage(input: {
 }): Promise<IpAssetSearchResponse> {
   const wire = {
     file: input.file.name,
-    limit: 40,
+    limit: 8,
     ...(input.filters.character === ""
       ? {}
       : { character: input.filters.character }),
@@ -262,7 +262,7 @@ export async function searchIpAssetsImage(input: {
       bodySerializer: () => {
         const form = new FormData();
         form.set("file", input.file);
-        form.set("limit", "40");
+        form.set("limit", "8");
         if (input.filters.character !== "")
           form.set("character", input.filters.character);
         if (input.filters.assetType !== "")
@@ -377,7 +377,7 @@ export async function listPersonalIpAssets(input: {
     "/api/v1/ip-assets/profiles/me/assets",
     {
       params: {
-        query: { source: input.source, cursor: input.cursor, limit: 60 },
+        query: { source: input.source, cursor: input.cursor, limit: 16 },
         header: { "X-IP-Profile-Token": input.token },
       },
       ...(input.signal === undefined ? {} : { signal: input.signal }),

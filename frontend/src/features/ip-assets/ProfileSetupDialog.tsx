@@ -21,6 +21,24 @@ export function ProfileSetupDialog({
   const panel = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
 
+  const bootstrapProfile = (displayName: string, department: string) => {
+    mutation.mutate(
+      { token, displayName, department },
+      {
+        onSuccess: (response) => {
+          const profile: LocalIpAssetProfile = {
+            token,
+            profileRef: response.profile_ref,
+            displayName: response.display_name,
+            department: response.department,
+          };
+          saveLocalIpAssetProfile(profile);
+          onCreated(profile);
+        },
+      },
+    );
+  };
+
   useEffect(() => {
     const previous =
       document.activeElement instanceof HTMLElement
@@ -81,27 +99,24 @@ export function ProfileSetupDialog({
         <p className={styles.lead}>
           用于收藏、个人素材和 AI 创作结果归集。它没有密码，也不是员工身份认证。
         </p>
+        <button
+          className={styles.demoProfile}
+          type="button"
+          disabled={mutation.isPending}
+          onClick={() => bootstrapProfile("演示用户", "品牌中心")}
+        >
+          {mutation.isPending ? "正在建立…" : "一键使用演示名片"}
+        </button>
+        <div className={styles.orDivider} aria-hidden="true">
+          <span>或手动填写</span>
+        </div>
         <form
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
             const displayName = formText(form, "displayName").trim();
             const department = formText(form, "department").trim();
-            mutation.mutate(
-              { token, displayName, department },
-              {
-                onSuccess: (response) => {
-                  const profile: LocalIpAssetProfile = {
-                    token,
-                    profileRef: response.profile_ref,
-                    displayName: response.display_name,
-                    department: response.department,
-                  };
-                  saveLocalIpAssetProfile(profile);
-                  onCreated(profile);
-                },
-              },
-            );
+            bootstrapProfile(displayName, department);
           }}
         >
           <label>
@@ -121,7 +136,7 @@ export function ProfileSetupDialog({
           <div className={styles.boundary} role="note">
             <strong>请注意</strong>
             <span>
-              资料只保存在当前浏览器；清除浏览器数据后无法找回，也不会跨设备同步。
+              这不是身份认证。资料只保存在当前浏览器；清除浏览器数据后无法找回，也不会跨设备同步。
             </span>
           </div>
           <button
