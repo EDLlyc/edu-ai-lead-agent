@@ -1773,3 +1773,24 @@ Implemented and independently verified the development-only Xiaosai gzh editor h
 ### Status
 
 [OK] **Completed**
+
+
+## Session 78: IP 资产演示加固
+
+**Date**: 2026-08-27
+**Task**: IP 资产演示加固
+**Branch**: `main`
+
+### Summary
+
+完成版本化 WebP 缩略图、演示友好检索与选择反馈、移动端和翻页相册布局优化、一键演示名片与创作示例，并增加本地演示预检；自动化和真实桌面/移动浏览器验收通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9d8b697` | (see git log) |
+
+### Status
+
+[OK] **Completed**

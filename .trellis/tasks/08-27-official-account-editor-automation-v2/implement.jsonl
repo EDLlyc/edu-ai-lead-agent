@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Owns the focused automatic release, block placement, semantic emphasis, exact mobile identity, and zero-publish V2 contract."}
+{"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Owns frozen official-account Article/media/audit/export identities, zero-publish boundary, and additive-version compatibility."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines typed, deterministic, versioned backend quality and focused/final check gates."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Defines stable typed failure codes and fail-closed provider/application boundaries."}
+{"file":".trellis/spec/frontend/official-account-editor-handoff.md","reason":"Owns the generated-contract workbench, clipboard, sandbox, local-download, and no-publish UI contract."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Defines accessible component composition, visible provenance, and browser-effect feedback."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Keeps GET server state in TanStack Query and clipboard/download as browser effects."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Requires generated OpenAPI wire types and a single safe mapper boundary."}
+{"file":".trellis/tasks/08-27-official-account-editor-automation-v2/research/current-v1-audit.md","reason":"Records exact V1 gaps, accepted output evidence, compatibility choice, and zero-external-call boundary."}

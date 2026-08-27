@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Check automatic/manual/rejected release truth, semantic placement/emphasis, exact mobile binding, local fixture and no-publish boundaries."}
+{"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Check V1 historical identities, media semantics, rights disclosure, and permanent no-publish truth."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check deterministic tests, types, OpenAPI, zero-provider fixture, and regression gates."}
+{"file":".trellis/spec/frontend/official-account-editor-handoff.md","reason":"Check UI truthfulness, generated contract, clipboard/sandbox accessibility, and local-only wording."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check strict frontend gates, behavior tests, accessibility, and browser acceptance."}
+{"file":".trellis/tasks/08-27-official-account-editor-automation-v2/research/current-v1-audit.md","reason":"Verify each identified V1 gap is addressed without changing accepted V1 behavior."}
