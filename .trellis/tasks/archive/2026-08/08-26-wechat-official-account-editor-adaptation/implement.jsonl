@@ -1,0 +1,10 @@
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/official-account-spec-focus.md","reason":"Focused non-truncated extract of frozen V1-V10, V10 media/export, direct-use warning and quality contracts."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Backend layer ownership for pure domain rendering, application orchestration, route projection and local media resolution."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable AppError codes and fail-closed response semantics for blocked handoff artifact resources."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Feature ownership and generated API boundary for the development-only handoff component."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"TanStack Query ownership and browser-effect rules for clipboard and downloads."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Generated OpenAPI wire types, readonly mapper and typed error requirements."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Accessible composition, safe text rendering, iframe and feedback behavior."}
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/current-system-audit.md","reason":"Current reusable code boundaries, historical compatibility anchors and dirty-worktree audit."}
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/gzh-design-adaptation-notes.md","reason":"Exact Xiaosai theme baseline hashes and platform-safe gzh body/preview constraints."}
+{"file":".trellis/tasks/archive/2026-08/08-19-wechat-official-account-auto-publishing-roadmap/research/open-source-route-findings.md","reason":"Primary-source record for WeChat body-image URL, cover media_id, draft/publish separation and future adapter boundary."}

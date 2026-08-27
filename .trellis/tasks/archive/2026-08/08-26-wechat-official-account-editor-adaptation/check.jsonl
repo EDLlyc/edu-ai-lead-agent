@@ -1,0 +1,8 @@
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/official-account-spec-focus.md","reason":"Verify additive versioning, frozen historical bytes, media roles, direct-use warning, quality gates and permanent no-publish truth."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check stable blocking/warning codes, status mapping and fail-closed integrity behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check Vitest, accessibility, generated-contract drift, build and browser acceptance coverage."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check that wire types are generated and all view/error states are exhaustively mapped without unsafe casts."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Check server query ownership and truthful clipboard/download feedback."}
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/current-system-audit.md","reason":"Compare implementation against audited existing routes/exporters and ensure unrelated dirty changes were preserved."}
+{"file":".trellis/tasks/08-26-wechat-official-account-editor-adaptation/research/gzh-design-adaptation-notes.md","reason":"Verify theme fingerprint, pure section output, span-leaf coverage and 0-error/0-warning independent validation."}
+{"file":".trellis/tasks/archive/2026-08/08-19-wechat-official-account-auto-publishing-roadmap/research/open-source-route-findings.md","reason":"Verify the UI/API never implies local relative assets are already WeChat-side URLs or media IDs."}
