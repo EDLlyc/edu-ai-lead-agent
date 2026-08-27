@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -18,7 +18,11 @@ from app.application.services.topic_selection import reconcile_daily_topic_selec
 from app.core.config import Settings, get_settings
 from app.core.errors import ConflictError
 from app.core.logging import configure_logging
-from app.domain.content_slots import ContentSlotSchedule
+from app.domain.content_slots import (
+    ContentSlot,
+    ContentSlotSchedule,
+    due_content_slot_business_date,
+)
 from app.infrastructure.db.content_slots import PostgresContentSlotRepository
 from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
@@ -33,9 +37,19 @@ async def _reconcile_scheduled_content_slot(
     *,
     schedule: ContentSlotSchedule,
     now: datetime,
+    immutable_conflicts: set[tuple[date, ContentSlot]],
 ) -> UUID | None:
     """Keep one immutable historical slot from terminating the scheduler process."""
 
+    business_date = due_content_slot_business_date(
+        now,
+        timezone=settings.business_timezone,
+        schedule=schedule,
+        catchup_hours=settings.content_catchup_hours,
+    )
+    conflict_key = (business_date, schedule.slot) if business_date is not None else None
+    if conflict_key is not None and conflict_key in immutable_conflicts:
+        return None
     try:
         return await reconcile_content_slot_selection(
             repository,
@@ -44,6 +58,8 @@ async def _reconcile_scheduled_content_slot(
             now=now,
         )
     except ConflictError as error:
+        if conflict_key is not None:
+            immutable_conflicts.add(conflict_key)
         logger.warning(
             "content_slot_reconcile_conflict_skipped",
             content_slot=schedule.slot.value,
@@ -68,6 +84,7 @@ async def run_content_scheduler() -> None:
     repository = PostgresTopicSelectionRepository(create_session_factory(engine))
     slot_repository = PostgresContentSlotRepository(create_session_factory(engine))
     copy_repository = PostgresCopyGenerationRepository(create_session_factory(engine))
+    immutable_slot_conflicts: set[tuple[date, ContentSlot]] = set()
 
     async def reconcile() -> None:
         now = datetime.now(UTC)
@@ -78,6 +95,7 @@ async def run_content_scheduler() -> None:
                     settings,
                     schedule=schedule,
                     now=now,
+                    immutable_conflicts=immutable_slot_conflicts,
                 )
                 if run_id is not None:
                     logger.info(
