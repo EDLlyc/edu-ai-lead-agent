@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 74
+- **Total Sessions**: 75
 - **Last Active**: 2026-08-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1708 | Active |
+| `journal-1.md` | ~1729 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 75 | 2026-08-27 | 修复 IP 相册翻页动画 | `1e54c61` | `main` |
 | 74 | 2026-08-27 | IP 图片翻页相册 MVP | `0cb4698`, `c4278ce` | `main` |
 | 73 | 2026-08-26 | Complete local official-account news draft MVP | `a1b811d` | `main` |
 | 72 | 2026-08-26 | 恢复 IP 本地服务 | - | `main` |

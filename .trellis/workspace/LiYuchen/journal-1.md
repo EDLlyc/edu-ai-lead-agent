@@ -1706,3 +1706,24 @@ Implemented and validated the durable selected-news image pipeline, V10 five-IP-
 ### Next Steps
 
 - 如需保存、分享、导出 PDF 或 AI 自动编排，另建任务扩展，当前 MVP 保持即时内存边界
+
+
+## Session 75: 修复 IP 相册翻页动画
+
+**Date**: 2026-08-27
+**Task**: 修复 IP 相册翻页动画
+**Branch**: `main`
+
+### Summary
+
+定位并修复 react-pageflip 动画页进入普通文档流的问题，清理无效 class，增加方向感知跨页状态与连续帧回归；230 项源码测试及前端质量门通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1e54c61` | (see git log) |
+
+### Status
+
+[OK] **Completed**
