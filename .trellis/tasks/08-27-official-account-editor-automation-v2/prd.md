@@ -98,6 +98,20 @@
   fingerprint-bound mobile report 和校验摘要；不得覆盖既有 V1/V2 输出目录。
 - 文档用英文记录 release policy、新闻图 placement、recipe、浏览器报告身份和永久 no-publish 边界。
 
+### R8 — 正文块驱动的 IP 参考生图
+
+- 正文 body 图不得仅因为来自公司目录就称为 IP 图。每张新图必须从一个稳定正文块提取场景 brief，先从
+  已批准的小赛视觉目录选择与该块语义和角色动作匹配的参考资产，再把参考图作为人物身份/造型锚点连同
+  brief 提交给生图模型；最终正文使用新生成的场景图，不直接把目录原图当成正文成图。
+- 生产路径优先复用现有 Qwen3-VL 完整索引的正文块级检索；离线 fixture 使用冻结且可校验的选择投影，
+  但不得伪装成真实 embedding 调用。两种路径都必须保留 block index/fingerprint、safe public ref、角色
+  `xiao-sai` / `sai-xiansheng`、选择方式、生成计划和输出校验谱系。
+- 三张本地验收 body 图都必须能肉眼识别小赛或赛先生；整组三张必须同时覆盖小赛和赛先生，且不得把人物
+  缩成角标、Logo、玩具、背景装饰或无法辨认的剪影。场景仍须对应各自正文块，并保持 3:2、无水印、无
+  额外文字和独立图片内容。
+- 默认测试继续使用本地 bytes/fake transport，模型、Embedding 和生图外部请求为 0；明确授权的本地成品
+  生成可调用图片模型，但仍禁止任何微信、企微、上传、发布或群发调用。
+
 ## Acceptance criteria
 
 - [ ] `manual_only` 仍复现 V1 pending/approved/rejected 行为；V1 identities/goldens/ZIP byte regression 全部
@@ -115,6 +129,8 @@
 - [ ] 新离线新闻 fixture 包含至少 3 body + 1 context + 1 cover；Playwright 绑定 content/body/media hash，
       所有图片加载、320/430 无页面溢出、0 external requests，最终 ZIP 内状态为 `passed`。
 - [ ] runtime 未验浏览器时仍显示 `not_run`；只有 content fingerprint 精确匹配的报告才显示 passed。
+- [ ] 三张 body 图都有可见且可识别的小赛/赛先生人物，整组覆盖两名角色；每张图的正文块 brief、参考
+      public ref/角色、选择方式、生成计划和输出 hash 可追溯，且生产语义检索结果确实作为生图参考输入。
 - [ ] focused Ruff/format/mypy/pytest、OpenAPI drift、frontend lint/typecheck/Vitest/build、Playwright、历史
       official-account regression 与 `git diff --check` 通过；没有微信/企微调用或账号凭据字段。
 

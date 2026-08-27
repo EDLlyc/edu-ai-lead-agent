@@ -104,3 +104,25 @@ tests never fetch it over HTTP. The export writer remains non-overwriting and co
 All text stays escaped, source links remain HTTPS allowlisted, images remain controlled relative assets, and ZIP paths
 remain normalized. Machine release records contain no prompts/provider bodies/private paths. Unknown quality states,
 hash drift, mismatched mobile reports and placement inconsistencies fail with typed stable codes.
+
+## 9. Block-semantic IP reference conditioning
+
+The generated body-visual flow is distinct from direct catalog reuse:
+
+```text
+exact Article block -> bounded scene brief/query -> approved-catalog semantic selection
+  -> selected Xiaosai/Sai Xiansheng publication bytes -> ImageReference input
+  -> generated 3:2 scene -> output validation/IP visibility -> persisted media -> V2 handoff
+```
+
+The existing production owner remains `official_account_visual_generation`: its V3 plan binds the exact block,
+reference public identity, normalized provider-input checksum, selector method, prompt version and output profile.
+Qwen3-VL complete-index retrieval chooses references before the image client is constructed. A disabled/unavailable
+semantic provider may use one declared deterministic whole-plan fallback, but the lineage must retain the truthful
+selection method and may never claim an embedding call that did not occur.
+
+The V2 acceptance fixture consumes a frozen reference-conditioned visual map rather than the generic body fixture.
+Each row binds one generated body byte stream to its Article block and one or more safe approved reference projections,
+including character labels. Fixture validation checks manifest/path/hash/dimensions, both-character set coverage and
+non-duplication before building Article/media snapshots. No private path, raw asset ID, vector, prompt or provider body
+enters Article/API/export. A fresh final directory and mobile report are required because body/media hashes change.

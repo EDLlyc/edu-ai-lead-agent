@@ -1794,3 +1794,24 @@ Implemented and independently verified the development-only Xiaosai gzh editor h
 ### Status
 
 [OK] **Completed**
+
+
+## Session 79: IP 创作页提示词与排版精修
+
+**Date**: 2026-08-27
+**Task**: IP 创作页提示词与排版精修
+**Branch**: `main`
+
+### Summary
+
+取消 IP 创作画面描述的最小与最大字数限制，保留非空和安全校验；将任务提示词字段迁移为 PostgreSQL TEXT；重做返回图库、章节标记、参考素材编号与 OUTPUT 区域的专业排版，并补齐前后端、迁移和无障碍测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f9e7406` | (see git log) |
+
+### Status
+
+[OK] **Completed**

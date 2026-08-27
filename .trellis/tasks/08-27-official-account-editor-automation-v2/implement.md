@@ -48,6 +48,17 @@
 - [x] Dispatch Trellis check agent, repair verified findings and rerun affected focused gates.
 - [x] Report exact files/results/output path/external call count. Do not commit unless the user separately asks.
 
+## Phase 6 — visible IP reference-conditioned body visuals
+
+- [ ] Freeze three exact body blocks and select matching approved Xiaosai/Sai Xiansheng reference publications; record
+      truthful selection method, safe public refs, character labels and reference-input checksums.
+- [ ] Generate or adopt three validated 3:2 scenes whose visible protagonists include Xiaosai/Sai Xiansheng, then add a
+      fail-closed local visual-map loader instead of reusing the generic fixture-body bytes.
+- [ ] Project the block -> brief/query -> reference -> generated-output lineage into safe handoff metadata/manifest and
+      tests without exposing private paths, raw IDs, vectors, prompts or provider bodies.
+- [ ] Regenerate a fresh non-overwriting final bundle and exact mobile sidecar; visually inspect 320/430, run gzh, ZIP,
+      V1/V2 regressions, types/lint/build and verify zero WeChat/WeCom calls.
+
 ## Validation commands
 
 ```bash
