@@ -1727,3 +1727,24 @@ Implemented and validated the durable selected-news image pipeline, V10 five-IP-
 ### Status
 
 [OK] **Completed**
+
+
+## Session 76: WeChat editor local handoff
+
+**Date**: 2026-08-27
+**Task**: WeChat editor local handoff
+**Branch**: `main`
+
+### Summary
+
+Implemented and independently verified the development-only Xiaosai gzh editor handoff: deterministic body/preview/assets/ZIP, strict lineage and HTML preflight, generated API/frontend workbench, offline 320/430 browser acceptance, and zero social/provider calls.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9dc6f5f` | (see git log) |
+
+### Status
+
+[OK] **Completed**
