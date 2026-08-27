@@ -1669,3 +1669,40 @@ Implemented and validated the durable selected-news image pipeline, V10 five-IP-
 ### Status
 
 [OK] **Completed**
+
+
+## Session 74: IP 图片翻页相册 MVP
+
+**Date**: 2026-08-27
+**Task**: IP 图片翻页相册 MVP
+**Branch**: `main`
+
+### Summary
+
+在独立 IP 资产站加入纯前端即时翻页相册：图库选择 2–20 张、编辑标题和顺序、首图封面、桌面双页/移动单页及无障碍翻页；刷新后安全失效且不产生后端写入。
+
+### Main Changes
+
+- 新增 react-pageflip 项目原生渲染器、内存草稿和 /ip-assets/flipbook 独立登录门禁路由
+- 将图库批量选择改为单一有序资产结构，相册入口与 ZIP 下载共存
+- 补充 IP 相册前端代码规范，并修复 reduced-motion 直接翻页永久锁定问题
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0cb4698` | (see git log) |
+| `c4278ce` | (see git log) |
+
+### Testing
+
+- [OK] ESLint、strict TypeScript、生产构建、npm audit 和 222 项前端测试通过
+- [OK] 真实 Chromium 完成三图选取、标题编辑、封面重排、键盘翻页、390px 窄屏和刷新恢复；数据库前后不变且无 Provider 调用
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 如需保存、分享、导出 PDF 或 AI 自动编排，另建任务扩展，当前 MVP 保持即时内存边界
