@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 76
+- **Total Sessions**: 77
 - **Last Active**: 2026-08-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1750 | Active |
+| `journal-1.md` | ~1775 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 77 | 2026-08-27 | 中国政府网要闻高优先级采集上线 | `7a45a65c2ba18324a279e233516aa25de0bc728a`, `bcf9ee1702a829fa85f8b11970acf89d4cbdc43f`, `907ca68ff48c5164ffeaf6e35a90bd50160e5c39`, `3eca57c36d3b3fed1c702552528b7ffc5e9d2a08`, `3c5c6b2954725923d50af33d5ba9dea110f06adf` | `main` |
 | 76 | 2026-08-27 | WeChat editor local handoff | `9dc6f5f` | `main` |
 | 75 | 2026-08-27 | 修复 IP 相册翻页动画 | `1e54c61` | `main` |
 | 74 | 2026-08-27 | IP 图片翻页相册 MVP | `0cb4698`, `c4278ce` | `main` |

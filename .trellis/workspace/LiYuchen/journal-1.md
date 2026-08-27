@@ -1748,3 +1748,28 @@ Implemented and independently verified the development-only Xiaosai gzh editor h
 ### Status
 
 [OK] **Completed**
+
+
+## Session 77: 中国政府网要闻高优先级采集上线
+
+**Date**: 2026-08-27
+**Task**: 中国政府网要闻高优先级采集上线
+**Branch**: `main`
+
+### Summary
+
+新增中国政府网要闻 Tier A 来源和合格科技主题优先策略，生产补采并治理目标文章；修复 GLM-5.2 Thinking 耗尽结构化输出预算及同日配置升级导致内容调度器重启，完成生产评分投影与健康验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7a45a65c2ba18324a279e233516aa25de0bc728a` | (see git log) |
+| `bcf9ee1702a829fa85f8b11970acf89d4cbdc43f` | (see git log) |
+| `907ca68ff48c5164ffeaf6e35a90bd50160e5c39` | (see git log) |
+| `3eca57c36d3b3fed1c702552528b7ffc5e9d2a08` | (see git log) |
+| `3c5c6b2954725923d50af33d5ba9dea110f06adf` | (see git log) |
+
+### Status
+
+[OK] **Completed**
