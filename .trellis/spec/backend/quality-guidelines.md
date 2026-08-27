@@ -140,9 +140,9 @@ environment that can synthesize DNS answers.
 
 ### 2. Signatures
 
-- Entry smoke: `make source-smoke` calls `python -m app.live_smoke` and checks all ten active
+- Entry smoke: `make source-smoke` calls `python -m app.live_smoke` and checks all eleven active
   profiles. Pending profiles are never included in this registry before their independent gate.
-- Full live acceptance: enqueue one run for the ten active source versions, start a worker with
+- Full live acceptance: enqueue one run for the eleven active source versions, start a worker with
   `ACQUISITION_FIRST_RUN_ITEM_LIMIT=1` and `ACQUISITION_DAILY_ITEM_LIMIT=1`, then query the run,
   jobs, and evidence-candidate APIs.
 - SSRF policy failure: `PolicyRejectedError(code="non_public_address")`.
@@ -170,7 +170,7 @@ environment that can synthesize DNS answers.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: ten public DNS answers, ten HTTP successes, ten terminal-success jobs, and article
+- Good: eleven public DNS answers, eleven HTTP successes, eleven terminal-success jobs, and article
   candidates with meaningful titles, canonical URLs, body text, snapshots, and provenance.
 - Base: deterministic fixture/contract tests pass while live smoke is skipped in CI.
 - Bad: allowing `198.18.0.0/15`, disabling SSRF checks, stopping after the first source, or treating
@@ -178,13 +178,13 @@ environment that can synthesize DNS answers.
 
 ### 6. Tests Required
 
-- Connector fixtures cover all ten active and two pending sources and regress index-page discovery,
+- Connector fixtures cover all eleven active and two pending sources and regress index-page discovery,
   duplicate blank/text anchors, navigation headings, parser drift, timezone conversion, exact
   article paths, and sponsored/API/external/HTTP exclusions.
 - `test_live_smoke.py` proves one typed failure does not prevent later profiles from being checked.
 - PostgreSQL integration proves a new parser/source version can store corrected metadata for the
   same source item without disabling cross-source exact-duplicate handling.
-- An operator live check records all ten active entry statuses; a one-item full run asserts `10/10`
+- An operator live check records all eleven active entry statuses; a one-item full run asserts `11/11`
   successful jobs and inspects the resulting titles/URLs before acceptance. A pending source must
   separately pass one production-safe entry request and at most one approved detail request before
   moving into `SOURCE_SEEDS`; `non_public_address` leaves it pending.
@@ -334,7 +334,7 @@ At minimum, prove:
 - a Tier C lead cannot become final factual evidence;
 - duplicate content retains provenance and a seven-day event repeat is vetoed;
 - a below-threshold day ends as `no_topic` without model/image generation;
-- topic reranking receives only eligible candidates, preserves Ministry priority and slot
+- topic reranking receives only eligible candidates, preserves qualified-authoritative priority and slot
   same-day barriers, caps input at eight, selects v1/v2/v3 prompt/payload/parser/finalization by
   immutable policy, binds v3 results to the exact run pool and event/version pairs, and falls back
   byte-stably in ordering semantics;

@@ -128,10 +128,10 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.10-substantive-science-education-priority"
+    content_scoring_version: str = "scoring-v1-preview.11-qualified-authoritative-priority"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = (
-        "ministry-education-priority-v4-substantive-science-education"
+        "qualified-authoritative-priority-v1"
     )
     content_llm_rerank_enabled: bool = True
     content_llm_rerank_policy_version: str = Field(

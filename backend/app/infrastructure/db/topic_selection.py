@@ -30,6 +30,7 @@ from app.domain.topic_rerank import (
 )
 from app.domain.topic_selection import (
     DELIVERED_CONTENT_VETO_RULE_VERSION,
+    GOV_CN_YAOWEN_PRIORITY_POLICY,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
     DailyTopicDecision,
     TopicCandidate,
@@ -783,7 +784,12 @@ async def load_governed_topic_candidates(
         source_trust, tier_c_only, has_eligible_source_tier = source_trust_projection(tiers)
         priority_policies = priority_policies_by_event[version.event_id]
         topic_priority_policy = (
-            MOE_SCIENCE_TOP1_PRIORITY_POLICY
+            GOV_CN_YAOWEN_PRIORITY_POLICY
+            if (
+                scoring_config.has_qualified_authoritative_priority
+                and GOV_CN_YAOWEN_PRIORITY_POLICY in priority_policies
+            )
+            else MOE_SCIENCE_TOP1_PRIORITY_POLICY
             if MOE_SCIENCE_TOP1_PRIORITY_POLICY in priority_policies
             else min(priority_policies)
             if priority_policies

@@ -89,7 +89,7 @@ async def _claim_sources(context: IntegrationContext, source_indexes: list[int])
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
+async def test_source_seed_is_idempotent_and_exposes_eleven_active_versions(
     integration_context: IntegrationContext,
 ) -> None:
     async with integration_context.session_factory() as session:
@@ -112,10 +112,10 @@ async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
             ).all()
         )
     active_versions = [version for version in versions if version.id in active_version_ids]
-    assert first in {0, 1, 3, 10}
+    assert first in {0, 1, 3, 10, 11}
     assert second == 0
-    assert source_count == 10
-    assert len(active_versions) == 10
+    assert source_count == 11
+    assert len(active_versions) == 11
     assert all(
         source.enabled is False and source.active_version_id is None for source in pending_sources
     )
@@ -128,6 +128,14 @@ async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
     )
     assert active_ministry.allow_http_fallback is True
     assert active_ministry.topic_priority_policy == "moe-science-top1-v1"
+    government_news = next(seed for seed in SOURCE_SEEDS if seed.slug == "china-government-news")
+    active_government_news = next(
+        version for version in active_versions if version.source_id == government_news.source_id
+    )
+    assert active_government_news.trust_tier == "A"
+    assert active_government_news.connector_key == "gov_cn_yaowen_v1"
+    assert active_government_news.allowed_path_prefixes == ["/yaowen/liebiao/"]
+    assert active_government_news.topic_priority_policy == "gov-cn-qualified-science-tech-v1"
 
 
 @pytest.mark.integration

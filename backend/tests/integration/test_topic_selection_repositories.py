@@ -20,6 +20,7 @@ from app.domain.editorial_relevance import ScienceTechContentSignal
 from app.domain.governance_enums import FactualCategory
 from app.domain.ministry_education_priority import (
     MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
 )
 from app.domain.topic_rerank import (
     TopicRerankConfig,
@@ -33,8 +34,12 @@ from app.domain.topic_rerank import (
 )
 from app.domain.topic_selection import (
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+    GOV_CN_YAOWEN_PRIORITY_POLICY,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+    QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SOURCE_PRIORITY_RULE_VERSION,
+    SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     NoTopicCode,
     TopicScoringConfig,
@@ -72,6 +77,7 @@ from app.infrastructure.db.topic_selection import (
     persist_topic_selection_decision,
 )
 from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
+from sqlalchemy import select
 
 from .conftest import IntegrationContext
 from .governance_graph_support import FakeEmbeddingModel, FakeFactualAnalysisModel
@@ -491,6 +497,199 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
     assert stored.explanation["topic_priority_policy"] == MOE_SCIENCE_TOP1_PRIORITY_POLICY
     assert stored.explanation["priority_applied"] is True
     assert stored.explanation["threshold_bypass_applied"] is True
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_government_yaowen_policy_authenticates_from_a_real_source_occurrence(
+    integration_context: IntegrationContext,
+) -> None:
+    acquisition_run_id, candidate_ids = await _create_acquisition_fixture(
+        integration_context,
+        candidate_count=1,
+    )
+    candidate_id = candidate_ids[0]
+    source = next(seed for seed in SOURCE_SEEDS if seed.slug == "china-government-news")
+    ministry_source = next(seed for seed in SOURCE_SEEDS if seed.slug == "moe-science-news")
+    now = datetime.now(UTC)
+    snapshot_id = uuid4()
+    ministry_snapshot_id = uuid4()
+    async with integration_context.session_factory() as session:
+        candidate = await session.get(EvidenceCandidateModel, candidate_id)
+        assert candidate is not None
+        job_id = await session.scalar(
+            select(AcquisitionJobModel.id).where(
+                AcquisitionJobModel.run_id == acquisition_run_id,
+                AcquisitionJobModel.source_id == source.source_id,
+            )
+        )
+        if job_id is None:
+            job_id = uuid4()
+            session.add(
+                AcquisitionJobModel(
+                    id=job_id,
+                    run_id=acquisition_run_id,
+                    source_id=source.source_id,
+                    source_version_id=source.source_version_id,
+                    status="succeeded",
+                    outcome="completed",
+                    completed_at=now,
+                )
+            )
+        candidate.title = "融合升级 新型工业化提速"
+        candidate.clean_text = "人工智能、机器人和新材料关键技术取得进展,智能生产线完成技术验证。"
+        candidate.published_at = now
+        candidate.first_fetched_at = now
+        session.add(
+            SourceSnapshotModel(
+                id=snapshot_id,
+                provenance_key=uuid4().hex + uuid4().hex,
+                source_version_id=source.source_version_id,
+                kind="detail",
+                original_url=("https://www.gov.cn/yaowen/liebiao/202608/content_7079251.htm"),
+                final_url="https://www.gov.cn/yaowen/liebiao/202608/content_7079251.htm",
+                bucket="fixture",
+                object_key=f"fixture/{snapshot_id}",
+                media_type="text/html",
+                byte_size=100,
+                sha256="f" * 64,
+                response_metadata={},
+                fetched_at=now,
+                connector_version=source.connector_version,
+                parser_version=source.parser_version,
+            )
+        )
+        await session.flush()
+        session.add(
+            SourceObservationModel(
+                id=uuid4(),
+                idempotency_key=uuid4().hex + uuid4().hex,
+                run_id=acquisition_run_id,
+                job_id=job_id,
+                source_version_id=source.source_version_id,
+                source_item_id="content_7079251.htm",
+                outcome="exact_duplicate",
+                snapshot_id=snapshot_id,
+                candidate_id=candidate_id,
+                observed_at=now,
+                observation_metadata={},
+            )
+        )
+        ministry_job_id = uuid4()
+        session.add(
+            AcquisitionJobModel(
+                id=ministry_job_id,
+                run_id=acquisition_run_id,
+                source_id=ministry_source.source_id,
+                source_version_id=ministry_source.source_version_id,
+                status="succeeded",
+                outcome="completed",
+                completed_at=now,
+            )
+        )
+        session.add(
+            SourceSnapshotModel(
+                id=ministry_snapshot_id,
+                provenance_key=uuid4().hex + uuid4().hex,
+                source_version_id=ministry_source.source_version_id,
+                kind="detail",
+                original_url="https://www.moe.gov.cn/jyb_xwfb/s5147/202608/example.html",
+                final_url="https://www.moe.gov.cn/jyb_xwfb/s5147/202608/example.html",
+                bucket="fixture",
+                object_key=f"fixture/{ministry_snapshot_id}",
+                media_type="text/html",
+                byte_size=100,
+                sha256="e" * 64,
+                response_metadata={},
+                fetched_at=now,
+                connector_version=ministry_source.connector_version,
+                parser_version=ministry_source.parser_version,
+            )
+        )
+        await session.flush()
+        session.add(
+            SourceObservationModel(
+                id=uuid4(),
+                idempotency_key=uuid4().hex + uuid4().hex,
+                run_id=acquisition_run_id,
+                job_id=ministry_job_id,
+                source_version_id=ministry_source.source_version_id,
+                source_item_id="ministry-shared-occurrence",
+                outcome="exact_duplicate",
+                snapshot_id=ministry_snapshot_id,
+                candidate_id=candidate_id,
+                observed_at=now,
+                observation_metadata={},
+            )
+        )
+        await session.commit()
+
+    bundle = build_governance_version_bundle(integration_context.settings)
+    async with integration_context.session_factory() as session:
+        await create_governance_run_for_acquisition(
+            session,
+            acquisition_run_id=acquisition_run_id,
+            bundle=bundle,
+            timezone="Asia/Shanghai",
+        )
+    claimed_governance = await _claim(
+        integration_context,
+        worker_id="topic-government-yaowen-policy",
+    )
+    graph = _build_graph(
+        integration_context,
+        bundle=bundle,
+        analysis_model=FakeFactualAnalysisModel(
+            category=FactualCategory.AI_INDUSTRY_APPLICATION,
+            entity_name="国务院有关部门",
+        ),
+        embedding_model=FakeEmbeddingModel(),
+        now=now,
+    )
+    graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+    event_id = graph_result["event_id"]
+    assert isinstance(event_id, UUID)
+
+    config = TopicScoringConfig(
+        version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+        profile=f"government-yaowen-auth-{uuid4().hex[:12]}",
+        selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+    )
+    cutoff = now + timedelta(minutes=1)
+    async with integration_context.session_factory() as session:
+        topic_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=now.date(),
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=cutoff,
+        )
+        candidates = await load_topic_candidates(session, topic_run.id)
+        target = next(candidate for candidate in candidates if candidate.event_id == event_id)
+        decision = select_daily_topic((target,), as_of=cutoff, config=config)
+        historical_config = TopicScoringConfig(
+            version=SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+            profile=f"gov-auth-historical-{uuid4().hex[:12]}",
+            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
+        )
+        historical_candidates = await load_governed_topic_candidates(
+            session,
+            business_date=now.date(),
+            timezone="Asia/Shanghai",
+            scoring_profile=historical_config.profile,
+            governed_event_cutoff=cutoff,
+            config_snapshot=historical_config.as_metadata(),
+        )
+        historical_target = next(
+            candidate for candidate in historical_candidates if candidate.event_id == event_id
+        )
+
+    assert target.topic_priority_policy == GOV_CN_YAOWEN_PRIORITY_POLICY
+    assert historical_target.topic_priority_policy == MOE_SCIENCE_TOP1_PRIORITY_POLICY
+    assert target.science_tech_editorial_cohort.value == "frontier_science_technology"
+    assert decision.scores[0].eligible is True
+    assert decision.scores[0].priority_applied is True
+    assert decision.scores[0].priority_reason == "qualified_government_yaowen_priority"
 
 
 @pytest.mark.integration

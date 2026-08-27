@@ -3,7 +3,7 @@
 ## Status and source of truth
 
 These documents are the implementation contract for the backend. Five production-shaped
-capabilities now exist: governed acquisition from ten active approved sources, with two more
+capabilities now exist: governed acquisition from eleven active approved sources, with two more
 approved connector profiles pending independent live activation gates; versioned
 normalization, evidence-bound factual analysis, duplicate relations, and event organization;
 deterministic daily Top 1/`no_topic` selection; private versioned brand-document ingestion with

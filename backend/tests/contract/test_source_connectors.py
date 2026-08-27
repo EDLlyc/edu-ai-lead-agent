@@ -13,8 +13,8 @@ BNU_ARTICLE_ID = "822c744c15a54dc1828c554b06d18313"
 BNU_ARTICLE_URL = f"https://news.bnu.edu.cn/zx/ttgz/{BNU_ARTICLE_ID}.htm"
 
 
-def test_registry_keeps_two_fixture_ready_profiles_outside_the_ten_active_seeds() -> None:
-    assert len(SOURCE_SEEDS) == 10
+def test_registry_keeps_two_fixture_ready_profiles_outside_the_eleven_active_seeds() -> None:
+    assert len(SOURCE_SEEDS) == 11
     assert {seed.slug for seed in PENDING_SOURCE_SEEDS} == {
         "cast-science-education",
         "edsurge-ai-education",
@@ -56,12 +56,14 @@ def _profile(connector_key: str) -> SourceProfile:
 @pytest.mark.parametrize(
     "connector_key", [seed.connector_key for seed in (*SOURCE_SEEDS, *PENDING_SOURCE_SEEDS)]
 )
-def test_all_ten_active_and_two_pending_connectors_use_contract_fixtures(
+def test_all_eleven_active_and_two_pending_connectors_use_contract_fixtures(
     connector_key: str,
 ) -> None:
     profile = _profile(connector_key)
     directory = FIXTURE_ROOT / connector_key
-    list_path = directory / ("list.json" if connector_key == "gov_cn_policy_v1" else "list.html")
+    list_path = directory / (
+        "list.json" if connector_key in {"gov_cn_policy_v1", "gov_cn_yaowen_v1"} else "list.html"
+    )
     list_body = list_path.read_bytes()
     list_response = FetchedResponse(
         requested_url=profile.entry_url,
@@ -281,6 +283,34 @@ def test_government_json_rejects_off_domain_and_out_of_prefix_records() -> None:
     )
     items = connector.discover(response, profile, limit=5)
     assert [item.url for item in items] == ["https://www.gov.cn/zhengce/approved.html"]
+
+
+def test_government_yaowen_json_uses_a_strict_host_path_and_query_boundary() -> None:
+    profile = _profile("gov_cn_yaowen_v1")
+    connector = get_connector(profile.connector_key)
+    response = FetchedResponse(
+        requested_url=profile.entry_url,
+        final_url=profile.entry_url,
+        status_code=200,
+        media_type="application/json",
+        body=(
+            b'{"items": ['
+            b'{"URL": "https://evil.example/yaowen/liebiao/ignore.html"},'
+            b'{"URL": "https://www.gov.cn/zhengce/ignore.html"},'
+            b'{"URL": "https://www.gov.cn/yaowen/liebiao/ignore.html?from=test"},'
+            b'{"URL": "https://www.gov.cn/yaowen/liebiao/202608/approved.html", '
+            b'"DOCRELPUBTIME": "2026-08-26 23:04"}'
+            b"]}"
+        ),
+        sha256="list",
+        fetched_at=datetime.now(UTC),
+    )
+
+    items = connector.discover(response, profile, limit=10)
+
+    assert [item.url for item in items] == [
+        "https://www.gov.cn/yaowen/liebiao/202608/approved.html"
+    ]
 
 
 def test_local_publication_time_is_converted_from_source_timezone_to_utc() -> None:

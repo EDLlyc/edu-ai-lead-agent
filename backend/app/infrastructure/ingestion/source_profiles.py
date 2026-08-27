@@ -180,6 +180,19 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
         "allowed",
         3.0,
     ),
+    SourceSeed(
+        "china-government-news",
+        "中国政府网要闻",
+        "government",
+        SourceTier.A,
+        "gov_cn_yaowen_v1",
+        "https://www.gov.cn/yaowen/liebiao/YAOWENLIEBIAO.json",
+        ("www.gov.cn",),
+        ("/yaowen/liebiao/",),
+        "allowed",
+        2.0,
+        topic_priority_policy="gov-cn-qualified-science-tech-v1",
+    ),
 )
 
 # These profiles have fixture/connector approval but are deliberately excluded from SOURCE_SEEDS.

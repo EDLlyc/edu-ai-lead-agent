@@ -257,6 +257,9 @@ def _extract_source_images(
 
 
 class GovernmentJsonConnector:
+    def __init__(self, *, reject_query: bool = False) -> None:
+        self._reject_query = reject_query
+
     def discover(
         self, response: FetchedResponse, profile: SourceProfile, *, limit: int
     ) -> list[DiscoveredItem]:
@@ -270,7 +273,11 @@ class GovernmentJsonConnector:
             raw_url = str(record.get("URL") or record.get("url") or "").strip()
             if not raw_url:
                 continue
-            candidate_url = _canonical_url(urljoin(response.final_url, raw_url))
+            resolved_url = urljoin(response.final_url, raw_url)
+            resolved_parts = urlsplit(resolved_url)
+            if self._reject_query and (resolved_parts.query or resolved_parts.fragment):
+                continue
+            candidate_url = _canonical_url(resolved_url)
             url = _approved_discovered_url(candidate_url, profile)
             if url is None:
                 continue
@@ -551,6 +558,7 @@ def _not_sponsored(anchor: Tag) -> bool:
 
 CONNECTORS: dict[str, SourceConnector] = {
     "gov_cn_policy_v1": GovernmentJsonConnector(),
+    "gov_cn_yaowen_v1": GovernmentJsonConnector(reject_query=True),
     "bnu_news_v1": HtmlConnector(
         _path_matches(r"/[0-9a-fA-F]{32}\.htm$"), (".article", ".content", "main")
     ),

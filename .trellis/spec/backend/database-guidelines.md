@@ -216,7 +216,9 @@ audit records and must not be rewritten in place.
 - Legacy rows keep `relevance_rule_version=NULL`; the original `0003` rollout created immutable
   `ai-title-v1`/`moe-science-v1` versions, and the later hard-boundary rollout created
   `science-ai-education-v1`; all remain replayable. Current seeding creates a new immutable
-  `science-tech-editorial-v3-broad` version for each of ten active sources. The previous
+  `science-tech-editorial-v3-broad` version for each of eleven active sources. China Government
+  policy and yaowen use separate deterministic source/version identities; yaowen carries the
+  authenticated `gov-cn-qualified-science-tech-v1` metadata. The previous
   `science-tech-editorial-v2` source versions remain immutable and replayable. CAST science
   education and EdSurge AI education remain unseeded/inactive until their independent live gates
   pass; if rows from an experimental run exist, seeding disables them and clears their active

@@ -14,9 +14,12 @@ from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_VERSION,
     DELIVERED_CONTENT_VETO_RULE_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+    GOV_CN_YAOWEN_PRIORITY_POLICY,
     GOVERNED_CONTENT_VETO_RULE_VERSION,
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+    QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SOURCE_PRIORITY_RULE_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
@@ -40,7 +43,11 @@ CONFIG = TopicScoringConfig(
     threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
 TIERED_CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+)
+HISTORICAL_SUBSTANTIVE_CONFIG = TopicScoringConfig(
+    version=SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
 )
 HISTORICAL_BROAD_CONFIG = TopicScoringConfig(
     version=BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
@@ -127,15 +134,15 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
 
 
-def test_current_config_exposes_broad_hard_tech_policy_and_substantive_v4_rule() -> None:
+def test_current_config_exposes_broad_hard_tech_and_qualified_authoritative_rules() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
     assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
-    assert metadata["version"] == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
+    assert metadata["version"] == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
     assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
     assert metadata["selection_priority_rule_version"] == (
-        MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+        QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
     )
     assert metadata["science_tech_editorial_rule_version"] == ("science-tech-editorial-v3-broad")
     assert metadata["hard_tech_pool_policy_version"] == BROAD_HARD_TECH_POOL_POLICY_VERSION
@@ -149,6 +156,38 @@ def test_current_config_exposes_broad_hard_tech_policy_and_substantive_v4_rule()
         "communication_potential": 0.10,
     }
     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+def test_point_ten_snapshot_retains_literal_substantive_ministry_policy() -> None:
+    metadata = HISTORICAL_SUBSTANTIVE_CONFIG.as_metadata()
+
+    assert metadata["version"] == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
+    assert metadata["selection_priority_rule_version"] == (
+        MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+    )
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+def test_point_ten_replay_keeps_its_substantive_ministry_threshold_bypass() -> None:
+    candidate = _candidate(
+        source_trust=0.2,
+        source_diversity=1,
+        communication_potential=0.1,
+        editorial_priority=0.88,
+        product_matrix_fit_v2=0.0,
+        topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+        priority_title="教育部印发中小学人工智能教育行动方案",
+        priority_summary="推动人工智能课程实施和教师教学能力建设。",
+    )
+
+    historical = score_topic_candidate(candidate, as_of=NOW, config=HISTORICAL_SUBSTANTIVE_CONFIG)
+    current = score_topic_candidate(candidate, as_of=NOW, config=TIERED_CONFIG)
+
+    assert historical.priority_reason == "ministry_science_education_policy_action"
+    assert historical.priority_applied is True
+    assert historical.threshold_bypass_applied is True
+    assert historical.eligible is True
+    assert current.priority_reason == historical.priority_reason
 
 
 def test_point_nine_snapshot_retains_literal_v3_policy_and_round_trips() -> None:
@@ -701,6 +740,85 @@ def test_broad_hard_tech_pool_never_overrides_a_genuine_veto(
     assert score.eligible is False
     assert score.threshold_bypass_applied is False
     assert score.threshold_bypass_reason is None
+
+
+def test_qualified_government_yaowen_beats_a_higher_scoring_ordinary_candidate() -> None:
+    government_news = _candidate(
+        event_id="22222222-2222-4222-8222-222222222222",
+        source_trust=0.75,
+        source_diversity=1,
+        communication_potential=0.2,
+        editorial_priority=0.58,
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        science_tech_education_relevance=0.0,
+        frontier_significance=0.58,
+        science_tech_editorial_reason_codes=("content_signal:planned_or_in_progress",),
+        science_tech_content_signals=(ScienceTechContentSignal.PLANNED_OR_IN_PROGRESS,),
+        product_matrix_fit_v2=0.0,
+        product_matrix_v2_direction_ids=(),
+        topic_priority_policy=GOV_CN_YAOWEN_PRIORITY_POLICY,
+    )
+    ordinary = _candidate(topic_priority_policy=None)
+
+    decision = select_daily_topic((ordinary, government_news), as_of=NOW, config=TIERED_CONFIG)
+    government_score = next(
+        score for score in decision.scores if score.event_id == government_news.event_id
+    )
+
+    assert government_score.total < next(
+        score.total for score in decision.scores if score.event_id == ordinary.event_id
+    )
+    assert government_score.eligible is True
+    assert government_score.priority_applied is True
+    assert government_score.priority_reason == "qualified_government_yaowen_priority"
+    assert government_score.threshold_bypass_reason == "governed_broad_hard_tech_pool"
+    assert decision.selected_event_id == government_news.event_id
+
+
+def test_government_yaowen_priority_never_creates_new_eligibility() -> None:
+    below_threshold_education = _candidate(
+        source_trust=0.0,
+        source_diversity=0,
+        communication_potential=0.0,
+        editorial_priority=0.5,
+        product_matrix_fit_v2=0.0,
+        topic_priority_policy=GOV_CN_YAOWEN_PRIORITY_POLICY,
+    )
+
+    score = score_topic_candidate(below_threshold_education, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.passes_threshold is False
+    assert score.threshold_bypass_applied is False
+    assert score.eligible is False
+    assert score.priority_applied is False
+    assert score.priority_reason == "government_yaowen_not_eligible"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"governance_resolved": False},
+        {"days_since_last_selection": 2},
+        {"event_time": NOW - timedelta(days=11)},
+        {
+            "science_tech_editorial_cohort": ScienceTechEditorialCohort.OUT_OF_SCOPE,
+            "editorial_priority": 1.0,
+        },
+    ),
+)
+def test_government_yaowen_priority_requires_a_qualified_zero_veto_candidate(
+    changes: dict[str, object],
+) -> None:
+    candidate = _candidate(
+        topic_priority_policy=GOV_CN_YAOWEN_PRIORITY_POLICY,
+        **changes,
+    )
+
+    score = score_topic_candidate(candidate, as_of=NOW, config=TIERED_CONFIG)
+
+    assert score.priority_applied is False
+    assert score.eligible is False
+    assert score.priority_reason in {"hard_veto", "government_yaowen_topic_missing"}
 
 
 @pytest.mark.parametrize("config", (HISTORICAL_TIERED_CONFIG, TIERED_CONFIG))

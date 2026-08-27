@@ -248,6 +248,8 @@ def test_compose_and_doctor_pin_layered_topic_rerank_defaults() -> None:
         assert f'"{key}"' in doctor
     assert "content selection rerank pool must remain capped at eight" in doctor
     assert "enabled content rerank must use fake or zhipu provider mode" in doctor
+    assert '[[ "$source_count" == "11" ]]' in doctor
+    assert 'pass "Eleven approved source profiles are active"' in doctor
 
 
 def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:

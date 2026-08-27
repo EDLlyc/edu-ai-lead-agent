@@ -323,10 +323,10 @@ def compose_bool(value):
     raise SystemExit("topic rerank flags must be valid boolean values")
 
 environment = services["content-worker"]["environment"]
-if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.10-substantive-science-education-priority":
-    raise SystemExit("content selection must pin the substantive science-education scoring policy")
-if environment["CONTENT_SELECTION_PRIORITY_RULE_VERSION"] != "ministry-education-priority-v4-substantive-science-education":
-    raise SystemExit("content selection must pin the substantive Ministry priority policy")
+if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.11-qualified-authoritative-priority":
+    raise SystemExit("content selection must pin the qualified-authoritative scoring policy")
+if environment["CONTENT_SELECTION_PRIORITY_RULE_VERSION"] != "qualified-authoritative-priority-v1":
+    raise SystemExit("content selection must pin the qualified-authoritative priority policy")
 if environment["CONTENT_LLM_RERANK_POLICY_VERSION"] != "topic-rerank-v4-minimal-order-contract":
     raise SystemExit("content selection must pin the v4 minimal-order policy")
 if environment["CONTENT_LLM_RERANK_CANDIDATE_LIMIT"] != "8":
@@ -386,7 +386,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260824_0035" ]] \
+[[ "$migration_revision" == "20260825_0036" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -514,8 +514,8 @@ source_count="$(
   docker compose exec -T postgres sh -c \
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM sources WHERE enabled IS TRUE AND active_version_id IS NOT NULL;"'
 )"
-[[ "$source_count" == "10" ]] || fail "Source registry is not ready; run 'make seed-sources'"
-pass "Ten approved source profiles are active"
+[[ "$source_count" == "11" ]] || fail "Source registry is not ready; run 'make seed-sources'"
+pass "Eleven approved source profiles are active"
 
 minio_address="$(docker compose port minio 9000)"
 [[ -n "$minio_address" ]] || fail "Unable to resolve the MinIO host port"

@@ -78,18 +78,18 @@ Normalize boilerplate, whitespace, timestamps, URLs, and source names. Deduplica
 SHA-256 first, then use SimHash/embedding similarity and event clustering. Retain links from
 duplicates to the canonical article/event so provenance is not lost.
 
-## Scenario: Ten-active-source tiered science/technology evidence acquisition
+## Scenario: Eleven-active-source tiered science/technology evidence acquisition
 
 ### 1. Scope / Trigger
 
-This is the implemented boundary for the first stage. It applies to ten active government,
+This is the implemented boundary for the first stage. It applies to eleven active government,
 education, research, company, and media profiles in
 [`source_profiles.py`](../../../backend/app/infrastructure/ingestion/source_profiles.py). It does
 not authorize arbitrary URLs, general web search, LangGraph execution, summarization, scoring, or
 generation. Xinhua Education passed its production-safe activation smoke. CAST science education
 and EdSurge AI education have approved connectors and fixtures but remain in
 `PENDING_SOURCE_SEEDS`, outside seeding and scheduling, until each independently passes the same
-bounded live gate; the approved target count is twelve.
+bounded live gate; the approved target count is thirteen.
 
 ### 2. Signatures
 
@@ -137,6 +137,10 @@ bounded live gate; the approved target count is twelve.
   source/title/time/original+canonical URL/candidate ID/rule version. Later
   LangGraph nodes read candidate detail and stored text/snapshot; they do not normally re-crawl the
   original URL.
+- China Government policy and yaowen are separate immutable source identities. Yaowen discovery is
+  fixed to `/yaowen/liebiao/YAOWENLIEBIAO.json`; discovered details require `www.gov.cn`, the
+  `/yaowen/liebiao/` prefix, HTTPS, and no query/fragment. The Tier-A source does not weaken the v3
+  relevance gate: unrelated government affairs are filtered like any other out-of-scope item.
 
 ### 4. Validation & Error Matrix
 
@@ -167,7 +171,7 @@ bounded live gate; the approved target count is twelve.
   bilingual education/pathway/frontier positives, marketing/financing/product-release negatives,
   same-text bounded pathway substance, body bounds, product v1/v2 direction caps, and the
   eligibility/product separation.
-- Connector contracts cover all ten active and two pending source fixtures, ordering, exact
+- Connector contracts cover all eleven active and two pending source fixtures, ordering, exact
   article-path restrictions, duplicate anchor merging, sponsored/API/external/HTTP exclusion,
   parser drift, and source-specific selectors.
 - Real PostgreSQL/MinIO tests assert no unrelated detail fetch, zero-match success/cursor behavior,
@@ -265,12 +269,15 @@ Initial features follow the report: source trust, AI/science-education relevance
 freshness, communication potential, historical repetition, and controversy/marketing risk. Store
 each component and validate its range. Do not ask an LLM for an unexplained final number.
 
-The current `scoring-v1-preview.10-substantive-science-education-priority` gives 0.30 to tiered editorial
+The current `scoring-v1-preview.11-qualified-authoritative-priority` gives 0.30 to tiered editorial
 priority, 0.25 to product fit, 0.15 to source trust, and 0.10 each to source diversity, freshness,
 and communication potential. It keeps genuine hard vetoes but does not add the historical
 `outside_science_ai_education_scope` veto. Controlled Ministry education content may bypass the
 0.59 numeric threshold only when no hard veto exists and title/summary proves a substantive
-science-education policy, teaching practice, talent pathway, or frontier-education action. The
+science-education policy, teaching practice, talent pathway, or frontier-education action. A
+persisted China Government yaowen occurrence joins the same protected priority group only after it
+has a current qualified cohort, zero vetoes, and eligibility from the ordinary threshold or the
+existing governed hard-tech pool; the source policy never creates a new threshold bypass. The
 current broad-recall policy also admits governed
 Tier-A/B frontier hard-tech candidates to the LLM pool below 0.59 when no veto exists, while
 persisting `passes_threshold=false` and its policy reason. Historical `.8` remains threshold-bound
@@ -283,7 +290,8 @@ feature map, policy-action requirement, and Ministry priority semantics on repla
 
 Select Top 1 only from eligible candidates. Ordinary candidates require `total >= threshold`;
 authenticated Ministry education priority under `.6`/`.7`/`.8`/`.9` preserves historical v3
-behavior; `.10` applies only its substantive v4 classifier. Every bypass still requires zero hard
+behavior; `.10` applies only its substantive v4 classifier and remains replayable; `.11` composes
+that classifier with qualified China Government yaowen priority. Every bypass still requires zero hard
 vetoes. Stable tie-breakers must be documented (for example source tier,
 publication time, then stable ID). If none qualifies, persist
 `no_topic` and stop before retrieval, copy generation, or image generation.

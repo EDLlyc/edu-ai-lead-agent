@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from app.api_main import app
+from app.application.ports.acquisition import Fetcher
 from app.application.services.enqueue_runs import enqueue_manual_run
 from app.application.services.execute_acquisition import AcquisitionExecutor
 from app.core.config import Settings
@@ -22,6 +23,7 @@ from app.infrastructure.db.models import (
     SourceFetchLeaseModel,
     SourceModel,
     SourceObservationModel,
+    SourceSnapshotModel,
     SourceVersionModel,
 )
 from app.infrastructure.db.repositories import (
@@ -39,6 +41,9 @@ from .conftest import IntegrationContext
 FIXTURE_EVALUATED_AT = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
 XINHUA_EVALUATED_AT = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
 XINHUA_FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources" / "xinhua_tech_v1"
+GOV_YAOWEN_FIXTURE_ROOT = (
+    Path(__file__).parents[1] / "fixtures" / "sources" / "gov_cn_yaowen_v1"
+)
 
 
 def fixture_clock() -> datetime:
@@ -117,6 +122,46 @@ class XinhuaAerospaceFixtureFetcher:
         )
 
 
+class GovernmentYaowenFixtureFetcher:
+    def __init__(self) -> None:
+        self.requested_urls: list[str] = []
+
+    async def fetch(
+        self,
+        url: str,
+        profile: SourceProfile,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> FetchedResponse:
+        del etag, last_modified
+        self.requested_urls.append(url)
+        if url == profile.entry_url:
+            body = (GOV_YAOWEN_FIXTURE_ROOT / "list.json").read_bytes()
+            media_type = "application/json"
+        elif url.endswith("content_7079251.htm"):
+            body = (GOV_YAOWEN_FIXTURE_ROOT / "detail.html").read_bytes()
+            media_type = "text/html"
+        else:
+            body = (
+                "<!doctype html><html><head><title>有关部门部署防汛救灾工作</title></head>"
+                "<body><main class='pages_content'>"
+                f"<p>{'有关部门部署防汛救灾和应急保障工作,要求压实责任并保障群众安全。' * 5}</p>"
+                "</main></body></html>"
+            ).encode()
+            media_type = "text/html"
+        return FetchedResponse(
+            requested_url=url,
+            final_url=url,
+            status_code=200,
+            media_type=media_type,
+            body=body,
+            sha256=sha256_bytes(body),
+            fetched_at=datetime(2026, 8, 27, 1, 0, tzinfo=UTC),
+            headers={},
+        )
+
+
 async def _no_sleep(_seconds: float) -> None:
     return None
 
@@ -142,21 +187,24 @@ async def _cancel_nonterminal(context: IntegrationContext) -> None:
 
 async def _execute_government_run(
     context: IntegrationContext,
-    fetcher: RelevanceFixtureFetcher,
+    fetcher: Fetcher,
     *,
     sleep: Callable[[float], Awaitable[None]] = _no_sleep,
     settings: Settings | None = None,
     seed_before_run: bool = True,
+    source_slug: str = "china-government-policy",
+    clock: Callable[[], datetime] = fixture_clock,
 ) -> tuple[object, AcquisitionJobModel]:
     await _cancel_nonterminal(context)
     if seed_before_run:
         async with context.session_factory() as session:
             await seed_sources(session)
     repository = PostgresAcquisitionRepository(context.session_factory)
+    source = next(seed for seed in SOURCE_SEEDS if seed.slug == source_slug)
     run_id, created = await enqueue_manual_run(
         repository,
         settings or context.settings,
-        source_ids=[SOURCE_SEEDS[0].source_id],
+        source_ids=[source.source_id],
         idempotency_key=f"title-relevance-{uuid4()}",
     )
     assert created is True
@@ -167,7 +215,7 @@ async def _execute_government_run(
         settings or context.settings,
         sleep=sleep,
         jitter=lambda: 0.0,
-        clock=fixture_clock,
+        clock=clock,
     )
     assert await executor.execute_next("title-relevance-worker") is True
     async with context.session_factory() as session:
@@ -177,6 +225,75 @@ async def _execute_government_run(
         )
     assert job is not None
     return run, job
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_government_yaowen_persists_only_the_qualified_hard_tech_item(
+    integration_context: IntegrationContext,
+) -> None:
+    source = next(seed for seed in SOURCE_SEEDS if seed.slug == "china-government-news")
+    fetcher = GovernmentYaowenFixtureFetcher()
+    settings = integration_context.settings.model_copy(
+        update={
+            "acquisition_first_run_item_limit": 2,
+            "acquisition_daily_item_limit": 2,
+        }
+    )
+
+    run, job = await _execute_government_run(
+        integration_context,
+        fetcher,
+        settings=settings,
+        source_slug=source.slug,
+        clock=lambda: datetime(2026, 8, 27, 1, 0, tzinfo=UTC),
+    )
+
+    async with integration_context.session_factory() as session:
+        candidates = list(
+            (
+                await session.scalars(
+                    select(EvidenceCandidateModel).where(
+                        EvidenceCandidateModel.source_version_id == source.source_version_id,
+                        EvidenceCandidateModel.source_item_id.in_(
+                            ("content_7079251.htm", "content_7079252.htm")
+                        ),
+                    )
+                )
+            ).all()
+        )
+        snapshots = list(
+            (
+                await session.scalars(
+                    select(SourceSnapshotModel).where(
+                        SourceSnapshotModel.source_version_id == source.source_version_id
+                    )
+                )
+            ).all()
+        )
+
+    assert run.new_count == 1
+    assert run.filtered_count == 1
+    assert job.filtered_count == 1
+    assert [candidate.source_item_id for candidate in candidates] == ["content_7079251.htm"]
+    target = candidates[0]
+    assert target.original_url == (
+        "https://www.gov.cn/yaowen/liebiao/202608/content_7079251.htm"
+    )
+    assert target.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+    assert target.extraction_metadata["editorial_cohort"] == "frontier_science_technology"
+    assert target.extraction_metadata["editorial_priority_score"] == pytest.approx(0.86)
+    assert target.extraction_metadata["content_signals"] == [
+        "completed_progress",
+        "planned_or_in_progress",
+        "event_or_conference",
+    ]
+    assert any(snapshot.original_url == target.original_url for snapshot in snapshots)
+    assert fetcher.requested_urls == [
+        source.entry_url,
+        target.original_url,
+        "https://www.gov.cn/yaowen/liebiao/202608/content_7079252.htm",
+    ]
 
 
 @pytest.mark.integration

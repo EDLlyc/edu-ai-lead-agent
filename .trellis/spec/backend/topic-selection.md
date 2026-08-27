@@ -11,14 +11,14 @@ re-summarize, retrieve brand knowledge, call a model for the numeric score, gene
 or publish content.
 
 The current implemented preview is
-`scoring-v1-preview.10-substantive-science-education-priority`, with an ordinary numeric threshold
-of 0.59, an audited governed-hard-tech pool path, and substantive Ministry science-education
-priority. Its weights and threshold
+`scoring-v1-preview.11-qualified-authoritative-priority`, with an ordinary numeric threshold
+of 0.59, an audited governed-hard-tech pool path, substantive Ministry science-education priority,
+and qualified China Government yaowen priority. Its weights and threshold
 remain subject to later labeled calibration. Historical `.4`,
 `scoring-v1-preview.5-science-education-product-fit`, and literal
 `scoring-v1-preview.6-tiered-science-tech-priority` and
 `scoring-v1-preview.7-delivered-repeat-history`, `.8-threshold-059`, and literal
-`.9-broad-hard-tech-pool` snapshots remain
+`.9-broad-hard-tech-pool` and `.10-substantive-science-education-priority` snapshots remain
 deserializable and replayable
 with their original feature keys, source-priority behavior, and repeat-history provenance.
 
@@ -48,18 +48,18 @@ with their original feature keys, source-priority behavior, and repeat-history p
   HTTP 409 and creates no topic-selection run.
 - A scoring config is immutable by `(profile, version)` and stores its canonical JSON snapshot and
   SHA-256 fingerprint. Historical responses read the run snapshot, not current process settings.
-- `.6`, `.7`, `.8`, `.9`, and `.10` use positive weights of 0.30 tiered editorial priority, 0.25 product-matrix fit, 0.15 source
+- `.6`, `.7`, `.8`, `.9`, `.10`, and `.11` use positive weights of 0.30 tiered editorial priority, 0.25 product-matrix fit, 0.15 source
   trust, 0.10 source diversity, 0.10 freshness, and 0.10 communication potential. Education content
   has the strongest editorial values; qualified frontier advances have lower positive values and
   remain deterministic ranking inputs. Theme repetition, controversy, and marketing risk remain
-  explicit penalties. Literal `.6` and `.7` retain threshold 0.62; `.8`, `.9`, and `.10` use 0.59.
+  explicit penalties. Literal `.6` and `.7` retain threshold 0.62; `.8` through `.11` use 0.59.
 - The `.7` and `.8` immutable snapshots record `science-tech-editorial-v2`,
   `product-matrix-fit-v2-science-pathways`, `topic-veto-v4-delivered-content`, and
   `ministry-education-priority-v3`. Literal `.6` retains `topic-veto-v3-governed-content`; `.7`
   preserves threshold 0.62, while `.8` changes only that field to 0.59. Every other weight,
   editorial/product/priority identity, penalty, and tie-break remains the same. Explanations persist cohort, education/frontier scores, reason codes, product directions,
   threshold state, priority state, and threshold-bypass state.
-- The literal `.9` and current `.10` snapshots record `science-tech-editorial-v3-broad`,
+- The literal `.9`, `.10`, and current `.11` snapshots record `science-tech-editorial-v3-broad`,
   `hard-tech-pool-v1-governed-tier-ab`, and the same weights, 0.59 threshold, delivered-history
   veto, product-fit, Ministry-priority, and rerank boundaries. It persists typed completed,
   planned/in-progress, failure/setback, capital/market, event/conference, product/service-release,
@@ -72,6 +72,15 @@ with their original feature keys, source-priority behavior, and repeat-history p
   must also prove a science-education policy/action, curriculum/teaching practice, science-talent
   pathway, or frontier-education practice. Event-only meetings, promotions, and homonyms receive
   stable rejection reasons and cannot bypass 0.59. Hard vetoes remain authoritative.
+- `.11` records `qualified-authoritative-priority-v1`. It preserves the `.10` substantive Ministry
+  behavior, including its bounded numeric-threshold bypass, and adds
+  `gov-cn-qualified-science-tech-v1`. The latter authenticates only from a persisted source
+  occurrence and applies only when the current v3 cohort is qualified, every hard veto is absent,
+  and the candidate is already eligible through `total >= 0.59` or
+  `hard-tech-pool-v1-governed-tier-ab`. It never creates an independent threshold bypass.
+  If one event has both Ministry and China Government yaowen occurrences, `.11` preserves the
+  yaowen authentication path instead of collapsing the event to Ministry-only policy; literal
+  `.10` continues to project the Ministry policy exactly as before.
 - The `.5` immutable config snapshot records `science-ai-education-v1` and
   `product-matrix-fit-v1` and uses `topic-veto-v2-science-ai-education`. Its explanation stores relevance reasons, product direction IDs, raw
   feature values/components, and `source_priority_disabled_for_config`. Ministry occurrence
@@ -79,7 +88,7 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - `.4` uses its stored legacy `ai_relevance`/`parent_relevance` feature map and
   `topic-veto-v1`/`science-policy-priority-v2` semantics. Config deserialization branches on the stored feature
   keys and never reinterprets a historical value as a new editorial signal.
-- `.6`, `.7`, `.8`, `.9`, and `.10` retain every genuine hard veto but do not add `outside_science_ai_education_scope`.
+- `.6` through `.11` retain every genuine hard veto but do not add `outside_science_ai_education_scope`.
   Acquisition and the run-pinned editorial cohort own scope. A controlled Ministry occurrence in
   the pinned education cohort is eligible when no hard veto exists even below the ordinary threshold;
   persisted state then has `passes_threshold=false`, `eligible=true`, `priority_applied=true`, and
@@ -87,7 +96,8 @@ with their original feature keys, source-priority behavior, and repeat-history p
   pair (`.6`/`topic-veto-v3-governed-content`, or `.7`/`.8`/`.9` with
   `topic-veto-v4-delivered-content`), its pinned v2/v3 editorial identity, and
   `ministry-education-priority-v3`; text mentioning the Ministry cannot authenticate this policy.
-  `.10` requires its exact v4 priority identity plus substantive science-education text.
+  `.10` requires its exact v4 priority identity plus substantive science-education text; `.11`
+  requires its exact combined priority identity.
 - Hard vetoes are independent of the numeric total: unresolved governance, ineligible evidence,
   Tier-C-only evidence, unverified information, unsuitable negative incidents, privacy/legal/safety
   uncertainty, prohibited marketing claims, an audience-visible repeat inside the seven-day
@@ -95,12 +105,12 @@ with their original feature keys, source-priority behavior, and repeat-history p
   only `wecom_delivery_jobs(mode='formal', status='delivered')` reached through the typed
   selection -> copy run -> material package lineage supplies that prior date; absent, test, or any
   other job status does not. Literal `.6` and older veto identities remain selection-backed. `.5` additionally owns
-  `outside_science_ai_education_scope`; `.6`/`.7`/`.8` require a qualified v2 cohort and `.9`/`.10`
+  `outside_science_ai_education_scope`; `.6`/`.7`/`.8` require a qualified v2 cohort and `.9`/`.10`/`.11`
   require a qualified v3 cohort before numeric score or Ministry priority can create eligibility.
   Product fit, source tier, or any high numeric
-  total cannot rescue a veto or an out-of-scope `.6`/`.7`/`.8`/`.9`/`.10` candidate. The `.9`/`.10`
+  total cannot rescue a veto or an out-of-scope `.6` through `.11` candidate. The `.9`/`.10`/`.11`
   hard-tech pool requires a v3 frontier cohort plus eligible Tier-A/B evidence and zero vetoes.
-- Stable ordering is applied Ministry priority, ordinary eligible, below-threshold without veto,
+- Stable ordering is applied qualified-authoritative priority, ordinary eligible, below-threshold without veto,
   then hard-vetoed; within each group use total, source trust, event time, then UUID. Every
   considered event receives a persisted rank even when vetoed or below threshold.
 - The topic-rerank stage runs only after that deterministic ordering. Current snapshots use
@@ -145,7 +155,7 @@ with their original feature keys, source-priority behavior, and repeat-history p
 - A selected event ID and version ID must form a valid pair in `event_cluster_versions`; database
   composite foreign keys enforce this for runs, scores, and daily selections.
 - A day with neither an eligible score at or above threshold, an authenticated `.6`/`.7`/`.8`/`.9`
-  historical Ministry threshold bypass, a substantive `.10` Ministry bypass, nor a `.9`/`.10`
+  historical Ministry threshold bypass, a substantive `.10`/`.11` Ministry bypass, nor a `.9`/`.10`/`.11`
   governed-hard-tech pool candidate persists `no_topic` with one of `no_candidates`, `all_vetoed`, or
   `below_threshold`. Downstream brand/model/image work must not start for that decision.
 - Jobs use PostgreSQL claims, lease tokens, heartbeats, bounded attempts, and terminal states.
@@ -174,7 +184,7 @@ feature switches default to false. Each enabled slot owns an exact scheduled acq
 terminal governance lineage, immutable governed cutoff, 1--3 item limit, and independently computed
 preparation/target/expiry instants in the configured IANA timezone.
 
-`slot-ranking-v1` composes after the current `.10` selector. It may add only a bounded affinity from
+`slot-ranking-v1` composes after the current `.11` selector. It may add only a bounded affinity from
 stored governed/editorial/product projections when ordering already eligible candidates. It cannot
 change the base total, threshold, eligibility, Ministry priority, seven-day repeat decision, or any
 veto. Persist every considered score, affinity reason, same-day exclusion, stable ordering key and
@@ -199,15 +209,17 @@ remain selection-backed.
 | No governed events at the run cutoff | Persist `no_topic/no_candidates` |
 | Every candidate has a hard veto | Persist `no_topic/all_vetoed`; total cannot rescue it |
 | `.5` product fit is 1.0 but science/AI-education scope is false | Add `outside_science_ai_education_scope`; remain vetoed |
-| `.6`/`.7`/`.8`/`.9`/`.10` product fit and other components exceed threshold but the pinned cohort is out of scope | Remain ineligible; product fit cannot create qualification |
+| `.6` through `.11` product fit and other components exceed threshold but the pinned cohort is out of scope | Remain ineligible; product fit cannot create qualification |
 | `.6`/`.7`/`.8`/`.9` controlled Ministry education content is below threshold with no veto | Preserve historical v3 priority-group threshold bypass |
 | `.10` controlled Ministry content proves substantive science-education policy/practice/talent action | Eligible in priority group; may bypass only the numeric threshold |
 | `.10` Ministry item is only a meeting/event wrapper, promotion, or homonym | Do not apply priority or threshold bypass |
-| `.6`/`.7`/`.8`/`.9`/`.10` Ministry content has any genuine hard veto | Ineligible; priority cannot apply |
+| `.11` China Government yaowen has a qualified cohort, zero vetoes, and existing threshold/pool eligibility | Place it in the protected qualified-authoritative group |
+| `.11` China Government yaowen is out of scope, vetoed, or otherwise ineligible | Do not apply source priority or create a threshold bypass |
+| `.6` through `.11` Ministry content has any genuine hard veto | Ineligible; priority cannot apply |
 | Old, unknown, or mismatched scoring/veto identity names Ministry v3 | Do not bypass; an exact authenticated identity pair is required |
 | `.6`/`.7`/`.8` ordinary frontier content is below threshold | Ineligible; historical rules gain no new bypass |
-| `.9`/`.10` governed Tier-A/B frontier content is below threshold with no veto | Eligible for the bounded LLM pool; persist policy and bypass reason |
-| `.9`/`.10` hard-tech content is unverified, stale, repeated, unsafe, lacks eligible evidence, or is Tier-C-only | Ineligible; the pool policy cannot remove a veto |
+| `.9`/`.10`/`.11` governed Tier-A/B frontier content is below threshold with no veto | Eligible for the bounded LLM pool; persist policy and bypass reason |
+| `.9`/`.10`/`.11` hard-tech content is unverified, stale, repeated, unsafe, lacks eligible evidence, or is Tier-C-only | Ineligible; the pool policy cannot remove a veto |
 | `.7`/`.8`/`.9` prior selection has no formal delivered job | Keep `days_since_last_selection=null`; do not add repeat veto |
 | `.7`/`.8`/`.9` prior job is test, queued, running, partial, failed, cancelled, expired, or unknown | Ignore it for hard-repeat history |
 | `.7`/`.8`/`.9` formal delivered lineage has duplicate packages/jobs | De-duplicate event/version/date before latest-date aggregation |
@@ -225,7 +237,7 @@ remain selection-backed.
 
 ### 5. Good / Base / Bad Cases
 
-- Good: a `.10` run uses threshold 0.59 and the exact 30/25/15/10/10/10 weights, ranks completed
+- Good: a `.11` run uses threshold 0.59 and the exact 30/25/15/10/10/10 weights, ranks completed
   progress above equivalent generic hard-tech content, narrowly bypasses the threshold for
   substantive authenticated Ministry science education or governed Tier-A/B frontier content, and retains every
   feature, signal, reason, direction, penalty, veto, and tie-break input.
@@ -239,7 +251,7 @@ remain selection-backed.
 
 - [`test_topic_selection.py`](../../../backend/tests/unit/test_topic_selection.py): exact `.6`/`.7`/`.8`/`.9`
   metadata/fingerprint replay, v4 substantive Ministry positive/event-only/promotion/homonym cases,
-  every hard-veto non-bypass, `.9`/`.10` governed-hard-tech below-threshold admission and veto non-bypass, education/frontier rank,
+  every hard-veto non-bypass, `.9`/`.10`/`.11` governed-hard-tech below-threshold admission and veto non-bypass, qualified yaowen priority/non-bypass, education/frontier rank,
   product-fit non-rescue, exact
   `.4`/`.5` replay, stale-event cutoff, seven-day boundary, tie-break, and all `no_topic` branches.
 - [`test_topic_rerank.py`](../../../backend/tests/unit/test_topic_rerank.py) and

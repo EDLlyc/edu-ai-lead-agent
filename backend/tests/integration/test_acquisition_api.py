@@ -26,7 +26,7 @@ async def test_internal_api_lists_sources_and_enqueues_without_fetching(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         sources = await client.get("/api/v1/sources")
         assert sources.status_code == 200
-        assert sources.json()["count"] == 10
+        assert sources.json()["count"] == 11
         assert {item["relevance_rule_version"] for item in sources.json()["items"]} == {
             SCIENCE_TECH_EDITORIAL_RULE_VERSION,
         }
