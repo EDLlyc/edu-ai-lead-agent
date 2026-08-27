@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import signal
 from datetime import UTC, datetime
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -10,17 +11,45 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[impo
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
+from app.application.ports.content_slots import ContentSlotRepository
 from app.application.services.content_slots import reconcile_content_slot_selection
 from app.application.services.copy_generation import build_copy_version_bundle
 from app.application.services.topic_selection import reconcile_daily_topic_selection
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.core.errors import ConflictError
 from app.core.logging import configure_logging
+from app.domain.content_slots import ContentSlotSchedule
 from app.infrastructure.db.content_slots import PostgresContentSlotRepository
 from app.infrastructure.db.copy_generation import PostgresCopyGenerationRepository
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 
 logger = structlog.get_logger()
+
+
+async def _reconcile_scheduled_content_slot(
+    repository: ContentSlotRepository,
+    settings: Settings,
+    *,
+    schedule: ContentSlotSchedule,
+    now: datetime,
+) -> UUID | None:
+    """Keep one immutable historical slot from terminating the scheduler process."""
+
+    try:
+        return await reconcile_content_slot_selection(
+            repository,
+            settings,
+            schedule=schedule,
+            now=now,
+        )
+    except ConflictError as error:
+        logger.warning(
+            "content_slot_reconcile_conflict_skipped",
+            content_slot=schedule.slot.value,
+            error_code=error.code,
+        )
+        return None
 
 
 async def run_content_scheduler() -> None:
@@ -44,7 +73,7 @@ async def run_content_scheduler() -> None:
         now = datetime.now(UTC)
         if settings.content_slot_mode_enabled:
             for schedule in settings.content_slot_schedules():
-                run_id = await reconcile_content_slot_selection(
+                run_id = await _reconcile_scheduled_content_slot(
                     slot_repository,
                     settings,
                     schedule=schedule,

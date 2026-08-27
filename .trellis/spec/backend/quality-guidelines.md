@@ -343,6 +343,9 @@ At minimum, prove:
 - an LLM auditor cannot invent evidence or override a hard veto;
 - retryable failures back off and resume without duplicate side effects;
 - retry exhaustion produces a visible terminal state;
+- scheduler startup and periodic reconciliation treat an existing immutable run with a different
+  version/config identity as an idempotent skip: log the typed conflict, preserve the stored run,
+  continue other schedules, and never terminate the long-lived scheduler process;
 - package output supports manual use and exposes no publishing endpoint.
 - controlled visual diversity reserves two different plans before provider work, compares safe
   rasters against bounded seven-day history, calls the fake provider at most twice, stores only the
