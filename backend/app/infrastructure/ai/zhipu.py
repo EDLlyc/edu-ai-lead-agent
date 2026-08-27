@@ -813,6 +813,10 @@ class ZhipuFactualAnalysisModel:
                 {"role": "system", "content": prompt.system_message},
                 {"role": "user", "content": prompt.user_message},
             ],
+            # Factual analysis is a bounded JSON transformation. GLM-5.2 enables thinking by
+            # default, which can consume the complete max_tokens budget before emitting content.
+            # Keep that budget for the schema-bound answer, matching the other JSON adapters.
+            "thinking": {"type": "disabled"},
             "response_format": {"type": "json_object"},
             "temperature": _TEMPERATURE,
             "max_tokens": bounded_output_tokens,

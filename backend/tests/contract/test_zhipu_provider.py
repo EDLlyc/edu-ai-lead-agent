@@ -201,6 +201,7 @@ async def test_valid_json_object_response_crosses_boundary_as_typed_safe_metadat
     assert captured["url"] == "https://open.bigmodel.invalid/api/paas/v4/chat/completions"
     assert captured["authorization"] == "Bearer local-contract-secret"
     assert payload["model"] == "glm-5.2"
+    assert payload["thinking"] == {"type": "disabled"}
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["temperature"] == 0
     assert result.analysis.summary.passage_ids == (_request().passages[0].passage_id,)

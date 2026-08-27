@@ -371,6 +371,12 @@ deterministic fallback without a second provider call. Privacy tests must inspec
 completion bodies, provider bodies, and exception strings are absent. Literal v1 tests must prove
 its payload and exact-object parser did not inherit v2 behavior.
 
+Zhipu factual-analysis contracts must also assert `thinking={"type":"disabled"}` for bounded
+JSON transformations. GLM-5.2 enables thinking by default and can otherwise consume the complete
+`max_tokens` budget as reasoning while returning an empty content field. Keep the existing strict
+schema validation and one bounded issue-code correction; do not compensate by accepting an empty,
+truncated, or schema-invalid result.
+
 ### Front-to-back flow
 
 Maintain one end-to-end test for the first vertical slice: enqueue or provide a candidate, create a
