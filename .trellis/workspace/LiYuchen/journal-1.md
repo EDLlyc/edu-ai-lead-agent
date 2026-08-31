@@ -1815,3 +1815,24 @@ Implemented and independently verified the development-only Xiaosai gzh editor h
 ### Status
 
 [OK] **Completed**
+
+
+## Session 80: Alibaba multimodal brand RAG and real-data MCP
+
+**Date**: 2026-08-31
+**Task**: Alibaba multimodal brand RAG and real-data MCP
+**Branch**: `main`
+
+### Summary
+
+Enhanced the real-data Agent MCP with controlled Zhipu query planning/reranking, switched brand RAG end-to-end to Alibaba qwen3-vl-embedding, safely reindexed all four active brand documents, verified real PostgreSQL retrieval, and preserved unrelated workspace changes.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `719d9f9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
