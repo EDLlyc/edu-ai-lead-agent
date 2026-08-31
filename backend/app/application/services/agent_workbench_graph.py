@@ -73,6 +73,7 @@ class AgentWorkbenchGraphState(TypedDict, total=False):
     current_calls: tuple[AgentToolCall, ...]
     current_observations: tuple[AgentToolObservation, ...]
     pending_calls: tuple[AgentToolCall, ...]
+    tool_result_cache: dict[str, BaseModel]
     steps: tuple[AgentTraceStep, ...]
     proposed_answer: ProposedAgentAnswer
     terminal_status: AgentRunStatus
@@ -130,6 +131,7 @@ class BoundedAgentRunner:
             current_calls=(),
             current_observations=(),
             pending_calls=(),
+            tool_result_cache={},
             steps=(),
             terminal_claims=(),
             terminal_citations=(),
@@ -270,7 +272,21 @@ class BoundedAgentRunner:
             return _budget_exhausted(state)
         call = pending[0]
         tool_calls = state["tool_calls"] + 1
-        argument_summary = self._argument_summary(call)
+        cache_key: str | None = None
+        try:
+            cache_key = self._registry.canonical_invocation_key(
+                call.name,
+                call.arguments_json,
+            )
+        except AgentToolFailure:
+            pass
+        cached_result = state["tool_result_cache"].get(cache_key) if cache_key is not None else None
+        cache_hit = cached_result is not None
+        argument_summary = (
+            *self._argument_summary(call),
+            ("cache_hit", cache_hit),
+            ("cache_scope", "agent_run"),
+        )
         call_step = AgentTraceStep(
             ordinal=len(state["steps"]) + 1,
             kind=AgentTraceKind.TOOL_CALL,
@@ -283,8 +299,11 @@ class BoundedAgentRunner:
         result: BaseModel | None = None
         failure: AgentToolFailure | None = None
         try:
-            async with asyncio.timeout(_remaining_seconds(state, self._limits, self._clock)):
-                result = await self._registry.invoke(call.name, call.arguments_json)
+            if cached_result is not None:
+                result = cached_result
+            else:
+                async with asyncio.timeout(_remaining_seconds(state, self._limits, self._clock)):
+                    result = await self._registry.invoke(call.name, call.arguments_json)
         except TimeoutError:
             failure = AgentToolFailure(AgentToolErrorCode.TIMEOUT)
         except asyncio.CancelledError:
@@ -313,6 +332,9 @@ class BoundedAgentRunner:
                 citation_ids=citation_ids,
             )
             successful_tool_calls = state["successful_tool_calls"] + 1
+            tool_result_cache = dict(state["tool_result_cache"])
+            if cache_key is not None and not cache_hit:
+                tool_result_cache[cache_key] = result
         else:
             resolved_failure = failure or AgentToolFailure(AgentToolErrorCode.UNAVAILABLE)
             content_json = json.dumps(
@@ -343,6 +365,7 @@ class BoundedAgentRunner:
                 duration_ms=duration_ms,
             )
             successful_tool_calls = state["successful_tool_calls"]
+            tool_result_cache = state["tool_result_cache"]
 
         observations = (*state["current_observations"], observation)
         remaining_pending = pending[1:]
@@ -352,6 +375,7 @@ class BoundedAgentRunner:
             tool_latency_ms=state["tool_latency_ms"] + duration_ms,
             current_observations=observations,
             pending_calls=remaining_pending,
+            tool_result_cache=tool_result_cache,
             steps=(*state["steps"], call_step, result_step),
         )
         if not remaining_pending:

@@ -28,15 +28,14 @@ from app.application.services.topic_selection import TopicSelectionExecutor
 from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
-from app.infrastructure.ai.brand import GovernanceEmbeddingBrandAdapter
 from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
     DeterministicFakeMaterialDraftGenerator,
     create_zhipu_copy_models,
 )
 from app.infrastructure.ai.factory import (
+    create_brand_embedding_model,
     create_brand_ocr_model,
-    create_embedding_model,
     create_image_generator,
     create_image_quality_auditor,
     create_image_text_recognizer,
@@ -61,6 +60,12 @@ from app.infrastructure.storage.minio_brand_store import MinioBrandOriginalStore
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 
 logger = structlog.get_logger()
+
+
+def _brand_ingestion_provider_enabled(settings: Settings) -> bool:
+    """Keep brand ingestion availability independent from governance AI mode."""
+
+    return settings.resolved_brand_embedding_provider_mode != "disabled"
 
 
 async def run_content_worker() -> None:
@@ -103,6 +108,11 @@ async def run_content_worker() -> None:
         )
         if settings.ai_provider_mode == "zhipu":
             embedding_client = httpx.AsyncClient(follow_redirects=False)
+        if settings.resolved_brand_embedding_provider_mode == "alibaba" or (
+            settings.visual_semantic_enabled
+            and settings.visual_embedding_provider_mode == "alibaba"
+        ):
+            visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
         reranker: TopicReranker | None = None
         if settings.content_enabled and settings.content_llm_rerank_enabled:
             if settings.ai_provider_mode == "fake":
@@ -143,7 +153,8 @@ async def run_content_worker() -> None:
                     or settings.visual_embedding_api_key is None
                 ):
                     raise RuntimeError("validated visual embedding secrets are unavailable")
-                visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
+                if visual_embedding_client is None:
+                    visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
                 visual_embeddings = AlibabaVisualEmbeddingAdapter(
                     client=visual_embedding_client,
                     endpoint=settings.visual_embedding_endpoint,
@@ -179,10 +190,13 @@ async def run_content_worker() -> None:
                 image_quality_auditor=image_quality_auditor,
                 visual_retrieval_service=visual_retrieval_service,
             )
-        if settings.ai_provider_mode != "disabled":
+        brand_repository: PostgresBrandKnowledgeRepository | None = None
+        brand_embeddings = None
+        if _brand_ingestion_provider_enabled(settings):
             brand_repository = PostgresBrandKnowledgeRepository(session_factory)
-            brand_embeddings = GovernanceEmbeddingBrandAdapter(
-                create_embedding_model(settings, client=embedding_client)
+            brand_embeddings = create_brand_embedding_model(
+                settings,
+                client=visual_embedding_client,
             )
             brand_ocr = (
                 create_brand_ocr_model(settings, client=embedding_client)
@@ -207,6 +221,11 @@ async def run_content_worker() -> None:
                 ocr=brand_ocr,
                 settings=settings,
             )
+        if (
+            settings.ai_provider_mode != "disabled"
+            and brand_repository is not None
+            and brand_embeddings is not None
+        ):
             generator: MaterialDraftGenerator
             auditor: MaterialDraftAuditor
             if settings.ai_provider_mode == "fake":

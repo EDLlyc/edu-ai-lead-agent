@@ -47,6 +47,27 @@ def test_registry_is_canonical_read_only_and_stable() -> None:
     assert all(definition.output_schema() for definition in first)
 
 
+def test_registry_invocation_key_uses_validated_canonical_arguments() -> None:
+    registry = build_fixture_tool_registry()
+    mapping_key = registry.canonical_invocation_key(
+        "search_evidence",
+        {"query": "人工智能教育", "limit": 1, "candidate_id": None},
+    )
+    json_key = registry.canonical_invocation_key(
+        "search_evidence",
+        '{"candidate_id":null,"limit":1,"query":"人工智能教育"}',
+    )
+
+    assert mapping_key == json_key
+    assert len(mapping_key) == 64
+    with pytest.raises(AgentToolFailure) as invalid:
+        registry.canonical_invocation_key(
+            "search_evidence",
+            {"query": "", "limit": 1, "candidate_id": None},
+        )
+    assert invalid.value.code is AgentToolErrorCode.INVALID_ARGUMENTS
+
+
 @pytest.mark.asyncio
 async def test_four_fixture_tools_preserve_evidence_brand_and_validator_boundaries() -> None:
     registry = build_fixture_tool_registry()

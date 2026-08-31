@@ -20,8 +20,11 @@ from app.application.services.brand_knowledge import retrieve_brand_context
 from app.core.errors import NotFoundError, ProviderIdentityMismatchError
 from app.domain.brand_knowledge import (
     BrandAudience,
+    BrandClaimScope,
+    BrandContentType,
     BrandDocumentKind,
     BrandRetrievalHit,
+    BrandSectionKind,
     BrandVersionStatus,
 )
 from app.domain.copy_generation import (
@@ -44,6 +47,7 @@ from app.infrastructure.db.models import (
     BrandChunkModel,
     BrandDocumentModel,
     BrandDocumentVersionModel,
+    BrandSectionModel,
     CandidateAnalysisModel,
     CopyGenerationRunModel,
     EventClusterModel,
@@ -64,9 +68,11 @@ class PostgresAgentKnowledgeReader:
         session_factory: async_sessionmaker[AsyncSession],
         *,
         brand_embeddings: BrandEmbeddingModel,
+        brand_retrieval_version: str,
     ) -> None:
         self._session_factory = session_factory
         self._brand_embeddings = brand_embeddings
+        self._brand_retrieval_version = brand_retrieval_version
         self._brand_repository = cast(
             BrandKnowledgeRepository,
             _ReadOnlyBrandRepository(session_factory),
@@ -235,6 +241,7 @@ class PostgresAgentKnowledgeReader:
             document_kinds=document_kinds,
             valid_on=valid_on,
             limit=limit,
+            retrieval_version=self._brand_retrieval_version,
         )
 
     async def load_copy_validation_context(
@@ -376,7 +383,12 @@ async def _load_active_brand_context(
     rows = tuple(
         (
             await session.execute(
-                select(BrandChunkModel, BrandDocumentVersionModel, BrandDocumentModel)
+                select(
+                    BrandChunkModel,
+                    BrandDocumentVersionModel,
+                    BrandDocumentModel,
+                    BrandSectionModel,
+                )
                 .join(
                     BrandDocumentVersionModel,
                     BrandDocumentVersionModel.id == BrandChunkModel.version_id,
@@ -384,6 +396,10 @@ async def _load_active_brand_context(
                 .join(
                     BrandDocumentModel,
                     BrandDocumentModel.id == BrandDocumentVersionModel.document_id,
+                )
+                .outerjoin(
+                    BrandSectionModel,
+                    BrandSectionModel.id == BrandChunkModel.section_id,
                 )
                 .where(
                     BrandChunkModel.id.in_(brand_chunk_ids),
@@ -415,8 +431,17 @@ async def _load_active_brand_context(
             tone_tags=tuple(version.tone_tags),
             safety_tags=tuple(version.safety_tags),
             visual_tags=tuple(version.visual_tags),
+            section_id=section.id if section is not None else None,
+            section_title=section.title if section is not None else None,
+            section_kind=BrandSectionKind(section.kind) if section is not None else None,
+            source_page=section.source_page if section is not None else None,
+            question_number=section.question_number if section is not None else None,
+            question_text=section.question_text if section is not None else None,
+            content_type=BrandContentType(chunk.content_type),
+            claim_scope=BrandClaimScope(chunk.claim_scope),
+            verification_required=chunk.verification_required,
         )
-        for chunk, version, document in rows
+        for chunk, version, document, section in rows
     }
     if set(by_id) != set(brand_chunk_ids):
         raise NotFoundError("brand chunk")

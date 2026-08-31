@@ -82,6 +82,7 @@ async def test_postgres_evidence_search_is_bounded_governed_and_read_only() -> N
     reader = PostgresAgentKnowledgeReader(
         cast(async_sessionmaker[AsyncSession], _SessionFactory(session)),
         brand_embeddings=cast(BrandEmbeddingModel, object()),
+        brand_retrieval_version="brand-hybrid-rrf-v3-parent-diverse",
     )
 
     records = await reader.search_evidence(
@@ -128,6 +129,7 @@ async def test_brand_embedding_identity_mismatch_is_typed_unavailable() -> None:
     reader = PostgresAgentKnowledgeReader(
         cast(async_sessionmaker[AsyncSession], _SessionFactory(session)),
         brand_embeddings=_MismatchedBrandEmbedding(),
+        brand_retrieval_version="brand-hybrid-rrf-v3-parent-diverse",
     )
     registry = build_agent_tool_registry(reader)
 
@@ -158,6 +160,7 @@ async def test_brand_embedding_identity_match_continues_to_bounded_retrieval() -
     reader = PostgresAgentKnowledgeReader(
         cast(async_sessionmaker[AsyncSession], _SessionFactory(session)),
         brand_embeddings=_MismatchedBrandEmbedding(),
+        brand_retrieval_version="brand-hybrid-rrf-v3-parent-diverse",
     )
     registry = build_agent_tool_registry(reader)
 

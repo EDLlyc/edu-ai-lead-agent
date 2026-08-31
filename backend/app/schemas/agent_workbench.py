@@ -16,7 +16,12 @@ from app.domain.agent_workbench import (
     AgentTraceKind,
     AgentTraceStatus,
 )
-from app.domain.brand_knowledge import BrandDocumentKind
+from app.domain.brand_knowledge import (
+    BrandClaimScope,
+    BrandContentType,
+    BrandDocumentKind,
+    BrandSectionKind,
+)
 from app.schemas.copy_generation import MaterialDraft
 
 
@@ -130,6 +135,15 @@ class BrandContextToolItem(_StrictModel):
     excerpt: str = Field(min_length=1, max_length=500)
     tone_tags: tuple[str, ...] = Field(default=(), max_length=12)
     safety_tags: tuple[str, ...] = Field(default=(), max_length=12)
+    section_id: UUID | None = None
+    section_title: str | None = Field(default=None, max_length=240)
+    section_kind: BrandSectionKind | None = None
+    source_page: int | None = Field(default=None, ge=1)
+    question_number: int | None = Field(default=None, ge=1)
+    question_text: str | None = Field(default=None, max_length=1_000)
+    content_type: BrandContentType | None = None
+    claim_scope: BrandClaimScope | None = None
+    verification_required: bool = False
     evidence_eligible: Literal[False] = False
 
 

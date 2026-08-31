@@ -7,13 +7,17 @@ from typing import TypeVar
 import httpx
 from pydantic import SecretStr
 
-from app.application.ports.brand_knowledge import BrandDocumentOcrModel
+from app.application.ports.brand_knowledge import BrandDocumentOcrModel, BrandEmbeddingModel
 from app.application.ports.copy_generation import MaterialDraftAuditor, MaterialDraftGenerator
 from app.application.ports.governance import EmbeddingModel, FactualAnalysisModel
 from app.application.ports.image_generation import ImageGenerator
 from app.application.ports.image_validation import ImageQualityAuditor, ImageTextRecognizer
 from app.application.ports.ip_assets import IpAssetRecognitionModel
 from app.core.config import Settings
+from app.infrastructure.ai.brand import (
+    AlibabaMultimodalBrandEmbeddingAdapter,
+    GovernanceEmbeddingBrandAdapter,
+)
 from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftAuditor,
     DeterministicFakeMaterialDraftGenerator,
@@ -33,6 +37,7 @@ from app.infrastructure.ai.image_validation import (
     OpenAICompatibleImageQualityAuditor,
 )
 from app.infrastructure.ai.ip_asset_recognition import ZhipuIpAssetRecognitionAdapter
+from app.infrastructure.ai.visual_embedding import AlibabaVisualEmbeddingAdapter
 from app.infrastructure.ai.zhipu import (
     ZhipuBrandDocumentOcrModel,
     ZhipuEmbeddingModel,
@@ -97,6 +102,35 @@ def create_embedding_model(
         concurrency=settings.ai_provider_concurrency,
         max_attempts=settings.ai_max_attempts,
         max_input_characters=settings.ai_max_input_characters,
+    )
+
+
+def create_brand_embedding_model(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> BrandEmbeddingModel:
+    """Create the brand-only vector model without changing governance embeddings."""
+
+    mode = settings.resolved_brand_embedding_provider_mode
+    if mode == "disabled":
+        raise RuntimeError("brand embedding model provider is disabled")
+    if mode == "fake":
+        return GovernanceEmbeddingBrandAdapter(create_embedding_model(settings, client=client))
+    if (
+        client is None
+        or settings.visual_embedding_endpoint is None
+        or settings.visual_embedding_api_key is None
+    ):
+        raise RuntimeError("Alibaba brand embedding requires an owned HTTP client")
+    multimodal = AlibabaVisualEmbeddingAdapter(
+        client=client,
+        endpoint=settings.visual_embedding_endpoint,
+        api_key=settings.visual_embedding_api_key,
+        timeout_seconds=settings.visual_embedding_timeout_seconds,
+        concurrency=settings.visual_embedding_concurrency,
+    )
+    return AlibabaMultimodalBrandEmbeddingAdapter(
+        multimodal,
+        identity=settings.visual_embedding_identity,
     )
 
 

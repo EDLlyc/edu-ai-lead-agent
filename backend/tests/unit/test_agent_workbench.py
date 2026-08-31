@@ -16,6 +16,7 @@ from app.application.ports.agent_workbench import (
     ModelDecisionRequest,
     ToolCallsDecision,
 )
+from app.application.services.agent_tools import ToolDefinition, TypedToolRegistry
 from app.application.services.agent_workbench_graph import BoundedAgentRunner
 from app.domain.agent_workbench import (
     AgentClaim,
@@ -26,6 +27,8 @@ from app.domain.agent_workbench import (
 )
 from app.infrastructure.agent_workbench_fixture import FIXTURE_EVIDENCE_ID
 from app.infrastructure.ai.agent_workbench import RecordedToolCallingModel
+from app.schemas.agent_workbench import SearchEvidenceArguments, SearchEvidenceResult
+from pydantic import BaseModel
 
 
 def _metadata() -> ModelDecisionMetadata:
@@ -153,6 +156,58 @@ async def test_exact_four_calls_can_still_receive_final_synthesis() -> None:
     assert result.status is AgentRunStatus.COMPLETED
     assert result.metrics.tool_calls == 4
     assert result.metrics.model_turns == 2
+
+
+@pytest.mark.asyncio
+async def test_repeated_exact_tool_call_reuses_success_within_one_agent_run() -> None:
+    executions = 0
+
+    async def handler(_arguments: BaseModel) -> BaseModel:
+        nonlocal executions
+        executions += 1
+        return SearchEvidenceResult()
+
+    registry = TypedToolRegistry(
+        (
+            ToolDefinition(
+                name="search_evidence",
+                description="Read-only cache behavior test.",
+                argument_model=SearchEvidenceArguments,
+                result_model=SearchEvidenceResult,
+                handler=handler,
+            ),
+        )
+    )
+    arguments = {"query": "人工智能教育", "limit": 1, "candidate_id": None}
+    decisions = (
+        ToolCallsDecision(
+            calls=(
+                _call("call-cache-1", "search_evidence", arguments),
+                _call("call-cache-2", "search_evidence", arguments),
+            ),
+            metadata=_metadata(),
+        ),
+        FinalAnswerDecision(
+            answer=ProposedAgentAnswer(
+                status="refused",
+                summary="No evidence was available.",
+                refusal_code="insufficient_evidence",
+            ),
+            metadata=_metadata(),
+        ),
+    )
+
+    result = await BoundedAgentRunner(
+        registry=registry,
+        model=RecordedToolCallingModel(decisions),
+    ).run("Repeat one exact tool call")
+
+    assert executions == 1
+    assert result.metrics.tool_calls == 2
+    assert result.metrics.successful_tool_calls == 2
+    call_steps = [step for step in result.steps if step.kind.value == "tool_call"]
+    assert [dict(step.safe_arguments)["cache_hit"] for step in call_steps] == [False, True]
+    assert all(dict(step.safe_arguments)["cache_scope"] == "agent_run" for step in call_steps)
 
 
 @pytest.mark.asyncio

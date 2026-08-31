@@ -13,6 +13,8 @@ class AgentWorkbenchSettings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     agent_workbench_enabled: bool = False
     agent_workbench_data_mode: Literal["fixture"] = "fixture"
+    agent_mcp_data_mode: Literal["fixture", "postgres"] = "fixture"
+    agent_mcp_real_data_enabled: bool = False
     agent_workbench_model_mode: Literal["deterministic", "openai"] = "deterministic"
     agent_workbench_live_enabled: bool = False
     agent_workbench_openai_base_url: str | None = None
@@ -31,6 +33,13 @@ class AgentWorkbenchSettings(BaseSettings):
     def validate_local_only_contract(self) -> Self:
         if self.agent_workbench_enabled and self.app_env == "production":
             raise ValueError("agent workbench cannot be enabled in production")
+        if self.agent_mcp_real_data_enabled:
+            if self.app_env != "development":
+                raise ValueError("real-data agent MCP is development-only")
+            if self.agent_mcp_data_mode != "postgres":
+                raise ValueError("real-data agent MCP requires postgres data mode")
+        elif self.agent_mcp_data_mode != "fixture":
+            raise ValueError("postgres agent MCP data mode requires explicit enablement")
         if self.agent_workbench_model_mode == "openai":
             if not self.agent_workbench_live_enabled:
                 raise ValueError("OpenAI-compatible workbench mode requires explicit live opt-in")

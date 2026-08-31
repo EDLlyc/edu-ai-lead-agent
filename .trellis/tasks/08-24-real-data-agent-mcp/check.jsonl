@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Required safety and test matrix for verifying fixture compatibility, bounded tool behavior and PostgreSQL read-only guarantees."}
+{"file":".trellis/tasks/08-24-real-data-agent-mcp/prd.md","reason":"User-approved local development PostgreSQL scope, all-four-tool coverage and explicit out-of-scope boundaries."}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Verify enhanced retrieval retains provider/model identity, governance filters, hybrid retrieval and Recall@5/nDCG@5 evaluation contracts."}
+{"file":".trellis/tasks/08-24-real-data-agent-mcp/design.md","reason":"Verify QueryPlanner, RRF, rerank, cache and fail-soft behavior match the approved bounded design without changing MCP schemas."}

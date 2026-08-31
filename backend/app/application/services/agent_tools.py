@@ -160,6 +160,29 @@ class TypedToolRegistry:
     def model_tool_schemas(self) -> tuple[Mapping[str, object], ...]:
         return tuple(definition.model_tool_schema() for definition in self._definitions)
 
+    def canonical_invocation_key(
+        self,
+        name: str,
+        arguments: Mapping[str, object] | str,
+    ) -> str:
+        """Hash one validated invocation for exact, run-scoped result reuse."""
+
+        definition = self.get(name)
+        arguments_json = _arguments_json(arguments, definition.max_argument_bytes)
+        try:
+            validated_arguments = definition.argument_model.model_validate_json(arguments_json)
+        except ValidationError:
+            raise AgentToolFailure(AgentToolErrorCode.INVALID_ARGUMENTS) from None
+        canonical_arguments = json.dumps(
+            validated_arguments.model_dump(mode="json"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return sha256(
+            "\0".join((self.schema_hash, name, canonical_arguments)).encode("utf-8")
+        ).hexdigest()
+
     async def invoke(
         self,
         name: str,
@@ -294,6 +317,23 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
                     excerpt=_bounded_text(hit.text, 500),
                     tone_tags=tuple(_bounded_text(item, 80) for item in hit.tone_tags[:12]),
                     safety_tags=tuple(_bounded_text(item, 80) for item in hit.safety_tags[:12]),
+                    section_id=hit.section_id,
+                    section_title=(
+                        _bounded_text(hit.section_title, 240)
+                        if hit.section_title is not None
+                        else None
+                    ),
+                    section_kind=hit.section_kind,
+                    source_page=hit.source_page,
+                    question_number=hit.question_number,
+                    question_text=(
+                        _bounded_text(hit.question_text, 1_000)
+                        if hit.question_text is not None
+                        else None
+                    ),
+                    content_type=hit.content_type,
+                    claim_scope=hit.claim_scope,
+                    verification_required=hit.verification_required,
                     evidence_eligible=False,
                 )
                 for hit in hits[: arguments.limit]

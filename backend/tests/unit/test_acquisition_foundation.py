@@ -103,6 +103,12 @@ def test_visual_embedding_defaults_are_provider_free_and_enabled_mode_is_closed(
     assert (
         defaults.visual_embedding_identity.input_policy_version == "brand-visual-embedding-input-v2"
     )
+    assert defaults.resolved_brand_embedding_provider_mode == "disabled"
+    assert defaults.brand_embedding_provider == "disabled"
+
+    fake_brand = Settings(_env_file=None, ai_provider_mode="fake")
+    assert fake_brand.resolved_brand_embedding_provider_mode == "fake"
+    assert fake_brand.brand_embedding_model == "embedding-3"
 
     with pytest.raises(ValidationError):
         Settings(
@@ -141,6 +147,9 @@ def test_visual_embedding_defaults_are_provider_free_and_enabled_mode_is_closed(
             visual_semantic_enabled=True,
             visual_embedding_provider_mode="alibaba",
         )
+
+    with pytest.raises(ValidationError, match="endpoint and API key"):
+        Settings(_env_file=None, brand_embedding_provider_mode="alibaba")
 
 
 def test_visual_embedding_dimensions_parse_exact_env_contract(

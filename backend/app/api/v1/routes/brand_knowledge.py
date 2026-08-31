@@ -123,9 +123,9 @@ async def upload_brand_document(
         parser_version=settings.brand_parser_version,
         chunk_version=settings.brand_chunk_version,
         embedding_input_version=settings.brand_embedding_input_version,
-        embedding_provider=settings.ai_provider_mode,
-        embedding_model=settings.ai_embedding_model,
-        dimensions=settings.ai_embedding_dimensions,
+        embedding_provider=settings.brand_embedding_provider,
+        embedding_model=settings.brand_embedding_model,
+        dimensions=settings.brand_embedding_dimensions,
     )
     durable_job = await get_brand_ingestion_job(session, job_id)
     status_url = f"/api/v1/brand-ingestion-jobs/{job_id}"

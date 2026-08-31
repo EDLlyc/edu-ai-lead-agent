@@ -29,8 +29,10 @@ user or public search role.
   with a bounded safe projection of the private visual catalog.
 - Worker: `python -m app.content_worker_main`; it alternates topic-selection and brand-ingestion
   claims when both queues contain work.
-- Offline acceptance: `AI_PROVIDER_MODE=fake`; production provider: `AI_PROVIDER_MODE=zhipu` with
-  the key supplied only through process/deployment secrets.
+- Offline acceptance: `AI_PROVIDER_MODE=fake`; live brand vectors:
+  `BRAND_EMBEDDING_PROVIDER_MODE=alibaba` (or `auto` with the Alibaba visual provider configured),
+  using `qwen3-vl-embedding` and secrets supplied only through process/deployment settings. Zhipu
+  remains the text-generation/OCR and governance-vector provider.
 
 ### 3. Contracts
 
@@ -47,6 +49,17 @@ user or public search role.
 - The worker claims and recovers stale leases only for versions matching its parser, chunk,
   embedding-input, provider, and model identity. The persisted vector result must match the
   immutable provider/model and contain exactly 2048 finite, non-zero values.
+- Brand upload, worker claim, API/content retrieval, and real-data MCP retrieval resolve provider,
+  model, and dimensions through the same brand-specific settings/factory. They must not reuse the
+  governance/article embedding identity merely because both vectors have 2048 dimensions.
+- Brand-ingestion worker availability follows the resolved brand provider, not
+  `AI_PROVIDER_MODE`. Alibaba brand ingestion may run while governance AI is disabled; sparse PDFs
+  then fail through the existing typed OCR-unavailable path rather than disabling all text-layer
+  brand ingestion. Copy generation keeps its independent fake/Zhipu provider requirement.
+- Alibaba's upstream text fingerprint may repeat for identical text. The persisted brand
+  `request_fingerprint` therefore hashes a version label, `chunk_id`, and the upstream fingerprint;
+  it remains deterministic 64-hex metadata without including text. This changes no vector input,
+  provider/model identity, parser/chunk version, or embedding-input policy.
 - Parsing is bounded by file signature, MIME/extension agreement, bytes, PDF pages, text
   characters, chunk count, and DOCX archive safety rules. DOCX macros, embedded objects, external
   relationships, unsafe expansion, and encrypted PDFs are rejected.
@@ -146,6 +159,12 @@ null-safe per-row compatibility key. Duplicate-text constraints are relaxed only
 The frozen `brand-hybrid-rrf-v2-diverse` rollback path keeps the prior document cap and adjacent
 global-ordinal avoidance. Every retrieval caller passes the validated retrieval version through to
 the repository; responses must never echo v2 while executing the v3 selector, or vice versa.
+
+Historical brand vectors from another provider are immutable. The development-only
+`python -m app.brand_embedding_reindex_main plan` command reports aggregate drift without writes;
+`migrate --execute` creates a new derivation from each immutable original under the current
+parser/chunk/input bundle, processes it with Alibaba, and activates only ready versions. Never
+rewrite provider/model columns or reuse old vectors across vector spaces.
 
 ### 3.3 Provider-free text-retrieval policy evaluation
 

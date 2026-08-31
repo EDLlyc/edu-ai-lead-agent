@@ -356,6 +356,11 @@ class Settings(BaseSettings):
     visual_embedding_concurrency: int = Field(default=1, ge=1, le=4)
     visual_index_lease_seconds: int = Field(default=300, ge=30, le=3_600)
 
+    # Brand text RAG intentionally has an identity separate from the governance/article
+    # embedding provider. ``auto`` preserves deterministic fake tests while selecting the
+    # configured Alibaba multimodal vector space in development/runtime deployments.
+    brand_embedding_provider_mode: Literal["auto", "disabled", "fake", "alibaba"] = "auto"
+
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
     ai_platform_api_key: SecretStr | None = None
@@ -428,6 +433,35 @@ class Settings(BaseSettings):
             dimensions=self.visual_embedding_dimensions,
             input_policy_version=self.visual_embedding_input_policy_version,
         )
+
+    @property
+    def resolved_brand_embedding_provider_mode(self) -> Literal["disabled", "fake", "alibaba"]:
+        if self.brand_embedding_provider_mode != "auto":
+            return self.brand_embedding_provider_mode
+        if self.ai_provider_mode == "fake":
+            return "fake"
+        if self.visual_embedding_provider_mode == "alibaba":
+            return "alibaba"
+        return "disabled"
+
+    @property
+    def brand_embedding_provider(self) -> str:
+        mode = self.resolved_brand_embedding_provider_mode
+        if mode == "alibaba":
+            return self.visual_embedding_identity.provider
+        return mode
+
+    @property
+    def brand_embedding_model(self) -> str:
+        if self.resolved_brand_embedding_provider_mode == "alibaba":
+            return self.visual_embedding_identity.model
+        return self.ai_embedding_model
+
+    @property
+    def brand_embedding_dimensions(self) -> int:
+        if self.resolved_brand_embedding_provider_mode == "alibaba":
+            return self.visual_embedding_identity.dimensions
+        return self.ai_embedding_dimensions
 
     @field_validator("content_llm_rerank_policy_version")
     @classmethod
@@ -705,7 +739,10 @@ class Settings(BaseSettings):
             raise ValueError("visual semantic retrieval requires approved asset selection")
         if self.visual_index_lease_seconds <= self.visual_embedding_timeout_seconds:
             raise ValueError("visual index lease must outlast the embedding timeout")
-        if self.visual_embedding_provider_mode == "alibaba":
+        if (
+            self.visual_embedding_provider_mode == "alibaba"
+            or self.resolved_brand_embedding_provider_mode == "alibaba"
+        ):
             endpoint = (
                 self.visual_embedding_endpoint.get_secret_value().strip()
                 if self.visual_embedding_endpoint is not None
@@ -732,6 +769,8 @@ class Settings(BaseSettings):
                 or parsed_endpoint.fragment
             ):
                 raise ValueError("Alibaba visual embedding endpoint must be the Beijing REST URL")
+        if self.brand_embedding_provider_mode == "fake" and self.ai_provider_mode != "fake":
+            raise ValueError("fake brand embedding requires fake AI provider mode")
         if self.image_diversity_enabled:
             if not self.image_enabled:
                 raise ValueError("image diversity requires image generation to be enabled")

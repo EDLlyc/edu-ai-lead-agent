@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Canonical registry, PostgreSQL read-only, MCP transport, local-only and validation contracts the real-data composition must preserve."}
+{"file":".trellis/tasks/08-24-real-data-agent-mcp/design.md","reason":"Approved architecture and lifecycle/data-boundary decisions for the independent real-data MCP entrypoint."}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Existing embedding identity, hybrid FTS+pgvector RRF, audience/effective-date filtering and retrieval evaluation contracts that enhanced brand retrieval must preserve."}
+{"file":".trellis/tasks/08-24-real-data-agent-mcp/research/zhipu-retrieval-capabilities.md","reason":"Verified provider endpoints, structured-output constraints, model selection and deterministic fallback decisions for Zhipu planning, embedding and reranking."}

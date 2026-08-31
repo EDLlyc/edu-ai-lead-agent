@@ -37,9 +37,8 @@ from app.application.services.visual_retrieval import VisualRetrievalService
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging
-from app.infrastructure.ai.brand import GovernanceEmbeddingBrandAdapter
 from app.infrastructure.ai.factory import (
-    create_embedding_model,
+    create_brand_embedding_model,
     create_image_generator,
     create_ip_asset_recognition_model,
 )
@@ -71,7 +70,6 @@ class HealthResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    embedding_client: httpx.AsyncClient | None = None
     image_client: httpx.AsyncClient | None = None
     visual_embedding_client: httpx.AsyncClient | None = None
     ip_asset_recognition_client: httpx.AsyncClient | None = None
@@ -86,16 +84,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _app.state.ip_asset_service = None
     _app.state.ip_asset_recognition_service = None
     _app.state.ip_asset_upload_semaphore = asyncio.Semaphore(settings.ip_asset_upload_concurrency)
-    provider_ready = settings.ai_provider_mode == "fake" or (
-        settings.ai_provider_mode == "zhipu"
-        and settings.ai_platform_api_key is not None
-        and bool(settings.ai_platform_api_key.get_secret_value().strip())
+    alibaba_embedding_required = settings.resolved_brand_embedding_provider_mode == "alibaba" or (
+        settings.visual_semantic_enabled and settings.visual_embedding_provider_mode == "alibaba"
     )
-    if provider_ready:
-        if settings.ai_provider_mode == "zhipu":
-            embedding_client = httpx.AsyncClient(follow_redirects=False)
-        _app.state.brand_embedding_model = GovernanceEmbeddingBrandAdapter(
-            create_embedding_model(settings, client=embedding_client)
+    if alibaba_embedding_required:
+        visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
+    if settings.resolved_brand_embedding_provider_mode != "disabled":
+        _app.state.brand_embedding_model = create_brand_embedding_model(
+            settings,
+            client=visual_embedding_client,
         )
     if settings.image_enabled and settings.image_provider_mode != "disabled":
         if settings.image_provider_mode in {"toapis", "comfly"}:
@@ -110,7 +107,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 or settings.visual_embedding_api_key is None
             ):
                 raise RuntimeError("validated visual embedding secrets are unavailable")
-            visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
+            if visual_embedding_client is None:
+                visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
             visual_embeddings = AlibabaVisualEmbeddingAdapter(
                 client=visual_embedding_client,
                 endpoint=settings.visual_embedding_endpoint,
@@ -144,8 +142,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        if embedding_client is not None:
-            await embedding_client.aclose()
         if image_client is not None:
             await image_client.aclose()
         if visual_embedding_client is not None:

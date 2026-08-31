@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import inspect
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from mcp.server import MCPServer
@@ -28,7 +29,12 @@ MCP_SERVER_VERSION = "1.0.0"
 class AgentWorkbenchMCPServer(MCPServer[None]):
     """MCPServer whose invocation path delegates only to the shared registry."""
 
-    def __init__(self, registry: TypedToolRegistry) -> None:
+    def __init__(
+        self,
+        registry: TypedToolRegistry,
+        *,
+        lifespan: Callable[[MCPServer[None]], AbstractAsyncContextManager[None]] | None = None,
+    ) -> None:
         self.registry = registry
         tools = tuple(_build_mcp_tool(registry, definition) for definition in registry)
         self._registered_tools = {tool.name: tool for tool in tools}
@@ -40,6 +46,7 @@ class AgentWorkbenchMCPServer(MCPServer[None]):
             ),
             version=MCP_SERVER_VERSION,
             tools=list(tools),
+            lifespan=lifespan,
         )
 
     async def call_tool(
@@ -64,11 +71,13 @@ class AgentWorkbenchMCPServer(MCPServer[None]):
 
 def build_agent_mcp_server(
     registry: TypedToolRegistry | None = None,
+    *,
+    lifespan: Callable[[MCPServer[None]], AbstractAsyncContextManager[None]] | None = None,
 ) -> AgentWorkbenchMCPServer:
     """Build the stdio-capable server with fixture-only defaults."""
 
     resolved = registry or build_agent_tool_registry(build_fixture_reader())
-    return AgentWorkbenchMCPServer(resolved)
+    return AgentWorkbenchMCPServer(resolved, lifespan=lifespan)
 
 
 def validate_agent_mcp_environment(environ: Mapping[str, str]) -> None:

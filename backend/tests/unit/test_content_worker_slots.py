@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from app.content_worker_main import _worker_loop
+from app.content_worker_main import _brand_ingestion_provider_enabled, _worker_loop
 from app.core.config import Settings
+from pydantic import SecretStr
 
 
 class _CopyRepository:
@@ -35,6 +36,24 @@ class _StopExecutor:
 class _IdleExecutor:
     async def execute_next(self, _worker_id: str) -> bool:
         return False
+
+
+def test_alibaba_brand_ingestion_does_not_require_governance_ai_provider() -> None:
+    settings = Settings(
+        _env_file=None,
+        ai_provider_mode="disabled",
+        content_enabled=True,
+        content_worker_enabled=True,
+        content_llm_rerank_enabled=False,
+        brand_embedding_provider_mode="alibaba",
+        visual_embedding_endpoint=SecretStr(
+            "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1/services/embeddings/"
+            "multimodal-embedding/multimodal-embedding"
+        ),
+        visual_embedding_api_key=SecretStr("test-only-alibaba-key"),
+    )
+
+    assert _brand_ingestion_provider_enabled(settings) is True
 
 
 @pytest.mark.asyncio

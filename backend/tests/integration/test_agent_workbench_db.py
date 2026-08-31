@@ -196,6 +196,7 @@ async def test_postgres_workbench_reader_is_governed_read_only_and_session_bound
     reader = PostgresAgentKnowledgeReader(
         integration_context.session_factory,
         brand_embeddings=GovernanceEmbeddingBrandAdapter(embedding_model),
+        brand_retrieval_version="brand-hybrid-rrf-v3-parent-diverse",
     )
     raw_evidence = await reader.search_evidence(
         query="artificial intelligence governance",

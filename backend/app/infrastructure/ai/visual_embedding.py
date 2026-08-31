@@ -109,6 +109,48 @@ class AlibabaVisualEmbeddingAdapter(VisualEmbeddingModel):
             assert request.image_png is not None
             encoded = base64.b64encode(request.image_png).decode("ascii")
             content = {"image": f"data:image/png;base64,{encoded}"}
+        return await self._embed_content(
+            content=content,
+            identity=request.identity,
+            input_sha256=request.input_sha256,
+            request_fingerprint=request.request_fingerprint,
+        )
+
+    async def embed_brand_text(
+        self,
+        *,
+        text: str,
+        input_sha256: str,
+        identity: VisualEmbeddingIdentity,
+        max_characters: int,
+    ) -> VisualEmbeddingResult:
+        """Embed bounded brand text without applying the shorter visual-search query cap."""
+
+        normalized = text.strip()
+        if not normalized or not 1 <= len(normalized) <= max_characters:
+            raise ValueError("brand embedding text is blank or too long")
+        if hashlib.sha256(normalized.encode()).hexdigest() != input_sha256:
+            raise ValueError("brand embedding input hash does not match normalized text")
+        request_fingerprint = hashlib.sha256(
+            "\0".join(
+                (VisualEmbeddingModality.TEXT.value, input_sha256, identity.fingerprint)
+            ).encode()
+        ).hexdigest()
+        return await self._embed_content(
+            content={"text": normalized},
+            identity=identity,
+            input_sha256=input_sha256,
+            request_fingerprint=request_fingerprint,
+        )
+
+    async def _embed_content(
+        self,
+        *,
+        content: dict[str, str],
+        identity: VisualEmbeddingIdentity,
+        input_sha256: str,
+        request_fingerprint: str,
+    ) -> VisualEmbeddingResult:
         payload = {
             "model": VISUAL_EMBEDDING_MODEL,
             "input": {"contents": [content]},
@@ -172,12 +214,12 @@ class AlibabaVisualEmbeddingAdapter(VisualEmbeddingModel):
                 VisualRetrievalUnavailableReason.INVALID_PROVIDER_OUTPUT,
                 "visual embedding provider output is invalid",
             ) from error
-        if parsed.model is not None and parsed.model != request.identity.model:
+        if parsed.model is not None and parsed.model != identity.model:
             raise VisualEmbeddingError(
                 VisualRetrievalUnavailableReason.IDENTITY_MISMATCH,
                 "visual embedding provider identity does not match",
             )
-        if parsed.provider is not None and parsed.provider != request.identity.provider:
+        if parsed.provider is not None and parsed.provider != identity.provider:
             raise VisualEmbeddingError(
                 VisualRetrievalUnavailableReason.IDENTITY_MISMATCH,
                 "visual embedding provider identity does not match",
@@ -190,9 +232,9 @@ class AlibabaVisualEmbeddingAdapter(VisualEmbeddingModel):
             )
         try:
             return VisualEmbeddingResult(
-                identity=request.identity,
-                input_sha256=request.input_sha256,
-                request_fingerprint=request.request_fingerprint,
+                identity=identity,
+                input_sha256=input_sha256,
+                request_fingerprint=request_fingerprint,
                 vector=vector,
                 input_tokens=parsed.usage.input_tokens,
                 image_tokens=parsed.usage.image_tokens,
