@@ -176,6 +176,9 @@ topic-rerank-eval:
 brand-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.brand_retrieval.runner --check
 
+ip-asset-retrieval-eval:
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval.runner --check
+
 visual-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.visual_retrieval.runner --check
 

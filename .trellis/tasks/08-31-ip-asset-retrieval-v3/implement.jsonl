@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/08-31-ip-asset-retrieval-v3/research/current-state.md","reason":"Use verified V2 ranking, fallback, aggregate and evaluation ownership rather than recreating adjacent features."}
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Preserve search, access, privacy, personal-library and provider-degraded contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Implement typed aggregate persistence, migration and concurrency safely."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Follow evaluator honesty, migration, type and regression gates."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Keep gallery/search interaction, access and no-auth truth while adding anonymous origin wiring."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Apply generated-type, interaction, accessibility and frontend test gates."}

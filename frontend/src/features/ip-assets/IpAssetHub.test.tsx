@@ -17,6 +17,7 @@ import {
   clearStagedIpAssetFlipbookDraft,
   readStagedIpAssetFlipbookDraft,
 } from "./flipbookDraft";
+import { saveLocalIpAssetProfile } from "./profile";
 
 const apiMocks = vi.hoisted(() => ({
   getIpAssetCapabilities: vi.fn(),
@@ -29,6 +30,8 @@ const apiMocks = vi.hoisted(() => ({
   createIpAssetGeneration: vi.fn(),
   getIpAssetGeneration: vi.fn(),
   downloadIpAssetPackage: vi.fn(),
+  downloadIpAssetOriginal: vi.fn().mockResolvedValue(undefined),
+  recordIpAssetSearchEvent: vi.fn().mockResolvedValue(undefined),
   getIpAssetLeaderboard: vi.fn(),
   restoreIpAssetProfile: vi.fn(),
   bootstrapIpAssetProfile: vi.fn(),
@@ -199,6 +202,164 @@ describe("IpAssetHub", () => {
     expect(await screen.findByText("语义 + 元数据结果")).toBeInTheDocument();
     expect(screen.getByText("含画面语义线索")).toBeVisible();
     expect(screen.queryByText(/8% 相似|语义相似度 0\.08/)).toBeNull();
+  });
+
+  it("records anonymous preview favorite and download only from search results", async () => {
+    const user = userEvent.setup();
+    const token = "A".repeat(43);
+    saveLocalIpAssetProfile({
+      token,
+      profileRef: "ipp_11111111111111111111",
+      displayName: "演示用户",
+      department: "品牌中心",
+    });
+    apiMocks.restoreIpAssetProfile.mockResolvedValue({
+      created_at: "2026-08-31T08:00:00Z",
+      department: "品牌中心",
+      display_name: "演示用户",
+      identity_boundary: "browser_local_unverified",
+      profile_ref: "ipp_11111111111111111111",
+    });
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: null,
+      items: [{ asset, explanation: "角色与动作匹配", similarity: 0.8 }],
+      mode: "semantic",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    apiMocks.setIpAssetFavorite.mockResolvedValue({
+      asset_ref: asset.asset_ref,
+      favorite: true,
+    });
+    apiMocks.downloadIpAssetPackage.mockResolvedValue(undefined);
+    renderHub();
+
+    await user.type(await screen.findByLabelText("自然语言找图"), "小赛挥手");
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+    const cardButton = screen
+      .getAllByRole("button", {
+        name: (accessibleName) => accessibleName.includes(asset.canonical_name),
+      })
+      .find((button) => !button.hasAttribute("aria-pressed"));
+    if (cardButton === undefined) throw new Error("search_card_missing");
+    await user.click(cardButton);
+    await user.click(screen.getByRole("button", { name: "关闭详情" }));
+
+    await user.click(
+      screen.getByRole("button", { name: `收藏 ${asset.canonical_name}` }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: /选择 小赛/ }));
+    await user.click(screen.getByRole("button", { name: "下载 ZIP + 清单" }));
+
+    await waitFor(() =>
+      expect(apiMocks.recordIpAssetSearchEvent).toHaveBeenCalledTimes(3),
+    );
+    const telemetryCalls = apiMocks.recordIpAssetSearchEvent.mock
+      .calls as unknown as Array<[unknown]>;
+    expect(telemetryCalls.map(([input]) => input)).toEqual([
+      {
+        eventKind: "preview_from_search",
+        telemetry: {
+          mode: "semantic",
+          search_version: "ip-asset-hybrid-v3-rrf",
+        },
+      },
+      {
+        eventKind: "favorite_from_search",
+        telemetry: {
+          mode: "semantic",
+          search_version: "ip-asset-hybrid-v3-rrf",
+        },
+      },
+      {
+        eventKind: "download_from_search",
+        telemetry: {
+          mode: "semantic",
+          search_version: "ip-asset-hybrid-v3-rrf",
+        },
+      },
+    ]);
+    expect(
+      JSON.stringify(apiMocks.recordIpAssetSearchEvent.mock.calls),
+    ).not.toContain(token);
+    expect(
+      JSON.stringify(apiMocks.recordIpAssetSearchEvent.mock.calls),
+    ).not.toContain(asset.asset_ref);
+  });
+
+  it("does not count a failed search-origin download", async () => {
+    const user = userEvent.setup();
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: null,
+      items: [{ asset, explanation: "角色与动作匹配", similarity: 0.8 }],
+      mode: "semantic",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    apiMocks.downloadIpAssetPackage.mockRejectedValueOnce(
+      new Error("asset_download_failed"),
+    );
+    renderHub();
+
+    await user.type(await screen.findByLabelText("自然语言找图"), "小赛挥手");
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+    await user.click(screen.getByRole("checkbox", { name: /选择 小赛/ }));
+    await user.click(screen.getByRole("button", { name: "下载 ZIP + 清单" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("ZIP 下载失败");
+    expect(apiMocks.recordIpAssetSearchEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not attribute a leaderboard detail download to an overlapping search result", async () => {
+    const user = userEvent.setup();
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: null,
+      items: [{ asset, explanation: "角色与动作匹配", similarity: 0.8 }],
+      mode: "semantic",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    renderHub();
+
+    await user.type(await screen.findByLabelText("自然语言找图"), "小赛挥手");
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+    await user.click(screen.getByRole("button", { name: /7 次下载/ }));
+    await user.click(
+      await screen.findByRole("button", { name: "下载不可变原件" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.downloadIpAssetOriginal).toHaveBeenCalledTimes(1),
+    );
+    expect(apiMocks.recordIpAssetSearchEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps a successful download usable when anonymous telemetry fails", async () => {
+    const user = userEvent.setup();
+    const diagnostic = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: null,
+      items: [{ asset, explanation: "角色与动作匹配", similarity: 0.8 }],
+      mode: "semantic",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    apiMocks.downloadIpAssetPackage.mockResolvedValueOnce(undefined);
+    apiMocks.recordIpAssetSearchEvent.mockRejectedValueOnce(
+      new Error("search_telemetry_failed"),
+    );
+    renderHub();
+
+    await user.type(await screen.findByLabelText("自然语言找图"), "小赛挥手");
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+    await user.click(screen.getByRole("checkbox", { name: /选择 小赛/ }));
+    await user.click(screen.getByRole("button", { name: "下载 ZIP + 清单" }));
+
+    expect(await screen.findByText("ZIP 下载已开始。")).toBeVisible();
+    await waitFor(() =>
+      expect(diagnostic).toHaveBeenCalledWith(
+        "IP asset anonymous search telemetry failed",
+      ),
+    );
+    diagnostic.mockRestore();
   });
 
   it("shows the demo-login boundary, gallery and provider-independent controls", async () => {
@@ -396,6 +557,7 @@ describe("IpAssetHub", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "ZIP 下载已开始",
     );
+    expect(apiMocks.recordIpAssetSearchEvent).not.toHaveBeenCalled();
   });
 
   it("keeps ordered selection for ZIP and opens a safe in-memory flipbook draft", async () => {

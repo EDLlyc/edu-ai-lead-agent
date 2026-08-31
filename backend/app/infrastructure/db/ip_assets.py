@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_, delete, func, or_, select, text
@@ -26,6 +26,7 @@ from app.application.ports.ip_assets import (
     IpAssetProfileRecord,
     IpAssetQuery,
     IpAssetRecord,
+    IpAssetSearchAggregateRecord,
     IpAssetVectorHit,
 )
 from app.core.errors import ConflictError
@@ -36,6 +37,9 @@ from app.domain.ip_assets import (
     IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
+    IpAssetSearchEventKind,
+    IpAssetSearchMode,
+    IpAssetSearchVersion,
     IpAssetSemanticStatus,
     IpAssetSource,
     IpAssetStatus,
@@ -56,6 +60,7 @@ from app.infrastructure.db.models import (
     IpAssetModel,
     IpAssetProfileMembershipModel,
     IpAssetProfileModel,
+    IpAssetSearchAggregateModel,
     IpAssetTagModel,
 )
 
@@ -645,6 +650,72 @@ class PostgresIpAssetRepository:
                     )
                     for model, count in rows
                 ),
+            )
+
+    async def increment_search_aggregate(
+        self,
+        *,
+        business_date: date,
+        search_version: IpAssetSearchVersion,
+        mode: IpAssetSearchMode,
+        event_kind: IpAssetSearchEventKind,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            await session.execute(
+                pg_insert(IpAssetSearchAggregateModel)
+                .values(
+                    business_date=business_date,
+                    search_version=search_version,
+                    mode=mode.value,
+                    event_kind=event_kind.value,
+                    count=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+                .on_conflict_do_update(
+                    index_elements=[
+                        "business_date",
+                        "search_version",
+                        "mode",
+                        "event_kind",
+                    ],
+                    set_={
+                        "count": IpAssetSearchAggregateModel.count + 1,
+                        "updated_at": now,
+                    },
+                )
+            )
+            await session.commit()
+
+    async def list_search_aggregates(
+        self, *, start_date: date, end_date: date
+    ) -> tuple[IpAssetSearchAggregateRecord, ...]:
+        async with self._session_factory() as session:
+            rows = tuple(
+                await session.scalars(
+                    select(IpAssetSearchAggregateModel)
+                    .where(
+                        IpAssetSearchAggregateModel.business_date >= start_date,
+                        IpAssetSearchAggregateModel.business_date <= end_date,
+                    )
+                    .order_by(
+                        IpAssetSearchAggregateModel.business_date,
+                        IpAssetSearchAggregateModel.search_version,
+                        IpAssetSearchAggregateModel.mode,
+                        IpAssetSearchAggregateModel.event_kind,
+                    )
+                )
+            )
+            return tuple(
+                IpAssetSearchAggregateRecord(
+                    business_date=row.business_date,
+                    search_version=cast(IpAssetSearchVersion, row.search_version),
+                    mode=IpAssetSearchMode(row.mode),
+                    event_kind=IpAssetSearchEventKind(row.event_kind),
+                    count=row.count,
+                )
+                for row in rows
             )
 
     async def find_near_duplicate(

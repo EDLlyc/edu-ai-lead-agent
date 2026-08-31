@@ -1502,6 +1502,12 @@
   border-color: var(--line-strong);
 }
 
+.detailActions .downloadLink {
+  color: #fff;
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
 .creationLink {
   color: #fff;
   background: #bd6648;

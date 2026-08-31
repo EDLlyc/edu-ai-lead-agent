@@ -8,8 +8,10 @@ import {
 } from "react";
 
 import {
+  downloadIpAssetOriginal,
   emptyIpAssetFilters,
   ipAssetResourceUrl,
+  recordIpAssetSearchEvent,
   type IpAsset,
   type IpAssetCharacter,
   type IpAssetFilters,
@@ -18,6 +20,8 @@ import {
   type IpAssetOrientation,
   type IpAssetRecognition,
   type IpAssetSource,
+  type IpAssetSearchEventKind,
+  type IpAssetSearchTelemetry,
   type IpAssetType,
 } from "./api";
 import {
@@ -135,13 +139,18 @@ export function IpAssetHub() {
   const [searchMessage, setSearchMessage] = useState("");
   const [priorTurns, setPriorTurns] = useState<readonly string[]>([]);
   const [selectedAssetRef, setSelectedAssetRef] = useState<string | null>(null);
+  const [selectedAssetSearchTelemetry, setSelectedAssetSearchTelemetry] =
+    useState<IpAssetSearchTelemetry | null>(null);
   const [selectedAssets, setSelectedAssets] = useState<
     ReadonlyMap<string, IpAsset>
   >(() => new Map());
   const [flipbookMessage, setFlipbookMessage] = useState("");
   const [activeTool, setActiveTool] = useState<"upload" | null>(null);
   const detail = useIpAssetDetail(selectedAssetRef, activeProfile);
-  const closeDetail = useCallback(() => setSelectedAssetRef(null), []);
+  const closeDetail = useCallback(() => {
+    setSelectedAssetRef(null);
+    setSelectedAssetSearchTelemetry(null);
+  }, []);
   const closeTool = useCallback(() => setActiveTool(null), []);
   const searchResult = imageSearch.data ?? textSearch.data;
   const searchError = imageSearch.error ?? textSearch.error;
@@ -191,6 +200,48 @@ export function IpAssetHub() {
       ),
     [searchResult?.items],
   );
+  const searchTelemetry = useMemo<IpAssetSearchTelemetry | null>(
+    () =>
+      searchResult === undefined
+        ? null
+        : {
+            search_version: searchResult.search_version,
+            mode: searchResult.mode,
+          },
+    [searchResult],
+  );
+  const recordSearchAction = useCallback(
+    (
+      eventKind: Exclude<
+        IpAssetSearchEventKind,
+        "search_results" | "zero_results"
+      >,
+      telemetry: IpAssetSearchTelemetry | null = searchTelemetry,
+    ) => {
+      if (telemetry === null) return;
+      void recordIpAssetSearchEvent({
+        eventKind,
+        telemetry,
+      }).catch(() => {
+        // Keep product actions independent from best-effort analytics while leaving a safe,
+        // identity-free signal for browser diagnostics.
+        console.warn("IP asset anonymous search telemetry failed");
+      });
+    },
+    [searchTelemetry],
+  );
+  const openAsset = (assetRef: string) => {
+    const telemetry = searchMatches.has(assetRef) ? searchTelemetry : null;
+    setSelectedAssetRef(assetRef);
+    setSelectedAssetSearchTelemetry(telemetry);
+    if (telemetry !== null) {
+      recordSearchAction("preview_from_search", telemetry);
+    }
+  };
+  const openNonSearchAsset = (assetRef: string) => {
+    setSelectedAssetRef(assetRef);
+    setSelectedAssetSearchTelemetry(null);
+  };
   const flipbookSelectionAllowed =
     selectedAssets.size >= IP_ASSET_FLIPBOOK_MIN_PAGES &&
     selectedAssets.size <= IP_ASSET_FLIPBOOK_MAX_PAGES;
@@ -227,7 +278,14 @@ export function IpAssetHub() {
     clearLocalIpAssetProfile();
   }, [profile, restoredProfile.isError]);
 
-  const toggleFavorite = (asset: IpAsset) => {
+  const toggleFavorite = (
+    asset: IpAsset,
+    telemetry: IpAssetSearchTelemetry | null = searchMatches.has(
+      asset.asset_ref,
+    )
+      ? searchTelemetry
+      : null,
+  ) => {
     if (activeProfile === null) {
       setShowProfileSetup(true);
       return;
@@ -250,6 +308,9 @@ export function IpAssetHub() {
               [asset.asset_ref]: nextFavorite,
             },
           }));
+          if (nextFavorite && telemetry !== null) {
+            recordSearchAction("favorite_from_search", telemetry);
+          }
         },
       },
     );
@@ -451,7 +512,7 @@ export function IpAssetHub() {
                   searchMatches={searchMatches}
                   selectedAssets={selectedAssets}
                   activeRef={selectedAssetRef}
-                  onOpen={setSelectedAssetRef}
+                  onOpen={openAsset}
                   onFavorite={toggleFavorite}
                   onToggle={(asset) => {
                     setFlipbookMessage("");
@@ -484,7 +545,7 @@ export function IpAssetHub() {
               entries={leaderboard.data?.items ?? []}
               loading={leaderboard.isLoading}
               period={leaderboardPeriod}
-              onOpen={setSelectedAssetRef}
+              onOpen={openNonSearchAsset}
               onPeriodChange={setLeaderboardPeriod}
             />
           </div>
@@ -508,9 +569,18 @@ export function IpAssetHub() {
               <button
                 type="button"
                 disabled={packageDownload.isPending}
-                onClick={() =>
-                  packageDownload.mutate([...selectedAssets.keys()])
-                }
+                onClick={() => {
+                  const refs = [...selectedAssets.keys()];
+                  packageDownload.mutate(refs, {
+                    onSuccess: () => {
+                      if (
+                        refs.some((assetRef) => searchMatches.has(assetRef))
+                      ) {
+                        recordSearchAction("download_from_search");
+                      }
+                    },
+                  });
+                }}
               >
                 {packageDownload.isPending ? "正在打包…" : "下载 ZIP + 清单"}
               </button>
@@ -554,7 +624,28 @@ export function IpAssetHub() {
               loading={detail.isLoading}
               asset={detail.data}
               onFavorite={() => {
-                if (detail.data !== undefined) toggleFavorite(detail.data);
+                if (detail.data !== undefined) {
+                  toggleFavorite(detail.data, selectedAssetSearchTelemetry);
+                }
+              }}
+              onDownload={() => {
+                const asset = detail.data;
+                if (asset === undefined) return;
+                void downloadIpAssetOriginal({
+                  asset,
+                  ...(activeProfile === null
+                    ? {}
+                    : { profileToken: activeProfile.token }),
+                })
+                  .then(() => {
+                    if (selectedAssetSearchTelemetry !== null) {
+                      recordSearchAction(
+                        "download_from_search",
+                        selectedAssetSearchTelemetry,
+                      );
+                    }
+                  })
+                  .catch(() => undefined);
               }}
               onClose={closeDetail}
             />
@@ -1345,11 +1436,13 @@ function AssetDetail({
   loading,
   asset,
   onFavorite,
+  onDownload,
   onClose,
 }: Readonly<{
   loading: boolean;
   asset: ReturnType<typeof useIpAssetDetail>["data"];
   onFavorite: () => void;
+  onDownload: () => void;
   onClose: () => void;
 }>) {
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -1419,13 +1512,13 @@ function AssetDetail({
               </p>
             ) : ipAssetResourceUrl(asset.download_url) === null ? null : (
               <div className={styles.detailActions}>
-                <a
+                <button
+                  type="button"
                   className={styles.downloadLink}
-                  href={ipAssetResourceUrl(asset.download_url) ?? ""}
-                  download
+                  onClick={onDownload}
                 >
                   下载不可变原件
-                </a>
+                </button>
                 <button
                   type="button"
                   aria-pressed={asset.favorite}

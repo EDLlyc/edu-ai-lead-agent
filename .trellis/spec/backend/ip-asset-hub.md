@@ -44,6 +44,8 @@ DELETE /{asset_ref}/favorite
 PUT  /{asset_ref}/shared         explicitly share an owned generated result
 POST /downloads               {asset_refs: string[]}
 POST /search/text              bounded message, prior_turns, filters, limit
+POST /search/events            strict anonymous search-result action dimensions -> 204
+GET  /search/metrics?period=day|30d
 POST /search/image             transient multipart image + filters
 POST /generations              non-blank unbounded-length prompt, taxonomy, ordered 1..3 references, idempotency_key
 GET  /generations/{job_ref}
@@ -60,9 +62,9 @@ decoded pixels. Generation is the existing provider's proved `1:1`/1024x1024 con
 
 #### Database
 
-Alembic `20260824_0031` adds the base hub, `20260824_0035` adds the personal library, and current
-additive revision `20260827_0037` widens `ip_asset_generation_jobs.prompt` from `varchar(2000)` to
-`TEXT` so the IP-only non-blank prompt contract is durable:
+Alembic `20260824_0031` adds the base hub, `20260824_0035` adds the personal library,
+`20260827_0037` widens `ip_asset_generation_jobs.prompt` from `varchar(2000)` to `TEXT`, and current
+additive revision `20260831_0038` adds strictly anonymous daily search aggregates:
 
 ```text
 ip_assets
@@ -76,6 +78,7 @@ ip_asset_profile_memberships
 ip_asset_favorites
 ip_asset_generation_references
 ip_asset_download_daily
+ip_asset_search_aggregates
 ```
 
 `ip_assets.blob_sha256` is globally unique. `(naming_key, name_version)` is unique. Embeddings bind
@@ -83,6 +86,9 @@ asset/source checksum plus exact provider/model/dimension/input-policy identity.
 idempotency is scoped by profile (with a separate unique legacy-null path), the request fingerprint
 includes the profile and ordered reference checksums, and reference rows preserve ordinals `0..2`.
 `ip_assets.shared_at IS NULL` is private-to-membership; all historical assets are backfilled shared.
+`ip_asset_search_aggregates` has only the composite identity
+`(business_date, search_version, mode, event_kind)`, `count`, and row timestamps. It is not an event
+log and has no query, asset, profile, user, session, IP, user-agent, referrer, cookie, or request ID.
 
 #### Commands
 
@@ -92,6 +98,7 @@ make ip-asset-import-dry-run MAX_ASSETS=500
 make ip-asset-stack-up                       # API + one worker for a generation-capable local stack
 make ip-asset-ui                             # start the standalone UI after the stack
 make ip-asset-demo-preflight                 # read-only local demo readiness proof
+make ip-asset-retrieval-eval                 # provider-free frozen V2/V3 relevance comparison
 ```
 
 `python -m app.ip_asset_import_main` is explicit and dry-run capable. It must never modify source
@@ -109,6 +116,7 @@ the current queue is idle.
 | Key                                       | Contract                                                                             |
 | ----------------------------------------- | ------------------------------------------------------------------------------------ |
 | `IP_ASSET_HUB_ENABLED`                    | Default `false`; gates API service availability                                      |
+| `IP_ASSET_SEARCH_VERSION`                 | Default `ip-asset-hybrid-v3-rrf`; exact V2 value is the rollback switch              |
 | `IP_ASSET_WORKER_ENABLED`                 | Default `false`; requires hub enabled                                                |
 | `IP_ASSET_GENERATION_ENABLED`             | Default `false`; requires hub and configured image provider                          |
 | `IP_ASSET_RECOGNITION_ENABLED`            | Default `false`; requires hub plus configured Zhipu HTTPS endpoint and credential    |
@@ -205,10 +213,18 @@ reverse proxy for intranet deployment.
 #### Search and content delivery
 
 - Conventional gallery search is stable keyset pagination over metadata/keywords.
-- Text search uses the versioned `ip-asset-hybrid-v2` policy. It merges compatible `vector(2048)`
-  hits with a bounded, structure-filtered pool of at most 500 metadata candidates, weights exact
-  safe metadata evidence above cosine similarity, and applies deterministic timestamp/ID ties. One
-  vector hit must never hide relevant assets whose embedding is missing or failed.
+- Text search defaults to `ip-asset-hybrid-v3-rrf`. It merges compatible `vector(2048)` hits with a
+  bounded, structure-filtered pool of at most 500 metadata candidates, gives every candidate
+  admitted to a lane a stable one-based rank, and fuses lanes with weighted reciprocal-rank fusion:
+  `k=60`, metadata weight `0.65`, semantic weight `0.35`. Any positive exact metadata evidence is a
+  protected first sort dimension before fused score; within that partition, fused score, metadata
+  rank, semantic rank, timestamp, and stable ID are deterministic ties. A structured-filtered,
+  unindexed asset therefore still receives a metadata rank and cannot crash or disappear merely
+  because it has no lexical score or compatible vector.
+- `ip-asset-hybrid-v2` remains callable and frozen as the direct normalized-score blend for explicit
+  configuration rollback and offline comparison. Never silently change V2 weights/order under the
+  existing identity. Both versions return their exact `search_version` in every successful response.
+  One vector hit must never hide relevant assets whose embedding is missing or failed.
 - Explicit request filters are authoritative. Only the current conversation turn may infer missing
   taxonomy/orientation filters; prior turns remain semantic context and cannot reintroduce a stale
   role or type. A generic “transparent background” phrase stays lexical unless the user explicitly
@@ -223,6 +239,17 @@ reverse proxy for intranet deployment.
   bytes are transient and never persisted.
 - Semantic/provider failure returns explicit `degraded_metadata` results rather than breaking normal
   library use.
+- Every successful text/image search increments exactly one best-effort daily outcome counter:
+  `search_results` when at least one item exists, otherwise `zero_results`. The server records only
+  the closed dimensions `business_date`, response `search_version`, response `mode`, and event kind;
+  aggregation failure never fails the search and its safe diagnostic must not include request data.
+- `POST /search/events` accepts only `preview_from_search`, `favorite_from_search`, or
+  `download_from_search` plus the response's exact version and mode. It rejects outcome events and
+  unknown fields. It is a best-effort anonymous action counter: the request must never gain a query,
+  asset ref, profile token/ref, user/session/request identifier, IP, user-agent, referrer, or cookie.
+  `GET /search/metrics` accepts only `period=day|30d`, rejects unknown query keys, and projects daily
+  buckets with outcome/action counts and explicitly denominated ratios. The ratios are directional
+  aggregate signals, not a user funnel or causal conversion claim.
 - Preview/download read the immutable original through verified storage and return bounded content,
   media type, length, ETag, private/no-store cache policy, and safe disposition. The versioned
   thumbnail route uses the same shared-or-owned access check, returns `image/webp`, a strong ETag,
@@ -243,6 +270,9 @@ reverse proxy for intranet deployment.
 
 #### Migration rollback
 
+- `0038 -> 0037` drops only `ip_asset_search_aggregates` and its date index. It preserves every IP
+  asset, profile, favorite, download, embedding, generation, and personal-library row; the lost
+  anonymous counters are the intentional rollback cost.
 - `0037 -> 0036` first refuses when any stored IP generation prompt exceeds 2000 characters. It
   never truncates a long prompt before restoring `varchar(2000)`; after long rows are removed or
   shortened explicitly, the downgrade may proceed while preserving all remaining text.
@@ -292,6 +322,14 @@ reverse proxy for intranet deployment.
 | Existing MinIO key has wrong bytes/metadata/path                           | Conflict; never trust or overwrite it                                                      |
 | Semantic provider disabled/unavailable                                     | `degraded_metadata`; gallery/filter/download remain usable                                 |
 | Only part of the library has compatible vectors                            | Merge vector and metadata hits; do not hide unindexed relevant assets                      |
+| Structured-filtered asset has no lexical score and no compatible vector    | Give it a stable metadata-lane rank; V3 remains total and deterministic                    |
+| Exact metadata evidence competes with a weak semantic-only hit             | Keep the positive metadata partition first, then apply weighted RRF                        |
+| `IP_ASSET_SEARCH_VERSION=ip-asset-hybrid-v2`                               | Execute the frozen V2 direct blend and return the V2 identity                              |
+| Successful search returns one or more items                                | Increment only the daily `search_results` aggregate; never persist the request             |
+| Successful search returns no items                                         | Increment only the daily `zero_results` aggregate                                          |
+| Search aggregate write fails                                               | Return the search normally; log only closed version/mode/event dimensions                  |
+| Search action body contains an outcome event or unknown/identity field     | Validation error; no aggregate change                                                      |
+| Metrics query contains `profile_ref` or another unknown key                | `422`; do not interpret or retain the supplied value                                       |
 | Semantics enabled after provider-free uploads                              | Worker startup creates one bounded job per eligible unavailable asset; replay creates zero |
 | Prior turn conflicts with the current role/type                            | Current turn wins unless an explicit request filter already owns that dimension            |
 | Embedding identity mismatch                                                | Exclude incompatible vector and record typed failure                                       |
@@ -316,12 +354,25 @@ reverse proxy for intranet deployment.
 | Unlisted browser origin sends preflight                                    | No allow-origin header                                                                     |
 | Downgrade while hub data exists                                            | Refuse; never silently delete shared assets                                                |
 | `0037 -> 0036` with a stored prompt longer than 2000 characters            | Refuse before type change; never truncate prompt text                                      |
+| `0038 -> 0037` with search counters and ordinary IP assets                 | Drop only counters; preserve all ordinary IP tables and rows                               |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: a colleague asks for a happy Xiaosai image, receives exact emotion/scene matches before weak
   vector-only matches, changes the next turn to Sai Xiansheng without retaining stale Xiaosai
   filters, and downloads the exact verified original.
+- Good V3: metadata and semantic lanes use independent one-based order, weighted RRF improves the
+  reviewed offline set, and an unindexed structured match remains eligible with deterministic ties.
+- Base V3: configuration selects the frozen V2 identity for rollback, or the vector provider is
+  unavailable and the same request produces explicit `degraded_metadata` results.
+- Bad V3: combine raw metadata and cosine values as if their scales were calibrated, omit
+  structured-but-unindexed candidates from both lanes, or mutate V2 behavior without a new version.
+- Good measurement: the server stores only daily version/mode/event counts; the browser reports a
+  preview/favorite/download only after its associated product action succeeds from a search result.
+- Base measurement: aggregate persistence or action reporting fails; search, preview, favorite, and
+  download still complete independently with identity-free diagnostics.
+- Bad measurement: persist raw queries or per-event asset/profile/session/IP/UA rows, infer a unique
+  user funnel from aggregate ratios, or count a failed product action.
 - Base: provider features are disabled. Upload, metadata search, preview, individual/ZIP download,
   and dry-run import still work; semantic and generation surfaces explain their unavailable state.
 - Bad: one indexed asset suppresses dozens of metadata-relevant unindexed assets, a prior Xiaosai
@@ -376,7 +427,20 @@ reverse proxy for intranet deployment.
 - Search unit/live-corpus: assert metadata-only hits merge with partial vector results, exact
   emotion/action/scene evidence outranks weak cosine-only hits, explicit filters beat inferred
   terms, the current turn beats conflicting history, safe keyword fields remain searchable without
-  filename leakage, and ordering is deterministic.
+  filename leakage, and ordering is deterministic. Freeze V2 direct-blend regressions separately;
+  assert V3 one-based lane ranks, `k=60`/`0.65`/`0.35` weighted RRF, exact-metadata protection,
+  structured unindexed candidates, weak semantic competition, and configured rollback identity.
+- Provider-free retrieval evaluation: validate the strict sanitized case schema and oracle
+  isolation, run the same production rank selector over forty reviewed cases in eight categories,
+  and byte-check canonical JSON/Markdown through `make ip-asset-retrieval-eval`. Report Recall@5,
+  MRR@5, nDCG@5, and zero-result rate for frozen V2 and V3, but state that this is not a live
+  embedding, private-corpus, online-user, or production-effectiveness measurement.
+- Search aggregate unit/API/PostgreSQL: one successful search writes exactly one result/zero counter;
+  action events accept only the three closed action kinds; repeated/concurrent increments are atomic;
+  day/30d windows and ratio denominators are exact; telemetry failure does not fail primary work;
+  action bodies and metric queries forbid extras, including identity-like keys; privacy scans find no
+  raw-query or actor columns/log fields; and `0037 -> 0038 -> 0037` creates then removes only the
+  aggregate table while preserving `ip_assets`.
 - Real MinIO: new and pre-existing put-or-verify reads exact bytes; wrong metadata/body/key fails;
   preview/download never return object locations.
 - Fake provider: one successful generated asset, retryable/terminal failure classification,
@@ -459,7 +523,35 @@ return semantic_hits if semantic_hits else metadata_hits
 ```python
 # Preserve authoritative filters and merge partial semantic coverage with bounded metadata evidence.
 metadata_hits = await search_metadata(current_turn, explicit_or_inferred_filters)
-return merge_hybrid_v2(semantic_hits, metadata_hits, stable_ties=("created_at", "asset_id"))
+return rank_ip_asset_candidates(
+    build_independent_one_based_lanes(metadata_hits, semantic_hits),
+    version="ip-asset-hybrid-v3-rrf",
+    limit=query.limit,
+)
+```
+
+#### Wrong
+
+```python
+# Per-event analytics recreate sensitive behavior and make identity creep easy.
+await repository.insert_search_event(
+    query=query,
+    asset_ref=asset_ref,
+    profile_ref=profile_ref,
+    user_agent=request.headers.get("user-agent"),
+)
+```
+
+#### Correct
+
+```python
+# One anonymous daily upsert over closed response dimensions; no request or actor fields exist.
+await repository.increment_search_aggregate(
+    business_date=business_date,
+    search_version=result.search_version,
+    mode=result.mode,
+    event_kind="search_results" if result.items else "zero_results",
+)
 ```
 
 #### Wrong

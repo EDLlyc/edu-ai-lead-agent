@@ -661,6 +661,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ip-assets/search/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Ip Asset Search Action */
+        post: operations["record_ip_asset_search_action_api_v1_ip_assets_search_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ip-assets/search/image": {
         parameters: {
             query?: never;
@@ -672,6 +689,23 @@ export interface paths {
         put?: never;
         /** Search Ip Assets Image */
         post: operations["search_ip_assets_image_api_v1_ip_assets_search_image_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ip-assets/search/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Ip Asset Search Metrics */
+        get: operations["read_ip_asset_search_metrics_api_v1_ip_assets_search_metrics_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4275,6 +4309,21 @@ export interface components {
             /** Tags */
             tags?: string[];
         };
+        /** IpAssetSearchActionRequest */
+        IpAssetSearchActionRequest: {
+            event_kind: components["schemas"]["IpAssetSearchEventKind"];
+            mode: components["schemas"]["IpAssetSearchMode"];
+            /**
+             * Search Version
+             * @enum {string}
+             */
+            search_version: "ip-asset-hybrid-v2" | "ip-asset-hybrid-v3-rrf";
+        };
+        /**
+         * IpAssetSearchEventKind
+         * @enum {string}
+         */
+        IpAssetSearchEventKind: "search_results" | "zero_results" | "preview_from_search" | "favorite_from_search" | "download_from_search";
         /** IpAssetSearchItemResponse */
         IpAssetSearchItemResponse: {
             asset: components["schemas"]["IpAssetCardResponse"];
@@ -4282,6 +4331,67 @@ export interface components {
             explanation: string;
             /** Similarity */
             similarity?: number | null;
+        };
+        /** IpAssetSearchMetricBucketResponse */
+        IpAssetSearchMetricBucketResponse: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /** Download From Search */
+            download_from_search: number;
+            /** Download Per Result Search */
+            download_per_result_search?: number | null;
+            /** Favorite From Search */
+            favorite_from_search: number;
+            /** Favorite Per Result Search */
+            favorite_per_result_search?: number | null;
+            mode: components["schemas"]["IpAssetSearchMode"];
+            /** Preview From Search */
+            preview_from_search: number;
+            /** Preview Per Result Search */
+            preview_per_result_search?: number | null;
+            /** Search Results */
+            search_results: number;
+            /**
+             * Search Version
+             * @enum {string}
+             */
+            search_version: "ip-asset-hybrid-v2" | "ip-asset-hybrid-v3-rrf";
+            /** Searches */
+            searches: number;
+            /** Zero Result Rate */
+            zero_result_rate?: number | null;
+            /** Zero Results */
+            zero_results: number;
+        };
+        /**
+         * IpAssetSearchMetricPeriod
+         * @enum {string}
+         */
+        IpAssetSearchMetricPeriod: "day" | "30d";
+        /** IpAssetSearchMetricsResponse */
+        IpAssetSearchMetricsResponse: {
+            /** Buckets */
+            buckets: components["schemas"]["IpAssetSearchMetricBucketResponse"][];
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Interpretation
+             * @default anonymous_aggregate_action_ratios
+             * @constant
+             */
+            interpretation: "anonymous_aggregate_action_ratios";
+            period: components["schemas"]["IpAssetSearchMetricPeriod"];
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
         };
         /**
          * IpAssetSearchMode
@@ -4297,9 +4407,9 @@ export interface components {
             mode: components["schemas"]["IpAssetSearchMode"];
             /**
              * Search Version
-             * @constant
+             * @enum {string}
              */
-            search_version: "ip-asset-hybrid-v2";
+            search_version: "ip-asset-hybrid-v2" | "ip-asset-hybrid-v3-rrf";
         };
         /**
          * IpAssetSemanticStatus
@@ -7165,6 +7275,37 @@ export interface operations {
             };
         };
     };
+    record_ip_asset_search_action_api_v1_ip_assets_search_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IpAssetSearchActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_ip_assets_image_api_v1_ip_assets_search_image_post: {
         parameters: {
             query?: never;
@@ -7187,6 +7328,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IpAssetSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ip_asset_search_metrics_api_v1_ip_assets_search_metrics_get: {
+        parameters: {
+            query?: {
+                period?: components["schemas"]["IpAssetSearchMetricPeriod"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IpAssetSearchMetricsResponse"];
                 };
             };
             /** @description Validation Error */

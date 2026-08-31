@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/08-31-ip-asset-retrieval-v3/research/current-state.md","reason":"Check that V3 changes only fusion/evaluation/anonymous aggregate ownership and preserves V2 behavior."}
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Check partial-index safety, filter priority, privacy and existing access/download semantics."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check aggregate constraints, concurrent upsert, timezone window and migration rollback."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check oracle isolation, truthful metrics, full backend gates and privacy scans."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Check telemetry is non-blocking, anonymous and limited to true search-origin actions."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check strict types, generated contracts, behavior tests and accessibility."}

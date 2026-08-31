@@ -8089,6 +8089,43 @@
         "title": "IpAssetRecognitionResponse",
         "type": "object"
       },
+      "IpAssetSearchActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "event_kind": {
+            "$ref": "#/components/schemas/IpAssetSearchEventKind"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/IpAssetSearchMode"
+          },
+          "search_version": {
+            "enum": [
+              "ip-asset-hybrid-v2",
+              "ip-asset-hybrid-v3-rrf"
+            ],
+            "title": "Search Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_kind",
+          "search_version",
+          "mode"
+        ],
+        "title": "IpAssetSearchActionRequest",
+        "type": "object"
+      },
+      "IpAssetSearchEventKind": {
+        "enum": [
+          "search_results",
+          "zero_results",
+          "preview_from_search",
+          "favorite_from_search",
+          "download_from_search"
+        ],
+        "title": "IpAssetSearchEventKind",
+        "type": "string"
+      },
       "IpAssetSearchItemResponse": {
         "properties": {
           "asset": {
@@ -8118,6 +8155,163 @@
           "explanation"
         ],
         "title": "IpAssetSearchItemResponse",
+        "type": "object"
+      },
+      "IpAssetSearchMetricBucketResponse": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "download_from_search": {
+            "minimum": 0.0,
+            "title": "Download From Search",
+            "type": "integer"
+          },
+          "download_per_result_search": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Per Result Search"
+          },
+          "favorite_from_search": {
+            "minimum": 0.0,
+            "title": "Favorite From Search",
+            "type": "integer"
+          },
+          "favorite_per_result_search": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favorite Per Result Search"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/IpAssetSearchMode"
+          },
+          "preview_from_search": {
+            "minimum": 0.0,
+            "title": "Preview From Search",
+            "type": "integer"
+          },
+          "preview_per_result_search": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Per Result Search"
+          },
+          "search_results": {
+            "minimum": 0.0,
+            "title": "Search Results",
+            "type": "integer"
+          },
+          "search_version": {
+            "enum": [
+              "ip-asset-hybrid-v2",
+              "ip-asset-hybrid-v3-rrf"
+            ],
+            "title": "Search Version",
+            "type": "string"
+          },
+          "searches": {
+            "minimum": 0.0,
+            "title": "Searches",
+            "type": "integer"
+          },
+          "zero_result_rate": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zero Result Rate"
+          },
+          "zero_results": {
+            "minimum": 0.0,
+            "title": "Zero Results",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "business_date",
+          "search_version",
+          "mode",
+          "searches",
+          "search_results",
+          "zero_results",
+          "preview_from_search",
+          "favorite_from_search",
+          "download_from_search"
+        ],
+        "title": "IpAssetSearchMetricBucketResponse",
+        "type": "object"
+      },
+      "IpAssetSearchMetricPeriod": {
+        "enum": [
+          "day",
+          "30d"
+        ],
+        "title": "IpAssetSearchMetricPeriod",
+        "type": "string"
+      },
+      "IpAssetSearchMetricsResponse": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/IpAssetSearchMetricBucketResponse"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "interpretation": {
+            "const": "anonymous_aggregate_action_ratios",
+            "default": "anonymous_aggregate_action_ratios",
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/IpAssetSearchMetricPeriod"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "start_date",
+          "end_date",
+          "buckets"
+        ],
+        "title": "IpAssetSearchMetricsResponse",
         "type": "object"
       },
       "IpAssetSearchMode": {
@@ -8152,7 +8346,10 @@
             "$ref": "#/components/schemas/IpAssetSearchMode"
           },
           "search_version": {
-            "const": "ip-asset-hybrid-v2",
+            "enum": [
+              "ip-asset-hybrid-v2",
+              "ip-asset-hybrid-v3-rrf"
+            ],
             "title": "Search Version",
             "type": "string"
           }
@@ -14680,6 +14877,40 @@
         ]
       }
     },
+    "/api/v1/ip-assets/search/events": {
+      "post": {
+        "operationId": "record_ip_asset_search_action_api_v1_ip_assets_search_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpAssetSearchActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Ip Asset Search Action",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
     "/api/v1/ip-assets/search/image": {
       "post": {
         "operationId": "search_ip_assets_image_api_v1_ip_assets_search_image_post",
@@ -14734,6 +14965,48 @@
           }
         },
         "summary": "Search Ip Assets Image",
+        "tags": [
+          "ip-assets"
+        ]
+      }
+    },
+    "/api/v1/ip-assets/search/metrics": {
+      "get": {
+        "operationId": "read_ip_asset_search_metrics_api_v1_ip_assets_search_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IpAssetSearchMetricPeriod",
+              "default": "30d"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpAssetSearchMetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Ip Asset Search Metrics",
         "tags": [
           "ip-assets"
         ]

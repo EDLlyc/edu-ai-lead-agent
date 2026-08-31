@@ -15,6 +15,9 @@ from app.domain.ip_assets import (
     IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
+    IpAssetSearchEventKind,
+    IpAssetSearchMode,
+    IpAssetSearchVersion,
     IpAssetSemanticStatus,
     IpAssetSource,
     IpAssetStatus,
@@ -151,6 +154,15 @@ class IpAssetLeaderboardRecord:
     period: IpAssetLeaderboardPeriod
     generated_at: datetime
     items: tuple[IpAssetLeaderboardItemRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetSearchAggregateRecord:
+    business_date: date
+    search_version: IpAssetSearchVersion
+    mode: IpAssetSearchMode
+    event_kind: IpAssetSearchEventKind
+    count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +307,19 @@ class IpAssetRepository(Protocol):
         start_date: date | None,
         limit: int,
     ) -> IpAssetLeaderboardRecord: ...
+
+    async def increment_search_aggregate(
+        self,
+        *,
+        business_date: date,
+        search_version: IpAssetSearchVersion,
+        mode: IpAssetSearchMode,
+        event_kind: IpAssetSearchEventKind,
+    ) -> None: ...
+
+    async def list_search_aggregates(
+        self, *, start_date: date, end_date: date
+    ) -> tuple[IpAssetSearchAggregateRecord, ...]: ...
 
     async def find_near_duplicate(
         self, *, perceptual_hash: str, exclude_id: UUID | None = None

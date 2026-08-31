@@ -25,6 +25,7 @@ from app.application.ports.ip_assets import (
     IpAssetQuery,
     IpAssetRecord,
     IpAssetRepository,
+    IpAssetSearchAggregateRecord,
     IpAssetStore,
     IpAssetVectorHit,
 )
@@ -33,6 +34,8 @@ from app.application.services.ip_assets import (
     IpAssetPreparedThumbnail,
     IpAssetPreparedZip,
     IpAssetSearchHit,
+    IpAssetSearchMetricBucket,
+    IpAssetSearchMetrics,
     IpAssetSearchResult,
     IpAssetService,
     IpAssetUploadResult,
@@ -47,6 +50,7 @@ from app.application.services.ip_assets import (
 from app.core.config import Settings
 from app.core.errors import ConflictError, IpAssetUploadRejectedError, NotFoundError
 from app.domain.ip_assets import (
+    IP_ASSET_SEARCH_V3_VERSION,
     IP_ASSET_SEARCH_VERSION,
     IP_ASSET_THUMBNAIL_POLICY_VERSION,
     IpAssetCharacter,
@@ -54,6 +58,8 @@ from app.domain.ip_assets import (
     IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
+    IpAssetSearchEventKind,
+    IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
     IpAssetSemanticStatus,
     IpAssetSource,
@@ -476,6 +482,120 @@ def test_leaderboard_window_uses_business_timezone_and_includes_thirty_dates() -
 
 
 @pytest.mark.asyncio
+async def test_search_outcomes_use_actual_mode_and_business_timezone() -> None:
+    calls: list[tuple[date, str, IpAssetSearchMode, IpAssetSearchEventKind]] = []
+
+    class Repository:
+        async def list_assets(self, _query: IpAssetQuery) -> IpAssetPage:
+            return IpAssetPage(items=(_asset(),), next_cursor_created_at=None, next_cursor_id=None)
+
+        async def increment_search_aggregate(
+            self,
+            *,
+            business_date: date,
+            search_version: str,
+            mode: IpAssetSearchMode,
+            event_kind: IpAssetSearchEventKind,
+        ) -> None:
+            calls.append((business_date, search_version, mode, event_kind))
+
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, Repository()),
+        store=cast(object, SimpleNamespace()),
+        embeddings=None,
+        identity=VisualEmbeddingIdentity(),
+        search_version=IP_ASSET_SEARCH_V3_VERSION,
+        business_timezone="Asia/Shanghai",
+        now=lambda: datetime(2026, 8, 30, 16, 30, tzinfo=UTC),
+    )
+
+    result = await service.search_text(
+        message="找一张小赛开心的图片",
+        prior_turns=(),
+        filters=IpAssetQuery(limit=8),
+    )
+
+    assert result.mode is IpAssetSearchMode.DEGRADED_METADATA
+    assert result.degraded_reason == "semantic_disabled"
+    assert result.search_version == IP_ASSET_SEARCH_V3_VERSION
+    assert calls == [
+        (
+            date(2026, 8, 31),
+            IP_ASSET_SEARCH_V3_VERSION,
+            IpAssetSearchMode.DEGRADED_METADATA,
+            IpAssetSearchEventKind.SEARCH_RESULTS,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_metrics_group_closed_anonymous_dimensions() -> None:
+    class Repository:
+        async def list_search_aggregates(
+            self, *, start_date: date, end_date: date
+        ) -> tuple[IpAssetSearchAggregateRecord, ...]:
+            assert start_date == date(2026, 8, 2)
+            assert end_date == date(2026, 8, 31)
+            return (
+                IpAssetSearchAggregateRecord(
+                    business_date=end_date,
+                    search_version=IP_ASSET_SEARCH_V3_VERSION,
+                    mode=IpAssetSearchMode.SEMANTIC,
+                    event_kind=IpAssetSearchEventKind.SEARCH_RESULTS,
+                    count=4,
+                ),
+                IpAssetSearchAggregateRecord(
+                    business_date=end_date,
+                    search_version=IP_ASSET_SEARCH_V3_VERSION,
+                    mode=IpAssetSearchMode.SEMANTIC,
+                    event_kind=IpAssetSearchEventKind.ZERO_RESULTS,
+                    count=1,
+                ),
+                IpAssetSearchAggregateRecord(
+                    business_date=end_date,
+                    search_version=IP_ASSET_SEARCH_V3_VERSION,
+                    mode=IpAssetSearchMode.SEMANTIC,
+                    event_kind=IpAssetSearchEventKind.PREVIEW_FROM_SEARCH,
+                    count=3,
+                ),
+            )
+
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, Repository()),
+        store=cast(object, SimpleNamespace()),
+        embeddings=None,
+        identity=VisualEmbeddingIdentity(),
+        now=lambda: datetime(2026, 8, 31, 8, 0, tzinfo=UTC),
+    )
+
+    metrics = await service.search_metrics(period=IpAssetSearchMetricPeriod.THIRTY_DAYS)
+
+    assert metrics.start_date == date(2026, 8, 2)
+    assert len(metrics.buckets) == 1
+    bucket = metrics.buckets[0]
+    assert bucket.searches == 5
+    assert bucket.zero_result_rate == pytest.approx(0.2)
+    assert bucket.preview_per_result_search == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_search_action_rejects_server_owned_outcome_events() -> None:
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, SimpleNamespace()),
+        store=cast(object, SimpleNamespace()),
+        embeddings=None,
+        identity=VisualEmbeddingIdentity(),
+    )
+
+    with pytest.raises(ValueError, match="action event"):
+        await service.record_search_action(
+            event_kind=IpAssetSearchEventKind.SEARCH_RESULTS,
+            search_version=IP_ASSET_SEARCH_V3_VERSION,
+            mode=IpAssetSearchMode.SEMANTIC,
+        )
+
+
+@pytest.mark.asyncio
 async def test_media_reads_require_a_ready_accessible_asset() -> None:
     class Repository:
         async def get_accessible_by_ref(self, *_args: object, **_kwargs: object) -> IpAssetRecord:
@@ -621,6 +741,119 @@ def test_http_profile_personal_favorite_and_anonymous_ranking_are_safely_project
     assert "profile" not in ranking.text.casefold()
 
 
+def test_http_search_action_and_internal_metrics_are_strict_anonymous_aggregates() -> None:
+    class Service(_FakeService):
+        def __init__(self) -> None:
+            super().__init__()
+            self.action_calls: list[tuple[IpAssetSearchEventKind, str, IpAssetSearchMode]] = []
+
+        async def record_search_action(
+            self,
+            *,
+            event_kind: IpAssetSearchEventKind,
+            search_version: str,
+            mode: IpAssetSearchMode,
+        ) -> None:
+            self.action_calls.append((event_kind, search_version, mode))
+
+        async def search_metrics(
+            self, *, period: IpAssetSearchMetricPeriod
+        ) -> IpAssetSearchMetrics:
+            return IpAssetSearchMetrics(
+                period=period,
+                start_date=date(2026, 8, 2),
+                end_date=date(2026, 8, 31),
+                buckets=(
+                    IpAssetSearchMetricBucket(
+                        business_date=date(2026, 8, 31),
+                        search_version=IP_ASSET_SEARCH_V3_VERSION,
+                        mode=IpAssetSearchMode.SEMANTIC,
+                        search_results=4,
+                        zero_results=1,
+                        preview_from_search=3,
+                        favorite_from_search=2,
+                        download_from_search=1,
+                    ),
+                ),
+            )
+
+    service = Service()
+    test_app = FastAPI()
+    test_app.include_router(routes.router, prefix="/api/v1")
+    test_app.state.settings = SimpleNamespace(ip_asset_hub_enabled=True)
+    test_app.state.ip_asset_service = service
+    client = TestClient(test_app)
+
+    accepted = client.post(
+        "/api/v1/ip-assets/search/events",
+        json={
+            "event_kind": "preview_from_search",
+            "search_version": IP_ASSET_SEARCH_V3_VERSION,
+            "mode": "semantic",
+        },
+    )
+    server_owned = client.post(
+        "/api/v1/ip-assets/search/events",
+        json={
+            "event_kind": "search_results",
+            "search_version": IP_ASSET_SEARCH_V3_VERSION,
+            "mode": "semantic",
+        },
+    )
+    extra_identity = client.post(
+        "/api/v1/ip-assets/search/events",
+        json={
+            "event_kind": "download_from_search",
+            "search_version": IP_ASSET_SEARCH_V3_VERSION,
+            "mode": "semantic",
+            "asset_ref": _asset().asset_ref,
+        },
+    )
+    unknown_version = client.post(
+        "/api/v1/ip-assets/search/events",
+        json={
+            "event_kind": "favorite_from_search",
+            "search_version": "ip-asset-experiment",
+            "mode": "semantic",
+        },
+    )
+    metrics = client.get("/api/v1/ip-assets/search/metrics?period=30d")
+    extra_metrics = client.get(
+        "/api/v1/ip-assets/search/metrics?period=30d&profile_ref=ipp_forbidden"
+    )
+
+    assert accepted.status_code == 204
+    assert service.action_calls == [
+        (
+            IpAssetSearchEventKind.PREVIEW_FROM_SEARCH,
+            IP_ASSET_SEARCH_V3_VERSION,
+            IpAssetSearchMode.SEMANTIC,
+        )
+    ]
+    assert server_owned.status_code == 422
+    assert extra_identity.status_code == 422
+    assert unknown_version.status_code == 422
+    assert metrics.status_code == 200
+    assert extra_metrics.status_code == 422
+    payload = metrics.json()
+    assert payload["interpretation"] == "anonymous_aggregate_action_ratios"
+    assert payload["buckets"][0]["searches"] == 5
+    assert payload["buckets"][0]["zero_result_rate"] == pytest.approx(0.2)
+    serialized = metrics.text.casefold()
+    for prohibited in (
+        "query",
+        "asset_ref",
+        "profile",
+        "session",
+        "user_id",
+        "ip_address",
+        "user_agent",
+        "referrer",
+        "cookie",
+    ):
+        assert prohibited not in serialized
+
+
 @pytest.mark.asyncio
 async def test_disabled_capabilities_are_explicit_and_provider_free() -> None:
     request = SimpleNamespace(
@@ -673,13 +906,26 @@ async def test_text_search_blends_unindexed_metadata_ahead_of_weak_semantic_hit(
         semantic_status=IpAssetSemanticStatus.READY,
         created_at=datetime(2026, 8, 24, 10, 0, tzinfo=UTC),
     )
+    unindexed_filtered_asset = replace(
+        _asset(),
+        id=UUID("33333333-3333-4333-8333-333333333333"),
+        asset_ref="ipa_33333333333333333333",
+        canonical_name="小赛-头像-通用-方图-v001",
+        asset_type=IpAssetType.PORTRAIT_AVATAR,
+        emotion="",
+        action="",
+        scene="",
+        intended_use="",
+        tags=(),
+        created_at=datetime(2026, 8, 24, 8, 0, tzinfo=UTC),
+    )
 
     class Repository:
         async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
             assert query.character is IpAssetCharacter.XIAO_SAI
             assert query.query == ""
             return IpAssetPage(
-                items=(semantic_asset, metadata_asset),
+                items=(semantic_asset, metadata_asset, unindexed_filtered_asset),
                 next_cursor_created_at=None,
                 next_cursor_id=None,
             )
@@ -704,6 +950,7 @@ async def test_text_search_blends_unindexed_metadata_ahead_of_weak_semantic_hit(
     assert [item.asset.asset_ref for item in result.items] == [
         metadata_asset.asset_ref,
         semantic_asset.asset_ref,
+        unindexed_filtered_asset.asset_ref,
     ]
     assert result.items[0].similarity is None
     assert "文字匹配: 开心、庆祝" in result.items[0].explanation
@@ -1032,6 +1279,14 @@ def test_ip_asset_settings_require_exact_browser_origins_and_short_heartbeat() -
         Settings(_env_file=None, app_browser_origins="*")
     with pytest.raises(ValidationError, match="heartbeat must be shorter"):
         Settings(_env_file=None, ip_asset_lease_seconds=60, ip_asset_heartbeat_seconds=60)
+    assert (
+        Settings(
+            _env_file=None, ip_asset_search_version="ip-asset-hybrid-v2"
+        ).ip_asset_search_version
+        == "ip-asset-hybrid-v2"
+    )
+    with pytest.raises(ValidationError, match="ip-asset-hybrid-v3-rrf"):
+        Settings(_env_file=None, ip_asset_search_version="ip-asset-experiment")
 
 
 def test_main_api_installs_an_exact_noncredentialed_browser_origin_allowlist() -> None:

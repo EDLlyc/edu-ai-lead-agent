@@ -15,6 +15,7 @@ from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, 
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
 from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
 from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
+from app.domain.ip_assets import IP_ASSET_SEARCH_VERSION
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
@@ -294,6 +295,9 @@ class Settings(BaseSettings):
     ip_asset_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
     ip_asset_max_attempts: int = Field(default=3, ge=1, le=6)
     ip_asset_upload_concurrency: int = Field(default=2, ge=1, le=8)
+    ip_asset_search_version: Literal["ip-asset-hybrid-v2", "ip-asset-hybrid-v3-rrf"] = (
+        IP_ASSET_SEARCH_VERSION
+    )
 
     image_enabled: bool = False
     image_provider_mode: Literal["disabled", "fake", "toapis", "comfly"] = "disabled"

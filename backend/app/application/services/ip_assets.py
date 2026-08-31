@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
@@ -29,6 +30,7 @@ from app.application.ports.ip_assets import (
     IpAssetQuery,
     IpAssetRecord,
     IpAssetRepository,
+    IpAssetSearchAggregateRecord,
     IpAssetStore,
     IpAssetVectorHit,
 )
@@ -45,6 +47,7 @@ from app.domain.image_generation import validate_image_prompt
 from app.domain.ip_assets import (
     IP_ASSET_MAX_ZIP_BYTES,
     IP_ASSET_MAX_ZIP_ITEMS,
+    IP_ASSET_SEARCH_ACTION_EVENTS,
     IP_ASSET_SEARCH_VERSION,
     IP_ASSET_THUMBNAIL_POLICY_VERSION,
     IpAssetCharacter,
@@ -52,6 +55,9 @@ from app.domain.ip_assets import (
     IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
+    IpAssetRankCandidate,
+    IpAssetSearchEventKind,
+    IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
     IpAssetSearchVersion,
     IpAssetSource,
@@ -61,11 +67,13 @@ from app.domain.ip_assets import (
     ValidatedIpAssetUpload,
     build_ip_asset_thumbnail,
     canonical_download_filename,
+    ip_asset_search_metric_window,
     leaderboard_start_date,
     normalize_generation_reference_refs,
     normalize_optional_text,
     normalize_profile_metadata,
     profile_token_digest,
+    rank_ip_asset_candidates,
     validate_ip_asset_upload,
 )
 from app.domain.visual_retrieval import (
@@ -127,8 +135,47 @@ class _MetadataSearchHit:
 
 
 _IP_ASSET_SEARCH_CANDIDATE_LIMIT = 500
-_SEMANTIC_RANK_WEIGHT = 0.35
-_METADATA_RANK_WEIGHT = 0.65
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetSearchMetricBucket:
+    business_date: date
+    search_version: IpAssetSearchVersion
+    mode: IpAssetSearchMode
+    search_results: int
+    zero_results: int
+    preview_from_search: int
+    favorite_from_search: int
+    download_from_search: int
+
+    @property
+    def searches(self) -> int:
+        return self.search_results + self.zero_results
+
+    @property
+    def zero_result_rate(self) -> float | None:
+        return self.zero_results / self.searches if self.searches else None
+
+    @property
+    def preview_per_result_search(self) -> float | None:
+        return self.preview_from_search / self.search_results if self.search_results else None
+
+    @property
+    def favorite_per_result_search(self) -> float | None:
+        return self.favorite_from_search / self.search_results if self.search_results else None
+
+    @property
+    def download_per_result_search(self) -> float | None:
+        return self.download_from_search / self.search_results if self.search_results else None
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetSearchMetrics:
+    period: IpAssetSearchMetricPeriod
+    start_date: date
+    end_date: date
+    buckets: tuple[IpAssetSearchMetricBucket, ...]
 
 
 class IpAssetService:
@@ -139,11 +186,17 @@ class IpAssetService:
         store: IpAssetStore,
         embeddings: VisualEmbeddingModel | None,
         identity: VisualEmbeddingIdentity,
+        search_version: IpAssetSearchVersion = IP_ASSET_SEARCH_VERSION,
+        business_timezone: str = "Asia/Shanghai",
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
         self._store = store
         self._embeddings = embeddings
         self._identity = identity
+        self._search_version = search_version
+        self._business_timezone = business_timezone
+        self._now = now or _utc_now
         self._thumbnail_semaphore = asyncio.Semaphore(2)
 
     async def upload(
@@ -421,7 +474,9 @@ class IpAssetService:
         extracted = _extract_filters(current, filters)
         metadata_hits = await self._search_metadata(text=current, query=extracted)
         if self._embeddings is None:
-            return self._metadata_result(metadata_hits, "semantic_disabled", extracted)
+            return await self._record_search_outcome(
+                self._metadata_result(metadata_hits, "semantic_disabled", extracted)
+            )
         try:
             embedding = await self._embeddings.embed_visual(
                 VisualEmbeddingRequest.for_text(
@@ -432,18 +487,25 @@ class IpAssetService:
                 query=extracted, embedding=embedding, identity=self._identity
             )
         except (VisualEmbeddingError, ValueError):
-            return self._metadata_result(metadata_hits, "provider_unavailable", extracted)
+            return await self._record_search_outcome(
+                self._metadata_result(metadata_hits, "provider_unavailable", extracted)
+            )
         if not hits:
-            return self._metadata_result(metadata_hits, "partial_index", extracted)
-        return IpAssetSearchResult(
-            mode=IpAssetSearchMode.SEMANTIC,
-            degraded_reason=None,
-            search_version=IP_ASSET_SEARCH_VERSION,
-            items=_merge_text_search_hits(
-                semantic_hits=hits,
-                metadata_hits=metadata_hits,
-                query=extracted,
-            ),
+            return await self._record_search_outcome(
+                self._metadata_result(metadata_hits, "partial_index", extracted)
+            )
+        return await self._record_search_outcome(
+            IpAssetSearchResult(
+                mode=IpAssetSearchMode.SEMANTIC,
+                degraded_reason=None,
+                search_version=self._search_version,
+                items=_merge_text_search_hits(
+                    semantic_hits=hits,
+                    metadata_hits=metadata_hits,
+                    query=extracted,
+                    search_version=self._search_version,
+                ),
+            )
         )
 
     async def search_image(
@@ -459,7 +521,9 @@ class IpAssetService:
         except IpAssetValidationError as error:
             raise IpAssetUploadRejectedError(error.code) from error
         if self._embeddings is None:
-            return await self._metadata_fallback(filters, "semantic_disabled")
+            return await self._record_search_outcome(
+                await self._metadata_fallback(filters, "semantic_disabled")
+            )
         try:
             normalized = await asyncio.to_thread(
                 normalize_visual_embedding_image, validated.body, identity=self._identity
@@ -473,28 +537,36 @@ class IpAssetService:
                 query=filters, embedding=embedding, identity=self._identity
             )
         except ValueError:
-            return await self._metadata_fallback(filters, "input_normalization_failed")
+            return await self._record_search_outcome(
+                await self._metadata_fallback(filters, "input_normalization_failed")
+            )
         except VisualEmbeddingError:
-            return await self._metadata_fallback(filters, "provider_unavailable")
+            return await self._record_search_outcome(
+                await self._metadata_fallback(filters, "provider_unavailable")
+            )
         if not hits:
-            return await self._metadata_fallback(filters, "partial_index")
-        return IpAssetSearchResult(
-            mode=IpAssetSearchMode.SEMANTIC,
-            degraded_reason=None,
-            search_version=IP_ASSET_SEARCH_VERSION,
-            items=tuple(
-                IpAssetSearchHit(
-                    asset=hit.record,
-                    similarity=hit.similarity,
-                    explanation=_explanation(
-                        hit.record,
+            return await self._record_search_outcome(
+                await self._metadata_fallback(filters, "partial_index")
+            )
+        return await self._record_search_outcome(
+            IpAssetSearchResult(
+                mode=IpAssetSearchMode.SEMANTIC,
+                degraded_reason=None,
+                search_version=self._search_version,
+                items=tuple(
+                    IpAssetSearchHit(
+                        asset=hit.record,
                         similarity=hit.similarity,
-                        query=filters,
-                        matches=(),
-                    ),
-                )
-                for hit in hits
-            ),
+                        explanation=_explanation(
+                            hit.record,
+                            similarity=hit.similarity,
+                            query=filters,
+                            matches=(),
+                        ),
+                    )
+                    for hit in hits
+                ),
+            )
         )
 
     async def _metadata_fallback(self, query: IpAssetQuery, reason: str) -> IpAssetSearchResult:
@@ -531,14 +603,13 @@ class IpAssetService:
             )[: query.limit]
         )
 
-    @staticmethod
     def _metadata_result(
-        hits: tuple[_MetadataSearchHit, ...], reason: str, query: IpAssetQuery
+        self, hits: tuple[_MetadataSearchHit, ...], reason: str, query: IpAssetQuery
     ) -> IpAssetSearchResult:
         return IpAssetSearchResult(
             mode=IpAssetSearchMode.DEGRADED_METADATA,
             degraded_reason=reason,
-            search_version=IP_ASSET_SEARCH_VERSION,
+            search_version=self._search_version,
             items=tuple(
                 IpAssetSearchHit(
                     asset=hit.asset,
@@ -553,6 +624,75 @@ class IpAssetService:
                 for hit in hits
             ),
         )
+
+    async def record_search_action(
+        self,
+        *,
+        event_kind: IpAssetSearchEventKind,
+        search_version: IpAssetSearchVersion,
+        mode: IpAssetSearchMode,
+    ) -> None:
+        if event_kind not in IP_ASSET_SEARCH_ACTION_EVENTS:
+            raise ValueError("IP asset search action event is invalid")
+        await self._repository.increment_search_aggregate(
+            business_date=self._business_date(),
+            search_version=search_version,
+            mode=mode,
+            event_kind=event_kind,
+        )
+
+    async def search_metrics(self, *, period: IpAssetSearchMetricPeriod) -> IpAssetSearchMetrics:
+        start_date, end_date = ip_asset_search_metric_window(
+            period=period,
+            now=self._now(),
+            timezone=self._business_timezone,
+        )
+        rows = await self._repository.list_search_aggregates(
+            start_date=start_date, end_date=end_date
+        )
+        return IpAssetSearchMetrics(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            buckets=_search_metric_buckets(rows),
+        )
+
+    async def _record_search_outcome(self, result: IpAssetSearchResult) -> IpAssetSearchResult:
+        event_kind = (
+            IpAssetSearchEventKind.SEARCH_RESULTS
+            if result.items
+            else IpAssetSearchEventKind.ZERO_RESULTS
+        )
+        increment = getattr(self._repository, "increment_search_aggregate", None)
+        if increment is None:
+            return result
+        try:
+            await increment(
+                business_date=self._business_date(),
+                search_version=result.search_version,
+                mode=result.mode,
+                event_kind=event_kind,
+            )
+        except Exception:
+            # Search telemetry is intentionally best effort. Log only closed dimensions; never
+            # attach the query, asset/profile identity, request metadata, IP, or user agent.
+            _LOGGER.exception(
+                "ip_asset_search_aggregate_failed",
+                extra={
+                    "search_version": result.search_version,
+                    "search_mode": result.mode.value,
+                    "event_kind": event_kind.value,
+                },
+            )
+        return result
+
+    def _business_date(self) -> date:
+        _start, current = ip_asset_search_metric_window(
+            period=IpAssetSearchMetricPeriod.DAY,
+            now=self._now(),
+            timezone=self._business_timezone,
+        )
+        return current
 
 
 class IpAssetWorkerService:
@@ -940,49 +1080,78 @@ def _merge_text_search_hits(
     semantic_hits: tuple[IpAssetVectorHit, ...],
     metadata_hits: tuple[_MetadataSearchHit, ...],
     query: IpAssetQuery,
+    search_version: IpAssetSearchVersion,
 ) -> tuple[IpAssetSearchHit, ...]:
     semantic_by_ref = {hit.record.asset_ref: hit for hit in semantic_hits}
     metadata_by_ref = {hit.asset.asset_ref: hit for hit in metadata_hits}
     records = {hit.record.asset_ref: hit.record for hit in semantic_hits} | {
         hit.asset.asset_ref: hit.asset for hit in metadata_hits
     }
-    ranked: list[tuple[float, float, float, IpAssetSearchHit]] = []
+    semantic_ranks = {hit.record.asset_ref: rank for rank, hit in enumerate(semantic_hits, start=1)}
+    metadata_ranks = {hit.asset.asset_ref: rank for rank, hit in enumerate(metadata_hits, start=1)}
+    candidates: list[IpAssetRankCandidate] = []
+    hits_by_ref: dict[str, IpAssetSearchHit] = {}
     for asset_ref, asset in records.items():
         semantic = semantic_by_ref.get(asset_ref)
         metadata = metadata_by_ref.get(asset_ref)
         similarity = semantic.similarity if semantic is not None else None
-        semantic_score = (
-            ((similarity + 1.0) / 2.0) * _SEMANTIC_RANK_WEIGHT if similarity is not None else 0.0
-        )
-        metadata_score = metadata.score * _METADATA_RANK_WEIGHT if metadata is not None else 0.0
-        ranked.append(
-            (
-                semantic_score + metadata_score,
-                metadata.score if metadata is not None else 0.0,
-                similarity if similarity is not None else -2.0,
-                IpAssetSearchHit(
-                    asset=asset,
-                    similarity=similarity,
-                    explanation=_explanation(
-                        asset,
-                        similarity=similarity,
-                        query=query,
-                        matches=metadata.matches if metadata is not None else (),
-                    ),
-                ),
+        candidates.append(
+            IpAssetRankCandidate(
+                asset_ref=asset_ref,
+                created_at=asset.created_at,
+                stable_id=asset.id.hex,
+                metadata_rank=metadata_ranks.get(asset_ref),
+                semantic_rank=semantic_ranks.get(asset_ref),
+                metadata_score=metadata.score if metadata is not None else None,
+                semantic_similarity=similarity,
             )
         )
-    ranked.sort(
-        key=lambda item: (
-            item[0],
-            item[1],
-            item[2],
-            item[3].asset.created_at,
-            item[3].asset.id.hex,
-        ),
-        reverse=True,
+        hits_by_ref[asset_ref] = IpAssetSearchHit(
+            asset=asset,
+            similarity=similarity,
+            explanation=_explanation(
+                asset,
+                similarity=similarity,
+                query=query,
+                matches=metadata.matches if metadata is not None else (),
+            ),
+        )
+    ordered_refs = rank_ip_asset_candidates(
+        tuple(candidates), version=search_version, limit=query.limit
     )
-    return tuple(item[3] for item in ranked[: query.limit])
+    return tuple(hits_by_ref[asset_ref] for asset_ref in ordered_refs)
+
+
+def _search_metric_buckets(
+    rows: tuple[IpAssetSearchAggregateRecord, ...],
+) -> tuple[IpAssetSearchMetricBucket, ...]:
+    grouped: dict[
+        tuple[date, IpAssetSearchVersion, IpAssetSearchMode],
+        dict[IpAssetSearchEventKind, int],
+    ] = {}
+    for row in rows:
+        counts = grouped.setdefault((row.business_date, row.search_version, row.mode), {})
+        counts[row.event_kind] = row.count
+    return tuple(
+        IpAssetSearchMetricBucket(
+            business_date=business_date,
+            search_version=version,
+            mode=mode,
+            search_results=counts.get(IpAssetSearchEventKind.SEARCH_RESULTS, 0),
+            zero_results=counts.get(IpAssetSearchEventKind.ZERO_RESULTS, 0),
+            preview_from_search=counts.get(IpAssetSearchEventKind.PREVIEW_FROM_SEARCH, 0),
+            favorite_from_search=counts.get(IpAssetSearchEventKind.FAVORITE_FROM_SEARCH, 0),
+            download_from_search=counts.get(IpAssetSearchEventKind.DOWNLOAD_FROM_SEARCH, 0),
+        )
+        for (business_date, version, mode), counts in sorted(
+            grouped.items(),
+            key=lambda item: (item[0][0], item[0][1], item[0][2].value),
+        )
+    )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _explanation(

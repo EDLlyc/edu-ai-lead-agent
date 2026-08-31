@@ -47,6 +47,7 @@ usePersonalIpAssets(profile, source, enabled); // gated all/generated/uploaded/f
 useSetIpAssetFavorite();
 useShareIpAsset();
 useIpAssetLeaderboard(period); // anonymous aggregate only
+recordIpAssetSearchEvent({ eventKind, telemetry }); // response version/mode only; best effort
 
 // Native required is kept; the IP creation brief has no minlength/maxlength attributes.
 <textarea name="prompt" required />;
@@ -129,14 +130,26 @@ resources.
   leaderboard, and shared reference-picker cards load `thumbnail_url`, while detail, private media,
   original download, and flipbook handoff retain their controlled original routes.
 - Text/image semantic results may be `semantic` or `degraded_metadata`; the UI explains degradation
-  without presenting it as failure or semantic confidence. Because `ip-asset-hybrid-v2` may attach
-  metadata-only cards to a semantic response, the semantic-mode heading says “语义 + 元数据结果”
+  without presenting it as failure or semantic confidence. Because both the frozen
+  `ip-asset-hybrid-v2` rollback and default `ip-asset-hybrid-v3-rrf` may attach metadata-only cards
+  to a semantic response, the semantic-mode heading says “语义 + 元数据结果”
   instead of claiming every card is a vector hit. Raw cosine values remain API diagnostics and never
   render as percentages or calibrated confidence. Vector-backed cards use the qualitative explanation
   `画面语义相关`, while exact metadata reasons remain visible. Profile-aware search sends the token only as a header
   and projects favorite state. A successful favorite mutation overlays the active result immediately
   while invalidating all shared/detail/personal caches. Search failures use an accessible alert while
   preserving the existing gallery.
+- Search action attribution is ephemeral and bound to the interaction that opened or selected the
+  asset, not inferred later from membership in the current result list. Opening detail from a search
+  snapshots only `{search_version, mode}`; opening the same asset from the leaderboard or another
+  non-search surface clears that snapshot. Preview, favorite, and download counters are sent only
+  after the corresponding product action succeeds from that search origin. Failed actions send no
+  event. ZIP reports at most one download action after successful packaging when its submitted
+  selection includes a current search-origin item.
+- Search telemetry is best effort and never blocks detail, favorite, ZIP, or direct download. A
+  reporting failure emits only the constant identity-free browser diagnostic
+  `IP asset anonymous search telemetry failed`. The browser sends no query, asset ref, profile
+  token/ref, user/session/request identity, IP, user-agent, referrer, or cookie as telemetry.
 - The search surface exposes three keyboard-operable example-query chips. Activating one fills the
   input and announces feedback but does not submit, mutate chat turns, or issue a hidden request.
 - The composite chat search control owns one rounded `:focus-within` ring. Its child text input must
@@ -273,6 +286,10 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
 | Search response contains numeric cosine values                                      | Keep them out of visible copy; show qualitative semantic evidence plus exact metadata reasons           |
 | Example-query chip activated                                                        | Fill and announce only; do not submit or create a request until the user explicitly searches            |
 | Search text input receives keyboard/pointer focus                                   | Draw one rounded composite focus ring; no child rectangle, clipping, or horizontal overflow             |
+| Search-origin detail preview succeeds                                               | Send one best-effort preview event using only that response's version/mode                              |
+| Same asset is then opened from the leaderboard                                      | Clear search attribution; later detail actions send no search event                                     |
+| Search-origin favorite/download product action fails                                | Send no action event and preserve the ordinary failure behavior                                         |
+| Anonymous action telemetry fails after product success                              | Product action remains successful; emit only the constant identity-free warning                         |
 | Processing/failed asset                                                             | Do not request preview bytes or allow selection/download/reference; render a named fallback             |
 | Ready preview fails to load                                                         | Replace the broken image with a named textual fallback                                                  |
 | Preview URL crosses API origin or uses non-HTTP scheme                              | Refuse the resource URL                                                                                 |
@@ -313,6 +330,12 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   keyboard, downloads it, and gets an announced success message.
 - Good demo: the first sixteen cards use cached WebP thumbnails, an example chip fills without a
   request, search returns at most eight qualitative results, and mobile users see assets before ranking.
+- Good measurement: a search result snapshots its response version/mode on open, successful actions
+  report those two dimensions, and opening the same asset through the ranking rail clears attribution.
+- Base measurement: the anonymous counter request fails; the successful product action stays
+  successful and only a constant safe browser warning is emitted.
+- Bad measurement: infer origin from asset membership after a leaderboard click, report a failed
+  favorite/download, or attach query/asset/profile/session data to the telemetry request.
 - Base: embeddings and generation are disabled. The gallery, upload, metadata filters, preview, and
   downloads remain fully usable with clear capability notices.
 - Bad: the text input draws a rectangular outline through its rounded shell, the heading labels a
@@ -350,6 +373,12 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   generation polling/output navigation, and empty/error cases. Assert sixteen-card gallery pages,
   thumbnail card sources, eight-result searches, qualitative vector explanations, no raw percentage,
   example-chip fill-without-request, textual selection state, and gallery-before-ranking mobile order.
+- Search telemetry mapper/component: generated types allow only the three action events plus
+  response `search_version`/`mode`; successful search-origin preview/favorite/download sends the
+  exact snapshot; failed product actions send nothing; best-effort telemetry rejection never blocks
+  primary work; overlapping leaderboard opens clear attribution even when the asset remains in the
+  current result set; and the request/log scan contains no query, asset, profile, session, or request
+  identity.
 - Recognition mapper/component: multipart contains only the selected file; no call before explicit
   click; editable advisory prefill; department/contributor isolation; no automatic submit; disabled
   and provider-failure independence; manual-value preservation; stale response reset on file change;
@@ -554,6 +583,28 @@ Gallery cards repeatedly decode the original and present an uncalibrated diagnos
 
 The lightweight card media and qualitative evidence preserve honest demo behavior; detail and
 download actions still use their controlled original routes.
+
+#### Wrong
+
+```tsx
+// Membership is not provenance: the same asset may have been opened from the ranking rail.
+if (searchMatches.has(asset.asset_ref)) {
+  recordIpAssetSearchEvent("preview_from_search", asset.asset_ref);
+}
+```
+
+#### Correct
+
+```tsx
+const openSearchAsset = (assetRef: string) => {
+  setDetailSearchTelemetry(searchTelemetry); // version + mode only
+  openDetail(assetRef);
+};
+const openLeaderboardAsset = (assetRef: string) => {
+  setDetailSearchTelemetry(null);
+  openDetail(assetRef);
+};
+```
 
 #### Wrong
 

@@ -5411,3 +5411,37 @@ class IpAssetDownloadDailyModel(Base):
         UniqueConstraint("asset_id", "business_date", name="uq_ip_asset_download_daily_asset_date"),
         Index("ix_ip_asset_download_daily_date", "business_date", "asset_id"),
     )
+
+
+class IpAssetSearchAggregateModel(Base):
+    __tablename__ = "ip_asset_search_aggregates"
+
+    business_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    search_version: Mapped[str] = mapped_column(String(48), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(32), primary_key=True)
+    event_kind: Mapped[str] = mapped_column(String(40), primary_key=True)
+    count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("count >= 0", name="ck_ip_asset_search_aggregates_count"),
+        CheckConstraint(
+            "search_version IN ('ip-asset-hybrid-v2', 'ip-asset-hybrid-v3-rrf')",
+            name="ck_ip_asset_search_aggregates_version",
+        ),
+        CheckConstraint(
+            "mode IN ('semantic', 'degraded_metadata')",
+            name="ck_ip_asset_search_aggregates_mode",
+        ),
+        CheckConstraint(
+            "event_kind IN ('search_results', 'zero_results', "
+            "'preview_from_search', 'favorite_from_search', 'download_from_search')",
+            name="ck_ip_asset_search_aggregates_event_kind",
+        ),
+        Index("ix_ip_asset_search_aggregates_date", "business_date"),
+    )

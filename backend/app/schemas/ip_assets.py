@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.ip_assets import (
+    IP_ASSET_SEARCH_ACTION_EVENTS,
     IpAssetCharacter,
     IpAssetLeaderboardPeriod,
     IpAssetMembershipSource,
     IpAssetOrientation,
+    IpAssetSearchEventKind,
+    IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
     IpAssetSearchVersion,
     IpAssetSemanticStatus,
@@ -161,6 +164,52 @@ class IpAssetSearchResponse(BaseModel):
     degraded_reason: str | None
     search_version: IpAssetSearchVersion
     items: list[IpAssetSearchItemResponse]
+
+
+class IpAssetSearchActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_kind: IpAssetSearchEventKind
+    search_version: IpAssetSearchVersion
+    mode: IpAssetSearchMode
+
+    @model_validator(mode="after")
+    def validate_action_event(self) -> IpAssetSearchActionRequest:
+        if self.event_kind not in IP_ASSET_SEARCH_ACTION_EVENTS:
+            raise ValueError("event_kind must be a search-result action")
+        return self
+
+
+class IpAssetSearchMetricsQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: IpAssetSearchMetricPeriod = IpAssetSearchMetricPeriod.THIRTY_DAYS
+
+
+class IpAssetSearchMetricBucketResponse(BaseModel):
+    business_date: date
+    search_version: IpAssetSearchVersion
+    mode: IpAssetSearchMode
+    searches: int = Field(ge=0)
+    search_results: int = Field(ge=0)
+    zero_results: int = Field(ge=0)
+    preview_from_search: int = Field(ge=0)
+    favorite_from_search: int = Field(ge=0)
+    download_from_search: int = Field(ge=0)
+    zero_result_rate: float | None = Field(default=None, ge=0)
+    preview_per_result_search: float | None = Field(default=None, ge=0)
+    favorite_per_result_search: float | None = Field(default=None, ge=0)
+    download_per_result_search: float | None = Field(default=None, ge=0)
+
+
+class IpAssetSearchMetricsResponse(BaseModel):
+    period: IpAssetSearchMetricPeriod
+    start_date: date
+    end_date: date
+    interpretation: Literal["anonymous_aggregate_action_ratios"] = (
+        "anonymous_aggregate_action_ratios"
+    )
+    buckets: list[IpAssetSearchMetricBucketResponse]
 
 
 class IpAssetZipRequest(BaseModel):

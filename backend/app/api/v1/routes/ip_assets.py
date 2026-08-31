@@ -60,7 +60,11 @@ from app.schemas.ip_assets import (
     IpAssetProfileCreateRequest,
     IpAssetProfileResponse,
     IpAssetRecognitionResponse,
+    IpAssetSearchActionRequest,
     IpAssetSearchItemResponse,
+    IpAssetSearchMetricBucketResponse,
+    IpAssetSearchMetricsQuery,
+    IpAssetSearchMetricsResponse,
     IpAssetSearchResponse,
     IpAssetShareResponse,
     IpAssetTextSearchRequest,
@@ -337,6 +341,50 @@ async def search_ip_assets_text(
         else frozenset()
     )
     return _search_response(result, favorites=favorites)
+
+
+@router.post("/search/events", status_code=status.HTTP_204_NO_CONTENT)
+async def record_ip_asset_search_action(
+    payload: IpAssetSearchActionRequest,
+    request: Request,
+) -> Response:
+    await _service(request).record_search_action(
+        event_kind=payload.event_kind,
+        search_version=payload.search_version,
+        mode=payload.mode,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/search/metrics", response_model=IpAssetSearchMetricsResponse)
+async def read_ip_asset_search_metrics(
+    request: Request,
+    params: Annotated[IpAssetSearchMetricsQuery, Query()],
+) -> IpAssetSearchMetricsResponse:
+    metrics = await _service(request).search_metrics(period=params.period)
+    return IpAssetSearchMetricsResponse(
+        period=metrics.period,
+        start_date=metrics.start_date,
+        end_date=metrics.end_date,
+        buckets=[
+            IpAssetSearchMetricBucketResponse(
+                business_date=bucket.business_date,
+                search_version=bucket.search_version,
+                mode=bucket.mode,
+                searches=bucket.searches,
+                search_results=bucket.search_results,
+                zero_results=bucket.zero_results,
+                preview_from_search=bucket.preview_from_search,
+                favorite_from_search=bucket.favorite_from_search,
+                download_from_search=bucket.download_from_search,
+                zero_result_rate=bucket.zero_result_rate,
+                preview_per_result_search=bucket.preview_per_result_search,
+                favorite_per_result_search=bucket.favorite_per_result_search,
+                download_per_result_search=bucket.download_per_result_search,
+            )
+            for bucket in metrics.buckets
+        ],
+    )
 
 
 @router.post("/search/image", response_model=IpAssetSearchResponse)

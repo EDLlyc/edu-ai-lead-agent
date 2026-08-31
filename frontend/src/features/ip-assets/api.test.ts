@@ -26,6 +26,7 @@ import {
   listIpAssets,
   listPersonalIpAssets,
   recognizeIpAsset,
+  recordIpAssetSearchEvent,
   searchIpAssetsImage,
   searchIpAssetsText,
   uploadIpAsset,
@@ -185,7 +186,7 @@ describe("IP asset API adapter", () => {
       data: {
         mode: "degraded_metadata",
         degraded_reason: "semantic_disabled",
-        search_version: "ip-asset-search-v1",
+        search_version: "ip-asset-hybrid-v3-rrf",
         items: [],
       },
       error: undefined,
@@ -237,5 +238,38 @@ describe("IP asset API adapter", () => {
       { bodySerializer: () => FormData },
     ];
     expect(request.bodySerializer().get("limit")).toBe("8");
+  });
+
+  it("records only closed anonymous search-result action dimensions", async () => {
+    clientMocks.POST.mockResolvedValue({ data: undefined, error: undefined });
+
+    await recordIpAssetSearchEvent({
+      eventKind: "download_from_search",
+      telemetry: {
+        search_version: "ip-asset-hybrid-v3-rrf",
+        mode: "semantic",
+      },
+    });
+
+    expect(clientMocks.POST).toHaveBeenCalledWith(
+      "/api/v1/ip-assets/search/events",
+      {
+        body: {
+          event_kind: "download_from_search",
+          search_version: "ip-asset-hybrid-v3-rrf",
+          mode: "semantic",
+        },
+      },
+    );
+    const calls = clientMocks.POST.mock.calls as unknown as Array<
+      [string, { body: Record<string, unknown> }]
+    >;
+    const request = calls[0];
+    if (request === undefined) throw new Error("telemetry_request_missing");
+    expect(Object.keys(request[1].body).sort()).toEqual([
+      "event_kind",
+      "mode",
+      "search_version",
+    ]);
   });
 });

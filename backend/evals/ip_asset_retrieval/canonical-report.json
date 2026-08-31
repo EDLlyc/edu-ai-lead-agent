@@ -1,0 +1,1393 @@
+{
+  "aggregate": {
+    "case_count": 40,
+    "exact_metadata_priority_passed": true,
+    "v2": {
+      "macro_mrr_at_5": 1.0,
+      "macro_ndcg_at_5": 0.954837,
+      "macro_recall_at_5": 0.84,
+      "retrieval_version": "ip-asset-hybrid-v2",
+      "zero_result_rate": 0.2
+    },
+    "v3": {
+      "macro_mrr_at_5": 1.0,
+      "macro_ndcg_at_5": 0.970204,
+      "macro_recall_at_5": 0.92,
+      "retrieval_version": "ip-asset-hybrid-v3-rrf",
+      "zero_result_rate": 0.2
+    }
+  },
+  "cases": [
+    {
+      "case_id": "action-01",
+      "category": "action",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "action-01-c1",
+          "action-01-c2",
+          "action-01-c3",
+          "action-01-c5",
+          "action-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "action-01-c1",
+          "action-01-c2",
+          "action-01-c3",
+          "action-01-c4",
+          "action-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "action-02",
+      "category": "action",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "action-02-c1",
+          "action-02-c2",
+          "action-02-c3",
+          "action-02-c4",
+          "action-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "action-02-c1",
+          "action-02-c2",
+          "action-02-c3",
+          "action-02-c4",
+          "action-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "action-03",
+      "category": "action",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "action-03-c1",
+          "action-03-c2",
+          "action-03-c3",
+          "action-03-c4",
+          "action-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "action-03-c1",
+          "action-03-c2",
+          "action-03-c3",
+          "action-03-c4",
+          "action-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "action-04",
+      "category": "action",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "action-04-c1",
+          "action-04-c2",
+          "action-04-c3",
+          "action-04-c5",
+          "action-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "action-04-c1",
+          "action-04-c2",
+          "action-04-c3",
+          "action-04-c4",
+          "action-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "action-05",
+      "category": "action",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "asset-type-01",
+      "category": "asset_type",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "asset-type-01-c1",
+          "asset-type-01-c2",
+          "asset-type-01-c3",
+          "asset-type-01-c5",
+          "asset-type-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "asset-type-01-c1",
+          "asset-type-01-c2",
+          "asset-type-01-c3",
+          "asset-type-01-c4",
+          "asset-type-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "asset-type-02",
+      "category": "asset_type",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "asset-type-02-c1",
+          "asset-type-02-c2",
+          "asset-type-02-c3",
+          "asset-type-02-c4",
+          "asset-type-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "asset-type-02-c1",
+          "asset-type-02-c2",
+          "asset-type-02-c3",
+          "asset-type-02-c4",
+          "asset-type-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "asset-type-03",
+      "category": "asset_type",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "asset-type-03-c1",
+          "asset-type-03-c2",
+          "asset-type-03-c3",
+          "asset-type-03-c4",
+          "asset-type-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "asset-type-03-c1",
+          "asset-type-03-c2",
+          "asset-type-03-c3",
+          "asset-type-03-c4",
+          "asset-type-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "asset-type-04",
+      "category": "asset_type",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "asset-type-04-c1",
+          "asset-type-04-c2",
+          "asset-type-04-c3",
+          "asset-type-04-c5",
+          "asset-type-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "asset-type-04-c1",
+          "asset-type-04-c2",
+          "asset-type-04-c3",
+          "asset-type-04-c4",
+          "asset-type-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "asset-type-05",
+      "category": "asset_type",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "character-01",
+      "category": "character",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "character-01-c1",
+          "character-01-c2",
+          "character-01-c3",
+          "character-01-c5",
+          "character-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "character-01-c1",
+          "character-01-c2",
+          "character-01-c3",
+          "character-01-c4",
+          "character-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "character-02",
+      "category": "character",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "character-02-c1",
+          "character-02-c2",
+          "character-02-c3",
+          "character-02-c4",
+          "character-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "character-02-c1",
+          "character-02-c2",
+          "character-02-c3",
+          "character-02-c4",
+          "character-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "character-03",
+      "category": "character",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "character-03-c1",
+          "character-03-c2",
+          "character-03-c3",
+          "character-03-c4",
+          "character-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "character-03-c1",
+          "character-03-c2",
+          "character-03-c3",
+          "character-03-c4",
+          "character-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "character-04",
+      "category": "character",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "character-04-c1",
+          "character-04-c2",
+          "character-04-c3",
+          "character-04-c5",
+          "character-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "character-04-c1",
+          "character-04-c2",
+          "character-04-c3",
+          "character-04-c4",
+          "character-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "character-05",
+      "category": "character",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "combined-filters-01",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "combined-filters-01-c1",
+          "combined-filters-01-c2",
+          "combined-filters-01-c3",
+          "combined-filters-01-c5",
+          "combined-filters-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "combined-filters-01-c1",
+          "combined-filters-01-c2",
+          "combined-filters-01-c3",
+          "combined-filters-01-c4",
+          "combined-filters-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "combined-filters-02",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "combined-filters-02-c1",
+          "combined-filters-02-c2",
+          "combined-filters-02-c3",
+          "combined-filters-02-c4",
+          "combined-filters-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "combined-filters-02-c1",
+          "combined-filters-02-c2",
+          "combined-filters-02-c3",
+          "combined-filters-02-c4",
+          "combined-filters-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "combined-filters-03",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "combined-filters-03-c1",
+          "combined-filters-03-c2",
+          "combined-filters-03-c3",
+          "combined-filters-03-c4",
+          "combined-filters-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "combined-filters-03-c1",
+          "combined-filters-03-c2",
+          "combined-filters-03-c3",
+          "combined-filters-03-c4",
+          "combined-filters-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "combined-filters-04",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "combined-filters-04-c1",
+          "combined-filters-04-c2",
+          "combined-filters-04-c3",
+          "combined-filters-04-c5",
+          "combined-filters-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "combined-filters-04-c1",
+          "combined-filters-04-c2",
+          "combined-filters-04-c3",
+          "combined-filters-04-c4",
+          "combined-filters-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "combined-filters-05",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "emotion-01",
+      "category": "emotion",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "emotion-01-c1",
+          "emotion-01-c2",
+          "emotion-01-c3",
+          "emotion-01-c5",
+          "emotion-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "emotion-01-c1",
+          "emotion-01-c2",
+          "emotion-01-c3",
+          "emotion-01-c4",
+          "emotion-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "emotion-02",
+      "category": "emotion",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "emotion-02-c1",
+          "emotion-02-c2",
+          "emotion-02-c3",
+          "emotion-02-c4",
+          "emotion-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "emotion-02-c1",
+          "emotion-02-c2",
+          "emotion-02-c3",
+          "emotion-02-c4",
+          "emotion-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "emotion-03",
+      "category": "emotion",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "emotion-03-c1",
+          "emotion-03-c2",
+          "emotion-03-c3",
+          "emotion-03-c4",
+          "emotion-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "emotion-03-c1",
+          "emotion-03-c2",
+          "emotion-03-c3",
+          "emotion-03-c4",
+          "emotion-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "emotion-04",
+      "category": "emotion",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "emotion-04-c1",
+          "emotion-04-c2",
+          "emotion-04-c3",
+          "emotion-04-c5",
+          "emotion-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "emotion-04-c1",
+          "emotion-04-c2",
+          "emotion-04-c3",
+          "emotion-04-c4",
+          "emotion-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "emotion-05",
+      "category": "emotion",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "intended-use-01",
+      "category": "intended_use",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "intended-use-01-c1",
+          "intended-use-01-c2",
+          "intended-use-01-c3",
+          "intended-use-01-c5",
+          "intended-use-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "intended-use-01-c1",
+          "intended-use-01-c2",
+          "intended-use-01-c3",
+          "intended-use-01-c4",
+          "intended-use-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "intended-use-02",
+      "category": "intended_use",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "intended-use-02-c1",
+          "intended-use-02-c2",
+          "intended-use-02-c3",
+          "intended-use-02-c4",
+          "intended-use-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "intended-use-02-c1",
+          "intended-use-02-c2",
+          "intended-use-02-c3",
+          "intended-use-02-c4",
+          "intended-use-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "intended-use-03",
+      "category": "intended_use",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "intended-use-03-c1",
+          "intended-use-03-c2",
+          "intended-use-03-c3",
+          "intended-use-03-c4",
+          "intended-use-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "intended-use-03-c1",
+          "intended-use-03-c2",
+          "intended-use-03-c3",
+          "intended-use-03-c4",
+          "intended-use-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "intended-use-04",
+      "category": "intended_use",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "intended-use-04-c1",
+          "intended-use-04-c2",
+          "intended-use-04-c3",
+          "intended-use-04-c5",
+          "intended-use-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "intended-use-04-c1",
+          "intended-use-04-c2",
+          "intended-use-04-c3",
+          "intended-use-04-c4",
+          "intended-use-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "intended-use-05",
+      "category": "intended_use",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "scene-01",
+      "category": "scene",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "scene-01-c1",
+          "scene-01-c2",
+          "scene-01-c3",
+          "scene-01-c5",
+          "scene-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "scene-01-c1",
+          "scene-01-c2",
+          "scene-01-c3",
+          "scene-01-c4",
+          "scene-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "scene-02",
+      "category": "scene",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "scene-02-c1",
+          "scene-02-c2",
+          "scene-02-c3",
+          "scene-02-c4",
+          "scene-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "scene-02-c1",
+          "scene-02-c2",
+          "scene-02-c3",
+          "scene-02-c4",
+          "scene-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "scene-03",
+      "category": "scene",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "scene-03-c1",
+          "scene-03-c2",
+          "scene-03-c3",
+          "scene-03-c4",
+          "scene-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "scene-03-c1",
+          "scene-03-c2",
+          "scene-03-c3",
+          "scene-03-c4",
+          "scene-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "scene-04",
+      "category": "scene",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "scene-04-c1",
+          "scene-04-c2",
+          "scene-04-c3",
+          "scene-04-c5",
+          "scene-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "scene-04-c1",
+          "scene-04-c2",
+          "scene-04-c3",
+          "scene-04-c4",
+          "scene-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "scene-05",
+      "category": "scene",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    },
+    {
+      "case_id": "transparent-background-01",
+      "category": "transparent_background",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "transparent-background-01-c1",
+          "transparent-background-01-c2",
+          "transparent-background-01-c3",
+          "transparent-background-01-c5",
+          "transparent-background-01-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "transparent-background-01-c1",
+          "transparent-background-01-c2",
+          "transparent-background-01-c3",
+          "transparent-background-01-c4",
+          "transparent-background-01-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "transparent-background-02",
+      "category": "transparent_background",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "transparent-background-02-c1",
+          "transparent-background-02-c2",
+          "transparent-background-02-c3",
+          "transparent-background-02-c4",
+          "transparent-background-02-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.94303,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "transparent-background-02-c1",
+          "transparent-background-02-c2",
+          "transparent-background-02-c3",
+          "transparent-background-02-c4",
+          "transparent-background-02-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "transparent-background-03",
+      "category": "transparent_background",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "transparent-background-03-c1",
+          "transparent-background-03-c2",
+          "transparent-background-03-c3",
+          "transparent-background-03-c4",
+          "transparent-background-03-c5"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.907992,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "transparent-background-03-c1",
+          "transparent-background-03-c2",
+          "transparent-background-03-c3",
+          "transparent-background-03-c4",
+          "transparent-background-03-c5"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "transparent-background-04",
+      "category": "transparent_background",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "transparent-background-04-c1",
+          "transparent-background-04-c2",
+          "transparent-background-04-c3",
+          "transparent-background-04-c5",
+          "transparent-background-04-c4"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "transparent-background-04-c1",
+          "transparent-background-04-c2",
+          "transparent-background-04-c3",
+          "transparent-background-04-c4",
+          "transparent-background-04-c6"
+        ],
+        "zero_result": false
+      }
+    },
+    {
+      "case_id": "transparent-background-05",
+      "category": "transparent_background",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [],
+        "zero_result": true
+      }
+    }
+  ],
+  "categories": {
+    "action": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "asset_type": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "character": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "combined_filters": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "emotion": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "intended_use": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "scene": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    },
+    "transparent_background": {
+      "case_count": 5,
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.954837,
+        "macro_recall_at_5": 0.84,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "zero_result_rate": 0.2
+      },
+      "v3": {
+        "macro_mrr_at_5": 1.0,
+        "macro_ndcg_at_5": 0.970204,
+        "macro_recall_at_5": 0.92,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "zero_result_rate": 0.2
+      }
+    }
+  },
+  "dataset_version": "ip-asset-retrieval-eval-case-v1:7d06b5d41ba98e54"
+}

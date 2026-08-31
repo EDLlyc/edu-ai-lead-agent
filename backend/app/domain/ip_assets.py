@@ -27,8 +27,13 @@ IP_ASSET_MAX_GENERATION_REFERENCES = 3
 IP_ASSET_NAMING_VERSION = "ip-asset-name-v1"
 IP_ASSET_THUMBNAIL_MAX_EDGE = 640
 IP_ASSET_THUMBNAIL_POLICY_VERSION = "ip-asset-thumbnail-v1"
-IpAssetSearchVersion: TypeAlias = Literal["ip-asset-hybrid-v2"]
-IP_ASSET_SEARCH_VERSION: IpAssetSearchVersion = "ip-asset-hybrid-v2"
+IP_ASSET_SEARCH_V2_VERSION: Literal["ip-asset-hybrid-v2"] = "ip-asset-hybrid-v2"
+IP_ASSET_SEARCH_V3_VERSION: Literal["ip-asset-hybrid-v3-rrf"] = "ip-asset-hybrid-v3-rrf"
+IpAssetSearchVersion: TypeAlias = Literal["ip-asset-hybrid-v2", "ip-asset-hybrid-v3-rrf"]
+IP_ASSET_SEARCH_VERSION: IpAssetSearchVersion = IP_ASSET_SEARCH_V3_VERSION
+IP_ASSET_RRF_K = 60
+IP_ASSET_RRF_METADATA_WEIGHT = 0.65
+IP_ASSET_RRF_SEMANTIC_WEIGHT = 0.35
 
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 _SAFE_REF = re.compile(r"^ipa_[a-f0-9]{20}$")
@@ -88,6 +93,134 @@ class IpAssetOrientation(StrEnum):
 class IpAssetSearchMode(StrEnum):
     SEMANTIC = "semantic"
     DEGRADED_METADATA = "degraded_metadata"
+
+
+class IpAssetSearchEventKind(StrEnum):
+    SEARCH_RESULTS = "search_results"
+    ZERO_RESULTS = "zero_results"
+    PREVIEW_FROM_SEARCH = "preview_from_search"
+    FAVORITE_FROM_SEARCH = "favorite_from_search"
+    DOWNLOAD_FROM_SEARCH = "download_from_search"
+
+
+class IpAssetSearchMetricPeriod(StrEnum):
+    DAY = "day"
+    THIRTY_DAYS = "30d"
+
+
+IP_ASSET_SEARCH_ACTION_EVENTS = frozenset(
+    {
+        IpAssetSearchEventKind.PREVIEW_FROM_SEARCH,
+        IpAssetSearchEventKind.FAVORITE_FROM_SEARCH,
+        IpAssetSearchEventKind.DOWNLOAD_FROM_SEARCH,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetRankCandidate:
+    """Provider-free rank observation shared by production and offline evaluation."""
+
+    asset_ref: str
+    created_at: datetime
+    stable_id: str
+    metadata_rank: int | None = None
+    semantic_rank: int | None = None
+    metadata_score: float | None = None
+    semantic_similarity: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.metadata_rank is None and self.semantic_rank is None:
+            raise ValueError("IP asset rank candidate needs at least one lane")
+        for rank in (self.metadata_rank, self.semantic_rank):
+            if rank is not None and rank < 1:
+                raise ValueError("IP asset candidate ranks are one-based")
+        if self.metadata_score is not None and not 0.0 <= self.metadata_score <= 1.0:
+            raise ValueError("IP asset metadata score is invalid")
+        if self.semantic_similarity is not None and not -1.0 <= self.semantic_similarity <= 1.0:
+            raise ValueError("IP asset semantic similarity is invalid")
+        if self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+            raise ValueError("IP asset candidate time must be timezone-aware")
+
+
+def rank_ip_asset_candidates(
+    candidates: tuple[IpAssetRankCandidate, ...],
+    *,
+    version: IpAssetSearchVersion,
+    limit: int,
+) -> tuple[str, ...]:
+    """Return stable asset identities using the frozen V2 or V3 ranking policy."""
+    if limit < 1:
+        raise ValueError("IP asset rank limit must be positive")
+    if len({candidate.asset_ref for candidate in candidates}) != len(candidates):
+        raise ValueError("IP asset rank candidates must have unique identities")
+    if version == IP_ASSET_SEARCH_V2_VERSION:
+        ranked = sorted(candidates, key=_ip_asset_v2_sort_key, reverse=True)
+    elif version == IP_ASSET_SEARCH_V3_VERSION:
+        ranked = sorted(candidates, key=_ip_asset_v3_sort_key, reverse=True)
+    else:
+        raise ValueError("IP asset search version is unsupported")
+    return tuple(candidate.asset_ref for candidate in ranked[:limit])
+
+
+def ip_asset_search_metric_window(
+    *, period: IpAssetSearchMetricPeriod, now: datetime, timezone: str
+) -> tuple[date, date]:
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("IP asset metric time must be timezone-aware")
+    try:
+        end_date = now.astimezone(ZoneInfo(timezone)).date()
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("IP asset metric timezone is invalid") from error
+    days = 1 if period is IpAssetSearchMetricPeriod.DAY else 30
+    return end_date - timedelta(days=days - 1), end_date
+
+
+def _ip_asset_v2_sort_key(
+    candidate: IpAssetRankCandidate,
+) -> tuple[float, float, float, datetime, str]:
+    metadata_score = candidate.metadata_score or 0.0
+    similarity = (
+        candidate.semantic_similarity if candidate.semantic_similarity is not None else -2.0
+    )
+    semantic_score = (
+        ((similarity + 1.0) / 2.0) * IP_ASSET_RRF_SEMANTIC_WEIGHT
+        if candidate.semantic_similarity is not None
+        else 0.0
+    )
+    return (
+        metadata_score * IP_ASSET_RRF_METADATA_WEIGHT + semantic_score,
+        metadata_score,
+        similarity,
+        candidate.created_at,
+        candidate.stable_id,
+    )
+
+
+def _ip_asset_v3_sort_key(
+    candidate: IpAssetRankCandidate,
+) -> tuple[bool, float, int, int, datetime, str]:
+    score = 0.0
+    if candidate.metadata_rank is not None:
+        score += IP_ASSET_RRF_METADATA_WEIGHT / (IP_ASSET_RRF_K + candidate.metadata_rank)
+    if candidate.semantic_rank is not None:
+        score += IP_ASSET_RRF_SEMANTIC_WEIGHT / (IP_ASSET_RRF_K + candidate.semantic_rank)
+    # ``reverse=True`` makes a present, smaller rank win by using its negative value. Missing
+    # lanes sort behind every bounded lane while created-at and UUID preserve the V2 tie contract.
+    metadata_preference = (
+        -candidate.metadata_rank if candidate.metadata_rank is not None else -1_000_000_000
+    )
+    semantic_preference = (
+        -candidate.semantic_rank if candidate.semantic_rank is not None else -1_000_000_000
+    )
+    return (
+        bool(candidate.metadata_score),
+        score,
+        metadata_preference,
+        semantic_preference,
+        candidate.created_at,
+        candidate.stable_id,
+    )
 
 
 class IpAssetMembershipSource(StrEnum):

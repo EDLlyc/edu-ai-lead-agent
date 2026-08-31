@@ -11,6 +11,11 @@ export type IpAssetSource = components["schemas"]["IpAssetSource"];
 export type IpAssetOrientation = components["schemas"]["IpAssetOrientation"];
 export type IpAssetSearchResponse =
   components["schemas"]["IpAssetSearchResponse"];
+export type IpAssetSearchEventKind =
+  components["schemas"]["IpAssetSearchEventKind"];
+export type IpAssetSearchTelemetry = Readonly<
+  Pick<IpAssetSearchResponse, "search_version" | "mode">
+>;
 export type IpAssetUploadResponse =
   components["schemas"]["IpAssetUploadResponse"];
 export type IpAssetRecognition =
@@ -275,6 +280,20 @@ export async function searchIpAssetsImage(input: {
   );
   if (data === undefined) throwIpAssetError(error, "image_search_failed");
   return data;
+}
+
+export async function recordIpAssetSearchEvent(input: {
+  eventKind: Exclude<IpAssetSearchEventKind, "search_results" | "zero_results">;
+  telemetry: IpAssetSearchTelemetry;
+}): Promise<void> {
+  const { error } = await apiClient.POST("/api/v1/ip-assets/search/events", {
+    body: {
+      event_kind: input.eventKind,
+      search_version: input.telemetry.search_version,
+      mode: input.telemetry.mode,
+    },
+  });
+  if (error !== undefined) throwIpAssetError(error, "search_telemetry_failed");
 }
 
 export async function createIpAssetGeneration(

@@ -127,6 +127,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             store=MinioIpAssetStore(settings),
             embeddings=visual_embeddings,
             identity=settings.visual_embedding_identity,
+            search_version=settings.ip_asset_search_version,
+            business_timezone=settings.business_timezone,
         )
     if settings.ip_asset_recognition_enabled:
         ip_asset_recognition_client = httpx.AsyncClient(follow_redirects=False)
