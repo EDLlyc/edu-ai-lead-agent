@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/08-31-agent-budget-permission-trace/research/current-state.md","reason":"Check new governance layers do not regress or duplicate existing Workbench enforcement."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Check exact Workbench/MCP compatibility, budget and privacy boundaries."}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"Check causal identity and artifact lineage compose with existing run/stage semantics."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check atomic no-oversell reservations, event constraints, migration and downgrade safety."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check all denial paths fail before execution and expose only stable codes."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check database, logs and API contain no prohibited trace content."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check real PostgreSQL concurrency, contract/eval regressions, types and privacy gates."}

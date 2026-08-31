@@ -5445,3 +5445,372 @@ class IpAssetSearchAggregateModel(Base):
         ),
         Index("ix_ip_asset_search_aggregates_date", "business_date"),
     )
+
+
+class ExecutionGovernedRunModel(Base):
+    __tablename__ = "execution_governed_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    root_agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    limit_elapsed_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_model_turns: Mapped[int] = mapped_column(Integer, nullable=False)
+    limit_input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False)
+    limit_tool_result_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_artifact_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_children: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_depth: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    allow_child_agents: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'failed', 'cancelled')",
+            name="ck_execution_runs_status",
+        ),
+        CheckConstraint("limit_elapsed_ms > 0", name="ck_execution_runs_elapsed"),
+        CheckConstraint(
+            "limit_model_turns >= 0 AND limit_input_tokens >= 0 "
+            "AND limit_output_tokens >= 0 AND limit_tool_calls >= 0 "
+            "AND limit_tool_result_bytes >= 0 AND limit_artifact_bytes >= 0 "
+            "AND limit_children >= 0",
+            name="ck_execution_runs_limits",
+        ),
+        CheckConstraint("max_depth BETWEEN 0 AND 2", name="ck_execution_runs_depth"),
+        CheckConstraint(
+            "(allow_child_agents AND limit_children > 0 AND max_depth > 0) OR "
+            "(NOT allow_child_agents AND limit_children = 0)",
+            name="ck_execution_runs_children",
+        ),
+        UniqueConstraint("id", "task_id", name="uq_execution_runs_task"),
+        UniqueConstraint("request_fingerprint", name="uq_execution_runs_request"),
+        Index("ix_execution_runs_task_created", "task_id", "created_at"),
+    )
+
+
+class ExecutionAgentAllocationModel(Base):
+    __tablename__ = "execution_agent_allocations"
+
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    role: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    parent_agent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parent_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    depth: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    allow_child_agents: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    max_depth: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    limit_elapsed_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_model_turns: Mapped[int] = mapped_column(Integer, nullable=False)
+    limit_input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False)
+    limit_tool_result_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_artifact_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    limit_children: Mapped[int] = mapped_column(Integer, nullable=False)
+    used_elapsed_ms: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    used_model_turns: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    used_input_tokens: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, server_default=text("0")
+    )
+    used_output_tokens: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, server_default=text("0")
+    )
+    used_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    used_tool_result_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    used_artifact_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    used_child_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    reserved_elapsed_ms: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    reserved_model_turns: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reserved_input_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    reserved_output_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    reserved_tool_calls: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    reserved_tool_result_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    reserved_artifact_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("0")
+    )
+    reserved_child_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    next_seq_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "task_id"],
+            ["execution_governed_runs.id", "execution_governed_runs.task_id"],
+            name="fk_execution_allocations_run_task",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["run_id", "task_id", "parent_agent_id"],
+            [
+                "execution_agent_allocations.run_id",
+                "execution_agent_allocations.task_id",
+                "execution_agent_allocations.agent_id",
+            ],
+            name="fk_execution_allocations_parent",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "role IN ('orchestrator', 'planner', 'worker', 'reviewer')",
+            name="ck_execution_allocations_role",
+        ),
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'failed', 'cancelled')",
+            name="ck_execution_allocations_status",
+        ),
+        CheckConstraint("depth BETWEEN 0 AND 2", name="ck_execution_allocations_depth"),
+        CheckConstraint("max_depth BETWEEN 0 AND 2", name="ck_execution_allocations_max_depth"),
+        CheckConstraint(
+            "limit_elapsed_ms > 0 AND limit_model_turns >= 0 "
+            "AND limit_input_tokens >= 0 AND limit_output_tokens >= 0 "
+            "AND limit_tool_calls >= 0 AND limit_tool_result_bytes >= 0 "
+            "AND limit_artifact_bytes >= 0 AND limit_children >= 0",
+            name="ck_execution_allocations_limits",
+        ),
+        CheckConstraint(
+            "used_elapsed_ms >= 0 AND used_model_turns >= 0 "
+            "AND (used_input_tokens IS NULL OR used_input_tokens >= 0) "
+            "AND (used_output_tokens IS NULL OR used_output_tokens >= 0) "
+            "AND used_tool_calls >= 0 AND used_tool_result_bytes >= 0 "
+            "AND used_artifact_bytes >= 0 AND used_child_count >= 0",
+            name="ck_execution_allocations_usage",
+        ),
+        CheckConstraint(
+            "reserved_elapsed_ms >= 0 AND reserved_model_turns >= 0 "
+            "AND reserved_input_tokens >= 0 AND reserved_output_tokens >= 0 "
+            "AND reserved_tool_calls >= 0 AND reserved_tool_result_bytes >= 0 "
+            "AND reserved_artifact_bytes >= 0 AND reserved_child_count >= 0",
+            name="ck_execution_allocations_reserved",
+        ),
+        CheckConstraint("next_seq_no >= 0", name="ck_execution_allocations_seq"),
+        CheckConstraint(
+            "(depth = 0 AND parent_agent_id IS NULL AND parent_event_id IS NULL) OR "
+            "(depth > 0 AND parent_agent_id IS NOT NULL AND parent_event_id IS NOT NULL)",
+            name="ck_execution_allocations_parent_shape",
+        ),
+        Index("ix_execution_allocations_run_status", "run_id", "status"),
+    )
+
+
+class ExecutionTraceEventModel(Base):
+    __tablename__ = "execution_trace_events"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    seq_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    parent_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    artifact_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    target_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    model_turns: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    input_tokens: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, server_default=text("0")
+    )
+    output_tokens: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, server_default=text("0")
+    )
+    tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    result_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "task_id", "agent_id"],
+            [
+                "execution_agent_allocations.run_id",
+                "execution_agent_allocations.task_id",
+                "execution_agent_allocations.agent_id",
+            ],
+            name="fk_execution_events_allocation",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["parent_event_id", "run_id", "task_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+            ],
+            name="fk_execution_events_parent",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("seq_no >= 0", name="ck_execution_events_seq"),
+        CheckConstraint(
+            "kind IN ('run_started', 'run_finished', 'run_failed', 'node_started', "
+            "'node_finished', 'node_failed', 'model_requested', 'model_result', "
+            "'tool_requested', 'tool_result', 'artifact_produced', 'budget_denied', "
+            "'permission_denied')",
+            name="ck_execution_events_kind",
+        ),
+        CheckConstraint(
+            "status IN ('started', 'succeeded', 'failed', 'denied')",
+            name="ck_execution_events_status",
+        ),
+        CheckConstraint(
+            "duration_ms >= 0 AND model_turns >= 0 AND tool_calls >= 0 "
+            "AND result_bytes >= 0 AND (input_tokens IS NULL OR input_tokens >= 0) "
+            "AND (output_tokens IS NULL OR output_tokens >= 0)",
+            name="ck_execution_events_usage",
+        ),
+        CheckConstraint(
+            "(kind = 'run_started' AND seq_no = 0 AND parent_event_id IS NULL) OR "
+            "(kind <> 'run_started' AND parent_event_id IS NOT NULL)",
+            name="ck_execution_events_parent_shape",
+        ),
+        CheckConstraint(
+            "(kind = 'artifact_produced' AND artifact_id IS NOT NULL) OR "
+            "(kind <> 'artifact_produced' AND artifact_id IS NULL)",
+            name="ck_execution_events_artifact_shape",
+        ),
+        CheckConstraint(
+            "status <> 'denied' OR error_code IS NOT NULL",
+            name="ck_execution_events_denial",
+        ),
+        UniqueConstraint("id", "run_id", "task_id", name="uq_execution_events_run_task"),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "task_id",
+            "agent_id",
+            name="uq_execution_events_agent",
+        ),
+        UniqueConstraint("run_id", "agent_id", "seq_no", name="uq_execution_events_seq"),
+        Index("ix_execution_events_timeline", "run_id", "created_at", "id"),
+    )
+
+
+class ExecutionArtifactModel(Base):
+    __tablename__ = "execution_artifacts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    producer_event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["producer_event_id", "run_id", "task_id", "agent_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+                "execution_trace_events.agent_id",
+            ],
+            name="fk_execution_artifacts_event",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("byte_size >= 0", name="ck_execution_artifacts_size"),
+        CheckConstraint(
+            "kind IN ('article', 'markdown', 'html', 'image', 'report', 'checkpoint', 'other')",
+            name="ck_execution_artifacts_kind",
+        ),
+        CheckConstraint(
+            "lifecycle_status IN ('active', 'superseded', 'deleted')",
+            name="ck_execution_artifacts_status",
+        ),
+        UniqueConstraint("id", "run_id", "task_id", name="uq_execution_artifacts_run_task"),
+        Index("ix_execution_artifacts_run_created", "run_id", "created_at"),
+    )
+
+
+class ExecutionBudgetReservationModel(Base):
+    __tablename__ = "execution_budget_reservations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    agent_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reserved_elapsed_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reserved_model_turns: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reserved_output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reserved_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_tool_result_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reserved_artifact_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    actual_elapsed_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actual_model_turns: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_input_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actual_output_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actual_tool_calls: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actual_tool_result_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actual_artifact_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "task_id", "agent_id"],
+            [
+                "execution_agent_allocations.run_id",
+                "execution_agent_allocations.task_id",
+                "execution_agent_allocations.agent_id",
+            ],
+            name="fk_execution_reservations_allocation",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('reserved', 'reconciled')",
+            name="ck_execution_reservations_status",
+        ),
+        CheckConstraint(
+            "reserved_elapsed_ms >= 0 AND reserved_model_turns >= 0 "
+            "AND reserved_input_tokens >= 0 AND reserved_output_tokens >= 0 "
+            "AND reserved_tool_calls >= 0 AND reserved_tool_result_bytes >= 0 "
+            "AND reserved_artifact_bytes >= 0",
+            name="ck_execution_reservations_reserved",
+        ),
+        Index("ix_execution_reservations_allocation", "run_id", "agent_id", "status"),
+    )
