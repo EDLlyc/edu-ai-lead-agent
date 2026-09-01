@@ -1,0 +1,4 @@
+{"file":".trellis/tasks/08-31-agent-system-engineering-upgrade/research/current-state.md","reason":"Check that final integration reuses existing implementations and preserves dirty-worktree ownership."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check shared data flow, typed ownership and version propagation across every layer."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check full-scope quality, migration, privacy and compatibility gates."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check generated contracts, interaction wiring, accessibility and frontend regressions where touched."}

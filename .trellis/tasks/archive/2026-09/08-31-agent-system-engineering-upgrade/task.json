@@ -1,0 +1,30 @@
+{
+  "id": "agent-system-engineering-upgrade",
+  "name": "agent-system-engineering-upgrade",
+  "title": "Agent 系统检索、编排与治理升级",
+  "description": "Coordinate IP asset retrieval V3, deterministic weekly three-article DAG, and unified Agent budgets, permissions, and trace contracts.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-31",
+  "completedAt": "2026-09-01",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-31-ip-asset-retrieval-v3",
+    "08-31-official-account-weekly-three-article-dag",
+    "08-31-agent-budget-permission-trace"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
