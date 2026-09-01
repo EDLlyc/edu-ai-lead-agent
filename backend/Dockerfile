@@ -40,6 +40,7 @@ COPY alembic ./alembic
 COPY app ./app
 
 RUN python -m pip check \
+    && mkdir -p /app/output \
     && chown -R app:app /app
 
 USER app

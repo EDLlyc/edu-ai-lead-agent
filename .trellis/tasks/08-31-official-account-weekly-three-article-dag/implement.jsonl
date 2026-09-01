@@ -1,0 +1,8 @@
+{"file":".trellis/tasks/08-31-official-account-weekly-three-article-dag/research/current-state.md","reason":"Layer durable orchestration over the verified weekly owners and respect the uncommitted ownership blocker."}
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Preserve V2 release, content/artifact/mobile identity, local-only and no-publish completion gates."}
+{"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Preserve Article/media/audit truth, immutable artifacts and historical compatibility."}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Keep weekly scheduling independent of existing daily morning/noon/evening slots and workers."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Consume the shared governance contract while preserving bounded/safe trace semantics."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Implement idempotent runs, node checkpoints, leases, fencing and safe migrations."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Project partial/retryable/terminal DAG failures as stable safe codes."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply worker, migration, artifact, zero-network/social and full regression gates."}

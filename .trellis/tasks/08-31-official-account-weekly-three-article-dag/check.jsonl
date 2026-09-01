@@ -1,0 +1,8 @@
+{"file":".trellis/tasks/08-31-official-account-weekly-three-article-dag/research/current-state.md","reason":"Check the DAG reuses existing weekly selection/build/validation/aggregate code and does not overwrite parallel work."}
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Check every child completion gate, fingerprint and local-only truth remains exact."}
+{"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Check article/media integrity, immutable outputs and historical regressions."}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Check weekly and daily schedules/storage remain disjoint."}
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Check unified budget/permission/trace events are bounded and privacy-safe."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check idempotency, ready-node claim, lease/fencing, checkpoint recovery and downgrade safety."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Check all partial/retry/terminal states block unsafe descendants and expose stable errors."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check focused/full regressions, zero social clients, migration, types and worker lifecycle."}

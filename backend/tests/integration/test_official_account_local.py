@@ -561,13 +561,13 @@ async def test_editorial_review_migration_refuses_lossy_downgrade(
 
         async with integration_context.engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "20260825_0036"
+        assert revision == "20260831_0040"
     finally:
         await asyncio.to_thread(command.upgrade, Config("backend/alembic.ini"), "head")
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260825_0036"
+    assert revision == "20260831_0040"
 
 
 @pytest.mark.integration
@@ -761,7 +761,7 @@ async def test_multimodal_article_migration_refuses_v4_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260825_0036"
+    assert revision == "20260831_0040"
 
 
 @pytest.mark.integration
@@ -787,8 +787,8 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
     assert artifact_version == 5
 
     try:
-        # The current 0036 head can refuse first when selected-news v9/v10 artifacts share
-        # the integration database.  Both guards preserve the immutable v5 row under test.
+        # Downgrade from the current 0040 head can refuse first when selected-news v9/v10
+        # artifacts share the integration database. Both guards preserve the immutable v5 row.
         with pytest.raises(
             Exception,
             match=(
@@ -806,7 +806,7 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260825_0036"
+    assert revision == "20260831_0040"
 
 
 @pytest.mark.integration

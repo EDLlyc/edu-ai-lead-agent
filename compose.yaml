@@ -386,6 +386,32 @@ services:
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
     command: ["python", "-m", "app.governance_worker_main"]
 
+  official-account-weekly-dag-worker:
+    profiles: ["official-account-weekly-dag"]
+    <<: *app-runtime
+    restart: unless-stopped
+    stop_grace_period: 90s
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+    volumes:
+      - official_account_weekly_dag_output:/app/output
+    command:
+      [
+        "python",
+        "-m",
+        "app.official_account_weekly_dag_main",
+        "worker",
+        "--concurrency",
+        "3",
+        "--lease-seconds",
+        "60",
+        "--poll-seconds",
+        "2",
+      ]
+
   content-scheduler:
     profiles: ["content"]
     <<: *app-runtime
@@ -607,3 +633,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  official_account_weekly_dag_output:

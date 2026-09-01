@@ -96,7 +96,7 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
-docker compose --profile governance --profile content --profile wecom --profile ip-assets config --format json | \
+docker compose --profile governance --profile content --profile wecom --profile ip-assets --profile official-account-weekly-dag config --format json | \
   "${python_command[@]}" -c '
 import json
 import re
@@ -110,6 +110,7 @@ names = (
     "acquisition-worker",
     "governance-scheduler",
     "governance-worker",
+    "official-account-weekly-dag-worker",
     "content-scheduler",
     "content-worker",
     "ip-asset-worker",
@@ -124,7 +125,36 @@ if image != "edu-ai-lead-agent-backend:local" and not re.fullmatch(
 ):
     raise SystemExit("non-local APP_IMAGE must be a digest-only reference")
 ' >/dev/null || fail "Application services do not share the local-or-digest APP_IMAGE contract"
-pass "All ten application and migration services share one APP_IMAGE contract"
+pass "All eleven application and migration services share one APP_IMAGE contract"
+
+docker compose --profile official-account-weekly-dag config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+worker = json.load(sys.stdin)["services"]["official-account-weekly-dag-worker"]
+command = worker.get("command", [])
+expected = (
+    "python",
+    "-m",
+    "app.official_account_weekly_dag_main",
+    "worker",
+    "--concurrency",
+    "3",
+    "--lease-seconds",
+    "60",
+    "--poll-seconds",
+    "2",
+)
+if tuple(command) != expected:
+    raise SystemExit("weekly DAG worker command or bounds drifted")
+if worker.get("ports"):
+    raise SystemExit("weekly DAG worker must not publish a network port")
+mounts = worker.get("volumes", [])
+if not any(item.get("target") == "/app/output" for item in mounts):
+    raise SystemExit("weekly DAG worker output must use its durable volume")
+' >/dev/null || fail "Official-account weekly DAG worker profile is invalid"
+pass "Official-account weekly DAG worker is bounded, durable, and has no network port"
 
 docker compose --profile ip-assets config --format json | \
   "${python_command[@]}" -c '
@@ -386,7 +416,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260831_0039" ]] \
+[[ "$migration_revision" == "20260831_0040" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -470,6 +500,14 @@ official_account_table_count="$(
 [[ "$official_account_table_count" == "8" ]] \
   || fail "Official-account local schema is incomplete; run 'make migrate'"
 pass "Official-account local run, artifact, media, and draft tables are installed"
+
+weekly_dag_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''official_account_weekly_dag_runs'\'','\''official_account_weekly_dag_nodes'\'','\''official_account_weekly_dag_attempts'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$weekly_dag_table_count" == "3" ]] \
+  || fail "Official-account weekly DAG schema is incomplete; run 'make migrate'"
+pass "Official-account weekly DAG run, node, and attempt tables are installed"
 
 ip_asset_table_count="$(
   docker compose exec -T postgres sh -c \

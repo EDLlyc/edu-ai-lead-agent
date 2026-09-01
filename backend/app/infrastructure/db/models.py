@@ -5814,3 +5814,213 @@ class ExecutionBudgetReservationModel(Base):
         ),
         Index("ix_execution_reservations_allocation", "run_id", "agent_id", "status"),
     )
+
+
+class OfficialAccountWeeklyDagRunModel(Base):
+    __tablename__ = "official_account_weekly_dag_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    week_start: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), nullable=False)
+    schedule_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    selection_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    dag_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    graph_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    aggregate_artifact_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    aggregate_artifact_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    aggregate_media_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    aggregate_byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id", "task_id"],
+            ["execution_governed_runs.id", "execution_governed_runs.task_id"],
+            name="fk_weekly_dag_runs_execution_run",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'partial', 'retryable_failed', "
+            "'terminal_failed', 'ready')",
+            name="ck_weekly_dag_runs_status",
+        ),
+        CheckConstraint(
+            "(aggregate_artifact_ref IS NULL AND aggregate_artifact_fingerprint IS NULL "
+            "AND aggregate_media_type IS NULL AND aggregate_byte_size IS NULL) OR "
+            "(aggregate_artifact_ref IS NOT NULL AND aggregate_artifact_fingerprint IS NOT NULL "
+            "AND aggregate_media_type IS NOT NULL AND aggregate_byte_size >= 0)",
+            name="ck_weekly_dag_runs_aggregate_shape",
+        ),
+        UniqueConstraint("id", "task_id", name="uq_weekly_dag_runs_task"),
+        UniqueConstraint(
+            "week_start",
+            "schedule_version",
+            "selection_version",
+            "dag_version",
+            name="uq_weekly_dag_runs_business_key",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_weekly_dag_runs_request"),
+        Index("ix_weekly_dag_runs_status_week", "status", "week_start"),
+    )
+
+
+class OfficialAccountWeeklyDagNodeModel(Base):
+    __tablename__ = "official_account_weekly_dag_nodes"
+
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    node_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    input_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    output_artifact_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    output_artifact_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    output_media_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    output_byte_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    execution_artifact_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    trace_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "task_id"],
+            ["official_account_weekly_dag_runs.id", "official_account_weekly_dag_runs.task_id"],
+            name="fk_weekly_dag_nodes_run",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["execution_artifact_id", "run_id", "task_id"],
+            ["execution_artifacts.id", "execution_artifacts.run_id", "execution_artifacts.task_id"],
+            name="fk_weekly_dag_nodes_execution_artifact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["trace_event_id", "run_id", "task_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+            ],
+            name="fk_weekly_dag_nodes_trace_event",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "kind IN ('schedule', 'select_roles', 'build_article', 'plan_media', "
+            "'render_handoff', 'validate_child', 'aggregate', 'finalize')",
+            name="ck_weekly_dag_nodes_kind",
+        ),
+        CheckConstraint(
+            "role IS NULL OR role IN ('official_anchor', 'industry_trend', 'application_case')",
+            name="ck_weekly_dag_nodes_role",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'retryable_failed', 'terminal_failed')",
+            name="ck_weekly_dag_nodes_status",
+        ),
+        CheckConstraint(
+            "ordinal >= 0 AND attempt_count >= 0 AND max_attempts > 0 "
+            "AND attempt_count <= max_attempts AND fencing_token >= 0",
+            name="ck_weekly_dag_nodes_attempts",
+        ),
+        CheckConstraint(
+            "(status = 'running' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) OR "
+            "(status <> 'running' AND lease_owner IS NULL AND lease_expires_at IS NULL)",
+            name="ck_weekly_dag_nodes_lease_shape",
+        ),
+        CheckConstraint(
+            "(output_artifact_ref IS NULL AND output_artifact_fingerprint IS NULL "
+            "AND output_media_type IS NULL AND output_byte_size IS NULL "
+            "AND execution_artifact_id IS NULL) OR "
+            "(output_artifact_ref IS NOT NULL AND output_artifact_fingerprint IS NOT NULL "
+            "AND output_media_type IS NOT NULL AND output_byte_size >= 0 "
+            "AND execution_artifact_id IS NOT NULL)",
+            name="ck_weekly_dag_nodes_artifact_shape",
+        ),
+        CheckConstraint(
+            "status <> 'succeeded' OR (output_artifact_ref IS NOT NULL "
+            "AND trace_event_id IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_weekly_dag_nodes_success_shape",
+        ),
+        UniqueConstraint("run_id", "ordinal", name="uq_weekly_dag_nodes_ordinal"),
+        Index(
+            "ix_weekly_dag_nodes_claim",
+            "status",
+            "available_at",
+            "lease_expires_at",
+            "ordinal",
+        ),
+        Index("ix_weekly_dag_nodes_run_status", "run_id", "status"),
+    )
+
+
+class OfficialAccountWeeklyDagAttemptModel(Base):
+    __tablename__ = "official_account_weekly_dag_attempts"
+
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    node_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    output_artifact_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    output_artifact_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["run_id", "task_id", "node_key"],
+            [
+                "official_account_weekly_dag_nodes.run_id",
+                "official_account_weekly_dag_nodes.task_id",
+                "official_account_weekly_dag_nodes.node_key",
+            ],
+            name="fk_weekly_dag_attempts_node",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("attempt_no > 0 AND fencing_token > 0", name="ck_weekly_dag_attempts_no"),
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'retryable_failed', 'terminal_failed', "
+            "'lease_expired')",
+            name="ck_weekly_dag_attempts_status",
+        ),
+        CheckConstraint(
+            "status = 'running' OR completed_at IS NOT NULL",
+            name="ck_weekly_dag_attempts_completion",
+        ),
+        Index("ix_weekly_dag_attempts_run_started", "run_id", "started_at"),
+    )

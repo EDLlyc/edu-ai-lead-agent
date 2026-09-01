@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import date
 from uuid import uuid4
 
 import asyncpg
@@ -16,12 +17,12 @@ from .conftest import IntegrationContext
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_execution_governance_migration_is_additive_private_and_refuses_populated_downgrade(
+async def test_weekly_dag_migration_is_additive_private_and_refuses_populated_downgrade(
     integration_context: IntegrationContext,
 ) -> None:
     base_url = make_url(integration_context.settings.database_url.get_secret_value())
     admin_url = base_url.set(drivername="postgresql", database="postgres")
-    database_name = f"edu_ai_execution_mig_{uuid4().hex}"
+    database_name = f"edu_ai_weekly_dag_mig_{uuid4().hex}"
     admin_dsn = admin_url.render_as_string(hide_password=False)
     admin = await asyncpg.connect(admin_dsn)
     await admin.execute(f'CREATE DATABASE "{database_name}"')
@@ -36,14 +37,14 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
     get_settings.cache_clear()
     try:
         config = Config("backend/alembic.ini")
-        await asyncio.to_thread(command.upgrade, config, "20260831_0038")
+        await asyncio.to_thread(command.upgrade, config, "20260831_0039")
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval(
-                "SELECT to_regclass('public.execution_governed_runs') IS NULL"
+                "SELECT to_regclass('public.official_account_weekly_dag_runs') IS NULL"
             )
             assert await connection.fetchval(
-                "SELECT to_regclass('public.ip_asset_search_aggregates') IS NOT NULL"
+                "SELECT to_regclass('public.execution_governed_runs') IS NOT NULL"
             )
         finally:
             await connection.close()
@@ -56,11 +57,9 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
                 "20260831_0040"
             )
             for table_name in (
-                "execution_governed_runs",
-                "execution_agent_allocations",
-                "execution_trace_events",
-                "execution_artifacts",
-                "execution_budget_reservations",
+                "official_account_weekly_dag_runs",
+                "official_account_weekly_dag_nodes",
+                "official_account_weekly_dag_attempts",
             ):
                 assert await connection.fetchval(
                     "SELECT to_regclass($1) IS NOT NULL", f"public.{table_name}"
@@ -71,30 +70,25 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
                     SELECT table_name, column_name
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                      AND table_name LIKE 'execution_%'
+                      AND table_name LIKE 'official_account_weekly_dag_%'
                     ORDER BY table_name, ordinal_position
                     """
                 )
             )
-            serialized_columns = " ".join(
-                f"{row['table_name']}.{row['column_name']}" for row in columns
-            )
+            serialized = " ".join(f"{row['table_name']}.{row['column_name']}" for row in columns)
             for prohibited in (
                 "prompt",
                 "message",
-                "reasoning",
+                "article_body",
                 "provider_body",
                 "argument_json",
                 "result_json",
                 "object_key",
                 "private_path",
-                "credential",
-                "database_url",
-                "ip_address",
+                "lease_owner_ip",
                 "user_agent",
-                "profile_token",
             ):
-                assert prohibited not in serialized_columns
+                assert prohibited not in serialized
 
             await connection.execute(
                 """
@@ -104,38 +98,61 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
                     limit_output_tokens, limit_tool_calls, limit_tool_result_bytes,
                     limit_artifact_bytes, limit_children, max_depth, allow_child_agents
                 ) VALUES (
-                    $1, 'migration-test', 'root', 'execution-governance-v1', $2, 'running',
-                    1000, 0, 0, 0, 0, 0, 0, 0, 1, false
+                    $1, 'weekly-dag-migration', 'weekly.orchestrator',
+                    'execution-governance-v1', $2, 'running',
+                    1000, 0, 0, 0, 1, 1024, 1024, 1, 1, true
                 )
                 """,
                 run_id,
                 "a" * 64,
             )
+            await connection.execute(
+                """
+                INSERT INTO official_account_weekly_dag_runs (
+                    id, task_id, week_start, timezone, schedule_version,
+                    selection_version, dag_version, graph_fingerprint,
+                    input_fingerprint, request_fingerprint, status
+                ) VALUES (
+                    $1, 'weekly-dag-migration', $2, 'Asia/Shanghai',
+                    'official-account-weekly-schedule-v1',
+                    'official-account-weekly-selection-v1',
+                    'official-account-weekly-three-article-dag-v1',
+                    $3, $4, $5, 'pending'
+                )
+                """,
+                run_id,
+                date(2099, 1, 5),
+                "b" * 64,
+                "c" * 64,
+                "d" * 64,
+            )
         finally:
             await connection.close()
 
         with pytest.raises(RuntimeError, match="destructive downgrade is disabled"):
-            await asyncio.to_thread(command.downgrade, config, "20260831_0038")
+            await asyncio.to_thread(command.downgrade, config, "20260831_0039")
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
                 "20260831_0040"
             )
-            await connection.execute("DELETE FROM execution_governed_runs WHERE id = $1", run_id)
+            await connection.execute(
+                "DELETE FROM official_account_weekly_dag_runs WHERE id = $1", run_id
+            )
         finally:
             await connection.close()
 
-        await asyncio.to_thread(command.downgrade, config, "20260831_0038")
+        await asyncio.to_thread(command.downgrade, config, "20260831_0039")
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260831_0038"
+                "20260831_0039"
             )
             assert await connection.fetchval(
-                "SELECT to_regclass('public.execution_governed_runs') IS NULL"
+                "SELECT to_regclass('public.official_account_weekly_dag_runs') IS NULL"
             )
             assert await connection.fetchval(
-                "SELECT to_regclass('public.ip_asset_search_aggregates') IS NOT NULL"
+                "SELECT to_regclass('public.execution_governed_runs') IS NOT NULL"
             )
         finally:
             await connection.close()
