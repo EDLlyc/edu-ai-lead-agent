@@ -1857,3 +1857,25 @@ Enhanced the real-data Agent MCP with controlled Zhipu query planning/reranking,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 82: 公众号周刊 V2 与持久化 DAG
+
+**Date**: 2026-09-01
+**Task**: 公众号周刊 V2 与持久化 DAG
+**Branch**: `main`
+
+### Summary
+
+提交公众号 V2 每周三篇自动化与默认关闭的草稿适配器，并新增复用统一 Agent 治理契约的 16 节点持久化 DAG、0040 迁移、独立 worker、断点恢复及发布检查；完成并归档 V2、DAG 和父级 Agent 系统升级任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f79d846` | (see git log) |
+| `f41a032` | (see git log) |
+
+### Status
+
+[OK] **Completed**
