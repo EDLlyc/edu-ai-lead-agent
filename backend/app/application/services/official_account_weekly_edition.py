@@ -9,6 +9,7 @@ import shutil
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, datetime
 from hashlib import sha256
 from html import escape
@@ -27,6 +28,7 @@ from app.application.services.official_account_editor_handoff import (
 from app.application.services.official_account_editor_handoff_v2 import EditorHandoffV2Artifact
 from app.domain.official_account_weekly_edition import (
     WEEKLY_EDITION_ROLE_ORDER,
+    WEEKLY_EDITION_SELECTION_VERSION,
     WEEKLY_HOMEPAGE_DISPLAY_POLICY_VERSION,
     WEEKLY_HOMEPAGE_OPERATOR_STATE_VERSION,
     WeeklyArticleRole,
@@ -55,6 +57,38 @@ WEEKLY_LIVE_THEME_CLUSTER_AUDIT_VERSION: Final = "official-account-weekly-live-a
 _CHILD_BUNDLE_VERSION: Final = "official-account-editor-handoff-bundle-v2"
 _MAX_CHILD_FILE_BYTES: Final = 20 * 1024 * 1024
 _MAX_CHILD_TOTAL_BYTES: Final = 100 * 1024 * 1024
+_MAX_WEEKLY_EDITION_TOTAL_BYTES: Final = 512 * 1024 * 1024
+WEEKLY_EDITION_LIVE_PROVENANCE_REQUIRED: Final = "weekly_edition_live_provenance_required"
+_LIVE_FIXTURE_TRUTHS: Final = frozenset(
+    {
+        "explicit_live_opt_in_three_distinct_acquired_sources",
+        "explicit_live_opt_in_one_theme_three_multi_source_clusters",
+    }
+)
+
+
+class WeeklyEditionLiveProvenanceError(ValueError):
+    """Stable rejection used when an aggregate cannot prove live acquisition."""
+
+    code: Final = WEEKLY_EDITION_LIVE_PROVENANCE_REQUIRED
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedSelectedWeeklyBinding:
+    role: WeeklyArticleRole
+    event_id: UUID
+    event_version_id: UUID
+    organization_type: str
+    source_metadata_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedWeeklySelectionBindings:
+    selected: tuple[
+        _LoadedSelectedWeeklyBinding,
+        _LoadedSelectedWeeklyBinding,
+        _LoadedSelectedWeeklyBinding,
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +130,22 @@ class WeeklyEditionArtifact:
     homepage_operator_state: WeeklyHomepageOperatorState
     files: Mapping[str, bytes]
     zip_bytes: bytes
+    zip_sha256: str
+    bundle_filename: str
+
+
+@dataclass(frozen=True, slots=True)
+class FinalizedWeeklyEdition:
+    """Runtime-only, byte-validated view of one live weekly aggregate."""
+
+    directory: Path = dataclass_field(repr=False)
+    week_start: str
+    batch_fingerprint: str
+    selection_fingerprint: str
+    live_acquisition_audit_version: str
+    children: tuple[FinalizedWeeklyChild, FinalizedWeeklyChild, FinalizedWeeklyChild]
+    files: Mapping[str, bytes] = dataclass_field(repr=False)
+    zip_bytes: bytes = dataclass_field(repr=False)
     zip_sha256: str
     bundle_filename: str
 
@@ -229,6 +279,318 @@ def load_finalized_v2_child(
         child_zip_filename=child_zip_filename,
         child_zip_sha256=sha256(child_zip).hexdigest(),
         files=MappingProxyType(child_files),
+    )
+
+
+def load_finalized_weekly_edition(directory: Path) -> FinalizedWeeklyEdition:
+    """Load one immutable live weekly aggregate without trusting repeated projections."""
+
+    root = directory.expanduser().resolve(strict=True)
+    if not root.is_dir() or directory.is_symlink() or _path_has_symlink_component(directory):
+        raise ValueError("weekly edition directory must be a real non-symlink directory")
+    manifest_bytes = _read_bounded_regular_file(root / "manifest.json")
+    manifest = _json_object(manifest_bytes, label="weekly edition manifest")
+    if (
+        manifest.get("version") != WEEKLY_EDITION_MANIFEST_VERSION
+        or manifest.get("bundle_version") != WEEKLY_EDITION_BUNDLE_VERSION
+        or manifest.get("article_count") != 3
+        or manifest.get("simulation") is not True
+        or manifest.get("local_only") is not True
+        or manifest.get("published") is not False
+        or manifest.get("social_delivery_calls") != 0
+    ):
+        raise ValueError("weekly edition manifest identity changed")
+
+    fixture_truth = manifest.get("fixture_truth")
+    live_version = manifest.get("live_acquisition_audit_version")
+    if fixture_truth not in _LIVE_FIXTURE_TRUTHS or live_version not in {
+        WEEKLY_LIVE_ACQUISITION_AUDIT_VERSION,
+        WEEKLY_LIVE_THEME_CLUSTER_AUDIT_VERSION,
+    }:
+        raise WeeklyEditionLiveProvenanceError(
+            "weekly edition requires validated live-acquisition provenance"
+        )
+
+    projections = manifest.get("files")
+    if not isinstance(projections, list) or not projections:
+        raise ValueError("weekly edition manifest files are incomplete")
+    projected_paths: set[str] = set()
+    files: dict[str, bytes] = {}
+    total_bytes = len(manifest_bytes)
+    for raw_projection in projections:
+        projection = _mapping_value(raw_projection, "weekly edition file projection")
+        relative = _safe_relative(_string_value(projection.get("path"), "file path"))
+        if relative in projected_paths or relative == "manifest.json":
+            raise ValueError("weekly edition manifest paths must be unique")
+        projected_paths.add(relative)
+        body = _read_bounded_regular_file(root / relative)
+        total_bytes += len(body)
+        if total_bytes > _MAX_WEEKLY_EDITION_TOTAL_BYTES:
+            raise ValueError("weekly edition files exceed the aggregate bound")
+        if projection.get("byte_size") != len(body):
+            raise ValueError("weekly edition file size changed")
+        if projection.get("sha256") != sha256(body).hexdigest():
+            raise ValueError("weekly edition file checksum changed")
+        files[relative] = body
+
+    required_paths = {
+        "README.md",
+        "homepage-operator-initial-state.json",
+        "index.html",
+        "live-acquisition.json",
+        "operator-publication-checklist.json",
+        "operator-publication-checklist.md",
+        "weekly-index.json",
+    }
+    if not required_paths.issubset(projected_paths):
+        raise WeeklyEditionLiveProvenanceError(
+            "weekly edition live-acquisition provenance is incomplete"
+        )
+    index = _json_object(files["weekly-index.json"], label="weekly edition index")
+    if (
+        index.get("version") != WEEKLY_EDITION_INDEX_VERSION
+        or index.get("article_count") != 3
+        or index.get("simulation") is not True
+        or index.get("local_only") is not True
+        or index.get("published") is not False
+        or index.get("live_acquisition_audit_path") != "live-acquisition.json"
+        or index.get("live_acquisition_audit_version") != live_version
+        or index.get("fixture_truth") != fixture_truth
+    ):
+        raise WeeklyEditionLiveProvenanceError(
+            "weekly edition index live-acquisition provenance changed"
+        )
+    try:
+        live_audit = _json_object(
+            files["live-acquisition.json"],
+            label="weekly live acquisition audit",
+        )
+        validated_audit_bytes = _validated_live_acquisition_audit(live_audit)
+    except ValueError as exc:
+        raise WeeklyEditionLiveProvenanceError(
+            "weekly edition live-acquisition provenance is invalid"
+        ) from exc
+    if (
+        validated_audit_bytes != files["live-acquisition.json"]
+        or live_audit.get("version") != live_version
+    ):
+        raise WeeklyEditionLiveProvenanceError("weekly edition live-acquisition bytes changed")
+
+    batch_fingerprint = _sha_value(manifest.get("batch_fingerprint"), "batch")
+    selection_fingerprint = _sha_value(
+        manifest.get("selection_fingerprint"),
+        "selection",
+    )
+    week_start = _string_value(manifest.get("week_start"), "week_start")
+    try:
+        parsed_week_start = date.fromisoformat(week_start)
+    except ValueError as exc:
+        raise ValueError("weekly edition week_start is invalid") from exc
+    if parsed_week_start.weekday() != 0:
+        raise ValueError("weekly edition week_start must be a Monday")
+    timezone = _string_value(manifest.get("timezone"), "timezone")
+    schedule = WeeklyEditionSchedule()
+    if (
+        timezone != schedule.timezone
+        or index.get("week_start") != week_start
+        or index.get("timezone") != timezone
+        or index.get("selection_policy_version") != WEEKLY_EDITION_SELECTION_VERSION
+        or index.get("selection_fingerprint") != selection_fingerprint
+        or index.get("schedule") != schedule.as_metadata()
+        or index.get("batch_fingerprint") != batch_fingerprint
+    ):
+        raise ValueError("weekly edition index identity changed")
+
+    manifest_rows = manifest.get("children")
+    index_rows = index.get("articles")
+    if (
+        not isinstance(manifest_rows, list)
+        or not isinstance(index_rows, list)
+        or len(manifest_rows) != 3
+        or manifest_rows != index_rows
+    ):
+        raise ValueError("weekly edition child projections changed")
+    children: list[FinalizedWeeklyChild] = []
+    binding_fingerprints: list[str] = []
+    for ordinal, (role_value, raw_row) in enumerate(
+        zip(WEEKLY_EDITION_ROLE_ORDER, index_rows, strict=True),
+        start=1,
+    ):
+        row = _mapping_value(raw_row, "weekly edition child row")
+        role = WeeklyArticleRole(role_value)
+        prefix = f"articles/{ordinal:02d}-{role.value}"
+        child = load_finalized_v2_child(root / prefix, role=role)
+        if (
+            row.get("ordinal") != ordinal
+            or row.get("role") != role.value
+            or row.get("title") != child.title
+            or row.get("run_id") != str(child.run_id)
+            or row.get("article_fingerprint") != child.article_fingerprint
+            or row.get("content_fingerprint") != child.content_fingerprint
+            or row.get("artifact_fingerprint") != child.artifact_fingerprint
+            or row.get("child_zip_filename") != child.child_zip_filename
+            or row.get("child_zip_sha256") != child.child_zip_sha256
+            or row.get("preview_path") != f"{prefix}/preview.html"
+            or row.get("body_path") != f"{prefix}/article-body.html"
+            or row.get("homepage_display")
+            != _homepage_display_projection(child=child, prefix=prefix)
+        ):
+            raise ValueError("weekly edition child identity changed")
+        event_id = UUID(_string_value(row.get("event_id"), "event_id"))
+        event_version_id = UUID(_string_value(row.get("event_version_id"), "event_version_id"))
+        binding_fingerprint = _fingerprint(
+            "official-account-weekly-child-binding-v1",
+            role.value,
+            str(event_id),
+            str(event_version_id),
+            str(child.run_id),
+            child.article_fingerprint,
+            child.content_fingerprint,
+            child.artifact_fingerprint,
+            child.child_zip_sha256,
+        )
+        if row.get("child_binding_fingerprint") != binding_fingerprint:
+            raise ValueError("weekly edition child binding changed")
+        children.append(child)
+        binding_fingerprints.append(binding_fingerprint)
+
+    typed_children = cast(
+        tuple[FinalizedWeeklyChild, FinalizedWeeklyChild, FinalizedWeeklyChild],
+        tuple(children),
+    )
+    try:
+        audit_rows = live_audit.get("articles")
+        if not isinstance(audit_rows, list) or len(audit_rows) != 3:
+            raise ValueError("weekly live acquisition binding rows changed")
+        loaded_bindings: list[_LoadedSelectedWeeklyBinding] = []
+        for role_value, raw_index_row, raw_audit_row in zip(
+            WEEKLY_EDITION_ROLE_ORDER,
+            index_rows,
+            audit_rows,
+            strict=True,
+        ):
+            index_row = _mapping_value(raw_index_row, "weekly edition child row")
+            audit_row = _mapping_value(raw_audit_row, "weekly live acquisition row")
+            event_id = UUID(_string_value(index_row.get("event_id"), "event_id"))
+            event_version_id = UUID(
+                _string_value(index_row.get("event_version_id"), "event_version_id")
+            )
+            if (
+                audit_row.get("role") != role_value
+                or audit_row.get("event_id") != str(event_id)
+                or audit_row.get("event_version_id") != str(event_version_id)
+                or audit_row.get("organization_type") != index_row.get("organization_type")
+            ):
+                raise ValueError("weekly live acquisition selected identity changed")
+            loaded_bindings.append(
+                _LoadedSelectedWeeklyBinding(
+                    role=WeeklyArticleRole(role_value),
+                    event_id=event_id,
+                    event_version_id=event_version_id,
+                    organization_type=_string_value(
+                        index_row.get("organization_type"),
+                        "organization_type",
+                    ),
+                    source_metadata_fingerprint=_sha_value(
+                        audit_row.get("source_metadata_fingerprint"),
+                        "source metadata",
+                    ),
+                )
+            )
+        _validate_live_acquisition_bindings(
+            live_audit,
+            selection=_LoadedWeeklySelectionBindings(
+                selected=cast(
+                    tuple[
+                        _LoadedSelectedWeeklyBinding,
+                        _LoadedSelectedWeeklyBinding,
+                        _LoadedSelectedWeeklyBinding,
+                    ],
+                    tuple(loaded_bindings),
+                )
+            ),
+            children=typed_children,
+        )
+    except ValueError as exc:
+        raise WeeklyEditionLiveProvenanceError(
+            "weekly edition live-acquisition bindings changed"
+        ) from exc
+
+    expected_batch_fingerprint = _fingerprint(
+        WEEKLY_EDITION_BUNDLE_VERSION,
+        WEEKLY_EDITION_MANIFEST_VERSION,
+        WEEKLY_EDITION_INDEX_VERSION,
+        WEEKLY_HOMEPAGE_DISPLAY_POLICY_VERSION,
+        WEEKLY_HOMEPAGE_PRESENTATION_VERSION,
+        WEEKLY_HOMEPAGE_OPERATOR_STATE_VERSION,
+        WEEKLY_OPERATOR_CHECKLIST_VERSION,
+        WEEKLY_VISUAL_DISTINCTNESS_VERSION,
+        week_start,
+        timezone,
+        selection_fingerprint,
+        schedule.fingerprint,
+        tuple(binding_fingerprints),
+        tuple(
+            (
+                child.role.value,
+                str(child.run_id),
+                child.article_fingerprint,
+                child.content_fingerprint,
+                child.artifact_fingerprint,
+                child.child_zip_sha256,
+            )
+            for child in typed_children
+        ),
+        live_version,
+        sha256(validated_audit_bytes).hexdigest(),
+    )
+    if expected_batch_fingerprint != batch_fingerprint:
+        raise ValueError("weekly edition batch fingerprint changed")
+    expected_operator_state = weekly_homepage_operator_state_projection(
+        initial_weekly_homepage_operator_state(
+            batch_fingerprint=batch_fingerprint,
+            official_article_fingerprint=typed_children[0].article_fingerprint,
+        )
+    )
+    if (
+        manifest.get("homepage_operator_initial_state") != expected_operator_state
+        or index.get("homepage_operator_state") != expected_operator_state
+        or manifest.get("external_calls") != live_audit.get("external_calls")
+        or index.get("external_calls") != live_audit.get("external_calls")
+    ):
+        raise ValueError("weekly edition aggregate truth changed")
+
+    bundle_filename = f"official-account-weekly-edition-{batch_fingerprint[:16]}.zip"
+    zip_bytes = _read_bounded_regular_file(root / bundle_filename)
+    total_bytes += len(zip_bytes)
+    if total_bytes > _MAX_WEEKLY_EDITION_TOTAL_BYTES:
+        raise ValueError("weekly edition files exceed the aggregate bound")
+    files["manifest.json"] = manifest_bytes
+    _verify_child_zip(
+        zip_bytes,
+        archive_root=bundle_filename.removesuffix(".zip"),
+        files=files,
+    )
+    declared = projected_paths | {"manifest.json", bundle_filename}
+    actual: set[str] = set()
+    for path in root.rglob("*"):
+        if path.is_symlink() or (not path.is_file() and not path.is_dir()):
+            raise ValueError("weekly edition contains an unsafe filesystem entry")
+        if path.is_file():
+            actual.add(path.relative_to(root).as_posix())
+    if actual != declared:
+        raise ValueError("weekly edition directory contains undeclared files")
+    return FinalizedWeeklyEdition(
+        directory=root,
+        week_start=week_start,
+        batch_fingerprint=batch_fingerprint,
+        selection_fingerprint=selection_fingerprint,
+        live_acquisition_audit_version=live_version,
+        children=typed_children,
+        files=MappingProxyType(files),
+        zip_bytes=zip_bytes,
+        zip_sha256=sha256(zip_bytes).hexdigest(),
+        bundle_filename=bundle_filename,
     )
 
 
@@ -1555,7 +1917,7 @@ def _validated_live_theme_cluster_audit(payload: Mapping[str, object]) -> bytes:
 def _validate_live_acquisition_bindings(
     payload: Mapping[str, object],
     *,
-    selection: WeeklyEditionSelection,
+    selection: WeeklyEditionSelection | _LoadedWeeklySelectionBindings,
     children: tuple[FinalizedWeeklyChild, FinalizedWeeklyChild, FinalizedWeeklyChild],
 ) -> None:
     if payload.get("version") == WEEKLY_LIVE_THEME_CLUSTER_AUDIT_VERSION:
@@ -1569,14 +1931,19 @@ def _validate_live_acquisition_bindings(
     if not isinstance(rows, list) or len(rows) != 3:
         raise ValueError("weekly live acquisition binding rows changed")
     for raw_row, selected, child in zip(rows, selection.selected, children, strict=True):
+        selected_binding = cast(
+            WeeklyArticleSelection | _LoadedSelectedWeeklyBinding,
+            selected,
+        )
         row = _mapping_value(raw_row, "live acquisition binding")
         if (
             row.get("role") != child.role.value
             or row.get("title") != child.title
-            or row.get("event_id") != str(selected.event_id)
-            or row.get("event_version_id") != str(selected.event_version_id)
-            or row.get("organization_type") != selected.organization_type
-            or row.get("source_metadata_fingerprint") != selected.source_metadata_fingerprint
+            or row.get("event_id") != str(selected_binding.event_id)
+            or row.get("event_version_id") != str(selected_binding.event_version_id)
+            or row.get("organization_type") != selected_binding.organization_type
+            or row.get("source_metadata_fingerprint")
+            != selected_binding.source_metadata_fingerprint
         ):
             raise ValueError("weekly live acquisition selected-child identity changed")
         article = _json_object(child.files["article.json"], label="weekly live child article")
@@ -1620,7 +1987,7 @@ def _validate_live_acquisition_bindings(
 def _validate_live_theme_cluster_bindings(
     payload: Mapping[str, object],
     *,
-    selection: WeeklyEditionSelection,
+    selection: WeeklyEditionSelection | _LoadedWeeklySelectionBindings,
     children: tuple[FinalizedWeeklyChild, FinalizedWeeklyChild, FinalizedWeeklyChild],
 ) -> None:
     rows = payload.get("articles")
@@ -1636,14 +2003,19 @@ def _validate_live_theme_cluster_bindings(
     }
     seen_child_evidence: set[object] = set()
     for raw_row, selected, child in zip(rows, selection.selected, children, strict=True):
+        selected_binding = cast(
+            WeeklyArticleSelection | _LoadedSelectedWeeklyBinding,
+            selected,
+        )
         row = _mapping_value(raw_row, "live theme binding")
         if (
             row.get("role") != child.role.value
             or row.get("editorial_title") != child.title
-            or row.get("event_id") != str(selected.event_id)
-            or row.get("event_version_id") != str(selected.event_version_id)
-            or row.get("organization_type") != selected.organization_type
-            or row.get("source_metadata_fingerprint") != selected.source_metadata_fingerprint
+            or row.get("event_id") != str(selected_binding.event_id)
+            or row.get("event_version_id") != str(selected_binding.event_version_id)
+            or row.get("organization_type") != selected_binding.organization_type
+            or row.get("source_metadata_fingerprint")
+            != selected_binding.source_metadata_fingerprint
         ):
             raise ValueError("weekly live theme selected-child identity changed")
         sources = row.get("sources")
@@ -1748,6 +2120,14 @@ def _verify_child_zip(
 def _read_regular_file(path: Path) -> bytes:
     if path.is_symlink() or not path.is_file() or _path_has_symlink_component(path):
         raise ValueError("weekly child file must be a regular non-symlink file")
+    return path.read_bytes()
+
+
+def _read_bounded_regular_file(path: Path) -> bytes:
+    if path.is_symlink() or not path.is_file() or _path_has_symlink_component(path):
+        raise ValueError("weekly edition file must be a regular non-symlink file")
+    if path.stat().st_size > _MAX_WEEKLY_EDITION_TOTAL_BYTES:
+        raise ValueError("weekly edition file exceeds the aggregate bound")
     return path.read_bytes()
 
 

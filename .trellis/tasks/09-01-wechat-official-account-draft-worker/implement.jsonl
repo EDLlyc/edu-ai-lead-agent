@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Authoritative draft-only provider, validation, timeout-unknown, security, and no-publish contract."}
+{"file":".trellis/spec/backend/official-account-weekly-edition.md","reason":"Authoritative aggregate, canonical-role, child-binding, live-acquisition, and immutable handoff contract."}
+{"file":".trellis/spec/backend/official-account-weekly-dag.md","reason":"Metadata-only artifact, process-boundary, lease/fencing, CLI, and current fixture orchestration constraints."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Closest durable external-side-effect job/attempt and outcome-unknown reference."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL transaction, idempotency, migration, and private-path persistence rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable failure classification, retry, unknown outcome, and cancellation rules."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Safe structured transition logs and secret/provider payload redaction."}
+{"file":".trellis/tasks/09-01-wechat-official-account-draft-worker/research/durable-job-patterns.md","reason":"Concrete reusable job/attempt, claim, fencing, retry, CLI, and test patterns with file-line evidence."}
+{"file":".trellis/tasks/09-01-wechat-official-account-draft-worker/research/artifact-handoff.md","reason":"Artifact-owner design, strict aggregate handoff, live-provenance caveat, and fixture exclusion evidence."}

@@ -1,4 +1,5 @@
 import pytest
+from app.infrastructure.db.models import Base
 from sqlalchemy import Text, inspect, text
 
 from .conftest import IntegrationContext
@@ -52,6 +53,9 @@ async def test_clean_database_is_at_alembic_head(
                     "ip_asset_generation_references",
                     "ip_asset_download_daily",
                     "official_account_generated_visuals",
+                    "wechat_mp_draft_jobs",
+                    "wechat_mp_draft_items",
+                    "wechat_mp_draft_attempts",
                 )
             }
         )
@@ -241,7 +245,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260831_0040"
+    assert revision == "20260901_0042"
     assert isinstance(columns["ip_asset_generation_jobs"]["prompt"]["type"], Text)
     assert {
         "sources",
@@ -313,7 +317,31 @@ async def test_clean_database_is_at_alembic_head(
         "ip_asset_favorites",
         "ip_asset_generation_references",
         "ip_asset_download_daily",
+        "wechat_mp_draft_jobs",
+        "wechat_mp_draft_items",
+        "wechat_mp_draft_attempts",
     }.issubset(tables)
+    for table_name in (
+        "wechat_mp_draft_jobs",
+        "wechat_mp_draft_items",
+        "wechat_mp_draft_attempts",
+    ):
+        assert set(columns[table_name]) == set(Base.metadata.tables[table_name].columns.keys())
+    assert columns["wechat_mp_draft_items"]["source_ref"]["nullable"] is False
+    assert columns["wechat_mp_draft_items"]["draft_media_fingerprint"]["nullable"] is True
+    for prohibited_column in (
+        "app_id",
+        "app_secret",
+        "access_token",
+        "media_id",
+        "content",
+        "body",
+        "filesystem_path",
+        "object_key",
+    ):
+        assert prohibited_column not in columns["wechat_mp_draft_jobs"]
+        assert prohibited_column not in columns["wechat_mp_draft_items"]
+        assert prohibited_column not in columns["wechat_mp_draft_attempts"]
     assert columns["ip_assets"]["object_key"]["nullable"] is False
     assert columns["ip_assets"]["shared_at"]["nullable"] is True
     assert columns["ip_assets"]["blob_sha256"]["nullable"] is False

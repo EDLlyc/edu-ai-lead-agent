@@ -84,7 +84,7 @@ async def test_ip_prompt_migration_preserves_text_and_refuses_lossy_downgrade(
         try:
             assert (
                 await connection.fetchval("SELECT version_num FROM alembic_version")
-                == "20260831_0040"
+                == "20260901_0042"
             )
             assert (
                 await connection.fetchval(

@@ -6,11 +6,13 @@ Use this contract when changing the opt-in server-side adapter that stages final
 Account V2 articles in the WeChat Official Account draft box. This boundary is distinct from
 Enterprise WeChat (`WECOM_*`) and from the immutable local weekly exporter.
 
-The current slice is development-only and `draft_only`. It may obtain a stable token, upload
-article images, upload one permanent cover thumbnail, and create one draft per finalized article.
-It has no FastAPI route, worker, scheduler, CLI, database migration, `freepublish`, mass-send,
-homepage-pin, login, or browser-automation capability. Creating a draft is not publication and
-must not advance `not_published`, `awaiting_manual_pin`, or `confirmed` operator state.
+The boundary is development-only and `draft_only`. The direct service may obtain a stable token,
+upload article images, upload one permanent cover thumbnail, and create one draft per finalized
+article. An independent, default-off Scheduler/Worker/CLI path may durably stage exactly the three
+finalized live weekly roles through the same direct service. It has no FastAPI route, `freepublish`,
+mass-send, homepage-pin, login, or browser-automation capability. Creating a draft is not
+publication and must not advance `not_published`, `awaiting_manual_pin`, or `confirmed` operator
+state.
 
 ## 2. Signatures
 
@@ -57,6 +59,19 @@ independent `WeChatDraftReceipt` values. A receipt contains the safe role, Artic
 fingerprints, draft media ID, uploaded-body-image count, aware creation time, `mode=draft_only`,
 and `not_published=true`. It is not a publication confirmation event.
 
+### Durable process
+
+```text
+python -m app.wechat_official_account_draft_main enqueue-weekly WEEKLY_AGGREGATE_DIR
+python -m app.wechat_official_account_draft_main reconcile [--once] [--maximum N]
+python -m app.wechat_official_account_draft_main status JOB_UUID
+python -m app.wechat_official_account_draft_main worker [--once | --drain] [--worker-id ID]
+```
+
+The CLI returns safe projections only: no artifact path or content, credentials, access token, or
+raw provider media ID. It closes database/client resources in success, failure, and cancellation
+paths. Default-off construction must not import into or alter the ordinary weekly DAG process.
+
 ## 3. Contracts
 
 ### Environment
@@ -71,6 +86,15 @@ and `not_published=true`. It is not a publication confirmation event.
 | `WECHAT_MP_REQUEST_TIMEOUT_SECONDS` | Bounded positive total/request timeout |
 | `WECHAT_MP_MAX_IMAGE_BYTES` | Additional local source bound, at most 10 MiB |
 | `WECHAT_MP_MAX_RESPONSE_BYTES` | Bounded from 1 KiB to 1 MiB; default 64 KiB |
+| `WECHAT_MP_DRAFT_WORKER_ENABLED` | `false` by default; enqueue/reconcile/worker execution fails closed |
+| `WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED` | `false` by default; enables inbox reconciliation and requires the worker |
+| `WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT` | Process-local inbox root for finalized weekly aggregates |
+| `WECHAT_MP_DRAFT_ARTIFACT_ROOT` | Process-local root for content-addressed staged weekly artifacts |
+| `WECHAT_MP_DRAFT_POLL_SECONDS` | Bounded worker polling interval |
+| `WECHAT_MP_DRAFT_LEASE_SECONDS` | Bounded lease duration longer than heartbeat interval |
+| `WECHAT_MP_DRAFT_HEARTBEAT_SECONDS` | Bounded ownership-renewal interval |
+| `WECHAT_MP_DRAFT_MAX_ATTEMPTS` | Bounded retry-attempt ceiling |
+| `WECHAT_MP_DRAFT_RETRY_BASE_SECONDS` | Bounded deterministic retry base delay |
 
 Enabled settings are accepted only in `app_env=development`. Missing, blank, whitespace-bearing,
 or control-bearing credentials fail during settings validation. `.env.example` contains empty
@@ -136,6 +160,28 @@ cover is deterministically center-cropped to exact 47:20, converted to metadata-
 downscaled/quality-stepped below 64 KiB. Upload filenames and the aware receipt clock are validated
 for all articles before any write.
 
+### Immutable weekly handoff and durable execution
+
+Enqueue accepts only a strict live weekly aggregate with the canonical three roles, finalized
+release truth, and exact live provenance. Discovery is bounded and deterministic. The artifact
+store copies the aggregate into an immutable content-addressed directory, then returns an opaque
+reference; later loading resolves under the trusted root and rejects traversal, symlinks, and
+identity drift. Database rows and safe projections store references/fingerprints, never local paths
+or article content.
+
+Revision `20260901_0042` adds one job row, exactly three role items, and append-only attempts.
+Request identity includes the staged artifact fingerprint, exact AppID account fingerprint, item
+presentation policy, and versioned draft-job policy. Concurrent enqueue is conflict-safe and
+verifies the full persisted identity. Claims use `FOR UPDATE SKIP LOCKED`, leases, heartbeat, and
+fencing tokens. The current child persists a side-effect-start checkpoint immediately before its
+first provider write; completed roles are never replayed during resume.
+
+Only typed known-safe transient failures may retry. Write timeouts, cancellation after a started
+side effect, lease loss, and stale result persistence resolve conservatively to `outcome_unknown`
+or the authoritative current terminal status. A stale worker must never mutate recovered state or
+crash the process while resolving a rejected result. Downgrade removes empty tables but refuses
+while durable audit rows exist.
+
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -153,6 +199,11 @@ for all articles before any write.
 | HTTP/provider rate limit or transient code | Typed retryable failure; no write replay inside adapter |
 | Upload/thumb/draft transport timeout | `wechat_mp_outcome_unknown`; never auto-retry |
 | Draft succeeds | Return safe receipt with `not_published=true`; operator state remains unchanged |
+| Concurrent identical enqueue | One durable job with exactly three role items; both callers observe it |
+| Lease loss or cancellation before any side effect starts | Safe retry/failure transition without provider replay |
+| Lease loss, timeout, or cancellation after side effect starts | `outcome_unknown` or current terminal state; no replay |
+| Resume after one or two successful roles | Reuse completed items; execute only remaining roles |
+| Populated `0042` downgrade | Refuse without deleting durable audit data |
 
 ## 5. Good / Base / Bad Cases
 
@@ -185,6 +236,10 @@ for all articles before any write.
 - Tamper tests cover the third child, ZIP corruption, symlinks, hash/size/dimension drift,
   external/data/duplicate images, unsafe HTML/style/filenames, invalid clock, wrong role order, and
   duplicate identities with zero fake-client calls.
+- Worker/repository tests cover exact three-role idempotency, concurrent enqueue/claim,
+  lease/heartbeat/fencing, stale recovery, side-effect checkpoints, retry versus unknown,
+  cancellation, partial resume/no replay, safe status projection, CLI cleanup, and populated
+  downgrade refusal on real PostgreSQL.
 - Run focused Ruff, mypy, the adapter tests, V2/weekly/WeCom regressions, task validation, and
   `git diff --check`. Tests never use real credentials or a real network transport.
 

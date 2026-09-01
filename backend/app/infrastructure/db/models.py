@@ -6129,3 +6129,250 @@ class OfficialAccountWeeklyDagAttemptModel(Base):
         ),
         Index("ix_weekly_dag_attempts_run_started", "run_id", "started_at"),
     )
+
+
+class WeChatOfficialAccountDraftJobModel(Base):
+    __tablename__ = "wechat_mp_draft_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    account_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    aggregate_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    batch_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND account_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND aggregate_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND batch_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_wechat_mp_draft_jobs_fingerprints",
+        ),
+        CheckConstraint(
+            "policy_version = 'wechat-mp-draft-job-v1'",
+            name="ck_wechat_mp_draft_jobs_policy",
+        ),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'retryable_failed', 'ready', "
+            "'terminal_failed', 'outcome_unknown')",
+            name="ck_wechat_mp_draft_jobs_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts BETWEEN 1 AND 10 "
+            "AND attempt_count <= max_attempts * 3 AND fencing_token >= 0",
+            name="ck_wechat_mp_draft_jobs_attempts",
+        ),
+        CheckConstraint(
+            "(status = 'running' AND lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL "
+            "AND heartbeat_at IS NOT NULL) OR "
+            "(status <> 'running' AND lease_owner IS NULL AND lease_expires_at IS NULL "
+            "AND heartbeat_at IS NULL)",
+            name="ck_wechat_mp_draft_jobs_lease_shape",
+        ),
+        CheckConstraint(
+            "status NOT IN ('ready', 'terminal_failed', 'outcome_unknown') "
+            "OR completed_at IS NOT NULL",
+            name="ck_wechat_mp_draft_jobs_completion",
+        ),
+        CheckConstraint(
+            "error_code IS NULL OR error_code ~ '^[a-z][a-z0-9_.:-]{0,79}$'",
+            name="ck_wechat_mp_draft_jobs_error_code",
+        ),
+        CheckConstraint(
+            "lease_owner IS NULL OR lease_owner ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+            name="ck_wechat_mp_draft_jobs_lease_owner",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_wechat_mp_draft_jobs_request"),
+        Index(
+            "ix_wechat_mp_draft_jobs_claim",
+            "status",
+            "available_at",
+            "lease_expires_at",
+            "created_at",
+        ),
+    )
+
+
+class WeChatOfficialAccountDraftItemModel(Base):
+    __tablename__ = "wechat_mp_draft_items"
+
+    job_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    article_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    side_effect_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    endpoint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    uploaded_image_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    draft_media_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["job_id"],
+            ["wechat_mp_draft_jobs.id"],
+            name="fk_wechat_mp_draft_items_job",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "(ordinal = 1 AND role = 'official_anchor') OR "
+            "(ordinal = 2 AND role = 'industry_trend') OR "
+            "(ordinal = 3 AND role = 'application_case')",
+            name="ck_wechat_mp_draft_items_role_ordinal",
+        ),
+        CheckConstraint(
+            "source_ref ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+            name="ck_wechat_mp_draft_items_source_ref",
+        ),
+        CheckConstraint(
+            "source_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND article_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND content_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND policy_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_wechat_mp_draft_items_fingerprints",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'retryable_failed', 'succeeded', "
+            "'terminal_failed', 'outcome_unknown')",
+            name="ck_wechat_mp_draft_items_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND uploaded_image_count >= 0",
+            name="ck_wechat_mp_draft_items_counters",
+        ),
+        CheckConstraint(
+            "endpoint IS NULL OR endpoint ~ '^[a-z][a-z0-9_.:-]{0,79}$'",
+            name="ck_wechat_mp_draft_items_endpoint",
+        ),
+        CheckConstraint(
+            "draft_media_fingerprint IS NULL OR draft_media_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_wechat_mp_draft_items_media_fingerprint",
+        ),
+        CheckConstraint(
+            "status <> 'succeeded' OR (side_effect_started_at IS NOT NULL "
+            "AND draft_media_fingerprint IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_wechat_mp_draft_items_success_shape",
+        ),
+        CheckConstraint(
+            "status NOT IN ('terminal_failed', 'outcome_unknown') OR completed_at IS NOT NULL",
+            name="ck_wechat_mp_draft_items_terminal_shape",
+        ),
+        CheckConstraint(
+            "status <> 'outcome_unknown' OR side_effect_started_at IS NOT NULL",
+            name="ck_wechat_mp_draft_items_unknown_shape",
+        ),
+        CheckConstraint(
+            "error_code IS NULL OR error_code ~ '^[a-z][a-z0-9_.:-]{0,79}$'",
+            name="ck_wechat_mp_draft_items_error_code",
+        ),
+        UniqueConstraint("job_id", "role", name="uq_wechat_mp_draft_items_role"),
+        Index("ix_wechat_mp_draft_items_job_status", "job_id", "status", "ordinal"),
+    )
+
+
+class WeChatOfficialAccountDraftAttemptModel(Base):
+    __tablename__ = "wechat_mp_draft_attempts"
+
+    job_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    item_ordinal: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fencing_token: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    worker_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    endpoint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    side_effect_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    uploaded_image_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    draft_media_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["job_id", "item_ordinal"],
+            ["wechat_mp_draft_items.job_id", "wechat_mp_draft_items.ordinal"],
+            name="fk_wechat_mp_draft_attempts_item",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "attempt_no > 0 AND fencing_token > 0 AND uploaded_image_count >= 0",
+            name="ck_wechat_mp_draft_attempts_counters",
+        ),
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'retryable_failed', 'terminal_failed', "
+            "'outcome_unknown', 'lease_expired')",
+            name="ck_wechat_mp_draft_attempts_status",
+        ),
+        CheckConstraint(
+            "endpoint IS NULL OR endpoint ~ '^[a-z][a-z0-9_.:-]{0,79}$'",
+            name="ck_wechat_mp_draft_attempts_endpoint",
+        ),
+        CheckConstraint(
+            "draft_media_fingerprint IS NULL OR draft_media_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_wechat_mp_draft_attempts_media_fingerprint",
+        ),
+        CheckConstraint(
+            "status = 'running' OR completed_at IS NOT NULL",
+            name="ck_wechat_mp_draft_attempts_completion",
+        ),
+        CheckConstraint(
+            "worker_id ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+            name="ck_wechat_mp_draft_attempts_worker_id",
+        ),
+        CheckConstraint(
+            "error_code IS NULL OR error_code ~ '^[a-z][a-z0-9_.:-]{0,79}$'",
+            name="ck_wechat_mp_draft_attempts_error_code",
+        ),
+        CheckConstraint(
+            "status <> 'succeeded' OR (side_effect_started_at IS NOT NULL "
+            "AND draft_media_fingerprint IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_wechat_mp_draft_attempts_success_shape",
+        ),
+        CheckConstraint(
+            "status <> 'outcome_unknown' OR side_effect_started_at IS NOT NULL",
+            name="ck_wechat_mp_draft_attempts_unknown_shape",
+        ),
+        Index("ix_wechat_mp_draft_attempts_job_started", "job_id", "started_at"),
+    )

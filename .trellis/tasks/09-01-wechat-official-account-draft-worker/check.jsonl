@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Verify draft-only scope, provider semantics, zero-call preflight, and no-publish truth."}
+{"file":".trellis/spec/backend/official-account-weekly-edition.md","reason":"Verify aggregate/child/live provenance identity and role order remain authoritative."}
+{"file":".trellis/spec/backend/official-account-weekly-dag.md","reason":"Verify no WeChat coupling and no fixture-ready auto-delivery regression."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Cross-check external-write unknown outcome, idempotency, lease, and attempt behavior."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check migration/metadata parity, constraints, transactions, and forbidden persisted data."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run required lint, type, focused regression, migration, security, and diff gates."}
+{"file":".trellis/tasks/09-01-wechat-official-account-draft-worker/research/durable-job-patterns.md","reason":"Review implementation against proven repository patterns and edge cases."}
+{"file":".trellis/tasks/09-01-wechat-official-account-draft-worker/research/artifact-handoff.md","reason":"Review private-path boundary, strict aggregate loader, and live-provenance gate."}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from html import escape
@@ -62,15 +62,15 @@ class WeChatDraftLocalSource:
 
 
 @dataclass(frozen=True, slots=True)
-class _PreparedMedia:
+class WeChatPreparedMedia:
     path: str
     media_type: str
-    body: bytes
+    body: bytes = field(repr=False)
     upload_filename: str
 
 
 @dataclass(frozen=True, slots=True)
-class _PreparedDraft:
+class WeChatPreparedDraft:
     role: WeChatDraftRole
     article_fingerprint: str
     content_fingerprint: str
@@ -78,11 +78,42 @@ class _PreparedDraft:
     author: str
     digest: str
     content_source_url: str | None
-    body_html: str
-    body_media: tuple[_PreparedMedia, ...]
-    cover: _PreparedMedia
+    body_html: str = field(repr=False)
+    body_media: tuple[WeChatPreparedMedia, ...] = field(repr=False)
+    cover: WeChatPreparedMedia = field(repr=False)
     need_open_comment: bool
     only_fans_can_comment: bool
+
+
+class WeChatOfficialAccountDraftPreparer:
+    """Pure finalized-child preflight with no provider client or network capability."""
+
+    def __init__(self, *, max_image_bytes: int = WECHAT_MP_MAX_IMAGE_BYTES) -> None:
+        self._max_image_bytes = _validated_max_image_bytes(max_image_bytes)
+
+    def prepare(self, source: WeChatDraftLocalSource) -> WeChatPreparedDraft:
+        return _prepare_draft_source(source, max_image_bytes=self._max_image_bytes)
+
+    def prepare_weekly(
+        self,
+        sources: tuple[
+            WeChatDraftLocalSource,
+            WeChatDraftLocalSource,
+            WeChatDraftLocalSource,
+        ],
+    ) -> tuple[WeChatPreparedDraft, WeChatPreparedDraft, WeChatPreparedDraft]:
+        if tuple(item.role for item in sources) != tuple(WEEKLY_EDITION_ROLE_ORDER):
+            raise WeChatMpDraftPreparationError()
+        prepared = cast(
+            tuple[WeChatPreparedDraft, WeChatPreparedDraft, WeChatPreparedDraft],
+            tuple(self.prepare(source) for source in sources),
+        )
+        if (
+            len({item.article_fingerprint for item in prepared}) != 3
+            or len({item.content_fingerprint for item in prepared}) != 3
+        ):
+            raise WeChatMpDraftPreparationError()
+        return prepared
 
 
 class WeChatOfficialAccountDraftOnlyService:
@@ -95,15 +126,10 @@ class WeChatOfficialAccountDraftOnlyService:
         max_image_bytes: int = WECHAT_MP_MAX_IMAGE_BYTES,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        if (
-            isinstance(max_image_bytes, bool)
-            or not isinstance(max_image_bytes, int)
-            or max_image_bytes < WECHAT_MP_MIN_IMAGE_BYTES
-            or max_image_bytes > WECHAT_MP_MAX_IMAGE_BYTES
-        ):
-            raise ValueError("WeChat Official Account draft image byte limit is invalid")
         self._client = client
-        self._max_image_bytes = max_image_bytes
+        self._preparer = WeChatOfficialAccountDraftPreparer(
+            max_image_bytes=max_image_bytes,
+        )
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def create_draft(self, source: WeChatDraftLocalSource) -> WeChatDraftReceipt:
@@ -119,15 +145,7 @@ class WeChatOfficialAccountDraftOnlyService:
             WeChatDraftLocalSource,
         ],
     ) -> tuple[WeChatDraftReceipt, WeChatDraftReceipt, WeChatDraftReceipt]:
-        expected_roles = tuple(WEEKLY_EDITION_ROLE_ORDER)
-        if tuple(item.role for item in sources) != expected_roles:
-            raise WeChatMpDraftPreparationError()
-        prepared = tuple(self.prepare(source) for source in sources)
-        if (
-            len({item.article_fingerprint for item in prepared}) != 3
-            or len({item.content_fingerprint for item in prepared}) != 3
-        ):
-            raise WeChatMpDraftPreparationError()
+        prepared = self._preparer.prepare_weekly(sources)
         created_at = tuple(self._validated_created_at() for _item in prepared)
         receipts = [
             await self._create_prepared(item, created_at=item_created_at)
@@ -138,168 +156,18 @@ class WeChatOfficialAccountDraftOnlyService:
             tuple(receipts),
         )
 
-    def prepare(self, source: WeChatDraftLocalSource) -> _PreparedDraft:
+    def prepare(self, source: WeChatDraftLocalSource) -> WeChatPreparedDraft:
         """Resolve and validate a complete finalized child without a provider call."""
 
-        try:
-            role = WeeklyArticleRole(source.role)
-            child = load_finalized_v2_child(source.directory, role=role)
-            article = _json_object(child.files["article.json"])
-            manifest = _json_object(child.files["manifest.json"])
-            title = _bounded_text(
-                article.get("title"),
-                minimum=1,
-                maximum=WECHAT_MP_MAX_DRAFT_TITLE_CHARACTERS,
-            )
-            author = _bounded_text(
-                article.get("author"),
-                minimum=1,
-                maximum=WECHAT_MP_MAX_DRAFT_AUTHOR_CHARACTERS,
-            )
-            digest = _bounded_text(
-                article.get("digest"),
-                minimum=1,
-                maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
-            )
-            body_bytes = child.files["article-body.html"]
-            if sha256(body_bytes).hexdigest() != child.body_sha256:
-                raise ValueError("body identity changed")
-            body_html = body_bytes.decode("utf-8")
-            _validate_draft_html_size(body_html)
-            parser = _DraftHtmlValidator()
-            parser.feed(body_html)
-            parser.close()
-            image_paths = parser.finish()
-            body_media, cover = self._prepare_media(
-                manifest=manifest,
-                files=child.files,
-                image_paths=image_paths,
-            )
-            content_source_url = _optional_https_url(source.content_source_url)
-            if source.only_fans_can_comment and not source.need_open_comment:
-                raise ValueError("invalid comment policy")
-            if not isinstance(source.need_open_comment, bool) or not isinstance(
-                source.only_fans_can_comment,
-                bool,
-            ):
-                raise TypeError("invalid comment policy")
-        except (
-            BadZipFile,
-            KeyError,
-            TypeError,
-            UnicodeError,
-            ValueError,
-            OSError,
-            json.JSONDecodeError,
-        ):
-            raise WeChatMpDraftPreparationError() from None
-        return _PreparedDraft(
-            role=source.role,
-            article_fingerprint=child.article_fingerprint,
-            content_fingerprint=child.content_fingerprint,
-            title=title,
-            author=author,
-            digest=digest,
-            content_source_url=content_source_url,
-            body_html=body_html,
-            body_media=body_media,
-            cover=cover,
-            need_open_comment=source.need_open_comment,
-            only_fans_can_comment=source.only_fans_can_comment,
-        )
+        return self._preparer.prepare(source)
 
-    def _prepare_media(
-        self,
-        *,
-        manifest: dict[str, object],
-        files: Mapping[str, bytes],
-        image_paths: tuple[str, ...],
-    ) -> tuple[tuple[_PreparedMedia, ...], _PreparedMedia]:
-        raw_media = manifest.get("media")
-        if not isinstance(raw_media, list) or not raw_media:
-            raise ValueError("media projection is missing")
-        media_by_path: dict[str, _PreparedMedia] = {}
-        covers: list[_PreparedMedia] = []
-        for raw in raw_media:
-            if not isinstance(raw, dict) or any(not isinstance(key, str) for key in raw):
-                raise ValueError("media projection is invalid")
-            path = _safe_media_path(raw.get("path"))
-            if path in media_by_path:
-                raise ValueError("media path is duplicated")
-            role = raw.get("role")
-            if role not in {"body", "context", "cover"}:
-                raise ValueError("media role is invalid")
-            media_type = raw.get("media_type")
-            if media_type not in {"image/jpeg", "image/png"}:
-                raise ValueError("media type is unsupported")
-            body = files.get(path)
-            if not isinstance(body, bytes):
-                raise ValueError("media bytes are missing")
-            declared_size = raw.get("byte_size")
-            declared_sha = raw.get("sha256")
-            if (
-                isinstance(declared_size, bool)
-                or not isinstance(declared_size, int)
-                or declared_size != len(body)
-                or not isinstance(declared_sha, str)
-                or len(declared_sha) != _SHA256_LENGTH
-                or sha256(body).hexdigest() != declared_sha
-            ):
-                raise ValueError("media identity changed")
-            width, height = _validate_image_bytes(
-                body,
-                media_type=media_type,
-                max_bytes=self._max_image_bytes,
-            )
-            if raw.get("width") != width or raw.get("height") != height:
-                raise ValueError("media dimensions changed")
-            prepared = _PreparedMedia(
-                path=path,
-                media_type=media_type,
-                body=body,
-                upload_filename=_safe_upload_filename(
-                    PurePosixPath(path).name,
-                    media_type=media_type,
-                ),
-            )
-            if role == "cover":
-                normalized_thumb = _normalize_cover_thumb(body)
-                _validate_image_bytes(
-                    normalized_thumb,
-                    media_type="image/jpeg",
-                    max_bytes=WECHAT_MP_MAX_THUMB_BYTES,
-                )
-                prepared = _PreparedMedia(
-                    path=path,
-                    media_type="image/jpeg",
-                    body=normalized_thumb,
-                    upload_filename="cover-thumb.jpg",
-                )
-            elif len(body) > WECHAT_MP_MAX_INLINE_IMAGE_BYTES:
-                normalized_inline = _normalize_inline_image(body)
-                _validate_image_bytes(
-                    normalized_inline,
-                    media_type="image/jpeg",
-                    max_bytes=WECHAT_MP_MAX_INLINE_IMAGE_BYTES,
-                )
-                prepared = _PreparedMedia(
-                    path=path,
-                    media_type="image/jpeg",
-                    body=normalized_inline,
-                    upload_filename=_safe_upload_filename(
-                        f"{PurePosixPath(path).stem}.jpg",
-                        media_type="image/jpeg",
-                    ),
-                )
-            media_by_path[path] = prepared
-            if role == "cover":
-                covers.append(prepared)
-        if len(covers) != 1 or covers[0].path in image_paths:
-            raise ValueError("one independent non-body cover is required")
-        non_cover_paths = set(media_by_path) - {covers[0].path}
-        if len(image_paths) != len(set(image_paths)) or set(image_paths) != non_cover_paths:
-            raise ValueError("HTML and media references disagree")
-        return tuple(media_by_path[path] for path in image_paths), covers[0]
+    async def create_prepared(self, prepared: WeChatPreparedDraft) -> WeChatDraftReceipt:
+        """Execute one previously preflighted draft after the durable side-effect fence."""
+
+        return await self._create_prepared(
+            prepared,
+            created_at=self._validated_created_at(),
+        )
 
     def _validated_created_at(self) -> datetime:
         created_at = self._clock()
@@ -309,7 +177,7 @@ class WeChatOfficialAccountDraftOnlyService:
 
     async def _create_prepared(
         self,
-        prepared: _PreparedDraft,
+        prepared: WeChatPreparedDraft,
         *,
         created_at: datetime,
     ) -> WeChatDraftReceipt:
@@ -355,6 +223,185 @@ class WeChatOfficialAccountDraftOnlyService:
             uploaded_image_count=len(prepared.body_media),
             created_at=created_at,
         )
+
+
+def _validated_max_image_bytes(value: int) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < WECHAT_MP_MIN_IMAGE_BYTES
+        or value > WECHAT_MP_MAX_IMAGE_BYTES
+    ):
+        raise ValueError("WeChat Official Account draft image byte limit is invalid")
+    return value
+
+
+def _prepare_draft_source(
+    source: WeChatDraftLocalSource,
+    *,
+    max_image_bytes: int,
+) -> WeChatPreparedDraft:
+    try:
+        role = WeeklyArticleRole(source.role)
+        child = load_finalized_v2_child(source.directory, role=role)
+        article = _json_object(child.files["article.json"])
+        manifest = _json_object(child.files["manifest.json"])
+        title = _bounded_text(
+            article.get("title"),
+            minimum=1,
+            maximum=WECHAT_MP_MAX_DRAFT_TITLE_CHARACTERS,
+        )
+        author = _bounded_text(
+            article.get("author"),
+            minimum=1,
+            maximum=WECHAT_MP_MAX_DRAFT_AUTHOR_CHARACTERS,
+        )
+        digest = _bounded_text(
+            article.get("digest"),
+            minimum=1,
+            maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
+        )
+        body_bytes = child.files["article-body.html"]
+        if sha256(body_bytes).hexdigest() != child.body_sha256:
+            raise ValueError("body identity changed")
+        body_html = body_bytes.decode("utf-8")
+        _validate_draft_html_size(body_html)
+        parser = _DraftHtmlValidator()
+        parser.feed(body_html)
+        parser.close()
+        image_paths = parser.finish()
+        body_media, cover = _prepare_media(
+            manifest=manifest,
+            files=child.files,
+            image_paths=image_paths,
+            max_image_bytes=max_image_bytes,
+        )
+        content_source_url = _optional_https_url(source.content_source_url)
+        if source.only_fans_can_comment and not source.need_open_comment:
+            raise ValueError("invalid comment policy")
+        if not isinstance(source.need_open_comment, bool) or not isinstance(
+            source.only_fans_can_comment,
+            bool,
+        ):
+            raise TypeError("invalid comment policy")
+    except (
+        BadZipFile,
+        KeyError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+    ):
+        raise WeChatMpDraftPreparationError() from None
+    return WeChatPreparedDraft(
+        role=source.role,
+        article_fingerprint=child.article_fingerprint,
+        content_fingerprint=child.content_fingerprint,
+        title=title,
+        author=author,
+        digest=digest,
+        content_source_url=content_source_url,
+        body_html=body_html,
+        body_media=body_media,
+        cover=cover,
+        need_open_comment=source.need_open_comment,
+        only_fans_can_comment=source.only_fans_can_comment,
+    )
+
+
+def _prepare_media(
+    *,
+    manifest: dict[str, object],
+    files: Mapping[str, bytes],
+    image_paths: tuple[str, ...],
+    max_image_bytes: int,
+) -> tuple[tuple[WeChatPreparedMedia, ...], WeChatPreparedMedia]:
+    raw_media = manifest.get("media")
+    if not isinstance(raw_media, list) or not raw_media:
+        raise ValueError("media projection is missing")
+    media_by_path: dict[str, WeChatPreparedMedia] = {}
+    covers: list[WeChatPreparedMedia] = []
+    for raw in raw_media:
+        if not isinstance(raw, dict) or any(not isinstance(key, str) for key in raw):
+            raise ValueError("media projection is invalid")
+        path = _safe_media_path(raw.get("path"))
+        if path in media_by_path:
+            raise ValueError("media path is duplicated")
+        role = raw.get("role")
+        if role not in {"body", "context", "cover"}:
+            raise ValueError("media role is invalid")
+        media_type = raw.get("media_type")
+        if media_type not in {"image/jpeg", "image/png"}:
+            raise ValueError("media type is unsupported")
+        body = files.get(path)
+        if not isinstance(body, bytes):
+            raise ValueError("media bytes are missing")
+        declared_size = raw.get("byte_size")
+        declared_sha = raw.get("sha256")
+        if (
+            isinstance(declared_size, bool)
+            or not isinstance(declared_size, int)
+            or declared_size != len(body)
+            or not isinstance(declared_sha, str)
+            or len(declared_sha) != _SHA256_LENGTH
+            or sha256(body).hexdigest() != declared_sha
+        ):
+            raise ValueError("media identity changed")
+        width, height = _validate_image_bytes(
+            body,
+            media_type=media_type,
+            max_bytes=max_image_bytes,
+        )
+        if raw.get("width") != width or raw.get("height") != height:
+            raise ValueError("media dimensions changed")
+        prepared = WeChatPreparedMedia(
+            path=path,
+            media_type=media_type,
+            body=body,
+            upload_filename=_safe_upload_filename(
+                PurePosixPath(path).name,
+                media_type=media_type,
+            ),
+        )
+        if role == "cover":
+            normalized_thumb = _normalize_cover_thumb(body)
+            _validate_image_bytes(
+                normalized_thumb,
+                media_type="image/jpeg",
+                max_bytes=WECHAT_MP_MAX_THUMB_BYTES,
+            )
+            prepared = WeChatPreparedMedia(
+                path=path,
+                media_type="image/jpeg",
+                body=normalized_thumb,
+                upload_filename="cover-thumb.jpg",
+            )
+        elif len(body) > WECHAT_MP_MAX_INLINE_IMAGE_BYTES:
+            normalized_inline = _normalize_inline_image(body)
+            _validate_image_bytes(
+                normalized_inline,
+                media_type="image/jpeg",
+                max_bytes=WECHAT_MP_MAX_INLINE_IMAGE_BYTES,
+            )
+            prepared = WeChatPreparedMedia(
+                path=path,
+                media_type="image/jpeg",
+                body=normalized_inline,
+                upload_filename=_safe_upload_filename(
+                    f"{PurePosixPath(path).stem}.jpg",
+                    media_type="image/jpeg",
+                ),
+            )
+        media_by_path[path] = prepared
+        if role == "cover":
+            covers.append(prepared)
+    if len(covers) != 1 or covers[0].path in image_paths:
+        raise ValueError("one independent non-body cover is required")
+    non_cover_paths = set(media_by_path) - {covers[0].path}
+    if len(image_paths) != len(set(image_paths)) or set(image_paths) != non_cover_paths:
+        raise ValueError("HTML and media references disagree")
+    return tuple(media_by_path[path] for path in image_paths), covers[0]
 
 
 class _DraftHtmlValidator(HTMLParser):
@@ -669,4 +716,10 @@ def _is_safe_https_url(value: str) -> bool:
     )
 
 
-__all__ = ["WeChatDraftLocalSource", "WeChatOfficialAccountDraftOnlyService"]
+__all__ = [
+    "WeChatDraftLocalSource",
+    "WeChatOfficialAccountDraftOnlyService",
+    "WeChatOfficialAccountDraftPreparer",
+    "WeChatPreparedDraft",
+    "WeChatPreparedMedia",
+]

@@ -235,6 +235,23 @@ class Settings(BaseSettings):
         ge=1024,
         le=1024 * 1024,
     )
+    wechat_mp_draft_worker_enabled: bool = False
+    wechat_mp_draft_auto_enqueue_enabled: bool = False
+    wechat_mp_draft_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
+    wechat_mp_draft_lease_seconds: int = Field(default=300, ge=60, le=3_600)
+    wechat_mp_draft_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
+    wechat_mp_draft_max_attempts: int = Field(default=3, ge=1, le=10)
+    wechat_mp_draft_retry_base_seconds: int = Field(default=30, ge=1, le=3_600)
+    wechat_mp_draft_weekly_inbox_root: str = Field(
+        default="output/official-account-weekly-inbox",
+        min_length=1,
+        max_length=4_096,
+    )
+    wechat_mp_draft_artifact_root: str = Field(
+        default="output/wechat-mp-draft-artifacts",
+        min_length=1,
+        max_length=4_096,
+    )
     official_account_local_worker_enabled: bool = False
     official_account_local_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
     official_account_local_worker_concurrency: int = Field(default=1, ge=1, le=4)
@@ -495,6 +512,20 @@ class Settings(BaseSettings):
             raise ValueError("unsupported content LLM rerank policy version")
         return value
 
+    @field_validator(
+        "wechat_mp_draft_weekly_inbox_root",
+        "wechat_mp_draft_artifact_root",
+        mode="before",
+    )
+    @classmethod
+    def validate_wechat_mp_draft_process_path(cls, value: object) -> object:
+        if isinstance(value, str) and (
+            not value.strip()
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        ):
+            raise ValueError("WeChat draft process paths must be non-blank and contain no controls")
+        return value
+
     def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
         def schedule(
             slot: ContentSlot,
@@ -544,6 +575,10 @@ class Settings(BaseSettings):
             raise ValueError("content heartbeat must be shorter than the lease")
         if self.wecom_heartbeat_seconds >= self.wecom_lease_seconds:
             raise ValueError("WeCom heartbeat must be shorter than the lease")
+        if self.wechat_mp_draft_heartbeat_seconds >= self.wechat_mp_draft_lease_seconds:
+            raise ValueError("WeChat draft heartbeat must be shorter than the lease")
+        if self.wechat_mp_draft_lease_seconds <= self.wechat_mp_request_timeout_seconds:
+            raise ValueError("WeChat draft lease must outlast the provider request timeout")
         if (
             self.official_account_local_heartbeat_seconds
             >= self.official_account_local_lease_seconds
@@ -563,6 +598,13 @@ class Settings(BaseSettings):
             raise ValueError("content slot mode requires content to be enabled")
         if self.official_account_local_worker_enabled and not self.official_account_local_enabled:
             raise ValueError("official-account worker requires the local feature to be enabled")
+        if self.wechat_mp_draft_auto_enqueue_enabled and not self.wechat_mp_draft_worker_enabled:
+            raise ValueError("automatic WeChat draft enqueue requires the draft worker")
+        if self.wechat_mp_draft_worker_enabled:
+            if self.app_env != "development":
+                raise ValueError("WeChat draft automation is development-only")
+            if not self.wechat_mp_enabled:
+                raise ValueError("WeChat draft worker requires the draft adapter to be enabled")
         if self.ip_asset_worker_enabled and not self.ip_asset_hub_enabled:
             raise ValueError("IP asset worker requires the hub to be enabled")
         if self.ip_asset_heartbeat_seconds >= self.ip_asset_lease_seconds:

@@ -3,12 +3,13 @@
 ## Persistence contract
 
 Use PostgreSQL with pgvector, SQLAlchemy 2 async mappings, `asyncpg`, and Alembic. The implemented
-acquisition, factual-governance, material-package, and Enterprise WeChat delivery schema is defined in
+acquisition, factual-governance, material-package, Enterprise WeChat delivery, and WeChat Official
+Account draft-job schema is defined in
 [`models.py`](../../../backend/app/infrastructure/db/models.py), accessed through
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260825_0036`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260901_0042`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -179,7 +180,13 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260825_0036` (adds selected-news source-image snapshots and local context-media lineage), after
+  `20260901_0042` (adds durable default-off WeChat Official Account draft jobs, exact three-role
+  items, fenced attempts, and populated-downgrade refusal), after `20260901_0041` (adds immutable,
+  final-SHA-bound official-account generated-visual evaluation
+  records), after `20260831_0040` (weekly three-article DAG), `20260831_0039` (shared execution
+  governance), `20260831_0038` (IP-asset search aggregates), `20260827_0037` (IP generation prompt
+  identity), and `20260825_0036` (selected-news source-image snapshots and local context-media
+  lineage), after
   `20260824_0035` (adds browser-local IP profiles, personal memberships, favorites, ordered
   generation references, explicit sharing state, and anonymous daily download aggregates), after
   `20260824_0034` adds the visible-IP v3 generated-visual plan/prompt constraint while preserving

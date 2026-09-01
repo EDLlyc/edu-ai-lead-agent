@@ -21,6 +21,7 @@ from app.application.services.official_account_editor_handoff_v2 import (
 from app.application.services.wechat_official_account_draft import (
     WeChatDraftLocalSource,
     WeChatOfficialAccountDraftOnlyService,
+    WeChatOfficialAccountDraftPreparer,
     _DraftHtmlValidator,
     _normalize_inline_image,
 )
@@ -134,6 +135,23 @@ async def test_weekly_service_prepares_all_local_media_then_creates_independent_
     assert {
         path: sha256(path.read_bytes()).hexdigest() for path in original_files
     } == original_files
+
+
+@pytest.mark.asyncio
+async def test_pure_preparer_validates_all_three_without_constructing_a_client(
+    tmp_path: Path,
+) -> None:
+    paths = await _finalized_directories(tmp_path)
+    sources = tuple(
+        WeChatDraftLocalSource(directory=path, role=role)
+        for path, role in zip(paths, WEEKLY_EDITION_ROLE_ORDER, strict=True)
+    )
+
+    prepared = WeChatOfficialAccountDraftPreparer().prepare_weekly(sources)  # type: ignore[arg-type]
+
+    assert [item.role for item in prepared] == list(WEEKLY_EDITION_ROLE_ORDER)
+    assert len({item.article_fingerprint for item in prepared}) == 3
+    assert len({item.content_fingerprint for item in prepared}) == 3
 
 
 @pytest.mark.asyncio
