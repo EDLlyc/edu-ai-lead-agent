@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 80
-- **Last Active**: 2026-08-31
+- **Total Sessions**: 81
+- **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1838 | Active |
+| `journal-1.md` | ~1859 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 81 | 2026-09-01 | 品牌语料 Layout-aware 摄取 V4 | `3542e60` | `main` |
 | 80 | 2026-08-31 | Alibaba multimodal brand RAG and real-data MCP | `719d9f9` | `main` |
 | 79 | 2026-08-27 | IP 创作页提示词与排版精修 | `f9e7406` | `main` |
 | 78 | 2026-08-27 | IP 资产演示加固 | `9d8b697` | `main` |

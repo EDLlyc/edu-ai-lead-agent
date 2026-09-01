@@ -1836,3 +1836,24 @@ Enhanced the real-data Agent MCP with controlled Zhipu query planning/reranking,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 81: 品牌语料 Layout-aware 摄取 V4
+
+**Date**: 2026-09-01
+**Task**: 品牌语料 Layout-aware 摄取 V4
+**Branch**: `main`
+
+### Summary
+
+实现并验证智谱 Layout OCR 驱动的 PDF 页面结构解析、语义切片、脱敏诊断与定向重建；使用现有阿里多模态 Embedding 完成真实语料重建和品牌 RAG 评测，未部署服务器。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3542e60` | (see git log) |
+
+### Status
+
+[OK] **Completed**
