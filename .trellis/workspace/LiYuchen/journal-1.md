@@ -1879,3 +1879,25 @@ Enhanced the real-data Agent MCP with controlled Zhipu query planning/reranking,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 83: Complete image evaluation and durable WeChat draft automation
+
+**Date**: 2026-09-01
+**Task**: Complete image evaluation and durable WeChat draft automation
+**Branch**: `main`
+
+### Summary
+
+Committed final-image quality evaluation with 0041, then a default-off durable three-role WeChat Official Account draft worker with artifact loading, leases, retries, reconciliation, CLI, 0042 migration, and verified tests; archived the completed draft-worker task without deploying or calling WeChat.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `867ee4c` | (see git log) |
+| `755050b` | (see git log) |
+
+### Status
+
+[OK] **Completed**
