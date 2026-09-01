@@ -967,3 +967,150 @@ artifact = await service.build(run_id)
 # structured Article Package under the additive handoff identity.
 return artifact
 ```
+
+## Editor-handoff V2: automatic local release and block-bound news media
+
+The injection-safe focused source of truth is
+[`official-account-editor-handoff-v2.md`](./official-account-editor-handoff-v2.md); this mirror keeps
+the relationship to frozen V1 repackages explicit.
+
+### 1. Scope / trigger
+
+- Use this sibling path only for a development-only editor handoff when both the V2 flag and
+  `quality_auto` policy are explicit. `manual_only` continues to dispatch the frozen V1 path.
+- V2 is a read-only projection of persisted run, Article, render, draft, audit and media state. It
+  has no worker, migration, provider, acquisition, WeChat, WeCom, send or publish capability.
+- V2 owns new identities and a fresh output directory. V1 constants, renderer output, golden files
+  and ZIP bytes remain immutable.
+
+### 2. Signatures
+
+```python
+service = OfficialAccountEditorHandoffV2Service(
+    session_factory=session_factory,
+    resolver=resolver,
+    release_policy="quality_auto",
+)
+inspection = await service.inspect(run_id)
+
+artifact = build_editor_handoff_v2_artifact(...)
+finalized = bind_editor_handoff_v2_mobile_validation(artifact, exact_report)
+target = write_editor_handoff_v2_artifact(finalized, fresh_output_root)
+```
+
+```bash
+PYTHONPATH=backend conda run --no-capture-output --name edu-ai \
+  python -m app.official_account_editor_handoff_v2_demo \
+  --output-dir output/official-account-editor-handoff-v2-staging \
+  --browser-report /tmp/editor-handoff-v2-mobile.json
+```
+
+### 3. Contracts
+
+V2 is a sibling of the frozen V1 handoff. It owns
+`wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic`,
+`wechat-editor-handoff-style-v2-xiaosai-adaptive`,
+`wechat-editor-handoff-template-v2-block-interleaved-mobile`,
+`official-account-editor-handoff-bundle-v2`, `wechat-editor-handoff-preflight-v2` and the versioned
+release/placement/emphasis/recipe/mobile identities. V1 constants, renderer output and ZIP bytes do
+not change.
+
+`manual_only` dispatches the V1 compatibility path. `quality_auto` is available only behind the
+development-only V2 flag. It consumes persisted run, Article, render, draft, model-audit, image
+quality and generated-visual state; it constructs no provider. A valid approval yields a truthful
+manual release, no review may yield a machine release, and an immutable rejection always blocks.
+Machine release is a projection in `release.json`, never a fabricated review row.
+
+- Context images retain their Article section, score exact alt/caption terms against visible text
+  blocks, and persist an `after` block placement with a bounded reason. Stable collision shifting
+  keeps a visible prose block between images. Context media never replaces a body image block.
+- Semantic emphasis selects one or two exact 4--15-character source units for ordinary text and at
+  most three for long text. It never truncates a long clause to the maximum length, rejects
+  function-word fragments and unbalanced quotation marks, and renders escaped slices whose
+  concatenation equals the input.
+- The deterministic Xiaosai recipe is `news_analysis`, `tutorial_list`, `case_opinion` or
+  `analysis`. It changes component rhythm, title/TOC bands and callout variants only; one Xiaosai
+  theme, inline allowlisted CSS, `span leaf` and relative local images remain mandatory.
+
+#### Content and artifact identity
+
+`content_fingerprint` binds release inputs, Article identity, recipe, placement, body SHA and media
+hashes. `artifact_fingerprint` additionally binds the canonical mobile report. Runtime output uses
+`not_run`. A final `passed` artifact can be built only when a loopback browser report matches the
+exact content fingerprint, body SHA and ordered media hashes, reports 320/430 checks, zero external
+requests and exact preview/copy-root equality. Therefore one artifact fingerprint never names both
+not-run and passed bytes.
+
+The deterministic V2 bundle includes `release.json`, `placements.json`, `emphasis.json`,
+`recipe.json`, `body-visuals.json`, the canonical mobile report, clean body/preview, safe Article/source/rights
+projections, media, manifest and ZIP. It remains `simulation=true`, `local_only=true` and
+`published=false`; no WeChat or WeCom capability exists.
+
+Every V2 body slot must resolve to a newly generated, current V3 reference-conditioned output.
+Directly placing approved catalog bytes is insufficient. The safe lineage binds the exact Article
+block fingerprint, approved public reference, provider-input normalization checksum, truthful
+selection method, character labels, plan identity and generated output hash. The offline fixture
+validates a frozen exact-field visual map and calls no provider; never relabel its deterministic
+fixture-semantic choice as a Qwen3-VL embedding result.
+
+A named final directory must be rebuilt after the last semantic/render/projection change and
+hash-match a current-code in-memory rebuild. Context source, credit, rights and block placement must
+agree across Markdown, JSON, manifest, generated API and workbench projections.
+
+### 4. Validation and error matrix
+
+| Condition | Required result |
+|---|---|
+| V2 flag is off, policy is `manual_only`, or environment is not development | Keep V1 dispatch or fail closed; never enter automatic V2 |
+| Persisted run/draft, Article/render lineage, deterministic/model/image gate is unknown or failed | Return a stable blocking check before media export |
+| A valid human approval exists | Emit `kind=manual` with its immutable fingerprint |
+| Any human rejection exists | Block before machine release; automatic quality cannot override it |
+| Context media cannot bind a safe visible block or remain separated from images | Fail V2 placement preflight without dropping or replacing media |
+| Emphasis bounds rewrite text, overlap, use generic transition fragments or exceed three spans | Fail deterministic emphasis checks/tests |
+| Browser report does not bind exact content/body/ordered media hashes, `(320, 430)`, zero external requests and exact copy root | Reject finalization and keep runtime `not_run` truthful |
+| Output target already exists, a path is unsafe, or archive verification fails | Preserve the existing target and do not install a partial bundle |
+
+### 5. Good / base / bad cases
+
+- Good: all durable quality gates pass with no manual row, so a machine release creates three IP
+  body images plus block-bound news context images, one cover, a passed exact mobile report and a
+  deterministic local ZIP.
+- Base: runtime/API projection has canonical `mobile_validation=not_run`; repeated construction from
+  the same snapshots has identical content/artifact identities and bytes, while V1 remains exact.
+- Bad: fabricate an approved review, accept a rejected run, use one browser result for another
+  article, silently drop a context image, treat it as evidence/licensed, or call any external/social
+  client.
+
+### 6. Tests required
+
+- Cover machine/manual/rejected gate ordering, unknown or failed image quality, generated-visual
+  failure, tampered lineage, deterministic replay, archive safety and V1 byte regressions.
+- Assert semantic spans are exact and nontruncated, placements carry nonempty semantic matches in
+  the news fixture, three IP body images remain, and one or two news images keep source/credit/
+  rights/context-only truth.
+- Generate OpenAPI/TypeScript from the backend contract. Run the independent gzh validator to zero
+  errors/warnings and Playwright at 320/430 with all images loaded, plan-derived order, no overflow
+  and zero external requests.
+- Hash-match the final directory against a current-code in-memory rebuild and assert Markdown,
+  JSON, manifest and API/UI retain the same context source/credit/rights/placement values.
+
+### 7. Wrong vs correct
+
+Wrong:
+
+```python
+# A missing review is falsely represented as a human approval.
+review = StoredOfficialAccountManualReview(decision="approved", reviewer_label="automation", ...)
+```
+
+Correct:
+
+```python
+release = EditorHandoffRelease(
+    policy="quality_auto",
+    kind="machine",
+    input_fingerprint=durable_gate_fingerprint,
+    gate_codes=passed_gate_codes,
+    manual_review_fingerprint=None,
+)
+```

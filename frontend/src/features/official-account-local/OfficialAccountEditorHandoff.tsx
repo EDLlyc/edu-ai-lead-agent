@@ -58,7 +58,9 @@ export function OfficialAccountEditorHandoff({
           </p>
         </div>
         <strong data-ready={ready ? "true" : "false"}>
-          {ready ? "交接预检通过" : "交接尚未开放"}
+          {ready
+            ? (handoff?.release?.kindLabel ?? "交接预检通过")
+            : "交接尚未开放"}
         </strong>
       </header>
 
@@ -78,6 +80,45 @@ export function OfficialAccountEditorHandoff({
 
       {handoff !== undefined ? (
         <>
+          {handoff.release !== null ? (
+            <div
+              className={styles.releaseStatus}
+              data-kind={handoff.release.kind}
+              role="status"
+            >
+              <div>
+                <span>{handoff.release.policyLabel}</span>
+                <strong>{handoff.release.kindLabel}</strong>
+                <small>
+                  {handoff.release.kind === "machine"
+                    ? "基于已持久化的规则校验、模型审校和图片质量状态，无需人工批准动作。"
+                    : "使用不可变人工批准记录放行，没有伪装成机器决定。"}
+                </small>
+              </div>
+              <div>
+                <span>LAYOUT RECIPE</span>
+                <strong>{handoff.recipeLabel ?? "小赛自适应版式"}</strong>
+                <small>
+                  内容 {handoff.contentFingerprint?.slice(0, 12) ?? "—"} · 产物{" "}
+                  {handoff.artifactFingerprint?.slice(0, 12) ?? "—"}
+                </small>
+              </div>
+            </div>
+          ) : null}
+
+          <p
+            className={styles.mobileStatus}
+            data-passed={handoff.mobileStatus === "passed" ? "true" : "false"}
+            role="note"
+          >
+            <strong>
+              {handoff.mobileStatus === "passed"
+                ? "移动端验收已绑定"
+                : "移动端验收尚未运行"}
+            </strong>
+            <span>{handoff.mobileStatusLabel}</span>
+          </p>
+
           <ol className={styles.gates} aria-label="微信公众号编辑器交接门禁">
             {handoff.checks.map((check, index) => (
               <li
@@ -160,6 +201,14 @@ export function OfficialAccountEditorHandoff({
                       <small>{asset.altText}</small>
                       {asset.credit !== null ? (
                         <small>署名：{asset.credit}</small>
+                      ) : null}
+                      {asset.placement !== null ? (
+                        <small>
+                          定位：第 {asset.placement.sectionIndex + 1} 节 ·
+                          正文块 {asset.placement.blockIndex + 1}{" "}
+                          {asset.placement.insertionLabel}（
+                          {asset.placement.reasonLabel}）
+                        </small>
                       ) : null}
                       {asset.sourcePageUrl !== null ? (
                         <a

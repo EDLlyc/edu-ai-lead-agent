@@ -1,4 +1,6 @@
 {"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Owns the focused automatic release, block placement, semantic emphasis, exact mobile identity, and zero-publish V2 contract."}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Owns existing governed eligibility, hard-veto, qualified-authoritative priority and deterministic score boundaries that weekly role preferences must not alter."}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Provides the reusable independent-item and schedule patterns while requiring the weekly edition to remain distinct from morning/noon/evening slots."}
 {"file":".trellis/spec/backend/visual-retrieval.md","reason":"Owns approved-catalog Qwen3-VL complete-index retrieval, truthful semantic/fallback selection, safe public references, and official-account block-query contracts."}
 {"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Owns frozen official-account Article/media/audit/export identities, zero-publish boundary, and additive-version compatibility."}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Defines typed, deterministic, versioned backend quality and focused/final check gates."}
@@ -8,3 +10,6 @@
 {"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Keeps GET server state in TanStack Query and clipboard/download as browser effects."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Requires generated OpenAPI wire types and a single safe mapper boundary."}
 {"file":".trellis/tasks/08-27-official-account-editor-automation-v2/research/current-v1-audit.md","reason":"Records exact V1 gaps, accepted output evidence, compatibility choice, and zero-external-call boundary."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Provides the existing secret-safe token cache, bounded HTTP adapter, idempotency and MockTransport patterns; the new WeChat MP client must remain a separate protocol and domain."}
+{"file":".trellis/spec/backend/official-account-weekly-edition.md","reason":"Owns the exact three independent role artifacts, local-only state truth and homepage-pin state machine that draft creation must consume without mutating or advancing publication state."}
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Owns the default-disabled WeChat MP stable-token, media normalization/upload, independent draft, redaction, concurrency and unpublished-state contracts."}

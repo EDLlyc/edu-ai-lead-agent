@@ -158,6 +158,27 @@ After implementation:
 - [ ] Checked that derived state points back to the source event identifier
       (`seq`, `id`, `version`) instead of inventing a second cursor
 
+### Final Deliverable Projection Parity
+
+When one governed fact appears in several generated files or UI projections, a passing unit test
+does not prove that a named local delivery was built from the current code.
+
+- [ ] Enumerate the canonical fields and every projection before editing (for example source URL,
+      credit, rights and block placement across Markdown, JSON, manifest, API and UI)
+- [ ] Assert projection parity from one typed source instead of checking each representation only
+      for internal validity
+- [ ] Build the named final directory only after the last renderer, semantic or auxiliary-projection
+      change; never overwrite or silently reuse an earlier delivery
+- [ ] Rebuild once in memory with the accepted browser sidecar and require the content identity,
+      artifact identity and ZIP SHA-256 to match the named directory
+- [ ] Repeat browser and format-specific validation against that exact final directory, not a
+      staging predecessor
+
+**Real-world example**: An official-account handoff passed backend, frontend and browser tests, but its first
+named bundle predated the rule that removed generic emphasis text. A later bundle then exposed
+source/credit/placement in JSON and UI while omitting them from Markdown. Current-code hash replay
+plus cross-projection assertions caught both gaps and forced a fresh, non-overwriting final export.
+
 ## Choose The Business Fact, Not An Upstream Proxy
 
 Cross-layer rules often have several plausible clocks: created, selected, generated, queued,

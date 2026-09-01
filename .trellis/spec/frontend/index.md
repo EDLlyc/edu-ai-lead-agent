@@ -23,9 +23,11 @@ disabled, missing, preparing, empty/unfilled, ready, failed, expired, delivered 
 per independent item. It links to safe source and material-package resources, keeps polling in the
 server-state hook only while enabled slots are incomplete, and provides no publishing controls.
 
-The SPA additionally contains a feature-flagged IP digital-asset hub for one unauthenticated company
-intranet library. It supports controlled upload, cursor browsing, multimodal/metadata search,
-verified preview/download, bounded ZIP selection, and optional generation-to-library job polling.
+The SPA additionally contains a feature-flagged IP digital-asset hub for one backend-unauthenticated
+company intranet library. A versioned, tab-scoped presentation gate provides a local demo login page
+without claiming verified identity or API protection. The hub supports controlled upload, cursor
+browsing, multimodal/metadata search, verified preview/download, bounded ZIP selection, and optional
+generation-to-library job polling.
 
 React, TypeScript strict mode, Vite, TanStack Query, and generated OpenAPI types are implemented.
 

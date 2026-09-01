@@ -337,6 +337,8 @@ vi.mock("./hooks", () => ({
       visualSemanticProviderMode: "disabled",
       generatedVisualsEnabled: false,
       editorHandoffEnabled: false,
+      editorHandoffV2Enabled: false,
+      editorHandoffReleasePolicy: "manual_only",
     },
     isLoading: false,
     isError: false,

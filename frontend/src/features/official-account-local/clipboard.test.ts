@@ -44,4 +44,22 @@ describe("official-account rich clipboard", () => {
     expect(denied.status).toBe("permission_denied");
     expect(failed.status).toBe("failed");
   });
+
+  it("falls back to a local selection copy when rich ClipboardItem is unavailable", async () => {
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+
+    const result = await copyRichHtml(
+      '<section><span leaf="">兼容正文</span></section>',
+      {} as Clipboard,
+      document,
+    );
+
+    expect(result.status).toBe("copied");
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(document.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
 });

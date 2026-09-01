@@ -9451,6 +9451,20 @@
             "title": "Editor Handoff Enabled",
             "type": "boolean"
           },
+          "editor_handoff_release_policy": {
+            "default": "manual_only",
+            "enum": [
+              "manual_only",
+              "quality_auto"
+            ],
+            "title": "Editor Handoff Release Policy",
+            "type": "string"
+          },
+          "editor_handoff_v2_enabled": {
+            "default": false,
+            "title": "Editor Handoff V2 Enabled",
+            "type": "boolean"
+          },
           "eligible_material_packages": {
             "items": {
               "$ref": "#/components/schemas/EligibleMaterialPackageResponse"
@@ -9622,18 +9636,99 @@
       "OfficialAccountEditorHandoffIdentityResponse": {
         "additionalProperties": false,
         "properties": {
+          "body_visual_lineage_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-body-visual-lineage-v1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Visual Lineage Version"
+          },
           "bundle_version": {
-            "const": "official-account-editor-handoff-bundle-v1",
+            "enum": [
+              "official-account-editor-handoff-bundle-v1",
+              "official-account-editor-handoff-bundle-v2"
+            ],
             "title": "Bundle Version",
             "type": "string"
           },
+          "emphasis_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-semantic-emphasis-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emphasis Version"
+          },
+          "mobile_binding_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-mobile-binding-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mobile Binding Version"
+          },
+          "placement_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-context-placement-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement Version"
+          },
           "preflight_version": {
-            "const": "wechat-editor-handoff-preflight-v1",
+            "enum": [
+              "wechat-editor-handoff-preflight-v1",
+              "wechat-editor-handoff-preflight-v2"
+            ],
             "title": "Preflight Version",
             "type": "string"
           },
+          "recipe_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-layout-recipe-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Version"
+          },
+          "release_policy_version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-release-policy-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Policy Version"
+          },
           "renderer_version": {
-            "const": "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
+            "enum": [
+              "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
+              "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic"
+            ],
             "title": "Renderer Version",
             "type": "string"
           },
@@ -9643,12 +9738,18 @@
             "type": "string"
           },
           "style_version": {
-            "const": "wechat-editor-handoff-style-v1-xiaosai-blue",
+            "enum": [
+              "wechat-editor-handoff-style-v1-xiaosai-blue",
+              "wechat-editor-handoff-style-v2-xiaosai-adaptive"
+            ],
             "title": "Style Version",
             "type": "string"
           },
           "template_version": {
-            "const": "wechat-editor-handoff-template-v1-moyu-layout",
+            "enum": [
+              "wechat-editor-handoff-template-v1-moyu-layout",
+              "wechat-editor-handoff-template-v2-block-interleaved-mobile"
+            ],
             "title": "Template Version",
             "type": "string"
           },
@@ -9750,6 +9851,16 @@
             "title": "Ordinal",
             "type": "integer"
           },
+          "placement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountEditorHandoffPlacementResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rights_status": {
             "anyOf": [
               {
@@ -9813,6 +9924,63 @@
       "OfficialAccountEditorHandoffMobileResponse": {
         "additionalProperties": false,
         "properties": {
+          "body_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Sha256"
+          },
+          "content_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Fingerprint"
+          },
+          "copy_root_matches_body": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copy Root Matches Body"
+          },
+          "external_requests": {
+            "anyOf": [
+              {
+                "const": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Requests"
+          },
+          "media_sha256s": {
+            "default": [],
+            "items": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "title": "Media Sha256S",
+            "type": "array"
+          },
           "status": {
             "enum": [
               "not_run",
@@ -9820,6 +9988,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "const": "editor-handoff-mobile-binding-v2",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           },
           "viewports": {
             "default": [
@@ -9830,17 +10010,11 @@
             "minItems": 2,
             "prefixItems": [
               {
-                "enum": [
-                  320,
-                  430
-                ],
+                "const": 320,
                 "type": "integer"
               },
               {
-                "enum": [
-                  320,
-                  430
-                ],
+                "const": 430,
                 "type": "integer"
               }
             ],
@@ -9854,9 +10028,147 @@
         "title": "OfficialAccountEditorHandoffMobileResponse",
         "type": "object"
       },
+      "OfficialAccountEditorHandoffPlacementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm_version": {
+            "const": "editor-handoff-context-placement-v2",
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "insertion": {
+            "const": "after",
+            "title": "Insertion",
+            "type": "string"
+          },
+          "matched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Matched Terms",
+            "type": "array"
+          },
+          "media_name": {
+            "pattern": "^context-0[01]\\.(?:jpg|png|webp)$",
+            "title": "Media Name",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "semantic_text_overlap",
+              "first_prose_fallback",
+              "collision_shifted"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "section_index": {
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Section Index",
+            "type": "integer"
+          },
+          "target_block_index": {
+            "maximum": 49.0,
+            "minimum": 0.0,
+            "title": "Target Block Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "media_name",
+          "section_index",
+          "target_block_index",
+          "insertion",
+          "reason_code",
+          "algorithm_version",
+          "matched_terms"
+        ],
+        "title": "OfficialAccountEditorHandoffPlacementResponse",
+        "type": "object"
+      },
+      "OfficialAccountEditorHandoffReleaseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "const": "released",
+            "title": "Decision",
+            "type": "string"
+          },
+          "gate_codes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Gate Codes",
+            "type": "array"
+          },
+          "input_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Fingerprint",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "manual",
+              "machine"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "manual_review_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Review Fingerprint"
+          },
+          "policy": {
+            "enum": [
+              "manual_only",
+              "quality_auto"
+            ],
+            "title": "Policy",
+            "type": "string"
+          },
+          "policy_version": {
+            "const": "editor-handoff-release-policy-v2",
+            "title": "Policy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy",
+          "policy_version",
+          "kind",
+          "decision",
+          "input_fingerprint",
+          "gate_codes"
+        ],
+        "title": "OfficialAccountEditorHandoffReleaseResponse",
+        "type": "object"
+      },
       "OfficialAccountEditorHandoffResponse": {
         "additionalProperties": false,
         "properties": {
+          "artifact_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Fingerprint"
+          },
           "blocking_codes": {
             "items": {
               "type": "string"
@@ -9923,6 +10235,18 @@
             "title": "Checks",
             "type": "array"
           },
+          "content_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Fingerprint"
+          },
           "copy_ready": {
             "title": "Copy Ready",
             "type": "boolean"
@@ -9965,6 +10289,13 @@
           "mobile_validation": {
             "$ref": "#/components/schemas/OfficialAccountEditorHandoffMobileResponse"
           },
+          "placements": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialAccountEditorHandoffPlacementResponse"
+            },
+            "title": "Placements",
+            "type": "array"
+          },
           "preview_url": {
             "anyOf": [
               {
@@ -9981,6 +10312,33 @@
             "default": false,
             "title": "Published",
             "type": "boolean"
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "enum": [
+                  "news_analysis",
+                  "tutorial_list",
+                  "case_opinion",
+                  "analysis"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialAccountEditorHandoffReleaseResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "simulation": {
             "const": true,

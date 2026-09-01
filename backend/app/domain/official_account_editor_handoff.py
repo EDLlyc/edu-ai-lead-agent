@@ -10,7 +10,7 @@ from hashlib import sha256
 from html import escape
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
-from typing import Final, Literal
+from typing import Final, Literal, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -401,7 +401,7 @@ def handoff_fingerprint(*parts: object) -> str:
 
 
 def canonical_theme_projection() -> dict[str, object]:
-    return json.loads(XIAOSAI_GZH_THEME_CANONICAL_JSON)
+    return cast(dict[str, object], json.loads(XIAOSAI_GZH_THEME_CANONICAL_JSON))
 
 
 def _global_open() -> str:

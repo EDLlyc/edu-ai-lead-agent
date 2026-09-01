@@ -83,3 +83,85 @@ Correct:
 ```tsx
 return <iframe title="微信公众号编辑器预览" sandbox="allow-scripts" src={handoff.previewUrl} />;
 ```
+
+## V2 automatic release and exact mobile identity
+
+### 1. Scope / trigger
+
+- Extend the existing development-only workbench only when the generated capability exposes V2.
+  Keep the V1 `manual_only` presentation and all no-publish boundaries available.
+- The UI displays and copies an already derived local artifact. It never approves, uploads, sends,
+  selects a WeChat account or turns a context image into evidence.
+
+### 2. Signatures
+
+```ts
+mapEditorHandoff(response: OfficialAccountEditorHandoffResponse): OfficialAccountEditorHandoffViewModel
+copyRichHtml(html: string, clipboard?: Clipboard, documentRef?: Document): Promise<RichClipboardResult>
+```
+
+```tsx
+<OfficialAccountEditorHandoff
+  runId={runId}
+  handoff={handoff}
+  loading={loading}
+  error={error}
+/>
+```
+
+### 3. Contracts
+
+- Keep the V1 `manual_only` workbench behavior available. When the generated contract exposes a
+  V2 release, label `machine` as `自动质量放行` and `manual` as `人工批准放行`; never infer a human
+  decision from `copy_ready` or from Chinese detail text.
+- Show the selected recipe and each context image's section/block insertion, source, credit and
+  `publish_permission_unverified` warning. Context media supplements IP body images and never
+  appears as evidence or as a replacement body slot.
+- Treat runtime `mobile_validation=not_run` as honest unfinished evidence. Display `passed` only
+  when the generated response carries the exact current content fingerprint; do not reuse a
+  fixture sidecar for another article.
+- The rich clipboard helper first uses `ClipboardItem` with HTML and plain text, then uses a local
+  DOM selection/`execCommand` compatibility fallback. Both paths announce success only after the
+  browser confirms copying and remove temporary DOM nodes.
+
+### 4. Validation and error matrix
+
+| Condition | Required UI result |
+|---|---|
+| V2 capability is absent or environment is not development | Do not fetch or render the V2 handoff |
+| `release.kind=machine` | Show automatic quality release; never imply a human review |
+| `release.kind=manual` | Show immutable human approval without relabeling it automatic |
+| Runtime mobile status is `not_run` | State that this run has not been browser-validated |
+| Passed report is present for the current content fingerprint | State that exact 320/430 offline validation passed |
+| Context source URL is unsafe or rights are unverified | Suppress unsafe link and retain source/credit/rights warning |
+| Both rich clipboard and selection fallback fail | Announce failure; never announce copied |
+
+### 5. Good / base / bad cases
+
+- Good: show machine/manual truth, recipe, two identities, stable context block placement, source and
+  rights warning, then copy/download only when `copy_ready=true`.
+- Base: a valid runtime V2 artifact shows honest `not_run`, local-only boundary and safe downloads.
+- Bad: infer approval from `copy_ready`, reuse a fixture browser badge, inject article HTML into
+  React, construct an arbitrary remote media URL or add publish controls.
+
+### 6. Tests required
+
+- V2 mapper/component tests cover release kind, recipe, placement, mobile identity and fallback
+  clipboard behavior. Playwright derives expected image reading order from Article blocks plus the
+  placement plan, loads every local image at 320/430, blocks external requests and emits content,
+  body and ordered media hashes.
+
+### 7. Wrong vs correct
+
+Wrong:
+
+```tsx
+const approved = handoff.copyReady;
+return <span>{approved ? "人工审核通过" : "待审核"}</span>;
+```
+
+Correct:
+
+```tsx
+return <span>{handoff.release?.kindLabel ?? "交接预检通过"}</span>;
+```

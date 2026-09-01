@@ -58,6 +58,68 @@
   line-height: 1.6;
 }
 
+.releaseStatus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+
+.releaseStatus > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #c7ddef;
+  background: #fff;
+}
+
+.releaseStatus span {
+  color: #0d57c8;
+  font: 0.64rem var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.releaseStatus strong {
+  font: 1rem var(--font-display);
+}
+
+.releaseStatus small {
+  overflow-wrap: anywhere;
+  color: #607086;
+  line-height: 1.55;
+}
+
+.releaseStatus[data-kind="machine"] > div:first-child {
+  border-color: #22a978;
+  background: #effbf5;
+}
+
+.mobileStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #dceaf5;
+  background: #f7fbfe;
+  color: #607086;
+  line-height: 1.5;
+}
+
+.mobileStatus strong {
+  flex: none;
+  color: #8a4300;
+  font-size: 0.78rem;
+}
+
+.mobileStatus[data-passed="true"] strong {
+  color: #157850;
+}
+
+.mobileStatus span {
+  font-size: 0.78rem;
+}
+
 .gates {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -245,8 +307,14 @@
   }
 
   .gates,
-  .assets ul {
+  .assets ul,
+  .releaseStatus {
     grid-template-columns: 1fr;
+  }
+
+  .mobileStatus {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .handoff,

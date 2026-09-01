@@ -11,6 +11,8 @@ import {
 import { shouldPollOfficialAccountRun } from "./hooks";
 
 type RunDetail = components["schemas"]["OfficialAccountRunDetailResponse"];
+type EditorHandoffResponse =
+  components["schemas"]["OfficialAccountEditorHandoffResponse"];
 
 const summary: components["schemas"]["OfficialAccountRunSummaryResponse"] = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -59,18 +61,22 @@ describe("official-account local API mapping", () => {
       visual_semantic_provider_mode: "disabled",
       generated_visuals_enabled: false,
       editor_handoff_enabled: true,
+      editor_handoff_v2_enabled: true,
+      editor_handoff_release_policy: "quality_auto",
     });
     const run = mapRunSummary(summary);
 
     expect(capabilities.eligibleMaterials[0]?.title).toBe("合格素材");
     expect(capabilities.liveAvailable).toBe(false);
     expect(capabilities.editorHandoffEnabled).toBe(true);
+    expect(capabilities.editorHandoffV2Enabled).toBe(true);
+    expect(capabilities.editorHandoffReleasePolicy).toBe("quality_auto");
     expect(run.statusLabel).toBe("本地草稿就绪");
     expect(run.modeLabel).toContain("离线");
   });
 
   it("maps editor handoff gates, safe URLs and direct-use rights disclosure", () => {
-    const handoff = mapEditorHandoff({
+    const response: EditorHandoffResponse = {
       state: "ready",
       copy_ready: true,
       simulation: true,
@@ -78,6 +84,29 @@ describe("official-account local API mapping", () => {
       published: false,
       boundary_label: "本地交接，未同步公众号",
       fingerprint: "f".repeat(64),
+      content_fingerprint: "e".repeat(64),
+      artifact_fingerprint: "f".repeat(64),
+      release: {
+        policy: "quality_auto",
+        policy_version: "editor-handoff-release-policy-v2",
+        kind: "machine",
+        decision: "released",
+        input_fingerprint: "9".repeat(64),
+        gate_codes: ["deterministic_validation_passed"],
+        manual_review_fingerprint: null,
+      },
+      recipe: "news_analysis",
+      placements: [
+        {
+          media_name: "context-00.jpg",
+          section_index: 0,
+          target_block_index: 1,
+          insertion: "after",
+          reason_code: "semantic_text_overlap",
+          algorithm_version: "editor-handoff-context-placement-v2",
+          matched_terms: ["科创教育"],
+        },
+      ],
       identity: {
         renderer_version: "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
         style_version: "wechat-editor-handoff-style-v1-xiaosai-blue",
@@ -118,15 +147,29 @@ describe("official-account local API mapping", () => {
           credit: "来源机构",
           rights_status: "publish_permission_unverified",
           context_only_not_evidence: true,
+          placement: {
+            media_name: "context-00.jpg",
+            section_index: 0,
+            target_block_index: 1,
+            insertion: "after",
+            reason_code: "semantic_text_overlap",
+            algorithm_version: "editor-handoff-context-placement-v2",
+            matched_terms: ["科创教育"],
+          },
         },
       ],
-      mobile_validation: { status: "not_run", viewports: [320, 430] },
+      mobile_validation: {
+        status: "not_run",
+        viewports: [320, 430],
+        media_sha256s: [],
+      },
       body_url: "/safe/body",
       preview_url: "javascript:alert(1)",
       bundle_url: "/safe/bundle",
       bundle_filename: "wechat-editor-handoff-safe.zip",
       bundle_sha256: "c".repeat(64),
-    });
+    };
+    const handoff = mapEditorHandoff(response);
 
     expect(handoff.copyReady).toBe(true);
     expect(handoff.checks[0]?.label).toBe("新闻图片权利");
@@ -135,6 +178,41 @@ describe("official-account local API mapping", () => {
     );
     expect(handoff.previewUrl).toBeNull();
     expect(handoff.bundleUrl).toContain("/safe/bundle");
+    expect(handoff.release?.kindLabel).toBe("自动质量放行");
+    expect(handoff.recipeLabel).toBe("新闻解读");
+    expect(handoff.media[0]?.placement?.blockIndex).toBe(1);
+
+    const mismatchedMobile = mapEditorHandoff({
+      ...response,
+      mobile_validation: {
+        status: "passed",
+        version: "editor-handoff-mobile-binding-v2",
+        viewports: [320, 430],
+        content_fingerprint: "d".repeat(64),
+        body_sha256: "1".repeat(64),
+        media_sha256s: ["b".repeat(64)],
+        external_requests: 0,
+        copy_root_matches_body: true,
+      },
+    });
+    const matchedMobile = mapEditorHandoff({
+      ...response,
+      mobile_validation: {
+        status: "passed",
+        version: "editor-handoff-mobile-binding-v2",
+        viewports: [320, 430],
+        content_fingerprint: "e".repeat(64),
+        body_sha256: "1".repeat(64),
+        media_sha256s: ["b".repeat(64)],
+        external_requests: 0,
+        copy_root_matches_body: true,
+      },
+    });
+
+    expect(mismatchedMobile.mobileStatus).toBe("not_run");
+    expect(mismatchedMobile.mobileContentFingerprint).toBeNull();
+    expect(matchedMobile.mobileStatus).toBe("passed");
+    expect(matchedMobile.mobileContentFingerprint).toBe("e".repeat(64));
   });
 
   it("normalizes only safe API media and preview URLs", () => {

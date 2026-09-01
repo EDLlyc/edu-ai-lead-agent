@@ -179,6 +179,21 @@ OFFICIAL_ACCOUNT_EDITOR_HANDOFF_ENABLED=true
 VITE_OFFICIAL_ACCOUNT_LOCAL_ENABLED=true
 ```
 
+`manual_only` remains the safe compatibility default and keeps the V1 approved-review bytes and
+blocking behavior unchanged. To opt into the additive V2 local automation path, enable both V2
+settings explicitly:
+
+```dotenv
+OFFICIAL_ACCOUNT_EDITOR_HANDOFF_V2_ENABLED=true
+OFFICIAL_ACCOUNT_EDITOR_HANDOFF_RELEASE_POLICY=quality_auto
+```
+
+V2 does not create a human review row. With no review, it emits a versioned `machine` release only
+when the persisted run/draft, Article fingerprint, deterministic validation, model audit, image
+validation/audit and generated-visual states all pass. An existing human rejection always blocks;
+an existing valid approval is reported truthfully as a `manual` release. Production and disabled
+flags continue to fail closed.
+
 后端和前端任一 flag 关闭，或 `APP_ENV` 不是 `development`，交接区与交接资源都会 fail closed。
 工作台提供微信兼容纯正文复制、sandbox 预览、正文图/新闻上下文图/2.35:1 封面独立下载和确定性 ZIP。
 ZIP 包含 `article-body.html`、`preview.html`、Markdown/JSON 安全投影、来源/权利/审稿/预检/移动端状态、
@@ -188,6 +203,29 @@ ZIP 包含 `article-body.html`、`preview.html`、Markdown/JSON 安全投影、�
 系统不读取 AppID、AppSecret 或 token，也不上传、发布或群发。带
 `publish_permission_unverified` 的新闻原图会按当前交接策略直接保留，同时在正文、rights manifest、
 预检和 UI 中持续显示“发布权未验证”；该提示不代表图片已经授权，也不放宽历史 `copy-ready` 导出规则。
+
+V2 additionally binds every retained news image to an exact section/block insertion while keeping
+all company-IP body slots. It selects exact source substrings for semantic underlines, chooses one
+Xiaosai-blue layout recipe, and separates `content_fingerprint` from the browser-report-bound
+`artifact_fingerprint`. Runtime metadata stays honestly `not_run`; only a 320/430 loopback report
+whose body/media hashes match the current content may produce a `passed` final ZIP. The provider-free
+local acceptance fixture can be built with:
+
+```bash
+PYTHONPATH=backend conda run --no-capture-output --name edu-ai \
+  python -m app.official_account_editor_handoff_v2_demo \
+  --output-dir output/official-account-editor-handoff-v2-staging
+```
+
+The fixture reads already validated local news-photo bytes plus a fail-closed visual map containing
+three newly generated 3:2 Xiaosai/Sai Xiansheng scenes. Every scene is bound to an exact Article
+block, an approved reference public ID, the normalized `ImageReference` checksum and its output
+hash; direct catalog placement is rejected. The frozen selector is truthfully recorded as
+`deterministic_fixture_semantic` with zero embedding calls. The three source scenes were created in
+one explicitly authorized local built-in image-generation run, while each repeatable fixture build
+constructs no model, embedding, image-generation, news-fetch, WeChat, WeCom or publish client. Its
+two news paragraphs and Article sources remain frozen to the corresponding Ministry of Education
+HTTPS pages, while photo records stay `context_only_not_evidence` with unverified publication rights.
 
 新创建的运行默认使用 `wechat-html-renderer-v7-multimodal-media` 科学田野手册版式：首屏先说明家长阅读价值，并从
 文章已有章节标题确定性生成 3--5 项“家长先看”阅读地图；正文用 `PART 01` 信息轨、关键判断和

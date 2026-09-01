@@ -549,7 +549,7 @@ def _build_media_assets(
             source_page_url = snapshot.source_page_url
             caption = snapshot.caption
             credit = snapshot.credit
-            rights_status = cast(Literal["publish_permission_unverified"], snapshot.rights_status)
+            rights_status = snapshot.rights_status
             context_only_not_evidence = True
         path = media_asset_path(result.role, result.ordinal, result.media_type)
         asset = EditorHandoffMediaAsset(

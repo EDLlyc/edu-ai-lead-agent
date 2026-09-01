@@ -21,11 +21,38 @@ test("editor handoff fixture is copy-exact, image-complete and mobile-safe", asy
     readFileSync(resolve(root, "manifest.json"), "utf8"),
   ) as {
     fingerprint: string;
-    media: readonly Readonly<{ role: "body" | "context" | "cover" }>[];
+    content_fingerprint: string;
+    lineage: Readonly<{ body_sha256: string }>;
+    placements: readonly Readonly<{
+      media_path: string;
+      section_index: number;
+      target_block_index: number;
+    }>[];
+    media: readonly Readonly<{
+      path: string;
+      role: "body" | "context" | "cover";
+      ordinal: number;
+      sha256: string;
+    }>[];
+  };
+  const article = JSON.parse(
+    readFileSync(resolve(root, "article.json"), "utf8"),
+  ) as {
+    sections: readonly Readonly<{
+      blocks: readonly Readonly<{ kind: string; slot_key?: string }>[];
+    }>[];
   };
   const expectedInlineImages = manifest.media.filter(
     (item) => item.role !== "cover",
   ).length;
+  const expectedImageOrder = expectedReadingOrder(article, manifest);
+  expect(manifest.media.filter((item) => item.role === "body")).toHaveLength(3);
+  expect(
+    manifest.media.filter((item) => item.role === "context").length,
+  ).toBeGreaterThanOrEqual(1);
+  expect(manifest.media.filter((item) => item.role === "cover")).toHaveLength(
+    1,
+  );
   const server = await startFixtureServer(root);
   const address = server.address();
   if (address === null || typeof address === "string") {
@@ -68,6 +95,15 @@ test("editor handoff fixture is copy-exact, image-complete and mobile-safe", asy
           ),
         ),
       ).toBe(true);
+      expect(
+        await images.evaluateAll((nodes) =>
+          nodes.map((node) =>
+            node instanceof HTMLImageElement
+              ? new URL(node.src).pathname.replace(/^\//, "")
+              : "",
+          ),
+        ),
+      ).toEqual(expectedImageOrder);
 
       const copyBody = await page.locator("#copy-root").innerHTML();
       const canonicalBody = await page.evaluate(
@@ -105,6 +141,9 @@ test("editor handoff fixture is copy-exact, image-complete and mobile-safe", asy
         {
           status: "passed",
           fixture_fingerprint: manifest.fingerprint,
+          content_fingerprint: manifest.content_fingerprint,
+          body_sha256: manifest.lineage.body_sha256,
+          media_sha256s: manifest.media.map((item) => item.sha256),
           viewports: observations,
           external_requests: 0,
           copy_root_matches_body: true,
@@ -154,4 +193,53 @@ async function startFixtureServer(root: string): Promise<Server> {
     server.listen(0, "127.0.0.1", done);
   });
   return server;
+}
+
+function expectedReadingOrder(
+  article: Readonly<{
+    sections: readonly Readonly<{
+      blocks: readonly Readonly<{ kind: string; slot_key?: string }>[];
+    }>[];
+  }>,
+  manifest: Readonly<{
+    placements: readonly Readonly<{
+      media_path: string;
+      section_index: number;
+      target_block_index: number;
+    }>[];
+    media: readonly Readonly<{
+      path: string;
+      role: "body" | "context" | "cover";
+      ordinal: number;
+    }>[];
+  }>,
+): string[] {
+  const bodyByOrdinal = new Map(
+    manifest.media
+      .filter((item) => item.role === "body")
+      .map((item) => [item.ordinal, item.path] as const),
+  );
+  const contextByTarget = new Map(
+    manifest.placements.map(
+      (item) =>
+        [
+          `${item.section_index}:${item.target_block_index}`,
+          item.media_path,
+        ] as const,
+    ),
+  );
+  const order: string[] = [];
+  article.sections.forEach((section, sectionIndex) => {
+    section.blocks.forEach((block, blockIndex) => {
+      if (block.kind === "image" && block.slot_key !== undefined) {
+        const ordinal = Number(block.slot_key.replace("body-", ""));
+        const path = bodyByOrdinal.get(ordinal);
+        if (path === undefined) throw new Error("body image path is absent");
+        order.push(path);
+      }
+      const context = contextByTarget.get(`${sectionIndex}:${blockIndex}`);
+      if (context !== undefined) order.push(context);
+    });
+  });
+  return order;
 }

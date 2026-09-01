@@ -4826,6 +4826,17 @@ export interface components {
              * @default false
              */
             editor_handoff_enabled: boolean;
+            /**
+             * Editor Handoff Release Policy
+             * @default manual_only
+             * @enum {string}
+             */
+            editor_handoff_release_policy: "manual_only" | "quality_auto";
+            /**
+             * Editor Handoff V2 Enabled
+             * @default false
+             */
+            editor_handoff_v2_enabled: boolean;
             /** Eligible Material Packages */
             eligible_material_packages?: components["schemas"]["EligibleMaterialPackageResponse"][];
             /** Enabled */
@@ -4913,21 +4924,33 @@ export interface components {
         };
         /** OfficialAccountEditorHandoffIdentityResponse */
         OfficialAccountEditorHandoffIdentityResponse: {
+            /** Body Visual Lineage Version */
+            body_visual_lineage_version?: "editor-handoff-body-visual-lineage-v1" | null;
             /**
              * Bundle Version
-             * @constant
+             * @enum {string}
              */
-            bundle_version: "official-account-editor-handoff-bundle-v1";
+            bundle_version: "official-account-editor-handoff-bundle-v1" | "official-account-editor-handoff-bundle-v2";
+            /** Emphasis Version */
+            emphasis_version?: "editor-handoff-semantic-emphasis-v2" | null;
+            /** Mobile Binding Version */
+            mobile_binding_version?: "editor-handoff-mobile-binding-v2" | null;
+            /** Placement Version */
+            placement_version?: "editor-handoff-context-placement-v2" | null;
             /**
              * Preflight Version
-             * @constant
+             * @enum {string}
              */
-            preflight_version: "wechat-editor-handoff-preflight-v1";
+            preflight_version: "wechat-editor-handoff-preflight-v1" | "wechat-editor-handoff-preflight-v2";
+            /** Recipe Version */
+            recipe_version?: "editor-handoff-layout-recipe-v2" | null;
+            /** Release Policy Version */
+            release_policy_version?: "editor-handoff-release-policy-v2" | null;
             /**
              * Renderer Version
-             * @constant
+             * @enum {string}
              */
-            renderer_version: "wechat-editor-handoff-renderer-v1-gzh-xiaosai";
+            renderer_version: "wechat-editor-handoff-renderer-v1-gzh-xiaosai" | "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic";
             /**
              * Rights Policy Version
              * @constant
@@ -4935,14 +4958,14 @@ export interface components {
             rights_policy_version: "editor-handoff-context-rights-v1-direct-use-disclosed";
             /**
              * Style Version
-             * @constant
+             * @enum {string}
              */
-            style_version: "wechat-editor-handoff-style-v1-xiaosai-blue";
+            style_version: "wechat-editor-handoff-style-v1-xiaosai-blue" | "wechat-editor-handoff-style-v2-xiaosai-adaptive";
             /**
              * Template Version
-             * @constant
+             * @enum {string}
              */
-            template_version: "wechat-editor-handoff-template-v1-moyu-layout";
+            template_version: "wechat-editor-handoff-template-v1-moyu-layout" | "wechat-editor-handoff-template-v2-block-interleaved-mobile";
             /**
              * Theme Id
              * @constant
@@ -4979,6 +5002,7 @@ export interface components {
             name: string;
             /** Ordinal */
             ordinal: number;
+            placement?: components["schemas"]["OfficialAccountEditorHandoffPlacementResponse"] | null;
             /** Rights Status */
             rights_status?: "publish_permission_unverified" | null;
             /**
@@ -4995,11 +5019,26 @@ export interface components {
         };
         /** OfficialAccountEditorHandoffMobileResponse */
         OfficialAccountEditorHandoffMobileResponse: {
+            /** Body Sha256 */
+            body_sha256?: string | null;
+            /** Content Fingerprint */
+            content_fingerprint?: string | null;
+            /** Copy Root Matches Body */
+            copy_root_matches_body?: true | null;
+            /** External Requests */
+            external_requests?: 0 | null;
+            /**
+             * Media Sha256S
+             * @default []
+             */
+            media_sha256s: string[];
             /**
              * Status
              * @enum {string}
              */
             status: "not_run" | "passed";
+            /** Version */
+            version?: "editor-handoff-mobile-binding-v2" | null;
             /**
              * Viewports
              * @default [
@@ -5008,12 +5047,69 @@ export interface components {
              *     ]
              */
             viewports: [
-                320 | 430,
-                320 | 430
+                320,
+                430
             ];
+        };
+        /** OfficialAccountEditorHandoffPlacementResponse */
+        OfficialAccountEditorHandoffPlacementResponse: {
+            /**
+             * Algorithm Version
+             * @constant
+             */
+            algorithm_version: "editor-handoff-context-placement-v2";
+            /**
+             * Insertion
+             * @constant
+             */
+            insertion: "after";
+            /** Matched Terms */
+            matched_terms: string[];
+            /** Media Name */
+            media_name: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "semantic_text_overlap" | "first_prose_fallback" | "collision_shifted";
+            /** Section Index */
+            section_index: number;
+            /** Target Block Index */
+            target_block_index: number;
+        };
+        /** OfficialAccountEditorHandoffReleaseResponse */
+        OfficialAccountEditorHandoffReleaseResponse: {
+            /**
+             * Decision
+             * @constant
+             */
+            decision: "released";
+            /** Gate Codes */
+            gate_codes: string[];
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "manual" | "machine";
+            /** Manual Review Fingerprint */
+            manual_review_fingerprint?: string | null;
+            /**
+             * Policy
+             * @enum {string}
+             */
+            policy: "manual_only" | "quality_auto";
+            /**
+             * Policy Version
+             * @constant
+             */
+            policy_version: "editor-handoff-release-policy-v2";
         };
         /** OfficialAccountEditorHandoffResponse */
         OfficialAccountEditorHandoffResponse: {
+            /** Artifact Fingerprint */
+            artifact_fingerprint?: string | null;
             /** Blocking Codes */
             blocking_codes: string[];
             /** Body Url */
@@ -5032,6 +5128,8 @@ export interface components {
             bundle_url?: string | null;
             /** Checks */
             checks: components["schemas"]["OfficialAccountEditorHandoffCheckResponse"][];
+            /** Content Fingerprint */
+            content_fingerprint?: string | null;
             /** Copy Ready */
             copy_ready: boolean;
             /** Fingerprint */
@@ -5046,6 +5144,8 @@ export interface components {
             /** Media */
             media: components["schemas"]["OfficialAccountEditorHandoffMediaResponse"][];
             mobile_validation: components["schemas"]["OfficialAccountEditorHandoffMobileResponse"];
+            /** Placements */
+            placements?: components["schemas"]["OfficialAccountEditorHandoffPlacementResponse"][];
             /** Preview Url */
             preview_url?: string | null;
             /**
@@ -5054,6 +5154,9 @@ export interface components {
              * @constant
              */
             published: false;
+            /** Recipe */
+            recipe?: ("news_analysis" | "tutorial_list" | "case_opinion" | "analysis") | null;
+            release?: components["schemas"]["OfficialAccountEditorHandoffReleaseResponse"] | null;
             /**
              * Simulation
              * @default true

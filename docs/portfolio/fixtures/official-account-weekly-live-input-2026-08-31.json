@@ -1,0 +1,36 @@
+{
+  "version": "official-account-weekly-live-input-v1",
+  "selection_cutoff": "2026-08-31T09:00:00+08:00",
+  "articles": [
+    {
+      "role": "official_anchor",
+      "source_key": "beijing-government-service",
+      "url": "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202608/t20260824_4834554.html",
+      "expected_title": "北京市首届中小学人工智能嘉年华举办",
+      "expected_published_date": "2026-08-24",
+      "preferred_image_urls": [
+        "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202608/W020260824570962915533.jpg"
+      ]
+    },
+    {
+      "role": "industry_trend",
+      "source_key": "xinhua-main",
+      "url": "https://www.news.cn/20260829/a1d5ddead2144f5499e4bee3a3779a3e/c.html",
+      "expected_title": "镜观中国丨机器人加速“跑”进千行百业",
+      "expected_published_date": "2026-08-29",
+      "preferred_image_urls": [
+        "https://www.news.cn/20260829/a1d5ddead2144f5499e4bee3a3779a3e/20260829a1d5ddead2144f5499e4bee3a3779a3e_76ebc835282248e7933297693f143185.JPG"
+      ]
+    },
+    {
+      "role": "application_case",
+      "source_key": "xinhua-jiangsu",
+      "url": "https://js.news.cn/20260825/c88cd56301e64eb6a4e337413695dae5/c.html",
+      "expected_title": "2026年涉农高校“人工智能+教育”技术应用培训班在南京农业大学举行",
+      "expected_published_date": "2026-08-25",
+      "preferred_image_urls": [
+        "https://js.news.cn/20260825/c88cd56301e64eb6a4e337413695dae5/20260825c88cd56301e64eb6a4e337413695dae5_202608250924431086rId4image1.png"
+      ]
+    }
+  ]
+}

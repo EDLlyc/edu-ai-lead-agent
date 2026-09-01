@@ -24,9 +24,20 @@ const handoff: OfficialAccountEditorHandoffViewModel = {
   copyReady: true,
   boundaryLabel: "本地交接，未同步公众号",
   fingerprint: "f".repeat(64),
+  contentFingerprint: "e".repeat(64),
+  artifactFingerprint: "f".repeat(64),
+  release: {
+    kind: "machine",
+    kindLabel: "自动质量放行",
+    policy: "quality_auto",
+    policyLabel: "QUALITY AUTO",
+    inputFingerprint: "9".repeat(64),
+  },
+  recipe: "news_analysis",
+  recipeLabel: "新闻解读",
   identity: {
-    rendererVersion: "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
-    styleVersion: "wechat-editor-handoff-style-v1-xiaosai-blue",
+    rendererVersion: "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic",
+    styleVersion: "wechat-editor-handoff-style-v2-xiaosai-adaptive",
     themeId: "xiaosai-moyu-layout-v1",
     themeSha256: "a".repeat(64),
   },
@@ -63,6 +74,13 @@ const handoff: OfficialAccountEditorHandoffViewModel = {
       sourcePageUrl: "https://example.invalid/news",
       credit: "来源机构",
       rightsStatus: "publish_permission_unverified",
+      placement: {
+        sectionIndex: 0,
+        blockIndex: 1,
+        insertionLabel: "正文块之后",
+        reasonCode: "semantic_text_overlap",
+        reasonLabel: "新闻图语义与正文块匹配",
+      },
     },
     {
       name: "cover-wide.jpg",
@@ -78,9 +96,12 @@ const handoff: OfficialAccountEditorHandoffViewModel = {
       sourcePageUrl: null,
       credit: null,
       rightsStatus: null,
+      placement: null,
     },
   ],
   mobileStatus: "not_run",
+  mobileStatusLabel: "当前运行未做浏览器验收，未套用其他文章结果",
+  mobileContentFingerprint: null,
   bodyUrl: "http://127.0.0.1:8000/safe/body",
   previewUrl: "http://127.0.0.1:8000/safe/preview",
   bundleUrl: "http://127.0.0.1:8000/safe/bundle",
@@ -105,6 +126,10 @@ describe("OfficialAccountEditorHandoff", () => {
     );
 
     expect(screen.getByText("微信公众号编辑器交接")).toBeInTheDocument();
+    expect(screen.getAllByText("自动质量放行").length).toBeGreaterThan(0);
+    expect(screen.getByText("新闻解读")).toBeInTheDocument();
+    expect(screen.getByText(/正文块 2 正文块之后/)).toBeInTheDocument();
+    expect(screen.getByText(/当前运行未做浏览器验收/)).toBeInTheDocument();
     expect(
       screen.getByText(/发布权未验证；来源和署名会保留/),
     ).toBeInTheDocument();

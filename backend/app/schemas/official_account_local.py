@@ -73,6 +73,8 @@ class OfficialAccountCapabilitiesResponse(_StrictModel):
     visual_semantic_provider_mode: Literal["disabled", "fake", "alibaba"] = "disabled"
     generated_visuals_enabled: bool = False
     editor_handoff_enabled: bool = False
+    editor_handoff_v2_enabled: bool = False
+    editor_handoff_release_policy: Literal["manual_only", "quality_auto"] = "manual_only"
 
 
 class OfficialAccountRunSummaryResponse(_StrictModel):
@@ -347,14 +349,54 @@ class OfficialAccountRunDetailResponse(OfficialAccountRunSummaryResponse):
 
 
 class OfficialAccountEditorHandoffIdentityResponse(_StrictModel):
-    renderer_version: Literal["wechat-editor-handoff-renderer-v1-gzh-xiaosai"]
-    style_version: Literal["wechat-editor-handoff-style-v1-xiaosai-blue"]
-    template_version: Literal["wechat-editor-handoff-template-v1-moyu-layout"]
-    bundle_version: Literal["official-account-editor-handoff-bundle-v1"]
-    preflight_version: Literal["wechat-editor-handoff-preflight-v1"]
+    renderer_version: Literal[
+        "wechat-editor-handoff-renderer-v1-gzh-xiaosai",
+        "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic",
+    ]
+    style_version: Literal[
+        "wechat-editor-handoff-style-v1-xiaosai-blue",
+        "wechat-editor-handoff-style-v2-xiaosai-adaptive",
+    ]
+    template_version: Literal[
+        "wechat-editor-handoff-template-v1-moyu-layout",
+        "wechat-editor-handoff-template-v2-block-interleaved-mobile",
+    ]
+    bundle_version: Literal[
+        "official-account-editor-handoff-bundle-v1",
+        "official-account-editor-handoff-bundle-v2",
+    ]
+    preflight_version: Literal[
+        "wechat-editor-handoff-preflight-v1", "wechat-editor-handoff-preflight-v2"
+    ]
     rights_policy_version: Literal["editor-handoff-context-rights-v1-direct-use-disclosed"]
     theme_id: Literal["xiaosai-moyu-layout-v1"]
     theme_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    release_policy_version: Literal["editor-handoff-release-policy-v2"] | None = None
+    placement_version: Literal["editor-handoff-context-placement-v2"] | None = None
+    emphasis_version: Literal["editor-handoff-semantic-emphasis-v2"] | None = None
+    recipe_version: Literal["editor-handoff-layout-recipe-v2"] | None = None
+    mobile_binding_version: Literal["editor-handoff-mobile-binding-v2"] | None = None
+    body_visual_lineage_version: Literal["editor-handoff-body-visual-lineage-v1"] | None = None
+
+
+class OfficialAccountEditorHandoffReleaseResponse(_StrictModel):
+    policy: Literal["manual_only", "quality_auto"]
+    policy_version: Literal["editor-handoff-release-policy-v2"]
+    kind: Literal["manual", "machine"]
+    decision: Literal["released"]
+    input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    gate_codes: tuple[str, ...] = Field(min_length=1)
+    manual_review_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class OfficialAccountEditorHandoffPlacementResponse(_StrictModel):
+    media_name: str = Field(pattern=r"^context-0[01]\.(?:jpg|png|webp)$")
+    section_index: int = Field(ge=0, le=6)
+    target_block_index: int = Field(ge=0, le=49)
+    insertion: Literal["after"]
+    reason_code: Literal["semantic_text_overlap", "first_prose_fallback", "collision_shifted"]
+    algorithm_version: Literal["editor-handoff-context-placement-v2"]
+    matched_terms: tuple[str, ...] = Field(max_length=6)
 
 
 class OfficialAccountEditorHandoffCheckResponse(_StrictModel):
@@ -381,11 +423,18 @@ class OfficialAccountEditorHandoffMediaResponse(_StrictModel):
     credit: str | None = Field(default=None, max_length=200)
     rights_status: Literal["publish_permission_unverified"] | None = None
     context_only_not_evidence: bool = False
+    placement: OfficialAccountEditorHandoffPlacementResponse | None = None
 
 
 class OfficialAccountEditorHandoffMobileResponse(_StrictModel):
     status: Literal["not_run", "passed"]
-    viewports: tuple[Literal[320, 430], Literal[320, 430]] = (320, 430)
+    viewports: tuple[Literal[320], Literal[430]] = (320, 430)
+    version: Literal["editor-handoff-mobile-binding-v2"] | None = None
+    content_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    body_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    media_sha256s: tuple[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")], ...] = ()
+    external_requests: Literal[0] | None = None
+    copy_root_matches_body: Literal[True] | None = None
 
 
 class OfficialAccountEditorHandoffResponse(_StrictModel):
@@ -396,7 +445,12 @@ class OfficialAccountEditorHandoffResponse(_StrictModel):
     published: Literal[False] = False
     boundary_label: Literal["本地交接，未同步公众号"] = "本地交接，未同步公众号"
     fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    content_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    artifact_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     identity: OfficialAccountEditorHandoffIdentityResponse | None = None
+    release: OfficialAccountEditorHandoffReleaseResponse | None = None
+    recipe: Literal["news_analysis", "tutorial_list", "case_opinion", "analysis"] | None = None
+    placements: list[OfficialAccountEditorHandoffPlacementResponse] = Field(default_factory=list)
     checks: list[OfficialAccountEditorHandoffCheckResponse]
     blocking_codes: list[str]
     warning_codes: list[str]

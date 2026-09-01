@@ -50,6 +50,8 @@ export type OfficialAccountCapabilitiesViewModel = Readonly<{
   visualSemanticProviderMode: CapabilitiesResponse["visual_semantic_provider_mode"];
   generatedVisualsEnabled: boolean;
   editorHandoffEnabled: boolean;
+  editorHandoffV2Enabled: boolean;
+  editorHandoffReleasePolicy: "manual_only" | "quality_auto";
 }>;
 
 export type OfficialAccountEditorHandoffViewModel = Readonly<{
@@ -57,6 +59,18 @@ export type OfficialAccountEditorHandoffViewModel = Readonly<{
   copyReady: boolean;
   boundaryLabel: string;
   fingerprint: string | null;
+  contentFingerprint: string | null;
+  artifactFingerprint: string | null;
+  release: Readonly<{
+    kind: "manual" | "machine";
+    kindLabel: string;
+    policy: "manual_only" | "quality_auto";
+    policyLabel: string;
+    inputFingerprint: string;
+  }> | null;
+  recipe:
+    "news_analysis" | "tutorial_list" | "case_opinion" | "analysis" | null;
+  recipeLabel: string | null;
   identity: Readonly<{
     rendererVersion: string;
     styleVersion: string;
@@ -86,8 +100,17 @@ export type OfficialAccountEditorHandoffViewModel = Readonly<{
     sourcePageUrl: string | null;
     credit: string | null;
     rightsStatus: "publish_permission_unverified" | null;
+    placement: Readonly<{
+      sectionIndex: number;
+      blockIndex: number;
+      insertionLabel: string;
+      reasonCode: string;
+      reasonLabel: string;
+    }> | null;
   }>[];
   mobileStatus: "not_run" | "passed";
+  mobileStatusLabel: string;
+  mobileContentFingerprint: string | null;
   bodyUrl: string | null;
   previewUrl: string | null;
   bundleUrl: string | null;
@@ -387,17 +410,48 @@ export function mapCapabilities(
     visualSemanticProviderMode: response.visual_semantic_provider_mode,
     generatedVisualsEnabled: response.generated_visuals_enabled,
     editorHandoffEnabled: response.editor_handoff_enabled,
+    editorHandoffV2Enabled: response.editor_handoff_v2_enabled ?? false,
+    editorHandoffReleasePolicy:
+      response.editor_handoff_release_policy ?? "manual_only",
   };
 }
 
 export function mapEditorHandoff(
   response: EditorHandoffResponse,
 ): OfficialAccountEditorHandoffViewModel {
+  const mobileValidationMatchesCurrentContent =
+    response.mobile_validation.status === "passed" &&
+    response.content_fingerprint != null &&
+    response.mobile_validation.content_fingerprint ===
+      response.content_fingerprint;
   return {
     state: response.state,
     copyReady: response.copy_ready,
     boundaryLabel: response.boundary_label,
     fingerprint: response.fingerprint ?? null,
+    contentFingerprint: response.content_fingerprint ?? null,
+    artifactFingerprint: response.artifact_fingerprint ?? null,
+    release:
+      response.release == null
+        ? null
+        : {
+            kind: response.release.kind,
+            kindLabel:
+              response.release.kind === "machine"
+                ? "自动质量放行"
+                : "人工批准放行",
+            policy: response.release.policy,
+            policyLabel:
+              response.release.policy === "quality_auto"
+                ? "QUALITY AUTO"
+                : "MANUAL ONLY",
+            inputFingerprint: response.release.input_fingerprint,
+          },
+    recipe: response.recipe ?? null,
+    recipeLabel:
+      response.recipe == null
+        ? null
+        : editorHandoffRecipeLabel(response.recipe),
     identity:
       response.identity == null
         ? null
@@ -435,8 +489,26 @@ export function mapEditorHandoff(
       sourcePageUrl: item.source_page_url ?? null,
       credit: item.credit ?? null,
       rightsStatus: item.rights_status ?? null,
+      placement:
+        item.placement == null
+          ? null
+          : {
+              sectionIndex: item.placement.section_index,
+              blockIndex: item.placement.target_block_index,
+              insertionLabel: "正文块之后",
+              reasonCode: item.placement.reason_code,
+              reasonLabel: editorHandoffPlacementReasonLabel(
+                item.placement.reason_code,
+              ),
+            },
     })),
-    mobileStatus: response.mobile_validation.status,
+    mobileStatus: mobileValidationMatchesCurrentContent ? "passed" : "not_run",
+    mobileStatusLabel: mobileValidationMatchesCurrentContent
+      ? "当前内容指纹的 320px / 430px 离线验收已通过"
+      : "当前运行未做浏览器验收，未套用其他文章结果",
+    mobileContentFingerprint: mobileValidationMatchesCurrentContent
+      ? (response.mobile_validation.content_fingerprint ?? null)
+      : null,
     bodyUrl:
       response.body_url == null
         ? null
@@ -454,6 +526,27 @@ export function mapEditorHandoff(
   };
 }
 
+function editorHandoffRecipeLabel(
+  recipe: "news_analysis" | "tutorial_list" | "case_opinion" | "analysis",
+): string {
+  const labels: Readonly<Record<typeof recipe, string>> = {
+    news_analysis: "新闻解读",
+    tutorial_list: "教程 / 清单",
+    case_opinion: "观点 / 案例",
+    analysis: "深度分析",
+  };
+  return labels[recipe];
+}
+
+function editorHandoffPlacementReasonLabel(code: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    semantic_text_overlap: "新闻图语义与正文块匹配",
+    first_prose_fallback: "信息不足，稳定回退到首个安全正文块",
+    collision_shifted: "为避免图片相邻，已稳定顺延",
+  };
+  return labels[code] ?? code;
+}
+
 function editorHandoffCheckLabel(code: string): string {
   const labels: Readonly<Record<string, string>> = {
     run_ready: "运行状态",
@@ -462,6 +555,9 @@ function editorHandoffCheckLabel(code: string): string {
     article_fingerprint_valid: "内容指纹",
     deterministic_validation_passed: "规则校验",
     model_audit_accepted: "模型审校",
+    image_validation_passed: "图片规则校验",
+    image_audit_accepted: "图片审校",
+    generated_visuals_ready: "生成图状态",
     render_present: "固定渲染",
     simulated_draft_ready: "本地草稿",
     draft_fingerprint_valid: "草稿谱系",
@@ -469,6 +565,8 @@ function editorHandoffCheckLabel(code: string): string {
     immutable_review_pending: "最终人工审稿",
     immutable_review_rejected: "最终人工审稿",
     review_fingerprint_valid: "审稿指纹",
+    manual_review_not_rejected: "人工拒绝优先",
+    release_authorized: "放行策略",
     pure_section_fragment: "微信正文片段",
     forbidden_markup_absent: "危险标记",
     placeholder_absent: "占位符",
@@ -482,9 +580,14 @@ function editorHandoffCheckLabel(code: string): string {
     cover_ratio_valid: "封面比例",
     asset_paths_unique: "资源路径",
     preview_body_exact_match: "预览与正文一致性",
+    context_block_placements_valid: "新闻图正文块定位",
+    semantic_emphasis_roundtrip_valid: "语义重点原文一致性",
     context_image_rights_unverified_direct_use: "新闻图片权利",
     mobile_browser_validation_not_run: "移动端浏览器验收",
+    mobile_browser_validation_bound: "移动端浏览器验收",
+    mobile_browser_validation_binding_mismatch: "移动端验收指纹",
     handoff_integrity_failed: "交接包完整性",
+    handoff_v2_integrity_failed: "V2 交接包完整性",
   };
   return labels[code] ?? code;
 }

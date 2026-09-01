@@ -17,7 +17,12 @@ from app.application.services.official_account_editor_handoff import (
     EditorHandoffArtifact,
     OfficialAccountEditorHandoffService,
 )
+from app.application.services.official_account_editor_handoff_v2 import (
+    EditorHandoffV2Artifact,
+    OfficialAccountEditorHandoffV2Service,
+)
 from app.core.errors import AppError, ConflictError, NotFoundError
+from app.domain.official_account_editor_handoff_v2 import ContextBlockPlacement
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
@@ -50,6 +55,8 @@ from app.schemas.official_account_local import (
     OfficialAccountEditorHandoffIdentityResponse,
     OfficialAccountEditorHandoffMediaResponse,
     OfficialAccountEditorHandoffMobileResponse,
+    OfficialAccountEditorHandoffPlacementResponse,
+    OfficialAccountEditorHandoffReleaseResponse,
     OfficialAccountEditorHandoffResponse,
     OfficialAccountEmbeddingIdentityResponse,
     OfficialAccountGeneratedVisualResponse,
@@ -125,6 +132,13 @@ async def capabilities(
             getattr(settings, "official_account_local_generated_visuals_enabled", False)
         ),
         editor_handoff_enabled=_editor_handoff_available(settings),
+        editor_handoff_v2_enabled=bool(
+            _editor_handoff_available(settings)
+            and getattr(settings, "official_account_editor_handoff_v2_enabled", False)
+        ),
+        editor_handoff_release_policy=getattr(
+            settings, "official_account_editor_handoff_release_policy", "manual_only"
+        ),
     )
 
 
@@ -270,16 +284,39 @@ async def read_editor_handoff(
     inspection = await _editor_handoff_service(request).inspect(run_id)
     artifact = inspection.artifact
     base = _editor_handoff_base(run_id)
+    v2_artifact = artifact if isinstance(artifact, EditorHandoffV2Artifact) else None
+    placements_by_path = (
+        {item.media_path: item for item in v2_artifact.placements}
+        if v2_artifact is not None
+        else {}
+    )
     return OfficialAccountEditorHandoffResponse(
         state=inspection.state,
         copy_ready=artifact is not None,
         fingerprint=artifact.fingerprint if artifact is not None else None,
+        content_fingerprint=(v2_artifact.content_fingerprint if v2_artifact is not None else None),
+        artifact_fingerprint=(
+            v2_artifact.artifact_fingerprint if v2_artifact is not None else None
+        ),
         identity=(
             OfficialAccountEditorHandoffIdentityResponse.model_validate(
                 artifact.identity.model_dump(mode="json")
             )
             if artifact is not None
             else None
+        ),
+        release=(
+            OfficialAccountEditorHandoffReleaseResponse.model_validate(
+                v2_artifact.release.model_dump(mode="json")
+            )
+            if v2_artifact is not None
+            else None
+        ),
+        recipe=v2_artifact.recipe.kind if v2_artifact is not None else None,
+        placements=(
+            [_placement_response(item) for item in v2_artifact.placements]
+            if v2_artifact is not None
+            else []
         ),
         checks=[
             OfficialAccountEditorHandoffCheckResponse.model_validate(item.model_dump(mode="json"))
@@ -305,13 +342,24 @@ async def read_editor_handoff(
                     credit=item.credit,
                     rights_status=item.rights_status,
                     context_only_not_evidence=item.context_only_not_evidence,
+                    placement=(
+                        _placement_response(placements_by_path[item.path])
+                        if item.path in placements_by_path
+                        else None
+                    ),
                 )
                 for item in artifact.media
             ]
             if artifact is not None
             else []
         ),
-        mobile_validation=OfficialAccountEditorHandoffMobileResponse(status="not_run"),
+        mobile_validation=(
+            OfficialAccountEditorHandoffMobileResponse.model_validate(
+                v2_artifact.mobile_validation.model_dump(mode="json")
+            )
+            if v2_artifact is not None
+            else OfficialAccountEditorHandoffMobileResponse(status="not_run")
+        ),
         body_url=f"{base}/body" if artifact is not None else None,
         preview_url=f"{base}/preview" if artifact is not None else None,
         bundle_url=f"{base}/bundle" if artifact is not None else None,
@@ -522,28 +570,60 @@ def _require_editor_handoff_enabled(request: Request) -> None:
         )
 
 
-def _editor_handoff_service(request: Request) -> OfficialAccountEditorHandoffService:
+def _editor_handoff_service(
+    request: Request,
+) -> OfficialAccountEditorHandoffService | OfficialAccountEditorHandoffV2Service:
     settings = request.app.state.settings
+    resolver = OfficialAccountLocalMediaResolver(
+        image_asset_manifest=getattr(settings, "image_asset_manifest", None),
+        image_store=getattr(request.app.state, "image_store", None),
+        snapshot_store=getattr(request.app.state, "snapshot_store", None),
+    )
+    if _editor_handoff_uses_v2(settings):
+        return OfficialAccountEditorHandoffV2Service(
+            session_factory=request.app.state.session_factory,
+            resolver=resolver,
+            release_policy=getattr(
+                settings, "official_account_editor_handoff_release_policy", "manual_only"
+            ),
+        )
     return OfficialAccountEditorHandoffService(
-        session_factory=request.app.state.session_factory,
-        resolver=OfficialAccountLocalMediaResolver(
-            image_asset_manifest=getattr(settings, "image_asset_manifest", None),
-            image_store=getattr(request.app.state, "image_store", None),
-            snapshot_store=getattr(request.app.state, "snapshot_store", None),
-        ),
+        session_factory=request.app.state.session_factory, resolver=resolver
     )
 
 
 async def _require_editor_handoff_artifact(
     run_id: UUID,
     request: Request,
-) -> EditorHandoffArtifact:
+) -> EditorHandoffArtifact | EditorHandoffV2Artifact:
     _require_editor_handoff_enabled(request)
     return await _editor_handoff_service(request).require_artifact(run_id)
 
 
 def _editor_handoff_base(run_id: UUID) -> str:
     return f"/api/v1/official-account-local/article-runs/{run_id}/editor-handoff"
+
+
+def _editor_handoff_uses_v2(settings: Any) -> bool:
+    return bool(
+        getattr(settings, "official_account_editor_handoff_v2_enabled", False)
+        and getattr(settings, "official_account_editor_handoff_release_policy", "manual_only")
+        == "quality_auto"
+    )
+
+
+def _placement_response(
+    item: ContextBlockPlacement,
+) -> OfficialAccountEditorHandoffPlacementResponse:
+    return OfficialAccountEditorHandoffPlacementResponse(
+        media_name=item.media_path.removeprefix("assets/"),
+        section_index=item.section_index,
+        target_block_index=item.target_block_index,
+        insertion=item.insertion,
+        reason_code=item.reason_code,
+        algorithm_version=item.algorithm_version,
+        matched_terms=item.matched_terms,
+    )
 
 
 def _private_headers() -> dict[str, str]:

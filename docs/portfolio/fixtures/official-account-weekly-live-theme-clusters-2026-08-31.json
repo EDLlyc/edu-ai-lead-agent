@@ -1,0 +1,88 @@
+{
+  "version": "official-account-weekly-live-input-v2",
+  "selection_cutoff": "2026-08-31T09:00:00+08:00",
+  "theme": "AI教育从普及走向真实学习场景",
+  "articles": [
+    {
+      "role": "official_anchor",
+      "angle": "official_policy",
+      "editorial_title": "从AI嘉年华到科技夏令营：学校需要哪些准备",
+      "sources": [
+        {
+          "relation": "primary",
+          "source_key": "beijing-government-service",
+          "url": "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202608/t20260824_4834554.html",
+          "expected_title": "北京市首届中小学人工智能嘉年华举办",
+          "expected_published_date": "2026-08-24",
+          "preferred_image_urls": [
+            "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202608/W020260824570962915533.jpg"
+          ]
+        },
+        {
+          "relation": "supporting",
+          "source_key": "guangzhou-education-bureau",
+          "url": "https://jyj.gz.gov.cn/gkmlpt/content/10/10949/post_10949059.html",
+          "expected_title": "智研筑梦空天，科技赋能成长｜2026年广州市中小学生科技夏令营顺利结营！",
+          "expected_published_date": "2026-08-03",
+          "preferred_image_urls": [
+            "https://jyj.gz.gov.cn/img/1/1675/1675726/10949059.png"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "industry_trend",
+      "angle": "industry_method",
+      "editorial_title": "从机器人热潮回到课堂：AI教育真正要练什么",
+      "sources": [
+        {
+          "relation": "primary",
+          "source_key": "xinhua-main",
+          "url": "https://www.news.cn/20260829/a1d5ddead2144f5499e4bee3a3779a3e/c.html",
+          "expected_title": "镜观中国丨机器人加速“跑”进千行百业",
+          "expected_published_date": "2026-08-29",
+          "preferred_image_urls": [
+            "https://www.news.cn/20260829/a1d5ddead2144f5499e4bee3a3779a3e/20260829a1d5ddead2144f5499e4bee3a3779a3e_76ebc835282248e7933297693f143185.JPG"
+          ]
+        },
+        {
+          "relation": "supporting",
+          "source_key": "xinhua-tech",
+          "url": "https://www.news.cn/tech/20260804/956dc0450c2f4e8cbf27c7f132a5ee23/c.html",
+          "expected_title": "海尔希望小学教师AI训练营正式开营 探索科普教育公益新模式",
+          "expected_published_date": "2026-08-04",
+          "preferred_image_urls": [
+            "https://www.news.cn/tech/20260804/956dc0450c2f4e8cbf27c7f132a5ee23/20260804956dc0450c2f4e8cbf27c7f132a5ee23_2026080443ae6419a8434f0c8e00501c969134e4.png"
+          ]
+        }
+      ]
+    },
+    {
+      "role": "application_case",
+      "angle": "application_practice",
+      "editorial_title": "AI进入实训现场：把一次体验变成可迁移的方法",
+      "sources": [
+        {
+          "relation": "primary",
+          "source_key": "xinhua-jiangsu",
+          "url": "https://js.news.cn/20260825/c88cd56301e64eb6a4e337413695dae5/c.html",
+          "expected_title": "2026年涉农高校“人工智能+教育”技术应用培训班在南京农业大学举行",
+          "expected_published_date": "2026-08-25",
+          "preferred_image_urls": [
+            "https://js.news.cn/20260825/c88cd56301e64eb6a4e337413695dae5/20260825c88cd56301e64eb6a4e337413695dae5_202608250924431086rId4image1.png"
+          ]
+        },
+        {
+          "relation": "supporting",
+          "source_key": "xinhua-education",
+          "url": "https://www.news.cn/edu/20260812/253c539cb4f04b2da99dbe9d536d5fc5/c.html",
+          "expected_title": "2026教育创新与高质量发展成果征集活动启动",
+          "expected_published_date": "2026-08-12",
+          "preferred_image_urls": [
+            "https://www.news.cn/edu/20260812/253c539cb4f04b2da99dbe9d536d5fc5/20260812253c539cb4f04b2da99dbe9d536d5fc5_202608125e5b9fadda5148eab10f6213060e54be.jpg"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -215,6 +215,26 @@ class Settings(BaseSettings):
 
     official_account_local_enabled: bool = False
     official_account_editor_handoff_enabled: bool = False
+    official_account_editor_handoff_v2_enabled: bool = False
+    official_account_editor_handoff_release_policy: Literal["manual_only", "quality_auto"] = (
+        "manual_only"
+    )
+    wechat_mp_enabled: bool = False
+    wechat_mp_mode: Literal["draft_only"] = "draft_only"
+    wechat_mp_api_base_url: str = "https://api.weixin.qq.com"
+    wechat_mp_app_id: SecretStr | None = None
+    wechat_mp_app_secret: SecretStr | None = None
+    wechat_mp_request_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    wechat_mp_max_image_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=8,
+        le=10 * 1024 * 1024,
+    )
+    wechat_mp_max_response_bytes: int = Field(
+        default=64 * 1024,
+        ge=1024,
+        le=1024 * 1024,
+    )
     official_account_local_worker_enabled: bool = False
     official_account_local_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
     official_account_local_worker_concurrency: int = Field(default=1, ge=1, le=4)
@@ -650,6 +670,41 @@ class Settings(BaseSettings):
             raise ValueError("daily scan limit must cover the accepted item limit")
         if self.content_freshness_window_days < 1:
             raise ValueError("content freshness window must be positive")
+        parsed_wechat_mp_base_url = urlsplit(self.wechat_mp_api_base_url.strip())
+        if (
+            parsed_wechat_mp_base_url.scheme != "https"
+            or parsed_wechat_mp_base_url.hostname != "api.weixin.qq.com"
+            or parsed_wechat_mp_base_url.port not in {None, 443}
+            or parsed_wechat_mp_base_url.path not in {"", "/"}
+            or parsed_wechat_mp_base_url.username is not None
+            or parsed_wechat_mp_base_url.password is not None
+            or parsed_wechat_mp_base_url.query
+            or parsed_wechat_mp_base_url.fragment
+        ):
+            raise ValueError(
+                "WeChat Official Account API base URL must be exactly https://api.weixin.qq.com"
+            )
+        if self.wechat_mp_enabled:
+            app_id = (
+                self.wechat_mp_app_id.get_secret_value()
+                if self.wechat_mp_app_id is not None
+                else ""
+            )
+            app_secret = (
+                self.wechat_mp_app_secret.get_secret_value()
+                if self.wechat_mp_app_secret is not None
+                else ""
+            )
+            if self.app_env != "development":
+                raise ValueError("WeChat Official Account draft adapter is development-only")
+            if any(
+                not value.strip()
+                or any(character.isspace() or ord(character) < 32 for character in value)
+                for value in (app_id, app_secret)
+            ):
+                raise ValueError(
+                    "enabled WeChat Official Account draft adapter requires AppID and AppSecret"
+                )
         parsed_wecom_base_url = urlsplit(self.wecom_api_base_url.strip())
         if (
             parsed_wecom_base_url.scheme != "https"

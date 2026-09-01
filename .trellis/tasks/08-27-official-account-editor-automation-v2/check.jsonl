@@ -1,7 +1,12 @@
 {"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Check automatic/manual/rejected release truth, semantic placement/emphasis, exact mobile binding, local fixture and no-publish boundaries."}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Check that weekly role affinity composes after existing eligibility/priority/veto truth and never rescues an ineligible candidate."}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Check independent article identity, schedule determinism and that weekly semantics do not mutate the existing daily slot enum or storage."}
 {"file":".trellis/spec/backend/visual-retrieval.md","reason":"Check exact-block semantic reference selection, complete-index/fallback truth, safe lineage projection, and zero-provider default tests."}
 {"file":".trellis/spec/backend/official-account-editorial-repackage.md","reason":"Check V1 historical identities, media semantics, rights disclosure, and permanent no-publish truth."}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Check deterministic tests, types, OpenAPI, zero-provider fixture, and regression gates."}
 {"file":".trellis/spec/frontend/official-account-editor-handoff.md","reason":"Check UI truthfulness, generated contract, clipboard/sandbox accessibility, and local-only wording."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check strict frontend gates, behavior tests, accessibility, and browser acceptance."}
 {"file":".trellis/tasks/08-27-official-account-editor-automation-v2/research/current-v1-audit.md","reason":"Verify each identified V1 gap is addressed without changing accepted V1 behavior."}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Check secret/token redaction, bounded HTTP behavior, retry discipline and strict separation between WeChat MP and Enterprise WeChat contracts."}
+{"file":".trellis/spec/backend/official-account-weekly-edition.md","reason":"Check three independent draft requests preserve child identities and never advance published or homepage-pin state."}
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Check exact MP endpoints/limits, token refresh concurrency, media derivation, redaction, all-three preflight and draft-only state truth."}

@@ -30,6 +30,9 @@ tests.
 | [Execution Governance](./execution-governance.md) | Shared run identity, atomic budgets, default-deny capabilities, safe causal trace, and artifact lineage for Agents and deterministic DAG nodes |
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |
 | [Official-Account Editorial Repackage](./official-account-editorial-repackage.md) | Frozen offline repackages plus durable V10 five-visual/news-context generation, disjoint staging attempts, polished deterministic local export, and permanent no-publish truth |
+| [Official-Account Editor Handoff V2](./official-account-editor-handoff-v2.md) | Development-only automatic release, block-bound news media, semantic Xiaosai rendering, exact mobile identity, and permanent no-publish truth |
+| [Official-Account Weekly Three-Article Edition](./official-account-weekly-edition.md) | One weekly local batch containing independent official, industry, and application V2 handoffs with governed selection and deterministic aggregate integrity |
+| [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled development-only stable-token, media, permanent-thumb, and one-article draft staging without publish/send semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |
@@ -53,11 +56,15 @@ tests.
 - Keep Enterprise WeChat side effects in the independent dispatcher; the API only enqueues
   material-package jobs that satisfy the configured manual-review or direct-quality policy, and
   the dispatcher never publishes to a social platform.
+- Keep WeChat Official Account draft staging in its separate default-disabled development adapter;
+  do not reuse WeCom credentials/contracts, construct it from ordinary API/worker paths, combine
+  the weekly articles into one draft, or interpret a draft as published/pinned state.
 - Run deterministic validation before the LLM audit; the audit is not a fact source.
 - Persist idempotency keys, attempts, and stage transitions for every durable job.
 - Treat fetched text and model output as untrusted data, including prompt-injection content.
-- Never persist or expose Enterprise WeChat secrets, access tokens, raw user IDs, temporary media
-  IDs, provider response bodies, or private MinIO object locations.
-- Produce packages for manual copy/download only. Do not implement automated social publishing.
+- Never persist or expose WeChat/WeCom secrets, access tokens, raw user IDs, temporary media IDs,
+  provider response bodies, query-bearing request URLs, or private MinIO object locations.
+- Keep local packages immutable. Optional draft staging may only create unpublished drafts; do not
+  implement automated social publishing, mass send, homepage pinning, or login automation.
 
 **Documentation language:** English.
