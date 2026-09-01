@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Owns private brand parsing, exact parent/child provenance, immutable version bundles, OCR, Alibaba embedding identity and retrieval safety."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Preserve immutable derivations, short transactions, real PostgreSQL/pgvector validation and no-unnecessary-migration boundary."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Keep provider/layout failures typed, bounded, retry-classified and free of raw private output."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Limit layout/OCR observability to aggregate identities and counts without private text, paths, bbox or provider bodies."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Maintain one typed provider-to-parser-to-persistence contract and avoid consumer-specific payload parsing."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse the existing Zhipu raw-layout and bbox validators instead of building a drifting second decoder."}
+{"file":".trellis/tasks/08-31-brand-layout-aware-ingestion/research/current-layout-seams.md","reason":"Measured corpus shape, current loss point, reusable seams, historical invariants and bounded implementation risks."}

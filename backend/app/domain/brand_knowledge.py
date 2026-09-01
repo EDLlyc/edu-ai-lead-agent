@@ -4,7 +4,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from pathlib import PurePath
@@ -23,8 +23,17 @@ STRUCTURED_BRAND_DERIVATION_VERSIONS = (
     "brand-chunk-v3-parent-child",
     "brand-embedding-input-v2-section-context",
 )
+LAYOUT_BRAND_DERIVATION_VERSIONS = (
+    "brand-parser-v4-layout-aware",
+    "brand-chunk-v4-layout-blocks",
+    "brand-embedding-input-v2-section-context",
+)
 SUPPORTED_BRAND_DERIVATION_VERSIONS = frozenset(
-    {LEGACY_BRAND_DERIVATION_VERSIONS, STRUCTURED_BRAND_DERIVATION_VERSIONS}
+    {
+        LEGACY_BRAND_DERIVATION_VERSIONS,
+        STRUCTURED_BRAND_DERIVATION_VERSIONS,
+        LAYOUT_BRAND_DERIVATION_VERSIONS,
+    }
 )
 LEGACY_BRAND_RETRIEVAL_VERSION = "brand-hybrid-rrf-v2-diverse"
 STRUCTURED_BRAND_RETRIEVAL_VERSION = "brand-hybrid-rrf-v3-parent-diverse"
@@ -78,6 +87,42 @@ class BrandSectionKind(StrEnum):
     INTERVIEW_QA = "interview_qa"
     HEADING = "heading"
     GENERIC = "generic"
+
+
+class BrandOcrBlockKind(StrEnum):
+    TEXT = "text"
+    TABLE = "table"
+    FORMULA = "formula"
+
+
+class BrandLayoutSemanticRole(StrEnum):
+    """Closed PP-DocLayoutV3 semantic role retained only during v4 parse/chunk."""
+
+    ABSTRACT = "abstract"
+    ALGORITHM = "algorithm"
+    ASIDE_TEXT = "aside_text"
+    CHART = "chart"
+    CONTENT = "content"
+    DISPLAY_FORMULA = "display_formula"
+    DOC_TITLE = "doc_title"
+    FIGURE_TITLE = "figure_title"
+    FOOTER = "footer"
+    FOOTER_IMAGE = "footer_image"
+    FOOTNOTE = "footnote"
+    FORMULA_NUMBER = "formula_number"
+    HEADER = "header"
+    HEADER_IMAGE = "header_image"
+    IMAGE = "image"
+    INLINE_FORMULA = "inline_formula"
+    NUMBER = "number"
+    PARAGRAPH_TITLE = "paragraph_title"
+    REFERENCE = "reference"
+    REFERENCE_CONTENT = "reference_content"
+    SEAL = "seal"
+    TABLE = "table"
+    TEXT = "text"
+    VERTICAL_TEXT = "vertical_text"
+    VISION_FOOTNOTE = "vision_footnote"
 
 
 class BrandContentType(StrEnum):
@@ -235,6 +280,78 @@ class BrandUploadMetadata:
         )
 
 
+NormalizedBrandBbox = tuple[float, float, float, float]
+
+
+def _validate_normalized_brand_bbox(value: NormalizedBrandBbox | None) -> None:
+    if value is None:
+        return
+    if len(value) != 4:
+        raise ValueError("brand layout bbox must have four coordinates")
+    x1, y1, x2, y2 = value
+    if not (0.0 <= x1 < x2 <= 1.0 and 0.0 <= y1 < y2 <= 1.0):
+        raise ValueError("brand layout bbox must be normalized and ordered")
+
+
+@dataclass(frozen=True, slots=True)
+class BrandOcrLayoutBlock:
+    ordinal: int
+    kind: BrandOcrBlockKind
+    text: str = field(repr=False)
+    semantic_role: BrandLayoutSemanticRole | None = None
+    normalized_bbox: NormalizedBrandBbox | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.ordinal < 0 or not self.text.strip():
+            raise ValueError("brand OCR layout block identity and text are invalid")
+        if self.semantic_role is not None and not isinstance(
+            self.semantic_role, BrandLayoutSemanticRole
+        ):
+            raise ValueError("brand OCR layout block semantic role is invalid")
+        _validate_normalized_brand_bbox(self.normalized_bbox)
+
+
+@dataclass(frozen=True, slots=True)
+class BrandOcrLayoutPage:
+    page_number: int
+    blocks: tuple[BrandOcrLayoutBlock, ...]
+    width: int | None = None
+    height: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.page_number < 1:
+            raise ValueError("brand OCR layout page number must be positive")
+        if (self.width is None) != (self.height is None):
+            raise ValueError("brand OCR layout page dimensions must be paired")
+        if self.width is not None and (self.width < 1 or self.height is None or self.height < 1):
+            raise ValueError("brand OCR layout page dimensions must be positive")
+        if tuple(block.ordinal for block in self.blocks) != tuple(range(len(self.blocks))):
+            raise ValueError("brand OCR layout block ordinals must be contiguous")
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedBrandLayoutBlock:
+    ordinal: int
+    source_page: int
+    kind: BrandOcrBlockKind
+    text: str
+    char_start: int
+    char_end: int
+    semantic_role: BrandLayoutSemanticRole | None = None
+    normalized_bbox: NormalizedBrandBbox | None = None
+
+    def __post_init__(self) -> None:
+        if self.ordinal < 0 or self.source_page < 1 or not self.text.strip():
+            raise ValueError("parsed brand layout block identity and text are invalid")
+        if self.char_start < 0 or self.char_end <= self.char_start:
+            raise ValueError("parsed brand layout block offsets are invalid")
+        if self.semantic_role is not None and not isinstance(
+            self.semantic_role, BrandLayoutSemanticRole
+        ):
+            raise ValueError("parsed brand layout block semantic role is invalid")
+        _validate_normalized_brand_bbox(self.normalized_bbox)
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedBrandSection:
     ordinal: int
@@ -246,6 +363,7 @@ class ParsedBrandSection:
     source_page: int | None = None
     question_number: int | None = None
     question_text: str | None = None
+    layout_blocks: tuple[ParsedBrandLayoutBlock, ...] = ()
 
     def __post_init__(self) -> None:
         if self.ordinal < 0 or not self.title.strip() or not self.text.strip():
@@ -266,6 +384,24 @@ class ParsedBrandSection:
         if self.kind == BrandSectionKind.INTERVIEW_QA:
             if self.question_number is None or self.question_text is None:
                 raise ValueError("interview sections require a question identity")
+        if self.layout_blocks and self.kind != BrandSectionKind.PAGE:
+            raise ValueError("layout blocks require a page section")
+        if tuple(block.ordinal for block in self.layout_blocks) != tuple(
+            range(len(self.layout_blocks))
+        ):
+            raise ValueError("parsed brand layout block ordinals must be contiguous")
+        for block in self.layout_blocks:
+            if block.source_page != self.source_page:
+                raise ValueError("parsed brand layout block page must match its section")
+            if block.char_start < self.char_start or block.char_end > self.char_end:
+                raise ValueError("parsed brand layout block exceeds its section")
+            local_start = block.char_start - self.char_start
+            local_end = block.char_end - self.char_start
+            if self.text[local_start:local_end] != block.text:
+                raise ValueError("parsed brand layout block must be an exact section slice")
+        for left, right in zip(self.layout_blocks, self.layout_blocks[1:], strict=False):
+            if left.char_end > right.char_start:
+                raise ValueError("parsed brand layout blocks must not overlap")
 
 
 @dataclass(frozen=True, slots=True)

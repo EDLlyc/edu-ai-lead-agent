@@ -6,7 +6,7 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.brand_knowledge import (
-    STRUCTURED_BRAND_DERIVATION_VERSIONS,
+    LAYOUT_BRAND_DERIVATION_VERSIONS,
     STRUCTURED_BRAND_RETRIEVAL_VERSION,
     SUPPORTED_BRAND_DERIVATION_VERSIONS,
     SUPPORTED_BRAND_RETRIEVAL_VERSIONS,
@@ -188,9 +188,9 @@ class Settings(BaseSettings):
     brand_parse_max_chunks: int = Field(default=600, ge=1, le=2_000)
     brand_chunk_characters: int = Field(default=900, ge=300, le=3_000)
     brand_chunk_overlap_characters: int = Field(default=120, ge=0, le=500)
-    brand_parser_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[0]
-    brand_chunk_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[1]
-    brand_embedding_input_version: str = STRUCTURED_BRAND_DERIVATION_VERSIONS[2]
+    brand_parser_version: str = LAYOUT_BRAND_DERIVATION_VERSIONS[0]
+    brand_chunk_version: str = LAYOUT_BRAND_DERIVATION_VERSIONS[1]
+    brand_embedding_input_version: str = LAYOUT_BRAND_DERIVATION_VERSIONS[2]
     brand_retrieval_version: str = STRUCTURED_BRAND_RETRIEVAL_VERSION
     brand_ocr_model: str = Field(default="glm-ocr", min_length=1, max_length=120)
     brand_ocr_sparse_text_threshold: int = Field(default=40, ge=1, le=10_000)

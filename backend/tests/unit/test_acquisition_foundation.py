@@ -45,6 +45,23 @@ def test_brand_ocr_model_is_a_bounded_identifier() -> None:
 
 
 def test_brand_version_bundles_are_frozen_and_mixed_labels_fail_closed() -> None:
+    current = Settings(_env_file=None)
+    assert (
+        current.brand_parser_version,
+        current.brand_chunk_version,
+        current.brand_embedding_input_version,
+    ) == (
+        "brand-parser-v4-layout-aware",
+        "brand-chunk-v4-layout-blocks",
+        "brand-embedding-input-v2-section-context",
+    )
+    structured = Settings(
+        _env_file=None,
+        brand_parser_version="brand-parser-v3-source-structure",
+        brand_chunk_version="brand-chunk-v3-parent-child",
+        brand_embedding_input_version="brand-embedding-input-v2-section-context",
+    )
+    assert structured.brand_parser_version == "brand-parser-v3-source-structure"
     legacy = Settings(
         _env_file=None,
         brand_parser_version="brand-parser-v2-glm-ocr",

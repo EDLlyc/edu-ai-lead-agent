@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.application.ports.brand_knowledge import BrandKnowledgeRepository
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import BrandOcrInvalidOutputReason, ConflictError, NotFoundError
 from app.domain.brand_knowledge import (
+    LAYOUT_BRAND_DERIVATION_VERSIONS,
     LEGACY_BRAND_DERIVATION_VERSIONS,
     STRUCTURED_BRAND_DERIVATION_VERSIONS,
     SUPPORTED_BRAND_DERIVATION_VERSIONS,
@@ -49,6 +50,9 @@ from app.infrastructure.db.models import (
 )
 
 _SAFE_ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,79}")
+_SAFE_BRAND_OCR_DIAGNOSTIC_REASONS = frozenset(
+    reason.value for reason in BrandOcrInvalidOutputReason
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,8 +63,14 @@ class BrandDocumentProjection:
 
 
 class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        claim_version_ids: frozenset[UUID] | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._claim_version_ids = claim_version_ids
 
     async def create_upload(
         self,
@@ -150,6 +160,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
                 parser_version=parser_version,
                 chunk_version=chunk_version,
                 embedding_input_version=embedding_input_version,
+                claim_version_ids=self._claim_version_ids,
             )
 
     async def heartbeat(self, *, claimed: ClaimedBrandIngestionJob, lease_seconds: int) -> bool:
@@ -179,6 +190,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
         claimed: ClaimedBrandIngestionJob,
         error_code: str,
         retry_at: datetime | None = None,
+        diagnostic_reason: str | None = None,
     ) -> bool:
         async with self._session_factory() as session:
             return await _fail_ingestion(
@@ -186,6 +198,7 @@ class PostgresBrandKnowledgeRepository(BrandKnowledgeRepository):
                 claimed=claimed,
                 error_code=error_code,
                 retry_at=retry_at,
+                diagnostic_reason=diagnostic_reason,
             )
 
     async def retrieve(
@@ -374,8 +387,12 @@ async def _claim(
     parser_version: str,
     chunk_version: str,
     embedding_input_version: str,
+    claim_version_ids: frozenset[UUID] | None = None,
 ) -> ClaimedBrandIngestionJob | None:
     now = datetime.now(UTC)
+    version_scope = (
+        () if claim_version_ids is None else (BrandDocumentVersionModel.id.in_(claim_version_ids),)
+    )
     stale_jobs = tuple(
         (
             await session.scalars(
@@ -392,6 +409,7 @@ async def _claim(
                     BrandDocumentVersionModel.parser_version == parser_version,
                     BrandDocumentVersionModel.chunk_version == chunk_version,
                     BrandDocumentVersionModel.embedding_input_version == embedding_input_version,
+                    *version_scope,
                 )
                 .with_for_update(skip_locked=True)
             )
@@ -446,6 +464,7 @@ async def _claim(
             BrandDocumentVersionModel.parser_version == parser_version,
             BrandDocumentVersionModel.chunk_version == chunk_version,
             BrandDocumentVersionModel.embedding_input_version == embedding_input_version,
+            *version_scope,
         )
         .order_by(BrandIngestionJobModel.available_at, BrandIngestionJobModel.created_at)
         .limit(1)
@@ -561,7 +580,14 @@ async def _persist_ingestion(
     )
     if derivation_versions not in SUPPORTED_BRAND_DERIVATION_VERSIONS:
         raise ValueError("brand ingestion version bundle is unsupported")
-    if derivation_versions == STRUCTURED_BRAND_DERIVATION_VERSIONS and not chunking.sections:
+    if (
+        derivation_versions
+        in {
+            STRUCTURED_BRAND_DERIVATION_VERSIONS,
+            LAYOUT_BRAND_DERIVATION_VERSIONS,
+        }
+        and not chunking.sections
+    ):
         raise ValueError("structured brand ingestion requires sections")
     if derivation_versions == LEGACY_BRAND_DERIVATION_VERSIONS and chunking.sections:
         raise ValueError("legacy brand ingestion must remain sectionless")
@@ -717,9 +743,17 @@ async def _fail_ingestion(
     claimed: ClaimedBrandIngestionJob,
     error_code: str,
     retry_at: datetime | None,
+    diagnostic_reason: str | None,
 ) -> bool:
     if _SAFE_ERROR_CODE.fullmatch(error_code) is None:
         raise ValueError("brand ingestion error code must be safe snake_case")
+    if diagnostic_reason is not None:
+        if error_code != "brand_ocr_invalid_output":
+            raise ValueError(
+                "brand OCR diagnostic reason requires the generic invalid-output error code"
+            )
+        if diagnostic_reason not in _SAFE_BRAND_OCR_DIAGNOSTIC_REASONS:
+            raise ValueError("brand ingestion diagnostic reason is not allowlisted")
     if retry_at is not None and retry_at.tzinfo is None:
         raise ValueError("brand ingestion retry instant must be timezone-aware")
     now = datetime.now(UTC)
@@ -765,6 +799,10 @@ async def _fail_ingestion(
         attempt.status = "retry_scheduled" if retrying else "failed"
         attempt.error_code = error_code
         attempt.completed_at = now
+        safe_metadata = dict(attempt.safe_metadata)
+        if diagnostic_reason is not None:
+            safe_metadata["diagnostic_reason"] = diagnostic_reason
+        attempt.safe_metadata = safe_metadata
     await session.commit()
     return True
 

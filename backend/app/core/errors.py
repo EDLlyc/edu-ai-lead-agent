@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 _PROVIDER_VALIDATION_ISSUE_LIMIT = 12
 _PROVIDER_VALIDATION_LOC_DEPTH = 8
@@ -511,13 +512,51 @@ class BrandOcrUnavailableError(BrandOcrError):
         )
 
 
+class BrandOcrInvalidOutputReason(StrEnum):
+    OUTPUT_INVALID = "brand_ocr_output_invalid"
+    TRANSPORT_BODY_INVALID = "brand_ocr_transport_body_invalid"
+    BASE_SCHEMA_INVALID = "brand_ocr_base_schema_invalid"
+    MARKDOWN_INVALID = "brand_ocr_markdown_invalid"
+    MODEL_IDENTITY_INVALID = "brand_ocr_model_identity_invalid"
+    PAGE_IDENTITY_INVALID = "brand_ocr_page_identity_invalid"
+    LAYOUT_MISSING = "brand_ocr_layout_missing"
+    LAYOUT_SCHEMA_INVALID = "brand_ocr_layout_schema_invalid"
+    LAYOUT_PAGE_COUNT_INVALID = "brand_ocr_layout_page_count_invalid"
+    LAYOUT_PAGE_DIMENSIONS_INVALID = "brand_ocr_layout_page_dimensions_invalid"
+    LAYOUT_PAGE_DIMENSIONS_CONFLICT = "brand_ocr_layout_page_dimensions_conflict"
+    LAYOUT_INDEX_INVALID = "brand_ocr_layout_index_invalid"
+    LAYOUT_INDEX_DUPLICATE = "brand_ocr_layout_index_duplicate"
+    LAYOUT_LABEL_UNKNOWN = "brand_ocr_layout_label_unknown"
+    LAYOUT_BBOX_SHAPE_INVALID = "brand_ocr_layout_bbox_shape_invalid"
+    LAYOUT_BBOX_SCALE_INVALID = "brand_ocr_layout_bbox_scale_invalid"
+    LAYOUT_BBOX_RANGE_INVALID = "brand_ocr_layout_bbox_range_invalid"
+    LAYOUT_CONTENT_TYPE_INVALID = "brand_ocr_layout_content_type_invalid"
+    LAYOUT_CONTENT_LIMIT_EXCEEDED = "brand_ocr_layout_content_limit_exceeded"
+    LAYOUT_NATIVE_LABEL_TYPE_INVALID = "brand_ocr_layout_native_label_type_invalid"
+    LAYOUT_NATIVE_LABEL_LIMIT_EXCEEDED = "brand_ocr_layout_native_label_limit_exceeded"
+    LAYOUT_NATIVE_LABEL_UNKNOWN = "brand_ocr_layout_native_label_unknown"
+    LAYOUT_NATIVE_LABEL_CONFLICT = "brand_ocr_layout_native_label_conflict"
+    LAYOUT_ELEMENT_EXTRA = "brand_ocr_layout_element_extra"
+    LAYOUT_SOURCE_INVALID = "brand_ocr_layout_source_invalid"
+    LAYOUT_SOURCE_CONFLICT = "brand_ocr_layout_source_conflict"
+
+
 class BrandOcrInvalidOutputError(BrandOcrError):
-    def __init__(self) -> None:
+    __slots__ = ("reason",)
+
+    def __init__(
+        self,
+        reason: BrandOcrInvalidOutputReason | str = BrandOcrInvalidOutputReason.OUTPUT_INVALID,
+    ) -> None:
         super().__init__(
             "brand_ocr_invalid_output",
             "brand OCR provider returned invalid output",
             422,
         )
+        try:
+            self.reason = BrandOcrInvalidOutputReason(reason).value
+        except (TypeError, ValueError):
+            self.reason = BrandOcrInvalidOutputReason.OUTPUT_INVALID.value
 
 
 class BrandOcrIdentityMismatchError(BrandOcrError):

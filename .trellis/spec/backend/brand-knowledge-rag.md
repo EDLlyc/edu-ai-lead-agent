@@ -84,9 +84,12 @@ Environment keys are `BRAND_UPLOAD_MAX_BYTES`, `BRAND_PARSE_MAX_PAGES`,
 `BRAND_OCR_MAX_RESPONSE_BYTES`, `BRAND_OCR_TIMEOUT_SECONDS`, and `BRAND_OCR_MAX_PAGES`.
 
 The default upload maximum is the hard-bounded 25 MiB so the initial supplied slide decks fit.
-Slide-deck PDFs with partial but representative text layers are accepted without OCR and preserve
-non-empty pages as parents; OCR is reserved for sparse extraction. Private image assets stay outside
-brand chunks/embeddings. `scripts/build_brand_asset_manifest.py` inventories valid PNG assets for
+Parser v4 profiles every PDF page without logging text: total/blank/sparse pages, usable characters,
+and bounded page geometry. Aggregate-sparse PDFs still require OCR. In addition, a document requires
+one whole-document Layout call when at least 80% of its pages have a landscape slide ratio and at
+least 25% are blank or below the configured sparse-text threshold. Ordinary text PDFs remain local;
+one derivation never mixes local and OCR pages. Private image assets stay outside brand chunks/
+embeddings. `scripts/build_brand_asset_manifest.py` inventories valid PNG assets for
 the later image pipeline and skips `:com.tencent.wedrive.*` sidecars, symbolic links, malformed PNG
 signatures/chunks, and unsupported files. Each accepted asset is at most 25 MiB, 8192 pixels on
 either axis, and 32 million pixels total; discovery stops with an error after 10,000 entries. The
@@ -116,7 +119,7 @@ link.
 
 ### 3.2 Structured parents, contextual chunks, and retrieval diversity
 
-The active identities are `brand-parser-v3-source-structure`, `brand-chunk-v3-parent-child`, and
+The active identities are `brand-parser-v4-layout-aware`, `brand-chunk-v4-layout-blocks`, and
 `brand-embedding-input-v2-section-context`. A non-empty PDF page becomes one `page` section and a
 blank page only contributes to `page_count`. DOCX blocks are traversed in XML order; recognized
 `Q1`/`问题一` markers start `interview_qa` sections, while headings and unmatched content use bounded
@@ -129,6 +132,87 @@ existing 2048-dimensional embedding use the deterministic contextual `embedding_
 bounded document title, section title, optional question, chunk content type, and raw child. The
 embedding request and stored derivation bind `embedding_input_hash`, not raw `text_hash`.
 
+For a v4 Layout result, the Zhipu adapter validates the raw multi-page envelope and projects only
+provider-neutral `text`, `table`, and `formula` blocks. It validates unique bounded indices, exact
+page counts, optional authoritative page dimensions, unit or page-bound pixel boxes, and closed
+labels. Mixed coordinate scales and malformed/out-of-range boxes fail closed. Image elements are
+validated for identity but their content, crop URL, and visualization never cross the adapter.
+`md_results` remains the frozen v3 compatibility source; v4 requires typed layout pages and cannot
+fall back to one generic Markdown parent.
+
+The raw element contract may additionally accept only the explicitly named `native_label` provider
+refinement; element `extra="forbid"` remains mandatory. When present, `native_label` must be a strict,
+non-empty, control-character-free string of at most 64 characters and exactly one role from the
+closed PP-DocLayoutV3/GLM-OCR semantic set: `abstract`, `algorithm`, `aside_text`, `chart`,
+`content`, `display_formula`, `doc_title`, `figure_title`, `footer`, `footer_image`, `footnote`,
+`formula_number`, `header`, `header_image`, `image`, `inline_formula`, `number`, `paragraph_title`,
+`reference`, `reference_content`, `seal`, `table`, `text`, `vertical_text`, or `vision_footnote`.
+These are 25 unique official labels; `header_image` and `footer_image` are image labels, not aliases
+of header/footer. The role must agree with canonical `label`: chart/footer-image/header-image/image
+map to image, table to table, display/inline formula to formula, and all remaining roles—including
+aside/header/footer/footnote/number/reference—to text. Unknown fields, unknown/invalid roles, and
+role/label conflicts fail closed. Omitted metadata remains compatible; when the field is present,
+null/empty or
+non-string values map to `brand_ocr_layout_native_label_type_invalid`, overlength or control-bearing
+strings to `brand_ocr_layout_native_label_limit_exceeded`, roles outside the closed set to
+`brand_ocr_layout_native_label_unknown`, and canonical-label/role mismatches to
+`brand_ocr_layout_native_label_conflict`. These codes expose only the failure class, never the value.
+Canonical `label` still owns the business block projection and image discard. The normalized
+semantic role is ephemeral: parser v4 may prefer explicit document/paragraph title roles for page
+titles and conservative card grouping; figure titles, vision footnotes, seals, formula numbers, and
+other non-content roles cannot become a page/card title merely because of position. Aside text,
+footer, footnote, header, number, and reference are explicitly non-title and non-card roles even
+though their canonical block kind is text. Header/footer images are also explicit non-title/non-card
+roles and are validated, then discarded before brand text projection like chart/image. The generic
+`text` role retains the bounded positional fallback. The value is not stored or exposed through
+database, HTTP, or MCP contracts. Frozen v2/v3 behavior remains unchanged and ignores Layout
+refinements entirely.
+
+`BrandOcrInvalidOutputError` keeps the public code/message fixed at
+`brand_ocr_invalid_output` / `brand OCR provider returned invalid output`, but carries one internal
+allowlisted `reason`. The closed reasons distinguish transport/body envelope, base schema,
+Markdown, returned model/page identity, missing Layout, Layout schema, page count/dimensions and
+dimension conflicts, index/duplicate, label, bbox shape/scale/range, content type/limit, element
+extra, the four native-label failure classes, and source invalid/conflict stages. The adapter derives
+Layout reasons only from the shared `InvalidProviderOutputError.issue_codes` and content-free
+`_image_ocr_schema_issues`; an unknown value collapses to the generic allowlisted reason. Never retain
+Pydantic `msg`, `input`, raw `loc`, response body, Markdown, layout content, bbox, private path, or
+exception text. The worker may store only this single reason in ingestion-attempt `safe_metadata`
+and structured logs; durable/API job and version error codes remain generic. The repository accepts
+a diagnostic reason only when the durable error code is exactly `brand_ocr_invalid_output`; unknown
+reasons fail before database access. For a v4 request, a normalized/error source without raw Layout
+maps to the shared source-invalid reason before the ordinary missing-Layout classification; frozen
+v3 no-Layout responses remain unchanged. Adapter classification must leave the Pydantic/JSON
+exception block before raising the public error, so `__context__`/`__cause__` cannot retain raw
+provider input. This diagnostic does not authorize a retry or broaden accepted provider
+representations.
+
+#### Provider schema drift playbook
+
+Treat a repeated provider unknown-field/unknown-enum failure as raw-contract drift, not permission to
+ignore extras. First freeze the public error, privacy, persistence, and normalized domain projection. Compare
+the official raw response contract with the provider SDK and authoritative model enum/label list; formatter
+groups, visualization mappings, examples, and comments are supporting evidence, not substitutes for the raw
+schema. When those sources are incomplete or disagree, use one bounded metadata-only probe that returns only
+field names, types, enum names, and aggregate counts needed to discriminate hypotheses. It must not retain
+provider/corpus content, Markdown, bbox, paths, bodies, vectors, IDs, query text, or raw exceptions.
+
+Compatibility broadening must name each field explicitly, add only verified closed enum values, bind every
+value to its canonical projection, and keep unknown values fail-closed. Never use `extra="ignore"` on a
+content-bearing provider element to make a gate pass. Add exhaustive accepted-group, wrong-canonical,
+unknown-value, sentinel-privacy, and empty cause/context tests before another provider action. Run a single
+document activation gate first; require exact page/section/chunk slices, complete dimension-bound embeddings,
+page-linked retrieval smoke, and an intact old-ready rollback version before widening to the second document.
+Apply this playbook to every JSON or multimodal provider adapter, not only OCR.
+
+Parser v4 joins visible blocks with deterministic separators and records ephemeral block kind,
+page-local ordinal, normalized bbox, and exact global offsets. Every block, page parent, and child
+must remain an exact slice of canonical `parsed.text`. The chunker preserves table/formula boundaries
+and merges only an adjacent short text title/body pair with sufficient horizontal overlap and bounded
+vertical distance. Missing or ambiguous geometry keeps independent blocks. Empty/image-only pages
+produce no section or chunk. Bbox/block hints are rebuildable and have no database or HTTP/MCP field;
+region highlighting requires a separate migration and API task.
+
 Generic OCR Markdown is budget-aware because layout output can contain hundreds of tiny blank-line
 blocks. v3 first computes the ordinary exact child spans. Only when those spans exceed the remaining
 global chunk budget does it greedily coalesce adjacent blocks within the same generic parent up to the
@@ -140,12 +224,14 @@ continuous parent-local representation still cannot fit, ingestion terminates wi
 or apply this fallback to page/Q&A/heading sections or the frozen v2 chunker.
 
 Version labels are executable behavior, not descriptive strings. Settings and parser construction
-accept only two frozen derivation bundles: v2 parser + v2 global chunker + v1 raw embedding input,
-or v3 parser + v3 parent-child chunker + v2 contextual embedding input. The v2 path retains the
+accept only three complete derivation bundles: v2 parser + v2 global chunker + v1 raw embedding
+input, v3 parser + v3 parent-child chunker + v2 contextual embedding input, or v4 Layout parser +
+v4 layout-block chunker + the unchanged v2 contextual embedding input. The v2 path retains the
 old whole-document PDF/DOCX normalization, paragraphs-before-tables DOCX behavior, global overlap,
 legacy chunk-key formula, raw embedding text/hash, and null section binding. Mixed/unknown bundles
-fail before an upload can create an unclaimable job. Persistence permits sectionless chunks only for
-the exact v2 bundle and requires parent bindings for the exact v3 bundle.
+fail before an upload can create an unclaimable job. The v3 Markdown fallback remains executable and
+unchanged. Persistence permits sectionless chunks only for the exact v2 bundle and requires parent
+bindings for both v3 and v4.
 
 Chunk-level `BrandContentType` and `BrandClaimScope` are closed deterministic classifications.
 Policy, market, award, certification, proportion, and third-party signals require verification;
@@ -162,9 +248,14 @@ the repository; responses must never echo v2 while executing the v3 selector, or
 
 Historical brand vectors from another provider are immutable. The development-only
 `python -m app.brand_embedding_reindex_main plan` command reports aggregate drift without writes;
-`migrate --execute` creates a new derivation from each immutable original under the current
-parser/chunk/input bundle, processes it with Alibaba, and activates only ready versions. Never
-rewrite provider/model columns or reuse old vectors across vector spaces.
+mutating `enqueue`, `migrate`, and `activate-ready` actions require a repeated explicit
+`--document-id` UUID allowlist. Every selected document must resolve to an active-ready PDF source;
+selection must never depend on a private title, filename, or object path. `migrate --execute`
+creates a new derivation only for those immutable originals under the current parser/chunk/input
+bundle, processes it with Alibaba, and activates only ready versions. The repository claim scope
+must constrain both fresh queued work and stale-lease recovery to the derived target version IDs;
+ordinary workers remain unscoped. Never rewrite provider/model columns or reuse old vectors across
+vector spaces.
 
 ### 3.3 Provider-free text-retrieval policy evaluation
 
@@ -186,6 +277,9 @@ copy quality, or production effectiveness.
 
 - The dataset has exactly 36 sanitized cases: four for each of the nine `BrandContentType` values.
   Each case contains 7–12 independently graded observations with unique positive FTS/vector ranks.
+- Layout parser quality is a separate sanitized parser/chunker contract: it must construct typed
+  multi-page inputs and assert page identities, card/table boundaries and exact slices. Do not add
+  hand-authored layout ranks to Recall@5/nDCG@5; those ranks would not prove parser or page quality.
 - Ranking receives only candidate ranks and production metadata. Evaluator-only `relevance_grade`
   never enters weighted RRF or selection.
 - `fuse_brand_retrieval_score` and `select_diverse_brand_hits` live in the domain layer and are used

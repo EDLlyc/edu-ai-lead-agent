@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import math
 import re
 import zipfile
 from dataclasses import dataclass
 from io import BytesIO
+from typing import Any
 from uuid import UUID, uuid5
 
 from docx import Document
@@ -14,6 +16,7 @@ from pypdf.errors import PdfReadError
 
 from app.core.errors import BrandUploadRejectedError
 from app.domain.brand_knowledge import (
+    LAYOUT_BRAND_DERIVATION_VERSIONS,
     LEGACY_BRAND_DERIVATION_VERSIONS,
     SUPPORTED_BRAND_DERIVATION_VERSIONS,
     BrandChunk,
@@ -21,9 +24,14 @@ from app.domain.brand_knowledge import (
     BrandClaimScope,
     BrandContentType,
     BrandDocumentKind,
+    BrandLayoutSemanticRole,
+    BrandOcrBlockKind,
+    BrandOcrLayoutPage,
     BrandSection,
     BrandSectionKind,
+    NormalizedBrandBbox,
     ParsedBrandDocument,
+    ParsedBrandLayoutBlock,
     ParsedBrandSection,
     build_brand_embedding_text,
     classify_brand_chunk,
@@ -64,6 +72,53 @@ _CHINESE_DIGITS = {
 _DOCX_MAX_FILES = 2_000
 _DOCX_MAX_EXPANDED_BYTES = 40 * 1024 * 1024
 _DOCX_MAX_COMPRESSION_RATIO = 100
+_LAYOUT_SLIDE_ASPECT_RATIO = 1.5
+_LAYOUT_SLIDE_PAGE_RATIO = 0.8
+_LAYOUT_DEGRADED_PAGE_RATIO = 0.25
+_LAYOUT_CARD_HORIZONTAL_OVERLAP = 0.6
+_LAYOUT_CARD_MAX_VERTICAL_GAP = 0.08
+_LAYOUT_PAGE_TITLE_SEMANTIC_ROLES = frozenset(
+    {
+        BrandLayoutSemanticRole.DOC_TITLE,
+        BrandLayoutSemanticRole.PARAGRAPH_TITLE,
+    }
+)
+_LAYOUT_PAGE_TITLE_ROLE_PRIORITY = {
+    BrandLayoutSemanticRole.DOC_TITLE: 0,
+    BrandLayoutSemanticRole.PARAGRAPH_TITLE: 1,
+}
+_LAYOUT_GENERIC_TEXT_SEMANTIC_ROLES = frozenset({BrandLayoutSemanticRole.TEXT})
+_LAYOUT_CARD_BODY_SEMANTIC_ROLES = frozenset(
+    {
+        BrandLayoutSemanticRole.ABSTRACT,
+        BrandLayoutSemanticRole.ALGORITHM,
+        BrandLayoutSemanticRole.CONTENT,
+        BrandLayoutSemanticRole.REFERENCE_CONTENT,
+        BrandLayoutSemanticRole.TEXT,
+    }
+)
+_LAYOUT_NON_TITLE_NON_CARD_SEMANTIC_ROLES = frozenset(
+    {
+        BrandLayoutSemanticRole.ASIDE_TEXT,
+        BrandLayoutSemanticRole.CHART,
+        BrandLayoutSemanticRole.DISPLAY_FORMULA,
+        BrandLayoutSemanticRole.FIGURE_TITLE,
+        BrandLayoutSemanticRole.FOOTER,
+        BrandLayoutSemanticRole.FOOTER_IMAGE,
+        BrandLayoutSemanticRole.FOOTNOTE,
+        BrandLayoutSemanticRole.FORMULA_NUMBER,
+        BrandLayoutSemanticRole.HEADER,
+        BrandLayoutSemanticRole.HEADER_IMAGE,
+        BrandLayoutSemanticRole.IMAGE,
+        BrandLayoutSemanticRole.INLINE_FORMULA,
+        BrandLayoutSemanticRole.NUMBER,
+        BrandLayoutSemanticRole.REFERENCE,
+        BrandLayoutSemanticRole.SEAL,
+        BrandLayoutSemanticRole.TABLE,
+        BrandLayoutSemanticRole.VERTICAL_TEXT,
+        BrandLayoutSemanticRole.VISION_FOOTNOTE,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +129,48 @@ class _SectionDraft:
     source_page: int | None = None
     question_number: int | None = None
     question_text: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PdfPageQualityProfile:
+    page_count: int
+    usable_characters: int
+    blank_pages: int
+    sparse_pages: int
+    landscape_slide_pages: int
+
+    def __post_init__(self) -> None:
+        values = (
+            self.usable_characters,
+            self.blank_pages,
+            self.sparse_pages,
+            self.landscape_slide_pages,
+        )
+        if self.page_count < 1 or any(value < 0 for value in values):
+            raise ValueError("PDF page quality counts must be non-negative")
+        if (
+            self.blank_pages + self.sparse_pages > self.page_count
+            or self.landscape_slide_pages > self.page_count
+        ):
+            raise ValueError("PDF page quality counts exceed the page count")
+
+
+def requires_layout_ocr(
+    profile: PdfPageQualityProfile,
+    *,
+    sparse_text_threshold: int,
+) -> bool:
+    """Return the frozen v4 whole-document Layout routing decision."""
+
+    if sparse_text_threshold < 1:
+        raise ValueError("sparse text threshold must be positive")
+    if profile.usable_characters < profile.page_count * sparse_text_threshold:
+        return True
+    slide_like = profile.landscape_slide_pages / profile.page_count >= _LAYOUT_SLIDE_PAGE_RATIO
+    degraded = (
+        profile.blank_pages + profile.sparse_pages
+    ) / profile.page_count >= _LAYOUT_DEGRADED_PAGE_RATIO
+    return slide_like and degraded
 
 
 class BoundedBrandDocumentParser:
@@ -112,6 +209,10 @@ class BoundedBrandDocumentParser:
     @property
     def _legacy_mode(self) -> bool:
         return self._derivation_versions == LEGACY_BRAND_DERIVATION_VERSIONS
+
+    @property
+    def _layout_mode(self) -> bool:
+        return self._derivation_versions == LAYOUT_BRAND_DERIVATION_VERSIONS
 
     def parse(self, *, body: bytes, media_type: str) -> ParsedBrandDocument:
         if media_type == "application/pdf":
@@ -190,6 +291,39 @@ class BoundedBrandDocumentParser:
             )
         return parsed
 
+    def parse_ocr(
+        self,
+        *,
+        markdown: str,
+        layout_pages: tuple[BrandOcrLayoutPage, ...],
+        page_count: int,
+    ) -> ParsedBrandDocument:
+        """Project provider-neutral OCR output through the active derivation bundle."""
+
+        if page_count < 1 or page_count > self._max_pages:
+            raise BrandUploadRejectedError(
+                "brand_ocr_page_count_invalid", "brand OCR page count is invalid"
+            )
+        if self._layout_mode:
+            if len(layout_pages) != page_count:
+                raise BrandUploadRejectedError(
+                    "brand_ocr_layout_missing", "brand OCR layout pages are required"
+                )
+            return self._assemble_layout_document(layout_pages=layout_pages, page_count=page_count)
+
+        normalized = normalize_brand_text(markdown)
+        if not normalized or len(normalized) > self._max_characters:
+            raise BrandUploadRejectedError(
+                "brand_ocr_invalid_output", "brand OCR output is invalid"
+            )
+        # Frozen v2/v3 behavior: OCR Markdown remains one sectionless canonical body;
+        # the v3 chunker projects its compatibility generic parent later.
+        return ParsedBrandDocument(
+            text=normalized,
+            page_count=page_count,
+            extraction_method="ocr",
+        )
+
     def chunk(
         self,
         *,
@@ -231,6 +365,7 @@ class BoundedBrandDocumentParser:
             section_child_ordinal = 0
             child_spans = self._structured_child_spans(
                 section=section,
+                parsed_section=parsed_section,
                 extraction_method=document.extraction_method,
                 remaining_chunk_budget=self._max_chunks - len(chunks),
             )
@@ -364,10 +499,15 @@ class BoundedBrandDocumentParser:
         self,
         *,
         section: BrandSection,
+        parsed_section: ParsedBrandSection,
         extraction_method: str,
         remaining_chunk_budget: int,
     ) -> tuple[tuple[int, int], ...]:
-        preferred_ranges = self._preferred_child_ranges(section.text)
+        preferred_ranges = (
+            self._layout_child_ranges(parsed_section)
+            if self._layout_mode and parsed_section.layout_blocks
+            else self._preferred_child_ranges(section.text)
+        )
         spans = self._bounded_child_spans(section.text, preferred_ranges)
         if len(spans) <= remaining_chunk_budget:
             return spans
@@ -479,9 +619,77 @@ class BoundedBrandDocumentParser:
             ranges[:2] = [(first_start, second_end)]
         return tuple(ranges)
 
+    @staticmethod
+    def _layout_child_ranges(
+        section: ParsedBrandSection,
+    ) -> tuple[tuple[int, int], ...]:
+        ranges: list[tuple[int, int]] = []
+        blocks = section.layout_blocks
+        index = 0
+        while index < len(blocks):
+            block = blocks[index]
+            local_start = block.char_start - section.char_start
+            local_end = block.char_end - section.char_start
+            if index + 1 < len(blocks) and BoundedBrandDocumentParser._is_layout_card_pair(
+                block, blocks[index + 1]
+            ):
+                local_end = blocks[index + 1].char_end - section.char_start
+                index += 1
+            ranges.append((local_start, local_end))
+            index += 1
+        return tuple(ranges)
+
+    @staticmethod
+    def _is_layout_card_pair(
+        title: ParsedBrandLayoutBlock,
+        body: ParsedBrandLayoutBlock,
+    ) -> bool:
+        if title.kind != BrandOcrBlockKind.TEXT or body.kind != BrandOcrBlockKind.TEXT:
+            return False
+        title_text = title.text.strip()
+        if (
+            not title_text
+            or len(title_text) > 80
+            or "\n" in title_text
+            or _SENTENCE_BREAK_PATTERN.search(title_text) is not None
+            or title.normalized_bbox is None
+            or body.normalized_bbox is None
+        ):
+            return False
+        if (
+            title.semantic_role in _LAYOUT_NON_TITLE_NON_CARD_SEMANTIC_ROLES
+            or body.semantic_role in _LAYOUT_NON_TITLE_NON_CARD_SEMANTIC_ROLES
+        ):
+            return False
+        if title.semantic_role is not None and title.semantic_role not in (
+            _LAYOUT_PAGE_TITLE_SEMANTIC_ROLES | _LAYOUT_GENERIC_TEXT_SEMANTIC_ROLES
+        ):
+            return False
+        if (
+            body.semantic_role is not None
+            and body.semantic_role not in _LAYOUT_CARD_BODY_SEMANTIC_ROLES
+        ):
+            return False
+        title_x1, title_y1, title_x2, title_y2 = title.normalized_bbox
+        body_x1, body_y1, body_x2, _body_y2 = body.normalized_bbox
+        if title_y2 > body_y1:
+            return False
+        overlap = max(0.0, min(title_x2, body_x2) - max(title_x1, body_x1))
+        minimum_width = min(title_x2 - title_x1, body_x2 - body_x1)
+        if minimum_width <= 0 or overlap / minimum_width < _LAYOUT_CARD_HORIZONTAL_OVERLAP:
+            return False
+        vertical_gap = body_y1 - title_y2
+        title_height = title_y2 - title_y1
+        return vertical_gap <= max(_LAYOUT_CARD_MAX_VERTICAL_GAP, title_height * 2)
+
     def _parse_pdf(self, body: bytes) -> ParsedBrandDocument:
         if self._legacy_mode:
             return self._parse_pdf_legacy(body)
+        if self._layout_mode:
+            return self._parse_pdf_layout(body)
+        return self._parse_pdf_structured(body)
+
+    def _parse_pdf_structured(self, body: bytes) -> ParsedBrandDocument:
         try:
             reader = PdfReader(BytesIO(body), strict=True)
         except (PdfReadError, ValueError, TypeError, OSError):
@@ -528,6 +736,88 @@ class BoundedBrandDocumentParser:
             drafts=tuple(drafts),
             page_count=page_count,
             requires_ocr=requires_ocr,
+        )
+
+    def _parse_pdf_layout(self, body: bytes) -> ParsedBrandDocument:
+        try:
+            reader = PdfReader(BytesIO(body), strict=True)
+        except (PdfReadError, ValueError, TypeError, OSError):
+            raise BrandUploadRejectedError(
+                "malformed_brand_pdf", "brand PDF could not be parsed"
+            ) from None
+        if reader.is_encrypted:
+            raise BrandUploadRejectedError(
+                "encrypted_brand_pdf", "encrypted brand PDF is not accepted"
+            )
+        if len(reader.pages) > self._max_pages:
+            raise BrandUploadRejectedError("brand_page_limit", "brand PDF exceeded the page limit")
+
+        drafts: list[_SectionDraft] = []
+        extracted_character_count = 0
+        blank_pages = 0
+        sparse_pages = 0
+        landscape_slide_pages = 0
+        try:
+            for page_number, page in enumerate(reader.pages, 1):
+                raw_page_text = page.extract_text() or ""
+                extracted_character_count += len(raw_page_text)
+                if extracted_character_count > self._max_characters:
+                    raise BrandUploadRejectedError(
+                        "brand_text_too_large", "parsed brand text exceeded the configured limit"
+                    )
+                page_text = self._normalize_pdf_page(raw_page_text)
+                if not page_text:
+                    blank_pages += 1
+                elif len(page_text) < self._sparse_text_threshold:
+                    sparse_pages += 1
+                if self._is_slide_page(page):
+                    landscape_slide_pages += 1
+                if page_text:
+                    drafts.append(
+                        _SectionDraft(
+                            kind=BrandSectionKind.PAGE,
+                            title=self._page_title(page_text, page_number),
+                            text=page_text,
+                            source_page=page_number,
+                        )
+                    )
+        except BrandUploadRejectedError:
+            raise
+        except Exception:
+            raise BrandUploadRejectedError(
+                "malformed_brand_pdf", "brand PDF could not be parsed"
+            ) from None
+
+        page_count = len(reader.pages)
+        profile = PdfPageQualityProfile(
+            page_count=page_count,
+            usable_characters=sum(len(draft.text) for draft in drafts),
+            blank_pages=blank_pages,
+            sparse_pages=sparse_pages,
+            landscape_slide_pages=landscape_slide_pages,
+        )
+        return self._assemble_document(
+            drafts=tuple(drafts),
+            page_count=page_count,
+            requires_ocr=requires_layout_ocr(
+                profile,
+                sparse_text_threshold=self._sparse_text_threshold,
+            ),
+        )
+
+    @staticmethod
+    def _is_slide_page(page: Any) -> bool:
+        try:
+            width = float(page.mediabox.width)
+            height = float(page.mediabox.height)
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return False
+        return (
+            math.isfinite(width)
+            and math.isfinite(height)
+            and width > 0
+            and height > 0
+            and width / height >= _LAYOUT_SLIDE_ASPECT_RATIO
         )
 
     def _parse_pdf_legacy(self, body: bytes) -> ParsedBrandDocument:
@@ -674,6 +964,154 @@ class BoundedBrandDocumentParser:
             current_blocks.append(block_text)
         flush()
         return tuple(drafts)
+
+    def _assemble_layout_document(
+        self,
+        *,
+        layout_pages: tuple[BrandOcrLayoutPage, ...],
+        page_count: int,
+    ) -> ParsedBrandDocument:
+        text_parts: list[str] = []
+        sections: list[ParsedBrandSection] = []
+        cursor = 0
+        for expected_page, page in enumerate(layout_pages, 1):
+            if page.page_number != expected_page:
+                raise BrandUploadRejectedError(
+                    "brand_ocr_page_count_invalid", "brand OCR page identity is invalid"
+                )
+            normalized_blocks: list[
+                tuple[
+                    BrandOcrBlockKind,
+                    str,
+                    BrandLayoutSemanticRole | None,
+                    NormalizedBrandBbox | None,
+                ]
+            ] = []
+            for block in page.blocks:
+                block_text = normalize_brand_text(block.text)
+                if block_text:
+                    normalized_blocks.append(
+                        (
+                            block.kind,
+                            block_text,
+                            block.semantic_role,
+                            block.normalized_bbox,
+                        )
+                    )
+            if not normalized_blocks:
+                continue
+            if text_parts:
+                text_parts.append("\n\n")
+                cursor += 2
+            section_start = cursor
+            section_parts: list[str] = []
+            parsed_blocks: list[ParsedBrandLayoutBlock] = []
+            for kind, block_text, semantic_role, bbox in normalized_blocks:
+                if section_parts:
+                    section_parts.append("\n\n")
+                    text_parts.append("\n\n")
+                    cursor += 2
+                block_start = cursor
+                section_parts.append(block_text)
+                text_parts.append(block_text)
+                cursor += len(block_text)
+                parsed_blocks.append(
+                    ParsedBrandLayoutBlock(
+                        ordinal=len(parsed_blocks),
+                        source_page=page.page_number,
+                        kind=kind,
+                        text=block_text,
+                        char_start=block_start,
+                        char_end=cursor,
+                        semantic_role=semantic_role,
+                        normalized_bbox=bbox,
+                    )
+                )
+                if cursor > self._max_characters:
+                    raise BrandUploadRejectedError(
+                        "brand_text_too_large", "parsed brand text exceeded the configured limit"
+                    )
+            section_text = "".join(section_parts)
+            sections.append(
+                ParsedBrandSection(
+                    ordinal=len(sections),
+                    kind=BrandSectionKind.PAGE,
+                    title=self._layout_page_title(tuple(parsed_blocks), page.page_number),
+                    text=section_text,
+                    char_start=section_start,
+                    char_end=cursor,
+                    source_page=page.page_number,
+                    layout_blocks=tuple(parsed_blocks),
+                )
+            )
+        if not sections:
+            raise BrandUploadRejectedError(
+                "brand_ocr_layout_empty", "brand OCR layout contains no retrievable text"
+            )
+        return ParsedBrandDocument(
+            text="".join(text_parts),
+            page_count=page_count,
+            sections=tuple(sections),
+            extraction_method="ocr",
+        )
+
+    @staticmethod
+    def _layout_page_title(
+        blocks: tuple[ParsedBrandLayoutBlock, ...],
+        page_number: int,
+    ) -> str:
+        candidates = [
+            block
+            for block in blocks
+            if block.kind == BrandOcrBlockKind.TEXT
+            and len(block.text) <= 80
+            and "\n" not in block.text
+        ]
+        semantic_candidates = [
+            block
+            for block in candidates
+            if block.semantic_role in _LAYOUT_PAGE_TITLE_SEMANTIC_ROLES
+        ]
+        if semantic_candidates:
+
+            def semantic_position(
+                block: ParsedBrandLayoutBlock,
+            ) -> tuple[int, float, float, int]:
+                if block.semantic_role is None:
+                    raise AssertionError("semantic title candidate requires a role")
+                bbox = block.normalized_bbox
+                return (
+                    _LAYOUT_PAGE_TITLE_ROLE_PRIORITY[block.semantic_role],
+                    bbox[1] if bbox is not None else 2.0,
+                    bbox[0] if bbox is not None else 2.0,
+                    block.ordinal,
+                )
+
+            return min(semantic_candidates, key=semantic_position).text
+        # Omitted metadata preserves the frozen positional heuristic. The generic
+        # ``text`` role carries no stronger meaning and receives the same treatment.
+        # All other explicit roles are authoritative: captions, footnotes, seals,
+        # formula numbers and body content must not become a page title by position.
+        fallback_candidates = [
+            block
+            for block in candidates
+            if block.semantic_role is None
+            or block.semantic_role in _LAYOUT_GENERIC_TEXT_SEMANTIC_ROLES
+        ]
+        positioned = [block for block in fallback_candidates if block.normalized_bbox is not None]
+        if positioned:
+
+            def position(block: ParsedBrandLayoutBlock) -> tuple[float, float, int]:
+                bbox = block.normalized_bbox
+                if bbox is None:
+                    raise AssertionError("positioned layout blocks require a bbox")
+                return bbox[1], bbox[0], block.ordinal
+
+            candidate = min(positioned, key=position)
+            return candidate.text
+        if fallback_candidates:
+            return fallback_candidates[0].text
+        return f"第 {page_number} 页"
 
     def _assemble_document(
         self,

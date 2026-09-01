@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
@@ -11,6 +11,7 @@ from app.domain.brand_knowledge import (
     BrandChunkEmbedding,
     BrandChunkingResult,
     BrandDocumentKind,
+    BrandOcrLayoutPage,
     BrandOriginalDescriptor,
     BrandRetrievalHit,
     BrandUploadMetadata,
@@ -27,7 +28,8 @@ class BrandDocumentOcrRequest:
     input_hash: str
     media_type: str
     page_count: int
-    original_bytes: bytes
+    original_bytes: bytes = field(repr=False)
+    require_layout: bool = False
 
     def __post_init__(self) -> None:
         if not is_sha256_hex(self.input_hash):
@@ -36,11 +38,13 @@ class BrandDocumentOcrRequest:
             raise ValueError("brand OCR accepts PDF input only")
         if self.page_count < 1 or not self.original_bytes:
             raise ValueError("brand OCR input metadata is invalid")
+        if not isinstance(self.require_layout, bool):
+            raise ValueError("brand OCR layout requirement must be boolean")
 
 
 @dataclass(frozen=True, slots=True)
 class BrandDocumentOcrResult:
-    markdown: str
+    markdown: str = field(repr=False)
     provider: str
     model: str
     request_fingerprint: str
@@ -49,6 +53,7 @@ class BrandDocumentOcrResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latency_ms: int = 0
+    layout_pages: tuple[BrandOcrLayoutPage, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.markdown.strip() or not self.provider.strip() or not self.model.strip():
@@ -57,6 +62,13 @@ class BrandDocumentOcrResult:
             raise ValueError("brand OCR result metadata is invalid")
         if min(self.prompt_tokens, self.completion_tokens, self.latency_ms) < 0:
             raise ValueError("brand OCR usage counters must not be negative")
+        if self.layout_pages:
+            if len(self.layout_pages) != self.page_count:
+                raise ValueError("brand OCR layout pages must match the declared page count")
+            if tuple(page.page_number for page in self.layout_pages) != tuple(
+                range(1, self.page_count + 1)
+            ):
+                raise ValueError("brand OCR layout page numbers must be contiguous")
 
     @property
     def text(self) -> str:
@@ -87,6 +99,14 @@ class BrandOriginalStore(Protocol):
 
 class BrandDocumentParser(Protocol):
     def parse(self, *, body: bytes, media_type: str) -> ParsedBrandDocument: ...
+
+    def parse_ocr(
+        self,
+        *,
+        markdown: str,
+        layout_pages: tuple[BrandOcrLayoutPage, ...],
+        page_count: int,
+    ) -> ParsedBrandDocument: ...
 
     def chunk(
         self,
@@ -151,6 +171,7 @@ class BrandKnowledgeRepository(Protocol):
         claimed: ClaimedBrandIngestionJob,
         error_code: str,
         retry_at: datetime | None = None,
+        diagnostic_reason: str | None = None,
     ) -> bool: ...
 
     async def retrieve(

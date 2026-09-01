@@ -10,6 +10,11 @@ credentials. The report measures deterministic RRF and selection-policy regressi
 not be described as live embedding recall, private-corpus quality, generation quality, or production
 effectiveness.
 
+Layout parsing is intentionally not folded into these ranking metrics: hand-authored FTS/vector
+ranks would be a tautological proxy for parser quality. Sanitized parser/chunker contract tests
+instead construct typed multi-page layout input and assert page IDs, card/table boundaries, and
+exact source slices.
+
 ```bash
 cd backend && python -m evals.brand_retrieval.runner --check
 ```

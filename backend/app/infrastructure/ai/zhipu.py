@@ -5,6 +5,7 @@ import base64
 import json
 import math
 import re
+import unicodedata
 import zlib
 from collections.abc import Awaitable, Callable
 from time import perf_counter_ns
@@ -32,9 +33,9 @@ from app.application.ports.image_validation import (
 from app.application.services.governance_analysis import build_factual_analysis_prompt
 from app.core.errors import (
     BrandOcrAuthenticationError,
-    BrandOcrIdentityMismatchError,
     BrandOcrInputLimitError,
     BrandOcrInvalidOutputError,
+    BrandOcrInvalidOutputReason,
     BrandOcrRateLimitError,
     BrandOcrRejectedError,
     BrandOcrTimeoutError,
@@ -48,6 +49,12 @@ from app.core.errors import (
     ProviderRejectedError,
     ProviderTimeoutError,
     ProviderUnavailableError,
+)
+from app.domain.brand_knowledge import (
+    BrandLayoutSemanticRole,
+    BrandOcrBlockKind,
+    BrandOcrLayoutBlock,
+    BrandOcrLayoutPage,
 )
 from app.domain.governance_enums import AnalysisValidationCode
 from app.domain.image_validation import validate_exact_visual_text, validate_image_output
@@ -83,10 +90,82 @@ _IMAGE_OCR_BBOX_SCALE_ISSUE = "image_ocr_contract_bbox_scale"
 _IMAGE_OCR_BBOX_RANGE_ISSUE = "image_ocr_contract_bbox_range"
 _IMAGE_OCR_CONTENT_TYPE_ISSUE = "image_ocr_contract_content_type"
 _IMAGE_OCR_CONTENT_LIMIT_ISSUE = "image_ocr_contract_content_limit"
+_IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE = "image_ocr_contract_native_label_type_invalid"
+_IMAGE_OCR_NATIVE_LABEL_LIMIT_ISSUE = "image_ocr_contract_native_label_limit_exceeded"
+_IMAGE_OCR_NATIVE_LABEL_UNKNOWN_ISSUE = "image_ocr_contract_native_label_unknown"
+_IMAGE_OCR_NATIVE_LABEL_CONFLICT_ISSUE = "image_ocr_contract_native_label_conflict"
 _IMAGE_OCR_ELEMENT_EXTRA_ISSUE = "image_ocr_contract_element_extra"
 _IMAGE_OCR_TABLE_ISSUE = "image_ocr_contract_table_unsupported"
 _IMAGE_OCR_FORMULA_ISSUE = "image_ocr_contract_formula_unsupported"
 _IMAGE_OCR_LINE_LIMIT_ISSUE = "image_ocr_contract_line_limit"
+_BRAND_OCR_MAX_BLOCK_CHARACTERS = 50_000
+_BRAND_OCR_MAX_CONTENT_CHARACTERS = 300_000
+_BRAND_OCR_MAX_NATIVE_LABEL_CHARACTERS = 64
+_BRAND_OCR_CANONICAL_LABEL_BY_ROLE = {role: "text" for role in BrandLayoutSemanticRole}
+_BRAND_OCR_CANONICAL_LABEL_BY_ROLE.update(
+    {
+        BrandLayoutSemanticRole.CHART: "image",
+        BrandLayoutSemanticRole.FOOTER_IMAGE: "image",
+        BrandLayoutSemanticRole.HEADER_IMAGE: "image",
+        BrandLayoutSemanticRole.IMAGE: "image",
+        BrandLayoutSemanticRole.TABLE: "table",
+        BrandLayoutSemanticRole.DISPLAY_FORMULA: "formula",
+        BrandLayoutSemanticRole.INLINE_FORMULA: "formula",
+    }
+)
+_BRAND_OCR_ROLE_BY_NATIVE_LABEL = {role.value: role for role in BrandLayoutSemanticRole}
+_BRAND_OCR_LAYOUT_REASON_BY_ISSUE = {
+    _IMAGE_OCR_SOURCE_INVALID_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_SOURCE_INVALID,
+    _IMAGE_OCR_SOURCE_CONFLICT_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_SOURCE_CONFLICT,
+    _IMAGE_OCR_SCHEMA_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_SCHEMA_INVALID,
+    _IMAGE_OCR_PAGE_COUNT_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_PAGE_COUNT_INVALID,
+    _IMAGE_OCR_PAGE_DIMENSIONS_ISSUE: (BrandOcrInvalidOutputReason.LAYOUT_PAGE_DIMENSIONS_INVALID),
+    _IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE: (
+        BrandOcrInvalidOutputReason.LAYOUT_PAGE_DIMENSIONS_CONFLICT
+    ),
+    _IMAGE_OCR_INDEX_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_INDEX_INVALID,
+    _IMAGE_OCR_DUPLICATE_INDEX_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_INDEX_DUPLICATE,
+    _IMAGE_OCR_LABEL_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_LABEL_UNKNOWN,
+    _IMAGE_OCR_BBOX_SHAPE_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_BBOX_SHAPE_INVALID,
+    _IMAGE_OCR_BBOX_SCALE_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_BBOX_SCALE_INVALID,
+    _IMAGE_OCR_BBOX_RANGE_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_BBOX_RANGE_INVALID,
+    _IMAGE_OCR_CONTENT_TYPE_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_CONTENT_TYPE_INVALID,
+    _IMAGE_OCR_CONTENT_LIMIT_ISSUE: (BrandOcrInvalidOutputReason.LAYOUT_CONTENT_LIMIT_EXCEEDED),
+    _IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE: (
+        BrandOcrInvalidOutputReason.LAYOUT_NATIVE_LABEL_TYPE_INVALID
+    ),
+    _IMAGE_OCR_NATIVE_LABEL_LIMIT_ISSUE: (
+        BrandOcrInvalidOutputReason.LAYOUT_NATIVE_LABEL_LIMIT_EXCEEDED
+    ),
+    _IMAGE_OCR_NATIVE_LABEL_UNKNOWN_ISSUE: (
+        BrandOcrInvalidOutputReason.LAYOUT_NATIVE_LABEL_UNKNOWN
+    ),
+    _IMAGE_OCR_NATIVE_LABEL_CONFLICT_ISSUE: (
+        BrandOcrInvalidOutputReason.LAYOUT_NATIVE_LABEL_CONFLICT
+    ),
+    _IMAGE_OCR_ELEMENT_EXTRA_ISSUE: BrandOcrInvalidOutputReason.LAYOUT_ELEMENT_EXTRA,
+}
+_BRAND_OCR_LAYOUT_ISSUE_PRIORITY = (
+    _IMAGE_OCR_SOURCE_CONFLICT_ISSUE,
+    _IMAGE_OCR_SOURCE_INVALID_ISSUE,
+    _IMAGE_OCR_ELEMENT_EXTRA_ISSUE,
+    _IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE,
+    _IMAGE_OCR_NATIVE_LABEL_LIMIT_ISSUE,
+    _IMAGE_OCR_NATIVE_LABEL_UNKNOWN_ISSUE,
+    _IMAGE_OCR_NATIVE_LABEL_CONFLICT_ISSUE,
+    _IMAGE_OCR_PAGE_COUNT_ISSUE,
+    _IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,
+    _IMAGE_OCR_PAGE_DIMENSIONS_ISSUE,
+    _IMAGE_OCR_DUPLICATE_INDEX_ISSUE,
+    _IMAGE_OCR_INDEX_ISSUE,
+    _IMAGE_OCR_LABEL_ISSUE,
+    _IMAGE_OCR_BBOX_SHAPE_ISSUE,
+    _IMAGE_OCR_BBOX_SCALE_ISSUE,
+    _IMAGE_OCR_BBOX_RANGE_ISSUE,
+    _IMAGE_OCR_CONTENT_TYPE_ISSUE,
+    _IMAGE_OCR_CONTENT_LIMIT_ISSUE,
+    _IMAGE_OCR_SCHEMA_ISSUE,
+)
 
 
 class _ProviderModel(BaseModel):
@@ -156,6 +235,7 @@ class _ImageOcrLayoutElement(BaseModel):
 
     index: Any
     label: Any
+    native_label: Any = None
     bbox_2d: Any = None
     content: Any = None
     height: Any = None
@@ -315,19 +395,80 @@ class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
         except ProviderRejectedError:
             raise BrandOcrRejectedError() from None
         except InvalidProviderOutputError:
-            raise BrandOcrInvalidOutputError() from None
+            # The shared transport exposes only closed issue codes. Do not retain
+            # response headers, body fragments or exception text here.
+            raise BrandOcrInvalidOutputError(
+                BrandOcrInvalidOutputReason.TRANSPORT_BODY_INVALID
+            ) from None
+        undecoded = object()
+        response_payload: Any = undecoded
         try:
-            parsed = _OcrResponse.model_validate(response.json())
-        except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
-            raise BrandOcrInvalidOutputError() from None
+            response_payload = response.json()
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
+            pass
+        if response_payload is undecoded:
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.TRANSPORT_BODY_INVALID)
+        parsed: _OcrResponse | None = None
+        base_schema_reason: BrandOcrInvalidOutputReason | None = None
+        try:
+            parsed = _OcrResponse.model_validate(response_payload)
+        except ValidationError as error:
+            base_schema_reason = _brand_ocr_base_schema_reason(error)
+        except (TypeError, ValueError):
+            base_schema_reason = BrandOcrInvalidOutputReason.BASE_SCHEMA_INVALID
+        if base_schema_reason is not None:
+            raise BrandOcrInvalidOutputError(base_schema_reason)
+        if parsed is None:
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.BASE_SCHEMA_INVALID)
         if parsed.model != self._model:
-            raise BrandOcrIdentityMismatchError()
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.MODEL_IDENTITY_INVALID)
         markdown = _normalize_ocr_markdown(parsed.md_results)
         if not markdown:
-            raise BrandOcrInvalidOutputError()
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.MARKDOWN_INVALID)
         page_count = _ocr_page_count(parsed.data_info, request.page_count)
-        if page_count < 1 or page_count > self._max_pages:
-            raise BrandOcrInvalidOutputError()
+        if page_count != request.page_count or page_count > self._max_pages:
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.PAGE_IDENTITY_INVALID)
+        has_layout = isinstance(response_payload, dict) and "layout_details" in response_payload
+        if request.require_layout:
+            source_reason: BrandOcrInvalidOutputReason | None = None
+            try:
+                _validate_image_ocr_response_source(response_payload)
+            except InvalidProviderOutputError as error:
+                source_reason = _brand_ocr_layout_reason(error.issue_codes)
+            if source_reason is not None:
+                raise BrandOcrInvalidOutputError(source_reason)
+        if request.require_layout and not has_layout:
+            raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.LAYOUT_MISSING)
+        layout_pages: tuple[BrandOcrLayoutPage, ...] = ()
+        if request.require_layout:
+            raw_layout: _ImageOcrResponse | None = None
+            layout_schema_reason: BrandOcrInvalidOutputReason | None = None
+            try:
+                raw_layout = _ImageOcrResponse.model_validate(response_payload)
+            except ValidationError as error:
+                layout_schema_reason = _brand_ocr_layout_reason(_image_ocr_schema_issues(error))
+            except (TypeError, ValueError):
+                layout_schema_reason = BrandOcrInvalidOutputReason.LAYOUT_SCHEMA_INVALID
+            if layout_schema_reason is not None:
+                raise BrandOcrInvalidOutputError(layout_schema_reason)
+            if raw_layout is None:
+                raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.LAYOUT_SCHEMA_INVALID)
+            projected_layout_pages: tuple[BrandOcrLayoutPage, ...] | None = None
+            layout_projection_reason: BrandOcrInvalidOutputReason | None = None
+            try:
+                projected_layout_pages = _project_brand_ocr_layout_pages(
+                    raw_layout,
+                    expected_page_count=request.page_count,
+                )
+            except InvalidProviderOutputError as error:
+                layout_projection_reason = _brand_ocr_layout_reason(error.issue_codes)
+            except (TypeError, ValueError):
+                layout_projection_reason = BrandOcrInvalidOutputReason.LAYOUT_SCHEMA_INVALID
+            if layout_projection_reason is not None:
+                raise BrandOcrInvalidOutputError(layout_projection_reason)
+            if projected_layout_pages is None:
+                raise BrandOcrInvalidOutputError(BrandOcrInvalidOutputReason.LAYOUT_SCHEMA_INVALID)
+            layout_pages = projected_layout_pages
         return BrandDocumentOcrResult(
             markdown=markdown,
             provider="zhipu",
@@ -338,6 +479,7 @@ class ZhipuBrandDocumentOcrModel(BrandDocumentOcrModel):
             prompt_tokens=parsed.usage.prompt_tokens,
             completion_tokens=parsed.usage.completion_tokens,
             latency_ms=max(0, (perf_counter_ns() - started) // 1_000_000),
+            layout_pages=layout_pages,
         )
 
 
@@ -464,10 +606,18 @@ class ZhipuImageTextRecognizer:
         except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
             raise InvalidProviderOutputError((_IMAGE_OCR_RESPONSE_ENVELOPE_ISSUE,)) from None
         _validate_image_ocr_response_source(response_payload)
+        parsed: _ImageOcrResponse | None = None
+        schema_issues: tuple[str, ...] | None = None
         try:
             parsed = _ImageOcrResponse.model_validate(response_payload)
         except ValidationError as error:
-            raise InvalidProviderOutputError(_image_ocr_schema_issues(error)) from None
+            schema_issues = _image_ocr_schema_issues(error)
+        if schema_issues is not None:
+            # Raise outside the ValidationError handler: Pydantic retains the raw
+            # rejected input on the exception even when error rendering omits it.
+            raise InvalidProviderOutputError(schema_issues)
+        if parsed is None:
+            raise InvalidProviderOutputError((_IMAGE_OCR_SCHEMA_ISSUE,))
         if parsed.model.casefold() != self._model.casefold():
             raise ProviderIdentityMismatchError()
 
@@ -510,6 +660,8 @@ def _image_ocr_schema_issues(error: ValidationError) -> tuple[str, ...]:
             issues.add(_IMAGE_OCR_ELEMENT_EXTRA_ISSUE)
         elif "index" in location:
             issues.add(_IMAGE_OCR_INDEX_ISSUE)
+        elif "native_label" in location:
+            issues.add(_IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE)
         elif "label" in location:
             issues.add(_IMAGE_OCR_LABEL_ISSUE)
         elif location[0] == "data_info" and ("height" in location or "width" in location):
@@ -523,10 +675,45 @@ def _image_ocr_schema_issues(error: ValidationError) -> tuple[str, ...]:
         _IMAGE_OCR_PAGE_COUNT_ISSUE,
         _IMAGE_OCR_PAGE_DIMENSIONS_ISSUE,
         _IMAGE_OCR_INDEX_ISSUE,
+        _IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE,
+        _IMAGE_OCR_NATIVE_LABEL_LIMIT_ISSUE,
+        _IMAGE_OCR_NATIVE_LABEL_UNKNOWN_ISSUE,
+        _IMAGE_OCR_NATIVE_LABEL_CONFLICT_ISSUE,
         _IMAGE_OCR_LABEL_ISSUE,
         _IMAGE_OCR_ELEMENT_EXTRA_ISSUE,
     )
     return tuple(code for code in priority if code in issues)[:4] or (_IMAGE_OCR_SCHEMA_ISSUE,)
+
+
+def _brand_ocr_base_schema_reason(error: ValidationError) -> BrandOcrInvalidOutputReason:
+    """Classify the base envelope using only bounded Pydantic locations."""
+
+    locations = tuple(
+        issue.get("loc")
+        for issue in error.errors(
+            include_url=False,
+            include_context=False,
+            include_input=False,
+        )[:12]
+    )
+    if locations and all(
+        isinstance(location, tuple) and location and location[0] == "md_results"
+        for location in locations
+    ):
+        return BrandOcrInvalidOutputReason.MARKDOWN_INVALID
+    return BrandOcrInvalidOutputReason.BASE_SCHEMA_INVALID
+
+
+def _brand_ocr_layout_reason(
+    issue_codes: tuple[str, ...],
+) -> BrandOcrInvalidOutputReason:
+    """Reduce shared closed issue codes to one stable brand diagnostic reason."""
+
+    issue_set = frozenset(issue_codes)
+    for issue_code in _BRAND_OCR_LAYOUT_ISSUE_PRIORITY:
+        if issue_code in issue_set:
+            return _BRAND_OCR_LAYOUT_REASON_BY_ISSUE[issue_code]
+    return BrandOcrInvalidOutputReason.OUTPUT_INVALID
 
 
 def _validate_image_ocr_response_source(value: Any) -> None:
@@ -604,6 +791,30 @@ def _image_ocr_dimension(value: Any) -> int | None:
     return int(value)
 
 
+def _validated_brand_ocr_semantic_role(
+    element: _ImageOcrLayoutElement,
+    *,
+    canonical_label: str,
+) -> BrandLayoutSemanticRole | None:
+    """Validate optional MaaS refinement metadata without changing canonical projection."""
+
+    if "native_label" not in element.model_fields_set:
+        return None
+    value = element.native_label
+    if not isinstance(value, str) or not value:
+        raise InvalidProviderOutputError((_IMAGE_OCR_NATIVE_LABEL_TYPE_ISSUE,))
+    if len(value) > _BRAND_OCR_MAX_NATIVE_LABEL_CHARACTERS or any(
+        unicodedata.category(character) == "Cc" for character in value
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_NATIVE_LABEL_LIMIT_ISSUE,))
+    semantic_role = _BRAND_OCR_ROLE_BY_NATIVE_LABEL.get(value)
+    if semantic_role is None:
+        raise InvalidProviderOutputError((_IMAGE_OCR_NATIVE_LABEL_UNKNOWN_ISSUE,))
+    if _BRAND_OCR_CANONICAL_LABEL_BY_ROLE[semantic_role] != canonical_label:
+        raise InvalidProviderOutputError((_IMAGE_OCR_NATIVE_LABEL_CONFLICT_ISSUE,))
+    return semantic_role
+
+
 def _project_image_ocr_lines(
     elements: list[_ImageOcrLayoutElement],
     *,
@@ -624,6 +835,7 @@ def _project_image_ocr_lines(
         label = element.label
         if not isinstance(label, str) or label not in _IMAGE_OCR_LAYOUT_LABELS:
             raise InvalidProviderOutputError((_IMAGE_OCR_LABEL_ISSUE,))
+        _validated_brand_ocr_semantic_role(element, canonical_label=label)
         if label == "table":
             raise InvalidProviderOutputError((_IMAGE_OCR_TABLE_ISSUE,))
         if label == "formula":
@@ -723,6 +935,168 @@ def _validated_image_ocr_text_content(value: Any) -> str:
     ):
         raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
     return value
+
+
+def _project_brand_ocr_layout_pages(
+    response: _ImageOcrResponse,
+    *,
+    expected_page_count: int,
+) -> tuple[BrandOcrLayoutPage, ...]:
+    num_pages = response.data_info.num_pages
+    if (
+        isinstance(num_pages, bool)
+        or not isinstance(num_pages, int)
+        or num_pages != expected_page_count
+        or len(response.layout_details) != expected_page_count
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
+    if "page_count" in response.data_info.model_fields_set:
+        page_count = response.data_info.page_count
+        if (
+            isinstance(page_count, bool)
+            or not isinstance(page_count, int)
+            or page_count != num_pages
+        ):
+            raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
+    page_infos = response.data_info.pages
+    if "pages" in response.data_info.model_fields_set and (
+        page_infos is None or len(page_infos) != expected_page_count
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_COUNT_ISSUE,))
+
+    projected_pages: list[BrandOcrLayoutPage] = []
+    total_characters = 0
+    for page_offset, elements in enumerate(response.layout_details):
+        page_info = page_infos[page_offset] if page_infos is not None else None
+        page_width, page_height = _resolved_brand_ocr_page_dimensions(
+            page_info=page_info,
+            elements=elements,
+        )
+        indexed: set[int] = set()
+        visible: list[
+            tuple[
+                BrandOcrBlockKind,
+                str,
+                BrandLayoutSemanticRole | None,
+                tuple[float, float, float, float] | None,
+            ]
+        ] = []
+        bbox_scales: set[str] = set()
+        for element in elements:
+            index = element.index
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index <= 1_000_000:
+                raise InvalidProviderOutputError((_IMAGE_OCR_INDEX_ISSUE,))
+            if index in indexed:
+                raise InvalidProviderOutputError((_IMAGE_OCR_DUPLICATE_INDEX_ISSUE,))
+            indexed.add(index)
+            label = element.label
+            if not isinstance(label, str) or label not in _IMAGE_OCR_LAYOUT_LABELS:
+                raise InvalidProviderOutputError((_IMAGE_OCR_LABEL_ISSUE,))
+            semantic_role = _validated_brand_ocr_semantic_role(
+                element,
+                canonical_label=label,
+            )
+
+            if label == "image":
+                continue
+
+            try:
+                kind = BrandOcrBlockKind(label)
+            except ValueError:
+                raise InvalidProviderOutputError((_IMAGE_OCR_LABEL_ISSUE,)) from None
+            content = _validated_brand_ocr_content(element.content)
+            if not content.strip():
+                continue
+            bbox = None if element.bbox_2d is None else _image_ocr_bbox_shape(element.bbox_2d)
+            if bbox is not None:
+                bbox_scales.add("pixel" if max(bbox) > 1 else "unit")
+            visible.append((kind, content, semantic_role, bbox))
+            total_characters += len(content)
+            if total_characters > _BRAND_OCR_MAX_CONTENT_CHARACTERS:
+                raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
+
+        if len(bbox_scales) > 1:
+            raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SCALE_ISSUE,))
+        uses_pixel_bbox = bbox_scales == {"pixel"}
+        if uses_pixel_bbox:
+            if page_width is None or page_height is None:
+                raise InvalidProviderOutputError((_IMAGE_OCR_BBOX_SCALE_ISSUE,))
+
+        blocks: list[BrandOcrLayoutBlock] = []
+        for kind, content, semantic_role, bbox in visible:
+            normalized_bbox = (
+                None
+                if bbox is None
+                else _normalized_image_ocr_bbox(
+                    bbox,
+                    pixel_coordinates=uses_pixel_bbox,
+                    page_width=page_width,
+                    page_height=page_height,
+                )
+            )
+            blocks.append(
+                BrandOcrLayoutBlock(
+                    ordinal=len(blocks),
+                    kind=kind,
+                    text=content,
+                    semantic_role=semantic_role,
+                    normalized_bbox=normalized_bbox,
+                )
+            )
+        projected_pages.append(
+            BrandOcrLayoutPage(
+                page_number=page_offset + 1,
+                blocks=tuple(blocks),
+                width=page_width,
+                height=page_height,
+            )
+        )
+    return tuple(projected_pages)
+
+
+def _resolved_brand_ocr_page_dimensions(
+    *,
+    page_info: _ImageOcrPageInfo | None,
+    elements: _ImageOcrLayoutPage,
+) -> tuple[int | None, int | None]:
+    """Resolve page axes strictly for multi-page brand layout projection."""
+
+    page_width = _image_ocr_dimension(page_info.width) if page_info is not None else None
+    page_height = _image_ocr_dimension(page_info.height) if page_info is not None else None
+    if (page_width is None) != (page_height is None):
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_ISSUE,))
+
+    element_widths: set[int] = set()
+    element_heights: set[int] = set()
+    for element in elements:
+        width = _image_ocr_dimension(element.width)
+        height = _image_ocr_dimension(element.height)
+        if width is not None:
+            element_widths.add(width)
+        if height is not None:
+            element_heights.add(height)
+    if len(element_widths) > 1 or len(element_heights) > 1:
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,))
+    element_width = next(iter(element_widths), None)
+    element_height = next(iter(element_heights), None)
+    if page_width is not None and element_width is not None and page_width != element_width:
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,))
+    if page_height is not None and element_height is not None and page_height != element_height:
+        raise InvalidProviderOutputError((_IMAGE_OCR_PAGE_DIMENSIONS_CONFLICT_ISSUE,))
+    return page_width or element_width, page_height or element_height
+
+
+def _validated_brand_ocr_content(value: Any) -> str:
+    if not isinstance(value, str):
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_TYPE_ISSUE,))
+    if len(value) > _BRAND_OCR_MAX_BLOCK_CHARACTERS:
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
+    if any(
+        (ord(character) < 32 and character not in "\t\r\n") or ord(character) == 127
+        for character in value
+    ):
+        raise InvalidProviderOutputError((_IMAGE_OCR_CONTENT_LIMIT_ISSUE,))
+    return value.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 def _normalize_ocr_markdown(value: str) -> str:

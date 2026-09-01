@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Verify page/block provenance, immutable bundle compatibility, provider identity, retrieval and private-corpus boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify no schema drift, short external-call transactions, real PostgreSQL activation/rollback and vector-space isolation."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Review terminal/retryable layout failures and fail-closed v4 versus frozen v3 fallback behavior."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit logs, errors, fixtures and task evidence for private text, paths, bbox, provider payloads and credentials."}
+{"file":".trellis/tasks/08-31-brand-layout-aware-ingestion/research/implementation-check-contracts.md","reason":"Complete task-specific layer, provider, real-PostgreSQL, eval, privacy, validation-order and dirty-worktree gates without truncating the broad quality spec."}
+{"file":".trellis/tasks/08-31-brand-layout-aware-ingestion/research/current-layout-seams.md","reason":"Check the implementation against measured failure modes, reuse seams and historical exactness constraints."}

@@ -24,6 +24,7 @@ from PIL import Image
 from pydantic import SecretStr
 
 EXPECTED_TEXT = ("赛先生科学", "人工智能", "理解智能如何学习与反馈")
+_NATIVE_LABEL_UNSET = object()
 
 
 def _raster(format_name: str = "PNG") -> bytes:
@@ -125,8 +126,9 @@ def _layout_element(
     label: object = "text",
     height: object = 1024,
     width: object = 1024,
+    native_label: object = _NATIVE_LABEL_UNSET,
 ) -> dict[str, object]:
-    return {
+    element = {
         "index": index,
         "label": label,
         "bbox_2d": bbox,
@@ -134,6 +136,9 @@ def _layout_element(
         "height": height,
         "width": width,
     }
+    if native_label is not _NATIVE_LABEL_UNSET:
+        element["native_label"] = native_label
+    return element
 
 
 def _response(
@@ -357,6 +362,120 @@ async def test_image_ocr_rejects_unknown_element_extension_without_exposing_it()
     assert raised.value.issue_codes == ("image_ocr_contract_element_extra",)
     assert sentinel not in str(raised.value)
     assert sentinel not in repr(raised.value)
+    assert raised.value.__context__ is None
+    assert raised.value.__cause__ is None
+
+
+@pytest.mark.asyncio
+async def test_image_ocr_accepts_bounded_native_label_metadata() -> None:
+    page = [
+        _layout_element(
+            0,
+            EXPECTED_TEXT[0],
+            bbox=[0.1, 0.1, 0.9, 0.2],
+            native_label="content",
+        )
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        result = await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert result.recognized_lines == (EXPECTED_TEXT[0],)
+
+
+@pytest.mark.parametrize("native_label", ("header_image", "footer_image"))
+@pytest.mark.asyncio
+async def test_image_ocr_accepts_official_native_image_labels_without_projecting_content(
+    native_label: str,
+) -> None:
+    sentinel = "private-native-image-content-sentinel"
+    page = [
+        _layout_element(
+            0,
+            EXPECTED_TEXT[0],
+            bbox=[0.1, 0.1, 0.9, 0.2],
+            native_label="content",
+        ),
+        _layout_element(
+            1,
+            sentinel,
+            bbox=[0.1, 0.3, 0.9, 0.5],
+            label="image",
+            native_label=native_label,
+        ),
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        result = await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert result.recognized_lines == (EXPECTED_TEXT[0],)
+    assert sentinel not in repr(result)
+
+
+@pytest.mark.parametrize(
+    ("native_label", "expected_issue"),
+    (
+        (None, "image_ocr_contract_native_label_type_invalid"),
+        ("", "image_ocr_contract_native_label_type_invalid"),
+        (7, "image_ocr_contract_native_label_type_invalid"),
+        (
+            {"private": "private-native-label-sentinel"},
+            "image_ocr_contract_native_label_type_invalid",
+        ),
+        (
+            "private-native-label-sentinel",
+            "image_ocr_contract_native_label_unknown",
+        ),
+        ("x" * 65, "image_ocr_contract_native_label_limit_exceeded"),
+        (
+            "content\x00private-native-label-sentinel",
+            "image_ocr_contract_native_label_limit_exceeded",
+        ),
+        (
+            "content\tprivate-native-label-sentinel",
+            "image_ocr_contract_native_label_limit_exceeded",
+        ),
+        ("table", "image_ocr_contract_native_label_conflict"),
+        ("header_picture", "image_ocr_contract_native_label_unknown"),
+        ("footer_picture", "image_ocr_contract_native_label_unknown"),
+    ),
+)
+@pytest.mark.asyncio
+async def test_image_ocr_rejects_invalid_native_label_without_exposing_it(
+    native_label: object,
+    expected_issue: str,
+) -> None:
+    sentinel = "private-native-label-sentinel"
+    page = [
+        _layout_element(
+            0,
+            EXPECTED_TEXT[0],
+            bbox=[0.1, 0.1, 0.9, 0.2],
+            native_label=native_label,
+        )
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(_request(expected_text=(EXPECTED_TEXT[0],)))
+
+    assert raised.value.issue_codes == (expected_issue,)
+    assert sentinel not in str(raised.value)
+    assert sentinel not in repr(raised.value)
+    assert raised.value.__context__ is None
+    assert raised.value.__cause__ is None
 
 
 @pytest.mark.parametrize("retained_dimension", ("height", "width", "neither", "null"))

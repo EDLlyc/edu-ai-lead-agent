@@ -1,0 +1,28 @@
+{
+  "id": "brand-layout-aware-ingestion",
+  "name": "brand-layout-aware-ingestion",
+  "title": "品牌语料 Layout-aware 解析与重建",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "backend",
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-08-31",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-20-brand-structured-parent-child-chunking",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "dev_type": "feature"
+  }
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
@@ -22,17 +23,17 @@ from app.core.errors import (
     BrandOcrIdentityMismatchError,
     BrandOcrInputLimitError,
     BrandOcrInvalidOutputError,
+    BrandOcrInvalidOutputReason,
     BrandOcrUnavailableError,
 )
 from app.domain.brand_knowledge import (
+    LAYOUT_BRAND_DERIVATION_VERSIONS,
     STRUCTURED_BRAND_RETRIEVAL_VERSION,
     BrandAudience,
     BrandChunkEmbedding,
     BrandDocumentKind,
     BrandRetrievalHit,
     ClaimedBrandIngestionJob,
-    ParsedBrandDocument,
-    normalize_brand_text,
 )
 from app.domain.value_objects import sha256_bytes, stable_key
 
@@ -100,6 +101,14 @@ class BrandIngestionExecutor:
                         media_type=claimed.media_type,
                         page_count=parsed.page_count,
                         original_bytes=body,
+                        require_layout=(
+                            (
+                                claimed.parser_version,
+                                claimed.chunk_version,
+                                claimed.embedding_input_version,
+                            )
+                            == LAYOUT_BRAND_DERIVATION_VERSIONS
+                        ),
                     )
                 )
                 if (
@@ -107,15 +116,21 @@ class BrandIngestionExecutor:
                     or ocr_result.model != self._settings.brand_ocr_model
                 ):
                     raise BrandOcrIdentityMismatchError()
-                ocr_text = normalize_brand_text(ocr_result.markdown)
-                if not ocr_text:
-                    raise BrandOcrInvalidOutputError()
-                if len(ocr_text) > self._settings.brand_parse_max_characters:
-                    raise BrandOcrInvalidOutputError()
-                parsed = ParsedBrandDocument(
-                    text=ocr_text,
+                if ocr_result.page_count != parsed.page_count:
+                    raise BrandOcrInvalidOutputError(
+                        BrandOcrInvalidOutputReason.PAGE_IDENTITY_INVALID
+                    )
+                ocr_parsed = self._parser.parse_ocr(
+                    markdown=ocr_result.markdown,
+                    layout_pages=ocr_result.layout_pages,
                     page_count=ocr_result.page_count,
-                    extraction_method="ocr",
+                )
+                if len(ocr_parsed.text) > self._settings.brand_parse_max_characters:
+                    raise BrandOcrInvalidOutputError(
+                        BrandOcrInvalidOutputReason.LAYOUT_CONTENT_LIMIT_EXCEEDED
+                    )
+                parsed = replace(
+                    ocr_parsed,
                     ocr_provider=ocr_result.provider,
                     ocr_model=ocr_result.model,
                     ocr_request_fingerprint=ocr_result.request_fingerprint,
@@ -192,6 +207,9 @@ class BrandIngestionExecutor:
                 claimed=claimed,
                 error_code=error.code,
                 retryable=error.retryable,
+                diagnostic_reason=(
+                    error.reason if isinstance(error, BrandOcrInvalidOutputError) else None
+                ),
             )
         except Exception as error:
             logger.warning(
@@ -206,6 +224,7 @@ class BrandIngestionExecutor:
                 claimed=claimed,
                 error_code="brand_ingestion_internal_error",
                 retryable=False,
+                diagnostic_reason=None,
             )
         finally:
             heartbeat_stop.set()
@@ -229,7 +248,12 @@ class BrandIngestionExecutor:
                     raise BrandIngestionLeaseLostError() from None
 
     async def _record_failure(
-        self, *, claimed: ClaimedBrandIngestionJob, error_code: str, retryable: bool
+        self,
+        *,
+        claimed: ClaimedBrandIngestionJob,
+        error_code: str,
+        retryable: bool,
+        diagnostic_reason: str | None,
     ) -> None:
         can_retry = retryable and claimed.attempt_number < self._settings.content_max_attempts
         retry_at = (
@@ -241,6 +265,7 @@ class BrandIngestionExecutor:
             claimed=claimed,
             error_code=error_code,
             retry_at=retry_at,
+            diagnostic_reason=diagnostic_reason,
         )
         logger.warning(
             "brand_ingestion_failed",
@@ -248,6 +273,7 @@ class BrandIngestionExecutor:
             version_id=str(claimed.version_id),
             attempt=claimed.attempt_number,
             error_code=error_code,
+            diagnostic_reason=diagnostic_reason,
             retry_scheduled=can_retry,
         )
 
