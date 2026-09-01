@@ -10,8 +10,13 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from app.api_main import app
+from app.application.ports.image_validation import (
+    IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+    IMAGE_QUALITY_AUDITOR_VERSION,
+)
 from app.application.ports.official_account_local import (
     OfficialAccountArticleGenerator,
+    OfficialAccountGeneratedVisualEvalResult,
     OfficialAccountGeneratedVisualPlan,
     OfficialAccountGeneratedVisualResult,
     OfficialAccountGenerationRequest,
@@ -21,9 +26,23 @@ from app.application.ports.official_account_local import (
     OfficialAccountSourceMedia,
     OfficialAccountVersionIdentity,
 )
-from app.application.services.official_account_local import OfficialAccountLocalExecutor
+from app.application.services.official_account_local import (
+    OfficialAccountLocalExecutor,
+    generated_visual_eval_request_fingerprint,
+)
 from app.core.errors import AppError, ConflictError, LocalDraftResultUnknownError
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V2
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_DECISION_POLICY_VERSION,
+    IMAGE_EVAL_RUBRIC_VERSION,
+    IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
+    ImageEvalDecisionKind,
+    ImageEvalEvaluatorKind,
+    ImageEvalObservationStatus,
+    active_image_eval_rubric,
+    build_image_eval_observation,
+    decide_image_eval_batch,
+)
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
@@ -60,6 +79,7 @@ from app.domain.official_account_local import (
 from app.infrastructure.db.models import (
     OfficialAccountArticleAttemptModel,
     OfficialAccountArticleRunModel,
+    OfficialAccountGeneratedVisualEvalModel,
     OfficialAccountLocalMediaModel,
 )
 from app.infrastructure.db.official_account_local import (
@@ -907,6 +927,65 @@ async def test_generated_visual_repository_fences_intent_and_ready_media_lineage
             result=staged,
         )
 
+    assert plan.reference_input_checksum is not None
+    eval_request_fingerprint = generated_visual_eval_request_fingerprint(
+        generated_visual_id=intent.id,
+        plan_request_fingerprint=plan.request_fingerprint,
+        publication_sha256=output_checksum,
+        reference_input_checksum=plan.reference_input_checksum,
+    )
+    observations = tuple(
+        build_image_eval_observation(
+            observation_id=f"provider-audit:{dimension.value}",
+            subject_ref=f"generated-visual:{intent.id}",
+            publication_sha256=output_checksum,
+            dimension=dimension,
+            status=ImageEvalObservationStatus.AVAILABLE,
+            evaluator_kind=ImageEvalEvaluatorKind.PROVIDER_AUDIT,
+            evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+            provider="openai-compatible",
+            model="vision-model",
+            request_fingerprint=eval_request_fingerprint,
+        )
+        for dimension in IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS
+    )
+    eval_result = OfficialAccountGeneratedVisualEvalResult(
+        publication_sha256=output_checksum,
+        evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+        audit_prompt_version=IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+        rubric_version=IMAGE_EVAL_RUBRIC_VERSION,
+        decision_policy_version=IMAGE_EVAL_DECISION_POLICY_VERSION,
+        request_fingerprint=eval_request_fingerprint,
+        observations=observations,
+        decision=decide_image_eval_batch(observations, active_image_eval_rubric()),
+        provider="openai-compatible",
+        model="vision-model",
+    )
+
+    mismatched_observations = tuple(
+        observation.model_copy(update={"request_fingerprint": "9" * 64})
+        for observation in observations
+    )
+    mismatched_eval = replace(
+        eval_result,
+        request_fingerprint="9" * 64,
+        observations=mismatched_observations,
+        decision=decide_image_eval_batch(mismatched_observations, active_image_eval_rubric()),
+    )
+    with pytest.raises(ValueError, match="request fingerprint changed"):
+        await repository.persist_generated_visual(
+            claimed=claimed,
+            plan=plan,
+            result=OfficialAccountGeneratedVisualResult(
+                media_type="image/jpeg",
+                byte_size=len(output),
+                sha256=output_checksum,
+                width=1536,
+                height=1024,
+            ),
+            eval_result=mismatched_eval,
+        )
+
     ready = await repository.persist_generated_visual(
         claimed=claimed,
         plan=plan,
@@ -917,8 +996,15 @@ async def test_generated_visual_repository_fences_intent_and_ready_media_lineage
             width=1536,
             height=1024,
         ),
+        eval_result=eval_result,
     )
     assert ready is not None and ready.status == "ready"
+    stored_evals = await repository.list_generated_visual_evals(run_id=run.id)
+    assert len(stored_evals) == 1
+    assert stored_evals[0].generated_visual_id == intent.id
+    assert stored_evals[0].result == eval_result
+    assert stored_evals[0].result.decision.decision is ImageEvalDecisionKind.ACCEPTED
+    assert len(stored_evals[0].record_fingerprint) == 64
     persisted = await repository.persist_media(
         claimed=claimed,
         render=render,
@@ -938,6 +1024,13 @@ async def test_generated_visual_repository_fences_intent_and_ready_media_lineage
         assert media_row.source_image_artifact_id is None
         assert media_row.fixture_id is None
         assert media_row.descriptor["source_kind"] == "generated_visual"
+
+        await session.execute(
+            OfficialAccountGeneratedVisualEvalModel.__table__.delete().where(
+                OfficialAccountGeneratedVisualEvalModel.run_id == run.id
+            )
+        )
+        await session.commit()
 
     unknown_plan = replace(
         plan,

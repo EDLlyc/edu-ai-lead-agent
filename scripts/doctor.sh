@@ -495,9 +495,9 @@ pass "Visual embedding column is $visual_embedding_vector_type"
 
 official_account_table_count="$(
   docker compose exec -T postgres sh -c \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''official_account_article_runs'\'','\''official_account_article_versions'\'','\''official_account_article_attempts'\'','\''official_account_render_versions'\'','\''official_account_local_media'\'','\''official_account_local_drafts'\'','\''official_account_local_draft_body_media'\'','\''official_account_manual_reviews'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''official_account_article_runs'\'','\''official_account_article_versions'\'','\''official_account_article_attempts'\'','\''official_account_render_versions'\'','\''official_account_generated_visuals'\'','\''official_account_generated_visual_evals'\'','\''official_account_local_media'\'','\''official_account_local_drafts'\'','\''official_account_local_draft_body_media'\'','\''official_account_manual_reviews'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
 )"
-[[ "$official_account_table_count" == "8" ]] \
+[[ "$official_account_table_count" == "10" ]] \
   || fail "Official-account local schema is incomplete; run 'make migrate'"
 pass "Official-account local run, artifact, media, and draft tables are installed"
 

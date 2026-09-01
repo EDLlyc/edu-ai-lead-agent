@@ -5,6 +5,16 @@ from datetime import datetime
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
+    ImageEvalBatchDecision,
+    ImageEvalDecisionKind,
+    ImageEvalEvaluatorKind,
+    ImageEvalObservation,
+    ImageEvalObservationStatus,
+    active_image_eval_rubric,
+    decide_image_eval_batch,
+)
 from app.domain.official_account_local import (
     ArticleMediaSelectionSnapshot,
     ArticlePackage,
@@ -15,7 +25,12 @@ from app.domain.official_account_local import (
     OfficialAccountSourceSnapshot,
     RenderedOfficialAccountHtml,
     SemanticMediaAssignment,
+    fingerprint,
 )
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +208,125 @@ class OfficialAccountGeneratedVisualResult:
     sha256: str
     width: int
     height: int
+
+
+@dataclass(frozen=True, slots=True)
+class OfficialAccountGeneratedVisualEvalResult:
+    """Safe aggregate audit result bound to final publication bytes."""
+
+    publication_sha256: str
+    evaluator_version: str
+    audit_prompt_version: str
+    rubric_version: str
+    decision_policy_version: str
+    request_fingerprint: str
+    observations: tuple[ImageEvalObservation, ...]
+    decision: ImageEvalBatchDecision
+    provider: str | None = None
+    model: str | None = None
+
+    def __post_init__(self) -> None:
+        if not _is_sha256(self.publication_sha256) or not _is_sha256(self.request_fingerprint):
+            raise ValueError("generated visual eval hashes must be SHA-256")
+        for field_name, value in (
+            ("evaluator version", self.evaluator_version),
+            ("audit prompt version", self.audit_prompt_version),
+            ("rubric version", self.rubric_version),
+            ("decision policy version", self.decision_policy_version),
+        ):
+            if not value.strip() or len(value) > 80:
+                raise ValueError(f"generated visual eval {field_name} is invalid")
+        observations = tuple(self.observations)
+        if {item.dimension for item in observations} != set(IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS):
+            raise ValueError("generated visual eval must cover the five single-image dimensions")
+        if any(item.publication_sha256 != self.publication_sha256 for item in observations):
+            raise ValueError("generated visual eval observation hash changed")
+        if len({item.dimension for item in observations}) != len(observations):
+            raise ValueError("generated visual eval observation dimensions must be unique")
+        if len({item.subject_ref for item in observations}) != 1:
+            raise ValueError("generated visual eval observation subject changed")
+        if any(
+            item.evaluator_kind is not ImageEvalEvaluatorKind.PROVIDER_AUDIT
+            or item.evaluator_version != self.evaluator_version
+            or item.rubric_version != self.rubric_version
+            or item.request_fingerprint != self.request_fingerprint
+            or item.provider != self.provider
+            or item.model != self.model
+            for item in observations
+        ):
+            raise ValueError("generated visual eval observation identity changed")
+        if self.decision.decision_policy_version != self.decision_policy_version:
+            raise ValueError("generated visual eval decision policy changed")
+        active_rubric = active_image_eval_rubric()
+        if (
+            self.rubric_version == active_rubric.rubric_version
+            and self.decision_policy_version == active_rubric.decision_policy_version
+        ):
+            recomputed = decide_image_eval_batch(observations, active_rubric)
+            if recomputed != self.decision:
+                raise ValueError("generated visual eval decision does not match observations")
+        if self.decision.decision is ImageEvalDecisionKind.UNAVAILABLE:
+            if self.provider is not None or self.model is not None:
+                raise ValueError("unavailable generated visual eval cannot claim provider identity")
+            if any(
+                item.status is not ImageEvalObservationStatus.UNAVAILABLE for item in observations
+            ):
+                raise ValueError("unavailable generated visual eval must be wholly unavailable")
+        elif not self.provider or not self.model:
+            raise ValueError("available generated visual eval requires provider identity")
+        object.__setattr__(self, "observations", observations)
+
+    @property
+    def issue_codes(self) -> tuple[str, ...]:
+        return tuple(code.value for code in self.decision.reason_codes)
+
+
+def generated_visual_eval_record_fingerprint(
+    *,
+    generated_visual_id: UUID,
+    run_id: UUID,
+    result: OfficialAccountGeneratedVisualEvalResult,
+) -> str:
+    """Derive one immutable record identity from normalized, content-bearing fields."""
+
+    observations = tuple(
+        item.model_dump(mode="json")
+        for item in sorted(result.observations, key=lambda item: item.dimension.value)
+    )
+    return fingerprint(
+        "official-account-generated-visual-eval-record-v1",
+        generated_visual_id,
+        run_id,
+        result.publication_sha256,
+        result.evaluator_version,
+        result.audit_prompt_version,
+        result.rubric_version,
+        result.decision_policy_version,
+        result.request_fingerprint,
+        result.provider,
+        result.model,
+        observations,
+        result.decision.model_dump(mode="json"),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StoredOfficialAccountGeneratedVisualEval:
+    id: UUID
+    generated_visual_id: UUID
+    run_id: UUID
+    record_fingerprint: str
+    result: OfficialAccountGeneratedVisualEvalResult
+    completed_at: datetime
+
+    def __post_init__(self) -> None:
+        expected = generated_visual_eval_record_fingerprint(
+            generated_visual_id=self.generated_visual_id,
+            run_id=self.run_id,
+            result=self.result,
+        )
+        if self.record_fingerprint != expected:
+            raise ValueError("generated visual eval record fingerprint changed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,6 +577,12 @@ class OfficialAccountRunRepository(Protocol):
         run_id: UUID,
     ) -> tuple[StoredOfficialAccountGeneratedVisual, ...]: ...
 
+    async def list_generated_visual_evals(
+        self,
+        *,
+        run_id: UUID,
+    ) -> tuple[StoredOfficialAccountGeneratedVisualEval, ...]: ...
+
     async def create_generated_visual_intent(
         self,
         *,
@@ -456,6 +596,7 @@ class OfficialAccountRunRepository(Protocol):
         claimed: ClaimedOfficialAccountRun,
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
+        eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
     ) -> StoredOfficialAccountGeneratedVisual | None: ...
 
     async def fail_generated_visual(

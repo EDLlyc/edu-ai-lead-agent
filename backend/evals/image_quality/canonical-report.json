@@ -1,0 +1,893 @@
+{
+  "aggregate": {
+    "case_count": 48,
+    "critical_f1": 1.0,
+    "critical_gold_case_count": 18,
+    "critical_precision": 1.0,
+    "critical_predicted_case_count": 18,
+    "critical_recall": 1.0,
+    "critical_true_positive_count": 18,
+    "failed_case_ids": [],
+    "false_pass_count": 0,
+    "false_pass_rate": 0.0,
+    "manual_review_count": 18,
+    "manual_review_rate": 0.375,
+    "passed_count": 48,
+    "unavailable_count": 6,
+    "unavailable_rate": 0.125
+  },
+  "cases": [
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "aesthetics_hierarchy_weak"
+      ],
+      "case_id": "aesthetics-artifacts-borderline-01",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "aesthetics_hierarchy_weak"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "case_id": "aesthetics-artifacts-hard-negative-01",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "case_id": "aesthetics-artifacts-hard-negative-02",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "case_id": "aesthetics-artifacts-hard-negative-03",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "artifact_subject_malformed"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "aesthetics-artifacts-positive-01",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "aesthetics-artifacts-positive-02",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "aesthetics-artifacts-unavailable-01",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "artifact_visual_noise"
+      ],
+      "case_id": "aesthetics-artifacts-warning-01",
+      "dimension": "aesthetics_artifacts",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "artifact_visual_noise"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "diversity_scene_repetition"
+      ],
+      "case_id": "batch-diversity-borderline-01",
+      "dimension": "batch_diversity",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "diversity_scene_repetition"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "case_id": "batch-diversity-hard-negative-01",
+      "dimension": "batch_diversity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "case_id": "batch-diversity-hard-negative-02",
+      "dimension": "batch_diversity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "case_id": "batch-diversity-hard-negative-03",
+      "dimension": "batch_diversity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "diversity_exact_duplicate"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "batch-diversity-positive-01",
+      "dimension": "batch_diversity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "batch-diversity-positive-02",
+      "dimension": "batch_diversity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "batch-diversity-unavailable-01",
+      "dimension": "batch_diversity",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "diversity_near_duplicate"
+      ],
+      "case_id": "batch-diversity-warning-01",
+      "dimension": "batch_diversity",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "diversity_near_duplicate"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "ip_identity_borderline"
+      ],
+      "case_id": "ip-identity-borderline-01",
+      "dimension": "ip_identity",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "ip_identity_borderline"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ip_character_identity_mismatch"
+      ],
+      "case_id": "ip-identity-hard-negative-01",
+      "dimension": "ip_identity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ip_character_identity_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ip_required_mark_missing"
+      ],
+      "case_id": "ip-identity-hard-negative-02",
+      "dimension": "ip_identity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ip_required_mark_missing"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ip_character_identity_mismatch"
+      ],
+      "case_id": "ip-identity-hard-negative-03",
+      "dimension": "ip_identity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ip_character_identity_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "ip-identity-positive-01",
+      "dimension": "ip_identity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "ip-identity-positive-02",
+      "dimension": "ip_identity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "ip-identity-unavailable-01",
+      "dimension": "ip_identity",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "ip_identity_borderline"
+      ],
+      "case_id": "ip-identity-warning-01",
+      "dimension": "ip_identity",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "ip_identity_borderline"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "ocr_low_confidence"
+      ],
+      "case_id": "ocr-text-borderline-01",
+      "dimension": "ocr_text",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "ocr_low_confidence"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ocr_required_text_mismatch"
+      ],
+      "case_id": "ocr-text-hard-negative-01",
+      "dimension": "ocr_text",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ocr_required_text_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ocr_forbidden_text_detected"
+      ],
+      "case_id": "ocr-text-hard-negative-02",
+      "dimension": "ocr_text",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ocr_forbidden_text_detected"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "ocr_required_text_mismatch"
+      ],
+      "case_id": "ocr-text-hard-negative-03",
+      "dimension": "ocr_text",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "ocr_required_text_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "ocr-text-positive-01",
+      "dimension": "ocr_text",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "ocr-text-positive-02",
+      "dimension": "ocr_text",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "ocr-text-unavailable-01",
+      "dimension": "ocr_text",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "ocr_low_confidence"
+      ],
+      "case_id": "ocr-text-warning-01",
+      "dimension": "ocr_text",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "ocr_low_confidence"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "layout_small_text_warning"
+      ],
+      "case_id": "publication-layout-borderline-01",
+      "dimension": "publication_layout",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "layout_small_text_warning"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "layout_required_subject_cropped"
+      ],
+      "case_id": "publication-layout-hard-negative-01",
+      "dimension": "publication_layout",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "layout_required_subject_cropped"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "layout_required_text_outside_safe_area"
+      ],
+      "case_id": "publication-layout-hard-negative-02",
+      "dimension": "publication_layout",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "layout_required_text_outside_safe_area"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "layout_required_subject_cropped"
+      ],
+      "case_id": "publication-layout-hard-negative-03",
+      "dimension": "publication_layout",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "layout_required_subject_cropped"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "publication-layout-positive-01",
+      "dimension": "publication_layout",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "publication-layout-positive-02",
+      "dimension": "publication_layout",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "publication-layout-unavailable-01",
+      "dimension": "publication_layout",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "layout_small_text_warning"
+      ],
+      "case_id": "publication-layout-warning-01",
+      "dimension": "publication_layout",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "layout_small_text_warning"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "semantic_context_ambiguous"
+      ],
+      "case_id": "semantic-faithfulness-borderline-01",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "semantic_context_ambiguous"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "borderline",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "semantic_core_entity_missing"
+      ],
+      "case_id": "semantic-faithfulness-hard-negative-01",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "semantic_core_entity_missing"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "semantic_relation_mismatch"
+      ],
+      "case_id": "semantic-faithfulness-hard-negative-02",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "semantic_relation_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "semantic_core_entity_missing"
+      ],
+      "case_id": "semantic-faithfulness-hard-negative-03",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "semantic_core_entity_missing"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "semantic-faithfulness-positive-01",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "case_id": "semantic-faithfulness-positive-02",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "case_id": "semantic-faithfulness-unavailable-01",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "semantic_context_ambiguous"
+      ],
+      "case_id": "semantic-faithfulness-warning-01",
+      "dimension": "semantic_faithfulness",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "semantic_context_ambiguous"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "matched_expected_decision": true,
+      "matched_expected_issues": true,
+      "passed": true
+    }
+  ],
+  "dataset_sha256": "4e575477d467662afab1d8c00bf68d503e7e782884cdcea34d5558bcf18e7435",
+  "dataset_version": "image-quality-eval-dataset-v1",
+  "decision_policy_version": "image-quality-decision-policy-v1",
+  "dimensions": [
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "semantic_faithfulness",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    },
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "ip_identity",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    },
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "ocr_text",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    },
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "aesthetics_artifacts",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    },
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "publication_layout",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    },
+    {
+      "available_observation_count": 7,
+      "case_count": 8,
+      "critical_gold_case_count": 3,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "batch_diversity",
+      "false_pass_count": 0,
+      "false_pass_rate": 0.0,
+      "gold_defect_case_count": 5,
+      "manual_review_count": 3,
+      "manual_review_rate": 0.375,
+      "observation_coverage": 0.875,
+      "predicted_defect_case_count": 5
+    }
+  ],
+  "disclaimer": "This provider-free baseline measures strict schema, metric aggregation, and decision-policy conformance on sanitized hand-authored fixtures. It does not measure live model quality, human agreement, production effectiveness, or calibrated image-quality thresholds.",
+  "fixture_distribution": [
+    {
+      "case_count": 12,
+      "fixture_kind": "positive"
+    },
+    {
+      "case_count": 6,
+      "fixture_kind": "warning"
+    },
+    {
+      "case_count": 6,
+      "fixture_kind": "borderline"
+    },
+    {
+      "case_count": 18,
+      "fixture_kind": "hard_negative"
+    },
+    {
+      "case_count": 6,
+      "fixture_kind": "unavailable"
+    }
+  ],
+  "rubric_sha256": "d05fe7db0babdbee1533bbed2179daaa25f4ff2bb10352d49b2339efc0ca328f",
+  "rubric_version": "image-quality-rubric-v1",
+  "schema_version": "image-quality-eval-report-v1",
+  "track": "frozen_observation_policy_contract"
+}

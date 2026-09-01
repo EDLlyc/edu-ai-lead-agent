@@ -14,6 +14,9 @@ def test_validation_adapters_are_absent_by_default_and_in_fake_mode() -> None:
         defaults = Settings(_env_file=None)
         assert factory.create_image_text_recognizer(defaults, client=client) is None
         assert factory.create_image_quality_auditor(defaults, client=client) is None
+        assert (
+            factory.create_official_account_image_quality_auditor(defaults, client=client) is None
+        )
 
         fake = Settings(
             _env_file=None,
@@ -35,6 +38,24 @@ def test_validation_adapters_are_absent_by_default_and_in_fake_mode() -> None:
         )
         assert factory.create_image_text_recognizer(image_fake, client=client) is None
         assert factory.create_image_quality_auditor(image_fake, client=client) is None
+
+        observe_fake = Settings(
+            _env_file=None,
+            official_account_local_enabled=True,
+            official_account_local_worker_enabled=True,
+            official_account_local_generated_visuals_enabled=True,
+            image_enabled=True,
+            image_provider_mode="fake",
+            image_max_attempts=1,
+            image_quality_eval_mode="observe",
+        )
+        assert (
+            factory.create_official_account_image_quality_auditor(
+                observe_fake,
+                client=client,
+            )
+            is None
+        )
 
         missing_client = image_fake.model_copy(update={"image_provider_mode": "comfly"})
         assert factory.create_image_text_recognizer(missing_client) is None

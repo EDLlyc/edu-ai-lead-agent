@@ -12,6 +12,9 @@ from app.domain.image_validation import (
 )
 from app.domain.visual_brief import VisualBrief
 
+IMAGE_QUALITY_AUDIT_PROMPT_VERSION = "image-quality-audit-prompt-v2-publication"
+IMAGE_QUALITY_AUDITOR_VERSION = "openai-compatible-image-quality-auditor-v1"
+
 
 @dataclass(frozen=True, slots=True)
 class ImageTextRecognitionRequest:
@@ -65,6 +68,9 @@ class ImageQualityAuditRequest:
     visual_brief: VisualBrief | None = None
     references: tuple[ImageReference, ...] = ()
     media_type: str = "image/png"
+    criteria: tuple[str, ...] = ()
+    prompt_version: str = IMAGE_QUALITY_AUDIT_PROMPT_VERSION
+    rubric_version: str = ""
 
     def __post_init__(self) -> None:
         _validate_image_input(self.image_bytes, self.media_type)
@@ -73,8 +79,21 @@ class ImageQualityAuditRequest:
             raise ValueError("image quality audit references are too numerous")
         if any(not reference.image_bytes for reference in self.references):
             raise ValueError("image quality audit references must contain bytes")
+        _validate_lines(self.criteria, field_name="image quality audit criteria")
+        _validate_text(
+            self.prompt_version,
+            field_name="image quality audit prompt version",
+            maximum=80,
+        )
+        _validate_text(
+            self.rubric_version,
+            field_name="image quality audit rubric version",
+            maximum=80,
+            required=False,
+        )
         object.__setattr__(self, "media_type", normalize_image_media_type(self.media_type))
         object.__setattr__(self, "references", tuple(self.references))
+        object.__setattr__(self, "criteria", tuple(self.criteria))
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +168,8 @@ def _validate_text(
 
 
 __all__ = [
+    "IMAGE_QUALITY_AUDITOR_VERSION",
+    "IMAGE_QUALITY_AUDIT_PROMPT_VERSION",
     "ImageQualityAuditIssue",
     "ImageQualityAuditRequest",
     "ImageQualityAuditResult",

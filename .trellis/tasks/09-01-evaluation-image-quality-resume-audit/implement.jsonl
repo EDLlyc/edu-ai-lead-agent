@@ -1,1 +1,10 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/tasks/09-01-evaluation-image-quality-resume-audit/research/evaluation-image-audit.md","reason":"实施时保持指标适用边界、人工校准和简历证据口径"}
+{"file":".trellis/tasks/09-01-evaluation-image-quality-resume-audit/design.md","reason":"实现 ImageEval schema、最终字节门禁和 offline/live 双轨架构"}
+{"file":".trellis/tasks/09-01-evaluation-image-quality-resume-audit/implement.md","reason":"按阶段控制 MVP 范围与验收证据"}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"保持图片生成链路的真实能力声明和发布边界"}
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"保持最终图片 lineage、audit 状态和机器交接契约"}
+{"file":".trellis/spec/backend/visual-diversity.md","reason":"扩展重复度与批次多样性时保持现有门禁语义"}
+{"file":".trellis/spec/backend/visual-retrieval.md","reason":"区分多模态检索契约与图片内容质量评测"}
+{"file":".trellis/spec/frontend/official-account-editor-handoff.md","reason":"实现 viewport 截图、可读性和交付检查时遵守前端契约"}
+{"file":".trellis/spec/backend/image-quality-evaluation.md","reason":"复用已固化的图片评测 schema、observer、事务与 handoff 实施契约"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"实现并验证 Alembic 0041 与 PostgreSQL 约束"}

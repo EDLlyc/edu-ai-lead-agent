@@ -1,0 +1,147 @@
+{
+  "schema_version": "image-quality-eval-rubric-v1",
+  "rubric_version": "image-quality-rubric-v1",
+  "decision_policy_version": "image-quality-decision-policy-v1",
+  "dimensions": [
+    {
+      "dimension": "semantic_faithfulness",
+      "description": "Required entities, actions, counts, and relationships are present without contradicting the visual brief."
+    },
+    {
+      "dimension": "ip_identity",
+      "description": "Approved character identity, distinctive marks, and role assignment remain recognizable and unconfused."
+    },
+    {
+      "dimension": "ocr_text",
+      "description": "Required visible text is exact and ordered, while forbidden or unexpected text is absent."
+    },
+    {
+      "dimension": "aesthetics_artifacts",
+      "description": "Subjects and scientific objects are structurally plausible, legible, and free from material rendering artifacts."
+    },
+    {
+      "dimension": "publication_layout",
+      "description": "Final encoded publication bytes retain required subjects and text inside the reviewed safe area."
+    },
+    {
+      "dimension": "batch_diversity",
+      "description": "A publication batch avoids exact or near duplicates while preserving identity consistency."
+    }
+  ],
+  "issues": [
+    {
+      "code": "semantic_core_entity_missing",
+      "dimension": "semantic_faithfulness",
+      "severity": "critical",
+      "description": "A core topic entity required by the case-specific criteria is absent."
+    },
+    {
+      "code": "semantic_relation_mismatch",
+      "dimension": "semantic_faithfulness",
+      "severity": "critical",
+      "description": "Required entities are present but their action or relationship contradicts the criteria."
+    },
+    {
+      "code": "semantic_context_ambiguous",
+      "dimension": "semantic_faithfulness",
+      "severity": "warning",
+      "description": "The scene is broadly relevant but does not make a non-critical context unambiguous."
+    },
+    {
+      "code": "ip_character_identity_mismatch",
+      "dimension": "ip_identity",
+      "severity": "critical",
+      "description": "A required approved character is replaced, swapped, or no longer recognizable."
+    },
+    {
+      "code": "ip_required_mark_missing",
+      "dimension": "ip_identity",
+      "severity": "critical",
+      "description": "A distinctive identity mark required by the criteria is missing or materially altered."
+    },
+    {
+      "code": "ip_identity_borderline",
+      "dimension": "ip_identity",
+      "severity": "warning",
+      "description": "Identity evidence is incomplete or borderline and requires human inspection."
+    },
+    {
+      "code": "ocr_required_text_mismatch",
+      "dimension": "ocr_text",
+      "severity": "critical",
+      "description": "Required visible text is missing, duplicated, misspelled, or out of order."
+    },
+    {
+      "code": "ocr_forbidden_text_detected",
+      "dimension": "ocr_text",
+      "severity": "critical",
+      "description": "Forbidden, unexpected, watermark, or machine-like text is visible."
+    },
+    {
+      "code": "ocr_low_confidence",
+      "dimension": "ocr_text",
+      "severity": "warning",
+      "description": "Text recognition confidence is insufficient for automatic acceptance."
+    },
+    {
+      "code": "artifact_subject_malformed",
+      "dimension": "aesthetics_artifacts",
+      "severity": "critical",
+      "description": "A subject or scientific object has a material structural defect."
+    },
+    {
+      "code": "artifact_visual_noise",
+      "dimension": "aesthetics_artifacts",
+      "severity": "warning",
+      "description": "Visible noise, seams, halos, or texture artifacts reduce publication quality."
+    },
+    {
+      "code": "aesthetics_hierarchy_weak",
+      "dimension": "aesthetics_artifacts",
+      "severity": "warning",
+      "description": "The scene remains usable but hierarchy or focus needs human review."
+    },
+    {
+      "code": "layout_required_subject_cropped",
+      "dimension": "publication_layout",
+      "severity": "critical",
+      "description": "Final publication cropping removes a required subject or material action."
+    },
+    {
+      "code": "layout_required_text_outside_safe_area",
+      "dimension": "publication_layout",
+      "severity": "critical",
+      "description": "Required text is clipped or outside the reviewed publication safe area."
+    },
+    {
+      "code": "layout_small_text_warning",
+      "dimension": "publication_layout",
+      "severity": "warning",
+      "description": "Visible text remains present but may be too small at the target viewport."
+    },
+    {
+      "code": "diversity_exact_duplicate",
+      "dimension": "batch_diversity",
+      "severity": "critical",
+      "description": "The batch contains an exact publication-byte or approved exact-content duplicate."
+    },
+    {
+      "code": "diversity_near_duplicate",
+      "dimension": "batch_diversity",
+      "severity": "warning",
+      "description": "Two images are perceptually close enough to require a diversity review."
+    },
+    {
+      "code": "diversity_scene_repetition",
+      "dimension": "batch_diversity",
+      "severity": "warning",
+      "description": "The batch repeats scene, camera, or action axes despite different bytes."
+    },
+    {
+      "code": "provider_audit_unclassified",
+      "dimension": "aesthetics_artifacts",
+      "severity": "warning",
+      "description": "A provider returned a bounded issue outside the closed taxonomy; manual review is required."
+    }
+  ]
+}

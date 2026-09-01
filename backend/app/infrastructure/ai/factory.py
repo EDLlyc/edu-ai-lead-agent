@@ -204,6 +204,20 @@ def create_image_quality_auditor(
     )
 
 
+def create_official_account_image_quality_auditor(
+    settings: Settings, *, client: httpx.AsyncClient | None = None
+) -> ImageQualityAuditor | None:
+    """Resolve the final-publication observer from its independent off/observe switch."""
+
+    if settings.image_quality_eval_mode != "observe":
+        return None
+    return _create_image_validation_provider(
+        settings,
+        client=client,
+        provider_class=OpenAICompatibleImageQualityAuditor,
+    )
+
+
 def _create_image_validation_provider(
     settings: Settings,
     *,

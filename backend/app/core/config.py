@@ -267,6 +267,7 @@ class Settings(BaseSettings):
     official_account_local_generated_visual_prompt_version: str = (
         OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
     )
+    image_quality_eval_mode: Literal["off", "observe"] = "off"
     official_account_local_default_author: str = Field(
         default="赛先生", min_length=1, max_length=80
     )
@@ -651,6 +652,11 @@ class Settings(BaseSettings):
                 != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
             ):
                 raise ValueError("official-account generated visual version bundle is unsupported")
+        if (
+            self.image_quality_eval_mode == "observe"
+            and not self.official_account_local_generated_visuals_enabled
+        ):
+            raise ValueError("official-account image quality observe requires generated visuals")
         if (
             self.content_enabled
             and self.content_llm_rerank_enabled

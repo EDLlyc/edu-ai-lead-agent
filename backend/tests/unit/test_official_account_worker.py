@@ -4,14 +4,21 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from io import BytesIO
+from typing import Literal
 from uuid import UUID, uuid4
 
 import pytest
 from app.application.ports.image_generation import ImageGenerationRequest
+from app.application.ports.image_validation import (
+    ImageQualityAuditor,
+    ImageQualityAuditRequest,
+    ImageQualityAuditResult,
+)
 from app.application.ports.official_account_local import (
     ClaimedOfficialAccountRun,
     OfficialAccountAuditResult,
     OfficialAccountDraftResult,
+    OfficialAccountGeneratedVisualEvalResult,
     OfficialAccountGeneratedVisualPlan,
     OfficialAccountGeneratedVisualResult,
     OfficialAccountGenerationResult,
@@ -26,7 +33,13 @@ from app.application.ports.official_account_local import (
 from app.application.services import official_account_local as official_account_service
 from app.application.services.official_account_local import OfficialAccountLocalExecutor
 from app.core.config import Settings
-from app.core.errors import ImageProviderTimeoutError, LocalDraftResultUnknownError
+from app.core.errors import (
+    ImageProviderTimeoutError,
+    InvalidProviderOutputError,
+    LocalDraftResultUnknownError,
+)
+from app.domain.image_quality_eval import ImageEvalDecisionKind
+from app.domain.image_validation import ImageQualityAuditIssue
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_VERSION,
     OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
@@ -158,6 +171,87 @@ def test_settings_allow_a_historical_official_account_bundle_while_disabled() ->
     )
 
     assert settings.official_account_local_enabled is False
+
+
+def test_image_quality_eval_mode_is_independent_and_observe_requires_generated_visuals() -> None:
+    material_only = Settings(
+        _env_file=None,
+        image_quality_audit_enabled=True,
+    )
+    assert material_only.image_quality_eval_mode == "off"
+
+    with pytest.raises(ValueError, match="observe requires generated visuals"):
+        Settings(_env_file=None, image_quality_eval_mode="observe")
+
+    observe = Settings(
+        _env_file=None,
+        official_account_local_enabled=True,
+        official_account_local_worker_enabled=True,
+        official_account_local_generated_visuals_enabled=True,
+        image_enabled=True,
+        image_provider_mode="fake",
+        image_max_attempts=1,
+        image_quality_eval_mode="observe",
+    )
+    assert observe.image_quality_eval_mode == "observe"
+
+
+def test_provider_audit_issues_are_normalized_per_dimension_and_unknowns_require_review() -> None:
+    generated_visual_id = uuid4()
+    normalized = official_account_service._available_generated_visual_eval(
+        generated_visual_id=generated_visual_id,
+        publication_sha256="a" * 64,
+        request_fingerprint="b" * 64,
+        result=ImageQualityAuditResult(
+            accepted=False,
+            provider="openai-compatible",
+            model="vision-model",
+            request_fingerprint="b" * 64,
+            issues=(
+                ImageQualityAuditIssue(
+                    code="semantic_core_entity_missing",
+                    severity="error",
+                ),
+                ImageQualityAuditIssue(code="ocr_low_confidence", severity="warning"),
+            ),
+        ),
+    )
+    unknown = official_account_service._available_generated_visual_eval(
+        generated_visual_id=generated_visual_id,
+        publication_sha256="a" * 64,
+        request_fingerprint="b" * 64,
+        result=ImageQualityAuditResult(
+            accepted=False,
+            provider="openai-compatible",
+            model="vision-model",
+            request_fingerprint="b" * 64,
+            issues=(ImageQualityAuditIssue(code="identity_mismatch", severity="error"),),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="severity changed"):
+        official_account_service._available_generated_visual_eval(
+            generated_visual_id=generated_visual_id,
+            publication_sha256="a" * 64,
+            request_fingerprint="b" * 64,
+            result=ImageQualityAuditResult(
+                accepted=False,
+                provider="openai-compatible",
+                model="vision-model",
+                request_fingerprint="b" * 64,
+                issues=(
+                    ImageQualityAuditIssue(
+                        code="semantic_core_entity_missing",
+                        severity="warning",
+                    ),
+                ),
+            ),
+        )
+
+    assert normalized.decision.decision is ImageEvalDecisionKind.REJECTED
+    assert sum(bool(item.issues) for item in normalized.observations) == 2
+    assert unknown.decision.decision is ImageEvalDecisionKind.MANUAL_REVIEW
+    assert unknown.issue_codes == ("provider_audit_unclassified",)
 
 
 def test_cli_identity_carries_the_complete_current_visual_version_bundle() -> None:
@@ -491,6 +585,7 @@ class _GeneratedVisualRepository(_MemoryRepository):
             )
         )
         self.generated: dict[int, StoredOfficialAccountGeneratedVisual] = {}
+        self.generated_evals: dict[int, OfficialAccountGeneratedVisualEvalResult] = {}
 
     async def claim(
         self,
@@ -548,6 +643,7 @@ class _GeneratedVisualRepository(_MemoryRepository):
         claimed: ClaimedOfficialAccountRun,
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
+        eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
     ) -> StoredOfficialAccountGeneratedVisual:
         assert claimed.run_id == self.run_id
         current = self.generated[plan.ordinal]
@@ -563,6 +659,9 @@ class _GeneratedVisualRepository(_MemoryRepository):
             completed_at=datetime.now(UTC),
         )
         self.generated[plan.ordinal] = stored
+        if eval_result is not None:
+            assert eval_result.publication_sha256 == result.sha256
+            self.generated_evals[plan.ordinal] = eval_result
         return stored
 
     async def fail_generated_visual(
@@ -699,6 +798,76 @@ class _MemoryGeneratedVisualStore:
 
     async def put_immutable(self, body: bytes, *, media_type: str = "image/png") -> None:
         self.writes.append((body, media_type))
+
+
+class _AcceptingImageQualityAuditor:
+    def __init__(self) -> None:
+        self.requests: list[ImageQualityAuditRequest] = []
+
+    async def audit(self, request: ImageQualityAuditRequest) -> ImageQualityAuditResult:
+        self.requests.append(request)
+        assert request.media_type == "image/jpeg"
+        with Image.open(BytesIO(request.image_bytes)) as publication:
+            publication.load()
+            assert publication.format == "JPEG"
+            assert publication.size == (1_536, 1_024)
+        assert len(request.criteria) == 5
+        assert request.references[0].image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+        assert request.references[0].sha256 == sha256(request.references[0].image_bytes).hexdigest()
+        assert request.references[0].provider_input_sha256 == request.references[0].sha256
+        return ImageQualityAuditResult(
+            accepted=True,
+            provider="openai-compatible",
+            model="vision-model",
+            request_fingerprint=request.request_fingerprint,
+        )
+
+
+class _FailingImageQualityAuditor:
+    def __init__(self, *, unexpected: bool = False) -> None:
+        self.calls = 0
+        self.unexpected = unexpected
+
+    async def audit(self, request: ImageQualityAuditRequest) -> ImageQualityAuditResult:
+        del request
+        self.calls += 1
+        if self.unexpected:
+            raise RuntimeError("raw provider detail must remain private")
+        raise InvalidProviderOutputError(("invalid_schema",))
+
+
+def _generated_visual_executor(
+    *,
+    repository: _GeneratedVisualRepository,
+    catalog: _ApprovedCatalog,
+    image_generator: _CountingFakeImageGenerator,
+    visual_store: _MemoryGeneratedVisualStore,
+    image_quality_eval_mode: Literal["off", "observe"] = "off",
+    image_quality_auditor: ImageQualityAuditor | None = None,
+) -> OfficialAccountLocalExecutor:
+    return OfficialAccountLocalExecutor(
+        repository=repository,
+        fixture_generator=DeterministicFakeOfficialAccountArticleGenerator(),
+        fixture_auditor=DeterministicFakeOfficialAccountArticleAuditor(),
+        live_generator=DeterministicFakeOfficialAccountArticleGenerator(),
+        live_auditor=DeterministicFakeOfficialAccountArticleAuditor(),
+        media_adapter=LocalOfficialAccountMediaAdapter(catalog),
+        draft_adapter=LocalOfficialAccountDraftAdapter(),
+        lease_seconds=60,
+        heartbeat_seconds=10,
+        max_attempts=1,
+        retry_base_seconds=0,
+        generation_max_output_tokens=8_192,
+        audit_max_output_tokens=1_024,
+        catalog_media_provider=catalog,
+        generated_visuals_enabled=True,
+        image_generator=image_generator,
+        generated_visual_store=visual_store,
+        generated_visual_provider="fake",
+        generated_visual_model="gpt-image-2",
+        image_quality_eval_mode=image_quality_eval_mode,
+        image_quality_auditor=image_quality_auditor,
+    )
 
 
 @pytest.mark.asyncio
@@ -855,6 +1024,7 @@ async def test_enabled_live_worker_generates_section_visuals_from_approved_catal
     catalog = _ApprovedCatalog()
     image_generator = _CountingFakeImageGenerator()
     visual_store = _MemoryGeneratedVisualStore()
+    image_quality_auditor = _AcceptingImageQualityAuditor()
     executor = OfficialAccountLocalExecutor(
         repository=repository,
         fixture_generator=DeterministicFakeOfficialAccountArticleGenerator(),
@@ -875,6 +1045,8 @@ async def test_enabled_live_worker_generates_section_visuals_from_approved_catal
         generated_visual_store=visual_store,
         generated_visual_provider="fake",
         generated_visual_model="gpt-image-2",
+        image_quality_eval_mode="observe",
+        image_quality_auditor=image_quality_auditor,
     )
 
     assert await executor.execute_next("generated-visual-worker") is True
@@ -884,6 +1056,14 @@ async def test_enabled_live_worker_generates_section_visuals_from_approved_catal
     assert catalog.reference_reads == 3
     assert len(image_generator.requests) == 3
     assert len(visual_store.writes) == 3
+    assert len(image_quality_auditor.requests) == 3
+    assert tuple(repository.generated_evals) == (0, 1, 2)
+    assert all(
+        result.decision.decision is ImageEvalDecisionKind.ACCEPTED
+        and len(result.observations) == 5
+        and result.publication_sha256 == repository.generated[ordinal].sha256
+        for ordinal, result in repository.generated_evals.items()
+    )
     assert all(media_type == "image/jpeg" for _body, media_type in visual_store.writes)
     for body, _media_type in visual_store.writes:
         with Image.open(BytesIO(body)) as publication:
@@ -922,6 +1102,76 @@ async def test_enabled_live_worker_generates_section_visuals_from_approved_catal
         ).selection_reason_code
         == "stable_fallback"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ("missing", "typed", "unexpected"))
+async def test_observe_unavailable_never_blocks_ready_visuals(failure_kind: str) -> None:
+    repository = _GeneratedVisualRepository()
+    catalog = _ApprovedCatalog()
+    image_generator = _CountingFakeImageGenerator()
+    visual_store = _MemoryGeneratedVisualStore()
+    failing = (
+        _FailingImageQualityAuditor(unexpected=failure_kind == "unexpected")
+        if failure_kind != "missing"
+        else None
+    )
+    executor = _generated_visual_executor(
+        repository=repository,
+        catalog=catalog,
+        image_generator=image_generator,
+        visual_store=visual_store,
+        image_quality_eval_mode="observe",
+        image_quality_auditor=failing,
+    )
+
+    assert await executor.execute_next(f"unavailable-{failure_kind}-worker") is True
+
+    assert repository.failure is None
+    assert repository.draft is not None
+    assert len(repository.generated_evals) == 3
+    assert all(
+        result.decision.decision is ImageEvalDecisionKind.UNAVAILABLE
+        and len(result.observations) == 5
+        for result in repository.generated_evals.values()
+    )
+    if failing is not None:
+        assert failing.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_observe_does_not_backfill_existing_ready_visuals() -> None:
+    repository = _GeneratedVisualRepository()
+    catalog = _ApprovedCatalog()
+    image_generator = _CountingFakeImageGenerator()
+    visual_store = _MemoryGeneratedVisualStore()
+    off_executor = _generated_visual_executor(
+        repository=repository,
+        catalog=catalog,
+        image_generator=image_generator,
+        visual_store=visual_store,
+    )
+
+    assert await off_executor.execute_next("off-worker") is True
+    assert repository.draft is not None
+    assert repository.generated_evals == {}
+    generation_calls = len(image_generator.requests)
+
+    repository.claimed = False
+    auditor = _AcceptingImageQualityAuditor()
+    observe_executor = _generated_visual_executor(
+        repository=repository,
+        catalog=catalog,
+        image_generator=image_generator,
+        visual_store=visual_store,
+        image_quality_eval_mode="observe",
+        image_quality_auditor=auditor,
+    )
+    assert await observe_executor.execute_next("observe-recovery-worker") is True
+
+    assert len(image_generator.requests) == generation_calls
+    assert auditor.requests == []
+    assert repository.generated_evals == {}
 
 
 @pytest.mark.asyncio

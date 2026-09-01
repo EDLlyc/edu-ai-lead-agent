@@ -39,6 +39,7 @@ tests.
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |
 | [Controlled Visual Diversity](./visual-diversity.md) | Versioned 3D-brand visual planning, seven-day reservation, one perceptual repair, warning acceptance, API, and tests |
 | [Brand Multimodal Visual Retrieval](./visual-retrieval.md) | Approved-catalog image indexing, text/image query, semantic-primary selection, and deterministic fallback |
+| [Image-Quality Evaluation](./image-quality-evaluation.md) | Provider-free six-dimension policy regression plus optional final-JPEG observation, atomic persistence, and truthful handoff claims |
 | [IP Digital Asset Hub](./ip-asset-hub.md) | Intranet/no-auth dynamic upload, naming, private object storage, partial-index retrieval, download, and generation-to-library contracts |
 | [Brand Knowledge RAG](./brand-knowledge-rag.md) | Implemented private upload, immutable versions, parser safety, provider-scoped embeddings, retrieval, API, UI, and tests |
 | [WeCom Sales Delivery](./wecom-delivery.md) | Implemented reviewed material-package enqueueing, bounded Enterprise WeChat delivery, leases, idempotency, and safe provider error projection |

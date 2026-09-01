@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa: RUF001 -- Chinese punctuation is intentional in model instructions.
 import asyncio
 from dataclasses import asdict, replace
+from hashlib import sha256
 from typing import Literal, cast
 from uuid import UUID
 
@@ -13,6 +14,13 @@ from app.application.ports.image_generation import (
     ImageGenerator,
     ImageReference,
 )
+from app.application.ports.image_validation import (
+    IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+    IMAGE_QUALITY_AUDITOR_VERSION,
+    ImageQualityAuditor,
+    ImageQualityAuditRequest,
+    ImageQualityAuditResult,
+)
 from app.application.ports.official_account_local import (
     ClaimedOfficialAccountRun,
     OfficialAccountArticleAuditor,
@@ -21,6 +29,7 @@ from app.application.ports.official_account_local import (
     OfficialAccountCatalogMediaProvider,
     OfficialAccountDraftAdapter,
     OfficialAccountDraftRequest,
+    OfficialAccountGeneratedVisualEvalResult,
     OfficialAccountGeneratedVisualStore,
     OfficialAccountGenerationRequest,
     OfficialAccountMediaAdapter,
@@ -40,6 +49,7 @@ from app.application.services.official_account_visual_generation import (
     generated_visual_alt_text,
     plan_generated_body_visual,
     prepare_generated_visual_result,
+    select_generated_visual_block_anchor,
 )
 from app.core.errors import (
     AppError,
@@ -51,7 +61,28 @@ from app.core.errors import (
     ProviderIdentityMismatchError,
     provider_validation_issues_metadata,
 )
-from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V1_PNG_ONLY
+from app.domain.image_provider_input import (
+    IMAGE_REFERENCE_INPUT_V1_PNG_ONLY,
+    normalize_image_provider_reference,
+)
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_DECISION_POLICY_VERSION,
+    IMAGE_EVAL_RUBRIC_VERSION,
+    IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
+    ImageEvalDimension,
+    ImageEvalEvaluatorKind,
+    ImageEvalIssue,
+    ImageEvalIssueCode,
+    ImageEvalObservation,
+    ImageEvalObservationStatus,
+    ImageEvalSeverity,
+    ImageEvalUnavailableReason,
+    active_image_eval_rubric,
+    build_image_eval_issue,
+    build_image_eval_observation,
+    decide_image_eval_batch,
+    issue_contract,
+)
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION,
     OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V3_VERSION,
@@ -173,6 +204,27 @@ def audit_request_fingerprint(request: OfficialAccountAuditRequest) -> str:
         request.identity.auditor_prompt_version,
         request.identity.audit_schema_version,
         request.identity.rule_version,
+    )
+
+
+def generated_visual_eval_request_fingerprint(
+    *,
+    generated_visual_id: UUID,
+    plan_request_fingerprint: str,
+    publication_sha256: str,
+    reference_input_checksum: str,
+) -> str:
+    """Bind a provider observation to one intent and its final publication bytes."""
+
+    return fingerprint(
+        "official-account-generated-visual-eval-v1",
+        generated_visual_id,
+        plan_request_fingerprint,
+        publication_sha256,
+        reference_input_checksum,
+        IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+        IMAGE_EVAL_RUBRIC_VERSION,
+        IMAGE_EVAL_DECISION_POLICY_VERSION,
     )
 
 
@@ -720,7 +772,11 @@ class OfficialAccountLocalExecutor:
         generated_visual_max_bytes: int = 20 * 1024 * 1024,
         generated_visual_provider: Literal["fake", "toapis", "comfly"] | None = None,
         generated_visual_model: str | None = None,
+        image_quality_eval_mode: Literal["off", "observe"] = "off",
+        image_quality_auditor: ImageQualityAuditor | None = None,
     ) -> None:
+        if image_quality_eval_mode not in {"off", "observe"}:
+            raise ValueError("image quality eval mode must be off or observe")
         self._repository = repository
         self._fixture_generator = fixture_generator
         self._fixture_auditor = fixture_auditor
@@ -743,6 +799,8 @@ class OfficialAccountLocalExecutor:
         self._generated_visual_max_bytes = generated_visual_max_bytes
         self._generated_visual_provider = generated_visual_provider
         self._generated_visual_model = generated_visual_model
+        self._image_quality_eval_mode = image_quality_eval_mode
+        self._image_quality_auditor = image_quality_auditor
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -1463,11 +1521,30 @@ class OfficialAccountLocalExecutor:
                     prepared.image_bytes,
                     media_type=prepared.result.media_type,
                 )
-                stored = await self._repository.persist_generated_visual(
-                    claimed=claimed,
-                    plan=plan,
-                    result=prepared.result,
+                eval_result = (
+                    await self._observe_generated_visual_quality(
+                        stored=stored,
+                        article=article,
+                        reference_bytes=reference_bytes,
+                        publication_bytes=prepared.image_bytes,
+                        publication_media_type=prepared.result.media_type,
+                    )
+                    if self._image_quality_eval_mode == "observe"
+                    else None
                 )
+                if eval_result is None:
+                    stored = await self._repository.persist_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        result=prepared.result,
+                    )
+                else:
+                    stored = await self._repository.persist_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        result=prepared.result,
+                        eval_result=eval_result,
+                    )
                 if stored is None:
                     return None
             except OfficialAccountGeneratedVisualResultUnknownError:
@@ -1497,6 +1574,127 @@ class OfficialAccountLocalExecutor:
             generated.append(_generated_visual_source_media(stored=stored, article=article))
         return tuple(generated)
 
+    async def _observe_generated_visual_quality(
+        self,
+        *,
+        stored: StoredOfficialAccountGeneratedVisual,
+        article: StoredOfficialAccountArticle,
+        reference_bytes: bytes,
+        publication_bytes: bytes,
+        publication_media_type: str,
+    ) -> OfficialAccountGeneratedVisualEvalResult:
+        """Observe final JPEG bytes without changing the publication decision."""
+
+        plan = stored.plan
+        reference_input_checksum = (
+            plan.reference_input_checksum or plan.reference_publication_checksum
+        )
+        request_fingerprint = generated_visual_eval_request_fingerprint(
+            generated_visual_id=stored.id,
+            plan_request_fingerprint=plan.request_fingerprint,
+            publication_sha256=_sha256_hex(publication_bytes),
+            reference_input_checksum=reference_input_checksum,
+        )
+        if self._image_quality_auditor is None:
+            return _unavailable_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                reason=ImageEvalUnavailableReason.PROVIDER_UNAVAILABLE,
+            )
+
+        try:
+            normalized_reference = normalize_image_provider_reference(
+                reference_bytes,
+                version=plan.reference_input_version or "",
+            )
+            if normalized_reference.sha256 != plan.reference_input_checksum:
+                raise ValueError("generated visual audit reference checksum changed")
+        except ValueError:
+            return _unavailable_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                reason=ImageEvalUnavailableReason.INVALID_OUTPUT,
+            )
+
+        anchor = select_generated_visual_block_anchor(
+            article=article,
+            section_index=plan.section_index,
+        )
+        if (
+            anchor.block_index != plan.block_index
+            or anchor.block_kind != plan.block_kind
+            or anchor.block_fingerprint != plan.block_fingerprint
+        ):
+            raise ValueError("generated visual audit block anchor changed")
+        request = ImageQualityAuditRequest(
+            image_bytes=publication_bytes,
+            media_type=publication_media_type,
+            request_fingerprint=request_fingerprint,
+            references=(
+                ImageReference(
+                    role="approved_ip_reference",
+                    asset_id=plan.reference_asset_ref,
+                    filename=f"official-account-reference-{plan.reference_asset_ref}.png",
+                    sha256=normalized_reference.sha256,
+                    image_bytes=normalized_reference.image_png,
+                    selection_reason="approved_catalog_identity_reference",
+                    input_normalization_version=normalized_reference.version,
+                    provider_input_sha256=normalized_reference.sha256,
+                ),
+            ),
+            criteria=_generated_visual_audit_criteria(anchor.scene_text),
+            prompt_version=IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+            rubric_version=IMAGE_EVAL_RUBRIC_VERSION,
+        )
+        try:
+            result = await self._image_quality_auditor.audit(request)
+            if (
+                result.request_fingerprint != request_fingerprint
+                or not result.provider.strip()
+                or not result.model.strip()
+            ):
+                raise ProviderIdentityMismatchError()
+        except AppError as error:
+            return _unavailable_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                reason=_image_eval_unavailable_reason(error),
+            )
+        except Exception:
+            # Observe mode is evidence-only. A buggy optional adapter must not turn an otherwise
+            # valid final publication into a failed generated visual, and its raw exception text
+            # must not cross the provider boundary into logs or durable state.
+            logger.warning(
+                "official_account_generated_visual_eval_unavailable",
+                run_id=str(plan.run_id),
+                generated_visual_id=str(stored.id),
+                ordinal=plan.ordinal,
+                reason="unexpected_evaluator_error",
+            )
+            return _unavailable_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                reason=ImageEvalUnavailableReason.PROVIDER_UNAVAILABLE,
+            )
+        try:
+            return _available_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                result=result,
+            )
+        except ValueError:
+            return _unavailable_generated_visual_eval(
+                generated_visual_id=stored.id,
+                publication_sha256=_sha256_hex(publication_bytes),
+                request_fingerprint=request_fingerprint,
+                reason=ImageEvalUnavailableReason.INVALID_OUTPUT,
+            )
+
     async def _heartbeat_loop(
         self,
         claimed: ClaimedOfficialAccountRun,
@@ -1512,6 +1710,143 @@ class OfficialAccountLocalExecutor:
                     lease_seconds=self._lease_seconds,
                 ):
                     return
+
+
+def _sha256_hex(value: bytes) -> str:
+    return sha256(value).hexdigest()
+
+
+def _generated_visual_audit_criteria(scene_text: str) -> tuple[str, ...]:
+    normalized_scene = " ".join(scene_text.split())[:120]
+    return (
+        f"Semantic: the illustration must faithfully depict this article scene: {normalized_scene}",
+        "IP identity: the approved Xiaosai / Sai Xiansheng protagonist must remain recognizable.",
+        "OCR/text: no words, letters, numbers, logos, QR codes, UI, or watermarks are allowed.",
+        "Artifacts: subjects and scientific objects must be coherent and free of visible defects.",
+        "Layout: the final 1536x1024 crop must keep the protagonist and essential action in view.",
+    )
+
+
+def _image_eval_unavailable_reason(error: AppError) -> ImageEvalUnavailableReason:
+    if isinstance(error, ProviderIdentityMismatchError):
+        return ImageEvalUnavailableReason.IDENTITY_MISMATCH
+    if isinstance(error, InvalidProviderOutputError):
+        return ImageEvalUnavailableReason.INVALID_OUTPUT
+    return ImageEvalUnavailableReason.PROVIDER_UNAVAILABLE
+
+
+def _unavailable_generated_visual_eval(
+    *,
+    generated_visual_id: UUID,
+    publication_sha256: str,
+    request_fingerprint: str,
+    reason: ImageEvalUnavailableReason,
+) -> OfficialAccountGeneratedVisualEvalResult:
+    subject_ref = f"generated-visual:{generated_visual_id}"
+    observations = tuple(
+        build_image_eval_observation(
+            observation_id=f"provider-audit:{dimension.value}",
+            subject_ref=subject_ref,
+            publication_sha256=publication_sha256,
+            dimension=dimension,
+            status=ImageEvalObservationStatus.UNAVAILABLE,
+            evaluator_kind=ImageEvalEvaluatorKind.PROVIDER_AUDIT,
+            evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+            request_fingerprint=request_fingerprint,
+            unavailable_reason=reason,
+        )
+        for dimension in IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS
+    )
+    decision = decide_image_eval_batch(observations, active_image_eval_rubric())
+    return OfficialAccountGeneratedVisualEvalResult(
+        publication_sha256=publication_sha256,
+        evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+        audit_prompt_version=IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+        rubric_version=IMAGE_EVAL_RUBRIC_VERSION,
+        decision_policy_version=IMAGE_EVAL_DECISION_POLICY_VERSION,
+        request_fingerprint=request_fingerprint,
+        observations=observations,
+        decision=decision,
+    )
+
+
+def _available_generated_visual_eval(
+    *,
+    generated_visual_id: UUID,
+    publication_sha256: str,
+    request_fingerprint: str,
+    result: ImageQualityAuditResult,
+) -> OfficialAccountGeneratedVisualEvalResult:
+    normalized_issues: dict[ImageEvalIssueCode, ImageEvalIssue] = {}
+    for index, provider_issue in enumerate(result.issues, start=1):
+        severity = (
+            ImageEvalSeverity.CRITICAL
+            if provider_issue.severity == "error"
+            else ImageEvalSeverity.WARNING
+        )
+        try:
+            code = ImageEvalIssueCode(provider_issue.code)
+        except ValueError:
+            issue_code: ImageEvalIssueCode | str = "provider_issue_unclassified"
+            dimension = ImageEvalDimension.AESTHETICS_ARTIFACTS
+            severity = ImageEvalSeverity.WARNING
+        else:
+            dimension, expected_severity = issue_contract(code)
+            if severity is not expected_severity:
+                raise ValueError("provider issue severity changed the closed taxonomy")
+            issue_code = code
+        issue = build_image_eval_issue(
+            code=issue_code,
+            dimension=dimension,
+            severity=severity,
+            evidence_ref=f"provider-audit-issue:{index}",
+        )
+        normalized_issues.setdefault(issue.code, issue)
+    if not result.accepted and not normalized_issues:
+        generic = build_image_eval_issue(
+            code="provider_rejected_without_issue",
+            dimension=ImageEvalDimension.AESTHETICS_ARTIFACTS,
+            severity=ImageEvalSeverity.WARNING,
+            evidence_ref="provider-audit-issue:1",
+        )
+        normalized_issues[generic.code] = generic
+
+    subject_ref = f"generated-visual:{generated_visual_id}"
+    observations: list[ImageEvalObservation] = []
+    for dimension in IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS:
+        issues = tuple(
+            issue for issue in normalized_issues.values() if issue.dimension is dimension
+        )
+        observations.append(
+            build_image_eval_observation(
+                observation_id=f"provider-audit:{dimension.value}",
+                subject_ref=subject_ref,
+                publication_sha256=publication_sha256,
+                dimension=dimension,
+                status=ImageEvalObservationStatus.AVAILABLE,
+                evaluator_kind=ImageEvalEvaluatorKind.PROVIDER_AUDIT,
+                evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+                provider=result.provider,
+                model=result.model,
+                request_fingerprint=request_fingerprint,
+                evidence_refs=tuple(issue.evidence_ref for issue in issues),
+                issues=issues,
+            )
+        )
+    frozen_observations = tuple(observations)
+    decision = decide_image_eval_batch(frozen_observations, active_image_eval_rubric())
+    return OfficialAccountGeneratedVisualEvalResult(
+        publication_sha256=publication_sha256,
+        evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+        audit_prompt_version=IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+        rubric_version=IMAGE_EVAL_RUBRIC_VERSION,
+        decision_policy_version=IMAGE_EVAL_DECISION_POLICY_VERSION,
+        request_fingerprint=request_fingerprint,
+        observations=frozen_observations,
+        decision=decision,
+        provider=result.provider,
+        model=result.model,
+    )
 
 
 def _validate_result_identity(

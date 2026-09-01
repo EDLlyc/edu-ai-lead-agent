@@ -18,18 +18,32 @@ from PIL import UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.ports.image_validation import (
+    IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+    IMAGE_QUALITY_AUDITOR_VERSION,
+)
 from app.application.ports.official_account_local import (
     OfficialAccountMediaResult,
     StoredOfficialAccountArticle,
     StoredOfficialAccountGeneratedVisual,
+    StoredOfficialAccountGeneratedVisualEval,
     StoredOfficialAccountManualReview,
+    generated_visual_eval_record_fingerprint,
 )
 from app.application.services import official_account_editor_handoff as v1
-from app.application.services.official_account_local import manual_review_request_fingerprint
+from app.application.services.official_account_local import (
+    generated_visual_eval_request_fingerprint,
+    manual_review_request_fingerprint,
+)
 from app.application.services.official_account_visual_generation import (
     select_generated_visual_block_anchor,
 )
 from app.core.errors import AppError
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_DECISION_POLICY_VERSION,
+    IMAGE_EVAL_RUBRIC_VERSION,
+    ImageEvalDecisionKind,
+)
 from app.domain.official_account_editor_handoff import (
     EditorHandoffCheck,
     EditorHandoffMediaAsset,
@@ -281,6 +295,7 @@ class OfficialAccountEditorHandoffV2Service:
             )
 
         generated_visuals = await self._repository.list_generated_visuals(run_id=run_id)
+        generated_visual_evals = await self._repository.list_generated_visual_evals(run_id=run_id)
         body_slot_count = (
             sum(
                 isinstance(block, ArticleImageBlock)
@@ -341,6 +356,7 @@ class OfficialAccountEditorHandoffV2Service:
                 (item.plan.request_fingerprint, item.status, item.sha256)
                 for item in generated_visuals
             ),
+            tuple(item.record_fingerprint for item in generated_visual_evals),
         )
         release = EditorHandoffRelease(
             policy=self._release_policy,
@@ -359,6 +375,7 @@ class OfficialAccountEditorHandoffV2Service:
             body_visuals = _durable_body_visual_lineages(
                 article=article,
                 generated_visuals=generated_visuals,
+                generated_visual_evals=generated_visual_evals,
                 media_rows=media_rows,
             )
             verified = await self._resolve_media(media_rows)
@@ -454,6 +471,7 @@ def _durable_body_visual_lineages(
     *,
     article: StoredOfficialAccountArticle,
     generated_visuals: tuple[StoredOfficialAccountGeneratedVisual, ...],
+    generated_visual_evals: tuple[StoredOfficialAccountGeneratedVisualEval, ...],
     media_rows: tuple[tuple[OfficialAccountPersistedMedia, OfficialAccountMediaResult], ...],
 ) -> tuple[BodyVisualLineage, ...]:
     """Project only safe V3 reference-conditioned lineage from durable ready rows."""
@@ -504,6 +522,15 @@ def _durable_body_visual_lineages(
             or visual.height != 1_024
         ):
             raise ValueError("V2 durable generated visual output is incomplete")
+        matching_evals = tuple(
+            item
+            for item in generated_visual_evals
+            if item.generated_visual_id == visual.id and item.run_id == plan.run_id
+        )
+        accepted_eval = len(matching_evals) == 1 and _is_current_accepted_visual_eval(
+            visual=visual,
+            stored_eval=matching_evals[0],
+        )
         projected.append(
             BodyVisualLineage(
                 ordinal=plan.ordinal,
@@ -554,10 +581,45 @@ def _durable_body_visual_lineages(
                 output_sha256=visual.sha256,
                 output_byte_size=visual.byte_size,
                 visible_character_labels=("xiao-sai", "sai-xiansheng"),
-                visibility_status="durable_image_audit_accepted",
+                visibility_status=(
+                    "durable_image_audit_accepted"
+                    if accepted_eval
+                    else "passed_local_visual_inspection"
+                ),
             )
         )
     return tuple(projected)
+
+
+def _is_current_accepted_visual_eval(
+    *,
+    visual: StoredOfficialAccountGeneratedVisual,
+    stored_eval: StoredOfficialAccountGeneratedVisualEval,
+) -> bool:
+    result = stored_eval.result
+    if visual.sha256 is None or visual.plan.reference_input_checksum is None:
+        return False
+    expected_request_fingerprint = generated_visual_eval_request_fingerprint(
+        generated_visual_id=visual.id,
+        plan_request_fingerprint=visual.plan.request_fingerprint,
+        publication_sha256=visual.sha256,
+        reference_input_checksum=visual.plan.reference_input_checksum,
+    )
+    expected_record_fingerprint = generated_visual_eval_record_fingerprint(
+        generated_visual_id=visual.id,
+        run_id=visual.plan.run_id,
+        result=result,
+    )
+    return bool(
+        result.decision.decision is ImageEvalDecisionKind.ACCEPTED
+        and result.publication_sha256 == visual.sha256
+        and result.evaluator_version == IMAGE_QUALITY_AUDITOR_VERSION
+        and result.audit_prompt_version == IMAGE_QUALITY_AUDIT_PROMPT_VERSION
+        and result.rubric_version == IMAGE_EVAL_RUBRIC_VERSION
+        and result.decision_policy_version == IMAGE_EVAL_DECISION_POLICY_VERSION
+        and result.request_fingerprint == expected_request_fingerprint
+        and stored_eval.record_fingerprint == expected_record_fingerprint
+    )
 
 
 def build_editor_handoff_v2_artifact(

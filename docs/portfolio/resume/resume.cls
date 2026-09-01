@@ -1,7 +1,7 @@
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesClass{resume}[2026/08/18 Self-contained public resume class]
 
-\LoadClass[UTF8,10pt,a4paper,fontset=fandol]{ctexart}
+\LoadClass[UTF8,11pt,a4paper,fontset=fandol]{ctexart}
 
 \RequirePackage{fontspec}
 \setmainfont{TeX Gyre Termes}
@@ -9,10 +9,10 @@
 
 \RequirePackage[
   a4paper,
-  left=0.10in,
-  right=0.10in,
-  top=0.04in,
-  bottom=0.12in,
+  left=0.25in,
+  right=0.25in,
+  top=0.12in,
+  bottom=0.15in,
   nohead,
   nofoot
 ]{geometry}
@@ -21,11 +21,11 @@
 \RequirePackage{enumitem}
 
 \setlength{\parindent}{0pt}
-\linespread{0.88}
+\linespread{0.93}
 \AtBeginDocument{\pagestyle{empty}}
 \setlist{noitemsep}
-\setlist[itemize]{topsep=0.15em, leftmargin=1.35pc}
-\setlist[enumerate]{topsep=0.15em, leftmargin=1.35pc}
+\setlist[itemize]{topsep=0.18em, leftmargin=1.35pc}
+\setlist[enumerate]{topsep=0.18em, leftmargin=1.35pc}
 
 \titleformat{\section}
   {\large\bfseries\raggedright}

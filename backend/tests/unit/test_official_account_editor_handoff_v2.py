@@ -18,19 +18,40 @@ from app.api.v1.routes.official_account_local import (
     _editor_handoff_service,
     read_editor_handoff,
 )
+from app.application.ports.image_validation import (
+    IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+    IMAGE_QUALITY_AUDITOR_VERSION,
+)
 from app.application.ports.official_account_local import (
+    OfficialAccountGeneratedVisualEvalResult,
     OfficialAccountGeneratedVisualPlan,
     StoredOfficialAccountGeneratedVisual,
+    StoredOfficialAccountGeneratedVisualEval,
     StoredOfficialAccountManualReview,
+    generated_visual_eval_record_fingerprint,
 )
 from app.application.services.official_account_editor_handoff_v2 import (
     OfficialAccountEditorHandoffV2Service,
+    _durable_body_visual_lineages,
     bind_editor_handoff_v2_mobile_validation,
     build_editor_handoff_v2_artifact,
 )
-from app.application.services.official_account_local import manual_review_request_fingerprint
+from app.application.services.official_account_local import (
+    generated_visual_eval_request_fingerprint,
+    manual_review_request_fingerprint,
+)
 from app.application.services.official_account_visual_generation import (
     select_generated_visual_block_anchor,
+)
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_DECISION_POLICY_VERSION,
+    IMAGE_EVAL_RUBRIC_VERSION,
+    IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
+    ImageEvalEvaluatorKind,
+    ImageEvalObservationStatus,
+    active_image_eval_rubric,
+    build_image_eval_observation,
+    decide_image_eval_batch,
 )
 from app.domain.official_account_editor_handoff_v2 import (
     BodyVisualLineage,
@@ -367,6 +388,95 @@ def _persisted_body_rows(
     )
 
 
+def _accepted_visual_eval(
+    visual: StoredOfficialAccountGeneratedVisual,
+    *,
+    audit_prompt_version: str = IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+) -> StoredOfficialAccountGeneratedVisualEval:
+    assert visual.sha256 is not None
+    assert visual.plan.reference_input_checksum is not None
+    request_fingerprint = generated_visual_eval_request_fingerprint(
+        generated_visual_id=visual.id,
+        plan_request_fingerprint=visual.plan.request_fingerprint,
+        publication_sha256=visual.sha256,
+        reference_input_checksum=visual.plan.reference_input_checksum,
+    )
+    observations = tuple(
+        build_image_eval_observation(
+            observation_id=f"provider-audit:{dimension.value}",
+            subject_ref=f"generated-visual:{visual.id}",
+            publication_sha256=visual.sha256,
+            dimension=dimension,
+            status=ImageEvalObservationStatus.AVAILABLE,
+            evaluator_kind=ImageEvalEvaluatorKind.PROVIDER_AUDIT,
+            evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+            provider="openai-compatible",
+            model="vision-model",
+            request_fingerprint=request_fingerprint,
+        )
+        for dimension in IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS
+    )
+    result = OfficialAccountGeneratedVisualEvalResult(
+        publication_sha256=visual.sha256,
+        evaluator_version=IMAGE_QUALITY_AUDITOR_VERSION,
+        audit_prompt_version=audit_prompt_version,
+        rubric_version=IMAGE_EVAL_RUBRIC_VERSION,
+        decision_policy_version=IMAGE_EVAL_DECISION_POLICY_VERSION,
+        request_fingerprint=request_fingerprint,
+        observations=observations,
+        decision=decide_image_eval_batch(observations, active_image_eval_rubric()),
+        provider="openai-compatible",
+        model="vision-model",
+    )
+    return StoredOfficialAccountGeneratedVisualEval(
+        id=UUID(int=100 + visual.plan.ordinal),
+        generated_visual_id=visual.id,
+        run_id=visual.plan.run_id,
+        record_fingerprint=generated_visual_eval_record_fingerprint(
+            generated_visual_id=visual.id,
+            run_id=visual.plan.run_id,
+            result=result,
+        ),
+        result=result,
+        completed_at=datetime(2026, 8, 27, 9, 2, tzinfo=UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_durable_status_requires_current_final_publication_eval() -> None:
+    bundle = await _news_context_bundle_input()
+    article_id = UUID("33333333-3333-4333-8333-333333333333")
+    visuals = _stored_generated_visuals(
+        bundle=bundle,
+        article=bundle.article,
+        article_id=article_id,
+    )
+    article = cast(Any, SimpleNamespace(id=article_id, article=bundle.article))
+    media_rows = _persisted_body_rows(bundle=bundle, visuals=visuals)
+    accepted_evals = tuple(_accepted_visual_eval(item) for item in visuals)
+
+    accepted = _durable_body_visual_lineages(
+        article=article,
+        generated_visuals=visuals,
+        generated_visual_evals=accepted_evals,
+        media_rows=media_rows,
+    )
+    stale_evals = (
+        _accepted_visual_eval(visuals[0], audit_prompt_version="historical-audit-prompt-v1"),
+        *accepted_evals[1:],
+    )
+    stale = _durable_body_visual_lineages(
+        article=article,
+        generated_visuals=visuals,
+        generated_visual_evals=stale_evals,
+        media_rows=media_rows,
+    )
+
+    assert all(item.visibility_status == "durable_image_audit_accepted" for item in accepted)
+    assert stale[0].visibility_status == "passed_local_visual_inspection"
+    assert all(item.visibility_status == "durable_image_audit_accepted" for item in stale[1:])
+
+
 @pytest.mark.asyncio
 async def test_mobile_report_is_exactly_bound_and_changes_only_artifact_identity() -> None:
     artifact = await _v2_artifact()
@@ -516,6 +626,7 @@ async def test_v2_release_policy_gate_matrix(
                 else (SimpleNamespace(status=generated_visual_status),)
             )
         ),
+        list_generated_visual_evals=AsyncMock(return_value=()),
     )
     media = tuple(
         zip(

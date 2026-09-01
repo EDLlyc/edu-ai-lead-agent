@@ -340,6 +340,7 @@ make check
 | 两组真实文案与对应配图               | [真实内容产出](./docs/portfolio/content-showcase.md)                           |
 | Agent / LLM 应用开发实习简历         | [个人简历](./docs/portfolio/resume/README.md)                                  |
 | Agent 确定性评测                     | [Eval README](./backend/evals/agent_workbench/README.md)                       |
+| 图片质量六维离线评测                 | [Image-quality Eval README](./backend/evals/image_quality/README.md)           |
 | 生产发布、回退与 Digest 契约         | [固定 Digest 发布运行手册](./docs/operations/digest-release-runbook.md)        |
 | 服务器迁移与视觉能力启用             | [生产服务器迁移手册](./docs/operations/production-server-migration-runbook.md) |
 | 后端工程规范                         | [Backend specs](./.trellis/spec/backend/index.md)                              |

@@ -121,6 +121,12 @@ def _audit_request() -> ImageQualityAuditRequest:
                 image_bytes=b"action-reference",
             ),
         ),
+        criteria=(
+            "Semantic: depict the exact article scene.",
+            "IP identity: preserve the approved protagonist.",
+        ),
+        prompt_version="image-quality-audit-prompt-v2-publication",
+        rubric_version="image-quality-rubric-v1",
     )
 
 
@@ -262,8 +268,24 @@ async def test_vision_audit_accepts_typed_reference_inputs_in_order() -> None:
     assert _data_url_bytes(content[1]["image_url"]["url"]) == IMAGE_BYTES
     assert _data_url_bytes(content[2]["image_url"]["url"]) == b"identity-reference"
     assert _data_url_bytes(content[3]["image_url"]["url"]) == b"action-reference"
+    assert content[2]["image_url"]["url"].startswith("data:image/png;base64,")
     prompt_context = json.loads(content[0]["text"])
     assert prompt_context["request_fingerprint"] == "audit-fingerprint"
+    assert prompt_context["prompt_version"] == "image-quality-audit-prompt-v2-publication"
+    assert prompt_context["rubric_version"] == "image-quality-rubric-v1"
+    assert prompt_context["case_criteria"] == [
+        "Semantic: depict the exact article scene.",
+        "IP identity: preserve the approved protagonist.",
+    ]
+    issue_contracts = {item["code"]: item for item in prompt_context["allowed_issue_contracts"]}
+    assert "provider_audit_unclassified" not in issue_contracts
+    assert issue_contracts["semantic_core_entity_missing"] == {
+        "code": "semantic_core_entity_missing",
+        "dimension": "semantic_faithfulness",
+        "severity": "error",
+    }
+    assert issue_contracts["ip_identity_borderline"]["severity"] == "warning"
+    assert "diversity_exact_duplicate" not in issue_contracts
     assert prompt_context["typed_references"][0]["role"] == "identity_reference"
     assert prompt_context["typed_references"][1]["asset_id"] == "robotics-action"
     assert result.accepted is True

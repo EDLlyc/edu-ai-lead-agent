@@ -8,8 +8,8 @@
 \noindent
 \name{李昱辰}
 \otherInfo{27 届}{意向岗位：Python Agent / LLM 应用开发实习}{}{}
-\otherInfo{可尽快到岗}{每周可实习 5 天}{可连续实习 6 个月}{}
-\otherInfo{邮箱：edllyc041202@gmail.com}{GitHub：\href{https://github.com/EDLlyc/12306-ticket-service}{EDLlyc/12306-ticket-service}}{}{}
+\otherInfo{邮箱：edllyc041202@gmail.com}{GitHub：\href{https://github.com/EDLlyc}{github.com/EDLlyc}}{}{}
+\otherInfo{个人主页：\href{https://liyuchen.space/}{liyuchen.space}}{}{}{}
 
 \vspace{-1.0em}
 
@@ -21,26 +21,23 @@
     \item \textbf{成绩情况}：均分 87.6/100，系统修读数据结构、操作系统、计算机网络、数据库等计算机核心课程。
 \end{itemize}
 
+\section{专业技能}
+\begin{itemize}[parsep=0.5ex]
+    \item \textbf{Python Agent 工程}：熟悉 FastAPI、AsyncIO、HTTPX、SQLAlchemy、LangGraph 状态图、Tool Calling、MCP、Plan-and-Execute/Replan、流式交互及工程化测试。
+    \item \textbf{LLM / RAG / 多模态}：具备 pgvector/Milvus/OpenSearch 混合检索、RRF/Reranker、父子切片、Embedding、多模态检索及 DeepEval/RAGAS 离线评测实践。
+    \item \textbf{后端与基础设施}：掌握 Java/Spring Boot、MySQL、Redis/Redisson/Lua、RocketMQ、Sentinel、Docker、Git，具备并发控制、缓存治理和事务一致性实践。
+\end{itemize}
+
 \section{实习经历}
 \datedsubsection{\textbf{赛先文化} - AI Agent 应用开发实习生}{2026.07 - 2026.08}
-\textbf{项目技术}：Python, FastAPI, LangGraph, PostgreSQL, pgvector, Redis, Docker, 智谱 GLM, RAG, Tool Calling\\
+\textbf{项目技术}：Python, FastAPI, LangGraph, Tool Calling, MCP, PostgreSQL/pgvector, 智谱 GLM, Qwen3-VL-Embedding, RAG, Docker\\
 \textbf{业务方向}：参与教育行业新媒体数字员工建设，围绕新闻采集、事实治理、智能选题、品牌文案、配图审核与企业微信交付，搭建可追溯、可评测、可恢复的内容生产链路。\\
 \textbf{主要工作}：
 \begin{enumerate}[parsep=0.5ex]
-    \item \textbf{Agent 工作流与智能选题}：基于 LangGraph 编排事件治理与文案生成等复杂 Agent 子流程，结合 PostgreSQL 持久化任务状态、调度器、Worker 与租约机制，串联新闻采集、智能选题、文案配图及内部交付；设计“规则阈值过滤 + LLM 受控重排”机制，通过优先级屏障、结果校验和确定性回退约束模型决策。
-    \item \textbf{证据治理与品牌 RAG}：对新闻来源建立不可变快照、事实标签、事件版本和引用绑定，保证生成内容可回溯；基于 PostgreSQL/pgvector 构建数字 IP 与品牌知识检索，将新闻事实和品牌表达分离，降低事实混淆与品牌内容误用风险。
-    \item \textbf{多模态内容生产}：接入智谱文本模型和图像生成服务，完成家长友好文案、品牌配图与素材包生成；实现图片格式校验、相似度检查、可选 OCR、失败重试与安全备选图机制，避免供应商异常阻塞后续交付。
-    \item \textbf{可靠交付与工程质量}：基于 FastAPI、AsyncIO 和 SQLAlchemy 实现异步服务与后台任务，完善幂等、checkpoint、超时、重试和故障恢复；建设离线评测、类型检查、契约测试及发布回退流程，并将通过审核的素材包交付至企业微信内部流程。
+    \item \textbf{Agent 编排与 MCP 工具封装}：基于 LangGraph 构建状态化 Agent 与有界工具循环，将知识检索、事件详情、品牌 RAG 和文案校验封装为统一 Typed Tool Registry，并通过 MCP Server 向 Agent 客户端提供标准化调用；结合严格 Schema 与确定性回退约束执行。
+    \item \textbf{智能选题与品牌 RAG}：接入 RSS/网页等权威源，完成不可变快照、正文解析、标准化与分段、URL/内容指纹去重；以事实标签、事件版本、引用绑定实现可追溯治理；采用“硬规则粗筛 + LLM 多维评分排序 + 确定性终审”选题；按页面/问答父子切片构建 pgvector 品牌 RAG，脱敏离线评测 Recall@5 95\%、nDCG@5 92.86\%。
+    \item \textbf{多模态素材检索与图片评测}：接入 Qwen3-VL-Embedding + pgvector，以身份/审批硬过滤、语义排序和规则回退完成自动配图；构建 48 条脱敏 fixture 的语义/IP/OCR/瑕疵/裁切/多样性六维无 Provider 评测（冻结策略 48/48、关键缺陷误放 0/18），并将审校记录绑定最终 JPEG SHA-256 与 rubric/policy 版本后原子落库。
 \end{enumerate}
-
-\section{专业技能}
-\begin{itemize}[parsep=0.5ex]
-    \item \textbf{Python Agent / FastAPI / AsyncIO / HTTPX}：具备 Python 智能体服务开发经验，熟悉 FastAPI 接口设计、异步 I/O、HTTP 工具调用、SSE 流式输出与工程化测试。
-    \item \textbf{LangGraph / Tool Calling / MCP / RAG / DeepEval}：熟悉 LangGraph 状态图、多意图路由、Tool Calling、MCP 外部工具接入、Plan-and-Execute/Replan、Milvus/OpenSearch 混合检索、RRF/Reranker 与 DeepEval/RAGAS 离线评测。
-    \item \textbf{Java / JVM / 并发}：掌握 Java 核心基础，熟悉集合、并发编程与 JVM 内存模型，具备基于 CompletableFuture 的异步编排与高并发链路设计经验。
-    \item \textbf{Spring Boot / MyBatis-Plus / MySQL}：熟练使用 Spring Boot、MyBatis-Plus、MySQL 进行后端服务开发，具备索引优化、事务隔离、SQL 调优与业务链路落库实践经验。
-    \item \textbf{Redis / Redisson / Lua / RocketMQ / Sentinel / Docker / Git}：掌握 Redis/Redisson/Lua 缓存与并发控制方案，具备多级缓存、分布式锁、库存原子扣减、MQ 事务消息/延迟消息、限流熔断治理经验。
-\end{itemize}
 
 \section{项目经历}
 
@@ -50,10 +47,8 @@
 \textbf{项目职责}：
 \begin{enumerate}[parsep=0.5ex]
     \item \textbf{LangGraph 编排与路由}：基于 LangGraph 构建状态图主链路，统一编排语义缓存、Query Rewrite、意图路由、上下文桥接、动作规划、工具执行与最终响应；设计 ACTION / TICKET / RAG / CHITCHAT 多专家意图打分，结合最高分、分差与置信度阈值完成分层路由决策。
-    \item \textbf{Tool Calling 与 MCP 扩展}：设计标准 Tool Schema，将查票、路线查询、订票、订单查询、退票等能力封装为工具；接入外部天气 MCP 工具，支持 Agent 联动查询车次与出发/到达城市天气，生成“车次可用性 + 出行风险提醒”的多工具综合建议。
-    \item \textbf{Plan-and-Execute 与安全执行}：针对购票、退票等高风险动作请求引入 Plan-and-Execute、显式确认态、执行失败兜底、Replan 与副作用工具去重机制，避免误触发和重复订票/退票，并在 trace 中记录规划、确认、执行与重规划结果。
-    \item \textbf{文档入库与混合检索}：实现 PDF/DOCX/Markdown/TXT 规章文档解析、条款级切分、hash 去重与入库状态追踪，支持写入 OpenSearch BM25 与 Milvus 向量索引；结合 RRF、Reranker、Planned RAG、Redis 语义缓存与长短期记忆优化复杂政策问答。
-    \item \textbf{Agent Eval 与质量评估}：构建 Agent golden cases，核心用例全量通过，覆盖工具选择、参数正确性、MCP trace、副作用安全与坏 case 回归；接入 DeepEval G-Eval + 智谱 judge 评估回答质量，RAGAS 历史结果达到 context precision 0.881、context recall 0.935。
+    \item \textbf{工具编排与安全执行}：以标准 Tool Schema 封装查票、订票、订单与退票能力，并接入天气 MCP 完成跨工具建议；对购退票引入 Plan-and-Execute、显式确认、Replan 与副作用去重，避免误触发和重复执行。
+    \item \textbf{混合检索与 Agent Eval}：实现多格式规章文档解析、条款级切分和 hash 去重，结合 OpenSearch BM25、Milvus、RRF/Reranker、Redis 语义缓存与长短期记忆；构建 golden cases 并接入 DeepEval/RAGAS，历史 context precision 0.881、context recall 0.935。
 \end{enumerate}
 
 \datedsubsection{\textbf{12306 高并发售票核心网关}（交易内核/后端开发）}{2026.03 - 2026.06}
@@ -62,9 +57,8 @@
 \textbf{项目职责}：
 \begin{enumerate}[parsep=0.5ex]
     \item \textbf{缓存与高并发治理}：基于 Caffeine + Redis + RBloomFilter 构建多级缓存，结合 Redisson 分布式锁与基于 CompletableFuture 的 singleflight 回源合并治理热点 Key；在查票热路径压测中，800 并发下达 5409.54 QPS、0\% HTTP 错误率，P95 344ms。
-    \item \textbf{库存扣减与分桶模型}：基于 Redis Lua 实现库存原子预扣减，设计 Segmented Stock 分桶库存模型分散热点流量，降低高并发订票场景下的库存争抢与超卖风险。
-    \item \textbf{订单状态机与事务一致性}：设计待支付、已支付、已取消、退款中、已退款等订单状态流转，结合状态条件更新与业务幂等号处理支付回调、超时关单、MQ 重试和重复退票；通过 RocketMQ 事务消息串联 Redis 预扣、订单落库与 MySQL 扣减，在 200 用户订票压测中达 510.94 TPS、0\% 错误率，未观察到超卖。
-    \item \textbf{退款补偿与稳定性保护}：设计 refund 字段与 Redis Lua 幂等回补机制，解决 MQ 重试导致的重复补库存问题；基于 RocketMQ 延迟消息实现超时关单，并结合 Sentinel 完成限流与热点保护，为 Agent 高风险工具调用提供可靠后端边界。
+    \item \textbf{库存与事务一致性}：基于 Redis Lua 实现库存原子预扣，设计 Segmented Stock 分桶模型分散热点；通过 RocketMQ 事务消息串联 Redis 预扣、订单落库与 MySQL 扣减，在 200 用户订票压测中达 510.94 TPS、0\% 错误率，未观察到超卖。
+    \item \textbf{状态机与补偿闭环}：设计支付、取消、退款状态机及业务幂等号，结合延迟消息、状态条件更新和 Lua 幂等回补处理超时关单、MQ 重试与重复退票；使用 Sentinel 完成限流和热点保护。
 \end{enumerate}
 
 \end{document}

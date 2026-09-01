@@ -13,10 +13,15 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.ports.image_validation import (
+    IMAGE_QUALITY_AUDIT_PROMPT_VERSION,
+    IMAGE_QUALITY_AUDITOR_VERSION,
+)
 from app.application.ports.official_account_local import (
     ClaimedOfficialAccountRun,
     OfficialAccountAuditResult,
     OfficialAccountDraftResult,
+    OfficialAccountGeneratedVisualEvalResult,
     OfficialAccountGeneratedVisualPlan,
     OfficialAccountGeneratedVisualResult,
     OfficialAccountGenerationResult,
@@ -25,15 +30,27 @@ from app.application.ports.official_account_local import (
     OfficialAccountVersionIdentity,
     StoredOfficialAccountArticle,
     StoredOfficialAccountGeneratedVisual,
+    StoredOfficialAccountGeneratedVisualEval,
     StoredOfficialAccountManualReview,
     StoredOfficialAccountRender,
+    generated_visual_eval_record_fingerprint,
 )
 from app.application.services.official_account_local import (
+    generated_visual_eval_request_fingerprint,
     manual_review_request_fingerprint,
     run_request_fingerprint,
 )
 from app.core.errors import ConflictError, NotFoundError, OfficialAccountLeaseLostError
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V2
+from app.domain.image_quality_eval import (
+    IMAGE_EVAL_DECISION_POLICY_VERSION,
+    IMAGE_EVAL_RUBRIC_VERSION,
+    ImageEvalDecisionKind,
+    ImageEvalIssueCode,
+    ImageEvalObservation,
+    active_image_eval_rubric,
+    decide_image_eval_batch,
+)
 from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_FIXTURE_ID,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_VERSION,
@@ -70,6 +87,7 @@ from app.infrastructure.db.models import (
     OfficialAccountArticleContextImageModel,
     OfficialAccountArticleRunModel,
     OfficialAccountArticleVersionModel,
+    OfficialAccountGeneratedVisualEvalModel,
     OfficialAccountGeneratedVisualModel,
     OfficialAccountLocalDraftBodyMediaModel,
     OfficialAccountLocalDraftModel,
@@ -306,6 +324,21 @@ class PostgresOfficialAccountRepository:
             ).all()
             return tuple(_stored_generated_visual(row) for row in rows)
 
+    async def list_generated_visual_evals(
+        self,
+        *,
+        run_id: UUID,
+    ) -> tuple[StoredOfficialAccountGeneratedVisualEval, ...]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(OfficialAccountGeneratedVisualEvalModel)
+                    .where(OfficialAccountGeneratedVisualEvalModel.run_id == run_id)
+                    .order_by(OfficialAccountGeneratedVisualEvalModel.generated_visual_id)
+                )
+            ).all()
+            return tuple(_stored_generated_visual_eval(row) for row in rows)
+
     async def create_generated_visual_intent(
         self,
         *,
@@ -377,8 +410,18 @@ class PostgresOfficialAccountRepository:
         claimed: ClaimedOfficialAccountRun,
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
+        eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
     ) -> StoredOfficialAccountGeneratedVisual | None:
         _validate_generated_visual_plan(plan)
+        if eval_result is not None and eval_result.publication_sha256 != result.sha256:
+            raise ValueError("generated visual eval is not bound to the final result hash")
+        if eval_result is not None and (
+            eval_result.evaluator_version != IMAGE_QUALITY_AUDITOR_VERSION
+            or eval_result.audit_prompt_version != IMAGE_QUALITY_AUDIT_PROMPT_VERSION
+            or eval_result.rubric_version != IMAGE_EVAL_RUBRIC_VERSION
+            or eval_result.decision_policy_version != IMAGE_EVAL_DECISION_POLICY_VERSION
+        ):
+            raise ValueError("generated visual eval versions are not current")
         async with self._session_factory() as session:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
@@ -394,6 +437,17 @@ class PostgresOfficialAccountRepository:
             if row is None:
                 raise RuntimeError("generated visual intent is missing")
             _assert_generated_visual_plan(row, plan)
+            if eval_result is not None:
+                if plan.reference_input_checksum is None:
+                    raise ValueError("generated visual eval requires a normalized reference hash")
+                expected_eval_fingerprint = generated_visual_eval_request_fingerprint(
+                    generated_visual_id=row.id,
+                    plan_request_fingerprint=plan.request_fingerprint,
+                    publication_sha256=result.sha256,
+                    reference_input_checksum=plan.reference_input_checksum,
+                )
+                if eval_result.request_fingerprint != expected_eval_fingerprint:
+                    raise ValueError("generated visual eval request fingerprint changed")
             if row.status == "ready":
                 return _stored_generated_visual(row)
             if row.status != "generating":
@@ -406,6 +460,47 @@ class PostgresOfficialAccountRepository:
             row.height = result.height
             row.error_code = None
             row.completed_at = datetime.now(UTC)
+            if eval_result is not None:
+                # No ORM relationship is allowed for this immutable child. Flush the parent's
+                # final SHA first so PostgreSQL can enforce the composite visual/run/SHA fence
+                # when the child insert follows in the same transaction.
+                await session.flush()
+                expected_subject_ref = f"generated-visual:{row.id}"
+                if any(
+                    observation.subject_ref != expected_subject_ref
+                    for observation in eval_result.observations
+                ):
+                    raise ValueError("generated visual eval subject identity changed")
+                record_fingerprint = generated_visual_eval_record_fingerprint(
+                    generated_visual_id=row.id,
+                    run_id=row.run_id,
+                    result=eval_result,
+                )
+                session.add(
+                    OfficialAccountGeneratedVisualEvalModel(
+                        id=uuid4(),
+                        generated_visual_id=row.id,
+                        run_id=row.run_id,
+                        publication_sha256=eval_result.publication_sha256,
+                        decision=eval_result.decision.decision.value,
+                        hard_gate_passed=eval_result.decision.hard_gate_passed,
+                        manual_review_required=(eval_result.decision.manual_review_required),
+                        evaluator_version=eval_result.evaluator_version,
+                        audit_prompt_version=eval_result.audit_prompt_version,
+                        rubric_version=eval_result.rubric_version,
+                        decision_policy_version=eval_result.decision_policy_version,
+                        request_fingerprint=eval_result.request_fingerprint,
+                        record_fingerprint=record_fingerprint,
+                        provider=eval_result.provider,
+                        model=eval_result.model,
+                        issue_codes=list(eval_result.issue_codes),
+                        observation_snapshot=[
+                            observation.model_dump(mode="json")
+                            for observation in eval_result.observations
+                        ],
+                        completed_at=row.completed_at,
+                    )
+                )
             run.current_stage = "staging_body_media"
             run.updated_at = row.completed_at
             session.add(
@@ -433,6 +528,11 @@ class PostgresOfficialAccountRepository:
                         "selection_method": plan.selection_method,
                         "media_type": result.media_type,
                         "byte_size": result.byte_size,
+                        **(
+                            {"image_eval_decision": eval_result.decision.decision.value}
+                            if eval_result is not None
+                            else {}
+                        ),
                     },
                     completed_at=row.completed_at,
                 )
@@ -2040,6 +2140,71 @@ def _stored_generated_visual(
         created_at=row.created_at,
         completed_at=row.completed_at,
     )
+
+
+def _stored_generated_visual_eval(
+    row: OfficialAccountGeneratedVisualEvalModel,
+) -> StoredOfficialAccountGeneratedVisualEval:
+    try:
+        observations = tuple(
+            ImageEvalObservation.model_validate(item) for item in row.observation_snapshot
+        )
+        active_rubric = active_image_eval_rubric()
+        replay_observations = tuple(
+            observation.model_copy(update={"rubric_version": active_rubric.rubric_version})
+            for observation in observations
+        )
+        replayed_decision = decide_image_eval_batch(replay_observations, active_rubric)
+        stored_decision = ImageEvalDecisionKind(row.decision)
+        stored_reason_codes = tuple(ImageEvalIssueCode(code) for code in row.issue_codes)
+        if (
+            row.rubric_version == IMAGE_EVAL_RUBRIC_VERSION
+            and row.decision_policy_version == IMAGE_EVAL_DECISION_POLICY_VERSION
+        ):
+            decision = replayed_decision
+            if (
+                decision.decision is not stored_decision
+                or decision.hard_gate_passed is not row.hard_gate_passed
+                or decision.manual_review_required is not row.manual_review_required
+                or decision.reason_codes != stored_reason_codes
+            ):
+                raise ValueError("stored generated visual eval decision changed")
+        else:
+            # Historical version identifiers remain readable so handoff can project them as
+            # local-inspection evidence. Their aggregate is fingerprinted but is never promoted
+            # to a current accepted audit claim.
+            decision = replayed_decision.model_copy(
+                update={
+                    "decision": stored_decision,
+                    "hard_gate_passed": row.hard_gate_passed,
+                    "manual_review_required": row.manual_review_required,
+                    "decision_policy_version": row.decision_policy_version,
+                    "reason_codes": stored_reason_codes,
+                }
+            )
+        result = OfficialAccountGeneratedVisualEvalResult(
+            publication_sha256=row.publication_sha256,
+            evaluator_version=row.evaluator_version,
+            audit_prompt_version=row.audit_prompt_version,
+            rubric_version=row.rubric_version,
+            decision_policy_version=row.decision_policy_version,
+            request_fingerprint=row.request_fingerprint,
+            provider=row.provider,
+            model=row.model,
+            observations=observations,
+            decision=decision,
+        )
+        stored = StoredOfficialAccountGeneratedVisualEval(
+            id=row.id,
+            generated_visual_id=row.generated_visual_id,
+            run_id=row.run_id,
+            record_fingerprint=row.record_fingerprint,
+            result=result,
+            completed_at=row.completed_at,
+        )
+    except (TypeError, ValueError, ValidationError):
+        raise RuntimeError("stored official-account generated visual eval is invalid") from None
+    return stored
 
 
 def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) -> None:

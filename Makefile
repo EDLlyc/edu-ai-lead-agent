@@ -15,6 +15,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	topic-rerank-eval \
 	brand-retrieval-eval \
 	visual-retrieval-eval \
+	image-quality-eval \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	agent-portfolio-capture agent-portfolio-capture-check \
 	agent-portfolio-live-zhipu-preflight agent-portfolio-live-zhipu-capture \
@@ -181,6 +182,9 @@ ip-asset-retrieval-eval:
 
 visual-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.visual_retrieval.runner --check
+
+image-quality-eval:
+	cd backend && $(PY_RUN) python -m evals.image_quality.runner --check
 
 agent-portfolio-check: agent-api-contract-check
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check

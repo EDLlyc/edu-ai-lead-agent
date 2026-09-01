@@ -4385,7 +4385,112 @@ class OfficialAccountGeneratedVisualModel(Base):
             "render_version_id", "ordinal", name="uq_official_generated_visuals_render_ordinal"
         ),
         UniqueConstraint("request_fingerprint", name="uq_official_generated_visuals_request"),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "sha256",
+            name="uq_official_generated_visuals_id_run_sha",
+        ),
         Index("ix_official_generated_visuals_run", "run_id", "ordinal"),
+    )
+
+
+class OfficialAccountGeneratedVisualEvalModel(Base):
+    """One immutable observed quality record for final generated publication bytes."""
+
+    __tablename__ = "official_account_generated_visual_evals"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    generated_visual_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    publication_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    hard_gate_passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    manual_review_required: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    evaluator_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    audit_prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rubric_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    decision_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    record_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    issue_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    observation_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["generated_visual_id", "run_id", "publication_sha256"],
+            [
+                "official_account_generated_visuals.id",
+                "official_account_generated_visuals.run_id",
+                "official_account_generated_visuals.sha256",
+            ],
+            name="fk_official_generated_visual_evals_visual_run_sha",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "publication_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_official_generated_visual_evals_sha",
+        ),
+        CheckConstraint(
+            "decision IN ('accepted', 'manual_review', 'rejected', 'unavailable')",
+            name="ck_official_generated_visual_evals_decision",
+        ),
+        CheckConstraint(
+            "(decision = 'accepted' AND hard_gate_passed AND NOT manual_review_required) OR "
+            "(decision = 'manual_review' AND hard_gate_passed AND manual_review_required) OR "
+            "(decision = 'rejected' AND NOT hard_gate_passed AND NOT manual_review_required) OR "
+            "(decision = 'unavailable' AND NOT hard_gate_passed AND manual_review_required)",
+            name="ck_official_generated_visual_evals_decision_shape",
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_official_generated_visual_evals_fingerprint",
+        ),
+        CheckConstraint(
+            "record_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_official_generated_visual_evals_record_fingerprint",
+        ),
+        CheckConstraint(
+            "char_length(evaluator_version) BETWEEN 1 AND 80 "
+            "AND char_length(audit_prompt_version) BETWEEN 1 AND 80 "
+            "AND char_length(rubric_version) BETWEEN 1 AND 80 "
+            "AND char_length(decision_policy_version) BETWEEN 1 AND 80",
+            name="ck_official_generated_visual_evals_versions",
+        ),
+        CheckConstraint(
+            "(decision = 'unavailable' AND provider IS NULL AND model IS NULL) OR "
+            "(decision <> 'unavailable' AND char_length(provider) BETWEEN 1 AND 80 "
+            "AND char_length(model) BETWEEN 1 AND 160)",
+            name="ck_official_generated_visual_evals_provider_shape",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(issue_codes) = 'array' AND jsonb_array_length(issue_codes) <= 16 "
+            "AND jsonb_typeof(observation_snapshot) = 'array' "
+            "AND jsonb_array_length(observation_snapshot) = 5",
+            name="ck_official_generated_visual_evals_snapshot_shape",
+        ),
+        CheckConstraint(
+            "decision <> 'accepted' OR jsonb_array_length(issue_codes) = 0",
+            name="ck_official_generated_visual_evals_accepted_issues",
+        ),
+        UniqueConstraint(
+            "generated_visual_id",
+            name="uq_official_generated_visual_evals_visual",
+        ),
+        UniqueConstraint(
+            "request_fingerprint",
+            name="uq_official_generated_visual_evals_request",
+        ),
+        UniqueConstraint(
+            "record_fingerprint",
+            name="uq_official_generated_visual_evals_record_fingerprint",
+        ),
+        Index("ix_official_generated_visual_evals_run", "run_id"),
     )
 
 

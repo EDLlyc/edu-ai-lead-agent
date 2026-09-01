@@ -28,7 +28,10 @@ from app.application.services.official_account_media_semantic import (
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.domain.visual_retrieval import VisualEmbeddingRequest, VisualEmbeddingResult
-from app.infrastructure.ai.factory import create_image_generator
+from app.infrastructure.ai.factory import (
+    create_image_generator,
+    create_official_account_image_quality_auditor,
+)
 from app.infrastructure.ai.official_account_local import create_zhipu_official_account_models
 from app.infrastructure.ai.visual_embedding import (
     AlibabaVisualEmbeddingAdapter,
@@ -170,6 +173,10 @@ async def run_worker() -> None:
         if settings.official_account_local_generated_visuals_enabled:
             lazy_image_generator = _LazyOfficialAccountImageGenerator(settings)
             generated_visual_store = MinioImageStore(settings)
+        image_quality_auditor = create_official_account_image_quality_auditor(
+            settings,
+            client=provider_client,
+        )
         executor = OfficialAccountLocalExecutor(
             repository=PostgresOfficialAccountRepository(session_factory),
             fixture_generator=DeterministicFakeOfficialAccountArticleGenerator(),
@@ -204,12 +211,16 @@ async def run_worker() -> None:
                 if settings.official_account_local_generated_visuals_enabled
                 else None
             ),
+            image_quality_eval_mode=settings.image_quality_eval_mode,
+            image_quality_auditor=image_quality_auditor,
         )
         worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
         logger.info(
             "official_account_local_worker_started",
             concurrency=settings.official_account_local_worker_concurrency,
             live_provider_available=live_generator is not None,
+            image_quality_eval_mode=settings.image_quality_eval_mode,
+            image_quality_evaluator_available=image_quality_auditor is not None,
         )
         workers = [
             asyncio.create_task(
