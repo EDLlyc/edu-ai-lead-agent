@@ -46,7 +46,7 @@ from app.core.config import Settings
 
 _Clock = Callable[[], float]
 _WECHAT_MP_HOST = "api.weixin.qq.com"
-_WECHAT_MP_IMAGE_HOSTS = frozenset({"mmbiz.qpic.cn"})
+_WECHAT_MP_IMAGE_HOSTS = frozenset({"mmbiz.qpic.cn", "mmecoa.qpic.cn"})
 _TOKEN_INVALID_CODES = frozenset({40001, 40014, 42001})
 _RATE_LIMIT_CODES = frozenset({45009, 45011})
 _TRANSIENT_CODES = frozenset({-1})
@@ -564,13 +564,16 @@ def _is_safe_https_url(value: str) -> bool:
 
 
 def _normalize_provider_image_url(value: str) -> str:
-    """Accept only the documented WeChat image CDN and upgrade its HTTP example URL."""
+    """Accept only exact WeChat image CDN hosts and upgrade HTTP URLs."""
 
     if (
         not isinstance(value, str)
         or not value
         or len(value) > 2048
-        or any(character.isspace() or ord(character) < 32 for character in value)
+        or any(
+            character.isspace() or ord(character) < 32 or 127 <= ord(character) <= 159
+            for character in value
+        )
         or any(character in value for character in "\"'<>")
     ):
         raise ValueError("provider image URL is invalid")

@@ -111,10 +111,10 @@ a token another coroutine just refreshed. Bare HTTP 401/403 is a provider reject
 a refreshable WeChat errcode. Any write timeout is `wechat_mp_outcome_unknown` and is never
 automatically replayed.
 
-`uploadimg` provider URLs are accepted only from the exact documented WeChat image host
-`mmbiz.qpic.cn`, without credentials, custom port, fragment, control characters, or HTML
+`uploadimg` provider URLs are accepted only from the exact WeChat image hosts `mmbiz.qpic.cn` and
+`mmecoa.qpic.cn`, without credentials, custom port, fragment, control characters, or HTML
 delimiters. An official HTTP URL is normalized to HTTPS before application use; arbitrary HTTPS
-hosts are rejected.
+hosts and sibling `qpic.cn` hosts are rejected.
 
 ### Local preparation and image derivation
 

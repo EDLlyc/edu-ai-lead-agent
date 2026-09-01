@@ -422,11 +422,39 @@ async def test_write_timeout_is_unknown_without_automatic_retry_or_raw_detail() 
     assert upload_calls == 1
 
 
-async def test_inline_image_response_rejects_an_off_host_https_url() -> None:
+@pytest.mark.parametrize("host", ["mmbiz.qpic.cn", "mmecoa.qpic.cn"])
+async def test_inline_image_response_accepts_exact_wechat_cdn_hosts(host: str) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/cgi-bin/stable_token":
             return httpx.Response(200, json=_token_payload())
-        return httpx.Response(200, json={"url": "https://evil.example/body.png"})
+        return httpx.Response(200, json={"url": f"http://{host}/body.png?a=1&b=2"})
+
+    adapter, client = _adapter(httpx.MockTransport(handler))
+    async with client:
+        uploaded = await adapter.upload_inline_image(PNG_BYTES, "image/png", "body.png")
+
+    assert uploaded.url == f"https://{host}/body.png?a=1&b=2"
+
+
+@pytest.mark.parametrize(
+    "provider_url",
+    [
+        "https://evil.example/body.png",
+        "https://arbitrary.qpic.cn/body.png",
+        "https://mmbiz.qpic.cn.evil.example/body.png",
+        "https://user@mmbiz.qpic.cn/body.png",
+        "https://mmbiz.qpic.cn:443/body.png",
+        "https://mmbiz.qpic.cn/body.png#fragment",
+        "https://mmbiz.qpic.cn/body\x7f.png",
+    ],
+)
+async def test_inline_image_response_rejects_non_exact_or_unsafe_urls(
+    provider_url: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/cgi-bin/stable_token":
+            return httpx.Response(200, json=_token_payload())
+        return httpx.Response(200, json={"url": provider_url})
 
     adapter, client = _adapter(httpx.MockTransport(handler))
     async with client:
@@ -434,7 +462,7 @@ async def test_inline_image_response_rejects_an_off_host_https_url() -> None:
             await adapter.upload_inline_image(PNG_BYTES, "image/png", "body.png")
 
     assert raised.value.code == WECHAT_MP_INVALID_RESPONSE
-    assert "evil.example" not in str(raised.value)
+    assert provider_url not in str(raised.value)
 
 
 async def test_response_size_and_settings_are_fail_closed() -> None:
