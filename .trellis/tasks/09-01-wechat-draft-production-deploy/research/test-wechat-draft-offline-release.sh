@@ -12,6 +12,7 @@ readonly BASELINE_CAPTURE="${HERE}/capture-wechat-draft-production-baseline.sh"
 readonly VALIDATOR="${HERE}/validate-wechat-draft-offline-artifacts.py"
 readonly OPERATOR="${HERE}/wechat-draft-offline-release-operator.sh"
 readonly CONTINUATION="${HERE}/wechat-draft-post-migration-continuation.sh"
+readonly CLIENT_HOTFIX="${HERE}/wechat-draft-post-migration-client-hotfix.sh"
 test_root=$(mktemp -d /tmp/edu-ai-wechat-draft-harness.XXXXXX)
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -152,7 +153,7 @@ assert_validator_contract() {
 }
 
 assert_static_safety_contract() {
-  bash -n "$BASELINE_CAPTURE" "$BUILDER" "$OPERATOR" "$CONTINUATION" "$0"
+  bash -n "$BASELINE_CAPTURE" "$BUILDER" "$OPERATOR" "$CONTINUATION" "$CLIENT_HOTFIX" "$0"
   python3 - "$VALIDATOR" <<'PY'
 import ast
 import pathlib
@@ -161,6 +162,8 @@ import sys
 ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 PY
   require_text "$BUILDER" 'refs/remotes/origin/main'
+  require_text "$BUILDER" 'refs/remotes/origin/release/'
+  require_text "$BUILDER" 'release ref is outside the reviewed Codeup namespace'
   require_text "$BUILDER" 'worktree add --detach'
   require_text "$BUILDER" 'DOCKER_BUILDKIT=0'
   require_text "$BUILDER" 'candidate image build failed'
@@ -201,6 +204,41 @@ PY
   reject_text "$CONTINUATION" 'masssend'
   reject_text "$OPERATOR" 'wechat_official_account_draft_jobs'
   reject_text "$CONTINUATION" 'wechat_official_account_draft_jobs'
+  require_text "$CLIENT_HOTFIX" '0c3d74d4baa7156b1fc56ea81f188aa25d5bc5d8'
+  require_text "$CLIENT_HOTFIX" '267ffddc3c13ac7c3c874e6902b5c09bdeaa0e1e'
+  require_text "$CLIENT_HOTFIX" 'sha256:eabffa5565affc5b6da154329d9f94d85fd07d4bc72a8235c30c81b313c88bbf'
+  require_text "$CLIENT_HOTFIX" 'hotfix stdin must be /dev/null'
+  require_text "$CLIENT_HOTFIX" 'hotfix_probe_candidate_settings'
+  require_text "$CLIENT_HOTFIX" 'wait_for_candidate_application_services'
+  require_text "$CLIENT_HOTFIX" 'hotfix_wait_for_worker'
+  require_text "$CLIENT_HOTFIX" 'provider_writes=0'
+  require_text "$CLIENT_HOTFIX" 'worker-diagnostic.txt'
+  require_text "$CLIENT_HOTFIX" 'safe_job_counts'
+  require_text "$CLIENT_HOTFIX" 'wechat-draft-client-hotfix-${hotfix_operator_sha}.attempted'
+  reject_text "$CLIENT_HOTFIX" 'backend-migrate'
+  reject_text "$CLIENT_HOTFIX" 'alembic upgrade'
+  reject_text "$CLIENT_HOTFIX" 'freepublish'
+  reject_text "$CLIENT_HOTFIX" 'masssend'
+  reject_text "$CLIENT_HOTFIX" 'draft/add'
+  python3 - "$CLIENT_HOTFIX" <<'PY'
+import pathlib
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+capture = text.index("hotfix_capture_worker_diagnostic || true")
+stop = text.index("compose_with_draft stop -t 30", capture)
+remove = text.index("compose_with_draft rm -f", stop)
+assert capture < stop < remove
+main = text[text.index("hotfix_main()") :]
+assert main.index("load_and_verify_image") < main.index("hotfix_probe_candidate_settings")
+assert main.index("hotfix_verify_disabled_preflight") < main.index("hotfix_run_activation")
+PY
+  (
+    export WECHAT_DRAFT_CLIENT_HOTFIX_SOURCE_ONLY=1
+    # shellcheck source=wechat-draft-post-migration-client-hotfix.sh
+    source "$CLIENT_HOTFIX"
+    declare -F hotfix_main >/dev/null
+  ) || fail "client hotfix could not be loaded without execution"
 }
 
 baseline_source_fingerprint() {
@@ -270,8 +308,11 @@ assert_builder_arguments_fail_closed() {
     scratch="${test_root}/builder-scratch"
     mkdir -p "$scratch"
     parse_args --release-sha "$(printf 'a%.0s' {1..40})" \
+      --release-ref refs/remotes/origin/release/wechat-draft-client-hotfix-20260902 \
       --production-baseline "$baseline" --output-dir "$output"
-    [[ "$release_sha" == "$(printf 'a%.0s' {1..40})" && "$output_dir" == "$output" ]]
+    [[ "$release_sha" == "$(printf 'a%.0s' {1..40})" \
+        && "$release_ref" == refs/remotes/origin/release/wechat-draft-client-hotfix-20260902 \
+        && "$output_dir" == "$output" ]]
   ) || fail "builder rejected valid bounded arguments"
   set +e
   (
@@ -283,6 +324,18 @@ assert_builder_arguments_fail_closed() {
   failure_rc=$?
   set -e
   ((failure_rc != 0)) || fail "builder accepted invalid release authority arguments"
+  set +e
+  (
+    set -e
+    export WECHAT_DRAFT_BUILDER_SOURCE_ONLY=1
+    source "$BUILDER"
+    parse_args --release-sha "$(printf 'a%.0s' {1..40})" \
+      --release-ref refs/remotes/origin/feature/unreviewed \
+      --production-baseline "$baseline" --output-dir "$output"
+  ) >/dev/null 2>&1
+  failure_rc=$?
+  set -e
+  ((failure_rc != 0)) || fail "builder accepted an unreviewed Codeup ref namespace"
 }
 
 assert_fake_failure_boundaries() {
@@ -673,6 +726,51 @@ assert_optional_zero_effect_recovery() {
   ) || fail "non-zero optional effects did not enter the post-migration incident boundary"
 }
 
+assert_client_hotfix_zero_effect_recovery() {
+  local captured="${test_root}/hotfix-captured" restored="${test_root}/hotfix-restored"
+  local recovered="${test_root}/hotfix-recovered" writers_stopped="${test_root}/hotfix-stopped"
+  (
+    export WECHAT_DRAFT_CLIENT_HOTFIX_SOURCE_ONLY=1
+    source "$CLIENT_HOTFIX"
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    source "$OPERATOR"
+    recovery_armed=1
+    completed=0
+    hotfix_capture_worker_diagnostic() { touch "$captured"; }
+    compose_with_draft() { return 0; }
+    disable_draft_flags() { return 0; }
+    safe_job_counts() { printf '0:0:0\n'; }
+    restore_before_migration() { touch "$restored"; }
+    hotfix_recover_previous_application_services() { touch "$recovered"; }
+    compose() { touch "$writers_stopped"; }
+    set +e
+    false
+    hotfix_on_exit
+    [[ -e "$captured" && -e "$restored" && -e "$recovered" && ! -e "$writers_stopped" ]]
+  ) || fail "client hotfix did not preserve diagnostics and restore a zero-effect prior runtime"
+
+  rm -f "$captured" "$restored" "$recovered" "$writers_stopped"
+  (
+    export WECHAT_DRAFT_CLIENT_HOTFIX_SOURCE_ONLY=1
+    source "$CLIENT_HOTFIX"
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    source "$OPERATOR"
+    recovery_armed=1
+    completed=0
+    hotfix_capture_worker_diagnostic() { touch "$captured"; }
+    compose_with_draft() { return 0; }
+    disable_draft_flags() { return 0; }
+    safe_job_counts() { printf '1:3:1\n'; }
+    restore_before_migration() { touch "$restored"; }
+    hotfix_recover_previous_application_services() { touch "$recovered"; }
+    compose() { touch "$writers_stopped"; }
+    set +e
+    false
+    hotfix_on_exit
+    [[ -e "$captured" && ! -e "$restored" && ! -e "$recovered" && -e "$writers_stopped" ]]
+  ) || fail "client hotfix did not stop writers when zero draft effects were unprovable"
+}
+
 assert_cutoff_is_next_monday() {
   local cutoff
   cutoff=$(
@@ -706,5 +804,6 @@ assert_pre_migration_exit_retains_verified_previous_services
 assert_candidate_readiness_is_bounded_and_retrying
 assert_continuation_worker_readiness_is_bounded_and_retrying
 assert_optional_zero_effect_recovery
+assert_client_hotfix_zero_effect_recovery
 assert_cutoff_is_next_monday
 printf 'wechat_draft_offline_release_harness_ok\n'
