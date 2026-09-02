@@ -71,3 +71,24 @@ Implemented and deployed the Monday 09:00 Asia/Shanghai three-role WeChat draft-
 ### Status
 
 [OK] **Completed**
+
+
+## Session 90: Governed Reviewer enforce repair
+
+**Date**: 2026-09-02
+**Task**: Governed Reviewer enforce repair
+**Branch**: `main`
+
+### Summary
+
+Implemented and independently verified a default-off calibrated Reviewer enforce flow with one bounded Writer repair, immutable revision lineage, durable execution/budget evidence, concurrency and crash recovery, exact downstream review binding, PostgreSQL migration guards, and provider-free regression evidence. No live provider was called.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b8835d4` | (see git log) |
+
+### Status
+
+[OK] **Completed**
