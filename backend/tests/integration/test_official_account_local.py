@@ -571,7 +571,11 @@ async def test_editorial_review_migration_refuses_lossy_downgrade(
 
     try:
         with pytest.raises(
-            Exception, match="cannot downgrade official-account editorial artifacts"
+            Exception,
+            match=(
+                r"(?:refusing to drop populated official-account Reviewer observations|"
+                r"cannot downgrade official-account editorial artifacts)"
+            ),
         ):
             await asyncio.to_thread(
                 command.downgrade,
@@ -581,13 +585,13 @@ async def test_editorial_review_migration_refuses_lossy_downgrade(
 
         async with integration_context.engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "20260901_0042"
+        assert revision == "20260902_0043"
     finally:
         await asyncio.to_thread(command.upgrade, Config("backend/alembic.ini"), "head")
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260901_0042"
+    assert revision == "20260902_0043"
 
 
 @pytest.mark.integration
@@ -767,8 +771,9 @@ async def test_multimodal_article_migration_refuses_v4_lossy_downgrade(
         with pytest.raises(
             Exception,
             match=(
+                r"(?:refusing to drop populated official-account Reviewer observations|"
                 r"cannot downgrade (?:selected-news source-image artifacts|"
-                r"official-account (?:structured-output|multimodal))"
+                r"official-account (?:structured-output|multimodal)))"
             ),
         ):
             await asyncio.to_thread(
@@ -781,7 +786,7 @@ async def test_multimodal_article_migration_refuses_v4_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260901_0042"
+    assert revision == "20260902_0043"
 
 
 @pytest.mark.integration
@@ -812,8 +817,9 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
         with pytest.raises(
             Exception,
             match=(
+                r"(?:refusing to drop populated official-account Reviewer observations|"
                 r"cannot downgrade (?:selected-news source-image artifacts|"
-                r"official-account structured-output)"
+                r"official-account structured-output))"
             ),
         ):
             await asyncio.to_thread(
@@ -826,7 +832,7 @@ async def test_structured_output_article_migration_refuses_v5_lossy_downgrade(
 
     async with integration_context.engine.connect() as connection:
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    assert revision == "20260901_0042"
+    assert revision == "20260902_0043"
 
 
 @pytest.mark.integration

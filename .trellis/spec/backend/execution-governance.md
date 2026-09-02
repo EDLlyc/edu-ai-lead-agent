@@ -148,6 +148,9 @@ source of truth and uses the existing async session factory.
 #### Capability authorization and execution
 
 - `CapabilityRegistry` is non-empty, lexically sorted, unique, and closed. An unknown name is denied.
+- Capability timeouts are bounded to 420 seconds so the gateway can safely wrap existing provider
+  calls whose durable total timeout is up to 360 seconds; product-specific timeouts remain frozen
+  in their run identity and allocation rather than being read again from current environment state.
 - The gateway validates active allocation, stored role, role allowlist, task scope, access class,
   artifact scope, argument size, and budget before invoking the handler.
 - Orchestrator/planner cannot invoke `business_write`. Reviewer cannot invoke `plan` or

@@ -711,6 +711,65 @@ def _identity(
         target_min_characters=settings.official_account_local_target_min_characters,
         target_max_characters=settings.official_account_local_target_max_characters,
         max_characters=settings.official_account_local_max_characters,
+        reviewer_mode=getattr(settings, "official_account_reviewer_mode", "off"),
+        reviewer_version=getattr(
+            settings, "official_account_reviewer_version", "official-account-reviewer-v1"
+        ),
+        reviewer_prompt_version=getattr(
+            settings,
+            "official_account_reviewer_prompt_version",
+            "official-account-reviewer-prompt-v1",
+        ),
+        reviewer_request_schema_version=getattr(
+            settings,
+            "official_account_reviewer_request_schema_version",
+            "official-account-review-request-v1",
+        ),
+        reviewer_verdict_schema_version=getattr(
+            settings,
+            "official_account_reviewer_verdict_schema_version",
+            "official-account-review-verdict-v1",
+        ),
+        reviewer_rubric_version=getattr(
+            settings,
+            "official_account_reviewer_rubric_version",
+            "official-account-editorial-rubric-v1",
+        ),
+        reviewer_review_policy_version=getattr(
+            settings,
+            "official_account_reviewer_review_policy_version",
+            "official-account-review-policy-v1",
+        ),
+        reviewer_repair_policy_version=getattr(
+            settings,
+            "official_account_reviewer_repair_policy_version",
+            "official-account-repair-policy-v1",
+        ),
+        reviewer_budget_policy_version=getattr(
+            settings,
+            "official_account_reviewer_budget_policy_version",
+            "official-account-review-budget-v1",
+        ),
+        reviewer_provider=provider,
+        reviewer_model=model,
+        reviewer_writer_timeout_ms=getattr(
+            settings,
+            "official_account_reviewer_writer_timeout_ms",
+            180_000,
+        ),
+        reviewer_timeout_ms=getattr(
+            settings,
+            "official_account_reviewer_timeout_ms",
+            180_000,
+        ),
+        reviewer_writer_max_output_tokens=getattr(
+            settings,
+            "official_account_local_max_output_tokens",
+            16_384,
+        ),
+        reviewer_max_output_tokens=getattr(
+            settings, "official_account_reviewer_max_output_tokens", 2_048
+        ),
     )
 
 

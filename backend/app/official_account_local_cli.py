@@ -376,6 +376,21 @@ def _identity(
             if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
             else None
         ),
+        reviewer_mode=settings.official_account_reviewer_mode,
+        reviewer_version=settings.official_account_reviewer_version,
+        reviewer_prompt_version=settings.official_account_reviewer_prompt_version,
+        reviewer_request_schema_version=(settings.official_account_reviewer_request_schema_version),
+        reviewer_verdict_schema_version=(settings.official_account_reviewer_verdict_schema_version),
+        reviewer_rubric_version=settings.official_account_reviewer_rubric_version,
+        reviewer_review_policy_version=(settings.official_account_reviewer_review_policy_version),
+        reviewer_repair_policy_version=(settings.official_account_reviewer_repair_policy_version),
+        reviewer_budget_policy_version=(settings.official_account_reviewer_budget_policy_version),
+        reviewer_provider=provider,
+        reviewer_model=model,
+        reviewer_writer_timeout_ms=settings.official_account_reviewer_writer_timeout_ms,
+        reviewer_timeout_ms=settings.official_account_reviewer_timeout_ms,
+        reviewer_writer_max_output_tokens=settings.official_account_local_max_output_tokens,
+        reviewer_max_output_tokens=settings.official_account_reviewer_max_output_tokens,
     )
 
 

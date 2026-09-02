@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import monotonic
 from typing import Generic, TypeVar
 from uuid import UUID, uuid4
@@ -43,6 +43,7 @@ class GovernedCapabilityResult(Generic[T]):
     input_tokens: int | None = 0
     output_tokens: int | None = 0
     model_turns: int = 0
+    execution: CapabilityCompletionBinding | None = None
 
     def __post_init__(self) -> None:
         if min(self.result_bytes, self.artifact_bytes, self.model_turns) < 0:
@@ -54,6 +55,25 @@ class GovernedCapabilityResult(Generic[T]):
 
 
 GovernedHandler = Callable[[], Awaitable[GovernedCapabilityResult[T]]]
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityCompletionBinding:
+    reservation_id: UUID
+    request_event_id: UUID
+    result_event_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityInvocationBinding:
+    """Real ledger identities exposed immediately before a governed handler starts."""
+
+    identity: ExecutionIdentity
+    reservation_id: UUID
+    request_event_id: UUID
+
+
+BeforeGovernedHandler = Callable[[CapabilityInvocationBinding], Awaitable[None]]
 
 
 class CapabilityRegistry:
@@ -183,6 +203,8 @@ class CapabilityGateway:
         self,
         request: CapabilityRequest,
         handler: GovernedHandler[T],
+        *,
+        before_handler: BeforeGovernedHandler | None = None,
     ) -> GovernedCapabilityResult[T]:
         try:
             definition = self._registry.get(request.capability_name)
@@ -245,6 +267,43 @@ class CapabilityGateway:
                 actual=BudgetUsage(),
             )
             raise GovernanceDeniedError(GovernanceErrorCode.CAPABILITY_FAILED) from None
+        if before_handler is not None:
+            try:
+                await before_handler(
+                    CapabilityInvocationBinding(
+                        identity=request.identity,
+                        reservation_id=reservation_id,
+                        request_event_id=request_event.event_id,
+                    )
+                )
+            except asyncio.CancelledError:
+                await self._repository.reconcile_budget(
+                    identity=request.identity,
+                    reservation_id=reservation_id,
+                    actual=BudgetUsage(),
+                )
+                await self._append_failed_event(
+                    request=request,
+                    parent_event_id=request_event.event_id,
+                    target_name=definition.name,
+                    code=GovernanceErrorCode.CAPABILITY_CANCELLED,
+                    duration_ms=0,
+                )
+                raise
+            except Exception:
+                await self._repository.reconcile_budget(
+                    identity=request.identity,
+                    reservation_id=reservation_id,
+                    actual=BudgetUsage(),
+                )
+                await self._append_failed_event(
+                    request=request,
+                    parent_event_id=request_event.event_id,
+                    target_name=definition.name,
+                    code=GovernanceErrorCode.CAPABILITY_FAILED,
+                    duration_ms=0,
+                )
+                raise GovernanceDeniedError(GovernanceErrorCode.CAPABILITY_FAILED) from None
         started_at = monotonic()
         try:
             async with asyncio.timeout(definition.timeout_ms / 1_000):
@@ -356,7 +415,7 @@ class CapabilityGateway:
                 parent_event_id=request_event.event_id,
             )
             raise GovernanceDeniedError(code)
-        await self._repository.append_event(
+        result_event = await self._repository.append_event(
             SafeEventDraft(
                 identity=request.identity,
                 event_id=uuid4(),
@@ -376,7 +435,14 @@ class CapabilityGateway:
                 result_bytes=result.result_bytes,
             )
         )
-        return result
+        return replace(
+            result,
+            execution=CapabilityCompletionBinding(
+                reservation_id=reservation_id,
+                request_event_id=request_event.event_id,
+                result_event_id=result_event.event_id,
+            ),
+        )
 
     async def _reconcile_failed_call(
         self,

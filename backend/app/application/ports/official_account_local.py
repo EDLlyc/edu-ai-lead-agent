@@ -57,6 +57,21 @@ class OfficialAccountVersionIdentity:
     generated_visual_plan_version: str | None = None
     generated_visual_prompt_version: str | None = None
     context_media_plan_version: str | None = None
+    reviewer_mode: Literal["off", "observe", "enforce"] = "off"
+    reviewer_version: str = "official-account-reviewer-v1"
+    reviewer_prompt_version: str = "official-account-reviewer-prompt-v1"
+    reviewer_request_schema_version: str = "official-account-review-request-v1"
+    reviewer_verdict_schema_version: str = "official-account-review-verdict-v1"
+    reviewer_rubric_version: str = "official-account-editorial-rubric-v1"
+    reviewer_review_policy_version: str = "official-account-review-policy-v1"
+    reviewer_repair_policy_version: str = "official-account-repair-policy-v1"
+    reviewer_budget_policy_version: str = "official-account-review-budget-v1"
+    reviewer_provider: Literal["fake", "zhipu"] = "fake"
+    reviewer_model: str = "official-account-fixture-v1"
+    reviewer_writer_timeout_ms: int = 180_000
+    reviewer_timeout_ms: int = 180_000
+    reviewer_writer_max_output_tokens: int = 16_384
+    reviewer_max_output_tokens: int = 2_048
 
 
 @dataclass(frozen=True, slots=True)

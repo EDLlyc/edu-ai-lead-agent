@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from app.application.ports.official_account_reviewer import OfficialAccountReviewerResult
 from app.domain.official_account_reviewer import (
     REPAIR_POLICY_VERSION,
     RepairDirective,
@@ -28,6 +29,7 @@ from app.domain.official_account_reviewer import (
     project_repair_directives,
     validate_review_verdict_binding,
 )
+from app.infrastructure.ai.official_account_reviewer import _parse_reviewer_provider_output
 from pydantic import ValidationError
 
 
@@ -53,6 +55,52 @@ def _request(
         prompt_version="prompt:v1",
         hard_gate_failures=hard_gate_failures,
     )
+
+
+def test_provider_parser_rejects_duplicate_json_fields_before_identity_binding() -> None:
+    request = _request()
+    payload = {
+        "request_id": request.request_id,
+        "request_fingerprint": request.request_fingerprint,
+        "article_ref": request.identity.article_ref,
+        "article_fingerprint": request.identity.article_fingerprint,
+        "reviewer_version": request.reviewer_version,
+        "prompt_version": request.prompt_version,
+        "issues": [],
+    }
+    serialized = json.dumps(payload, separators=(",", ":"))
+    duplicate = serialized.replace(
+        '"issues":[]',
+        '"issues":[],"issues":[]',
+    )
+
+    assert _parse_reviewer_provider_output(serialized).issues == ()
+    with pytest.raises(ValueError, match="duplicate fields"):
+        _parse_reviewer_provider_output(duplicate)
+
+
+def test_reviewer_result_rejects_unsafe_provider_metadata_and_negative_usage() -> None:
+    verdict = build_review_verdict(_request())
+    values = {
+        "verdict": verdict,
+        "provider": "fake",
+        "model": "safe-model",
+        "provider_request_id": "safe-request-1",
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "reasoning_tokens": 0,
+        "latency_ms": 1,
+    }
+    assert OfficialAccountReviewerResult(**values).provider_request_id == "safe-request-1"
+    with pytest.raises(ValueError, match="request identity"):
+        OfficialAccountReviewerResult(
+            **{
+                **values,
+                "provider_request_id": "secret response body\ncredential=value",
+            }
+        )
+    with pytest.raises(ValueError, match="cannot be negative"):
+        OfficialAccountReviewerResult(**{**values, "completion_tokens": -1})
 
 
 def test_closed_issue_schema_rejects_unknown_code_and_severity_drift() -> None:

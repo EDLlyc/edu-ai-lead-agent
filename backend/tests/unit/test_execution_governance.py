@@ -24,7 +24,9 @@ from app.application.services.execution_governance import (
     GovernedCapabilityResult,
 )
 from app.domain.execution_governance import (
+    DELEGATION_THRESHOLD_PERCENT,
     HARD_MAX_AGENT_DEPTH,
+    MAX_CAPABILITY_TIMEOUT_MS,
     ArtifactKind,
     ArtifactMetadata,
     BudgetLimits,
@@ -45,6 +47,7 @@ from app.domain.execution_governance import (
     authorize_capability,
     delegation_usage_percent,
 )
+from app.infrastructure.official_account_reviewer_governance import reviewer_root_limits
 
 
 def _identity() -> ExecutionIdentity:
@@ -66,6 +69,45 @@ def _limits(*, children: bool = False) -> BudgetLimits:
     )
 
 
+def test_reviewer_root_limits_keep_worst_case_writer_below_delegation_fence() -> None:
+    writer_timeout_ms = 360_000
+    reviewer_timeout_ms = 180_000
+    writer_output_tokens = 16_384
+    reviewer_output_tokens = 4_096
+    limits = reviewer_root_limits(
+        writer_timeout_ms=writer_timeout_ms,
+        reviewer_timeout_ms=reviewer_timeout_ms,
+        writer_max_output_tokens=writer_output_tokens,
+        reviewer_max_output_tokens=reviewer_output_tokens,
+    )
+    writer_worst_case = BudgetUsage(
+        elapsed_ms=writer_timeout_ms,
+        model_turns=1,
+        input_tokens=80_000,
+        output_tokens=writer_output_tokens,
+        tool_calls=1,
+        tool_result_bytes=1024 * 1024,
+        artifact_bytes=4 * 1024 * 1024,
+        child_count=1,
+    )
+
+    assert (
+        delegation_usage_percent(
+            limits=limits,
+            usage=writer_worst_case,
+            reserved=BudgetVector(),
+        )
+        < DELEGATION_THRESHOLD_PERCENT
+    )
+    assert limits.elapsed_ms - writer_timeout_ms >= reviewer_timeout_ms
+    assert limits.model_turns - 1 >= 1
+    assert limits.input_tokens - 80_000 >= 80_000
+    assert limits.output_tokens - writer_output_tokens >= reviewer_output_tokens
+    assert limits.tool_calls - 1 >= 1
+    assert limits.tool_result_bytes - 1024 * 1024 >= 256 * 1024
+    assert limits.artifact_bytes - 4 * 1024 * 1024 >= 256 * 1024
+
+
 def test_identity_budget_and_artifact_contracts_are_strict_and_stable() -> None:
     identity = _identity()
     assert tuple(identity.as_dict()) == ("run_id", "task_id", "agent_id")
@@ -78,6 +120,17 @@ def test_identity_budget_and_artifact_contracts_are_strict_and_stable() -> None:
         replace(_limits(children=True), max_depth=HARD_MAX_AGENT_DEPTH + 1)
     with pytest.raises(ValueError, match="zero child"):
         replace(_limits(), max_children=1)
+    long_running = CapabilityDefinition(
+        name="long-running-check",
+        access=CapabilityAccess.CHECK,
+        allowed_roles=frozenset({ExecutionRole.REVIEWER}),
+        timeout_ms=MAX_CAPABILITY_TIMEOUT_MS,
+        max_argument_bytes=1,
+        max_result_bytes=1,
+    )
+    assert long_running.timeout_ms == 420_000
+    with pytest.raises(ValueError, match="system limit"):
+        replace(long_running, timeout_ms=MAX_CAPABILITY_TIMEOUT_MS + 1)
 
     artifact = ArtifactMetadata(
         identity=identity,
@@ -160,6 +213,16 @@ def test_authorization_is_default_deny_by_role_task_and_artifact_scope() -> None
     with pytest.raises(GovernanceDeniedError) as reviewer:
         authorize_capability(write, replace(request, role=ExecutionRole.REVIEWER))
     assert reviewer.value.code is GovernanceErrorCode.WRITE_FORBIDDEN
+    with pytest.raises(GovernanceDeniedError) as reviewer_plan:
+        authorize_capability(
+            replace(write, name="plan-article", access=CapabilityAccess.PLAN),
+            replace(
+                request,
+                role=ExecutionRole.REVIEWER,
+                capability_name="plan-article",
+            ),
+        )
+    assert reviewer_plan.value.code is GovernanceErrorCode.WRITE_FORBIDDEN
     with pytest.raises(GovernanceDeniedError) as cross_task:
         authorize_capability(write, replace(request, target_task_id="another-task"))
     assert cross_task.value.code is GovernanceErrorCode.TASK_SCOPE_FORBIDDEN
@@ -429,6 +492,127 @@ async def test_gateway_runs_allowed_handler_once_and_records_safe_request_result
         ExecutionEventKind.TOOL_RESULT,
     ]
     assert all("evidence" not in event.as_dict() for event in repository.events)
+
+
+@pytest.mark.asyncio
+async def test_gateway_success_reconciles_unknown_model_usage_exactly_once() -> None:
+    identity = _identity()
+    root_event_id = uuid4()
+    repository = _MemoryRepository(
+        replace(
+            _allocation(identity, root_event_id),
+            role=ExecutionRole.REVIEWER,
+        )
+    )
+    definition = CapabilityDefinition(
+        name="review-article",
+        access=CapabilityAccess.CHECK,
+        allowed_roles=frozenset({ExecutionRole.REVIEWER}),
+        timeout_ms=500,
+        max_argument_bytes=1024,
+        max_result_bytes=2048,
+    )
+    gateway = CapabilityGateway(
+        repository=repository,  # type: ignore[arg-type]
+        registry=CapabilityRegistry((definition,)),
+    )
+
+    async def handler() -> GovernedCapabilityResult[str]:
+        return GovernedCapabilityResult(
+            "safe",
+            result_bytes=4,
+            input_tokens=None,
+            output_tokens=None,
+            model_turns=1,
+        )
+
+    result = await gateway.invoke(
+        CapabilityRequest(
+            identity=identity,
+            role=ExecutionRole.REVIEWER,
+            capability_name=definition.name,
+            target_task_id=identity.task_id,
+            parent_event_id=root_event_id,
+            argument_bytes=10,
+            expected_input_tokens=100,
+            expected_output_tokens=100,
+            model_turns=1,
+        ),
+        handler,
+    )
+
+    assert result.value == "safe"
+    assert len(repository.reconciled) == 1
+    assert repository.reconciled[0].input_tokens is None
+    assert repository.reconciled[0].output_tokens is None
+
+
+@pytest.mark.asyncio
+async def test_gateway_uses_real_pre_handler_binding_and_stops_on_callback_failure() -> None:
+    identity = _identity()
+    root_event_id = uuid4()
+    repository = _MemoryRepository(_allocation(identity, root_event_id))
+    definition = CapabilityDefinition(
+        name="review-article",
+        access=CapabilityAccess.CHECK,
+        allowed_roles=frozenset({ExecutionRole.WORKER}),
+        timeout_ms=500,
+        max_argument_bytes=1024,
+        max_result_bytes=2048,
+    )
+    gateway = CapabilityGateway(
+        repository=repository,  # type: ignore[arg-type]
+        registry=CapabilityRegistry((definition,)),
+    )
+    request = CapabilityRequest(
+        identity=identity,
+        role=ExecutionRole.WORKER,
+        capability_name=definition.name,
+        target_task_id=identity.task_id,
+        parent_event_id=root_event_id,
+        argument_bytes=10,
+        model_turns=1,
+        expected_input_tokens=100,
+        expected_output_tokens=100,
+    )
+    calls = 0
+    seen: tuple[UUID, UUID] | None = None
+
+    async def before_handler(binding) -> None:  # type: ignore[no-untyped-def]
+        nonlocal seen
+        seen = (binding.reservation_id, binding.request_event_id)
+        assert binding.reservation_id in repository.reservations
+        assert repository.events[-1].event_id == binding.request_event_id
+
+    async def handler() -> GovernedCapabilityResult[str]:
+        nonlocal calls
+        calls += 1
+        return GovernedCapabilityResult(
+            "ok", result_bytes=2, input_tokens=1, output_tokens=1, model_turns=1
+        )
+
+    result = await gateway.invoke(request, handler, before_handler=before_handler)
+
+    assert calls == 1
+    assert seen is not None
+    assert result.execution is not None
+    assert result.execution.reservation_id == seen[0]
+    assert result.execution.request_event_id == seen[1]
+
+    failed_repository = _MemoryRepository(_allocation(identity, root_event_id))
+    failed_gateway = CapabilityGateway(
+        repository=failed_repository,  # type: ignore[arg-type]
+        registry=CapabilityRegistry((definition,)),
+    )
+
+    async def reject_binding(_binding) -> None:  # type: ignore[no-untyped-def]
+        raise RuntimeError("durable intent unavailable")
+
+    with pytest.raises(GovernanceDeniedError) as denied:
+        await failed_gateway.invoke(request, handler, before_handler=reject_binding)
+    assert denied.value.code is GovernanceErrorCode.CAPABILITY_FAILED
+    assert calls == 1
+    assert failed_repository.reconciled == [BudgetUsage()]
 
 
 @pytest.mark.asyncio

@@ -1980,6 +1980,75 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
                 if bundle.get("context_media_plan_version") is not None
                 else None
             ),
+            reviewer_mode=cast(
+                Literal["off", "observe", "enforce"],
+                bundle.get("reviewer_mode", "off"),
+            ),
+            reviewer_version=str(bundle.get("reviewer_version", "official-account-reviewer-v1")),
+            reviewer_prompt_version=str(
+                bundle.get("reviewer_prompt_version", "official-account-reviewer-prompt-v1")
+            ),
+            reviewer_request_schema_version=str(
+                bundle.get(
+                    "reviewer_request_schema_version",
+                    "official-account-review-request-v1",
+                )
+            ),
+            reviewer_verdict_schema_version=str(
+                bundle.get(
+                    "reviewer_verdict_schema_version",
+                    "official-account-review-verdict-v1",
+                )
+            ),
+            reviewer_rubric_version=str(
+                bundle.get(
+                    "reviewer_rubric_version",
+                    "official-account-editorial-rubric-v1",
+                )
+            ),
+            reviewer_review_policy_version=str(
+                bundle.get(
+                    "reviewer_review_policy_version",
+                    "official-account-review-policy-v1",
+                )
+            ),
+            reviewer_repair_policy_version=str(
+                bundle.get(
+                    "reviewer_repair_policy_version",
+                    "official-account-repair-policy-v1",
+                )
+            ),
+            reviewer_budget_policy_version=str(
+                bundle.get(
+                    "reviewer_budget_policy_version",
+                    "official-account-review-budget-v1",
+                )
+            ),
+            reviewer_provider=cast(
+                Literal["fake", "zhipu"],
+                bundle.get("reviewer_provider", bundle["provider"]),
+            ),
+            reviewer_model=str(bundle.get("reviewer_model", bundle["model"])),
+            reviewer_writer_timeout_ms=_bundle_optional_integer(
+                bundle,
+                "reviewer_writer_timeout_ms",
+                default=180_000,
+            ),
+            reviewer_timeout_ms=_bundle_optional_integer(
+                bundle,
+                "reviewer_timeout_ms",
+                default=180_000,
+            ),
+            reviewer_writer_max_output_tokens=_bundle_optional_integer(
+                bundle,
+                "reviewer_writer_max_output_tokens",
+                default=16_384,
+            ),
+            reviewer_max_output_tokens=_bundle_optional_integer(
+                bundle,
+                "reviewer_max_output_tokens",
+                default=2_048,
+            ),
         )
     except (KeyError, TypeError, ValueError):
         raise RuntimeError("official-account run version bundle is invalid") from None
@@ -1989,11 +2058,42 @@ def _identity_payload(identity: OfficialAccountVersionIdentity) -> dict[str, obj
     payload = asdict(identity)
     if payload.get("context_media_plan_version") is None:
         payload.pop("context_media_plan_version", None)
+    if identity.reviewer_mode == "off":
+        for key in (
+            "reviewer_mode",
+            "reviewer_version",
+            "reviewer_prompt_version",
+            "reviewer_request_schema_version",
+            "reviewer_verdict_schema_version",
+            "reviewer_rubric_version",
+            "reviewer_review_policy_version",
+            "reviewer_repair_policy_version",
+            "reviewer_budget_policy_version",
+            "reviewer_provider",
+            "reviewer_model",
+            "reviewer_writer_timeout_ms",
+            "reviewer_timeout_ms",
+            "reviewer_writer_max_output_tokens",
+            "reviewer_max_output_tokens",
+        ):
+            payload.pop(key, None)
     return payload
 
 
 def _bundle_integer(bundle: dict[str, object], key: str) -> int:
     value = bundle[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"official-account version field {key} must be an integer")
+    return value
+
+
+def _bundle_optional_integer(
+    bundle: dict[str, object],
+    key: str,
+    *,
+    default: int,
+) -> int:
+    value = bundle.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"official-account version field {key} must be an integer")
     return value

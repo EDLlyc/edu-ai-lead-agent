@@ -90,6 +90,13 @@ class ExecutionGovernanceRepository(Protocol):
         actual: BudgetUsage,
     ) -> BudgetReservationSnapshot: ...
 
+    async def get_budget_reservation(
+        self,
+        *,
+        identity: ExecutionIdentity,
+        reservation_id: UUID,
+    ) -> BudgetReservationSnapshot | None: ...
+
     async def append_event(self, draft: SafeEventDraft) -> SafeExecutionEvent: ...
 
     async def register_artifact(
@@ -112,6 +119,13 @@ class ExecutionGovernanceRepository(Protocol):
         identity: ExecutionIdentity,
         artifact_ids: tuple[UUID, ...],
     ) -> bool: ...
+
+    async def get_artifact(
+        self,
+        *,
+        identity: ExecutionIdentity,
+        artifact_id: UUID,
+    ) -> ArtifactMetadata | None: ...
 
     async def list_timeline(
         self,

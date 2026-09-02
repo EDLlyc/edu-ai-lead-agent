@@ -4027,6 +4027,252 @@ class OfficialAccountArticleVersionModel(Base):
     )
 
 
+class OfficialAccountReviewRequestModel(Base):
+    __tablename__ = "official_account_review_requests"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    article_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    article_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    brand_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    reviewer_version: Mapped[str] = mapped_column(String(160), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(160), nullable=False)
+    request_schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    verdict_schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rubric_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    review_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    repair_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    article_artifact_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    source_artifact_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    brand_artifact_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    execution_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    execution_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reviewer_agent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reviewer_parent_event_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    reservation_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    request_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    calling_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["article_version_id", "run_id"],
+            ["official_account_article_versions.id", "official_account_article_versions.run_id"],
+            name="fk_official_review_requests_article_run",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["execution_run_id", "execution_task_id", "reviewer_agent_id"],
+            [
+                "execution_agent_allocations.run_id",
+                "execution_agent_allocations.task_id",
+                "execution_agent_allocations.agent_id",
+            ],
+            name="fk_official_review_requests_reviewer_allocation",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "reviewer_parent_event_id",
+                "execution_run_id",
+                "execution_task_id",
+                "reviewer_agent_id",
+            ],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+                "execution_trace_events.agent_id",
+            ],
+            name="fk_official_review_requests_parent_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["request_event_id", "execution_run_id", "execution_task_id", "reviewer_agent_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+                "execution_trace_events.agent_id",
+            ],
+            name="fk_official_review_requests_request_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["reservation_id", "execution_run_id", "execution_task_id", "reviewer_agent_id"],
+            [
+                "execution_budget_reservations.id",
+                "execution_budget_reservations.run_id",
+                "execution_budget_reservations.task_id",
+                "execution_budget_reservations.agent_id",
+            ],
+            name="fk_official_review_requests_reservation",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["article_artifact_id"],
+            ["execution_artifacts.id"],
+            name="fk_official_review_requests_article_artifact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_artifact_id"],
+            ["execution_artifacts.id"],
+            name="fk_official_review_requests_source_artifact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["brand_artifact_id"],
+            ["execution_artifacts.id"],
+            name="fk_official_review_requests_brand_artifact",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'calling', 'completed', 'result_unknown')",
+            name="ck_official_review_requests_status",
+        ),
+        CheckConstraint(
+            "attempt_number > 0",
+            name="ck_official_review_requests_attempt_number",
+        ),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND article_sha256 ~ '^[0-9a-f]{64}$' "
+            "AND source_sha256 ~ '^[0-9a-f]{64}$' "
+            "AND brand_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_official_review_requests_fingerprints",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(request_snapshot) = 'object'",
+            name="ck_official_review_requests_snapshot",
+        ),
+        CheckConstraint(
+            "(status = 'pending' AND execution_run_id IS NULL AND calling_at IS NULL "
+            "AND completed_at IS NULL) OR "
+            "(status = 'calling' AND execution_run_id IS NOT NULL AND calling_at IS NOT NULL "
+            "AND completed_at IS NULL) OR "
+            "(status IN ('completed', 'result_unknown') AND execution_run_id IS NOT NULL "
+            "AND calling_at IS NOT NULL AND completed_at IS NOT NULL)",
+            name="ck_official_review_requests_lifecycle",
+        ),
+        CheckConstraint(
+            "(execution_run_id IS NULL AND execution_task_id IS NULL "
+            "AND reviewer_agent_id IS NULL AND reviewer_parent_event_id IS NULL "
+            "AND reservation_id IS NULL AND request_event_id IS NULL) OR "
+            "(execution_run_id IS NOT NULL AND execution_task_id IS NOT NULL "
+            "AND reviewer_agent_id IS NOT NULL AND reviewer_parent_event_id IS NOT NULL "
+            "AND reservation_id IS NOT NULL AND request_event_id IS NOT NULL)",
+            name="ck_official_review_requests_execution_shape",
+        ),
+        CheckConstraint(
+            "(status = 'result_unknown' AND error_code IS NOT NULL) OR "
+            "(status <> 'result_unknown' AND error_code IS NULL)",
+            name="ck_official_review_requests_error_shape",
+        ),
+        UniqueConstraint(
+            "run_id",
+            "article_version_id",
+            name="uq_official_review_requests_article",
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_official_review_requests_fingerprint"),
+        Index("ix_official_review_requests_run_status", "run_id", "status"),
+    )
+
+
+class OfficialAccountReviewRecordModel(Base):
+    __tablename__ = "official_account_review_records"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    request_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "official_account_review_requests.id",
+            name="fk_official_account_review_records_request_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    record_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    issue_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    unavailable_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reasoning_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    latency_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    validation_corrections: Mapped[int] = mapped_column(Integer, nullable=False)
+    execution_artifact_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=False,
+    )
+    execution_event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["execution_artifact_id", "execution_event_id"],
+            ["execution_artifacts.id", "execution_artifacts.producer_event_id"],
+            name="fk_official_account_review_records_execution_artifact_id",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "decision IN ('accepted', 'manual_review', 'rejected', 'unavailable')",
+            name="ck_official_review_records_decision",
+        ),
+        CheckConstraint(
+            "record_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_official_review_records_fingerprint",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(issue_snapshot) = 'array'",
+            name="ck_official_review_records_issues",
+        ),
+        CheckConstraint(
+            "prompt_tokens IS NULL OR prompt_tokens >= 0",
+            name="ck_official_review_records_prompt_tokens",
+        ),
+        CheckConstraint(
+            "completion_tokens IS NULL OR completion_tokens >= 0",
+            name="ck_official_review_records_completion_tokens",
+        ),
+        CheckConstraint(
+            "reasoning_tokens IS NULL OR reasoning_tokens >= 0",
+            name="ck_official_review_records_reasoning_tokens",
+        ),
+        CheckConstraint(
+            "latency_ms >= 0 AND validation_corrections >= 0",
+            name="ck_official_review_records_usage",
+        ),
+        CheckConstraint(
+            "(decision = 'unavailable' AND unavailable_reason IS NOT NULL "
+            "AND jsonb_array_length(issue_snapshot) = 0) OR "
+            "(decision <> 'unavailable' AND unavailable_reason IS NULL)",
+            name="ck_official_review_records_unavailable",
+        ),
+        UniqueConstraint("request_id", name="uq_official_review_records_request"),
+        UniqueConstraint("record_fingerprint", name="uq_official_review_records_fingerprint"),
+        UniqueConstraint(
+            "execution_artifact_id", name="uq_official_review_records_execution_artifact"
+        ),
+    )
+
+
 class OfficialAccountArticleContextImageModel(Base):
     __tablename__ = "official_account_article_context_images"
 
@@ -5864,6 +6110,7 @@ class ExecutionArtifactModel(Base):
             name="ck_execution_artifacts_status",
         ),
         UniqueConstraint("id", "run_id", "task_id", name="uq_execution_artifacts_run_task"),
+        UniqueConstraint("id", "producer_event_id", name="uq_execution_artifacts_producer"),
         Index("ix_execution_artifacts_run_created", "run_id", "created_at"),
     )
 
@@ -5916,6 +6163,13 @@ class ExecutionBudgetReservationModel(Base):
             "AND reserved_tool_calls >= 0 AND reserved_tool_result_bytes >= 0 "
             "AND reserved_artifact_bytes >= 0",
             name="ck_execution_reservations_reserved",
+        ),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "task_id",
+            "agent_id",
+            name="uq_execution_reservations_identity",
         ),
         Index("ix_execution_reservations_allocation", "run_id", "agent_id", "status"),
     )

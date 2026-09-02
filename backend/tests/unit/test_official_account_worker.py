@@ -88,6 +88,7 @@ from app.infrastructure.official_account_local import (
 )
 from app.official_account_local_cli import _identity as cli_identity
 from PIL import Image
+from pydantic import ValidationError
 
 
 def _identity() -> OfficialAccountVersionIdentity:
@@ -272,6 +273,70 @@ def test_cli_identity_carries_the_complete_current_visual_version_bundle() -> No
     assert identity.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
     assert identity.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
     assert identity.context_media_plan_version == OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
+    assert identity.reviewer_mode == settings.official_account_reviewer_mode
+    assert (
+        identity.reviewer_request_schema_version
+        == settings.official_account_reviewer_request_schema_version
+    )
+    assert (
+        identity.reviewer_verdict_schema_version
+        == settings.official_account_reviewer_verdict_schema_version
+    )
+    assert identity.reviewer_rubric_version == settings.official_account_reviewer_rubric_version
+    assert (
+        identity.reviewer_review_policy_version
+        == settings.official_account_reviewer_review_policy_version
+    )
+    assert (
+        identity.reviewer_repair_policy_version
+        == settings.official_account_reviewer_repair_policy_version
+    )
+    assert (
+        identity.reviewer_budget_policy_version
+        == settings.official_account_reviewer_budget_policy_version
+    )
+    assert identity.reviewer_provider == "fake"
+    assert identity.reviewer_model == "official-account-fixture-v1"
+    assert (
+        identity.reviewer_writer_timeout_ms == settings.official_account_reviewer_writer_timeout_ms
+    )
+    assert identity.reviewer_timeout_ms == settings.official_account_reviewer_timeout_ms
+    assert (
+        identity.reviewer_writer_max_output_tokens
+        == settings.official_account_local_max_output_tokens
+    )
+
+
+def test_reviewer_settings_reject_enforce_missing_worker_and_contract_tamper() -> None:
+    with pytest.raises(ValidationError, match="Reviewer enforce is not implemented"):
+        Settings(_env_file=None, official_account_reviewer_mode="enforce")
+    with pytest.raises(ValidationError, match="observe requires the local worker"):
+        Settings(_env_file=None, official_account_reviewer_mode="observe")
+    with pytest.raises(ValidationError, match="contract version bundle is unsupported"):
+        Settings(
+            _env_file=None,
+            official_account_local_enabled=True,
+            official_account_local_worker_enabled=True,
+            official_account_reviewer_mode="observe",
+            official_account_reviewer_rubric_version="official-account-editorial-rubric-v999",
+        )
+    with pytest.raises(ValidationError, match="timeouts must cover the provider total timeout"):
+        Settings(
+            _env_file=None,
+            official_account_local_enabled=True,
+            official_account_local_worker_enabled=True,
+            official_account_reviewer_mode="observe",
+            ai_provider_mode="zhipu",
+            official_account_reviewer_timeout_ms=149_000,
+        )
+
+    settings = Settings(
+        _env_file=None,
+        official_account_local_enabled=True,
+        official_account_local_worker_enabled=True,
+        official_account_reviewer_mode="observe",
+    )
+    assert settings.official_account_reviewer_mode == "observe"
 
 
 class _MemoryRepository:
@@ -548,6 +613,41 @@ def _executor(
         audit_max_output_tokens=1_024,
         media_semantic_ranker=media_semantic_ranker,
     )
+
+
+class _CountingArticleGenerator(DeterministicFakeOfficialAccountArticleGenerator):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def generate(self, request):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        return await super().generate(request)
+
+
+@pytest.mark.asyncio
+async def test_observe_mode_never_bypasses_missing_writer_governance() -> None:
+    repository = _MemoryRepository(identity=replace(_identity(), reviewer_mode="observe"))
+    generator = _CountingArticleGenerator()
+    executor = OfficialAccountLocalExecutor(
+        repository=repository,
+        fixture_generator=generator,
+        fixture_auditor=DeterministicFakeOfficialAccountArticleAuditor(),
+        live_generator=None,
+        live_auditor=None,
+        media_adapter=LocalOfficialAccountMediaAdapter(),
+        draft_adapter=LocalOfficialAccountDraftAdapter(),
+        lease_seconds=60,
+        heartbeat_seconds=10,
+        max_attempts=3,
+        retry_base_seconds=1,
+        generation_max_output_tokens=8_192,
+        audit_max_output_tokens=1_024,
+    )
+
+    assert await executor.execute_next("worker-1") is True
+    assert generator.calls == 0
+    assert repository.failure == ("official_account_review_governance_unavailable", False)
 
 
 class _CountingSemanticRanker:

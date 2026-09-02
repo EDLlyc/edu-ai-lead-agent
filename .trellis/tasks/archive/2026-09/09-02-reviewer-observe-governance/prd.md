@@ -18,11 +18,11 @@
 
 ## Acceptance Criteria
 
-- [ ] off 零新增 Reviewer provider 调用、零新增 Reviewer row、既有字节/API/状态不漂移。
-- [ ] observe 的 accepted/manual/rejected/unavailable 均被安全持久化且不新增 release/repair 行为。
-- [ ] Reviewer 角色无法 plan/business-write；预算在超时、取消、异常和成功路径只结算一次。
-- [ ] PostgreSQL 测试覆盖 replay、并发、跨 run/task/artifact、hash/version tamper 和 populated downgrade。
-- [ ] 旧数据与现有官方账号、Workbench、execution-governance 契约保持兼容。
+- [x] off 零新增 Reviewer provider 调用、零新增 Reviewer row、既有字节/API/状态不漂移。
+- [x] observe 的 accepted/manual/rejected/unavailable 均被安全持久化且不新增 release/repair 行为。
+- [x] Reviewer 角色无法 plan/business-write；预算在超时、取消、异常和成功路径只结算一次。
+- [x] PostgreSQL 测试覆盖 replay、并发、跨 run/task/artifact、hash/version tamper 和 populated downgrade。
+- [x] 旧数据与现有官方账号、Workbench、execution-governance 契约保持兼容。
 
 ## Out of Scope
 

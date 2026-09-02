@@ -20,6 +20,7 @@ from app.application.ports.official_account_local import (
     OfficialAccountArticleAuditor,
     OfficialAccountArticleGenerator,
 )
+from app.application.ports.official_account_reviewer import OfficialAccountReviewer
 from app.application.ports.visual_retrieval import VisualEmbeddingModel
 from app.application.services.official_account_local import OfficialAccountLocalExecutor
 from app.application.services.official_account_media_semantic import (
@@ -33,11 +34,18 @@ from app.infrastructure.ai.factory import (
     create_official_account_image_quality_auditor,
 )
 from app.infrastructure.ai.official_account_local import create_zhipu_official_account_models
+from app.infrastructure.ai.official_account_reviewer import (
+    create_zhipu_official_account_reviewer,
+)
 from app.infrastructure.ai.visual_embedding import (
     AlibabaVisualEmbeddingAdapter,
     DeterministicFakeVisualEmbedding,
 )
+from app.infrastructure.db.execution_governance import PostgresExecutionGovernanceRepository
 from app.infrastructure.db.official_account_local import PostgresOfficialAccountRepository
+from app.infrastructure.db.official_account_reviewer import (
+    PostgresOfficialAccountReviewRepository,
+)
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.visual_retrieval import PostgresVisualIndexRepository
 from app.infrastructure.official_account_catalog import (
@@ -48,6 +56,12 @@ from app.infrastructure.official_account_local import (
     DeterministicFakeOfficialAccountArticleGenerator,
     LocalOfficialAccountDraftAdapter,
     LocalOfficialAccountMediaAdapter,
+)
+from app.infrastructure.official_account_reviewer import (
+    DeterministicFakeOfficialAccountReviewer,
+)
+from app.infrastructure.official_account_reviewer_governance import (
+    PostgresOfficialAccountReviewerGovernance,
 )
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 
@@ -137,6 +151,7 @@ async def run_worker() -> None:
     try:
         live_generator: OfficialAccountArticleGenerator | None = None
         live_auditor: OfficialAccountArticleAuditor | None = None
+        live_reviewer: OfficialAccountReviewer | None = None
         if settings.ai_provider_mode == "zhipu":
             if (
                 settings.ai_platform_base_url is not None
@@ -158,6 +173,20 @@ async def run_worker() -> None:
                     max_output_tokens=settings.official_account_local_max_output_tokens,
                     max_validation_corrections=settings.ai_max_validation_corrections,
                 )
+                live_reviewer = create_zhipu_official_account_reviewer(
+                    client=provider_client,
+                    base_url=settings.ai_platform_base_url,
+                    api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
+                    model=settings.ai_chat_model,
+                    connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+                    read_timeout_seconds=settings.ai_read_timeout_seconds,
+                    total_timeout_seconds=settings.ai_total_timeout_seconds,
+                    concurrency=settings.ai_provider_concurrency,
+                    max_attempts=settings.ai_max_attempts,
+                    max_input_characters=settings.ai_max_input_characters,
+                    max_output_tokens=settings.official_account_reviewer_max_output_tokens,
+                    max_validation_corrections=settings.ai_max_validation_corrections,
+                )
         session_factory = create_session_factory(engine)
         catalog_media_provider = LocalOfficialAccountCatalogMediaProvider(
             settings.image_asset_manifest
@@ -177,6 +206,12 @@ async def run_worker() -> None:
             settings,
             client=provider_client,
         )
+        execution_repository = PostgresExecutionGovernanceRepository(session_factory)
+        review_governance = PostgresOfficialAccountReviewerGovernance(
+            execution_repository=execution_repository,
+            review_repository=PostgresOfficialAccountReviewRepository(session_factory),
+        )
+        fixture_reviewer = DeterministicFakeOfficialAccountReviewer()
         executor = OfficialAccountLocalExecutor(
             repository=PostgresOfficialAccountRepository(session_factory),
             fixture_generator=DeterministicFakeOfficialAccountArticleGenerator(),
@@ -213,6 +248,9 @@ async def run_worker() -> None:
             ),
             image_quality_eval_mode=settings.image_quality_eval_mode,
             image_quality_auditor=image_quality_auditor,
+            review_governance=review_governance,
+            fixture_reviewer=fixture_reviewer,
+            live_reviewer=live_reviewer,
         )
         worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
         logger.info(
@@ -221,6 +259,11 @@ async def run_worker() -> None:
             live_provider_available=live_generator is not None,
             image_quality_eval_mode=settings.image_quality_eval_mode,
             image_quality_evaluator_available=image_quality_auditor is not None,
+            reviewer_mode=settings.official_account_reviewer_mode,
+            reviewer_available=(
+                fixture_reviewer is not None
+                and (live_reviewer is not None or settings.ai_provider_mode != "zhipu")
+            ),
         )
         workers = [
             asyncio.create_task(

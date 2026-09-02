@@ -18,6 +18,7 @@ from app.domain.execution_governance import (
     DELEGATION_THRESHOLD_PERCENT,
     EXECUTION_GOVERNANCE_POLICY_VERSION,
     HARD_MAX_AGENT_DEPTH,
+    ArtifactKind,
     ArtifactLifecycleStatus,
     ArtifactMetadata,
     BudgetLimits,
@@ -376,6 +377,20 @@ class PostgresExecutionGovernanceRepository(ExecutionGovernanceRepository):
             await session.flush()
             return _reservation_snapshot(reservation)
 
+    async def get_budget_reservation(
+        self,
+        *,
+        identity: ExecutionIdentity,
+        reservation_id: UUID,
+    ) -> BudgetReservationSnapshot | None:
+        async with self._session_factory() as session:
+            reservation = await session.get(ExecutionBudgetReservationModel, reservation_id)
+            if reservation is None:
+                return None
+            if _reservation_identity(reservation) != identity:
+                return None
+            return _reservation_snapshot(reservation)
+
     async def append_event(self, draft: SafeEventDraft) -> SafeExecutionEvent:
         async with self._session_factory() as session, session.begin():
             event = await _append_event(session, draft)
@@ -502,6 +517,37 @@ class PostgresExecutionGovernanceRepository(ExecutionGovernanceRepository):
                 )
             )
         return len(rows) == len(artifact_ids)
+
+    async def get_artifact(
+        self,
+        *,
+        identity: ExecutionIdentity,
+        artifact_id: UUID,
+    ) -> ArtifactMetadata | None:
+        async with self._session_factory() as session:
+            row = await session.get(ExecutionArtifactModel, artifact_id)
+            if row is None:
+                return None
+            if (
+                row.run_id != identity.run_id
+                or row.task_id != identity.task_id
+                or row.lifecycle_status != ArtifactLifecycleStatus.ACTIVE.value
+            ):
+                return None
+            return ArtifactMetadata(
+                identity=ExecutionIdentity(
+                    run_id=row.run_id,
+                    task_id=row.task_id,
+                    agent_id=row.agent_id,
+                ),
+                artifact_id=row.id,
+                producer_event_id=row.producer_event_id,
+                kind=ArtifactKind(row.kind),
+                media_type=row.media_type,
+                byte_size=row.byte_size,
+                sha256=row.sha256,
+                lifecycle_status=ArtifactLifecycleStatus(row.lifecycle_status),
+            )
 
     async def list_timeline(
         self,

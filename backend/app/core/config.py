@@ -34,6 +34,13 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
 )
+from app.domain.official_account_reviewer import (
+    REPAIR_POLICY_VERSION,
+    REVIEW_POLICY_VERSION,
+    REVIEW_REQUEST_SCHEMA_VERSION,
+    REVIEW_RUBRIC_VERSION,
+    REVIEW_VERDICT_SCHEMA_VERSION,
+)
 from app.domain.topic_rerank import (
     DEFAULT_TOPIC_RERANK_POLICY_VERSION,
     SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS,
@@ -288,6 +295,50 @@ class Settings(BaseSettings):
         OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
     )
     image_quality_eval_mode: Literal["off", "observe"] = "off"
+    official_account_reviewer_mode: Literal["off", "observe", "enforce"] = "off"
+    official_account_reviewer_version: str = Field(
+        default="official-account-reviewer-v1",
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,159}$",
+    )
+    official_account_reviewer_prompt_version: str = Field(
+        default="official-account-reviewer-prompt-v1",
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,159}$",
+    )
+    official_account_reviewer_request_schema_version: str = Field(
+        default=REVIEW_REQUEST_SCHEMA_VERSION,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_verdict_schema_version: str = Field(
+        default=REVIEW_VERDICT_SCHEMA_VERSION,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_rubric_version: str = Field(
+        default=REVIEW_RUBRIC_VERSION,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_review_policy_version: str = Field(
+        default=REVIEW_POLICY_VERSION,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_repair_policy_version: str = Field(
+        default=REPAIR_POLICY_VERSION,
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_budget_policy_version: str = Field(
+        default="official-account-review-budget-v1",
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_writer_timeout_ms: int = Field(
+        default=180_000,
+        ge=1_000,
+        le=420_000,
+    )
+    official_account_reviewer_timeout_ms: int = Field(
+        default=180_000,
+        ge=1_000,
+        le=420_000,
+    )
+    official_account_reviewer_max_output_tokens: int = Field(default=2_048, ge=512, le=4_096)
     official_account_local_default_author: str = Field(
         default="赛先生", min_length=1, max_length=80
     )
@@ -732,6 +783,41 @@ class Settings(BaseSettings):
             and not self.official_account_local_generated_visuals_enabled
         ):
             raise ValueError("official-account image quality observe requires generated visuals")
+        if self.official_account_reviewer_mode == "enforce":
+            raise ValueError("official-account Reviewer enforce is not implemented")
+        if self.official_account_reviewer_mode == "observe" and (
+            not self.official_account_local_enabled
+            or not self.official_account_local_worker_enabled
+        ):
+            raise ValueError("official-account Reviewer observe requires the local worker")
+        if self.official_account_reviewer_mode == "observe" and (
+            self.official_account_reviewer_request_schema_version,
+            self.official_account_reviewer_verdict_schema_version,
+            self.official_account_reviewer_rubric_version,
+            self.official_account_reviewer_review_policy_version,
+            self.official_account_reviewer_repair_policy_version,
+            self.official_account_reviewer_budget_policy_version,
+        ) != (
+            REVIEW_REQUEST_SCHEMA_VERSION,
+            REVIEW_VERDICT_SCHEMA_VERSION,
+            REVIEW_RUBRIC_VERSION,
+            REVIEW_POLICY_VERSION,
+            REPAIR_POLICY_VERSION,
+            "official-account-review-budget-v1",
+        ):
+            raise ValueError("official-account Reviewer contract version bundle is unsupported")
+        if (
+            self.official_account_reviewer_mode == "observe"
+            and self.ai_provider_mode == "zhipu"
+            and (
+                self.official_account_reviewer_writer_timeout_ms / 1_000
+                < self.ai_total_timeout_seconds
+                or self.official_account_reviewer_timeout_ms / 1_000 < self.ai_total_timeout_seconds
+            )
+        ):
+            raise ValueError(
+                "official-account Reviewer gateway timeouts must cover the provider total timeout"
+            )
         if (
             self.content_enabled
             and self.content_llm_rerank_enabled

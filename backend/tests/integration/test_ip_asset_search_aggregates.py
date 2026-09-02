@@ -70,7 +70,7 @@ async def test_search_aggregate_migration_is_additive_and_downgrade_drops_only_c
                 IpAssetSearchEventKind.SEARCH_RESULTS.value,
             )
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260901_0042"
+                "20260902_0043"
             )
         finally:
             await connection.close()

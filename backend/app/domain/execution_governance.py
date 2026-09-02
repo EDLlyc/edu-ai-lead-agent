@@ -10,6 +10,7 @@ EXECUTION_GOVERNANCE_POLICY_VERSION: Final = "execution-governance-v1"
 DEFAULT_MAX_AGENT_DEPTH: Final = 1
 HARD_MAX_AGENT_DEPTH: Final = 2
 DELEGATION_THRESHOLD_PERCENT: Final = 70
+MAX_CAPABILITY_TIMEOUT_MS: Final = 420_000
 
 _SAFE_REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}")
 _SAFE_NAME = re.compile(r"[a-z][a-z0-9_.:-]{0,79}")
@@ -396,8 +397,8 @@ class CapabilityDefinition:
         _validate_name(self.name, "capability")
         if not self.allowed_roles:
             raise ValueError("capability role allowlist cannot be empty")
-        if not 1 <= self.timeout_ms <= 30_000:
-            raise ValueError("capability timeout must be between one and 30000 milliseconds")
+        if not 1 <= self.timeout_ms <= MAX_CAPABILITY_TIMEOUT_MS:
+            raise ValueError("capability timeout is outside the system limit")
         if not 1 <= self.max_argument_bytes <= 256 * 1024:
             raise ValueError("capability argument budget is invalid")
         if not 1 <= self.max_result_bytes <= 1024 * 1024:

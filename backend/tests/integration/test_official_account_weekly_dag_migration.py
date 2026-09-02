@@ -54,7 +54,7 @@ async def test_weekly_dag_migration_is_additive_private_and_refuses_populated_do
         run_id = uuid4()
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260901_0042"
+                "20260902_0043"
             )
             for table_name in (
                 "official_account_weekly_dag_runs",
@@ -134,7 +134,7 @@ async def test_weekly_dag_migration_is_additive_private_and_refuses_populated_do
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260901_0042"
+                "20260902_0043"
             )
             await connection.execute(
                 "DELETE FROM official_account_weekly_dag_runs WHERE id = $1", run_id

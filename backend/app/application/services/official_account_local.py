@@ -44,6 +44,10 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountGeneratedVisual,
     StoredOfficialAccountRender,
 )
+from app.application.ports.official_account_reviewer import (
+    OfficialAccountReviewer,
+    OfficialAccountReviewGovernance,
+)
 from app.application.services.official_account_visual_generation import (
     build_generated_visual_prompt,
     generated_visual_alt_text,
@@ -167,6 +171,25 @@ def run_request_fingerprint(
         identity_payload.pop("generated_visual_prompt_version", None)
     if identity_payload.get("context_media_plan_version") is None:
         identity_payload.pop("context_media_plan_version", None)
+    if identity_payload.get("reviewer_mode") == "off":
+        for key in (
+            "reviewer_mode",
+            "reviewer_version",
+            "reviewer_prompt_version",
+            "reviewer_request_schema_version",
+            "reviewer_verdict_schema_version",
+            "reviewer_rubric_version",
+            "reviewer_review_policy_version",
+            "reviewer_repair_policy_version",
+            "reviewer_budget_policy_version",
+            "reviewer_provider",
+            "reviewer_model",
+            "reviewer_writer_timeout_ms",
+            "reviewer_timeout_ms",
+            "reviewer_writer_max_output_tokens",
+            "reviewer_max_output_tokens",
+        ):
+            identity_payload.pop(key, None)
     return fingerprint(
         "official-account-local-run-v1",
         source_fingerprint,
@@ -774,6 +797,9 @@ class OfficialAccountLocalExecutor:
         generated_visual_model: str | None = None,
         image_quality_eval_mode: Literal["off", "observe"] = "off",
         image_quality_auditor: ImageQualityAuditor | None = None,
+        review_governance: OfficialAccountReviewGovernance | None = None,
+        fixture_reviewer: OfficialAccountReviewer | None = None,
+        live_reviewer: OfficialAccountReviewer | None = None,
     ) -> None:
         if image_quality_eval_mode not in {"off", "observe"}:
             raise ValueError("image quality eval mode must be off or observe")
@@ -801,6 +827,9 @@ class OfficialAccountLocalExecutor:
         self._generated_visual_model = generated_visual_model
         self._image_quality_eval_mode = image_quality_eval_mode
         self._image_quality_auditor = image_quality_auditor
+        self._review_governance = review_governance
+        self._fixture_reviewer = fixture_reviewer
+        self._live_reviewer = live_reviewer
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -864,6 +893,13 @@ class OfficialAccountLocalExecutor:
     async def _execute_claimed(self, claimed: ClaimedOfficialAccountRun) -> None:
         source = await self._repository.load_source(claimed)
         identity = claimed.identity
+        if identity.reviewer_mode == "enforce":
+            raise AppError(
+                "official_account_reviewer_enforce_unsupported",
+                "official-account Reviewer enforce is not implemented",
+                409,
+                False,
+            )
         is_historical_multi_image = (
             identity.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION
             and identity.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION
@@ -936,9 +972,27 @@ class OfficialAccountLocalExecutor:
                 source=source,
                 identity=identity,
                 request_fingerprint=run_fingerprint,
-                max_output_tokens=self._generation_max_output_tokens,
+                max_output_tokens=(
+                    identity.reviewer_writer_max_output_tokens
+                    if identity.reviewer_mode == "observe"
+                    else self._generation_max_output_tokens
+                ),
             )
-            result = await generator.generate(generation_request)
+            if identity.reviewer_mode == "observe":
+                if self._review_governance is None:
+                    raise AppError(
+                        "official_account_review_governance_unavailable",
+                        "official-account review governance is unavailable",
+                        503,
+                        False,
+                    )
+                result = await self._review_governance.govern_generation(
+                    claimed=claimed,
+                    request=generation_request,
+                    generator=generator,
+                )
+            else:
+                result = await generator.generate(generation_request)
             expected_fingerprint = generation_request_fingerprint(generation_request)
             _validate_result_identity(
                 provider=result.provider,
@@ -1013,8 +1067,10 @@ class OfficialAccountLocalExecutor:
                 validation_issues=validation_issues,
             )
             if article is None or not article.validation_passed:
+                await self._close_review_governance(claimed, source)
                 return
         if not article.validation_passed:
+            await self._close_review_governance(claimed, source)
             return
         if article.audit is None:
             auditor = (
@@ -1052,9 +1108,12 @@ class OfficialAccountLocalExecutor:
                 result=audit_result,
             )
             if article is None or article.audit is None or not article.audit.accepted:
+                await self._close_review_governance(claimed, source)
                 return
         elif not article.audit.accepted:
+            await self._close_review_governance(claimed, source)
             return
+        await self._observe_editorial_review(claimed, source, article)
         rendered = await self._repository.get_render(claimed.run_id)
         if rendered is None:
             generated_render = render_wechat_html(
@@ -1693,6 +1752,61 @@ class OfficialAccountLocalExecutor:
                 publication_sha256=_sha256_hex(publication_bytes),
                 request_fingerprint=request_fingerprint,
                 reason=ImageEvalUnavailableReason.INVALID_OUTPUT,
+            )
+
+    async def _observe_editorial_review(
+        self,
+        claimed: ClaimedOfficialAccountRun,
+        source: OfficialAccountSourceSnapshot,
+        article: StoredOfficialAccountArticle,
+    ) -> None:
+        if claimed.identity.reviewer_mode != "observe":
+            return
+        reviewer = (
+            self._fixture_reviewer if claimed.generation_mode == "fixture" else self._live_reviewer
+        )
+        if self._review_governance is None or reviewer is None:
+            logger.warning(
+                "official_account_reviewer_unavailable",
+                run_id=str(claimed.run_id),
+                article_version_id=str(article.id),
+                reason="adapter_unavailable",
+            )
+            await self._close_review_governance(claimed, source)
+            return
+        try:
+            await self._review_governance.observe(
+                claimed=claimed,
+                source=source,
+                article=article,
+                reviewer=reviewer,
+            )
+        except Exception:
+            logger.warning(
+                "official_account_reviewer_unavailable",
+                run_id=str(claimed.run_id),
+                article_version_id=str(article.id),
+                reason="unexpected_observer_error",
+            )
+            await self._close_review_governance(claimed, source)
+
+    async def _close_review_governance(
+        self,
+        claimed: ClaimedOfficialAccountRun,
+        source: OfficialAccountSourceSnapshot,
+    ) -> None:
+        if claimed.identity.reviewer_mode != "observe" or self._review_governance is None:
+            return
+        try:
+            await self._review_governance.close_without_review(
+                claimed=claimed,
+                source=source,
+            )
+        except Exception:
+            logger.warning(
+                "official_account_reviewer_governance_close_failed",
+                run_id=str(claimed.run_id),
+                reason="unexpected_governance_error",
             )
 
     async def _heartbeat_loop(
