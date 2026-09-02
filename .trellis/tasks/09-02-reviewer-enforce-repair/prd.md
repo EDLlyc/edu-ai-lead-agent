@@ -19,12 +19,12 @@
 
 ## Acceptance Criteria
 
-- [ ] 每个 run 最多两个 revision、一次 repair；并发和 retry 不能产生 revision 3 或新预算。
-- [ ] 旧 verdict/人工批准不能投影到新 SHA；render/media/draft/handoff 只消费 active revision。
-- [ ] Reviewer 无写权限、Writer 无 review/approve 权限，越权在 handler/provider 前失败。
-- [ ] 真实 PostgreSQL 测试覆盖 crash-after-review/repair/re-review、lease reclaim、stale fencing、replay、
+- [x] 每个 run 最多两个 revision、一次 repair；并发和 retry 不能产生 revision 3 或新预算。
+- [x] 旧 verdict/人工批准不能投影到新 SHA；render/media/draft/handoff 只消费 active revision。
+- [x] Reviewer 无写权限、Writer 无 review/approve 权限，越权在 handler/provider 前失败。
+- [x] 真实 PostgreSQL 测试覆盖 crash-after-review/repair/re-review、lease reclaim、stale fencing、replay、
       active revision、下游 lineage 和 downgrade refusal。
-- [ ] enforce 关闭时 observe/off 行为不漂移；人工审批和不自动发布边界保持不变。
+- [x] enforce 关闭时 observe/off 行为不漂移；人工审批和不自动发布边界保持不变。
 
 ## Out of Scope
 

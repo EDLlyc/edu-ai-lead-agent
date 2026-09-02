@@ -3,7 +3,7 @@
   "name": "reviewer-enforce-repair",
   "title": "Reviewer Enforce 单次返工",
   "description": "在校准后的 enforce 模式中实现一次 Writer 定向返工、不可变 revision lineage、恢复与人工兜底。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

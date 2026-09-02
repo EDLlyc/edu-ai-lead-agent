@@ -49,3 +49,25 @@ Implemented and deployed the Monday 09:00 Asia/Shanghai three-role WeChat draft-
 ### Status
 
 [OK] **Completed**
+
+
+## Session 89: 真实 IP 检索 V2/V3 成对评测
+
+**Date**: 2026-09-02
+**Task**: 真实 IP 检索 V2/V3 成对评测
+**Branch**: `main`
+
+### Summary
+
+新增 Seed V2 严格成对比较器与本地 live/报告/manifest 入口；在 41 张真实 IP 图片上完成 V2/V3 各 124 次 Alibaba Qwen3-VL Embedding 查询。V3 总体仅小幅提升且置信区间跨 0，holdout Recall@5 与 nDCG@5 下降，因此不升级。定位 6 条 partial_index 为硬过滤后零候选，并验证产物身份、隐私与业务聚合无副作用。未推送或部署。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82b488a` | (see git log) |
+| `c4fb010` | (see git log) |
+
+### Status
+
+[OK] **Completed**

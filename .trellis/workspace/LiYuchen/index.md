@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 88
+- **Total Sessions**: 89
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~51 | Active |
+| `journal-2.md` | ~73 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 89 | 2026-09-02 | 真实 IP 检索 V2/V3 成对评测 | `82b488a`, `c4fb010` | `main` |
 | 88 | 2026-09-02 | Deploy weekly WeChat draft automation | `40e4dec0ae82569fc798355d4515ab0009697c6f`, `a4a3c00` | `main` |
 | 87 | 2026-09-02 | 统一评测门禁与 Grounded Seed V2 | `05a54e7`, `50e82ed` | `main` |
 | 86 | 2026-09-02 | Grounded IP retrieval Seed V2 | `a325872` | `main` |
