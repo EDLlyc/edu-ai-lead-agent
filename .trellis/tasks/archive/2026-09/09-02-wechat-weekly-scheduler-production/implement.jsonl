@@ -1,0 +1,10 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend boundaries and spec routing."}
+{"file": ".trellis/spec/backend/official-account-weekly-edition.md", "reason": "Canonical Monday schedule, three-role selection, and weekly artifact contracts."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Existing 16-node DAG, checkpoint, lease, governance, and fixture isolation contracts."}
+{"file": ".trellis/spec/backend/wechat-official-account-drafts.md", "reason": "Production draft-only adapter, cutoff, artifact, idempotency, and no-publish contracts."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Governed worker permissions, budgets, trace, and artifact lineage."}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Real content selection/material lineage that the weekly planner must reuse."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PostgreSQL and additive migration conventions."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-process settings and runtime-consumer consistency."}
+{"file": ".trellis/tasks/09-02-wechat-weekly-scheduler-production/research/current-production-gap.md", "reason": "Verified production gap and release baseline."}

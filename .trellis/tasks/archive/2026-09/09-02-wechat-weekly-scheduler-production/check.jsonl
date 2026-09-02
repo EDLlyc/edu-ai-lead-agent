@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required static, test, Compose, Doctor, and credential gates."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Verify durable orchestration and fixture/production separation."}
+{"file": ".trellis/spec/backend/wechat-official-account-drafts.md", "reason": "Verify all-three preflight, draft-only behavior, and no provider replay."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify production observability without secret/path leakage."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify typed retry/terminal/outcome-unknown behavior."}
+{"file": ".trellis/tasks/09-02-wechat-weekly-scheduler-production/research/current-production-gap.md", "reason": "Check the implementation against the observed production gap and isolated baseline."}
