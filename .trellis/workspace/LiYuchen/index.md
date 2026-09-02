@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 87
+- **Total Sessions**: 88
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~29 | Active |
+| `journal-2.md` | ~51 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 88 | 2026-09-02 | Deploy weekly WeChat draft automation | `40e4dec0ae82569fc798355d4515ab0009697c6f`, `a4a3c00` | `main` |
 | 87 | 2026-09-02 | 统一评测门禁与 Grounded Seed V2 | `05a54e7`, `50e82ed` | `main` |
 | 86 | 2026-09-02 | Grounded IP retrieval Seed V2 | `a325872` | `main` |
 | 85 | 2026-09-02 | Deploy WeChat draft worker to production | `61b7c44a142f18346aea1875fc0f1e85f52dcca4`, `4fbab0172d6a1aafff91e53dede4e4250a35aee2`, `267ffddc3c13ac7c3c874e6902b5c09bdeaa0e1e`, `5d73942ab52a725140dabf39773356049c8d0959`, `6674600357b1c59f06ac253166e69f7512455664` | `main` |

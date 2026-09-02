@@ -27,3 +27,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 88: Deploy weekly WeChat draft automation
+
+**Date**: 2026-09-02
+**Task**: Deploy weekly WeChat draft automation
+**Branch**: `main`
+
+### Summary
+
+Implemented and deployed the Monday 09:00 Asia/Shanghai three-role WeChat draft-only workflow, verified all 12 application services on the immutable image with zero restarts and zero rollout jobs, recorded rollback evidence, and documented SSH heredoc stdin isolation after diagnosing the activation cutoff.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40e4dec0ae82569fc798355d4515ab0009697c6f` | (see git log) |
+| `a4a3c00` | (see git log) |
+
+### Status
+
+[OK] **Completed**
