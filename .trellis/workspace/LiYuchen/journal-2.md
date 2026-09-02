@@ -113,3 +113,27 @@ Added and independently audited a provider-free paired Reviewer A/B evidence har
 ### Status
 
 [OK] **Completed**
+
+
+## Session 92: Governed Worker Reviewer Agent integration
+
+**Date**: 2026-09-02
+**Task**: Governed Worker Reviewer Agent integration
+**Branch**: `main`
+
+### Summary
+
+Completed the four-part governed Worker-Reviewer program: strict editorial contract and provider-free canonical eval; default-off independently governed observe mode; calibrated one-repair enforce mode with immutable PostgreSQL lineage and crash-safe budgets; and a provider-free paired A/B evidence harness with human adjudication and no-uplift truth gates. Parent integration verified one Alembic head, scoped regression evidence, Compose, shell syntax, and diff integrity. No live model call or uplift percentage was claimed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae525f1` | (see git log) |
+| `d8daca0` | (see git log) |
+| `b8835d4` | (see git log) |
+| `c9db9a6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
