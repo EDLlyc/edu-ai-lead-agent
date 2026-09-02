@@ -198,3 +198,151 @@ if intent.status == "calling" and intent.attempt_number == claimed.attempt_numbe
 if intent.status == "calling":
     return await recover_previous_attempt_without_recall(intent)
 ```
+
+## Scenario: Produce truthful paired Reviewer A/B evidence
+
+### 1. Scope / Trigger
+
+Use `evals.official_account_reviewer_live_ab` when preparing evidence for Reviewer calibration,
+portfolio claims, or resume metrics. The checked package is an evidence harness, not a provider
+integration: it must remain provider-free, must not read credentials or mutable prices, and must
+report `live_model_calls=0`. A real adapter, provider/model, sample/repetition count, and cost cap
+require separate explicit authorization and review.
+
+### 2. Signatures
+
+The CLI signature is:
+
+```text
+python -m evals.official_account_reviewer_live_ab.runner \
+  {prepare,preflight,live,worksheet,report,confirm-report} ...
+```
+
+- `prepare` freezes the dataset, paired initial artifacts, versions, provider/model identity,
+  time window, price identity, sample/repetition cap, exact maximum call count, and total ceiling.
+- `preflight` validates one explicit local authorization artifact without reading credentials.
+- `live` returns the closed `executor_not_installed` failure in this provider-free package.
+- `worksheet` creates the blinded worksheet and private map from imported terminal attempts.
+- `report` recomputes metrics from attempts plus human judgments/adjudications and requires an
+  explicit failure-ledger output path.
+- `confirm-report` binds an eligible canonical report SHA and exact human confirmation to a
+  non-activating calibration candidate.
+
+`AttemptExecutor` is the only execution port. No concrete provider adapter belongs in this package.
+There is no API or database signature; all live evidence is written to explicit ignored paths.
+
+### 3. Contracts
+
+- Baseline and treatment share the exact initial Article SHA. Baseline makes zero Reviewer calls;
+  treatment permits only the prefix `reviewer_r1 -> repair_writer -> reviewer_r2`. Each phase is
+  invoked at most once, a failure stops the attempt, and there is no per-case or whole-suite retry.
+- The default synthetic dataset has 12 cases. With one repetition the treatment ceiling is exactly
+  36 calls; a `$0.05` per-call ceiling derives a `$1.80` total ceiling rather than accepting an
+  independently typed total.
+- Manifest SHA and canonical authorization SHA flow through attempt plans, observations, report,
+  and calibration candidate. Reports additionally bind the canonical SHA of attempts, worksheet,
+  blind map, judgments, and adjudications. Missing, duplicate, extra, cross-run, cross-authorization,
+  or fingerprint-mismatched evidence fails integrity checks.
+- A local authorization file proves explicit input to the harness, not identity, signature, quota,
+  payment, or provider receipt. A future adapter must revalidate it immediately before every
+  provider boundary.
+- Worksheets expose only non-semantic blind IDs and domain-separated HMAC commitments. Raw arm,
+  artifact reference, and artifact SHA remain only in the `0600` blind map. Report import loads the
+  worksheet, blind map, and blinding key and compares recomputed commitments in constant time.
+- Human adjudication is the only primary gold. Agreement uses only independent annotators selected
+  by gold adjudications for both arms of the manifest calibration subset; a disputed case requires
+  an independent adjudicator. LLM-judge rows are not accepted as primary labels.
+- False-accept rate uses gold negatives; false-reject rate uses gold positives. A zero denominator
+  is unknown, never zero. Bootstrap resampling is paired and clustered by case; repetitions produce
+  a separate variance. Reports also retain Pass@1/Pass@2, critical-defect recall, manual-review
+  rate, P50/P95 latency, input/output tokens, known/unknown cost, incremental calls/latency/cost,
+  failure taxonomy, and bad cases.
+- Resume claims require complete evidence, the minimum sample and independent-annotation gates,
+  known usage/cost, no provider failure, positive paired delta, and a positive 95% confidence-interval
+  lower bound. Otherwise paired estimates and resume claims are empty and a no-uplift failure ledger
+  is written. No report may silently drop failed attempts or bad cases.
+- Evidence output uses a newly created `0700` directory and exclusive atomic `0600` regular files.
+  Reject symlinks, unsafe parents, traversal, overwrites, tracked canonical destinations, and
+  group/other-readable private inputs. CLI errors expose only closed error codes.
+- `confirm-report` never changes `.env`, `OFFICIAL_ACCOUNT_REVIEWER_MODE`, a database run, or a
+  production configuration. A candidate SHA is evidence for a later operator decision only.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result | Claims |
+|---|---|---|
+| `prepare` without authorization | `authorization_missing`, `live_model_calls=0` | Empty |
+| `preflight` with field/hash/window/budget mismatch | Closed authorization failure | Empty |
+| `live` in this package, regardless of credentials | `executor_not_installed`, exit 2 | Empty |
+| Executor exception or ambiguous attempt | Stop without retry; retain safe terminal attempt/failure ledger | Empty |
+| Unknown token usage or cost | Preserve unknown instead of estimating precision | Empty |
+| Missing/extra/duplicate/cross-run/cross-authorization evidence | `artifact_integrity`, exit 2 | Empty |
+| Blind commitment, map, or key mismatch | Reject before accepting human labels | Empty |
+| Missing gold class, sample, double annotation, or independent adjudicator | `insufficient_evidence` | Empty |
+| Complete evidence but delta/95% CI gate fails | Eligible diagnostic report without uplift | Empty |
+| Complete evidence and every claim gate passes | Hash-bound eligible report | Only report-supported scoped claims |
+| Confirmation SHA/text differs from canonical eligible report | Reject candidate creation | Unchanged |
+
+### 5. Good / Base / Bad Cases
+
+- Good: an ignored run directory contains complete paired attempts, HMAC-blinded independent human
+  labels, exact input hashes, known usage/cost, retained bad cases, and a positive clustered CI;
+  an operator confirms the canonical report SHA and receives a non-activating candidate.
+- Base: `prepare` runs against the synthetic dataset with no authorization. It computes the exact
+  36-call/`$1.80` ceiling, writes a safe ledger, and proves zero live model calls.
+- Bad: a report imports a ledger from another authorization, treats missing usage as zero cost,
+  computes false accepts over all samples, leaks a raw artifact SHA to the worksheet, or emits an
+  uplift from a positive point estimate whose CI includes zero. Each path fails closed.
+
+### 6. Tests Required
+
+- Dataset/manifest: strict JSONL, duplicate/extra/missing case rejection, paired initial SHA,
+  deterministic call/cost ceilings, canonical hashes, and calibration/holdout identity.
+- Authorization/execution: no env or network access, current `live` fail-closed behavior, exact
+  authorization binding, allowed phase prefix, one call per phase, exception stop, zero retry, and
+  conservative unknown usage/cost.
+- Evidence I/O: `0700`/`0600`, atomic exclusive publish, regular-file/no-follow checks, overwrite,
+  traversal, symlink, cross-run, cross-authorization, hash, and partial-artifact tamper rejection.
+- Blinding/human truth: HMAC domain separation and unlinkability, no raw arm/ref/SHA in worksheet,
+  constant-time validation, independent calibration annotations/adjudicator, and LLM-judge exclusion.
+- Metrics/report: class-specific denominators, zero-denominator unknown, case-clustered bootstrap,
+  repeat variance, bad/failure retention, minimum evidence, CI claim gate, canonical confirmation,
+  privacy scan, and absence of production-mode mutation.
+- Regression: Reviewer unit/contract/governance/worker/handoff tests and canonical Reviewer eval stay
+  green; the canonical eval must continue to print `live_model_calls=0`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+# Unpaired artifacts, retry-until-success, and a point estimate presented as a resume claim.
+for arm in ("baseline", "treatment"):
+    result = await generate_new_article_and_retry(arm)
+resume_claim = treatment_rate(result) - baseline_rate(result)
+```
+
+```python
+# A raw artifact digest is still reversible against a public frozen dataset.
+worksheet["artifact_sha256"] = observation.artifact_sha256
+```
+
+#### Correct
+
+```python
+assert baseline.initial_article_sha256 == treatment.initial_article_sha256
+attempt = await executor.execute_once(plan)  # no implicit retry
+```
+
+```python
+worksheet["artifact_commitment"] = blind_hmac(
+    key=blinding_key,
+    manifest_sha256=manifest.sha256,
+    run_ref=manifest.run_ref,
+    pair_ref=pair_ref,
+    candidate_ref=candidate_ref,
+    blind_ref=blind_ref,
+    artifact_sha256=observation.artifact_sha256,
+)
+assert resume_claims == [] or paired_ci_low > 0
+```

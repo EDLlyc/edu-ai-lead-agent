@@ -3,7 +3,7 @@
   "name": "reviewer-live-ab-evidence",
   "title": "Reviewer Live AB 与简历证据",
   "description": "构建 opt-in live A/B runner、人工抽样与质量成本报告，只有有效结果才能进入作品集和简历。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

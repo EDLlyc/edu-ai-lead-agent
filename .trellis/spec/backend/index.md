@@ -28,7 +28,7 @@ tests.
 | [Database Guidelines](./database-guidelines.md) | PostgreSQL, pgvector, SQLAlchemy 2 async, and Alembic |
 | [Local Agent Workbench](./agent-workbench.md) | One typed read-only registry for bounded Agent, MCP stdio, deterministic eval, and a loopback-only API |
 | [Execution Governance](./execution-governance.md) | Shared run identity, atomic budgets, default-deny capabilities, safe causal trace, and artifact lineage for Agents and deterministic DAG nodes |
-| [Official-Account Governed Reviewer](./official-account-reviewer.md) | Default-off Worker/Reviewer separation, immutable review inputs, observe-mode evidence, and crash-safe accounting |
+| [Official-Account Governed Reviewer](./official-account-reviewer.md) | Default-off Worker/Reviewer separation, bounded enforce repair, crash-safe accounting, and truthful paired A/B evidence |
 | [Agent Pipeline](./agent-pipeline.md) | End-to-end stage boundaries, implemented scoring handoff, and future generation semantics |
 | [Official-Account Editorial Repackage](./official-account-editorial-repackage.md) | Frozen offline repackages plus durable V10 five-visual/news-context generation, disjoint staging attempts, polished deterministic local export, and permanent no-publish truth |
 | [Official-Account Editor Handoff V2](./official-account-editor-handoff-v2.md) | Development-only automatic release, block-bound news media, semantic Xiaosai rendering, exact mobile identity, and permanent no-publish truth |

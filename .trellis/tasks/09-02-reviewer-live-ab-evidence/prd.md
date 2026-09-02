@@ -18,10 +18,10 @@
 
 ## Acceptance Criteria
 
-- [ ] Runner 有 dry-run/preflight、单次费用上限、样本/重复上限、无 whole-suite 隐式重试和隐私扫描。
-- [ ] A/B report 能按版本复算，展示置信区间或重复运行方差、bad cases 和质量/成本 trade-off。
-- [ ] 作品集可追溯到 run manifest/hash；简历数字逐项能映射到报告且标明数据集适用范围。
-- [ ] 未授权、provider 失败或样本不足时生成安全失败账本，不生成质量提升结论。
+- [x] Runner 有 dry-run/preflight、单次费用上限、样本/重复上限、无 whole-suite 隐式重试和隐私扫描。
+- [x] A/B report 能按版本复算，展示置信区间或重复运行方差、bad cases 和质量/成本 trade-off。
+- [x] 作品集可追溯到 run manifest/hash；简历数字逐项能映射到报告且标明数据集适用范围。
+- [x] 未授权、provider 失败或样本不足时生成安全失败账本，不生成质量提升结论。
 
 ## Out of Scope
 
