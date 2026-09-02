@@ -30,6 +30,7 @@ readonly -a FINAL_MEMBERS=(
 )
 
 release_sha=""
+release_ref="refs/remotes/origin/main"
 output_dir=""
 production_baseline=""
 repo_root=""
@@ -55,13 +56,14 @@ trap cleanup EXIT
 
 usage() {
   printf '%s\n' \
-    'Usage: build-wechat-draft-offline-artifacts.sh --release-sha HEX40 --production-baseline ABSOLUTE_MODE_0600_JSON --output-dir ABSENT_ABSOLUTE_DIR' >&2
+    'Usage: build-wechat-draft-offline-artifacts.sh --release-sha HEX40 [--release-ref refs/remotes/origin/main|refs/remotes/origin/release/NAME] --production-baseline ABSOLUTE_MODE_0600_JSON --output-dir ABSENT_ABSOLUTE_DIR' >&2
 }
 
 parse_args() {
   while (($#)); do
     case "$1" in
       --release-sha) (($# >= 2)) || die "missing release SHA"; release_sha=$2; shift 2 ;;
+      --release-ref) (($# >= 2)) || die "missing release ref"; release_ref=$2; shift 2 ;;
       --output-dir) (($# >= 2)) || die "missing output directory"; output_dir=$2; shift 2 ;;
       --production-baseline) (($# >= 2)) || die "missing production baseline"; production_baseline=$2; shift 2 ;;
       -h|--help) usage; exit 0 ;;
@@ -69,6 +71,9 @@ parse_args() {
     esac
   done
   [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || die "release SHA must be lowercase HEX40"
+  [[ "$release_ref" == refs/remotes/origin/main \
+      || "$release_ref" =~ ^refs/remotes/origin/release/[a-z0-9][a-z0-9-]{0,63}$ ]] \
+    || die "release ref is outside the reviewed Codeup namespace"
   [[ "$output_dir" == /* && "$output_dir" != */ && ! -e "$output_dir" && ! -L "$output_dir" ]] \
     || die "output directory must be an absent absolute path"
   [[ "$(basename -- "$output_dir")" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
@@ -97,8 +102,8 @@ assert_authority() {
     "$SOURCE_URL") ;;
     *) die "origin is not the reviewed Codeup repository" ;;
   esac
-  origin_sha=$(git_clean -C "$repo_root" rev-parse --verify refs/remotes/origin/main^{commit})
-  [[ "$origin_sha" == "$release_sha" ]] || die "release SHA is not fetched origin/main"
+  origin_sha=$(git_clean -C "$repo_root" rev-parse --verify "${release_ref}^{commit}")
+  [[ "$origin_sha" == "$release_sha" ]] || die "release SHA is not the fetched reviewed ref"
   committed=$(git_clean -C "$repo_root" show "${release_sha}:${BUILDER_PATH}" | sha256sum | awk '{print $1}')
   running=$(sha256sum "${repo_root}/${BUILDER_PATH}" | awk '{print $1}')
   [[ "$committed" == "$running" ]] || die "builder differs from the release commit"
@@ -232,8 +237,8 @@ main() {
     install -m 600 "$stage/$member" "$output_dir/$member"
   done
   python3 "$output_dir/validate-wechat-draft-offline-artifacts.py" "$output_dir"
-  printf 'artifact_stage=%s\nrelease_commit=%s\ncandidate_tag=%s\ncandidate_id=%s\n' \
-    "$output_dir" "$release_sha" "$tag" "$candidate_id"
+  printf 'artifact_stage=%s\nrelease_ref=%s\nrelease_commit=%s\ncandidate_tag=%s\ncandidate_id=%s\n' \
+    "$output_dir" "$release_ref" "$release_sha" "$tag" "$candidate_id"
 }
 
 if [[ "${WECHAT_DRAFT_BUILDER_SOURCE_ONLY:-0}" != 1 ]]; then
