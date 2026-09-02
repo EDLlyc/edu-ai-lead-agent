@@ -45,6 +45,7 @@ production_baseline_json=""
 release_commit=""
 candidate_tag=""
 candidate_id=""
+candidate_reference=""
 minimum_week=""
 backup_dir=""
 workspace=""
@@ -131,6 +132,21 @@ if isinstance(value, bool) or not isinstance(value, int) or value < 0:
     raise SystemExit(1)
 print(value)
 PY
+}
+
+validate_bound_release_image() {
+  local expected_image=$1 reference repo_digests observed_image
+  reference=$(awk -F= '$1 == "APP_IMAGE" { value = substr($0, index($0, "=") + 1) } END { print value }' \
+    "$RELEASE_ENV") || return 1
+  [[ "$reference" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] \
+    || die "bound release image is not an immutable digest"
+  repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+    "$expected_image") || return 1
+  grep -Fxq "$reference" <<<"$repo_digests" \
+    || die "bound release image is not attached to the running image"
+  observed_image=$(docker image inspect --format '{{.Id}}' "$reference") || return 1
+  [[ "$observed_image" == "$expected_image" ]] \
+    || die "bound release image resolves to a different image"
 }
 
 require_physical_operator() {
@@ -230,6 +246,8 @@ preflight_production_baseline() {
   expected_env=$(baseline_value env_sha256)
   expected_release_env=$(baseline_value release_env_sha256)
   [[ "$expected_head" == 20260825_0036 ]] || die "reviewed previous Alembic head changed"
+  validate_bound_release_image "$expected_image" \
+    || die "bound release image validation failed"
   [[ "$(compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT version_num FROM alembic_version"')" == "$expected_head" ]] \
     || die "production Alembic head differs from the bound baseline"
   [[ "$(sha256sum "$PRIMARY_ENV" | awk '{print $1}')" == "$expected_env" ]] \
@@ -280,6 +298,7 @@ PY
 }
 
 load_and_verify_image() {
+  local candidate_repository repo_digests
   gzip -dc "${stage_dir}/backend-image.tar.gz" | docker image load >/dev/null
   [[ "$(docker image inspect --format '{{.Id}}' "$candidate_tag")" == "$candidate_id" ]] \
     || die "loaded image ID differs from metadata"
@@ -289,6 +308,13 @@ load_and_verify_image() {
     --security-opt no-new-privileges:true --entrypoint python "$candidate_tag" -c \
     'from app.core.config import Settings; s=Settings(_env_file=None); assert not s.wechat_mp_draft_worker_enabled and not s.wechat_mp_draft_production_enabled; import app.wechat_official_account_draft_main' \
     </dev/null >/dev/null
+  candidate_repository=${candidate_tag%%:*}
+  candidate_reference="${candidate_repository}@${candidate_id}"
+  [[ "$candidate_reference" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] \
+    || die "candidate immutable reference is invalid"
+  repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$candidate_tag")
+  grep -Fxq "$candidate_reference" <<<"$repo_digests" \
+    || die "candidate immutable reference is absent after image load"
 }
 
 env_presence_preflight() {
@@ -313,13 +339,11 @@ PY
 
 write_release_env() {
   local temporary
+  [[ "$candidate_reference" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] \
+    || die "candidate immutable reference is unavailable"
   temporary=$(mktemp "${APP_DIR}/.release.env.wechat.XXXXXX")
-  printf 'APP_IMAGE=%s\n' "$candidate_tag" >"$temporary"
+  printf 'APP_IMAGE=%s\n' "$candidate_reference" >"$temporary"
   chmod 600 "$temporary"
-  if [[ -f "$RELEASE_ENV" ]]; then
-    cp -a "$RELEASE_ENV" "${backup_dir}/release.env.before"
-    : >"${backup_dir}/release-env-existed"
-  fi
   install -o root -g root -m 600 "$temporary" "$RELEASE_ENV"
   rm -f "$temporary"
 }
@@ -479,6 +503,10 @@ prepare_attempt() {
   backup_dir="${BACKUP_ROOT}/wechat-draft-${release_commit:0:12}-$(date -u +%Y%m%dT%H%M%SZ)"
   install -d -o root -g root -m 700 "$backup_dir"
   cp -a "$PRIMARY_ENV" "$backup_dir/env.before"
+  if [[ -f "$RELEASE_ENV" && ! -L "$RELEASE_ENV" ]]; then
+    cp -a "$RELEASE_ENV" "$backup_dir/release.env.before"
+    : >"$backup_dir/release-env-existed"
+  fi
 }
 
 quiesce_and_backup() {
@@ -528,32 +556,64 @@ activate_source() {
 
 restore_before_migration() {
   local name
-  ((source_activated == 1)) || return 0
-  install -d -m 700 "$backup_dir/failed-candidate"
-  for name in "${MANAGED_DIRS[@]}"; do
-    if grep -Fxq "$name" "$backup_dir/dirs-installed" && [[ -e "$APP_DIR/$name" ]]; then
-      mv "$APP_DIR/$name" "$backup_dir/failed-candidate/$name"
-    fi
-    if grep -Fxq "$name" "$backup_dir/dirs-backed-up"; then
-      [[ ! -e "$backup_dir/source.before/$name" ]] \
-        || mv "$backup_dir/source.before/$name" "$APP_DIR/$name"
-    fi
-  done
-  for name in "${MANAGED_FILES[@]}" .release-commit; do
-    grep -Fxq "$name" "$backup_dir/root-installed" || continue
-    if grep -Fxq "$name" "$backup_dir/root-existed"; then
-      cp -a "$backup_dir/root.before/$name" "$APP_DIR/$name"
-    elif [[ -f "$APP_DIR/$name" && ! -L "$APP_DIR/$name" ]]; then
-      find "$APP_DIR/$name" -maxdepth 0 -type f -delete
-    fi
-  done
-  cp -a "$backup_dir/env.before" "$PRIMARY_ENV"
+  if ((source_activated == 1)); then
+    install -d -m 700 "$backup_dir/failed-candidate" || return 1
+    for name in "${MANAGED_DIRS[@]}"; do
+      if grep -Fxq "$name" "$backup_dir/dirs-installed" && [[ -e "$APP_DIR/$name" ]]; then
+        mv "$APP_DIR/$name" "$backup_dir/failed-candidate/$name" || return 1
+      fi
+      if grep -Fxq "$name" "$backup_dir/dirs-backed-up"; then
+        [[ ! -e "$backup_dir/source.before/$name" ]] \
+          || mv "$backup_dir/source.before/$name" "$APP_DIR/$name" \
+          || return 1
+      fi
+    done
+    for name in "${MANAGED_FILES[@]}" .release-commit; do
+      grep -Fxq "$name" "$backup_dir/root-installed" || continue
+      if grep -Fxq "$name" "$backup_dir/root-existed"; then
+        cp -a "$backup_dir/root.before/$name" "$APP_DIR/$name" || return 1
+      elif [[ -f "$APP_DIR/$name" && ! -L "$APP_DIR/$name" ]]; then
+        find "$APP_DIR/$name" -maxdepth 0 -type f -delete || return 1
+      fi
+    done
+  fi
+  cp -a "$backup_dir/env.before" "$PRIMARY_ENV" || return 1
   if [[ -e "$backup_dir/release-env-existed" ]]; then
-    cp -a "$backup_dir/release.env.before" "$RELEASE_ENV"
+    cp -a "$backup_dir/release.env.before" "$RELEASE_ENV" || return 1
   elif [[ -f "$RELEASE_ENV" && ! -L "$RELEASE_ENV" ]]; then
-    find "$RELEASE_ENV" -maxdepth 0 -type f -delete
+    find "$RELEASE_ENV" -maxdepth 0 -type f -delete || return 1
   fi
   source_activated=0
+}
+
+verify_previous_application_services() {
+  local expected_image expected_restart service container state image restart_count health
+  expected_image=$(baseline_value current_image_id) || return 1
+  for service in "${APP_SERVICES[@]}"; do
+    container=$(compose ps -q "$service") || return 1
+    [[ -n "$container" ]] || return 1
+    state=$(docker inspect --format '{{.State.Status}}' "$container") || return 1
+    image=$(docker inspect --format '{{.Image}}' "$container") || return 1
+    restart_count=$(docker inspect --format '{{.RestartCount}}' "$container") || return 1
+    expected_restart=$(baseline_restart_count "$service") || return 1
+    [[ "$state" == running && "$image" == "$expected_image" \
+        && "$restart_count" == "$expected_restart" ]] || return 1
+    if [[ "$service" == acquisition-api ]]; then
+      health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container") \
+        || return 1
+      [[ "$health" == healthy ]] || return 1
+    fi
+  done
+}
+
+recover_previous_application_services() {
+  local deadline
+  compose up -d --no-build --no-deps "${APP_SERVICES[@]}" >/dev/null || return 1
+  deadline=$(( $(date +%s) + 60 )) || return 1
+  until verify_previous_application_services; do
+    (( $(date +%s) < deadline )) || return 1
+    sleep 2
+  done
 }
 
 on_exit() {
@@ -561,8 +621,11 @@ on_exit() {
   ((rc != 0 && completed == 0 && recovery_armed == 1)) || return 0
   if ((migrated == 0)); then
     log "failure before migration completion; restoring previous source/environment"
-    restore_before_migration || true
-    compose up -d --no-build --no-deps "${APP_SERVICES[@]}" >/dev/null 2>&1 || true
+    if restore_before_migration && recover_previous_application_services; then
+      log "previous application services restored and verified"
+      return 0
+    fi
+    log "pre-migration recovery could not verify the previous application services"
   elif ((core_verified == 1)); then
     log "optional activation failure; proving zero effects before retaining verified core services"
     if compose_with_draft stop -t 30 wechat-official-account-draft-worker >/dev/null 2>&1 \
@@ -575,7 +638,11 @@ on_exit() {
     fi
     log "optional recovery could not prove a zero-effect healthy core state"
   fi
-  log "post-migration failure; stopping application writers for incident handling"
+  if ((migrated == 0)); then
+    log "pre-migration recovery failed; stopping application writers for incident handling"
+  else
+    log "post-migration failure; stopping application writers for incident handling"
+  fi
   compose_with_draft stop -t 30 wechat-official-account-draft-worker >/dev/null 2>&1 || true
   compose stop -t 30 "${STOP_ORDER[@]}" >/dev/null 2>&1 || true
 }

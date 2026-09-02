@@ -175,6 +175,9 @@ PY
   require_text "$OPERATOR" 'previous application remains conservatively incompatible'
   require_text "$OPERATOR" 'provider_writes=0'
   require_text "$OPERATOR" 'candidate already has an attempt marker'
+  require_text "$OPERATOR" 'candidate immutable reference is absent after image load'
+  require_text "$OPERATOR" 'bound release image is not an immutable digest'
+  require_text "$OPERATOR" 'previous application services restored and verified'
   require_text "$OPERATOR" '--no-build --no-deps wechat-official-account-draft-worker'
   reject_text "$OPERATOR" 'freepublish'
   reject_text "$OPERATOR" 'masssend'
@@ -473,6 +476,104 @@ assert_recovery_arming_and_exact_marker_restore() {
   ) || fail "pre-mutation rejection incorrectly armed recovery"
 }
 
+assert_release_env_is_immutable_and_early_failure_restores() {
+  local app_root="${test_root}/release-env-app" backup="${test_root}/release-env-backup"
+  (
+    set -e
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    export WECHAT_DRAFT_OPERATOR_TEST_APP_DIR="$app_root"
+    source "$OPERATOR"
+    mkdir -m 700 "$APP_DIR" "$backup"
+    printf 'previous-env\n' >"$APP_DIR/.env"
+    printf 'APP_IMAGE=previous:tag\n' >"$APP_DIR/.release.env"
+    chmod 600 "$APP_DIR/.env" "$APP_DIR/.release.env"
+    backup_dir=$backup
+    cp -a "$APP_DIR/.env" "$backup/env.before"
+    cp -a "$APP_DIR/.release.env" "$backup/release.env.before"
+    : >"$backup/release-env-existed"
+    candidate_id="sha256:$(printf 'a%.0s' {1..64})"
+    candidate_reference="edu-ai-lead-agent-backend@${candidate_id}"
+    write_release_env
+    [[ "$(<"$APP_DIR/.release.env")" == "APP_IMAGE=${candidate_reference}" ]]
+    printf 'changed-env\n' >"$APP_DIR/.env"
+    source_activated=0
+    restore_before_migration
+    [[ "$(<"$APP_DIR/.env")" == previous-env ]]
+    [[ "$(<"$APP_DIR/.release.env")" == 'APP_IMAGE=previous:tag' ]]
+  ) || fail "immutable release environment or early pre-migration recovery drifted"
+}
+
+assert_bound_release_image_requires_matching_digest() {
+  local app_root="${test_root}/bound-release-image-app"
+  local expected_id="sha256:$(printf 'b%.0s' {1..64})"
+  local expected_reference="edu-ai-lead-agent-backend@${expected_id}" failure_rc
+  mkdir -m 700 "$app_root"
+  printf 'APP_IMAGE=%s\n' "$expected_reference" >"$app_root/.release.env"
+  chmod 600 "$app_root/.release.env"
+  (
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    export WECHAT_DRAFT_OPERATOR_TEST_APP_DIR="$app_root"
+    source "$OPERATOR"
+    docker() {
+      if [[ "$*" == *RepoDigests* ]]; then
+        printf '%s\n' "$expected_reference"
+      else
+        printf '%s\n' "$expected_id"
+      fi
+    }
+    validate_bound_release_image "$expected_id"
+  ) || fail "matching immutable previous release reference was rejected"
+
+  printf 'APP_IMAGE=edu-ai-lead-agent-backend:local\n' >"$app_root/.release.env"
+  set +e
+  (
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    export WECHAT_DRAFT_OPERATOR_TEST_APP_DIR="$app_root"
+    source "$OPERATOR"
+    docker() { return 0; }
+    validate_bound_release_image "$expected_id"
+  ) >/dev/null 2>&1
+  failure_rc=$?
+  set -e
+  ((failure_rc != 0)) || fail "mutable previous release tag passed immutable preflight"
+}
+
+assert_pre_migration_exit_retains_verified_previous_services() {
+  local restored="${test_root}/pre-migration-restored"
+  local recovered="${test_root}/pre-migration-recovered" stopped="${test_root}/pre-migration-stopped"
+  (
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    source "$OPERATOR"
+    migrated=0
+    recovery_armed=1
+    completed=0
+    restore_before_migration() { touch "$restored"; }
+    recover_previous_application_services() { touch "$recovered"; }
+    compose() { touch "$stopped"; return 0; }
+    set +e
+    false
+    on_exit
+    [[ -e "$restored" && -e "$recovered" && ! -e "$stopped" ]]
+  ) || fail "verified pre-migration recovery fell through to writer shutdown"
+
+  rm -f "$restored" "$recovered" "$stopped"
+  (
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    source "$OPERATOR"
+    migrated=0
+    recovery_armed=1
+    completed=0
+    restore_before_migration() { touch "$restored"; return 1; }
+    recover_previous_application_services() { touch "$recovered"; }
+    compose_with_draft() { return 0; }
+    compose() { touch "$stopped"; return 0; }
+    set +e
+    false
+    on_exit
+    [[ -e "$restored" && ! -e "$recovered" && -e "$stopped" ]]
+  ) || fail "failed pre-migration recovery did not stop application writers"
+}
+
 assert_optional_zero_effect_recovery() {
   local app_root="${test_root}/optional-recovery-app"
   local disabled="${test_root}/optional-disabled" ordinary_stopped="${test_root}/ordinary-stopped"
@@ -543,6 +644,9 @@ assert_builder_arguments_fail_closed
 assert_fake_failure_boundaries
 assert_absent_volume_preflight_and_controlled_creation
 assert_recovery_arming_and_exact_marker_restore
+assert_release_env_is_immutable_and_early_failure_restores
+assert_bound_release_image_requires_matching_digest
+assert_pre_migration_exit_retains_verified_previous_services
 assert_optional_zero_effect_recovery
 assert_cutoff_is_next_monday
 printf 'wechat_draft_offline_release_harness_ok\n'

@@ -710,6 +710,20 @@ release artifacts, or production deployment automation change.
 - The scheduled and deployment backup paths share a backup lock. Backup evidence is strict and
   binds the previous commit/image to PostgreSQL, MinIO, and brand backup checksums before runtime
   activation; credentials never appear as Docker CLI `KEY=value` arguments.
+- A task-authorized offline release does not relax immutable runtime evidence. Before quiescence,
+  require the existing mode-0600 `.release.env` `APP_IMAGE` to be one exact
+  `repository@sha256:<64-lowercase-hex>` reference attached to and resolving to the captured running
+  image ID. After loading the offline candidate, derive and verify the same reference from its
+  actual `RepoDigests`, then persist that digest rather than the isolated transport tag. A mutable
+  prior tag is corrected only while production remains active, followed by a fresh bound baseline;
+  never bypass the backup validator or record `unknown` for an observable image.
+- Snapshot both the primary and release environment before the first release mutation, even when
+  source activation has not started. A pre-migration failure restores both environments and any
+  activated source, restarts the complete previous application set, verifies the captured image
+  ID/restart counts plus API health within a bound, and returns immediately. If that verification
+  fails, application writers remain stopped. Shell recovery functions invoked from `if`, `until`,
+  or another conditional must explicitly return nonzero on every failed copy, move, inspect, or
+  Compose command because Bash suppresses `errexit` in those call contexts.
 - Backup inventory must not assume that a service image contains shell utilities such as `find` or
   `sha256sum`. For an opaque persistent volume, resolve and validate the exact named-volume mount,
   then mount it read-only into an already reviewed helper or candidate image with networking
@@ -761,8 +775,10 @@ release artifacts, or production deployment automation change.
 | A backup inventory depends on a utility absent from the service image, the named-volume identity/mountpoint drifts, or the read-only helper rejects an entry/race | Fail the backup before activation, retain partial evidence as non-restorable, and restore the captured prior service set; never accept an empty or partial manifest. |
 | MinIO `.minio.sys` metadata rotates while the user-object manifest is byte-exact | Do not report a business-object mutation; compare only the validated user-object namespace and retain aggregate internal-metadata diagnostics separately. |
 | A prior migration one-shot exists | Remove it only when its unique exited identity matches the captured previous release; otherwise fail before migration and do not guess which container is stale. |
+| Existing `.release.env` uses a tag, is not attached to the captured image, or resolves elsewhere | Reject before quiescence. Correct it to the proven current RepoDigest while services remain active, recapture the exact baseline, and require a new one-shot candidate identity. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
+| Pre-migration restoration succeeds but the EXIT trap continues into incident shutdown | Regression failure; return immediately after bounded previous-service verification. |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
 | Migration attempt fails or schema is not rollback-compatible | Writers remain stopped for incident response; no database restore/downgrade |
 | Post-activation failure with eligible compatibility | Previous runtime/digest is restored and health-verified |
@@ -772,12 +788,15 @@ release artifacts, or production deployment automation change.
 - Good: the local entrypoint fetches one Codeup `main` commit into an isolated worktree, reuses
   cache, resolves one verified digest and checksum-bound bundle, and the root deployer recreates
   all nine production services without production PyPI access.
+- Good: an offline candidate is transported by an isolated tag, but activation writes its verified
+  local RepoDigest and a later backup binds that exact digest.
 - Base: local development builds the shared local image, the local release dry run performs only
   read-only probes, and Flow quality/production activation flags remain false as a later path.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
   release bundle includes workspace files, CI calls host `python3`, a wrapper inherits Flow
   secrets, a local release consumes a dirty checkout or password argument, migration/doctor use
-  the mutable commit tag, or rollback downgrades/restores the database automatically.
+  the mutable commit tag, a recovery branch trusts conditional-context `set -e`, or rollback
+  downgrades/restores the database automatically.
 
 ### 6. Tests Required
 
@@ -872,6 +891,10 @@ release artifacts, or production deployment automation change.
   physical mode-0600 one-shot operator, and fake harness. It binds artifacts to the fetched Codeup
   commit and isolated image identity, accepts null stdin, validates the full archive graph and
   exact Compose entrypoints, and never reuses a failed candidate or a prior task's frozen operator.
+- Offline-release regressions must reject a mutable previous `APP_IMAGE`, accept only a matching
+  current RepoDigest, prove the candidate digest survives `.release.env` installation, restore
+  primary/release environments even before source activation, and distinguish verified
+  pre-migration recovery (previous services retained) from failed recovery (writers stopped).
 - A captured production source baseline binds every managed regular file/directory by type, path,
   mode, UID, GID, and file content. Capture and activation use the same algorithm: do not assume an
   ownership/mode distribution that the read-only audit disproves, and do not ignore metadata drift.
@@ -921,6 +944,32 @@ docker compose --env-file .env --env-file .release.env up -d --no-build
 
 The mode-600 release environment supplies the single verified digest used by all application and
 migration services.
+
+#### Wrong: conditional recovery that relies on `errexit`
+
+~~~bash
+if restore_previous && restart_previous; then
+  return 0
+fi
+~~~
+
+If either function assumes `set -e` will stop on an internal failed `cp`, `mv`, or `docker`
+command, Bash conditional-call semantics can suppress that exit and falsely report recovery.
+
+#### Correct: explicit recovery failures and terminal success branch
+
+~~~bash
+restore_previous() {
+  cp -a "$snapshot" "$active" || return 1
+}
+if restore_previous && restart_and_verify_previous; then
+  return 0
+fi
+stop_application_writers
+~~~
+
+Every state-changing or verifying command returns failure explicitly, and a verified recovery
+cannot fall through into the incident shutdown branch.
 
 #### Wrong: local release from workspace or argv credentials
 
