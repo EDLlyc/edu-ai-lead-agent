@@ -28,7 +28,7 @@
 | P0 | Architecture | Make the client accept exactly development, or production with the explicit acknowledgement | Done |
 | P0 | Contract test | Construct the real HTTP client from acknowledged production settings with a fake transport | Done |
 | P0 | Runtime gate | Require restart-zero idle stability, not only the first running observation | Done |
-| P1 | Evidence | Capture bounded safe worker logs before recovery removes the container | Planned in the replacement operator |
+| P1 | Evidence | Capture bounded safe worker logs before recovery removes the container | Done |
 | P1 | Documentation | Record runtime-consumer gate propagation in the backend and cross-layer specs | Done |
 
 ## 4. Systematic Expansion
@@ -45,7 +45,7 @@
 - [x] Update `.trellis/spec/backend/wechat-official-account-drafts.md`.
 - [x] Update `.trellis/spec/guides/cross-layer-thinking-guide.md`.
 - [x] Add the production client-construction regression.
-- [ ] Bind the fixed commit/image to a new single-use post-migration operator and record its final
+- [x] Bind the fixed commit/image to a new single-use post-migration operator and record its final
       production evidence.
 
 No template-spec directory exists in this repository, so there is no generated spec copy to sync.

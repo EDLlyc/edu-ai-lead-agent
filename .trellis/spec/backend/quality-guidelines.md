@@ -380,6 +380,80 @@ JSON transformations. GLM-5.2 enables thinking by default and can otherwise cons
 schema validation and one bounded issue-code correction; do not compensate by accepting an empty,
 truncated, or schema-invalid result.
 
+## Scenario: Unified provider-free evaluation gate
+
+### 1. Scope / Trigger
+
+This contract applies when a checked evaluation runner, canonical report, evaluation dataset,
+ranking-policy identity, root quality command, or Yunxiao quality-stage command changes.
+
+### 2. Signatures
+
+- Local and CI gate: `make eval-check`.
+- CI invocation: `make PY_RUN="$PWD/scripts/ci-python.sh" eval-check` after `backend-check`.
+- The gate runs the checked Agent Workbench, brand retrieval, digital IP, image quality, IP asset
+  retrieval, topic rerank, and visual retrieval runners.
+
+### 3. Contracts
+
+- Every child runner uses `--check`; the diagnostic-only `agent-workbench-eval` target remains
+  separate.
+- The Make target propagates any child failure and remains provider-free: no network, API key,
+  business-data write, live worker, or production service is permitted.
+- Topic-rerank fixtures use the current qualified-authoritative priority-rule identity. A fixture
+  named `priority-barrier` must observe at least two distinct `priority_group` values and assert the
+  final group sequence is nondecreasing; final order alone is insufficient evidence.
+- The IP asset retrieval dataset retains the exact sanitized regression query
+  `小赛和赛先生在空间站`. Its frozen ranks and evaluator-only grades do not claim live embedding
+  or production-search accuracy.
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| A runner exits nonzero or its canonical bytes drift | `make eval-check` exits nonzero and CI stops |
+| Priority fixture collapses to one group | The explicit group-separation check fails |
+| Priority groups are crossed in final order | The priority-barrier check fails |
+| The exact space-station query is removed | Dataset unit test fails |
+| Provider credentials are absent | All seven checked runners still execute |
+
+### 5. Good / Base / Bad Cases
+
+- Good: all seven runners reproduce their canonical reports, the priority fixture contains groups
+  `0` and `1`, and the exact IP demonstration query remains versioned.
+- Base: fixture metrics remain regression evidence only and are reported with their provider-free
+  disclaimers.
+- Bad: changing expected order to accept a broken fixture, silently updating canonical output,
+  combining child commands in a shell construct that masks failure, or describing fixture scores
+  as live-model accuracy.
+
+### 6. Tests Required
+
+- A topic-rerank evaluator unit test asserts the priority fixture's input and final groups are
+  exactly `[0, 1]`, its final suffix order is `[1, 2]`, and both explicit priority checks pass.
+- The IP retrieval evaluator test asserts the exact demonstration query exists and verifies the
+  reviewed aggregate/canonical output.
+- The release pipeline contract test asserts the exact Yunxiao `eval-check` command.
+- `make eval-check`, focused evaluator tests, Ruff, strict mypy, and `git diff --check` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```make
+eval-check:
+	-run-topic-eval; run-retrieval-eval
+```
+
+This can mask or explicitly ignore an earlier failure and does not require canonical checked mode.
+
+#### Correct
+
+```make
+eval-check: topic-rerank-eval ip-asset-retrieval-eval
+```
+
+Checked child targets remain explicit Make prerequisites, so a nonzero runner blocks the gate.
+
 ### Front-to-back flow
 
 Maintain one end-to-end test for the first vertical slice: enqueue or provide a candidate, create a
@@ -683,6 +757,15 @@ release artifacts, or production deployment automation change.
   that alias resolves to user `git` at `codeup.aliyun.com:22`. Fetch the explicit
   `refs/heads/main:refs/remotes/origin/main` refspec with terminal/askpass authentication disabled,
   and require the running release orchestrator to match the fetched committed copy.
+- `origin/main` remains the ordinary release authority. A task-specific incident hotfix may use
+  one newly created, non-force-pushed Codeup ref below `refs/heads/release/` only when deploying
+  `main` would also activate a separately identified, out-of-scope runtime change. The hotfix ref
+  must descend from the reviewed `main` release tooling, keep the fix committed on `main`, and
+  revert or exclude only the named out-of-scope runtime path. Fetch it into the matching
+  `refs/remotes/origin/release/` namespace, bind its exact commit in the builder/operator, and prove
+  the complete runtime application diff against the current production commit equals the reviewed
+  allowlist. Record both the `main` fix/operator commits and isolated runtime commit in evidence;
+  never treat an arbitrary feature branch or mutable tag as release authority.
 - The local release accepts only a repository name and strict SSH host alias as non-secret
   configuration. It relies on the existing Docker credential store and OpenSSH config/agent plus
   known-host entry. Positional arguments and registry/SSH password, token, private-key, or secret
@@ -899,6 +982,10 @@ release artifacts, or production deployment automation change.
   physical mode-0600 one-shot operator, and fake harness. It binds artifacts to the fetched Codeup
   commit and isolated image identity, accepts null stdin, validates the full archive graph and
   exact Compose entrypoints, and never reuses a failed candidate or a prior task's frozen operator.
+- An incident hotfix-ref regression must reject every namespace except fetched `origin/main` and
+  bounded lowercase `origin/release/<name>` refs, require the fetched ref to equal the requested
+  commit, and keep the builder bytes identical to those committed in the selected ref. Production
+  evidence must include the allowlisted application diff that justified not deploying `main`.
 - Offline-release regressions must reject a mutable previous `APP_IMAGE`, accept only a matching
   current RepoDigest, prove the candidate digest survives `.release.env` installation, restore
   primary/release environments even before source activation, and distinguish verified
