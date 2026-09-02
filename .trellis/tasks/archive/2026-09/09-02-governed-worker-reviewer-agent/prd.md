@@ -87,20 +87,20 @@ A/B 评测同时报告质量收益、额外 token/cost/latency 和失败模式�
 
 ## Acceptance Criteria
 
-- [ ] Reviewer 以独立 `ExecutionRole.REVIEWER` allocation 运行，执行层证明无 plan/business-write 权限。
-- [ ] Review record 与当前 immutable article Artifact SHA、全部版本和双重 fingerprint 绑定，篡改或
+- [x] Reviewer 以独立 `ExecutionRole.REVIEWER` allocation 运行，执行层证明无 plan/business-write 权限。
+- [x] Review record 与当前 immutable article Artifact SHA、全部版本和双重 fingerprint 绑定，篡改或
       跨 run/task/artifact 请求在 provider 调用前被拒绝。
-- [ ] `accepted/manual_review/rejected/unavailable` 全部分支稳定；只有闭集可修复 rejection 最多派生一次
+- [x] `accepted/manual_review/rejected/unavailable` 全部分支稳定；只有闭集可修复 rejection 最多派生一次
       Writer repair，第二次不再循环。
-- [ ] Writer repair 产生新 Artifact 并重新经过 deterministic validation 与 Reviewer；旧 verdict 不会
+- [x] Writer repair 产生新 Artifact 并重新经过 deterministic validation 与 Reviewer；旧 verdict 不会
       投影到新文章，人工审批/发布边界保持不变。
-- [ ] budget/capability/event/artifact 持久化覆盖正常、超时、取消、异常、lease lost、replay 和 restart；
+- [x] budget/capability/event/artifact 持久化覆盖正常、超时、取消、异常、lease lost、replay 和 restart；
       真实 PostgreSQL 并发测试证明不重复调用、不超卖预算、不出现断裂因果。
-- [ ] provider-free Reviewer eval 与 canonical drift check 可在无 key/无网络 CI 中复现，并明确不等同
+- [x] provider-free Reviewer eval 与 canonical drift check 可在无 key/无网络 CI 中复现，并明确不等同
       live 模型质量。
-- [ ] opt-in live report 能在授权后比较 single Writer 与 Worker–Reviewer 的质量、延迟、token/cost 和
+- [x] opt-in live report 能在授权后比较 single Writer 与 Worker–Reviewer 的质量、延迟、token/cost 和
       bad cases；没有授权或有效结果时不会生成虚假简历数字。
-- [ ] 任务范围 Ruff、mypy、unit/contract/real PostgreSQL integration、migration、privacy、eval 和
+- [x] 任务范围 Ruff、mypy、unit/contract/real PostgreSQL integration、migration、privacy、eval 和
       `git diff --check` 通过；既有官方账号 handoff、Agent Workbench 与 execution governance 契约不漂移。
 
 ## Out of Scope
