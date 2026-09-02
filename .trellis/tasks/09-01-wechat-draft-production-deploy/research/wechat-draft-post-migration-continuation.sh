@@ -208,7 +208,8 @@ verify_disabled_preflight() {
     || die "primary environment is not a physical mode-0600 file"
   [[ -f "$RELEASE_ENV" && ! -L "$RELEASE_ENV" && "$(stat -c '%a' "$RELEASE_ENV")" == 600 ]] \
     || die "release environment is not a physical mode-0600 file"
-  [[ "$(env_value WECHAT_MP_MODE)" == draft_only ]] || die "WeChat mode is not draft-only"
+  value=$(env_value WECHAT_MP_MODE) || return 1
+  [[ -z "$value" || "$value" == draft_only ]] || die "WeChat mode is not draft-only"
   [[ "$(env_value WECHAT_MP_DRAFT_MIN_WEEK_START)" == "$MINIMUM_WEEK" ]] \
     || die "minimum week differs from the migrated incident state"
   for key in WECHAT_MP_ENABLED WECHAT_MP_DRAFT_WORKER_ENABLED \
