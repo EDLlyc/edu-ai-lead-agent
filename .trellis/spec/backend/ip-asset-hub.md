@@ -627,6 +627,135 @@ request = ImageGenerationRequest(
 )
 ```
 
+## Scenario: Grounded 41-asset retrieval evaluation
+
+### 1. Scope / Trigger
+
+Use this contract when changing the real-corpus IP retrieval query set, Codex relevance seed,
+grounded run schema, live evaluator, ranking metrics, or V2/V3 paired report. This is a backend-only
+engineering surface. It must not add `/ip-assets/evaluation`, another frontend route, a public API,
+an annotation database, or authentication/identity state.
+
+### 2. Signatures
+
+```bash
+make ip-asset-grounded-eval-check
+make ip-asset-grounded-eval-preflight
+make ip-asset-grounded-eval-live \
+  SEARCH_VERSION=ip-asset-hybrid-v3-rrf OUTPUT=/tmp/ip-grounded-v3.json
+make ip-asset-grounded-eval-report \
+  RUN=/tmp/ip-grounded-v3.json \
+  OUTPUT_JSON=/tmp/ip-grounded-v3-report.json \
+  OUTPUT_MARKDOWN=/tmp/ip-grounded-v3-report.md
+make ip-asset-grounded-eval-compare \
+  BASELINE=/tmp/ip-grounded-v2.json CANDIDATE=/tmp/ip-grounded-v3.json \
+  OUTPUT_JSON=/tmp/ip-grounded-comparison.json \
+  OUTPUT_MARKDOWN=/tmp/ip-grounded-comparison.md
+```
+
+- Frozen files live in `backend/evals/ip_asset_retrieval_grounded/`.
+- `IpAssetService.search_text_for_evaluation(...)` is an internal application boundary that runs
+  the same production text retrieval path with outcome aggregation disabled.
+- Live run files and reports are written only to explicit caller paths. The checked canonical
+  report freezes seed schema/distribution, never a volatile provider ranking.
+
+### 3. Contracts
+
+- The frozen snapshot contains exactly 41 approved assets and only safe public catalog refs plus
+  controlled display/taxonomy metadata. It contains no filename, relative path, checksum, dynamic
+  UUID, object location, source bytes, vector, score, or provider payload.
+- The query set contains exactly 100 unique sorted Chinese queries, split exactly 80 dev / 20
+  holdout, covers every declared category, and retains the exact query `小赛和赛先生在空间站`.
+- Every query has one complete sorted 41-item matrix, for exactly 4,100 unique grades in `0..3`.
+  The source is always `codex_seed`; it is not human Gold and cannot produce a human-agreement
+  claim. A no-answer query has no grade `>=2`; an answerable query has at least one.
+- Dataset files are strict versioned JSON/JSONL with byte SHA-256 identities. Labels are authored
+  after visual review and must never be derived from V2/V3 ranks, cosine, metadata scores, or
+  expected output embedded in a fake ranker.
+- Preflight validates the committed safe snapshot against the approved manifest, maps all 41 refs
+  one-to-one by checksum in memory, requires ready/shared dynamic rows, and proves all 41 have the
+  exact compatible embedding identity. The bounded projection refuses a shared corpus larger than
+  its 500-row complete-view guarantee rather than silently omitting a grounded asset.
+- A live run ranks only the mapped 41 assets through production current-turn filter extraction,
+  metadata candidate ranking, configured text embedding/vector retrieval, and the selected V2 or
+  V3 rank policy. Labels are loaded only after the safe top-eight observation is complete.
+- Run identity records search version, `fake|alibaba` execution mode, provider/model/dimensions/
+  input policy, timestamp, and asset/query/seed hashes. It records only query refs, mode, safe top-k
+  catalog refs, closed degraded reason, or closed failure code; it excludes query text, labels,
+  scores, vectors, provider bodies, paths, dynamic identities, and actor/request data.
+- Ordinary `search_text(...)` keeps one best-effort result/zero-result aggregate write. Evaluation
+  uses `search_text_for_evaluation(...)` and performs no aggregate write; this choice is internal and
+  cannot be selected from the HTTP API.
+- Grades `>=2` define usable relevance for Recall@3/5 and MRR@5. nDCG@5 uses the full 0-3 gain.
+  No-answer cases report correct abstention and false-positive rate separately and never receive an
+  artificial 1.0 in ranking macros. Reports aggregate overall/category/split/mode/degraded/failure
+  and use a fixed-seed, 10,000-resample query-level paired bootstrap for V3-minus-V2 95% intervals.
+- `make ip-asset-grounded-eval-check` remains provider-free and joins `make eval-check`; preflight
+  and live commands are explicit local operations and never join the ordinary CI gate.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Approved manifest is not exactly the frozen 41-item identity | `asset_snapshot_drift`; no provider call |
+| A dynamic row is missing, duplicated, private, or not ready/shared | Closed preflight failure; no query embedding call |
+| Any of the 41 compatible vectors is missing | `compatible_embedding_incomplete`; no live run |
+| Shared library exceeds the bounded complete projection | `shared_corpus_exceeds_safe_projection`; do not report partial-corpus metrics |
+| Dataset has a duplicate/missing query, asset grade, illegal grade, split drift, or prohibited field | Validation/check exits nonzero; canonical is not rewritten |
+| V2/V3 run dataset hashes or embedding identities differ | Paired comparison refuses the inputs |
+| No-answer run returns assets | Count a false positive; do not fold it into Recall/MRR |
+| Live provider degrades to metadata | Preserve `degraded_metadata` plus the closed reason and score that returned ranking honestly |
+| Evaluation completes | Business search aggregate count remains unchanged |
+| Ordinary product text search completes | Existing result/zero-result aggregate behavior remains enabled |
+
+### 5. Good / Base / Bad Cases
+
+- Good: the 41-item preflight passes, real Alibaba query embeddings run V2 and V3 over the same
+  corpus/seed identity, and a paired report discloses seed maturity plus confidence intervals.
+- Base: provider credentials/database are absent; the provider-free dataset/canonical gate still
+  passes, while live preflight fails explicitly without manufacturing a ranking.
+- Bad: call the evaluator from a website, persist reviewer identities, call seed labels Gold,
+  tune labels from current ranks, compare different embedding executions, include no-answer as
+  perfect Recall, or let 100 evaluation queries increase business search counters.
+
+### 6. Tests Required
+
+- Unit tests assert 41 assets, 100 queries, 80/20 split, all categories, the exact space-station
+  query, 4,100 unique grades, `codex_seed`, no-answer consistency, strict/prohibited fields, stable
+  canonical bytes, and snapshot drift refusal.
+- Metric tests cover Recall@3/5, MRR@5, graded nDCG@5, separate no-answer behavior, coverage,
+  degraded/failure aggregation, fixed bootstrap reproduction, run hash/order checks, and identical
+  embedding identity for paired comparison.
+- Service tests call `search_text_for_evaluation` and assert zero aggregate calls, then call ordinary
+  `search_text` and assert exactly one closed aggregate call with actual version/mode/date.
+- The existing provider-free 41-case selector suite remains green. Real provider runs are recorded
+  as task-local evidence only after explicit authorization and are not committed as canonical truth.
+- Final checks include focused pytest, Ruff format/lint, strict mypy, authoring/canonical drift,
+  `make eval-check`, privacy/scope scan, and `git diff --check`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+# This pollutes business metrics and lets labels influence retrieval.
+result = await service.search_text(message=query.text, prior_turns=(), filters=filters)
+ranked = sort_by_seed_grade(result.items, seed_labels)
+```
+
+#### Correct
+
+```python
+# Production ranking completes first; the separate scorer consumes only the safe observation.
+result = await service.search_text_for_evaluation(
+    message=query.text,
+    prior_turns=(),
+    filters=filters,
+)
+observation = safe_catalog_refs(result)
+metrics = score_observation(observation, independently_authored_codex_seed)
+```
+
 ## Design decision: dynamic partial index remains separate
 
 The approved static visual catalog requires complete current-catalog coverage before semantic

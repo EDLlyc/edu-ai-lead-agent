@@ -1,0 +1,65 @@
+{
+  "dataset": {
+    "asset_count": 41,
+    "asset_set_fingerprint": "9a40b9ea1afe28cfe98633a2fbcbfe696c34802ca37911a09d5e2da4eb0c2bb2",
+    "assets_sha256": "9399146b747a5028052254cb8f5bf6934b9712dba31a1c48cba58f802640a506",
+    "judgment_count": 4100,
+    "queries_sha256": "637a4f155beeae969353d6fb7fafb7a555e2bb695eebf91ef1c9cec6644e7e98",
+    "query_count": 100,
+    "seed_sha256": "8bf85e957b21658dbb2de28d6c735927605571170a1a05cccf61339a61715165"
+  },
+  "distribution": {
+    "answer_kinds": {
+      "has_relevant": 94,
+      "no_answer": 6
+    },
+    "categories": {
+      "action": 12,
+      "asset_type": 8,
+      "character": 10,
+      "combined_constraints": 16,
+      "emotion": 8,
+      "intended_use": 10,
+      "no_answer": 6,
+      "noisy_alias": 4,
+      "paraphrase": 6,
+      "scene": 12,
+      "transparent_background": 8
+    },
+    "category_mean_relevant": {
+      "action": 7.083,
+      "asset_type": 19.25,
+      "character": 14.9,
+      "combined_constraints": 3.75,
+      "emotion": 11.5,
+      "intended_use": 12.6,
+      "no_answer": 0.0,
+      "noisy_alias": 20.5,
+      "paraphrase": 11.0,
+      "scene": 8.667,
+      "transparent_background": 17.25
+    },
+    "grades": {
+      "0": 2881,
+      "1": 163,
+      "2": 407,
+      "3": 649
+    },
+    "relevant_per_answerable_query": {
+      "maximum": 39,
+      "minimum": 2
+    },
+    "splits": {
+      "dev": 80,
+      "holdout": 20
+    }
+  },
+  "label_source": "codex_seed",
+  "maturity": "seed",
+  "schema_version": "ip-asset-grounded-seed-report-v1",
+  "truthfulness": {
+    "human_agreement_available": false,
+    "human_gold": false,
+    "live_retrieval_measured": false
+  }
+}

@@ -459,6 +459,36 @@ class IpAssetService:
         prior_turns: tuple[str, ...],
         filters: IpAssetQuery,
     ) -> IpAssetSearchResult:
+        return await self._search_text(
+            message=message,
+            prior_turns=prior_turns,
+            filters=filters,
+            record_outcome=True,
+        )
+
+    async def search_text_for_evaluation(
+        self,
+        *,
+        message: str,
+        prior_turns: tuple[str, ...],
+        filters: IpAssetQuery,
+    ) -> IpAssetSearchResult:
+        """Run the production text-retrieval path without changing business search metrics."""
+        return await self._search_text(
+            message=message,
+            prior_turns=prior_turns,
+            filters=filters,
+            record_outcome=False,
+        )
+
+    async def _search_text(
+        self,
+        *,
+        message: str,
+        prior_turns: tuple[str, ...],
+        filters: IpAssetQuery,
+        record_outcome: bool,
+    ) -> IpAssetSearchResult:
         try:
             current = normalize_optional_text(message, maximum=2_000)
             if not current:
@@ -474,8 +504,9 @@ class IpAssetService:
         extracted = _extract_filters(current, filters)
         metadata_hits = await self._search_metadata(text=current, query=extracted)
         if self._embeddings is None:
-            return await self._record_search_outcome(
-                self._metadata_result(metadata_hits, "semantic_disabled", extracted)
+            return await self._complete_text_search(
+                self._metadata_result(metadata_hits, "semantic_disabled", extracted),
+                record_outcome=record_outcome,
             )
         try:
             embedding = await self._embeddings.embed_visual(
@@ -487,14 +518,16 @@ class IpAssetService:
                 query=extracted, embedding=embedding, identity=self._identity
             )
         except (VisualEmbeddingError, ValueError):
-            return await self._record_search_outcome(
-                self._metadata_result(metadata_hits, "provider_unavailable", extracted)
+            return await self._complete_text_search(
+                self._metadata_result(metadata_hits, "provider_unavailable", extracted),
+                record_outcome=record_outcome,
             )
         if not hits:
-            return await self._record_search_outcome(
-                self._metadata_result(metadata_hits, "partial_index", extracted)
+            return await self._complete_text_search(
+                self._metadata_result(metadata_hits, "partial_index", extracted),
+                record_outcome=record_outcome,
             )
-        return await self._record_search_outcome(
+        return await self._complete_text_search(
             IpAssetSearchResult(
                 mode=IpAssetSearchMode.SEMANTIC,
                 degraded_reason=None,
@@ -505,8 +538,14 @@ class IpAssetService:
                     query=extracted,
                     search_version=self._search_version,
                 ),
-            )
+            ),
+            record_outcome=record_outcome,
         )
+
+    async def _complete_text_search(
+        self, result: IpAssetSearchResult, *, record_outcome: bool
+    ) -> IpAssetSearchResult:
+        return await self._record_search_outcome(result) if record_outcome else result
 
     async def search_image(
         self, *, body: bytes, media_type: str | None, filters: IpAssetQuery

@@ -482,7 +482,7 @@ def test_leaderboard_window_uses_business_timezone_and_includes_thirty_dates() -
 
 
 @pytest.mark.asyncio
-async def test_search_outcomes_use_actual_mode_and_business_timezone() -> None:
+async def test_search_outcomes_use_actual_mode_but_evaluation_does_not_record() -> None:
     calls: list[tuple[date, str, IpAssetSearchMode, IpAssetSearchEventKind]] = []
 
     class Repository:
@@ -508,6 +508,15 @@ async def test_search_outcomes_use_actual_mode_and_business_timezone() -> None:
         business_timezone="Asia/Shanghai",
         now=lambda: datetime(2026, 8, 30, 16, 30, tzinfo=UTC),
     )
+
+    evaluation_result = await service.search_text_for_evaluation(
+        message="找一张小赛开心的图片",
+        prior_turns=(),
+        filters=IpAssetQuery(limit=8),
+    )
+
+    assert evaluation_result.mode is IpAssetSearchMode.DEGRADED_METADATA
+    assert calls == []
 
     result = await service.search_text(
         message="找一张小赛开心的图片",

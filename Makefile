@@ -16,7 +16,11 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	topic-rerank-eval \
 	brand-retrieval-eval \
 	visual-retrieval-eval \
+	ip-asset-grounded-eval-check ip-asset-grounded-eval-preflight \
+	ip-asset-grounded-eval-live ip-asset-grounded-eval-report \
+	ip-asset-grounded-eval-compare \
 	image-quality-eval \
+	eval-check \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	agent-portfolio-capture agent-portfolio-capture-check \
 	agent-portfolio-live-zhipu-preflight agent-portfolio-live-zhipu-capture \
@@ -184,11 +188,46 @@ brand-retrieval-eval:
 ip-asset-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval.runner --check
 
+ip-asset-grounded-eval-check:
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner validate-seed
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner check-canonical
+
+ip-asset-grounded-eval-preflight:
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner preflight-live
+
+ip-asset-grounded-eval-live:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner run-live \
+		--search-version "$(or $(SEARCH_VERSION),ip-asset-hybrid-v3-rrf)" \
+		--output "$(abspath $(OUTPUT))"
+
+ip-asset-grounded-eval-report:
+	@test -n "$(RUN)" || (echo "RUN is required" >&2; exit 2)
+	@test -n "$(OUTPUT_JSON)" || (echo "OUTPUT_JSON is required" >&2; exit 2)
+	@test -n "$(OUTPUT_MARKDOWN)" || (echo "OUTPUT_MARKDOWN is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner report-run \
+		--run "$(abspath $(RUN))" --output-json "$(abspath $(OUTPUT_JSON))" \
+		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
+
+ip-asset-grounded-eval-compare:
+	@test -n "$(BASELINE)" || (echo "BASELINE is required" >&2; exit 2)
+	@test -n "$(CANDIDATE)" || (echo "CANDIDATE is required" >&2; exit 2)
+	@test -n "$(OUTPUT_JSON)" || (echo "OUTPUT_JSON is required" >&2; exit 2)
+	@test -n "$(OUTPUT_MARKDOWN)" || (echo "OUTPUT_MARKDOWN is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner compare-runs \
+		--baseline "$(abspath $(BASELINE))" --candidate "$(abspath $(CANDIDATE))" \
+		--output-json "$(abspath $(OUTPUT_JSON))" \
+		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
+
 visual-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.visual_retrieval.runner --check
 
 image-quality-eval:
 	cd backend && $(PY_RUN) python -m evals.image_quality.runner --check
+
+eval-check: brand-retrieval-eval image-quality-eval ip-asset-grounded-eval-check \
+	ip-asset-retrieval-eval topic-rerank-eval visual-retrieval-eval
 
 agent-portfolio-check: agent-api-contract-check
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check

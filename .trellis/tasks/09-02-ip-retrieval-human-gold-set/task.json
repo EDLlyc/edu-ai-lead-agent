@@ -1,0 +1,31 @@
+{
+  "id": "ip-retrieval-human-gold-set",
+  "name": "ip-retrieval-human-gold-set",
+  "title": "IP 检索真实图库 Seed Eval V1",
+  "description": "Use the real 41-asset IP corpus and 4,100 Codex seed relevance labels to build a backend-only grounded retrieval dataset, live runner, hidden holdout, and statistically honest reports.",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": "backend evaluation dataset, live retrieval runner, metrics, reports",
+  "package": "backend",
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-09-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/evals/ip_asset_retrieval",
+    "backend/app/application/services/ip_assets.py",
+    "backend/app/infrastructure/db/ip_assets.py",
+    "Makefile"
+  ],
+  "notes": "No evaluation page, API route, database migration, or frontend change. Codex produces the complete seed labels; reports must not call them human Gold.",
+  "meta": {}
+}

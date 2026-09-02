@@ -1,0 +1,1337 @@
+{
+  "asset_set_fingerprint": "9a40b9ea1afe28cfe98633a2fbcbfe696c34802ca37911a09d5e2da4eb0c2bb2",
+  "assets": [
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "0121c4aed51e0312",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生",
+      "has_alpha": true,
+      "height": 1254,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 1254
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "029ee20bb1ff26c3",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身1",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "079e5e02b1769f2a",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身3",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "08748e267dee9298",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身3",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "09c8fd9470cb5502",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "赛先生小赛-双向奔赴",
+      "has_alpha": true,
+      "height": 2560,
+      "poses": [
+        "discuss",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "editorial",
+        "teamwork"
+      ],
+      "selection_tags": [
+        "discuss",
+        "editorial",
+        "education",
+        "explore",
+        "science",
+        "teamwork"
+      ],
+      "topics": [
+        "education",
+        "science",
+        "teamwork"
+      ],
+      "width": 3840
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "12086739c0e77148",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "天文-赛先生",
+      "has_alpha": true,
+      "height": 3840,
+      "poses": [
+        "astronaut",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "space"
+      ],
+      "selection_tags": [
+        "astronaut",
+        "astronomy",
+        "explore",
+        "science",
+        "space"
+      ],
+      "topics": [
+        "astronomy",
+        "science",
+        "space"
+      ],
+      "width": 3840
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "16c48b11da0dbb7f",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身2",
+      "has_alpha": true,
+      "height": 1200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 794
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "1bb84f2abb140b8f",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "小赛和赛先生思考",
+      "has_alpha": true,
+      "height": 614,
+      "poses": [
+        "discuss",
+        "think"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "editorial",
+        "reading"
+      ],
+      "selection_tags": [
+        "discuss",
+        "editorial",
+        "education",
+        "reading",
+        "science",
+        "think",
+        "thinking"
+      ],
+      "topics": [
+        "education",
+        "reading",
+        "science",
+        "thinking"
+      ],
+      "width": 614
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "33586a916bbbfbf1",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛举个例子",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "point",
+        "teach"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom"
+      ],
+      "selection_tags": [
+        "classroom",
+        "education",
+        "experiment",
+        "point",
+        "science",
+        "teach"
+      ],
+      "topics": [
+        "education",
+        "experiment",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "3c073cebb5d756c3",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛讨论（朝右）",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "discuss",
+        "observe"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom",
+        "robotics_lab"
+      ],
+      "selection_tags": [
+        "ai",
+        "classroom",
+        "discuss",
+        "education",
+        "observe",
+        "robotics",
+        "robotics_lab",
+        "science"
+      ],
+      "topics": [
+        "ai",
+        "education",
+        "robotics",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "3dd6220e183175d7",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身5",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "46c0563d628633f0",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛向上指",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "point",
+        "teach"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom"
+      ],
+      "selection_tags": [
+        "classroom",
+        "education",
+        "point",
+        "science",
+        "teach"
+      ],
+      "topics": [
+        "education",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "471bf408e572a3e0",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "赛先生小赛-携手奔跑",
+      "has_alpha": true,
+      "height": 1728,
+      "poses": [
+        "explore",
+        "run"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "teamwork"
+      ],
+      "selection_tags": [
+        "education",
+        "explore",
+        "run",
+        "science",
+        "teamwork"
+      ],
+      "topics": [
+        "education",
+        "science",
+        "teamwork"
+      ],
+      "width": 2304
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "4c992d7cd76219c7",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身2",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "5c2a29bbec16ca4f",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "小赛和赛先生讨论",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "discuss",
+        "observe"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment",
+        "robotics_lab"
+      ],
+      "selection_tags": [
+        "ai",
+        "discuss",
+        "experiment",
+        "observe",
+        "robotics",
+        "robotics_lab",
+        "science"
+      ],
+      "topics": [
+        "ai",
+        "experiment",
+        "robotics",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "68dd45e5ac814f20",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生开课欢迎",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "teach",
+        "welcome"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom"
+      ],
+      "selection_tags": [
+        "classroom",
+        "education",
+        "science",
+        "teach",
+        "welcome"
+      ],
+      "topics": [
+        "education",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "6954687fbdae4366",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-宇航员地球仪",
+      "has_alpha": true,
+      "height": 2496,
+      "poses": [
+        "astronaut",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "space"
+      ],
+      "selection_tags": [
+        "astronaut",
+        "astronomy",
+        "explore",
+        "science",
+        "space"
+      ],
+      "topics": [
+        "astronomy",
+        "science",
+        "space"
+      ],
+      "width": 1664
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "79a03fd2f16a3d65",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身5",
+      "has_alpha": true,
+      "height": 1402,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 1122
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "80d316bf7d4b753a",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "赛先生小赛-空间站",
+      "has_alpha": false,
+      "height": 2880,
+      "poses": [
+        "astronaut",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "space",
+        "space_station"
+      ],
+      "selection_tags": [
+        "astronaut",
+        "astronomy",
+        "explore",
+        "science",
+        "space",
+        "space_station"
+      ],
+      "topics": [
+        "astronomy",
+        "science",
+        "space"
+      ],
+      "width": 3840
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "855ae0641e07fa64",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身6",
+      "has_alpha": false,
+      "height": 3504,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2336
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "89dc2182a28f031f",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛看书",
+      "has_alpha": true,
+      "height": 3840,
+      "poses": [
+        "read",
+        "think"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "reading"
+      ],
+      "selection_tags": [
+        "education",
+        "read",
+        "reading",
+        "science",
+        "think"
+      ],
+      "topics": [
+        "education",
+        "reading",
+        "science"
+      ],
+      "width": 3840
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "91d8302fbf315a6e",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身1",
+      "has_alpha": true,
+      "height": 1024,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 1024
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "948f9af52f3bfadb",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛疑惑",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "question",
+        "think"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment"
+      ],
+      "selection_tags": [
+        "experiment",
+        "question",
+        "science",
+        "think",
+        "thinking"
+      ],
+      "topics": [
+        "experiment",
+        "science",
+        "thinking"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "9f91d951cce9412e",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "小赛赛先生时光机",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "explore",
+        "read"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "editorial",
+        "reading"
+      ],
+      "selection_tags": [
+        "editorial",
+        "education",
+        "explore",
+        "read",
+        "reading",
+        "science"
+      ],
+      "topics": [
+        "education",
+        "reading",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "a283092c9925185c",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身4",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "a6e127fcd6a16314",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "小赛和赛先生时光穿越书",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "explore",
+        "read"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "editorial",
+        "reading"
+      ],
+      "selection_tags": [
+        "editorial",
+        "education",
+        "explore",
+        "read",
+        "reading",
+        "science"
+      ],
+      "topics": [
+        "education",
+        "reading",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "b680c2412f0672c6",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-伸手指",
+      "has_alpha": true,
+      "height": 3840,
+      "poses": [
+        "point",
+        "teach"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom",
+        "experiment"
+      ],
+      "selection_tags": [
+        "classroom",
+        "education",
+        "experiment",
+        "point",
+        "science",
+        "teach"
+      ],
+      "topics": [
+        "education",
+        "experiment",
+        "science"
+      ],
+      "width": 2880
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "b9c3b0d98233e3cc",
+      "characters": [
+        "sai-xiansheng",
+        "xiao-sai"
+      ],
+      "display_name": "小赛和赛先生在时光机里看书",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "explore",
+        "read"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "editorial",
+        "reading"
+      ],
+      "selection_tags": [
+        "editorial",
+        "education",
+        "explore",
+        "read",
+        "reading",
+        "science"
+      ],
+      "topics": [
+        "education",
+        "reading",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "bab27fe77a8edff4",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛探测",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "discover",
+        "explore",
+        "observe"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment",
+        "robotics_lab"
+      ],
+      "selection_tags": [
+        "ai",
+        "discover",
+        "experiment",
+        "explore",
+        "observe",
+        "robotics",
+        "robotics_lab",
+        "science"
+      ],
+      "topics": [
+        "ai",
+        "experiment",
+        "robotics",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "be4694535c6259cf",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛疑问",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "question",
+        "think"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment"
+      ],
+      "selection_tags": [
+        "experiment",
+        "question",
+        "science",
+        "think",
+        "thinking"
+      ],
+      "topics": [
+        "experiment",
+        "science",
+        "thinking"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "bff22728598b948f",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛开课欢迎",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "teach",
+        "welcome"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom"
+      ],
+      "selection_tags": [
+        "classroom",
+        "education",
+        "science",
+        "teach",
+        "welcome"
+      ],
+      "topics": [
+        "education",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "c3b8b212acd4f34a",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-宇航员1",
+      "has_alpha": true,
+      "height": 2496,
+      "poses": [
+        "astronaut",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "space"
+      ],
+      "selection_tags": [
+        "astronaut",
+        "astronomy",
+        "explore",
+        "science",
+        "space"
+      ],
+      "topics": [
+        "astronomy",
+        "science",
+        "space"
+      ],
+      "width": 1664
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "c5ac14daf0b33357",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-探险",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "discover",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment",
+        "space"
+      ],
+      "selection_tags": [
+        "astronomy",
+        "discover",
+        "experiment",
+        "explore",
+        "science",
+        "space"
+      ],
+      "topics": [
+        "astronomy",
+        "experiment",
+        "science",
+        "space"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "c8fab17a7a9a2b0b",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生全身7",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "ca2e24107433e6c0",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身6",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "cd6c32292792352f",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-专业团队",
+      "has_alpha": false,
+      "height": 2560,
+      "poses": [
+        "teach",
+        "welcome"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom",
+        "editorial"
+      ],
+      "selection_tags": [
+        "brand",
+        "classroom",
+        "editorial",
+        "education",
+        "science",
+        "teach",
+        "welcome"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 3840
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "e48a22e08f8656ca",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛全身4",
+      "has_alpha": false,
+      "height": 3200,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 2560
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "e533d4b5c0547c0d",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-宇航员2",
+      "has_alpha": true,
+      "height": 1697,
+      "poses": [
+        "astronaut",
+        "explore"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "space"
+      ],
+      "selection_tags": [
+        "astronaut",
+        "astronomy",
+        "explore",
+        "science",
+        "space"
+      ],
+      "topics": [
+        "astronomy",
+        "science",
+        "space"
+      ],
+      "width": 1394
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "f2bcf802196b4bd8",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生-显微镜",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "microscope",
+        "observe"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "experiment",
+        "robotics_lab"
+      ],
+      "selection_tags": [
+        "ai",
+        "experiment",
+        "microscope",
+        "observe",
+        "robotics",
+        "robotics_lab",
+        "science"
+      ],
+      "topics": [
+        "ai",
+        "experiment",
+        "robotics",
+        "science"
+      ],
+      "width": 2048
+    },
+    {
+      "asset_kind": "identity",
+      "catalog_ref": "fb10f2470cff475b",
+      "characters": [
+        "xiao-sai"
+      ],
+      "display_name": "小赛",
+      "has_alpha": true,
+      "height": 276,
+      "poses": [],
+      "roles": [
+        "identity_reference"
+      ],
+      "scene_tags": [
+        "brand"
+      ],
+      "selection_tags": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "topics": [
+        "brand",
+        "education",
+        "science"
+      ],
+      "width": 281
+    },
+    {
+      "asset_kind": "action",
+      "catalog_ref": "fe2cd5da478b39d5",
+      "characters": [
+        "sai-xiansheng"
+      ],
+      "display_name": "赛先生讨论（朝左）",
+      "has_alpha": true,
+      "height": 2048,
+      "poses": [
+        "discuss",
+        "observe"
+      ],
+      "roles": [
+        "action_reference"
+      ],
+      "scene_tags": [
+        "classroom",
+        "robotics_lab"
+      ],
+      "selection_tags": [
+        "ai",
+        "classroom",
+        "discuss",
+        "education",
+        "observe",
+        "robotics",
+        "robotics_lab",
+        "science"
+      ],
+      "topics": [
+        "ai",
+        "education",
+        "robotics",
+        "science"
+      ],
+      "width": 2048
+    }
+  ],
+  "catalog_version": "brand-visual-catalog-v1",
+  "schema_version": "ip-asset-grounded-assets-v1"
+}
