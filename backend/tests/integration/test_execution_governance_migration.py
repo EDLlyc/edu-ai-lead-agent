@@ -53,7 +53,7 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
         run_id = uuid4()
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260902_0043"
+                "20260902_0044"
             )
             for table_name in (
                 "execution_governed_runs",
@@ -119,7 +119,7 @@ async def test_execution_governance_migration_is_additive_private_and_refuses_po
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260902_0043"
+                "20260902_0044"
             )
             await connection.execute("DELETE FROM execution_governed_runs WHERE id = $1", run_id)
         finally:

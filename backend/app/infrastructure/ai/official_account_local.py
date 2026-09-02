@@ -15,12 +15,16 @@ from app.application.ports.official_account_local import (
     OfficialAccountAuditResult,
     OfficialAccountGenerationRequest,
     OfficialAccountGenerationResult,
+    OfficialAccountRepairRequest,
+    OfficialAccountRepairResult,
 )
 from app.application.services.official_account_local import (
     audit_request_fingerprint,
     build_audit_prompt,
     build_generation_prompt,
+    build_repair_prompt,
     generation_request_fingerprint,
+    repair_request_fingerprint,
 )
 from app.core.errors import (
     InvalidProviderOutputError,
@@ -212,6 +216,32 @@ class ZhipuOfficialAccountArticleGenerator:
             provider="zhipu",
             model=self._transport.model,
             request_fingerprint=generation_request_fingerprint(request),
+            provider_request_id=_safe_provider_request_id(completion.id),
+            prompt_tokens=metrics[0],
+            completion_tokens=metrics[1],
+            reasoning_tokens=metrics[2],
+            latency_ms=metrics[3],
+            validation_corrections=corrections,
+        )
+
+    async def repair(
+        self,
+        request: OfficialAccountRepairRequest,
+    ) -> OfficialAccountRepairResult:
+        content, completion, metrics, corrections = await _complete_strict_json(
+            transport=self._transport,
+            base_prompt=build_repair_prompt(request),
+            output_tokens=request.max_output_tokens,
+            schema=GeneratedArticleDraft,
+            schema_name="GeneratedArticleDraft",
+            include_schema_in_initial_system=True,
+        )
+        draft = GeneratedArticleDraft.model_validate_json(content)
+        return OfficialAccountRepairResult(
+            draft=draft,
+            provider="zhipu",
+            model=self._transport.model,
+            request_fingerprint=repair_request_fingerprint(request),
             provider_request_id=_safe_provider_request_id(completion.id),
             prompt_tokens=metrics[0],
             completion_tokens=metrics[1],

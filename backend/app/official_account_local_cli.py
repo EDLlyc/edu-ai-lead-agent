@@ -391,6 +391,18 @@ def _identity(
         reviewer_timeout_ms=settings.official_account_reviewer_timeout_ms,
         reviewer_writer_max_output_tokens=settings.official_account_local_max_output_tokens,
         reviewer_max_output_tokens=settings.official_account_reviewer_max_output_tokens,
+        reviewer_repair_timeout_ms=settings.official_account_reviewer_repair_timeout_ms,
+        reviewer_repair_max_output_tokens=(
+            settings.official_account_reviewer_repair_max_output_tokens
+        ),
+        reviewer_enforce_policy_version=(settings.official_account_reviewer_enforce_policy_version),
+        reviewer_enforce_acknowledgement=(
+            settings.official_account_reviewer_enforce_acknowledgement
+            == "I_ACKNOWLEDGE_REVIEWER_ENFORCE_V1"
+        ),
+        reviewer_calibration_report_sha256=(
+            settings.official_account_reviewer_calibration_report_sha256 or None
+        ),
     )
 
 

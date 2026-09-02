@@ -1,24 +1,33 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from typing import Literal
 from uuid import UUID, uuid5
 
 from app.application.ports.execution_governance import ExecutionGovernanceRepository
 from app.application.ports.official_account_local import (
     ClaimedOfficialAccountRun,
     OfficialAccountArticleGenerator,
+    OfficialAccountArticleRepairer,
     OfficialAccountGenerationRequest,
     OfficialAccountGenerationResult,
+    OfficialAccountRepairRequest,
+    OfficialAccountRepairResult,
     StoredOfficialAccountArticle,
 )
 from app.application.ports.official_account_reviewer import (
+    EnforcedRepairOutcome,
+    EnforcedReviewOutcome,
+    OfficialAccountRepairRepository,
     OfficialAccountReviewer,
     OfficialAccountReviewerRequest,
     OfficialAccountReviewerResult,
     OfficialAccountReviewGovernance,
     OfficialAccountReviewRepository,
+    RepairExecutionBinding,
     ReviewArtifactBinding,
     ReviewExecutionBinding,
+    StoredRepairIntent,
     StoredReviewIntent,
     StoredReviewRecord,
 )
@@ -29,7 +38,10 @@ from app.application.services.execution_governance import (
     ExecutionGovernanceService,
     GovernedCapabilityResult,
 )
-from app.application.services.official_account_local import generation_request_fingerprint
+from app.application.services.official_account_local import (
+    generation_request_fingerprint,
+    repair_request_fingerprint,
+)
 from app.application.services.official_account_reviewer import (
     brand_context_sha256,
     build_editorial_review_request,
@@ -67,6 +79,8 @@ from app.domain.official_account_reviewer import (
     REVIEW_REQUEST_SCHEMA_VERSION,
     REVIEW_RUBRIC_VERSION,
     REVIEW_VERDICT_SCHEMA_VERSION,
+    ReviewDecision,
+    project_repair_directives,
     validate_review_verdict_binding,
 )
 
@@ -74,7 +88,10 @@ _NAMESPACE = UUID("83148a45-3526-44a3-a82f-d1d50c6d064e")
 _ROOT_AGENT = "official.review.orchestrator"
 _WRITER_AGENT = "official.writer.initial"
 _REVIEWER_AGENT = "official.reviewer.r1"
+_REPAIR_AGENT = "official.writer.repair"
+_REVIEWER_R2_AGENT = "official.reviewer.r2"
 _WRITER_CAPABILITY = "official.article.generate"
+_REPAIR_CAPABILITY = "official.article.repair"
 _REVIEWER_CAPABILITY = "official.article.review"
 _INPUT_NODE = "official.review.inputs"
 _INPUT_ARTIFACT_BUDGET_BYTES = 4 * 1024 * 1024
@@ -84,28 +101,41 @@ def reviewer_capability_registry(
     *,
     writer_timeout_ms: int,
     reviewer_timeout_ms: int,
+    repair_timeout_ms: int | None = None,
+    enforce: bool = False,
 ) -> CapabilityRegistry:
-    return CapabilityRegistry(
-        (
+    definitions = [
+        CapabilityDefinition(
+            name=_WRITER_CAPABILITY,
+            access=CapabilityAccess.BUSINESS_WRITE,
+            allowed_roles=frozenset({ExecutionRole.WORKER}),
+            timeout_ms=writer_timeout_ms,
+            max_argument_bytes=8 * 1024,
+            max_result_bytes=1024 * 1024,
+        ),
+        CapabilityDefinition(
+            name=_REVIEWER_CAPABILITY,
+            access=CapabilityAccess.CHECK,
+            allowed_roles=frozenset({ExecutionRole.REVIEWER}),
+            timeout_ms=reviewer_timeout_ms,
+            max_argument_bytes=8 * 1024,
+            max_result_bytes=256 * 1024,
+            artifact_scoped=True,
+        ),
+    ]
+    if enforce:
+        definitions.append(
             CapabilityDefinition(
-                name=_WRITER_CAPABILITY,
+                name=_REPAIR_CAPABILITY,
                 access=CapabilityAccess.BUSINESS_WRITE,
                 allowed_roles=frozenset({ExecutionRole.WORKER}),
-                timeout_ms=writer_timeout_ms,
-                max_argument_bytes=8 * 1024,
+                timeout_ms=repair_timeout_ms or writer_timeout_ms,
+                max_argument_bytes=16 * 1024,
                 max_result_bytes=1024 * 1024,
-            ),
-            CapabilityDefinition(
-                name=_REVIEWER_CAPABILITY,
-                access=CapabilityAccess.CHECK,
-                allowed_roles=frozenset({ExecutionRole.REVIEWER}),
-                timeout_ms=reviewer_timeout_ms,
-                max_argument_bytes=8 * 1024,
-                max_result_bytes=256 * 1024,
                 artifact_scoped=True,
-            ),
+            )
         )
-    )
+    return CapabilityRegistry(tuple(sorted(definitions, key=lambda item: item.name)))
 
 
 def reviewer_root_limits(
@@ -114,34 +144,58 @@ def reviewer_root_limits(
     reviewer_timeout_ms: int,
     writer_max_output_tokens: int,
     reviewer_max_output_tokens: int,
+    repair_timeout_ms: int | None = None,
+    repair_max_output_tokens: int | None = None,
+    enforce: bool = False,
 ) -> BudgetLimits:
+    writer_ceilings = [writer_timeout_ms]
+    reviewer_ceilings = [reviewer_timeout_ms]
+    writer_output_ceilings = [writer_max_output_tokens]
+    reviewer_output_ceilings = [reviewer_max_output_tokens]
+    if enforce:
+        writer_ceilings.append(repair_timeout_ms or writer_timeout_ms)
+        reviewer_ceilings.append(reviewer_timeout_ms)
+        writer_output_ceilings.append(repair_max_output_tokens or writer_max_output_tokens)
+        reviewer_output_ceilings.append(reviewer_max_output_tokens)
     return BudgetLimits(
-        elapsed_ms=_root_dimension_limit(writer_timeout_ms, reviewer_timeout_ms),
-        model_turns=_root_dimension_limit(1, 1),
-        input_tokens=_root_dimension_limit(80_000, 80_000),
-        output_tokens=_root_dimension_limit(
-            writer_max_output_tokens,
-            reviewer_max_output_tokens,
+        elapsed_ms=_root_many_dimension_limit(writer_ceilings, reviewer_ceilings),
+        model_turns=_root_many_dimension_limit(
+            [1] * len(writer_ceilings), [1] * len(reviewer_ceilings)
         ),
-        tool_calls=_root_dimension_limit(1, 1),
-        tool_result_bytes=_root_dimension_limit(1024 * 1024, 256 * 1024),
-        artifact_bytes=_root_dimension_limit(
-            _INPUT_ARTIFACT_BUDGET_BYTES,
-            256 * 1024,
+        input_tokens=_root_many_dimension_limit(
+            [80_000] * len(writer_ceilings), [80_000] * len(reviewer_ceilings)
         ),
-        max_children=2,
+        output_tokens=_root_many_dimension_limit(writer_output_ceilings, reviewer_output_ceilings),
+        tool_calls=_root_many_dimension_limit(
+            [1] * len(writer_ceilings), [1] * len(reviewer_ceilings)
+        ),
+        tool_result_bytes=_root_many_dimension_limit(
+            [1024 * 1024] * len(writer_ceilings),
+            [256 * 1024] * len(reviewer_ceilings),
+        ),
+        artifact_bytes=_root_many_dimension_limit(
+            [_INPUT_ARTIFACT_BUDGET_BYTES] * (2 if enforce else 1),
+            [256 * 1024] * len(reviewer_ceilings),
+        ),
+        max_children=4 if enforce else 2,
         max_depth=1,
         allow_child_agents=True,
     )
 
 
-def _root_dimension_limit(writer_ceiling: int, reviewer_ceiling: int) -> int:
-    """Leave every Writer worst case below the shared 70% delegation fence."""
-
+def _root_many_dimension_limit(writer_ceilings: list[int], reviewer_ceilings: list[int]) -> int:
+    allocation_order: list[int] = []
+    for index in range(max(len(writer_ceilings), len(reviewer_ceilings))):
+        if index < len(writer_ceilings):
+            allocation_order.append(writer_ceilings[index])
+        if index < len(reviewer_ceilings):
+            allocation_order.append(reviewer_ceilings[index])
+    total = sum(allocation_order)
+    before_final_child = sum(allocation_order[:-1])
     delegation_safe = (
-        writer_ceiling * 100 // DELEGATION_THRESHOLD_PERCENT + 1 if writer_ceiling else 0
+        before_final_child * 100 // DELEGATION_THRESHOLD_PERCENT + 1 if before_final_child else 0
     )
-    return max(writer_ceiling + reviewer_ceiling, delegation_safe)
+    return max(total, delegation_safe)
 
 
 def _writer_limits(max_output_tokens: int, timeout_ms: int) -> BudgetLimits:
@@ -174,9 +228,11 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         *,
         execution_repository: ExecutionGovernanceRepository,
         review_repository: OfficialAccountReviewRepository,
+        repair_repository: OfficialAccountRepairRepository | None = None,
     ) -> None:
         self._execution_repository = execution_repository
         self._review_repository = review_repository
+        self._repair_repository = repair_repository
         self._service = ExecutionGovernanceService(execution_repository)
 
     def _gateway(self, claimed: ClaimedOfficialAccountRun) -> CapabilityGateway:
@@ -185,6 +241,8 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
             registry=reviewer_capability_registry(
                 writer_timeout_ms=claimed.identity.reviewer_writer_timeout_ms,
                 reviewer_timeout_ms=claimed.identity.reviewer_timeout_ms,
+                repair_timeout_ms=claimed.identity.reviewer_repair_timeout_ms,
+                enforce=claimed.identity.reviewer_mode == "enforce",
             ),
         )
 
@@ -276,6 +334,45 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         article: StoredOfficialAccountArticle,
         reviewer: OfficialAccountReviewer,
     ) -> StoredReviewRecord | None:
+        record, _status = await self._review_editorial(
+            claimed=claimed,
+            source=source,
+            article=article,
+            reviewer=reviewer,
+            finalize_root=True,
+        )
+        return record
+
+    async def review_enforced(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        source: OfficialAccountSourceSnapshot,
+        article: StoredOfficialAccountArticle,
+        reviewer: OfficialAccountReviewer,
+    ) -> EnforcedReviewOutcome:
+        self._validate_enforce_identity(claimed)
+        record, status = await self._review_editorial(
+            claimed=claimed,
+            source=source,
+            article=article,
+            reviewer=reviewer,
+            finalize_root=False,
+        )
+        return EnforcedReviewOutcome(status=status, record=record)
+
+    async def _review_editorial(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        source: OfficialAccountSourceSnapshot,
+        article: StoredOfficialAccountArticle,
+        reviewer: OfficialAccountReviewer,
+        finalize_root: bool,
+    ) -> tuple[
+        StoredReviewRecord | None,
+        Literal["completed", "in_flight", "denied", "result_unknown"],
+    ]:
         self._validate_frozen_budget_identity(claimed)
         frozen_contract_versions = (
             claimed.identity.reviewer_request_schema_version,
@@ -325,34 +422,58 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
             record = await self._review_repository.get_record(intent.id)
             if record is None:
                 raise RuntimeError("completed official-account review has no record")
-            await self._recover_terminal(intent=intent, root=root, record=record)
-            return record
+            await self._recover_terminal(
+                intent=intent,
+                root=root,
+                record=record,
+                finalize_root=finalize_root,
+            )
+            return record, "completed"
         if intent.status == "result_unknown":
-            await self._recover_terminal(intent=intent, root=root, record=None)
-            return None
+            await self._recover_terminal(
+                intent=intent,
+                root=root,
+                record=None,
+                finalize_root=finalize_root,
+            )
+            return None, "result_unknown"
         if intent.status == "calling":
             if intent.attempt_number == claimed.attempt_number:
                 # A compatible invocation under the same fenced business attempt is still
                 # in flight. It must neither call the provider again nor poison the owner.
-                return None
+                return None, "in_flight"
             intent = await self._review_repository.mark_result_unknown(
                 intent=intent,
                 error_code="review_result_unknown",
             )
-            await self._recover_terminal(intent=intent, root=root, record=None)
-            return None
+            await self._recover_terminal(
+                intent=intent,
+                root=root,
+                record=None,
+                finalize_root=finalize_root,
+            )
+            return None, "result_unknown"
 
-        reviewer_identity, start = await self._ensure_child(
-            parent=root,
-            parent_event_id=input_event,
-            agent_id=_REVIEWER_AGENT,
-            role=ExecutionRole.REVIEWER,
-            limits=_reviewer_limits(
-                claimed.identity.reviewer_max_output_tokens,
-                claimed.identity.reviewer_timeout_ms,
-            ),
-            target=_REVIEWER_CAPABILITY,
-        )
+        try:
+            reviewer_identity, start = await self._ensure_child(
+                parent=root,
+                parent_event_id=input_event,
+                agent_id=(_REVIEWER_R2_AGENT if article.revision_no == 2 else _REVIEWER_AGENT),
+                role=ExecutionRole.REVIEWER,
+                limits=_reviewer_limits(
+                    claimed.identity.reviewer_max_output_tokens,
+                    claimed.identity.reviewer_timeout_ms,
+                ),
+                target=_REVIEWER_CAPABILITY,
+            )
+        except GovernanceDeniedError:
+            if finalize_root:
+                timeline = await self._execution_repository.list_timeline(
+                    run_id=root.run_id,
+                    limit=200,
+                )
+                await self._fail_root(root, timeline[-1].event_id)
+            return None, "denied"
         current_intent = intent
 
         async def before_handler(binding: CapabilityInvocationBinding) -> None:
@@ -424,14 +545,18 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
                     intent=current_intent,
                     error_code="review_result_unknown",
                 )
+                outcome_status: Literal["denied", "result_unknown"] = "result_unknown"
+            else:
+                outcome_status = "denied"
             failure = await self._complete_child(
                 reviewer_identity,
                 start,
                 _REVIEWER_CAPABILITY,
                 succeeded=False,
             )
-            await self._fail_root(root, failure)
-            return None
+            if finalize_root:
+                await self._fail_root(root, failure)
+            return None, outcome_status
         if governed.execution is None:
             raise RuntimeError("governed Reviewer completion binding is missing")
         result = governed.value
@@ -444,7 +569,10 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
                 media_type="application/json",
                 byte_size=len(review_bytes),
                 sha256=sha256(review_bytes).hexdigest(),
-                artifact_id=uuid5(_NAMESPACE, f"{reviewer_identity.run_id}:review-result"),
+                artifact_id=uuid5(
+                    _NAMESPACE,
+                    f"{reviewer_identity.run_id}:review-result:{article.id}",
+                ),
             )
             record = await self._review_repository.persist_record(
                 intent=current_intent,
@@ -455,14 +583,24 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         except Exception:
             existing = await self._review_repository.get_record(current_intent.id)
             if existing is not None:
-                await self._recover_terminal(intent=current_intent, root=root, record=existing)
-                return existing
+                await self._recover_terminal(
+                    intent=current_intent,
+                    root=root,
+                    record=existing,
+                    finalize_root=finalize_root,
+                )
+                return existing, "completed"
             unknown = await self._review_repository.mark_result_unknown(
                 intent=current_intent,
                 error_code="review_result_unknown",
             )
-            await self._recover_terminal(intent=unknown, root=root, record=None)
-            return None
+            await self._recover_terminal(
+                intent=unknown,
+                root=root,
+                record=None,
+                finalize_root=finalize_root,
+            )
+            return None, "result_unknown"
         try:
             finish = await self._complete_child(
                 reviewer_identity,
@@ -470,10 +608,249 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
                 _REVIEWER_CAPABILITY,
                 succeeded=True,
             )
-            await self._finish_root(root, finish)
+            if finalize_root:
+                await self._finish_root(root, finish)
         except Exception:
-            await self._recover_terminal(intent=current_intent, root=root, record=record)
-        return record
+            await self._recover_terminal(
+                intent=current_intent,
+                root=root,
+                record=record,
+                finalize_root=finalize_root,
+            )
+        return record, "completed"
+
+    async def govern_repair(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        request: OfficialAccountRepairRequest,
+        repairer: OfficialAccountArticleRepairer,
+        source_review: StoredReviewRecord,
+    ) -> EnforcedRepairOutcome:
+        self._validate_enforce_identity(claimed)
+        repair_repository = self._repair_repository
+        if repair_repository is None or source_review.contract is None:
+            raise RuntimeError("official-account repair governance is unavailable")
+        expected_directives = project_repair_directives(
+            source_review.contract,
+            source_review.verdict,
+        )
+        if (
+            source_review.verdict.decision is not ReviewDecision.REJECTED
+            or not expected_directives
+            or request.directives != expected_directives
+            or request.run_id != claimed.run_id
+            or request.max_output_tokens != claimed.identity.reviewer_repair_max_output_tokens
+        ):
+            raise RuntimeError("official-account repair request changed")
+        root, root_event = await self._ensure_run(claimed, request.source)
+        input_event = await self._ensure_input_node(root, root_event)
+        artifacts = await self._ensure_input_artifacts(
+            identity=root,
+            parent_event_id=input_event,
+            source=request.source,
+            article=StoredOfficialAccountArticle(
+                id=UUID(source_review.verdict.article_ref.removeprefix("article:")),
+                article=request.article,
+                validation_issues=(),
+                audit=None,
+                provider_request_id=None,
+                prompt_tokens=0,
+                completion_tokens=0,
+                reasoning_tokens=0,
+                latency_ms=0,
+                created_at=source_review.created_at,
+            ),
+        )
+        source_article_id = UUID(source_review.verdict.article_ref.removeprefix("article:"))
+        source_article = StoredOfficialAccountArticle(
+            id=source_article_id,
+            article=request.article,
+            validation_issues=(),
+            audit=None,
+            provider_request_id=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            reasoning_tokens=0,
+            latency_ms=0,
+            created_at=source_review.created_at,
+        )
+        intent = await repair_repository.create_intent(
+            claimed=claimed,
+            source_article=source_article,
+            source_review=source_review,
+            directives=request.directives,
+            request_fingerprint=repair_request_fingerprint(request),
+            provider=claimed.identity.provider,
+            model=claimed.identity.model,
+        )
+        if intent.status == "completed":
+            await self.complete_repair(claimed=claimed, intent=intent, succeeded=True)
+            return EnforcedRepairOutcome(status="completed", intent=intent)
+        if intent.status == "result_unknown":
+            await self.complete_repair(claimed=claimed, intent=intent, succeeded=False)
+            return EnforcedRepairOutcome(status="result_unknown", intent=intent)
+        if intent.status == "calling":
+            if intent.attempt_number == claimed.attempt_number:
+                return EnforcedRepairOutcome(status="in_flight", intent=intent)
+            intent = await repair_repository.mark_result_unknown(
+                intent=intent,
+                error_code="repair_result_unknown",
+            )
+            await self.complete_repair(claimed=claimed, intent=intent, succeeded=False)
+            return EnforcedRepairOutcome(status="result_unknown", intent=intent)
+
+        try:
+            writer, start = await self._ensure_child(
+                parent=root,
+                parent_event_id=input_event,
+                agent_id=_REPAIR_AGENT,
+                role=ExecutionRole.WORKER,
+                limits=_writer_limits(
+                    claimed.identity.reviewer_repair_max_output_tokens,
+                    claimed.identity.reviewer_repair_timeout_ms,
+                ),
+                target=_REPAIR_CAPABILITY,
+            )
+        except GovernanceDeniedError:
+            return EnforcedRepairOutcome(status="denied", intent=intent)
+        current_intent = intent
+
+        async def before_handler(binding: CapabilityInvocationBinding) -> None:
+            nonlocal current_intent
+            current_intent = await repair_repository.mark_calling(
+                intent=current_intent,
+                execution=RepairExecutionBinding(
+                    execution_run_id=binding.identity.run_id,
+                    task_id=binding.identity.task_id,
+                    writer_agent_id=binding.identity.agent_id,
+                    writer_parent_event_id=start,
+                    reservation_id=binding.reservation_id,
+                    request_event_id=binding.request_event_id,
+                ),
+            )
+
+        async def handler() -> GovernedCapabilityResult[OfficialAccountRepairResult]:
+            result = await repairer.repair(request)
+            if (
+                result.provider != claimed.identity.provider
+                or result.model != claimed.identity.model
+                or result.request_fingerprint != repair_request_fingerprint(request)
+            ):
+                raise ProviderIdentityMismatchError()
+            return GovernedCapabilityResult(
+                value=result,
+                result_bytes=len(canonical_json(result.draft).encode("utf-8")),
+                input_tokens=result.prompt_tokens,
+                output_tokens=result.completion_tokens + result.reasoning_tokens,
+                model_turns=1,
+            )
+
+        try:
+            governed = await self._gateway(claimed).invoke(
+                CapabilityRequest(
+                    identity=writer,
+                    role=ExecutionRole.WORKER,
+                    capability_name=_REPAIR_CAPABILITY,
+                    target_task_id=writer.task_id,
+                    parent_event_id=start,
+                    argument_bytes=len(canonical_json(request.directives).encode("utf-8")),
+                    artifact_ids=(
+                        artifacts.article_artifact_id,
+                        artifacts.source_artifact_id,
+                        artifacts.brand_artifact_id,
+                    ),
+                    expected_input_tokens=80_000,
+                    expected_output_tokens=claimed.identity.reviewer_repair_max_output_tokens,
+                    model_turns=1,
+                    tool_calls=1,
+                ),
+                handler,
+                before_handler=before_handler,
+            )
+        except GovernanceDeniedError:
+            if current_intent.status == "calling":
+                current_intent = await repair_repository.mark_result_unknown(
+                    intent=current_intent,
+                    error_code="repair_result_unknown",
+                )
+                await self.complete_repair(
+                    claimed=claimed,
+                    intent=current_intent,
+                    succeeded=False,
+                )
+                return EnforcedRepairOutcome(status="result_unknown", intent=current_intent)
+            await self._complete_child(
+                writer,
+                start,
+                _REPAIR_CAPABILITY,
+                succeeded=False,
+            )
+            return EnforcedRepairOutcome(status="denied", intent=current_intent)
+        if governed.execution is None:
+            raise RuntimeError("governed repair Writer completion binding is missing")
+        return EnforcedRepairOutcome(
+            status="provider_completed",
+            intent=current_intent,
+            result=governed.value,
+        )
+
+    async def complete_repair(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        intent: StoredRepairIntent,
+        succeeded: bool,
+    ) -> None:
+        binding = intent.execution_binding
+        if binding is None:
+            raise RuntimeError("terminal official-account repair has no execution binding")
+        identity = ExecutionIdentity(
+            binding.execution_run_id,
+            binding.task_id,
+            binding.writer_agent_id,
+        )
+        timeline = await self._execution_repository.list_timeline(
+            run_id=identity.run_id,
+            limit=200,
+        )
+        parent = next(
+            (
+                event
+                for event in reversed(timeline)
+                if event.identity == identity
+                and event.target_name == _REPAIR_CAPABILITY
+                and event.kind
+                in {
+                    ExecutionEventKind.MODEL_RESULT,
+                    ExecutionEventKind.BUDGET_DENIED,
+                }
+            ),
+            None,
+        )
+        parent_event_id = parent.event_id if parent is not None else binding.request_event_id
+        await self._complete_child(
+            identity,
+            parent_event_id,
+            _REPAIR_CAPABILITY,
+            succeeded=succeeded,
+        )
+
+    async def complete_enforced(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        source: OfficialAccountSourceSnapshot,
+        succeeded: bool,
+    ) -> None:
+        self._validate_enforce_identity(claimed)
+        root, root_event = await self._ensure_run(claimed, source)
+        timeline = await self._execution_repository.list_timeline(run_id=root.run_id, limit=200)
+        parent_event_id = timeline[-1].event_id if timeline else root_event
+        if succeeded:
+            await self._finish_root(root, parent_event_id)
+        else:
+            await self._fail_root(root, parent_event_id)
 
     async def close_without_review(
         self,
@@ -491,6 +868,7 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         intent: StoredReviewIntent,
         root: ExecutionIdentity,
         record: StoredReviewRecord | None,
+        finalize_root: bool = True,
     ) -> None:
         binding = intent.execution_binding
         if binding is None:
@@ -527,10 +905,11 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
             _REVIEWER_CAPABILITY,
             succeeded=succeeded,
         )
-        if succeeded:
-            await self._finish_root(root, terminal)
-        else:
-            await self._fail_root(root, terminal)
+        if finalize_root:
+            if succeeded:
+                await self._finish_root(root, terminal)
+            else:
+                await self._fail_root(root, terminal)
 
     async def _ensure_run(
         self,
@@ -538,6 +917,37 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         source: OfficialAccountSourceSnapshot,
     ) -> tuple[ExecutionIdentity, UUID]:
         run_id, task_id = review_execution_scope(claimed.run_id)
+        request_identity: list[object] = [
+            claimed.run_id,
+            source.source_fingerprint,
+            claimed.identity.provider,
+            claimed.identity.model,
+            claimed.identity.reviewer_mode,
+            claimed.identity.reviewer_version,
+            claimed.identity.reviewer_prompt_version,
+            claimed.identity.reviewer_request_schema_version,
+            claimed.identity.reviewer_verdict_schema_version,
+            claimed.identity.reviewer_rubric_version,
+            claimed.identity.reviewer_review_policy_version,
+            claimed.identity.reviewer_repair_policy_version,
+            claimed.identity.reviewer_budget_policy_version,
+            claimed.identity.reviewer_provider,
+            claimed.identity.reviewer_model,
+            claimed.identity.reviewer_writer_timeout_ms,
+            claimed.identity.reviewer_timeout_ms,
+            claimed.identity.reviewer_writer_max_output_tokens,
+            claimed.identity.reviewer_max_output_tokens,
+        ]
+        if claimed.identity.reviewer_mode == "enforce":
+            request_identity.extend(
+                (
+                    claimed.identity.reviewer_repair_timeout_ms,
+                    claimed.identity.reviewer_repair_max_output_tokens,
+                    claimed.identity.reviewer_enforce_policy_version,
+                    claimed.identity.reviewer_enforce_acknowledgement,
+                    claimed.identity.reviewer_calibration_report_sha256,
+                )
+            )
         allocation, root = await self._service.create_run(
             task_id=task_id,
             root_agent_id=_ROOT_AGENT,
@@ -547,28 +957,13 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
                 reviewer_timeout_ms=claimed.identity.reviewer_timeout_ms,
                 writer_max_output_tokens=(claimed.identity.reviewer_writer_max_output_tokens),
                 reviewer_max_output_tokens=claimed.identity.reviewer_max_output_tokens,
+                repair_timeout_ms=claimed.identity.reviewer_repair_timeout_ms,
+                repair_max_output_tokens=claimed.identity.reviewer_repair_max_output_tokens,
+                enforce=claimed.identity.reviewer_mode == "enforce",
             ),
             request_fingerprint=fingerprint(
                 "official-account-review-governance-v1",
-                claimed.run_id,
-                source.source_fingerprint,
-                claimed.identity.provider,
-                claimed.identity.model,
-                claimed.identity.reviewer_mode,
-                claimed.identity.reviewer_version,
-                claimed.identity.reviewer_prompt_version,
-                claimed.identity.reviewer_request_schema_version,
-                claimed.identity.reviewer_verdict_schema_version,
-                claimed.identity.reviewer_rubric_version,
-                claimed.identity.reviewer_review_policy_version,
-                claimed.identity.reviewer_repair_policy_version,
-                claimed.identity.reviewer_budget_policy_version,
-                claimed.identity.reviewer_provider,
-                claimed.identity.reviewer_model,
-                claimed.identity.reviewer_writer_timeout_ms,
-                claimed.identity.reviewer_timeout_ms,
-                claimed.identity.reviewer_writer_max_output_tokens,
-                claimed.identity.reviewer_max_output_tokens,
+                *request_identity,
             ),
             run_id=run_id,
         )
@@ -584,8 +979,32 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
             or not 1_000 <= identity.reviewer_timeout_ms <= 420_000
             or not 2_048 <= identity.reviewer_writer_max_output_tokens <= 16_384
             or not 512 <= identity.reviewer_max_output_tokens <= 4_096
+            or (
+                identity.reviewer_mode == "enforce"
+                and (
+                    not 1_000 <= identity.reviewer_repair_timeout_ms <= 420_000
+                    or not 2_048 <= identity.reviewer_repair_max_output_tokens <= 16_384
+                )
+            )
         ):
             raise RuntimeError("official-account Reviewer frozen budget limits are invalid")
+
+    @staticmethod
+    def _validate_enforce_identity(claimed: ClaimedOfficialAccountRun) -> None:
+        identity = claimed.identity
+        calibration_sha = identity.reviewer_calibration_report_sha256
+        if (
+            claimed.generation_mode != "live"
+            or identity.reviewer_mode != "enforce"
+            or identity.provider != "zhipu"
+            or identity.reviewer_provider != "zhipu"
+            or not identity.reviewer_enforce_acknowledgement
+            or identity.reviewer_enforce_policy_version != "official-account-review-enforce-v1"
+            or calibration_sha is None
+            or len(calibration_sha) != 64
+            or any(character not in "0123456789abcdef" for character in calibration_sha)
+        ):
+            raise RuntimeError("official-account Reviewer enforce identity is not calibrated")
 
     async def _ensure_child(
         self,
@@ -676,7 +1095,7 @@ class PostgresOfficialAccountReviewerGovernance(OfficialAccountReviewGovernance)
         article_artifact = await self._ensure_artifact(
             identity=identity,
             parent_event_id=parent_event_id,
-            label="article",
+            label=f"article:{article.id}",
             kind=ArtifactKind.ARTICLE,
             body=article_body,
             sha256=exact_article_sha256(article.article),

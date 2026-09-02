@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260901_0042",
+  "alembic_head": "20260902_0044",
   "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "The additive migration chain through 20260901_0042 is reviewed for forward activation; the previous application remains conservatively incompatible after migration."
+  "reason": "The additive migration chain through 20260902_0044 is reviewed for Reviewer observe/enforce activation; the previous application remains conservatively incompatible after migration."
 }

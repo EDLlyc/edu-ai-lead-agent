@@ -112,6 +112,9 @@ source of truth and uses the existing async session factory.
 - `run_id` is a UUID. `task_id` and `agent_id` are opaque safe references of 1–128 characters.
 - A root allocation starts with `run_started` at `seq_no=0` and no parent. Every other event has a
   parent. Each agent's sequence is contiguous and allocated while its row is locked.
+- Idempotent run creation resolves the root by exact allocation identity, `run_started` kind, and
+  null parent from a causal timeline. Never assume a one-row query ordered by timestamp/random UUID
+  returns the root; equal database timestamps can select a child event first.
 - Cross-agent causality is expressed only by `parent_event_id`; wall-clock completion order is not a
   causal contract. A child allocation's first event is `node_started` and must point to the parent
   event recorded on that allocation.
@@ -143,6 +146,10 @@ source of truth and uses the existing async session factory.
 - Child agents are disabled by default. When explicitly enabled, `max_children > 0` and
   `max_depth > 0` are required. Default maximum depth is 1; the non-configurable system hard maximum
   is 2. Delegation is rejected once any bounded parent dimension reaches 70% used plus reserved.
+- A product that delegates a fixed sequential child plan must size every root dimension against
+  the real allocation order. The cumulative used/reserved ceiling before each later child,
+  especially the final child, must remain strictly below 70%; using only the total sum or largest
+  child can make a valid bounded plan undelegatable even when the total fits.
 - Exhaustion and denial never create new budget, and retrying does not reset counters.
 
 #### Capability authorization and execution
@@ -237,7 +244,8 @@ concurrency or uniqueness conflicts map to `invalid_event`.
 
 - Unit/domain: safe identity/name construction, immutable serialization, non-negative vectors,
   unknown token representation, role/access rules, closed registry ordering, depth defaults and
-  hard maximum, delegation threshold, event/artifact shape, and bounded Workbench projection.
+  hard maximum, delegation threshold including fixed-plan cumulative-prefix sizing,
+  event/artifact shape, and bounded Workbench projection.
 - Gateway: assert unknown capability, role, write, task, artifact, argument, and budget denial occurs
   before the handler; assert timeout, cancellation, exception, oversized result, token, and artifact
   paths reconcile once and emit only stable safe metadata.

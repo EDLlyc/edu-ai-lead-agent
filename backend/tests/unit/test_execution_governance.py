@@ -108,6 +108,49 @@ def test_reviewer_root_limits_keep_worst_case_writer_below_delegation_fence() ->
     assert limits.artifact_bytes - 4 * 1024 * 1024 >= 256 * 1024
 
 
+def test_enforce_root_limits_keep_the_full_prefix_below_the_final_review_fence() -> None:
+    writer_timeout_ms = 360_000
+    reviewer_timeout_ms = 180_000
+    repair_timeout_ms = 420_000
+    writer_output_tokens = 16_384
+    reviewer_output_tokens = 4_096
+    repair_output_tokens = 16_384
+    limits = reviewer_root_limits(
+        writer_timeout_ms=writer_timeout_ms,
+        reviewer_timeout_ms=reviewer_timeout_ms,
+        writer_max_output_tokens=writer_output_tokens,
+        reviewer_max_output_tokens=reviewer_output_tokens,
+        repair_timeout_ms=repair_timeout_ms,
+        repair_max_output_tokens=repair_output_tokens,
+        enforce=True,
+    )
+    before_final_review = BudgetUsage(
+        elapsed_ms=writer_timeout_ms + reviewer_timeout_ms + repair_timeout_ms,
+        model_turns=3,
+        input_tokens=240_000,
+        output_tokens=(writer_output_tokens + reviewer_output_tokens + repair_output_tokens),
+        tool_calls=3,
+        tool_result_bytes=(1024 * 1024 + 256 * 1024 + 1024 * 1024),
+        artifact_bytes=(8 * 1024 * 1024 + 256 * 1024),
+        child_count=3,
+    )
+
+    assert (
+        delegation_usage_percent(
+            limits=limits,
+            usage=before_final_review,
+            reserved=BudgetVector(),
+        )
+        < DELEGATION_THRESHOLD_PERCENT
+    )
+    assert limits.model_turns - before_final_review.model_turns >= 1
+    assert limits.input_tokens - (before_final_review.input_tokens or 0) >= 80_000
+    assert limits.output_tokens - (before_final_review.output_tokens or 0) >= 4_096
+    assert limits.tool_calls - before_final_review.tool_calls >= 1
+    assert limits.tool_result_bytes - before_final_review.tool_result_bytes >= 256 * 1024
+    assert limits.artifact_bytes - before_final_review.artifact_bytes >= 256 * 1024
+
+
 def test_identity_budget_and_artifact_contracts_are_strict_and_stable() -> None:
     identity = _identity()
     assert tuple(identity.as_dict()) == ("run_id", "task_id", "agent_id")

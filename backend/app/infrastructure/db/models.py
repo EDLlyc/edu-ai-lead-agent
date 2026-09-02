@@ -3845,6 +3845,9 @@ class OfficialAccountArticleRunModel(Base):
     active_article_version_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
+    active_review_record_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
     active_render_version_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
@@ -3908,6 +3911,10 @@ class OfficialAccountArticleRunModel(Base):
             "jsonb_typeof(version_bundle) = 'object'",
             name="ck_official_account_article_runs_version_bundle_object",
         ),
+        CheckConstraint(
+            "active_review_record_id IS NULL OR active_article_version_id IS NOT NULL",
+            name="ck_official_account_article_runs_active_review_shape",
+        ),
         UniqueConstraint("request_fingerprint", name="uq_official_account_article_runs_request"),
         UniqueConstraint(
             "id", "material_package_id", name="uq_official_account_article_runs_id_material"
@@ -3916,6 +3923,17 @@ class OfficialAccountArticleRunModel(Base):
             ["active_article_version_id", "id"],
             ["official_account_article_versions.id", "official_account_article_versions.run_id"],
             name="fk_official_account_article_runs_active_article",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["active_review_record_id", "id", "active_article_version_id"],
+            [
+                "official_account_review_records.id",
+                "official_account_review_records.run_id",
+                "official_account_review_records.article_version_id",
+            ],
+            name="fk_official_account_article_runs_active_review_record",
             ondelete="RESTRICT",
             use_alter=True,
         ),
@@ -3972,6 +3990,10 @@ class OfficialAccountArticleVersionModel(Base):
         nullable=False,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision_no: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("1"))
+    repair_of_article_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
     article_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -4004,6 +4026,11 @@ class OfficialAccountArticleVersionModel(Base):
             name="ck_official_account_article_versions_version",
         ),
         CheckConstraint(
+            "(revision_no = 1 AND repair_of_article_version_id IS NULL) OR "
+            "(revision_no = 2 AND repair_of_article_version_id IS NOT NULL)",
+            name="ck_official_account_article_versions_revision",
+        ),
+        CheckConstraint(
             "jsonb_typeof(article_payload) = 'object'",
             name="ck_official_account_article_versions_payload_object",
         ),
@@ -4018,7 +4045,26 @@ class OfficialAccountArticleVersionModel(Base):
             name="ck_official_account_article_versions_usage",
         ),
         UniqueConstraint("id", "run_id", name="uq_official_account_article_versions_id_run"),
-        UniqueConstraint("run_id", "version", name="uq_official_account_article_versions_run"),
+        UniqueConstraint(
+            "id", "run_id", "version", name="uq_official_account_article_versions_lineage"
+        ),
+        UniqueConstraint(
+            "run_id",
+            "version",
+            "revision_no",
+            name="uq_official_account_article_versions_run_revision",
+        ),
+        ForeignKeyConstraint(
+            ["repair_of_article_version_id", "run_id", "version"],
+            [
+                "official_account_article_versions.id",
+                "official_account_article_versions.run_id",
+                "official_account_article_versions.version",
+            ],
+            name="fk_official_account_article_versions_repair_of",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
         UniqueConstraint(
             "generator_request_fingerprint",
             name="uq_official_account_article_versions_generation_request",
@@ -4188,6 +4234,12 @@ class OfficialAccountReviewRequestModel(Base):
             name="uq_official_review_requests_article",
         ),
         UniqueConstraint("request_fingerprint", name="uq_official_review_requests_fingerprint"),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "article_version_id",
+            name="uq_official_review_requests_lineage",
+        ),
         Index("ix_official_review_requests_run_status", "run_id", "status"),
     )
 
@@ -4196,15 +4248,9 @@ class OfficialAccountReviewRecordModel(Base):
     __tablename__ = "official_account_review_records"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    request_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey(
-            "official_account_review_requests.id",
-            name="fk_official_account_review_records_request_id",
-            ondelete="RESTRICT",
-        ),
-        nullable=False,
-    )
+    request_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    article_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     decision: Mapped[str] = mapped_column(String(24), nullable=False)
     record_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     issue_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
@@ -4225,6 +4271,16 @@ class OfficialAccountReviewRecordModel(Base):
     )
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["request_id", "run_id", "article_version_id"],
+            [
+                "official_account_review_requests.id",
+                "official_account_review_requests.run_id",
+                "official_account_review_requests.article_version_id",
+            ],
+            name="fk_official_review_records_request_lineage",
+            ondelete="RESTRICT",
+        ),
         ForeignKeyConstraint(
             ["execution_artifact_id", "execution_event_id"],
             ["execution_artifacts.id", "execution_artifacts.producer_event_id"],
@@ -4266,10 +4322,165 @@ class OfficialAccountReviewRecordModel(Base):
             name="ck_official_review_records_unavailable",
         ),
         UniqueConstraint("request_id", name="uq_official_review_records_request"),
+        UniqueConstraint(
+            "id",
+            "run_id",
+            "article_version_id",
+            name="uq_official_review_records_lineage",
+        ),
         UniqueConstraint("record_fingerprint", name="uq_official_review_records_fingerprint"),
         UniqueConstraint(
             "execution_artifact_id", name="uq_official_review_records_execution_artifact"
         ),
+    )
+
+
+class OfficialAccountRepairRequestModel(Base):
+    __tablename__ = "official_account_repair_requests"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    source_article_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    repaired_article_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    source_review_request_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    directive_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    directive_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    repair_policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    execution_run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    execution_task_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    writer_agent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    writer_parent_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    reservation_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    request_event_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    calling_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_article_version_id", "run_id"],
+            ["official_account_article_versions.id", "official_account_article_versions.run_id"],
+            name="fk_official_account_repair_requests_source_article",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["repaired_article_version_id", "run_id"],
+            ["official_account_article_versions.id", "official_account_article_versions.run_id"],
+            name="fk_official_account_repair_requests_repaired_article",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_review_request_id", "run_id", "source_article_version_id"],
+            [
+                "official_account_review_requests.id",
+                "official_account_review_requests.run_id",
+                "official_account_review_requests.article_version_id",
+            ],
+            name="fk_official_account_repair_requests_review_lineage",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["execution_run_id", "execution_task_id", "writer_agent_id"],
+            [
+                "execution_agent_allocations.run_id",
+                "execution_agent_allocations.task_id",
+                "execution_agent_allocations.agent_id",
+            ],
+            name="fk_official_account_repair_requests_writer_allocation",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["writer_parent_event_id", "execution_run_id", "execution_task_id", "writer_agent_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+                "execution_trace_events.agent_id",
+            ],
+            name="fk_official_account_repair_requests_parent_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["request_event_id", "execution_run_id", "execution_task_id", "writer_agent_id"],
+            [
+                "execution_trace_events.id",
+                "execution_trace_events.run_id",
+                "execution_trace_events.task_id",
+                "execution_trace_events.agent_id",
+            ],
+            name="fk_official_account_repair_requests_request_event",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["reservation_id", "execution_run_id", "execution_task_id", "writer_agent_id"],
+            [
+                "execution_budget_reservations.id",
+                "execution_budget_reservations.run_id",
+                "execution_budget_reservations.task_id",
+                "execution_budget_reservations.agent_id",
+            ],
+            name="fk_official_account_repair_requests_reservation",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'calling', 'completed', 'result_unknown')",
+            name="ck_official_account_repair_requests_status",
+        ),
+        CheckConstraint("attempt_number > 0", name="ck_official_account_repair_attempt"),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$' AND directive_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_official_account_repair_fingerprints",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(directive_snapshot) = 'array' "
+            "AND jsonb_array_length(directive_snapshot) BETWEEN 1 AND 16",
+            name="ck_official_account_repair_directives",
+        ),
+        CheckConstraint(
+            "(status = 'pending' AND execution_run_id IS NULL AND calling_at IS NULL "
+            "AND completed_at IS NULL AND repaired_article_version_id IS NULL) OR "
+            "(status = 'calling' AND execution_run_id IS NOT NULL AND calling_at IS NOT NULL "
+            "AND completed_at IS NULL AND repaired_article_version_id IS NULL) OR "
+            "(status = 'completed' AND execution_run_id IS NOT NULL AND calling_at IS NOT NULL "
+            "AND completed_at IS NOT NULL AND repaired_article_version_id IS NOT NULL) OR "
+            "(status = 'result_unknown' AND execution_run_id IS NOT NULL "
+            "AND calling_at IS NOT NULL AND completed_at IS NOT NULL "
+            "AND repaired_article_version_id IS NULL)",
+            name="ck_official_account_repair_lifecycle",
+        ),
+        CheckConstraint(
+            "(execution_run_id IS NULL AND execution_task_id IS NULL "
+            "AND writer_agent_id IS NULL AND writer_parent_event_id IS NULL "
+            "AND reservation_id IS NULL AND request_event_id IS NULL) OR "
+            "(execution_run_id IS NOT NULL AND execution_task_id IS NOT NULL "
+            "AND writer_agent_id IS NOT NULL AND writer_parent_event_id IS NOT NULL "
+            "AND reservation_id IS NOT NULL AND request_event_id IS NOT NULL)",
+            name="ck_official_account_repair_execution_shape",
+        ),
+        CheckConstraint(
+            "(status = 'result_unknown' AND error_code IS NOT NULL) OR "
+            "(status <> 'result_unknown' AND error_code IS NULL)",
+            name="ck_official_account_repair_error_shape",
+        ),
+        UniqueConstraint("run_id", name="uq_official_account_repair_requests_run"),
+        UniqueConstraint(
+            "source_article_version_id", name="uq_official_account_repair_requests_source_article"
+        ),
+        UniqueConstraint("request_fingerprint", name="uq_official_account_repair_requests_request"),
+        UniqueConstraint(
+            "repaired_article_version_id", name="uq_official_account_repair_requests_repaired"
+        ),
+        Index("ix_official_account_repair_requests_status", "run_id", "status"),
     )
 
 
@@ -4449,6 +4660,7 @@ class OfficialAccountRenderVersionModel(Base):
         ),
         nullable=False,
     )
+    review_record_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     canonical_html: Mapped[str] = mapped_column(Text, nullable=False)
     render_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     renderer_version: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -4460,6 +4672,16 @@ class OfficialAccountRenderVersionModel(Base):
     )
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["review_record_id", "run_id", "article_version_id"],
+            [
+                "official_account_review_records.id",
+                "official_account_review_records.run_id",
+                "official_account_review_records.article_version_id",
+            ],
+            name="fk_official_account_render_versions_review_record_id",
+            ondelete="RESTRICT",
+        ),
         CheckConstraint("byte_size > 0", name="ck_official_account_render_versions_bytes"),
         UniqueConstraint("id", "run_id", name="uq_official_account_render_versions_id_run"),
         UniqueConstraint(

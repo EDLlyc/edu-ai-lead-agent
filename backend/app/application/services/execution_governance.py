@@ -125,10 +125,23 @@ class ExecutionGovernanceService:
             request_fingerprint=request_fingerprint,
             root_event_id=root_event_id,
         )
-        timeline = await self._repository.list_timeline(run_id=allocation.identity.run_id, limit=1)
-        if not timeline:
+        timeline = await self._repository.list_timeline(
+            run_id=allocation.identity.run_id,
+            limit=200,
+        )
+        root = next(
+            (
+                event
+                for event in timeline
+                if event.identity == allocation.identity
+                and event.kind is ExecutionEventKind.RUN_STARTED
+                and event.parent_event_id is None
+            ),
+            None,
+        )
+        if root is None:
             raise RuntimeError("governed run did not create its root event")
-        return allocation, timeline[0]
+        return allocation, root
 
     async def allocate_child(
         self,

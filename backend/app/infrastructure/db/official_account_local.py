@@ -26,6 +26,7 @@ from app.application.ports.official_account_local import (
     OfficialAccountGeneratedVisualResult,
     OfficialAccountGenerationResult,
     OfficialAccountMediaResult,
+    OfficialAccountRepairResult,
     OfficialAccountSourceMedia,
     OfficialAccountVersionIdentity,
     StoredOfficialAccountArticle,
@@ -94,6 +95,9 @@ from app.infrastructure.db.models import (
     OfficialAccountLocalMediaModel,
     OfficialAccountManualReviewModel,
     OfficialAccountRenderVersionModel,
+    OfficialAccountRepairRequestModel,
+    OfficialAccountReviewRecordModel,
+    OfficialAccountReviewRequestModel,
     SourceArticleImageModel,
     SourceSnapshotModel,
 )
@@ -659,20 +663,71 @@ class PostgresOfficialAccountRepository:
 
     async def get_article(self, run_id: UUID) -> StoredOfficialAccountArticle | None:
         async with self._session_factory() as session:
+            run = await session.get(OfficialAccountArticleRunModel, run_id)
+            row = (
+                await session.get(
+                    OfficialAccountArticleVersionModel,
+                    run.active_article_version_id,
+                )
+                if run is not None and run.active_article_version_id is not None
+                else None
+            )
+            if row is not None and row.run_id != run_id:
+                raise RuntimeError("active official-account Article crosses run scope")
+            return _stored_article(row) if row is not None else None
+
+    async def get_article_revision(
+        self,
+        run_id: UUID,
+        revision_no: Literal[1, 2],
+    ) -> StoredOfficialAccountArticle | None:
+        async with self._session_factory() as session:
             row = await session.scalar(
                 select(OfficialAccountArticleVersionModel).where(
-                    OfficialAccountArticleVersionModel.run_id == run_id
+                    OfficialAccountArticleVersionModel.run_id == run_id,
+                    OfficialAccountArticleVersionModel.revision_no == revision_no,
                 )
             )
             return _stored_article(row) if row is not None else None
 
     async def get_render(self, run_id: UUID) -> StoredOfficialAccountRender | None:
         async with self._session_factory() as session:
-            row = await session.scalar(
-                select(OfficialAccountRenderVersionModel).where(
-                    OfficialAccountRenderVersionModel.run_id == run_id
-                )
+            run = await session.get(OfficialAccountArticleRunModel, run_id)
+            row = (
+                await session.get(OfficialAccountRenderVersionModel, run.active_render_version_id)
+                if run is not None and run.active_render_version_id is not None
+                else None
             )
+            if row is not None and row.run_id != run_id:
+                raise RuntimeError("active official-account render crosses run scope")
+            if (
+                row is not None
+                and run is not None
+                and run.version_bundle.get("reviewer_mode") == "enforce"
+            ):
+                record = (
+                    await session.get(
+                        OfficialAccountReviewRecordModel,
+                        run.active_review_record_id,
+                    )
+                    if run.active_review_record_id is not None
+                    else None
+                )
+                request = (
+                    await session.get(OfficialAccountReviewRequestModel, record.request_id)
+                    if record is not None
+                    else None
+                )
+                if (
+                    row.article_version_id != run.active_article_version_id
+                    or row.review_record_id != run.active_review_record_id
+                    or record is None
+                    or record.decision != "accepted"
+                    or request is None
+                    or request.run_id != run.id
+                    or request.article_version_id != row.article_version_id
+                ):
+                    raise RuntimeError("active enforce render review lineage is invalid")
             return _stored_render(row) if row is not None else None
 
     async def get_media(
@@ -1134,7 +1189,8 @@ class PostgresOfficialAccountRepository:
                 return None
             existing = await session.scalar(
                 select(OfficialAccountArticleVersionModel).where(
-                    OfficialAccountArticleVersionModel.run_id == run.id
+                    OfficialAccountArticleVersionModel.run_id == run.id,
+                    OfficialAccountArticleVersionModel.revision_no == 1,
                 )
             )
             if existing is not None:
@@ -1149,6 +1205,8 @@ class PostgresOfficialAccountRepository:
                 id=article_id,
                 run_id=run.id,
                 version=_article_artifact_version(article),
+                revision_no=1,
+                repair_of_article_version_id=None,
                 article_payload=_article_payload(article),
                 content_fingerprint=article.content_fingerprint,
                 provider=result.provider,
@@ -1235,6 +1293,195 @@ class PostgresOfficialAccountRepository:
             await session.commit()
             return _stored_article(article_row)
 
+    async def persist_repaired_article(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        repair_intent_id: UUID,
+        source_article: StoredOfficialAccountArticle,
+        article: ArticlePackage,
+        result: OfficialAccountRepairResult,
+        validation_issues: tuple[ArticleValidationIssue, ...],
+    ) -> StoredOfficialAccountArticle | None:
+        async with self._session_factory() as session:
+            run = await _locked_fenced_run(session, claimed)
+            if run is None:
+                return None
+            source_row = await session.get(OfficialAccountArticleVersionModel, source_article.id)
+            repair_intent = await session.scalar(
+                select(OfficialAccountRepairRequestModel)
+                .where(OfficialAccountRepairRequestModel.id == repair_intent_id)
+                .with_for_update()
+            )
+            if (
+                claimed.identity.reviewer_mode != "enforce"
+                or source_row is None
+                or source_row.run_id != run.id
+                or source_row.revision_no != 1
+                or source_row.repair_of_article_version_id is not None
+                or source_row.version != _article_artifact_version(article)
+                or source_row.schema_version != claimed.identity.article_schema_version
+                or run.active_render_version_id is not None
+                or run.active_draft_id is not None
+                or repair_intent is None
+                or repair_intent.run_id != run.id
+                or repair_intent.source_article_version_id != source_article.id
+                or repair_intent.status not in {"calling", "completed"}
+            ):
+                raise RuntimeError("official-account repair source lineage is invalid")
+            existing = await session.scalar(
+                select(OfficialAccountArticleVersionModel).where(
+                    OfficialAccountArticleVersionModel.run_id == run.id,
+                    OfficialAccountArticleVersionModel.version == source_row.version,
+                    OfficialAccountArticleVersionModel.revision_no == 2,
+                )
+            )
+            if existing is not None:
+                if (
+                    existing.repair_of_article_version_id != source_row.id
+                    or existing.generator_request_fingerprint != result.request_fingerprint
+                    or existing.content_fingerprint != article.content_fingerprint
+                ):
+                    raise RuntimeError("official-account repaired Article replay changed")
+                if (
+                    repair_intent.status != "completed"
+                    or repair_intent.repaired_article_version_id != existing.id
+                ):
+                    raise RuntimeError("official-account repair intent completion changed")
+                return _stored_article(existing)
+            validation_snapshot = {
+                "passed": not any(issue.severity == "error" for issue in validation_issues),
+                "issues": [issue.model_dump(mode="json") for issue in validation_issues],
+                "rule_version": claimed.identity.rule_version,
+            }
+            article_row = OfficialAccountArticleVersionModel(
+                id=uuid4(),
+                run_id=run.id,
+                version=source_row.version,
+                revision_no=2,
+                repair_of_article_version_id=source_row.id,
+                article_payload=_article_payload(article),
+                content_fingerprint=article.content_fingerprint,
+                provider=result.provider,
+                model=result.model,
+                generator_request_fingerprint=result.request_fingerprint,
+                generator_provider_request_id=result.provider_request_id,
+                audit_request_fingerprint=None,
+                audit_provider_request_id=None,
+                prompt_version=claimed.identity.generator_prompt_version,
+                schema_version=claimed.identity.article_schema_version,
+                audit_prompt_version=claimed.identity.auditor_prompt_version,
+                audit_schema_version=claimed.identity.audit_schema_version,
+                rule_version=claimed.identity.rule_version,
+                validation_snapshot=validation_snapshot,
+                audit_snapshot={"status": "pending", "accepted": None, "issue_codes": []},
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                reasoning_tokens=result.reasoning_tokens,
+                latency_ms=result.latency_ms,
+            )
+            session.add(article_row)
+            await session.flush()
+            source_context_images = tuple(
+                await session.scalars(
+                    select(OfficialAccountArticleContextImageModel)
+                    .where(
+                        OfficialAccountArticleContextImageModel.run_id == run.id,
+                        OfficialAccountArticleContextImageModel.article_version_id == source_row.id,
+                    )
+                    .order_by(OfficialAccountArticleContextImageModel.ordinal)
+                )
+            )
+            context_snapshot = article.news_context_media
+            expected_context_items = context_snapshot.items if context_snapshot is not None else ()
+            if len(source_context_images) != len(expected_context_items):
+                raise RuntimeError("official-account repair context-media count changed")
+            for context_image, expected_item in zip(
+                source_context_images,
+                expected_context_items,
+                strict=True,
+            ):
+                if (
+                    context_image.run_id != run.id
+                    or context_image.material_package_id != run.material_package_id
+                    or context_image.ordinal != expected_item.ordinal
+                    or context_image.section_index != expected_item.section_index
+                    or context_snapshot is None
+                    or context_image.selection_version != context_snapshot.selection_version
+                    or context_image.source_article_image_id
+                    != expected_item.source_article_image_id
+                    or context_image.alt_text != expected_item.alt_text
+                    or context_image.caption != expected_item.caption
+                    or context_image.credit != expected_item.credit
+                    or context_image.source_page_url != expected_item.source_page_url
+                    or context_image.rights_status != expected_item.rights_status
+                    or not context_image.context_only_not_evidence
+                    or context_image.sha256 != expected_item.sha256
+                ):
+                    raise RuntimeError("official-account repair context-media lineage changed")
+            session.add_all(
+                OfficialAccountArticleContextImageModel(
+                    id=uuid4(),
+                    run_id=context_image.run_id,
+                    material_package_id=context_image.material_package_id,
+                    article_version_id=article_row.id,
+                    source_article_image_id=context_image.source_article_image_id,
+                    ordinal=context_image.ordinal,
+                    section_index=context_image.section_index,
+                    selection_version=context_image.selection_version,
+                    alt_text=context_image.alt_text,
+                    caption=context_image.caption,
+                    credit=context_image.credit,
+                    source_page_url=context_image.source_page_url,
+                    rights_status=context_image.rights_status,
+                    context_only_not_evidence=context_image.context_only_not_evidence,
+                    sha256=context_image.sha256,
+                )
+                for context_image in source_context_images
+            )
+            repair_intent.status = "completed"
+            repair_intent.repaired_article_version_id = article_row.id
+            repair_intent.completed_at = datetime.now(UTC)
+            session.add(
+                OfficialAccountArticleAttemptModel(
+                    id=uuid4(),
+                    run_id=run.id,
+                    article_version_id=article_row.id,
+                    stage="generating",
+                    capability="generation",
+                    ordinal=claimed.attempt_number + 10_000,
+                    status="succeeded",
+                    request_fingerprint=result.request_fingerprint,
+                    provider=result.provider,
+                    model=result.model,
+                    provider_request_id=result.provider_request_id,
+                    prompt_tokens=result.prompt_tokens,
+                    completion_tokens=result.completion_tokens,
+                    reasoning_tokens=result.reasoning_tokens,
+                    latency_ms=result.latency_ms,
+                    validation_corrections=result.validation_corrections,
+                    error_code=None,
+                    safe_metadata={
+                        "revision_no": 2,
+                        "repair_of_article_version_id": str(source_row.id),
+                        "validation_issue_codes": [issue.code for issue in validation_issues],
+                        "content_fingerprint": article.content_fingerprint,
+                    },
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            if validation_snapshot["passed"]:
+                run.current_stage = "auditing"
+            else:
+                _finish_terminal(
+                    run,
+                    status="review_required",
+                    error_code="article_repair_validation_failed",
+                )
+            run.updated_at = datetime.now(UTC)
+            await session.commit()
+            return _stored_article(article_row)
+
     async def persist_audit(
         self,
         *,
@@ -1273,7 +1520,11 @@ class PostgresOfficialAccountRepository:
                     article_version_id=row.id,
                     stage="auditing",
                     capability="audit",
-                    ordinal=claimed.attempt_number,
+                    ordinal=(
+                        claimed.attempt_number + 10_000
+                        if row.revision_no == 2
+                        else claimed.attempt_number
+                    ),
                     status="succeeded",
                     request_fingerprint=result.request_fingerprint,
                     provider=result.provider,
@@ -1301,6 +1552,65 @@ class PostgresOfficialAccountRepository:
             await session.commit()
             return _stored_article(row)
 
+    async def activate_reviewed_article(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        article: StoredOfficialAccountArticle,
+        review_record_id: UUID,
+    ) -> bool:
+        async with self._session_factory() as session:
+            run = await _locked_fenced_run(session, claimed)
+            if run is None:
+                return False
+            article_row = await session.get(OfficialAccountArticleVersionModel, article.id)
+            record = await session.get(OfficialAccountReviewRecordModel, review_record_id)
+            request = (
+                await session.get(OfficialAccountReviewRequestModel, record.request_id)
+                if record is not None
+                else None
+            )
+            if (
+                claimed.identity.reviewer_mode != "enforce"
+                or article_row is None
+                or article_row.run_id != run.id
+                or article_row.audit_snapshot.get("status") != "accepted"
+                or record is None
+                or record.decision != "accepted"
+                or request is None
+                or request.run_id != run.id
+                or request.article_version_id != article_row.id
+                or request.status != "completed"
+            ):
+                raise RuntimeError("official-account accepted Reviewer lineage is invalid")
+            if run.active_review_record_id is not None and (
+                run.active_review_record_id != record.id
+                or run.active_article_version_id != article_row.id
+            ):
+                raise RuntimeError("official-account active review lineage cannot be replaced")
+            run.active_article_version_id = article_row.id
+            run.active_review_record_id = record.id
+            run.current_stage = "rendering"
+            run.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
+    async def require_manual_review(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        error_code: str,
+    ) -> bool:
+        safe_error = error_code if _SAFE_ERROR.fullmatch(error_code) else "reviewer_manual_review"
+        async with self._session_factory() as session:
+            run = await _locked_fenced_run(session, claimed)
+            if run is None:
+                return False
+            _finish_terminal(run, status="review_required", error_code=safe_error)
+            run.updated_at = datetime.now(UTC)
+            await session.commit()
+            return True
+
     async def persist_render(
         self,
         *,
@@ -1312,6 +1622,28 @@ class PostgresOfficialAccountRepository:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
                 return None
+            if run.active_article_version_id != article.id:
+                raise RuntimeError("official-account render Article is not active")
+            review_record_id = run.active_review_record_id
+            if claimed.identity.reviewer_mode == "enforce":
+                record = (
+                    await session.get(OfficialAccountReviewRecordModel, review_record_id)
+                    if review_record_id is not None
+                    else None
+                )
+                request = (
+                    await session.get(OfficialAccountReviewRequestModel, record.request_id)
+                    if record is not None
+                    else None
+                )
+                if (
+                    record is None
+                    or record.decision != "accepted"
+                    or request is None
+                    or request.run_id != run.id
+                    or request.article_version_id != article.id
+                ):
+                    raise RuntimeError("official-account enforce render lacks accepted review")
             existing = await session.scalar(
                 select(OfficialAccountRenderVersionModel).where(
                     OfficialAccountRenderVersionModel.run_id == run.id
@@ -1323,6 +1655,7 @@ class PostgresOfficialAccountRepository:
                 id=uuid4(),
                 run_id=run.id,
                 article_version_id=article.id,
+                review_record_id=review_record_id,
                 canonical_html=rendered.canonical_html,
                 render_fingerprint=rendered.render_fingerprint,
                 renderer_version=rendered.renderer_version,
@@ -1358,6 +1691,23 @@ class PostgresOfficialAccountRepository:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
                 return None
+            render_row = await session.get(OfficialAccountRenderVersionModel, render.id)
+            if (
+                render_row is None
+                or render_row.run_id != run.id
+                or run.active_render_version_id != render.id
+                or run.active_article_version_id != render.article_version_id
+                or render_row.article_version_id != render.article_version_id
+                or render_row.render_fingerprint != render.render_fingerprint
+                or (
+                    claimed.identity.reviewer_mode == "enforce"
+                    and (
+                        run.active_review_record_id is None
+                        or render_row.review_record_id != run.active_review_record_id
+                    )
+                )
+            ):
+                raise RuntimeError("official-account media render is not active")
             body_mismatch = result.role == "body" and (
                 not 0 <= result.ordinal <= 4
                 or result.ordinal != source_media.ordinal
@@ -1397,6 +1747,8 @@ class PostgresOfficialAccountRepository:
                 context_plan = await session.scalar(
                     select(OfficialAccountArticleContextImageModel).where(
                         OfficialAccountArticleContextImageModel.run_id == run.id,
+                        OfficialAccountArticleContextImageModel.article_version_id
+                        == run.active_article_version_id,
                         OfficialAccountArticleContextImageModel.source_article_image_id
                         == source_media.source_article_image_id,
                         OfficialAccountArticleContextImageModel.ordinal == result.ordinal,
@@ -1560,6 +1912,23 @@ class PostgresOfficialAccountRepository:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
                 return None
+            render_row = await session.get(OfficialAccountRenderVersionModel, render.id)
+            if (
+                render_row is None
+                or render_row.run_id != run.id
+                or run.active_render_version_id != render.id
+                or run.active_article_version_id != render.article_version_id
+                or render_row.article_version_id != render.article_version_id
+                or render_row.render_fingerprint != render.render_fingerprint
+                or (
+                    claimed.identity.reviewer_mode == "enforce"
+                    and (
+                        run.active_review_record_id is None
+                        or render_row.review_record_id != run.active_review_record_id
+                    )
+                )
+            ):
+                raise RuntimeError("official-account draft render is not active")
             existing = await session.scalar(
                 select(OfficialAccountLocalDraftModel).where(
                     OfficialAccountLocalDraftModel.run_id == run.id
@@ -2049,6 +2418,30 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
                 "reviewer_max_output_tokens",
                 default=2_048,
             ),
+            reviewer_repair_timeout_ms=_bundle_optional_integer(
+                bundle,
+                "reviewer_repair_timeout_ms",
+                default=180_000,
+            ),
+            reviewer_repair_max_output_tokens=_bundle_optional_integer(
+                bundle,
+                "reviewer_repair_max_output_tokens",
+                default=16_384,
+            ),
+            reviewer_enforce_policy_version=str(
+                bundle.get(
+                    "reviewer_enforce_policy_version",
+                    "official-account-review-enforce-v1",
+                )
+            ),
+            reviewer_enforce_acknowledgement=(
+                bundle.get("reviewer_enforce_acknowledgement", False) is True
+            ),
+            reviewer_calibration_report_sha256=(
+                str(bundle["reviewer_calibration_report_sha256"])
+                if bundle.get("reviewer_calibration_report_sha256") is not None
+                else None
+            ),
         )
     except (KeyError, TypeError, ValueError):
         raise RuntimeError("official-account run version bundle is invalid") from None
@@ -2075,6 +2468,20 @@ def _identity_payload(identity: OfficialAccountVersionIdentity) -> dict[str, obj
             "reviewer_timeout_ms",
             "reviewer_writer_max_output_tokens",
             "reviewer_max_output_tokens",
+            "reviewer_repair_timeout_ms",
+            "reviewer_repair_max_output_tokens",
+            "reviewer_enforce_policy_version",
+            "reviewer_enforce_acknowledgement",
+            "reviewer_calibration_report_sha256",
+        ):
+            payload.pop(key, None)
+    elif identity.reviewer_mode != "enforce":
+        for key in (
+            "reviewer_repair_timeout_ms",
+            "reviewer_repair_max_output_tokens",
+            "reviewer_enforce_policy_version",
+            "reviewer_enforce_acknowledgement",
+            "reviewer_calibration_report_sha256",
         ):
             payload.pop(key, None)
     return payload
@@ -2128,6 +2535,8 @@ def _stored_article(row: OfficialAccountArticleVersionModel) -> StoredOfficialAc
         reasoning_tokens=row.reasoning_tokens,
         latency_ms=row.latency_ms,
         created_at=row.created_at,
+        revision_no=cast(Literal[1, 2], row.revision_no),
+        repair_of_article_version_id=row.repair_of_article_version_id,
     )
 
 
@@ -2147,6 +2556,7 @@ def _stored_render(row: OfficialAccountRenderVersionModel) -> StoredOfficialAcco
         article_version_id=row.article_version_id,
         canonical_html=row.canonical_html,
         render_fingerprint=row.render_fingerprint,
+        review_record_id=row.review_record_id,
     )
 
 

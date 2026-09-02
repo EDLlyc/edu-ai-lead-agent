@@ -10,12 +10,14 @@ import pytest
 from app.application.ports.official_account_local import (
     OfficialAccountAuditRequest,
     OfficialAccountGenerationRequest,
+    OfficialAccountRepairRequest,
     OfficialAccountVersionIdentity,
 )
 from app.application.services.official_account_local import (
     article_version_bundle,
     build_audit_prompt,
     build_generation_prompt,
+    repair_request_fingerprint,
     run_request_fingerprint,
 )
 from app.core.errors import (
@@ -37,6 +39,14 @@ from app.domain.official_account_local import (
     OfficialAccountAuditVerdict,
     build_article_package,
     canonical_json,
+)
+from app.domain.official_account_reviewer import (
+    REPAIR_POLICY_VERSION,
+    RepairDirective,
+    RepairOperation,
+    ReviewIssueCode,
+    ReviewReference,
+    ReviewReferenceKind,
 )
 from app.infrastructure.ai.official_account_local import (
     create_zhipu_official_account_models,
@@ -172,6 +182,39 @@ async def _valid_draft_json(request: OfficialAccountGenerationRequest) -> str:
     return result.draft.model_dump_json()
 
 
+async def _repair_request() -> OfficialAccountRepairRequest:
+    generation_request = _generation_request()
+    generated = await DeterministicFakeOfficialAccountArticleGenerator().generate(
+        generation_request
+    )
+    article = build_article_package(
+        draft=generated.draft,
+        source=generation_request.source,
+        versions=article_version_bundle(generation_request.identity),
+        default_author=generation_request.identity.default_author,
+    )
+    return OfficialAccountRepairRequest(
+        run_id=generation_request.run_id,
+        source=generation_request.source,
+        article=article,
+        directives=(
+            RepairDirective(
+                directive_id="repair:01:brand-tone",
+                issue_code=ReviewIssueCode.BRAND_TONE_MISMATCH,
+                target=ReviewReference(
+                    kind=ReviewReferenceKind.SECTION,
+                    ref="section:00",
+                ),
+                operation=RepairOperation.ALIGN_BRAND_TONE,
+                repair_policy_version=REPAIR_POLICY_VERSION,
+            ),
+        ),
+        identity=generation_request.identity,
+        request_fingerprint=generation_request.request_fingerprint,
+        max_output_tokens=generation_request.max_output_tokens,
+    )
+
+
 def _completion(content: str, request: httpx.Request) -> httpx.Response:
     return httpx.Response(
         200,
@@ -239,6 +282,43 @@ async def test_live_generator_uses_bounded_json_contract_and_safe_metadata() -> 
     assert result.completion_tokens == 520
     assert result.validation_corrections == 0
     assert "server-only-key" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_live_repairer_uses_closed_directives_and_strict_schema_contract() -> None:
+    repair_request = await _repair_request()
+    valid = await _valid_draft_json(_generation_request())
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        payload = json.loads(request.content)
+        system = payload["messages"][0]["content"]
+        prompt = payload["messages"][1]["content"]
+        assert "GeneratedArticleDraft" in system
+        assert "<REPAIR_DIRECTIVES>" in prompt
+        assert "align_brand_tone" in prompt
+        assert "<ORIGINAL_ARTICLE>" in prompt
+        assert "只能执行" in prompt
+        assert payload["temperature"] == 0
+        assert payload["thinking"] == {"type": "disabled"}
+        assert payload["response_format"] == {"type": "json_object"}
+        return _completion(valid, request)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as client:
+        repairer, _auditor = _models(client)
+        result = await repairer.repair(repair_request)
+
+    assert calls == 1
+    assert result.provider == "zhipu"
+    assert result.model == "glm-4-plus"
+    assert result.request_fingerprint == repair_request_fingerprint(repair_request)
+    assert result.provider_request_id == "safe-provider-request-1"
+    assert result.validation_corrections == 0
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from app.application.ports.image_generation import (
 from app.application.ports.official_account_local import (
     OfficialAccountArticleAuditor,
     OfficialAccountArticleGenerator,
+    OfficialAccountArticleRepairer,
 )
 from app.application.ports.official_account_reviewer import OfficialAccountReviewer
 from app.application.ports.visual_retrieval import VisualEmbeddingModel
@@ -43,6 +44,9 @@ from app.infrastructure.ai.visual_embedding import (
 )
 from app.infrastructure.db.execution_governance import PostgresExecutionGovernanceRepository
 from app.infrastructure.db.official_account_local import PostgresOfficialAccountRepository
+from app.infrastructure.db.official_account_repair import (
+    PostgresOfficialAccountRepairRepository,
+)
 from app.infrastructure.db.official_account_reviewer import (
     PostgresOfficialAccountReviewRepository,
 )
@@ -152,6 +156,7 @@ async def run_worker() -> None:
         live_generator: OfficialAccountArticleGenerator | None = None
         live_auditor: OfficialAccountArticleAuditor | None = None
         live_reviewer: OfficialAccountReviewer | None = None
+        live_repairer: OfficialAccountArticleRepairer | None = None
         if settings.ai_provider_mode == "zhipu":
             if (
                 settings.ai_platform_base_url is not None
@@ -173,6 +178,7 @@ async def run_worker() -> None:
                     max_output_tokens=settings.official_account_local_max_output_tokens,
                     max_validation_corrections=settings.ai_max_validation_corrections,
                 )
+                live_repairer = cast(OfficialAccountArticleRepairer, live_generator)
                 live_reviewer = create_zhipu_official_account_reviewer(
                     client=provider_client,
                     base_url=settings.ai_platform_base_url,
@@ -210,6 +216,7 @@ async def run_worker() -> None:
         review_governance = PostgresOfficialAccountReviewerGovernance(
             execution_repository=execution_repository,
             review_repository=PostgresOfficialAccountReviewRepository(session_factory),
+            repair_repository=PostgresOfficialAccountRepairRepository(session_factory),
         )
         fixture_reviewer = DeterministicFakeOfficialAccountReviewer()
         executor = OfficialAccountLocalExecutor(
@@ -251,6 +258,7 @@ async def run_worker() -> None:
             review_governance=review_governance,
             fixture_reviewer=fixture_reviewer,
             live_reviewer=live_reviewer,
+            live_repairer=live_repairer,
         )
         worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
         logger.info(

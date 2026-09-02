@@ -10,6 +10,7 @@ from app.application.ports.official_account_local import (
 )
 from app.application.services.official_account_export import _assert_copy_ready_context_rights
 from app.application.services.official_account_local import (
+    _build_repaired_article_package,
     run_request_fingerprint,
     select_news_context_media,
 )
@@ -391,6 +392,30 @@ async def test_news_context_validator_accepts_five_body_slots_and_separate_conte
         "cover-0",
     )
     assert article.news_context_media == context_media
+
+    repaired = _build_repaired_article_package(
+        source_article=article,
+        draft=expanded_draft,
+        source=source,
+        source_media_candidates=tuple(
+            OfficialAccountSourceMedia(
+                source_image_artifact_id=None,
+                fixture_id=f"fixture-{item.candidate_id}",
+                media_type="image/png",
+                byte_size=1,
+                sha256=item.sha256,
+                ordinal=index,
+                candidate_id=item.candidate_id,
+                alt_text=item.alt_text,
+                caption_text=item.caption_text,
+            )
+            for index, item in enumerate(candidates)
+        ),
+        default_author=identity.default_author,
+    )
+    assert repaired.news_context_media == context_media
+    assert repaired.media_selection == article.media_selection
+    assert repaired.media_slots == article.media_slots
 
     malformed = article.model_copy(update={"media_slots": article.media_slots[1:]})
     malformed_codes = {

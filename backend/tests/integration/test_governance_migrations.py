@@ -42,7 +42,7 @@ async def test_governance_schema_and_checkpoint_contract(
             }
         )
 
-    assert revision == "20260902_0043"
+    assert revision == "20260902_0044"
     assert vector_enabled is True
     assert checkpoint_version == 9
     assert vector_type == "vector(2048)"

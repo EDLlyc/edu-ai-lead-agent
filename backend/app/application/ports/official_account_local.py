@@ -27,6 +27,7 @@ from app.domain.official_account_local import (
     SemanticMediaAssignment,
     fingerprint,
 )
+from app.domain.official_account_reviewer import RepairDirective
 
 
 def _is_sha256(value: str) -> bool:
@@ -72,6 +73,11 @@ class OfficialAccountVersionIdentity:
     reviewer_timeout_ms: int = 180_000
     reviewer_writer_max_output_tokens: int = 16_384
     reviewer_max_output_tokens: int = 2_048
+    reviewer_repair_timeout_ms: int = 180_000
+    reviewer_repair_max_output_tokens: int = 16_384
+    reviewer_enforce_policy_version: str = "official-account-review-enforce-v1"
+    reviewer_enforce_acknowledgement: bool = False
+    reviewer_calibration_report_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +91,31 @@ class OfficialAccountGenerationRequest:
 
 @dataclass(frozen=True, slots=True)
 class OfficialAccountGenerationResult:
+    draft: GeneratedArticleDraft
+    provider: str
+    model: str
+    request_fingerprint: str
+    provider_request_id: str | None
+    prompt_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    latency_ms: int
+    validation_corrections: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OfficialAccountRepairRequest:
+    run_id: UUID
+    source: OfficialAccountSourceSnapshot
+    article: ArticlePackage
+    directives: tuple[RepairDirective, ...]
+    identity: OfficialAccountVersionIdentity
+    request_fingerprint: str
+    max_output_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
+class OfficialAccountRepairResult:
     draft: GeneratedArticleDraft
     provider: str
     model: str
@@ -143,6 +174,8 @@ class StoredOfficialAccountArticle:
     reasoning_tokens: int
     latency_ms: int
     created_at: datetime
+    revision_no: Literal[1, 2] = 1
+    repair_of_article_version_id: UUID | None = None
 
     @property
     def validation_passed(self) -> bool:
@@ -155,6 +188,7 @@ class StoredOfficialAccountRender:
     article_version_id: UUID
     canonical_html: str
     render_fingerprint: str
+    review_record_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,6 +493,13 @@ class OfficialAccountArticleGenerator(Protocol):
     ) -> OfficialAccountGenerationResult: ...
 
 
+class OfficialAccountArticleRepairer(Protocol):
+    async def repair(
+        self,
+        request: OfficialAccountRepairRequest,
+    ) -> OfficialAccountRepairResult: ...
+
+
 class OfficialAccountArticleAuditor(Protocol):
     async def audit(
         self,
@@ -557,6 +598,12 @@ class OfficialAccountRunRepository(Protocol):
 
     async def get_article(self, run_id: UUID) -> StoredOfficialAccountArticle | None: ...
 
+    async def get_article_revision(
+        self,
+        run_id: UUID,
+        revision_no: Literal[1, 2],
+    ) -> StoredOfficialAccountArticle | None: ...
+
     async def get_render(self, run_id: UUID) -> StoredOfficialAccountRender | None: ...
 
     async def get_media(
@@ -632,6 +679,17 @@ class OfficialAccountRunRepository(Protocol):
         validation_issues: tuple[ArticleValidationIssue, ...],
     ) -> StoredOfficialAccountArticle | None: ...
 
+    async def persist_repaired_article(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        repair_intent_id: UUID,
+        source_article: StoredOfficialAccountArticle,
+        article: ArticlePackage,
+        result: OfficialAccountRepairResult,
+        validation_issues: tuple[ArticleValidationIssue, ...],
+    ) -> StoredOfficialAccountArticle | None: ...
+
     async def persist_audit(
         self,
         *,
@@ -639,6 +697,21 @@ class OfficialAccountRunRepository(Protocol):
         article: StoredOfficialAccountArticle,
         result: OfficialAccountAuditResult,
     ) -> StoredOfficialAccountArticle | None: ...
+
+    async def activate_reviewed_article(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        article: StoredOfficialAccountArticle,
+        review_record_id: UUID,
+    ) -> bool: ...
+
+    async def require_manual_review(
+        self,
+        *,
+        claimed: ClaimedOfficialAccountRun,
+        error_code: str,
+    ) -> bool: ...
 
     async def persist_render(
         self,

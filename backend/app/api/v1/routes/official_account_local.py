@@ -170,6 +170,8 @@ async def create_article_run(
     settings = request.app.state.settings
     repository = PostgresOfficialAccountRepository(request.app.state.session_factory)
     if payload.source.kind == "fixture":
+        if getattr(settings, "official_account_reviewer_mode", "off") == "enforce":
+            raise ConflictError("Reviewer enforce cannot be activated by a fixture run")
         run, _created = await repository.enqueue_fixture(identity=_fixture_identity(settings))
     else:
         if not _live_provider_available(settings):
@@ -770,6 +772,25 @@ def _identity(
         reviewer_max_output_tokens=getattr(
             settings, "official_account_reviewer_max_output_tokens", 2_048
         ),
+        reviewer_repair_timeout_ms=getattr(
+            settings, "official_account_reviewer_repair_timeout_ms", 180_000
+        ),
+        reviewer_repair_max_output_tokens=getattr(
+            settings, "official_account_reviewer_repair_max_output_tokens", 16_384
+        ),
+        reviewer_enforce_policy_version=getattr(
+            settings,
+            "official_account_reviewer_enforce_policy_version",
+            "official-account-review-enforce-v1",
+        ),
+        reviewer_enforce_acknowledgement=(
+            getattr(settings, "official_account_reviewer_enforce_acknowledgement", "")
+            == "I_ACKNOWLEDGE_REVIEWER_ENFORCE_V1"
+        ),
+        reviewer_calibration_report_sha256=getattr(
+            settings, "official_account_reviewer_calibration_report_sha256", None
+        )
+        or None,
     )
 
 

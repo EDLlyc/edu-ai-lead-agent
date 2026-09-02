@@ -9,7 +9,7 @@ Account draft-job schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260901_0042`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260902_0044`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -180,8 +180,11 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
-  `20260901_0042` (adds durable default-off WeChat Official Account draft jobs, exact three-role
-  items, fenced attempts, and populated-downgrade refusal), after `20260901_0041` (adds immutable,
+  `20260902_0044` (adds bounded one-repair Reviewer enforce lineage and refusal of populated or
+  orphan-governed downgrade), after `20260902_0043` (adds independently governed default-off
+  Reviewer observe evidence), after `20260901_0042` (adds durable default-off WeChat Official
+  Account draft jobs, exact three-role items, fenced attempts, and populated-downgrade refusal),
+  after `20260901_0041` (adds immutable,
   final-SHA-bound official-account generated-visual evaluation
   records), after `20260831_0040` (weekly three-article DAG), `20260831_0039` (shared execution
   governance), `20260831_0038` (IP-asset search aggregates), `20260827_0037` (IP generation prompt

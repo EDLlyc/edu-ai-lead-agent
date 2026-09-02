@@ -339,6 +339,25 @@ class Settings(BaseSettings):
         le=420_000,
     )
     official_account_reviewer_max_output_tokens: int = Field(default=2_048, ge=512, le=4_096)
+    official_account_reviewer_repair_timeout_ms: int = Field(
+        default=180_000,
+        ge=1_000,
+        le=420_000,
+    )
+    official_account_reviewer_repair_max_output_tokens: int = Field(
+        default=16_384,
+        ge=2_048,
+        le=16_384,
+    )
+    official_account_reviewer_enforce_policy_version: str = Field(
+        default="official-account-review-enforce-v1",
+        pattern=r"^[a-z0-9][a-z0-9._:-]{0,79}$",
+    )
+    official_account_reviewer_enforce_acknowledgement: str = Field(
+        default="",
+        max_length=80,
+    )
+    official_account_reviewer_calibration_report_sha256: str = Field(default="", max_length=64)
     official_account_local_default_author: str = Field(
         default="赛先生", min_length=1, max_length=80
     )
@@ -783,14 +802,12 @@ class Settings(BaseSettings):
             and not self.official_account_local_generated_visuals_enabled
         ):
             raise ValueError("official-account image quality observe requires generated visuals")
-        if self.official_account_reviewer_mode == "enforce":
-            raise ValueError("official-account Reviewer enforce is not implemented")
-        if self.official_account_reviewer_mode == "observe" and (
+        if self.official_account_reviewer_mode in {"observe", "enforce"} and (
             not self.official_account_local_enabled
             or not self.official_account_local_worker_enabled
         ):
-            raise ValueError("official-account Reviewer observe requires the local worker")
-        if self.official_account_reviewer_mode == "observe" and (
+            raise ValueError("official-account Reviewer requires the local worker")
+        if self.official_account_reviewer_mode in {"observe", "enforce"} and (
             self.official_account_reviewer_request_schema_version,
             self.official_account_reviewer_verdict_schema_version,
             self.official_account_reviewer_rubric_version,
@@ -807,7 +824,7 @@ class Settings(BaseSettings):
         ):
             raise ValueError("official-account Reviewer contract version bundle is unsupported")
         if (
-            self.official_account_reviewer_mode == "observe"
+            self.official_account_reviewer_mode in {"observe", "enforce"}
             and self.ai_provider_mode == "zhipu"
             and (
                 self.official_account_reviewer_writer_timeout_ms / 1_000
@@ -817,6 +834,24 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "official-account Reviewer gateway timeouts must cover the provider total timeout"
+            )
+        if self.official_account_reviewer_mode == "enforce" and (
+            self.ai_provider_mode != "zhipu"
+            or self.official_account_reviewer_enforce_acknowledgement
+            != "I_ACKNOWLEDGE_REVIEWER_ENFORCE_V1"
+            or len(self.official_account_reviewer_calibration_report_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.official_account_reviewer_calibration_report_sha256
+            )
+            or self.official_account_reviewer_enforce_policy_version
+            != "official-account-review-enforce-v1"
+            or self.official_account_reviewer_repair_timeout_ms / 1_000
+            < self.ai_total_timeout_seconds
+        ):
+            raise ValueError(
+                "official-account Reviewer enforce requires live provider, explicit "
+                "acknowledgement, calibration evidence, and compatible timeout"
             )
         if (
             self.content_enabled

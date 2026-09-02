@@ -221,6 +221,21 @@ class OfficialAccountEditorHandoffV2Service:
         draft = await self._repository.get_draft(run_id)
         render = await self._repository.get_render(run_id)
         gate("render_present", render is not None, "render", "固定渲染必须存在")
+        run_version_bundle = getattr(run, "version_bundle", {})
+        reviewer_enforced = (
+            isinstance(run_version_bundle, dict)
+            and run_version_bundle.get("reviewer_mode") == "enforce"
+        )
+        if reviewer_enforced:
+            gate(
+                "enforced_review_lineage_valid",
+                render is not None
+                and getattr(render, "review_record_id", None) is not None
+                and getattr(render, "review_record_id", None)
+                == getattr(run, "active_review_record_id", None),
+                "render.review_record_id",
+                "固定渲染必须绑定当前修订稿最终接受的 Reviewer 记录",
+            )
         if article is not None and render is not None and article_version_supported:
             gate(
                 "render_article_lineage_valid",
@@ -344,7 +359,7 @@ class OfficialAccountEditorHandoffV2Service:
         release_kind: Literal["manual", "machine"] = (
             "manual" if review is not None and review.decision == "approved" else "machine"
         )
-        release_fingerprint = fingerprint_v2(
+        release_inputs: list[object] = [
             self._release_policy,
             run.request_fingerprint,
             article.article.content_fingerprint,
@@ -357,7 +372,10 @@ class OfficialAccountEditorHandoffV2Service:
                 for item in generated_visuals
             ),
             tuple(item.record_fingerprint for item in generated_visual_evals),
-        )
+        ]
+        if reviewer_enforced:
+            release_inputs.append(str(render.review_record_id))
+        release_fingerprint = fingerprint_v2(*release_inputs)
         release = EditorHandoffRelease(
             policy=self._release_policy,
             kind=release_kind,

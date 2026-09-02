@@ -308,9 +308,9 @@ def test_cli_identity_carries_the_complete_current_visual_version_bundle() -> No
 
 
 def test_reviewer_settings_reject_enforce_missing_worker_and_contract_tamper() -> None:
-    with pytest.raises(ValidationError, match="Reviewer enforce is not implemented"):
+    with pytest.raises(ValidationError, match="Reviewer requires the local worker"):
         Settings(_env_file=None, official_account_reviewer_mode="enforce")
-    with pytest.raises(ValidationError, match="observe requires the local worker"):
+    with pytest.raises(ValidationError, match="Reviewer requires the local worker"):
         Settings(_env_file=None, official_account_reviewer_mode="observe")
     with pytest.raises(ValidationError, match="contract version bundle is unsupported"):
         Settings(
@@ -337,6 +337,19 @@ def test_reviewer_settings_reject_enforce_missing_worker_and_contract_tamper() -
         official_account_reviewer_mode="observe",
     )
     assert settings.official_account_reviewer_mode == "observe"
+
+    enforce_settings = Settings(
+        _env_file=None,
+        official_account_local_enabled=True,
+        official_account_local_worker_enabled=True,
+        official_account_reviewer_mode="enforce",
+        ai_provider_mode="zhipu",
+        ai_platform_base_url="https://example.invalid/v4",
+        ai_platform_api_key="test-key",
+        official_account_reviewer_enforce_acknowledgement=("I_ACKNOWLEDGE_REVIEWER_ENFORCE_V1"),
+        official_account_reviewer_calibration_report_sha256="a" * 64,
+    )
+    assert enforce_settings.official_account_reviewer_mode == "enforce"
 
 
 class _MemoryRepository:

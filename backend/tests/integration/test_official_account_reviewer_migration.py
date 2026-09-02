@@ -73,7 +73,7 @@ async def test_reviewer_migration_is_additive_and_refuses_only_populated_downgra
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260902_0043"
+                "20260902_0044"
             )
             columns = {
                 row["column_name"]
@@ -142,7 +142,7 @@ async def test_reviewer_migration_is_additive_and_refuses_only_populated_downgra
         connection = await asyncpg.connect(postgres_url)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "20260902_0043"
+                "20260902_0044"
             )
         finally:
             await connection.close()

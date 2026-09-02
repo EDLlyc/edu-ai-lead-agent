@@ -35,6 +35,7 @@ from app.infrastructure.db.models import (
     ExecutionBudgetReservationModel,
     ExecutionTraceEventModel,
     OfficialAccountArticleRunModel,
+    OfficialAccountArticleVersionModel,
     OfficialAccountReviewRecordModel,
     OfficialAccountReviewRequestModel,
 )
@@ -42,6 +43,7 @@ from app.infrastructure.db.models import (
 _SAFE_ERROR = re.compile(r"^[a-z][a-z0-9_.:-]{0,79}$")
 _ROOT_AGENT = "official.review.orchestrator"
 _REVIEWER_AGENT = "official.reviewer.r1"
+_REVIEWER_R2_AGENT = "official.reviewer.r2"
 _REVIEWER_CAPABILITY = "official.article.review"
 
 
@@ -145,6 +147,8 @@ class PostgresOfficialAccountReviewRepository(OfficialAccountReviewRepository):
             elif row.status == "calling":
                 if _execution_binding(row) != execution:
                     raise RuntimeError("official-account review calling identity changed")
+            else:
+                raise RuntimeError("official-account review intent is already terminal")
             await session.commit()
             return _stored_intent(row)
 
@@ -169,6 +173,8 @@ class PostgresOfficialAccountReviewRepository(OfficialAccountReviewRepository):
                 row.completed_at = datetime.now(UTC)
             elif row.status == "result_unknown" and row.error_code != safe_error:
                 raise RuntimeError("official-account review result-unknown replay changed")
+            elif row.status != "result_unknown":
+                raise RuntimeError("official-account review intent cannot become unknown")
             await session.commit()
             return _stored_intent(row)
 
@@ -193,6 +199,8 @@ class PostgresOfficialAccountReviewRepository(OfficialAccountReviewRepository):
             .values(
                 id=record_id,
                 request_id=intent.id,
+                run_id=intent.run_id,
+                article_version_id=intent.article_version_id,
                 decision=verdict.decision.value,
                 record_fingerprint=verdict.record_fingerprint,
                 issue_snapshot=[item.model_dump(mode="json") for item in verdict.issues],
@@ -242,7 +250,9 @@ class PostgresOfficialAccountReviewRepository(OfficialAccountReviewRepository):
                 raise RuntimeError("official-account review record was not persisted")
             stored = _stored_record(row, intent.contract)
             if (
-                stored.verdict.record_fingerprint != verdict.record_fingerprint
+                row.run_id != intent.run_id
+                or row.article_version_id != intent.article_version_id
+                or stored.verdict.record_fingerprint != verdict.record_fingerprint
                 or stored.execution_artifact_id != execution_artifact_id
                 or stored.execution_event_id != execution_event_id
                 or stored.provider_request_id != result.provider_request_id
@@ -319,7 +329,11 @@ async def _assert_execution_binding(
     row: OfficialAccountReviewRequestModel,
     execution: ReviewExecutionBinding,
 ) -> None:
-    if execution.reviewer_agent_id != _REVIEWER_AGENT:
+    article = await session.get(OfficialAccountArticleVersionModel, row.article_version_id)
+    expected_agent = (
+        _REVIEWER_R2_AGENT if article is not None and article.revision_no == 2 else _REVIEWER_AGENT
+    )
+    if execution.reviewer_agent_id != expected_agent:
         raise RuntimeError("official-account review agent identity changed")
     allocation = await session.get(
         ExecutionAgentAllocationModel,
@@ -536,4 +550,5 @@ def _stored_record(
         execution_artifact_id=row.execution_artifact_id,
         execution_event_id=row.execution_event_id,
         created_at=row.created_at,
+        contract=contract,
     )

@@ -406,6 +406,48 @@ async def test_off_has_zero_reviewer_rows_calls_and_allocations(
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
+async def test_observe_identity_ignores_enforce_only_configuration(
+    integration_context: IntegrationContext,
+) -> None:
+    repository = PostgresOfficialAccountRepository(integration_context.session_factory)
+    base = replace(
+        _identity(suffix="review-observe-enforce-config-drift"),
+        reviewer_mode="observe",
+    )
+    changed = replace(
+        base,
+        reviewer_repair_timeout_ms=420_000,
+        reviewer_repair_max_output_tokens=2_048,
+        reviewer_enforce_policy_version="official-account-review-enforce-shadow-v999",
+        reviewer_enforce_acknowledgement=True,
+        reviewer_calibration_report_sha256="f" * 64,
+    )
+
+    first, created = await repository.enqueue_fixture(identity=base)
+    replay, replay_created = await repository.enqueue_fixture(identity=changed)
+
+    assert created is True
+    assert replay_created is False
+    assert replay.id == first.id
+    assert replay.request_fingerprint == first.request_fingerprint
+    assert not {
+        "reviewer_repair_timeout_ms",
+        "reviewer_repair_max_output_tokens",
+        "reviewer_enforce_policy_version",
+        "reviewer_enforce_acknowledgement",
+        "reviewer_calibration_report_sha256",
+    }.intersection(first.version_bundle)
+    async with integration_context.session_factory() as session:
+        await session.execute(
+            delete(OfficialAccountArticleRunModel).where(
+                OfficialAccountArticleRunModel.id == first.id
+            )
+        )
+        await session.commit()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
 async def test_legacy_hard_auditor_rejection_skips_editorial_reviewer_and_preserves_gate(
     integration_context: IntegrationContext,
 ) -> None:
