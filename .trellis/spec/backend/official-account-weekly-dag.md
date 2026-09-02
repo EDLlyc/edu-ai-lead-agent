@@ -141,6 +141,14 @@ canonical three roles with the existing pure selector, writes one content-addres
 and idempotently enqueues its deterministic run. Reconciliation outside the due window is a
 read-only no-op.
 
+Production activation scripts streamed to a host over stdin must prevent child commands from
+consuming the remainder of that script. In particular, every `docker compose exec -T ...` inside
+an SSH heredoc redirects stdin from `/dev/null` (or the activation is installed and executed as a
+root-owned file). Activation is not complete merely because migration succeeded: the gate must
+also prove every intended application service is running on the candidate image, has restart
+count zero, the API is healthy, the scheduler logged `due=false` before the minimum Monday, and
+weekly/draft rows plus the shared output volume remain empty.
+
 | Production key | Contract |
 |---|---|
 | `OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED` | Production-only explicit acknowledgement; default `false` |
@@ -321,6 +329,7 @@ edge JSON column; graph edges remain code-owned.
 | Production CLI attempts direct enqueue | Reject | No run/provider call |
 | Frozen material, score, source, article, or media lineage drifts | `invalid_checkpoint` or terminal validation failure | No downstream draft |
 | Prepared child/batch has private URL, symlink, extra file, bad hash/image/HTML, or wrong role order | Fail closed | No aggregate/provider call |
+| SSH-heredoc activation runs `docker compose exec` without isolated stdin | Reject the release procedure; migration success is insufficient | Do not report activation complete |
 | Populated `0040` downgrade | `RuntimeError` | No table drop |
 
 Infrastructure exceptions and raw provider errors must not escape into persisted error text or
