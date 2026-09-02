@@ -406,6 +406,11 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
   query/grade authoring bytes without the ignored private visual manifest; the existing
   `authoring --check` remains the explicit local full-manifest regeneration check. Keeping these as
   separate Make recipe lines makes the first nonzero result stop the target.
+- Explicit Seed V2 live commands and V2/V3 paired reports remain outside `eval-check`. The paired
+  comparator is provider-free tested with synthetic run artifacts, but accepted local live evidence
+  requires two complete 124-query Alibaba runs in the exact V2-baseline/V3-candidate direction,
+  identical data/model identities, distinct run refs and honest disclosure that the two unpersisted
+  query-vector byte sequences were not proven identical.
 - The Make target propagates any child failure and remains provider-free: no network, API key,
   business-data write, live worker, or production service is permitted.
 - Topic-rerank fixtures use the current qualified-authoritative priority-rule identity. A fixture

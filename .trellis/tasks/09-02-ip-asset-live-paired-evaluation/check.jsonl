@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "Verify strict Seed V2 identity, honest metric/no-answer semantics, private-data exclusion, safe live evidence and unchanged production behavior."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify scoped tests and static checks, provider-free CI, command failure propagation and isolation from unrelated dirty changes."}
+{"file": ".trellis/tasks/09-02-ip-asset-live-paired-evaluation/research/current-live-eval-seams.md", "reason": "Audit the implementation against the confirmed preflight/database/provider facts and the exact owned-file boundary."}

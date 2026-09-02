@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from evals.ip_asset_retrieval_grounded.authoring import (
@@ -11,6 +12,7 @@ from evals.ip_asset_retrieval_grounded.authoring import (
     build_v2_robustness_pairs,
     build_v2_seed_records,
 )
+from evals.ip_asset_retrieval_grounded.comparison_v2 import compare_runs_v2
 from evals.ip_asset_retrieval_grounded.dataset import (
     DEFAULT_ASSETS_PATH,
     DEFAULT_QUERIES_PATH,
@@ -37,9 +39,11 @@ from evals.ip_asset_retrieval_grounded.models import (
 from evals.ip_asset_retrieval_grounded.reporting import (
     build_seed_v2_report,
     canonical_json,
+    render_comparison_v2_markdown,
     render_seed_v2_markdown,
     render_selective_markdown,
 )
+from evals.ip_asset_retrieval_grounded.runner import main as runner_main
 from evals.ip_asset_retrieval_grounded.selective import build_selective_report
 
 FEATURE_ROOT = Path(__file__).resolve().parents[2] / "evals/ip_asset_retrieval_grounded"
@@ -268,7 +272,163 @@ def test_safe_manifest_hashes_artifacts_and_rejects_prohibited_fields(tmp_path: 
         )
 
 
-def _run(bundle: GroundedDatasetBundleV2) -> GroundedRetrievalRunV2:
+def test_seed_v2_real_run_pairing_reports_slices_and_reproducible_intervals() -> None:
+    bundle = load_grounded_bundle_v2()
+    baseline = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v2",
+        reverse=True,
+        execution_mode="alibaba",
+        run_ref="igr_11111111111111111111",
+    )
+    candidate = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v3-rrf",
+        execution_mode="alibaba",
+        run_ref="igr_22222222222222222222",
+    )
+
+    first = compare_runs_v2(bundle, baseline, candidate, bootstrap_samples=1_000, bootstrap_seed=7)
+    second = compare_runs_v2(bundle, baseline, candidate, bootstrap_samples=1_000, bootstrap_seed=7)
+
+    assert first == second
+    assert first["schema_version"] == "ip-asset-grounded-comparison-v2"
+    assert first["truthfulness"] == {
+        "human_gold": False,
+        "human_agreement_available": False,
+        "online_user_effectiveness": False,
+        "production_threshold_activated": False,
+        "live_retrieval_measured": True,
+        "real_embedding_provider_used": True,
+        "same_embedding_bytes_proven": False,
+    }
+    assert first["baseline"]["overall"]["aggregate"]["query_count"] == 124
+    assert first["baseline"]["overall"]["aggregate"]["answerable_query_count"] == 94
+    assert first["baseline"]["overall"]["aggregate"]["no_answer_query_count"] == 30
+    assert first["paired_bootstrap"]["overall"]["mrr_at_5"]["query_count"] == 94
+    assert first["paired_bootstrap"]["dev"]["mrr_at_5"]["query_count"] == 76
+    assert first["paired_bootstrap"]["holdout"]["mrr_at_5"]["query_count"] == 18
+    assert first["paired_bootstrap"]["overall"]["mrr_at_5"]["delta"] > 0
+    assert first["paired_outcomes"]["overall"]["mrr_at_5"]["wins"] > 0
+    assert first["diagnostics"]["baseline"]["overall"] == {
+        "query_count": 124,
+        "successful_query_count": 124,
+        "execution_coverage": 1.0,
+        "modes": {"semantic": 124},
+        "degraded_reasons": {},
+        "failure_codes": {},
+    }
+    markdown = render_comparison_v2_markdown(first)
+    assert "248" in markdown
+    assert "30 no-answer" in markdown
+    assert "not human Gold" in markdown
+    assert "小赛和赛先生在空间站" not in markdown
+    assert "小赛和赛先生在空间站" not in canonical_json(first)
+
+
+def test_seed_v2_pairing_rejects_version_provider_and_identity_drift() -> None:
+    bundle = load_grounded_bundle_v2()
+    baseline = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v2",
+        execution_mode="alibaba",
+        run_ref="igr_11111111111111111111",
+    )
+    candidate = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v3-rrf",
+        execution_mode="alibaba",
+        run_ref="igr_22222222222222222222",
+    )
+
+    with pytest.raises(ValueError, match="baseline must use"):
+        compare_runs_v2(
+            bundle,
+            baseline.model_copy(update={"search_version": "ip-asset-hybrid-v3-rrf"}),
+            candidate,
+            bootstrap_samples=1_000,
+        )
+    with pytest.raises(ValueError, match="requires real Alibaba"):
+        compare_runs_v2(
+            bundle,
+            baseline.model_copy(
+                update={"embedding_execution_mode": "fake", "provider_request_count": 0}
+            ),
+            candidate,
+            bootstrap_samples=1_000,
+        )
+    with pytest.raises(ValueError, match="one embedding identity"):
+        compare_runs_v2(
+            bundle,
+            baseline,
+            candidate.model_copy(update={"embedding_model": "different-model"}),
+            bootstrap_samples=1_000,
+        )
+    with pytest.raises(ValueError, match="distinct run refs"):
+        compare_runs_v2(
+            bundle,
+            baseline,
+            candidate.model_copy(update={"run_ref": baseline.run_ref}),
+            bootstrap_samples=1_000,
+        )
+
+
+def test_seed_v2_pairing_cli_writes_safe_local_reports(tmp_path: Path) -> None:
+    bundle = load_grounded_bundle_v2()
+    baseline = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v2",
+        execution_mode="alibaba",
+        run_ref="igr_11111111111111111111",
+    )
+    candidate = _run(
+        bundle,
+        search_version="ip-asset-hybrid-v3-rrf",
+        execution_mode="alibaba",
+        run_ref="igr_22222222222222222222",
+    )
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    output_json = tmp_path / "comparison.json"
+    output_markdown = tmp_path / "comparison.md"
+    baseline_path.write_text(canonical_json(baseline.model_dump(mode="json")), encoding="utf-8")
+    candidate_path.write_text(canonical_json(candidate.model_dump(mode="json")), encoding="utf-8")
+
+    result = runner_main(
+        [
+            "compare-runs-v2",
+            "--baseline",
+            str(baseline_path),
+            "--candidate",
+            str(candidate_path),
+            "--output-json",
+            str(output_json),
+            "--output-markdown",
+            str(output_markdown),
+            "--bootstrap-samples",
+            "1000",
+            "--bootstrap-seed",
+            "7",
+        ]
+    )
+
+    assert result == 0
+    assert json.loads(output_json.read_text(encoding="utf-8"))["schema_version"] == (
+        "ip-asset-grounded-comparison-v2"
+    )
+    assert output_markdown.read_text(encoding="utf-8").startswith(
+        "# IP asset grounded retrieval Seed V2 paired comparison"
+    )
+
+
+def _run(
+    bundle: GroundedDatasetBundleV2,
+    *,
+    search_version: str = "ip-asset-hybrid-v3-rrf",
+    reverse: bool = False,
+    execution_mode: Literal["fake", "alibaba"] = "fake",
+    run_ref: str = "igr_0123456789abcdef0123",
+) -> GroundedRetrievalRunV2:
     grades_by_query = {
         matrix.query_ref: {grade.catalog_ref: grade.grade for grade in matrix.grades}
         for matrix in bundle.seed
@@ -288,7 +448,9 @@ def _run(bundle: GroundedDatasetBundleV2) -> GroundedRetrievalRunV2:
                 evidence_lane_count=1,
             )
         else:
-            selected = tuple(sorted(grades, key=lambda ref: (grades[ref], ref), reverse=True)[:8])
+            selected = tuple(
+                sorted(grades, key=lambda ref: (grades[ref], ref), reverse=not reverse)[:8]
+            )
             evidence = GroundedDecisionEvidence(
                 top_semantic_similarity=0.85,
                 semantic_margin=0.10,
@@ -308,11 +470,11 @@ def _run(bundle: GroundedDatasetBundleV2) -> GroundedRetrievalRunV2:
         )
     return GroundedRetrievalRunV2(
         schema_version="ip-asset-grounded-run-v2",
-        run_ref="igr_0123456789abcdef0123",
+        run_ref=run_ref,
         created_at="2026-09-02T00:00:00+00:00",
         maturity="seed",
-        search_version="ip-asset-hybrid-v3-rrf",
-        embedding_execution_mode="fake",
+        search_version=search_version,
+        embedding_execution_mode=execution_mode,
         embedding_provider="alibaba-model-studio",
         embedding_model="qwen3-vl-embedding",
         embedding_dimensions=2_048,
@@ -323,7 +485,7 @@ def _run(bundle: GroundedDatasetBundleV2) -> GroundedRetrievalRunV2:
         robustness_dataset_sha256=bundle.robustness_sha256,
         review_ledger_sha256=bundle.review_sha256,
         duration_ms=1_000,
-        provider_request_count=0,
+        provider_request_count=124 if execution_mode == "alibaba" else 0,
         input_token_count=None,
         estimated_cost_usd=None,
         observations=tuple(observations),

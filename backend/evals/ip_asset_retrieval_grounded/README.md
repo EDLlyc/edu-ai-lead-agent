@@ -83,3 +83,35 @@ live preflight 后才运行。已有安全 run 可通过 `report-selective-v2` �
 只用于诊断，不会改变生产检索。`write-safe-manifest-v2` 保存 run 身份、数据/产物 hash、聚合指标
 和成本/耗时计数；验证时会重建 envelope 并逐项绑定 run/report bytes，不保存查询原文、路径、
 向量、prompt、provider body 或用户身份。
+
+真实 Seed V2 的 V2/V3 对照使用两个独立 provider run，并明确保存在本地忽略目录：
+
+```bash
+make ip-asset-grounded-eval-live-v2 \
+  SEARCH_VERSION=ip-asset-hybrid-v2 OUTPUT=output/evals/ip-v2-v3/v2-run.json
+make ip-asset-grounded-eval-live-v2 \
+  SEARCH_VERSION=ip-asset-hybrid-v3-rrf OUTPUT=output/evals/ip-v2-v3/v3-run.json
+make ip-asset-grounded-eval-compare-v2 \
+  BASELINE=output/evals/ip-v2-v3/v2-run.json \
+  CANDIDATE=output/evals/ip-v2-v3/v3-run.json \
+  OUTPUT_JSON=output/evals/ip-v2-v3/paired-report.json \
+  OUTPUT_MARKDOWN=output/evals/ip-v2-v3/paired-report.md
+make ip-asset-grounded-eval-report-selective-v2 \
+  RUN=output/evals/ip-v2-v3/v2-run.json \
+  OUTPUT_JSON=output/evals/ip-v2-v3/v2-selective.json \
+  OUTPUT_MARKDOWN=output/evals/ip-v2-v3/v2-selective.md
+make ip-asset-grounded-eval-safe-manifest-v2 \
+  RUN=output/evals/ip-v2-v3/v2-run.json \
+  REPORT_JSON=output/evals/ip-v2-v3/v2-selective.json \
+  OUTPUT=output/evals/ip-v2-v3/v2-manifest.json
+make ip-asset-grounded-eval-safe-manifest-v2-check \
+  MANIFEST=output/evals/ip-v2-v3/v2-manifest.json \
+  RUN=output/evals/ip-v2-v3/v2-run.json \
+  REPORT_JSON=output/evals/ip-v2-v3/v2-selective.json
+```
+
+`compare-runs-v2` 只接受完整的 124-query Alibaba V2 baseline 与 V3 candidate。它要求全部
+数据 hash 和 embedding identity 一致，分别报告 overall/dev/holdout、category/challenge、
+execution/degraded/no-answer 诊断，并对四项 answerable 排名指标给出固定 10,000 次 bootstrap 的
+V3-V2 95% CI。两次请求没有保存查询向量，因此报告会明确声明“模型身份相同，但不能证明两次
+embedding bytes 完全一致”。live 产物不进入 canonical，也不接入 `make eval-check`。

@@ -651,6 +651,15 @@ make ip-asset-grounded-eval-compare \
   BASELINE=/tmp/ip-grounded-v2.json CANDIDATE=/tmp/ip-grounded-v3.json \
   OUTPUT_JSON=/tmp/ip-grounded-comparison.json \
   OUTPUT_MARKDOWN=/tmp/ip-grounded-comparison.md
+make ip-asset-grounded-eval-live-v2 \
+  SEARCH_VERSION=ip-asset-hybrid-v2 OUTPUT=output/evals/ip-v2-v3/v2-run.json
+make ip-asset-grounded-eval-live-v2 \
+  SEARCH_VERSION=ip-asset-hybrid-v3-rrf OUTPUT=output/evals/ip-v2-v3/v3-run.json
+make ip-asset-grounded-eval-compare-v2 \
+  BASELINE=output/evals/ip-v2-v3/v2-run.json \
+  CANDIDATE=output/evals/ip-v2-v3/v3-run.json \
+  OUTPUT_JSON=output/evals/ip-v2-v3/paired-report.json \
+  OUTPUT_MARKDOWN=output/evals/ip-v2-v3/paired-report.md
 PYTHONPATH=backend conda run --name edu-ai \
   python -m evals.ip_asset_retrieval_grounded.authoring --check-frozen-v1
 PYTHONPATH=backend conda run --name edu-ai \
@@ -711,6 +720,17 @@ PYTHONPATH=backend conda run --name edu-ai \
   No-answer cases report correct abstention and false-positive rate separately and never receive an
   artificial 1.0 in ranking macros. Reports aggregate overall/category/split/mode/degraded/failure
   and use a fixed-seed, 10,000-resample query-level paired bootstrap for V3-minus-V2 95% intervals.
+- Seed V2 V2/V3 comparison accepts only two complete real Alibaba runs in the exact baseline
+  `ip-asset-hybrid-v2` / candidate `ip-asset-hybrid-v3-rrf` direction. Each run must record 124
+  provider requests, use a distinct run ref, cover the same ordered query set and bind identical
+  asset/query/seed/robustness/review hashes plus provider/model/dimensions/input-policy identity.
+  It reports overall/dev/holdout policy-free ranking aggregates, category/challenge slices,
+  execution/degraded diagnostics, win/tie/loss counts and fixed 10,000-resample paired confidence
+  intervals. The 30 no-answer queries remain separate from ranking macros and intervals.
+- A real V2/V3 comparison uses two external embedding executions. Matching model/data identity does
+  not prove that the two unpersisted query-vector byte sequences were identical. The JSON/Markdown
+  truthfulness block must disclose that limitation and must not claim human Gold, online uplift or
+  an activated production threshold.
 - Seed V2 selective evaluation scans a fixed bounded policy grid on dev only, fixes one candidate,
   and then reports holdout once. It reports no-answer false-positive/correct-abstention,
   answerable false-abstention, coverage/risk, Recall@3/5, MRR@5, nDCG@5, category/challenge slices,
@@ -750,6 +770,7 @@ PYTHONPATH=backend conda run --name edu-ai \
 | A selective rule is chosen using holdout | Invalid methodology; select on dev and report holdout only after fixing the rule |
 | Safe manifest artifact bytes drift or a prohibited field appears | Validation fails; do not preserve or compare the manifest as evidence |
 | V2/V3 run dataset hashes or embedding identities differ | Paired comparison refuses the inputs |
+| Seed V2 baseline/candidate direction is reversed, either run is fake, a run ref is reused, or either provider request count is not 124 | V2 paired comparison refuses the inputs |
 | No-answer run returns assets | Count a false positive; do not fold it into Recall/MRR |
 | Live provider degrades to metadata | Preserve `degraded_metadata` plus the closed reason and score that returned ranking honestly |
 | Evaluation completes | Business search aggregate count remains unchanged |
@@ -759,6 +780,9 @@ PYTHONPATH=backend conda run --name edu-ai \
 
 - Good: the 41-item preflight passes, real Alibaba query embeddings run V2 and V3 over the same
   corpus/seed identity, and a paired report discloses seed maturity plus confidence intervals.
+- Good Seed V2 pair: two distinct 124-query Alibaba runs retain one data/model identity, V3-minus-V2
+  metrics include overall/dev/holdout intervals, and ignored local artifacts disclose that exact
+  embedding bytes were not persisted or proven identical.
 - Base: provider credentials/database are absent; the provider-free dataset/canonical gate still
   passes, while live preflight fails explicitly without manufacturing a ranking.
 - Good Seed V2: all 41 images are re-reviewed without opening live ranks/scores, the additive
@@ -767,6 +791,8 @@ PYTHONPATH=backend conda run --name edu-ai \
 - Bad: call the evaluator from a website, persist reviewer identities, call seed labels Gold,
   tune labels from current ranks, compare different embedding executions, include no-answer as
   perfect Recall, or let 100 evaluation queries increase business search counters.
+- Bad Seed V2 pair: compare fake with Alibaba, accept a V3 baseline/V2 candidate, include no-answer
+  rows in ranking bootstrap, or commit one volatile provider run as checked canonical truth.
 
 ### 6. Tests Required
 
@@ -777,6 +803,10 @@ PYTHONPATH=backend conda run --name edu-ai \
   5,084 `codex_seed_v2` grades, 24 robustness pairs and a complete change ledger; reject inherited
   query drift; prove dev-only selection plus holdout metrics; and verify safe manifest artifact
   hashes and prohibited-field rejection.
+- Seed V2 paired tests require the exact version direction, real execution mode, distinct run refs,
+  124 request counts, complete shared identities, overall/dev/holdout comparable counts of
+  94/76/18 answerable queries, no-answer exclusion, deterministic bootstrap, category/challenge
+  slices, execution diagnostics, safe JSON/Markdown and CLI output creation.
 - Frozen V1 CLI tests pass with a nonexistent private-manifest argument, reject drift in each of the
   asset/query/seed artifacts, and keep full `authoring --check` as the manifest-dependent path.
 - Metric tests cover Recall@3/5, MRR@5, graded nDCG@5, separate no-answer behavior, coverage,
@@ -812,6 +842,22 @@ result = await service.search_text_for_evaluation(
 )
 observation = safe_catalog_refs(result)
 metrics = score_observation(observation, independently_authored_codex_seed)
+```
+
+#### Wrong Seed V2 pairing
+
+```python
+comparison = compare_runs_v2(bundle, v3_run, fake_v2_run)
+```
+
+#### Correct Seed V2 pairing
+
+```python
+comparison = compare_runs_v2(
+    bundle,
+    complete_real_v2_baseline,
+    complete_real_v3_candidate,
+)
 ```
 
 ## Design decision: dynamic partial index remains separate

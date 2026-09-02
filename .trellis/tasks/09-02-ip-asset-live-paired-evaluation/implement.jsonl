@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/ip-asset-hub.md", "reason": "Implement the existing Grounded 41-asset, Seed V2, live-run, metric, privacy and no-business-telemetry contracts without adding a web evaluation surface."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Preserve provider-free eval-check, canonical drift, test, static-check and dirty-worktree quality boundaries."}
+{"file": ".trellis/tasks/09-02-ip-asset-live-paired-evaluation/research/current-live-eval-seams.md", "reason": "Use the verified local prerequisites and extend the existing V2 seams without changing V1 or production ranking behavior."}

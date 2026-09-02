@@ -10,7 +10,7 @@ from .dataset import GroundedDatasetBundleV2
 from .metrics import paired_bootstrap_interval
 from .models import GroundedQueryObservationV2, GroundedRetrievalRunV2
 
-_RANKING_METRICS = ("recall_at_3", "recall_at_5", "mrr_at_5", "ndcg_at_5")
+RANKING_METRICS = ("recall_at_3", "recall_at_5", "mrr_at_5", "ndcg_at_5")
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +102,7 @@ def build_selective_report(
     bootstrap_samples: int = 10_000,
     bootstrap_seed: int = 20_260_902,
 ) -> dict[str, Any]:
-    _validate_run_identity(bundle, run)
+    validate_run_identity_v2(bundle, run)
     baseline = SelectivePolicy()
     curve = tuple(
         score_policy(bundle, run, policy, split="dev", include_bad_cases=False)
@@ -132,7 +132,7 @@ def build_selective_report(
             "live_retrieval_measured": True,
             "real_embedding_provider_used": run.embedding_execution_mode == "alibaba",
         },
-        "run": _run_identity(run),
+        "run": run_identity_v2(run),
         "selection": {
             "split": "dev",
             "criterion": (
@@ -186,7 +186,7 @@ def score_policy(
     run: GroundedRetrievalRunV2,
     policy: SelectivePolicy,
     *,
-    split: Literal["dev", "holdout"],
+    split: Literal["dev", "holdout"] | None,
     include_bad_cases: bool = True,
 ) -> dict[str, Any]:
     query_by_ref = {query.query_ref: query for query in bundle.queries}
@@ -197,7 +197,7 @@ def score_policy(
     observations = tuple(
         observation
         for observation in run.observations
-        if query_by_ref[observation.query_ref].split == split
+        if split is None or query_by_ref[observation.query_ref].split == split
     )
     rows: list[dict[str, Any]] = []
     for observation in observations:
@@ -205,7 +205,7 @@ def score_policy(
         grades = grades_by_ref[observation.query_ref]
         failed = observation.failure_code is not None
         answers = policy.answers(observation) if not failed else False
-        ranking = _ranking_metrics(observation.selected_catalog_refs, grades)
+        ranking = ranking_metrics(observation.selected_catalog_refs, grades)
         rows.append(
             {
                 "query_ref": query.query_ref,
@@ -255,7 +255,7 @@ def score_policy(
         if false_positive_rate is not None and false_abstention_rate is not None
         else None
     )
-    for metric in _RANKING_METRICS:
+    for metric in RANKING_METRICS:
         aggregate[f"unconditional_macro_{metric}"] = _mean(
             row["ranking"][metric] if row["answers"] else 0.0 for row in answerable
         )
@@ -277,10 +277,10 @@ def score_policy(
     return result
 
 
-def _ranking_metrics(selected: tuple[str, ...], grades: dict[str, int]) -> dict[str, float]:
+def ranking_metrics(selected: tuple[str, ...], grades: dict[str, int]) -> dict[str, float]:
     relevant = {ref for ref, grade in grades.items() if grade >= 2}
     if not relevant:
-        return {metric: 0.0 for metric in _RANKING_METRICS}
+        return {metric: 0.0 for metric in RANKING_METRICS}
     selected_at_3 = selected[:3]
     selected_at_5 = selected[:5]
     first_relevant = next(
@@ -335,7 +335,7 @@ def _slice_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "error_count": sum(_is_bad_case(row) for row in rows),
     }
-    for metric in _RANKING_METRICS:
+    for metric in RANKING_METRICS:
         summary[f"unconditional_macro_{metric}"] = _mean(
             row["ranking"][metric] if row["answers"] else 0.0 for row in answerable
         )
@@ -437,13 +437,13 @@ def _bootstrap_policy_delta(
         "decision_utility": [],
         "no_answer_correct_abstention": [],
         "answerable_answer_rate": [],
-        **{metric: [] for metric in _RANKING_METRICS},
+        **{metric: [] for metric in RANKING_METRICS},
     }
     for observation in run.observations:
         query = query_by_ref[observation.query_ref]
         if query.split != split or observation.failure_code is not None:
             continue
-        ranking = _ranking_metrics(
+        ranking = ranking_metrics(
             observation.selected_catalog_refs,
             grades_by_ref[observation.query_ref],
         )
@@ -461,7 +461,7 @@ def _bootstrap_policy_delta(
                 float(candidate_answers and ranking["mrr_at_5"] > 0),
             )
         )
-        for metric in _RANKING_METRICS:
+        for metric in RANKING_METRICS:
             pairs[metric].append(
                 (
                     ranking[metric] if baseline_answers else 0.0,
@@ -495,7 +495,7 @@ def _curve_item(summary: dict[str, Any]) -> dict[str, Any]:
         "answerable_false_abstention_rate": aggregate["answerable_false_abstention_rate"],
         "balanced_abstention_error": aggregate["balanced_abstention_error"],
     }
-    for metric in _RANKING_METRICS:
+    for metric in RANKING_METRICS:
         item[f"unconditional_macro_{metric}"] = aggregate[f"unconditional_macro_{metric}"]
         item[f"retained_macro_{metric}"] = aggregate[f"retained_macro_{metric}"]
     return item
@@ -505,7 +505,7 @@ def _policy_dict(policy: SelectivePolicy) -> dict[str, Any]:
     return {"policy_ref": policy.policy_ref, **asdict(policy)}
 
 
-def _run_identity(run: GroundedRetrievalRunV2) -> dict[str, Any]:
+def run_identity_v2(run: GroundedRetrievalRunV2) -> dict[str, Any]:
     return {
         "run_ref": run.run_ref,
         "created_at": run.created_at,
@@ -527,7 +527,7 @@ def _run_identity(run: GroundedRetrievalRunV2) -> dict[str, Any]:
     }
 
 
-def _validate_run_identity(
+def validate_run_identity_v2(
     bundle: GroundedDatasetBundleV2,
     run: GroundedRetrievalRunV2,
 ) -> None:

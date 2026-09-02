@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from .authoring import DEFAULT_MANIFEST_PATH, REPO_ROOT
+from .comparison_v2 import compare_runs_v2
 from .dataset import GroundedDatasetError, load_grounded_bundle, load_grounded_bundle_v2
 from .metrics import compare_runs
 from .models import GroundedRetrievalRun, GroundedRetrievalRunV2
@@ -24,6 +25,7 @@ from .reporting import (
     build_seed_v2_report,
     canonical_json,
     render_comparison_markdown,
+    render_comparison_v2_markdown,
     render_run_markdown,
     render_seed_markdown,
     render_seed_v2_markdown,
@@ -56,6 +58,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare.add_argument("--candidate", type=Path, required=True)
     compare.add_argument("--output-json", type=Path, required=True)
     compare.add_argument("--output-markdown", type=Path, required=True)
+    compare_v2 = subparsers.add_parser("compare-runs-v2")
+    compare_v2.add_argument("--baseline", type=Path, required=True)
+    compare_v2.add_argument("--candidate", type=Path, required=True)
+    compare_v2.add_argument("--output-json", type=Path, required=True)
+    compare_v2.add_argument("--output-markdown", type=Path, required=True)
+    compare_v2.add_argument("--bootstrap-samples", type=int, default=10_000)
+    compare_v2.add_argument("--bootstrap-seed", type=int, default=20_260_902)
     run_report = subparsers.add_parser("report-run")
     run_report.add_argument("--run", type=Path, required=True)
     run_report.add_argument("--output-json", type=Path, required=True)
@@ -121,6 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "write-v2-canonical",
             "run-live-v2",
             "report-selective-v2",
+            "compare-runs-v2",
             "write-safe-manifest-v2",
             "validate-safe-manifest-v2",
         }:
@@ -148,6 +158,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                     return 1
                 print("Grounded IP retrieval Seed V2 canonical report matches")
+                return 0
+            if args.command == "compare-runs-v2":
+                baseline_v2 = _load_run_v2(args.baseline)
+                candidate_v2 = _load_run_v2(args.candidate)
+                comparison_v2 = compare_runs_v2(
+                    bundle_v2,
+                    baseline_v2,
+                    candidate_v2,
+                    bootstrap_samples=args.bootstrap_samples,
+                    bootstrap_seed=args.bootstrap_seed,
+                )
+                _write_report_pair(
+                    json_path=args.output_json,
+                    markdown_path=args.output_markdown,
+                    report=comparison_v2,
+                    markdown=render_comparison_v2_markdown(comparison_v2),
+                )
+                print("Grounded IP retrieval Seed V2 paired comparison written")
                 return 0
             if args.command == "run-live-v2":
                 from .live import run_live_grounded_v2

@@ -397,3 +397,98 @@ def render_comparison_markdown(report: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def render_comparison_v2_markdown(report: dict[str, Any]) -> str:
+    provider_requests = (
+        report["baseline_run"]["provider_request_count"]
+        + report["candidate_run"]["provider_request_count"]
+    )
+    lines = [
+        "# IP asset grounded retrieval Seed V2 paired comparison",
+        "",
+        "> This local comparison uses real Alibaba query embeddings over the approved 41-image "
+        "corpus, but relevance labels remain Codex Seed V2, not human Gold. It does not "
+        "measure online effectiveness or activate a production threshold.",
+        "",
+        f"- Baseline: `{report['baseline_search_version']}` / "
+        f"`{report['baseline_run']['run_ref']}`",
+        f"- Candidate: `{report['candidate_search_version']}` / "
+        f"`{report['candidate_run']['run_ref']}`",
+        f"- Embedding: `{report['baseline_run']['embedding_provider']}` / "
+        f"`{report['baseline_run']['embedding_model']}` / "
+        f"`{report['baseline_run']['embedding_input_policy_version']}`",
+        f"- Provider requests: {report['baseline_run']['provider_request_count']} + "
+        f"{report['candidate_run']['provider_request_count']} = "
+        f"{provider_requests}",
+        f"- Bootstrap: {report['paired_bootstrap']['samples']} query-level resamples "
+        f"(seed {report['paired_bootstrap']['seed']})",
+        "",
+        "| Split / metric | Baseline | Candidate | Delta | 95% CI | W/T/L | Queries |",
+        "| --- | ---: | ---: | ---: | --- | --- | ---: |",
+    ]
+    for split in ("overall", "dev", "holdout"):
+        baseline = report["baseline"][split]["aggregate"]
+        candidate = report["candidate"][split]["aggregate"]
+        for metric in ("recall_at_3", "recall_at_5", "mrr_at_5", "ndcg_at_5"):
+            interval = report["paired_bootstrap"][split][metric]
+            outcome = report["paired_outcomes"][split][metric]
+            lines.append(
+                f"| {split} / {metric} | "
+                f"{_rate(baseline[f'unconditional_macro_{metric}'])} | "
+                f"{_rate(candidate[f'unconditional_macro_{metric}'])} | "
+                f"{float(interval['delta']):+.4f} | "
+                f"[{float(interval['ci95_low']):+.4f}, "
+                f"{float(interval['ci95_high']):+.4f}] | "
+                f"{outcome['wins']}/{outcome['ties']}/{outcome['losses']} | "
+                f"{interval['query_count']} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## No-answer diagnostics",
+            "",
+            "The 30 no-answer queries are excluded from ranking macros and paired ranking "
+            "bootstrap intervals. Their returned-result behavior is reported separately.",
+            "",
+            "| Split | Baseline false positive | Candidate false positive |",
+            "| --- | ---: | ---: |",
+        ]
+    )
+    for split in ("overall", "dev", "holdout"):
+        baseline = report["baseline"][split]["aggregate"]
+        candidate = report["candidate"][split]["aggregate"]
+        lines.append(
+            f"| {split} | {_rate(baseline['no_answer_false_positive_rate'])} | "
+            f"{_rate(candidate['no_answer_false_positive_rate'])} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Execution diagnostics",
+            "",
+            "| Run | Coverage | Modes | Degraded reasons | Failures |",
+            "| --- | ---: | --- | --- | --- |",
+        ]
+    )
+    for run_name in ("baseline", "candidate"):
+        diagnostics = report["diagnostics"][run_name]["overall"]
+        modes = json.dumps(diagnostics["modes"], ensure_ascii=False, sort_keys=True)
+        degraded = json.dumps(diagnostics["degraded_reasons"], ensure_ascii=False, sort_keys=True)
+        failures = json.dumps(diagnostics["failure_codes"], ensure_ascii=False, sort_keys=True)
+        lines.append(
+            f"| {run_name} | {_rate(diagnostics['execution_coverage'])} | "
+            f"`{modes}` | `{degraded}` | `{failures}` |"
+        )
+    lines.extend(
+        [
+            "",
+            "V2 and V3 were executed as two separate provider runs. Their provider/model/data "
+            "identities match, but exact query-embedding bytes were neither stored nor proven "
+            "identical. Reports contain only safe catalog/query references and aggregate "
+            "diagnostics—never query text, image paths, vectors, raw scores, provider bodies, "
+            "or user identity.",
+            "",
+        ]
+    )
+    return "\n".join(lines)

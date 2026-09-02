@@ -17,8 +17,11 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	brand-retrieval-eval \
 	digital-ip-eval ip-asset-retrieval-eval visual-retrieval-eval \
 	ip-asset-grounded-eval-check ip-asset-grounded-eval-preflight \
-	ip-asset-grounded-eval-live ip-asset-grounded-eval-report \
-	ip-asset-grounded-eval-compare \
+	ip-asset-grounded-eval-live ip-asset-grounded-eval-live-v2 \
+	ip-asset-grounded-eval-report ip-asset-grounded-eval-report-selective-v2 \
+	ip-asset-grounded-eval-compare ip-asset-grounded-eval-compare-v2 \
+	ip-asset-grounded-eval-safe-manifest-v2 \
+	ip-asset-grounded-eval-safe-manifest-v2-check \
 	image-quality-eval \
 	eval-check \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
@@ -211,12 +214,27 @@ ip-asset-grounded-eval-live:
 		--search-version "$(or $(SEARCH_VERSION),ip-asset-hybrid-v3-rrf)" \
 		--output "$(abspath $(OUTPUT))"
 
+ip-asset-grounded-eval-live-v2:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner run-live-v2 \
+		--search-version "$(or $(SEARCH_VERSION),ip-asset-hybrid-v3-rrf)" \
+		--output "$(abspath $(OUTPUT))"
+
 ip-asset-grounded-eval-report:
 	@test -n "$(RUN)" || (echo "RUN is required" >&2; exit 2)
 	@test -n "$(OUTPUT_JSON)" || (echo "OUTPUT_JSON is required" >&2; exit 2)
 	@test -n "$(OUTPUT_MARKDOWN)" || (echo "OUTPUT_MARKDOWN is required" >&2; exit 2)
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner report-run \
 		--run "$(abspath $(RUN))" --output-json "$(abspath $(OUTPUT_JSON))" \
+		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
+
+ip-asset-grounded-eval-report-selective-v2:
+	@test -n "$(RUN)" || (echo "RUN is required" >&2; exit 2)
+	@test -n "$(OUTPUT_JSON)" || (echo "OUTPUT_JSON is required" >&2; exit 2)
+	@test -n "$(OUTPUT_MARKDOWN)" || (echo "OUTPUT_MARKDOWN is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner \
+		report-selective-v2 --run "$(abspath $(RUN))" \
+		--output-json "$(abspath $(OUTPUT_JSON))" \
 		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
 
 ip-asset-grounded-eval-compare:
@@ -228,6 +246,33 @@ ip-asset-grounded-eval-compare:
 		--baseline "$(abspath $(BASELINE))" --candidate "$(abspath $(CANDIDATE))" \
 		--output-json "$(abspath $(OUTPUT_JSON))" \
 		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
+
+ip-asset-grounded-eval-compare-v2:
+	@test -n "$(BASELINE)" || (echo "BASELINE is required" >&2; exit 2)
+	@test -n "$(CANDIDATE)" || (echo "CANDIDATE is required" >&2; exit 2)
+	@test -n "$(OUTPUT_JSON)" || (echo "OUTPUT_JSON is required" >&2; exit 2)
+	@test -n "$(OUTPUT_MARKDOWN)" || (echo "OUTPUT_MARKDOWN is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner \
+		compare-runs-v2 --baseline "$(abspath $(BASELINE))" \
+		--candidate "$(abspath $(CANDIDATE))" \
+		--output-json "$(abspath $(OUTPUT_JSON))" \
+		--output-markdown "$(abspath $(OUTPUT_MARKDOWN))"
+
+ip-asset-grounded-eval-safe-manifest-v2:
+	@test -n "$(RUN)" || (echo "RUN is required" >&2; exit 2)
+	@test -n "$(REPORT_JSON)" || (echo "REPORT_JSON is required" >&2; exit 2)
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner \
+		write-safe-manifest-v2 --run "$(abspath $(RUN))" \
+		--report-json "$(abspath $(REPORT_JSON))" --output "$(abspath $(OUTPUT))"
+
+ip-asset-grounded-eval-safe-manifest-v2-check:
+	@test -n "$(MANIFEST)" || (echo "MANIFEST is required" >&2; exit 2)
+	@test -n "$(RUN)" || (echo "RUN is required" >&2; exit 2)
+	@test -n "$(REPORT_JSON)" || (echo "REPORT_JSON is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner \
+		validate-safe-manifest-v2 --manifest "$(abspath $(MANIFEST))" \
+		--run "$(abspath $(RUN))" --report-json "$(abspath $(REPORT_JSON))"
 
 visual-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.visual_retrieval.runner --check
