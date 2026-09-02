@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 83
-- **Last Active**: 2026-09-01
+- **Total Sessions**: 84
+- **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1903 | Active |
+| `journal-1.md` | ~1924 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 84 | 2026-09-02 | Grounded IP retrieval evaluation | `4949d49` | `main` |
 | 83 | 2026-09-01 | Complete image evaluation and durable WeChat draft automation | `867ee4c`, `755050b` | `main` |
 | 82 | 2026-09-01 | 公众号周刊 V2 与持久化 DAG | `f79d846`, `f41a032` | `main` |
 | 81 | 2026-09-01 | 品牌语料 Layout-aware 摄取 V4 | `3542e60` | `main` |

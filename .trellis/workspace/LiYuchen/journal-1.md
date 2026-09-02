@@ -1901,3 +1901,24 @@ Committed final-image quality evaluation with 0041, then a default-off durable t
 ### Status
 
 [OK] **Completed**
+
+
+## Session 84: Grounded IP retrieval evaluation
+
+**Date**: 2026-09-02
+**Task**: Grounded IP retrieval evaluation
+**Branch**: `main`
+
+### Summary
+
+Added a backend-only grounded IP asset retrieval Seed Eval V1 with 41 assets, 100 queries, 4,100 Codex seed grades, canonical reporting, live V2/V3 comparison commands, no-telemetry evaluation search boundary, and provider-free quality gates. Verified authoring/canonical checks and 54 focused tests; intentionally added no evaluation page, API route, or database migration.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4949d49` | (see git log) |
+
+### Status
+
+[OK] **Completed**
