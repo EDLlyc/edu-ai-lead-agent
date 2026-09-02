@@ -1963,3 +1963,24 @@ Enabled the acknowledged production WeChat draft client, isolated the runtime ho
 ### Next Steps
 
 - Observe the first eligible weekly aggregate on or after 2026-09-07; it should create three unpublished drafts only.
+
+
+## Session 86: Grounded IP retrieval Seed V2
+
+**Date**: 2026-09-02
+**Task**: Grounded IP retrieval Seed V2
+**Branch**: `main`
+
+### Summary
+
+Added the Codex-reviewed 124-query grounded IP retrieval Seed V2, selective abstention evaluation, safe live-run manifest, reproducible canonicals, privacy validation, tests, and backend spec contracts without enabling production thresholds or calling a live provider.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a325872` | (see git log) |
+
+### Status
+
+[OK] **Completed**
