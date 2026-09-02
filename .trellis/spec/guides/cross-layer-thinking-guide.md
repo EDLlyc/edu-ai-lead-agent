@@ -137,6 +137,31 @@ create one owner for:
 
 Rendering code may format fields, but it must not redefine the payload contract.
 
+### Mistake 6: Updating The Gate Owner But Not Its Runtime Consumers
+
+A validated configuration can still fail at runtime when a downstream adapter, worker, or CLI
+keeps an older copy of the enablement predicate. This is especially dangerous for default-off
+production features: settings and Compose can render successfully while the long-lived process
+starts, exits, and restarts forever.
+
+When changing an environment, capability, or production-acknowledgement rule:
+
+- [ ] Search for every comparison of the old environment/value, not only the settings validator
+- [ ] Trace settings validation through the real process entrypoint to adapter construction
+- [ ] Keep the settings model as the canonical cross-field owner; duplicate downstream checks may
+      only add defense in depth and must express the same accepted states
+- [ ] Add a contract test that constructs the real downstream adapter from the newly accepted
+      settings, with provider transport replaced by a fake
+- [ ] Exercise the production-shaped process or container for at least one bounded idle cycle; a
+      successful Compose render or initial `running` state is not readiness
+
+**Real-world example**: a WeChat draft worker gained a production acknowledgement and passed its
+settings and Compose tests, but the settings-bound HTTP client still required
+`APP_ENV=development`. The container reached `running`, then returned
+`wechat_mp_config_disabled` and restarted every few seconds. Aligning the adapter predicate with
+the canonical settings gate, adding a real production client-construction test, and requiring an
+idle-cycle stability probe closed the gap.
+
 ---
 
 ## Checklist for Cross-Layer Features

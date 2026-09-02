@@ -495,6 +495,26 @@ async def test_response_size_and_settings_are_fail_closed() -> None:
         wechat_mp_app_secret=SecretStr(APP_SECRET),
     )
     assert "wx-contract" not in repr(enabled)
+
+    production = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        app_env="production",
+        database_url=SecretStr("postgresql+asyncpg://app:prod@postgres:5432/app"),
+        governance_checkpoint_database_url=SecretStr("postgresql://app:prod@postgres:5432/app"),
+        minio_access_key=SecretStr("production-access"),
+        minio_secret_key=SecretStr("production-secret"),
+        wechat_mp_enabled=True,
+        wechat_mp_app_id=SecretStr(APP_ID),
+        wechat_mp_app_secret=SecretStr(APP_SECRET),
+        wechat_mp_draft_worker_enabled=True,
+        wechat_mp_draft_production_enabled=True,
+    )
+    production_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    production_adapter = WeChatOfficialAccountHttpClient(production, production_client)
+    await production_adapter.aclose()
+    assert not production_client.is_closed
+    await production_client.aclose()
+
     with pytest.raises(ValidationError, match="requires explicit acknowledgement"):
         Settings(
             _env_file=None,  # type: ignore[call-arg]

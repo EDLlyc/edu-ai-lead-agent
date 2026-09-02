@@ -339,9 +339,12 @@ class WeChatOfficialAccountHttpClient(WeChatOfficialAccountApiClient):
     """Explicit settings-bound client; no default dependency graph constructs it."""
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
+        environment_enabled = settings.app_env == "development" or (
+            settings.app_env == "production" and settings.wechat_mp_draft_production_enabled
+        )
         if (
             not settings.wechat_mp_enabled
-            or settings.app_env != "development"
+            or not environment_enabled
             or settings.wechat_mp_mode != "draft_only"
             or settings.wechat_mp_app_id is None
             or settings.wechat_mp_app_secret is None

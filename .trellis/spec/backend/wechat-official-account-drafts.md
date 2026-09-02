@@ -104,6 +104,12 @@ acknowledgement. The acknowledgement is rejected outside production. Missing, bl
 whitespace-bearing, or control-bearing credentials fail during settings validation. `.env.example` contains empty
 placeholders only; real credentials belong in ignored `.env` or deployment secret storage.
 
+The settings-bound HTTP client must enforce the same environment predicate as `Settings`: direct
+development opt-in, or production opt-in with `WECHAT_MP_DRAFT_PRODUCTION_ENABLED=true`. Do not
+leave an older development-only check in the adapter after adding a production acknowledgement.
+The adapter keeps this check as defense in depth, while the settings model remains the canonical
+owner of the complete cross-field validation.
+
 ### Official HTTP contract
 
 The infrastructure client owns these exact POST requests:
@@ -263,6 +269,10 @@ atomically installs the production acknowledgement, minimum Monday, and worker/a
 - Production tests cover acknowledgement/cutoff cross-validation, historical manual and automatic
   rejection, old-name starvation prevention, scan overflow, the portless optional Compose command,
   read-only inbox/writable artifact mounts, and exclusion from ordinary release service lists.
+- A client-construction contract test must instantiate the real settings-bound HTTP client with
+  production settings and the explicit acknowledgement, using a fake transport and making no
+  request. Settings-only and Compose-only assertions are insufficient because the adapter owns an
+  independent fail-closed environment check.
 - Run focused Ruff, mypy, the adapter tests, V2/weekly/WeCom regressions, task validation, and
   `git diff --check`. Tests never use real credentials or a real network transport.
 
