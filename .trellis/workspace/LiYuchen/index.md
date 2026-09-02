@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 90
+- **Total Sessions**: 91
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~94 | Active |
+| `journal-2.md` | ~115 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 91 | 2026-09-02 | Governed Reviewer paired evidence harness | `c9db9a6` | `main` |
 | 90 | 2026-09-02 | Governed Reviewer enforce repair | `b8835d4` | `main` |
 | 89 | 2026-09-02 | 真实 IP 检索 V2/V3 成对评测 | `82b488a`, `c4fb010` | `main` |
 | 88 | 2026-09-02 | Deploy weekly WeChat draft automation | `40e4dec0ae82569fc798355d4515ab0009697c6f`, `a4a3c00` | `main` |

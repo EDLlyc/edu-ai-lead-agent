@@ -92,3 +92,24 @@ Implemented and independently verified a default-off calibrated Reviewer enforce
 ### Status
 
 [OK] **Completed**
+
+
+## Session 91: Governed Reviewer paired evidence harness
+
+**Date**: 2026-09-02
+**Task**: Governed Reviewer paired evidence harness
+**Branch**: `main`
+
+### Summary
+
+Added and independently audited a provider-free paired Reviewer A/B evidence harness with frozen manifests and budgets, explicit local authorization, zero-retry attempt ledgers, HMAC-blinded human review, adjudication-first metrics, case-clustered confidence intervals, immutable evidence hashes, privacy-safe atomic files, and fail-closed no-uplift reporting. No provider, model, credential, or network call was made.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c9db9a6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
