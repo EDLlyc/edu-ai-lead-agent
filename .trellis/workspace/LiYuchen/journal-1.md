@@ -1922,3 +1922,44 @@ Added a backend-only grounded IP asset retrieval Seed Eval V1 with 41 assets, 10
 ### Status
 
 [OK] **Completed**
+
+
+## Session 85: Deploy WeChat draft worker to production
+
+**Date**: 2026-09-02
+**Task**: Deploy WeChat draft worker to production
+**Branch**: `main`
+
+### Summary
+
+Enabled the acknowledged production WeChat draft client, isolated the runtime hotfix from unrelated IP work, activated the draft worker with a 2026-09-07 cutoff, and verified zero unintended draft or publish effects.
+
+### Main Changes
+
+- Fixed the production client gate and added a regression test.
+- Built and deployed a reviewed Codeup release-ref image containing only the WeChat client runtime change.
+- Preserved the existing content and WeCom delivery paths; no historical backfill, draft creation, publish, or mass-send was triggered.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61b7c44a142f18346aea1875fc0f1e85f52dcca4` | (see git log) |
+| `4fbab0172d6a1aafff91e53dede4e4250a35aee2` | (see git log) |
+| `267ffddc3c13ac7c3c874e6902b5c09bdeaa0e1e` | (see git log) |
+| `5d73942ab52a725140dabf39773356049c8d0959` | (see git log) |
+| `6674600357b1c59f06ac253166e69f7512455664` | (see git log) |
+
+### Testing
+
+- [OK] 66 focused WeChat tests passed; 54 release contract tests passed.
+- [OK] Production access-token preflight passed; all core services and the draft worker were stable with restart count 0.
+- [OK] Post-deploy draft audit counts remained 0/0/0 and failed worker log lines remained 0.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Observe the first eligible weekly aggregate on or after 2026-09-07; it should create three unpublished drafts only.

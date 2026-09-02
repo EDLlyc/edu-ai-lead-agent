@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 84
+- **Total Sessions**: 85
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1924 | Active |
+| `journal-1.md` | ~1965 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 85 | 2026-09-02 | Deploy WeChat draft worker to production | `61b7c44a142f18346aea1875fc0f1e85f52dcca4`, `4fbab0172d6a1aafff91e53dede4e4250a35aee2`, `267ffddc3c13ac7c3c874e6902b5c09bdeaa0e1e`, `5d73942ab52a725140dabf39773356049c8d0959`, `6674600357b1c59f06ac253166e69f7512455664` | `main` |
 | 84 | 2026-09-02 | Grounded IP retrieval evaluation | `4949d49` | `main` |
 | 83 | 2026-09-01 | Complete image evaluation and durable WeChat draft automation | `867ee4c`, `755050b` | `main` |
 | 82 | 2026-09-01 | 公众号周刊 V2 与持久化 DAG | `f79d846`, `f41a032` | `main` |
