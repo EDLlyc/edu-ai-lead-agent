@@ -34,7 +34,7 @@ REQUIRED_SOURCE = {
     "backend/pyproject.toml",
     "backend/app/wechat_official_account_draft_main.py",
     "backend/app/infrastructure/wechat_official_account/artifacts.py",
-    "backend/alembic/versions/20260901_0042_wechat_official_account_draft_jobs.py",
+    "backend/alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
     "deploy/release/migration-compatibility.json",
 }
 MAX_MEMBER_BYTES = 8 * 1024 * 1024 * 1024

@@ -32,7 +32,7 @@ build_fixture_stage() {
     compose.yaml backend/alembic.ini backend/pyproject.toml \
     backend/app/wechat_official_account_draft_main.py \
     backend/app/infrastructure/wechat_official_account/artifacts.py \
-    backend/alembic/versions/20260901_0042_wechat_official_account_draft_jobs.py \
+    backend/alembic/versions/20260901_0042_wechat_mp_draft_jobs.py \
     deploy/release/migration-compatibility.json; do
     mkdir -p "$source_root/$(dirname -- "$path")"
     printf 'fixture:%s\n' "$path" >"$source_root/$path"
