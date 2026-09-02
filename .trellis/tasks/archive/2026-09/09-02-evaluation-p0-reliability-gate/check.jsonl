@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"核验统一 eval-check、Make 失败传播和 CI 合规"}
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"核验 Seed V2 三项 provider-free 检查且无 live/provider 副作用"}
