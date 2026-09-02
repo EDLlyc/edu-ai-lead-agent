@@ -166,7 +166,7 @@ enable_draft_flags() {
 safe_job_counts() {
   compose exec -T postgres sh -c '
     psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
-      "SELECT (SELECT count(*) FROM wechat_official_account_draft_jobs)::text || chr(58) || (SELECT count(*) FROM wechat_official_account_draft_job_items)::text || chr(58) || (SELECT count(*) FROM wechat_official_account_draft_attempts)::text"'
+      "SELECT (SELECT count(*) FROM wechat_mp_draft_jobs)::text || chr(58) || (SELECT count(*) FROM wechat_mp_draft_items)::text || chr(58) || (SELECT count(*) FROM wechat_mp_draft_attempts)::text"'
 }
 
 verify_core() {

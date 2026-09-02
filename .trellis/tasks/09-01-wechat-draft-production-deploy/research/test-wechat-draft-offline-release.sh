@@ -180,6 +180,7 @@ PY
   require_text "$OPERATOR" 'bound release image is not an immutable digest'
   require_text "$OPERATOR" 'previous application services restored and verified'
   require_text "$OPERATOR" 'ordinary application services did not become ready within the bounded window'
+  require_text "$OPERATOR" 'public.wechat_mp_draft_jobs'
   require_text "$OPERATOR" '--no-build --no-deps wechat-official-account-draft-worker'
   reject_text "$OPERATOR" 'freepublish'
   reject_text "$OPERATOR" 'masssend'
@@ -193,10 +194,13 @@ PY
   require_text "$CONTINUATION" 'provider_writes=0'
   require_text "$CONTINUATION" 'continuation already has an attempt marker'
   require_text "$CONTINUATION" 'draft worker did not become ready within the bounded window'
+  require_text "$CONTINUATION" 'FROM wechat_mp_draft_jobs'
   require_text "$CONTINUATION" '--no-build --no-deps wechat-official-account-draft-worker'
   reject_text "$CONTINUATION" 'backend-migrate'
   reject_text "$CONTINUATION" 'freepublish'
   reject_text "$CONTINUATION" 'masssend'
+  reject_text "$OPERATOR" 'wechat_official_account_draft_jobs'
+  reject_text "$CONTINUATION" 'wechat_official_account_draft_jobs'
 }
 
 baseline_source_fingerprint() {

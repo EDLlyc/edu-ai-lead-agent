@@ -421,12 +421,12 @@ enable_draft_flags() {
 safe_job_counts() {
   compose exec -T postgres sh -c '
     table=$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
-      "SELECT to_regclass('"'"'public.wechat_official_account_draft_jobs'"'"')")
+      "SELECT to_regclass('"'"'public.wechat_mp_draft_jobs'"'"')")
     if [ -z "$table" ]; then
       printf "0:0:0\n"
     else
       psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc \
-        "SELECT (SELECT count(*) FROM wechat_official_account_draft_jobs)::text || '"'"':'"'"' || (SELECT count(*) FROM wechat_official_account_draft_job_items)::text || '"'"':'"'"' || (SELECT count(*) FROM wechat_official_account_draft_attempts)::text"
+        "SELECT (SELECT count(*) FROM wechat_mp_draft_jobs)::text || '"'"':'"'"' || (SELECT count(*) FROM wechat_mp_draft_items)::text || '"'"':'"'"' || (SELECT count(*) FROM wechat_mp_draft_attempts)::text"
     fi'
 }
 
