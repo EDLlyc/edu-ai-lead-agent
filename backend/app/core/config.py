@@ -1,3 +1,4 @@
+from datetime import date
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -237,6 +238,8 @@ class Settings(BaseSettings):
     )
     wechat_mp_draft_worker_enabled: bool = False
     wechat_mp_draft_auto_enqueue_enabled: bool = False
+    wechat_mp_draft_production_enabled: bool = False
+    wechat_mp_draft_min_week_start: date | None = None
     wechat_mp_draft_poll_seconds: float = Field(default=2.0, ge=0.1, le=300)
     wechat_mp_draft_lease_seconds: int = Field(default=300, ge=60, le=3_600)
     wechat_mp_draft_heartbeat_seconds: int = Field(default=60, ge=5, le=600)
@@ -526,6 +529,24 @@ class Settings(BaseSettings):
             raise ValueError("WeChat draft process paths must be non-blank and contain no controls")
         return value
 
+    @field_validator("wechat_mp_draft_min_week_start", mode="before")
+    @classmethod
+    def normalize_wechat_mp_draft_min_week_start(cls, value: object) -> object:
+        if value == "":
+            return None
+        if isinstance(value, str) and (
+            value != value.strip() or len(value) != 10 or value[4:5] != "-" or value[7:8] != "-"
+        ):
+            raise ValueError("WeChat draft minimum week start must be an ISO date")
+        return value
+
+    @field_validator("wechat_mp_draft_min_week_start")
+    @classmethod
+    def validate_wechat_mp_draft_min_week_start(cls, value: date | None) -> date | None:
+        if value is not None and value.weekday() != 0:
+            raise ValueError("WeChat draft minimum week start must be a Monday")
+        return value
+
     def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
         def schedule(
             slot: ContentSlot,
@@ -600,11 +621,23 @@ class Settings(BaseSettings):
             raise ValueError("official-account worker requires the local feature to be enabled")
         if self.wechat_mp_draft_auto_enqueue_enabled and not self.wechat_mp_draft_worker_enabled:
             raise ValueError("automatic WeChat draft enqueue requires the draft worker")
+        if self.wechat_mp_draft_production_enabled and self.app_env != "production":
+            raise ValueError("WeChat draft production acknowledgement is production-only")
         if self.wechat_mp_draft_worker_enabled:
-            if self.app_env != "development":
-                raise ValueError("WeChat draft automation is development-only")
+            if self.app_env == "production" and not self.wechat_mp_draft_production_enabled:
+                raise ValueError(
+                    "production WeChat draft automation requires explicit acknowledgement"
+                )
+            if self.app_env not in {"development", "production"}:
+                raise ValueError("WeChat draft automation is development-or-production only")
             if not self.wechat_mp_enabled:
                 raise ValueError("WeChat draft worker requires the draft adapter to be enabled")
+        if (
+            self.app_env == "production"
+            and self.wechat_mp_draft_auto_enqueue_enabled
+            and self.wechat_mp_draft_min_week_start is None
+        ):
+            raise ValueError("production automatic WeChat draft enqueue requires a minimum week")
         if self.ip_asset_worker_enabled and not self.ip_asset_hub_enabled:
             raise ValueError("IP asset worker requires the hub to be enabled")
         if self.ip_asset_heartbeat_seconds >= self.ip_asset_lease_seconds:
@@ -743,8 +776,15 @@ class Settings(BaseSettings):
                 if self.wechat_mp_app_secret is not None
                 else ""
             )
-            if self.app_env != "development":
-                raise ValueError("WeChat Official Account draft adapter is development-only")
+            if self.app_env == "production" and not self.wechat_mp_draft_production_enabled:
+                raise ValueError(
+                    "production WeChat Official Account draft adapter requires explicit "
+                    "acknowledgement"
+                )
+            if self.app_env not in {"development", "production"}:
+                raise ValueError(
+                    "WeChat Official Account draft adapter is development-or-production only"
+                )
             if any(
                 not value.strip()
                 or any(character.isspace() or ord(character) < 32 for character in value)

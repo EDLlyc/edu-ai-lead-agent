@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Owns draft-only adapter, durable worker, settings, side-effect, retry, and no-publish contracts."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Owns PostgreSQL/Alembic head, migration review, job persistence, and rollback constraints."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Owns independent worker entrypoint and application/infrastructure layer boundaries."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Owns Compose, immutable release, migration compatibility, validation, and production rollback gates."}
+{"file":".trellis/tasks/09-01-wechat-draft-production-deploy/research/production-readiness.md","reason":"Captures repository evidence, resolved product decisions, eligibility design consequences, and prior-release lessons."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/prior-fast-path-summary.md","reason":"Records proven deployment ordering and concrete failure modes that the new operator must not repeat."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/release-contract-summary.md","reason":"Records the prior checksum-bound offline release and recovery contract used only as reviewed research."}

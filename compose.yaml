@@ -413,6 +413,40 @@ services:
         "2",
       ]
 
+  wechat-official-account-draft-worker:
+    profiles: ["wechat-official-account-draft"]
+    <<: *app-runtime
+    restart: unless-stopped
+    stop_grace_period: 90s
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      WECHAT_MP_ENABLED: ${WECHAT_MP_ENABLED:-false}
+      WECHAT_MP_MODE: draft_only
+      WECHAT_MP_API_BASE_URL: https://api.weixin.qq.com
+      WECHAT_MP_APP_ID: ${WECHAT_MP_APP_ID:-}
+      WECHAT_MP_APP_SECRET: ${WECHAT_MP_APP_SECRET:-}
+      WECHAT_MP_REQUEST_TIMEOUT_SECONDS: ${WECHAT_MP_REQUEST_TIMEOUT_SECONDS:-15}
+      WECHAT_MP_MAX_IMAGE_BYTES: ${WECHAT_MP_MAX_IMAGE_BYTES:-10485760}
+      WECHAT_MP_MAX_RESPONSE_BYTES: ${WECHAT_MP_MAX_RESPONSE_BYTES:-65536}
+      WECHAT_MP_DRAFT_WORKER_ENABLED: ${WECHAT_MP_DRAFT_WORKER_ENABLED:-false}
+      WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED: ${WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED:-false}
+      WECHAT_MP_DRAFT_PRODUCTION_ENABLED: ${WECHAT_MP_DRAFT_PRODUCTION_ENABLED:-false}
+      WECHAT_MP_DRAFT_MIN_WEEK_START: ${WECHAT_MP_DRAFT_MIN_WEEK_START:-}
+      WECHAT_MP_DRAFT_POLL_SECONDS: ${WECHAT_MP_DRAFT_POLL_SECONDS:-2}
+      WECHAT_MP_DRAFT_LEASE_SECONDS: ${WECHAT_MP_DRAFT_LEASE_SECONDS:-300}
+      WECHAT_MP_DRAFT_HEARTBEAT_SECONDS: ${WECHAT_MP_DRAFT_HEARTBEAT_SECONDS:-60}
+      WECHAT_MP_DRAFT_MAX_ATTEMPTS: ${WECHAT_MP_DRAFT_MAX_ATTEMPTS:-3}
+      WECHAT_MP_DRAFT_RETRY_BASE_SECONDS: ${WECHAT_MP_DRAFT_RETRY_BASE_SECONDS:-30}
+      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/input/official-account-weekly-editions
+      WECHAT_MP_DRAFT_ARTIFACT_ROOT: /app/output/wechat-mp-draft-artifacts
+    volumes:
+      - official_account_weekly_dag_output:/app/input/official-account-weekly-editions:ro
+      - wechat_mp_draft_artifacts:/app/output/wechat-mp-draft-artifacts
+    command: ["python", "-m", "app.wechat_official_account_draft_main", "worker"]
+
   content-scheduler:
     profiles: ["content"]
     <<: *app-runtime
@@ -636,3 +670,4 @@ volumes:
   postgres_data:
   minio_data:
   official_account_weekly_dag_output:
+  wechat_mp_draft_artifacts:

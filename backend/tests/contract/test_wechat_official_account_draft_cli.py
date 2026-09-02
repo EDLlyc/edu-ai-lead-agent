@@ -6,6 +6,9 @@ from uuid import uuid4
 
 import pytest
 from app import wechat_official_account_draft_main as cli
+from app.application.ports.wechat_official_account_draft_artifacts import (
+    WeChatDraftBeforeActivationError,
+)
 from app.application.services.official_account_weekly_edition import (
     WeeklyEditionLiveProvenanceError,
 )
@@ -89,6 +92,58 @@ async def test_explicit_fixture_enqueue_returns_only_stable_provenance_code(
         "error_code": "weekly_edition_live_provenance_required",
         "ok": False,
     }
+    assert "/private" not in output
+    assert engine.disposed is True
+
+
+@pytest.mark.asyncio
+async def test_explicit_historical_enqueue_returns_only_stable_cutoff_code(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="development",
+        wechat_mp_enabled=True,
+        wechat_mp_app_id=SecretStr("wx-test-app"),
+        wechat_mp_app_secret=SecretStr("test-secret"),
+        wechat_mp_draft_worker_enabled=True,
+        wechat_mp_draft_min_week_start="2026-09-07",
+    )
+    engine = _Engine()
+    captured_store: dict[str, object] = {}
+
+    def artifact_store(**kwargs: object) -> object:
+        captured_store.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "create_engine", lambda _settings: engine)
+    monkeypatch.setattr(cli, "create_session_factory", lambda _engine: object())
+    monkeypatch.setattr(
+        cli,
+        "PostgresWeChatOfficialAccountDraftJobRepository",
+        lambda _factory: object(),
+    )
+    monkeypatch.setattr(cli, "LocalWeChatDraftArtifactStore", artifact_store)
+
+    class _HistoricalRejectingService:
+        async def enqueue_weekly(self, _directory: object) -> None:
+            raise WeChatDraftBeforeActivationError("private historical detail")
+
+    monkeypatch.setattr(cli, "_job_service", lambda **_kwargs: _HistoricalRejectingService())
+
+    exit_code = await cli._run(
+        cli._parser().parse_args(["enqueue-weekly", "/private/historical-weekly"])
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 4
+    assert json.loads(output) == {
+        "error_code": "wechat_mp_draft_before_activation",
+        "ok": False,
+    }
+    assert captured_store["minimum_week_start"] == settings.wechat_mp_draft_min_week_start
     assert "/private" not in output
     assert engine.disposed is True
 

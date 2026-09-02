@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import date
 
 import pytest
 from app.core.config import Settings
@@ -15,6 +16,8 @@ def _settings(overrides: Mapping[str, object] | None = None) -> Settings:
         "wechat_mp_enabled": False,
         "wechat_mp_draft_worker_enabled": False,
         "wechat_mp_draft_auto_enqueue_enabled": False,
+        "wechat_mp_draft_production_enabled": False,
+        "wechat_mp_draft_min_week_start": None,
         "wechat_mp_app_id": None,
         "wechat_mp_app_secret": None,
     }
@@ -39,6 +42,8 @@ def test_wechat_draft_automation_defaults_are_disabled_and_bounded() -> None:
 
     assert settings.wechat_mp_draft_worker_enabled is False
     assert settings.wechat_mp_draft_auto_enqueue_enabled is False
+    assert settings.wechat_mp_draft_production_enabled is False
+    assert settings.wechat_mp_draft_min_week_start is None
     assert settings.wechat_mp_draft_poll_seconds == 2.0
     assert settings.wechat_mp_draft_lease_seconds == 300
     assert settings.wechat_mp_draft_heartbeat_seconds == 60
@@ -91,9 +96,56 @@ def test_wechat_draft_worker_requires_valid_adapter_credentials(
         _enabled_settings(missing_credential)
 
 
-def test_wechat_draft_worker_is_development_only() -> None:
-    with pytest.raises(ValidationError, match="draft automation is development-only"):
+def test_wechat_draft_worker_rejects_test_environment() -> None:
+    with pytest.raises(ValidationError, match="development-or-production"):
         _enabled_settings({"app_env": "test"})
+
+
+def test_wechat_draft_production_requires_acknowledgement_and_monday_cutoff() -> None:
+    production = {
+        "app_env": "production",
+        "database_url": SecretStr("postgresql+asyncpg://app:prod@postgres:5432/app"),
+        "governance_checkpoint_database_url": SecretStr("postgresql://app:prod@postgres:5432/app"),
+        "minio_access_key": SecretStr("production-access"),
+        "minio_secret_key": SecretStr("production-secret"),
+        "wechat_mp_draft_auto_enqueue_enabled": True,
+    }
+    with pytest.raises(ValidationError, match="requires explicit acknowledgement"):
+        _enabled_settings(production)
+    with pytest.raises(ValidationError, match="requires a minimum week"):
+        _enabled_settings({**production, "wechat_mp_draft_production_enabled": True})
+
+    settings = _enabled_settings(
+        {
+            **production,
+            "wechat_mp_draft_production_enabled": True,
+            "wechat_mp_draft_min_week_start": "2026-09-07",
+        }
+    )
+
+    assert settings.wechat_mp_draft_production_enabled is True
+    assert settings.wechat_mp_draft_min_week_start == date(2026, 9, 7)
+
+
+def test_wechat_draft_production_acknowledgement_is_rejected_outside_production() -> None:
+    with pytest.raises(ValidationError, match="production acknowledgement is production-only"):
+        _enabled_settings({"wechat_mp_draft_production_enabled": True})
+
+
+@pytest.mark.parametrize("cutoff", ["2026-09-01", "2026-09-06"])
+def test_wechat_draft_minimum_week_must_be_a_monday(cutoff: str) -> None:
+    with pytest.raises(ValidationError, match="minimum week start must be a Monday"):
+        _settings({"wechat_mp_draft_min_week_start": cutoff})
+
+
+def test_wechat_draft_blank_minimum_week_means_no_development_cutoff() -> None:
+    assert _settings({"wechat_mp_draft_min_week_start": ""}).wechat_mp_draft_min_week_start is None
+
+
+@pytest.mark.parametrize("cutoff", [" 2026-09-07", "2026-09-07 ", "2026/09/07"])
+def test_wechat_draft_minimum_week_rejects_non_iso_text(cutoff: str) -> None:
+    with pytest.raises(ValidationError, match="must be an ISO date"):
+        _settings({"wechat_mp_draft_min_week_start": cutoff})
 
 
 @pytest.mark.parametrize(

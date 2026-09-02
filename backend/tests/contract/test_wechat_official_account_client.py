@@ -495,7 +495,7 @@ async def test_response_size_and_settings_are_fail_closed() -> None:
         wechat_mp_app_secret=SecretStr(APP_SECRET),
     )
     assert "wx-contract" not in repr(enabled)
-    with pytest.raises(ValidationError, match="development-only"):
+    with pytest.raises(ValidationError, match="requires explicit acknowledgement"):
         Settings(
             _env_file=None,  # type: ignore[call-arg]
             app_env="production",

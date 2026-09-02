@@ -224,6 +224,24 @@ cross-layer contract.
 
 See [`wecom-delivery.md`](./wecom-delivery.md) for the executable API, database, and retry contract.
 
+## WeChat Official Account draft-only ownership
+
+- `application/ports/wechat_official_account_draft_artifacts.py` owns opaque staged-source
+  identities and typed pre-activation rejection.
+- `application/services/wechat_official_account_draft_jobs.py` owns preflight, idempotent enqueue,
+  reconciliation, fenced execution, and conservative provider-write outcomes.
+- `infrastructure/wechat_official_account/artifacts.py` owns manifest-authenticated Monday
+  eligibility, bounded complete inbox discovery, immutable staging, and safe source resolution.
+- `infrastructure/db/wechat_official_account_draft_jobs.py` owns the `0042` job/item/attempt state
+  machine. Provider adapters never write job rows directly.
+- `wechat_official_account_draft_main.py` is a portless, optional CLI/worker process. It is not
+  imported by API, weekly DAG, content, or ordinary production startup modules.
+- Task-local offline release programs under the active Trellis task are reviewed deployment
+  evidence, not reusable application modules or a replacement for `deploy/release/`.
+
+See [`wechat-official-account-drafts.md`](./wechat-official-account-drafts.md) for the executable
+adapter, cutoff, and runtime contract.
+
 ## Naming conventions
 
 - Packages, modules, functions, database attributes, and variables: `snake_case`.

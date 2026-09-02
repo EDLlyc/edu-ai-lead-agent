@@ -122,9 +122,9 @@ class WeChatOfficialAccountDraftJobService:
     async def enqueue_weekly(self, source_directory: Path) -> WeChatDraftEnqueueResult:
         """Preflight the source, stage it immutably, and enqueue the canonical batch."""
 
+        batch = self._artifact_store.stage_weekly(source_directory)
         edition = self._weekly_loader(source_directory)
         self._prepare_original(edition)
-        batch = self._artifact_store.stage_weekly(source_directory)
         return await self.enqueue_staged(batch)
 
     async def enqueue_staged(

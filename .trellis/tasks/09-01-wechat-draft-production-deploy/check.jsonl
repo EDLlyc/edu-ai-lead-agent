@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Verify production enablement preserves draft-only behavior, safe errors, idempotency, and zero publish capability."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify migration truth, real-PostgreSQL contracts, populated downgrade refusal, and no automatic downgrade."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify optional Compose topology, clean candidate provenance, secret isolation, immutable release, and rollback gates."}
+{"file":".trellis/tasks/09-01-wechat-draft-production-deploy/research/production-readiness.md","reason":"Verify every confirmed blocker and resolved activation decision is implemented and tested."}
+{"file":".trellis/tasks/08-17-deploy-delivered-repeat-window/research/prior-fast-path-summary.md","reason":"Cross-check the new operator against all previously observed deployment failure classes."}

@@ -9,6 +9,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	content-scheduler content-worker content-stack-up \
 	official-account-local-worker official-account-local-demo \
 	official-account-local-live-smoke official-account-local-export \
+	wechat-official-account-draft-config-check \
 	ip-asset-worker ip-asset-import-dry-run ip-asset-stack-up ip-asset-ui \
 	ip-asset-demo-preflight \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
@@ -112,6 +113,9 @@ official-account-local-export:
 		--run-id "$(RUN_ID)" \
 		--mode "$(if $(MODE),$(MODE),review)" \
 		--output-dir "$(if $(OUTPUT_DIR),$(OUTPUT_DIR),output/official-account-local)"
+
+wechat-official-account-draft-config-check:
+	docker compose --profile wechat-official-account-draft config --quiet
 
 ip-asset-worker:
 	IP_ASSET_HUB_ENABLED=true \

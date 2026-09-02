@@ -5,18 +5,21 @@ from __future__ import annotations
 import shutil
 import tempfile
 from collections import Counter
-from heapq import nsmallest
+from datetime import date
+from itertools import islice
 from pathlib import Path, PurePosixPath
 from typing import Final, cast
 
 from app.application.ports.wechat_official_account_draft_artifacts import (
     WECHAT_DRAFT_ARTIFACT_INVALID,
     WECHAT_DRAFT_ARTIFACT_REF_VERSION,
+    WECHAT_DRAFT_BEFORE_ACTIVATION,
     ResolvedWeChatDraftArtifactSource,
     WeChatDraftArtifactBatch,
     WeChatDraftArtifactDiscovery,
     WeChatDraftArtifactError,
     WeChatDraftArtifactSource,
+    WeChatDraftBeforeActivationError,
 )
 from app.application.services.official_account_weekly_edition import (
     WEEKLY_EDITION_LIVE_PROVENANCE_REQUIRED,
@@ -32,11 +35,20 @@ _MAX_DISCOVERY_COUNT: Final = 1000
 class LocalWeChatDraftArtifactStore:
     """Stage and resolve live weekly aggregates without exposing private paths."""
 
-    def __init__(self, *, staging_root: Path, inbox_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        staging_root: Path,
+        inbox_root: Path | None = None,
+        minimum_week_start: date | None = None,
+    ) -> None:
         self._staging_root = _validated_root(staging_root, label="staging")
         self._inbox_root = (
             _validated_root(inbox_root, label="inbox") if inbox_root is not None else None
         )
+        if minimum_week_start is not None and minimum_week_start.weekday() != 0:
+            raise ValueError("WeChat draft minimum week start must be a Monday")
+        self._minimum_week_start = minimum_week_start
         if self._inbox_root is not None and (
             self._inbox_root == self._staging_root
             or self._inbox_root.is_relative_to(self._staging_root)
@@ -47,6 +59,7 @@ class LocalWeChatDraftArtifactStore:
     def stage_weekly(self, source_directory: Path) -> WeChatDraftArtifactBatch:
         try:
             edition = load_finalized_weekly_edition(source_directory)
+            self._require_eligible(edition)
             target = self._target(edition.zip_sha256)
             self._staging_root.mkdir(parents=True, exist_ok=True)
             if _path_has_symlink_component(self._staging_root):
@@ -87,7 +100,7 @@ class LocalWeChatDraftArtifactStore:
             if staged.zip_sha256 != edition.zip_sha256:
                 raise ValueError("staged WeChat draft artifact identity changed")
             return _batch_projection(staged)
-        except WeeklyEditionLiveProvenanceError:
+        except (WeeklyEditionLiveProvenanceError, WeChatDraftBeforeActivationError):
             raise
         except (OSError, ValueError) as exc:
             raise WeChatDraftArtifactError("WeChat draft artifact staging failed") from exc
@@ -131,30 +144,47 @@ class LocalWeChatDraftArtifactStore:
             or _path_has_symlink_component(self._inbox_root)
         ):
             raise ValueError("WeChat draft artifact inbox is unsafe")
-        candidates = nsmallest(
-            maximum,
-            (
-                candidate
-                for candidate in self._inbox_root.iterdir()
-                if candidate.name.startswith("official-account-weekly-edition-")
+        candidates = sorted(
+            islice(
+                (
+                    candidate
+                    for candidate in self._inbox_root.iterdir()
+                    if candidate.name.startswith("official-account-weekly-edition-")
+                ),
+                _MAX_DISCOVERY_COUNT + 1,
             ),
             key=lambda item: item.name,
         )
-        batches: dict[str, WeChatDraftArtifactBatch] = {}
+        if len(candidates) > _MAX_DISCOVERY_COUNT:
+            raise WeChatDraftArtifactError("WeChat draft discovery scan bound exceeded")
+        eligible: dict[str, Path] = {}
         skipped: Counter[str] = Counter()
         for candidate in candidates:
             try:
-                batch = self.stage_weekly(candidate)
+                edition = load_finalized_weekly_edition(candidate)
+                self._require_eligible(edition)
             except WeeklyEditionLiveProvenanceError:
                 skipped[WEEKLY_EDITION_LIVE_PROVENANCE_REQUIRED] += 1
-            except WeChatDraftArtifactError:
+            except WeChatDraftBeforeActivationError:
+                skipped[WECHAT_DRAFT_BEFORE_ACTIVATION] += 1
+            except (OSError, ValueError):
                 skipped[WECHAT_DRAFT_ARTIFACT_INVALID] += 1
             else:
-                batches.setdefault(batch.aggregate_fingerprint, batch)
+                eligible.setdefault(edition.zip_sha256, candidate)
+        batches = tuple(
+            self.stage_weekly(eligible[fingerprint]) for fingerprint in sorted(eligible)[:maximum]
+        )
         return WeChatDraftArtifactDiscovery(
-            batches=tuple(batches[key] for key in sorted(batches)),
+            batches=batches,
             skipped_by_code=dict(skipped),
         )
+
+    def _require_eligible(self, edition: FinalizedWeeklyEdition) -> None:
+        if (
+            self._minimum_week_start is not None
+            and date.fromisoformat(edition.week_start) < self._minimum_week_start
+        ):
+            raise WeChatDraftBeforeActivationError("WeChat draft aggregate predates activation")
 
     def _target(self, aggregate_fingerprint: str) -> Path:
         if not _is_sha256(aggregate_fingerprint):

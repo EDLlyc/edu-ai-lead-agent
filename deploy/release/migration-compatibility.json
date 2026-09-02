@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "alembic_head": "20260901_0042",
-  "reviewed": false,
+  "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "No forward-schema compatibility is declared; automatic rollback is allowed only when the production Alembic head remains unchanged."
+  "reason": "The additive migration chain through 20260901_0042 is reviewed for forward activation; the previous application remains conservatively incompatible after migration."
 }

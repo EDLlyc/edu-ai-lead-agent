@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 from app.application.ports.wechat_official_account import WeChatOfficialAccountError
 from app.application.ports.wechat_official_account_draft_artifacts import (
     WeChatDraftArtifactError,
+    WeChatDraftBeforeActivationError,
 )
 from app.application.services.official_account_weekly_edition import (
     WeeklyEditionLiveProvenanceError,
@@ -91,6 +92,7 @@ async def _run(args: argparse.Namespace) -> int:
         artifact_store = LocalWeChatDraftArtifactStore(
             staging_root=Path(settings.wechat_mp_draft_artifact_root),
             inbox_root=Path(settings.wechat_mp_draft_weekly_inbox_root),
+            minimum_week_start=settings.wechat_mp_draft_min_week_start,
         )
         job_service = _job_service(
             settings=settings,
@@ -134,6 +136,9 @@ async def _run(args: argparse.Namespace) -> int:
         _print_json({"ok": False, "error_code": exc.code})
         return 4
     except WeChatDraftArtifactError as exc:
+        _print_json({"ok": False, "error_code": exc.code})
+        return 4
+    except WeChatDraftBeforeActivationError as exc:
         _print_json({"ok": False, "error_code": exc.code})
         return 4
     except WeChatOfficialAccountError as exc:

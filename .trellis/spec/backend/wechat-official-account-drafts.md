@@ -6,7 +6,8 @@ Use this contract when changing the opt-in server-side adapter that stages final
 Account V2 articles in the WeChat Official Account draft box. This boundary is distinct from
 Enterprise WeChat (`WECOM_*`) and from the immutable local weekly exporter.
 
-The boundary is development-only and `draft_only`. The direct service may obtain a stable token,
+The boundary is default-off and `draft_only`. Development may opt in directly; production also
+requires the explicit acknowledgement and minimum-week contract. The direct service may obtain a stable token,
 upload article images, upload one permanent cover thumbnail, and create one draft per finalized
 article. An independent, default-off Scheduler/Worker/CLI path may durably stage exactly the three
 finalized live weekly roles through the same direct service. It has no FastAPI route, `freepublish`,
@@ -88,6 +89,8 @@ paths. Default-off construction must not import into or alter the ordinary weekl
 | `WECHAT_MP_MAX_RESPONSE_BYTES` | Bounded from 1 KiB to 1 MiB; default 64 KiB |
 | `WECHAT_MP_DRAFT_WORKER_ENABLED` | `false` by default; enqueue/reconcile/worker execution fails closed |
 | `WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED` | `false` by default; enables inbox reconciliation and requires the worker |
+| `WECHAT_MP_DRAFT_PRODUCTION_ENABLED` | `false` by default; production-only acknowledgement required by an enabled adapter/worker |
+| `WECHAT_MP_DRAFT_MIN_WEEK_START` | Optional ISO Monday in development; required for production auto-enqueue |
 | `WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT` | Process-local inbox root for finalized weekly aggregates |
 | `WECHAT_MP_DRAFT_ARTIFACT_ROOT` | Process-local root for content-addressed staged weekly artifacts |
 | `WECHAT_MP_DRAFT_POLL_SECONDS` | Bounded worker polling interval |
@@ -96,8 +99,9 @@ paths. Default-off construction must not import into or alter the ordinary weekl
 | `WECHAT_MP_DRAFT_MAX_ATTEMPTS` | Bounded retry-attempt ceiling |
 | `WECHAT_MP_DRAFT_RETRY_BASE_SECONDS` | Bounded deterministic retry base delay |
 
-Enabled settings are accepted only in `app_env=development`. Missing, blank, whitespace-bearing,
-or control-bearing credentials fail during settings validation. `.env.example` contains empty
+Enabled settings are accepted in development, or in production with the explicit production
+acknowledgement. The acknowledgement is rejected outside production. Missing, blank,
+whitespace-bearing, or control-bearing credentials fail during settings validation. `.env.example` contains empty
 placeholders only; real credentials belong in ignored `.env` or deployment secret storage.
 
 ### Official HTTP contract
@@ -182,6 +186,18 @@ or the authoritative current terminal status. A stale worker must never mutate r
 crash the process while resolving a rejected result. Downgrade removes empty tables but refuses
 while durable audit rows exist.
 
+Production auto-enqueue additionally binds an explicit authenticated minimum Monday. Both manual
+enqueue and discovery reject a valid older manifest with `wechat_mp_draft_before_activation`
+before copying an artifact, preparing content, creating a job, or constructing a provider client.
+Discovery inspects the complete deterministic candidate set up to the hard scan ceiling, filters
+old/invalid inputs, and only then applies the requested eligible limit; scan overflow fails closed.
+
+The production runtime is an optional, portless `wechat-official-account-draft` Compose profile.
+Its weekly DAG volume is mounted read-only at the configured inbox and its immutable staging tree
+uses a separate writable named volume. The service shares the reviewed application image, waits
+for migration, and is excluded from the ordinary production start/restore graph until an operator
+atomically installs the production acknowledgement, minimum Monday, and worker/auto-enqueue flags.
+
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -204,6 +220,10 @@ while durable audit rows exist.
 | Lease loss, timeout, or cancellation after side effect starts | `outcome_unknown` or current terminal state; no replay |
 | Resume after one or two successful roles | Reuse completed items; execute only remaining roles |
 | Populated `0042` downgrade | Refuse without deleting durable audit data |
+| Production adapter/worker without explicit acknowledgement | Settings fail before database/client construction |
+| Production auto-enqueue without an ISO Monday cutoff | Settings fail before process construction |
+| Valid aggregate older than the cutoff | `wechat_mp_draft_before_activation`; zero copy/job/provider calls |
+| Matching inbox candidates exceed the hard scan ceiling | Fail the reconciliation scan closed |
 
 ## 5. Good / Base / Bad Cases
 
@@ -240,6 +260,9 @@ while durable audit rows exist.
   lease/heartbeat/fencing, stale recovery, side-effect checkpoints, retry versus unknown,
   cancellation, partial resume/no replay, safe status projection, CLI cleanup, and populated
   downgrade refusal on real PostgreSQL.
+- Production tests cover acknowledgement/cutoff cross-validation, historical manual and automatic
+  rejection, old-name starvation prevention, scan overflow, the portless optional Compose command,
+  read-only inbox/writable artifact mounts, and exclusion from ordinary release service lists.
 - Run focused Ruff, mypy, the adapter tests, V2/weekly/WeCom regressions, task validation, and
   `git diff --check`. Tests never use real credentials or a real network transport.
 

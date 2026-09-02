@@ -868,6 +868,18 @@ release artifacts, or production deployment automation change.
   evidence are external acceptance gates; repository tests must not claim they occurred.
 - A controlled developer-PC release against a provisioned OCI repository and host remains an
   external acceptance gate; unit tests must not connect, push, deploy, or claim production evidence.
+- A task-authorized offline release must use a newly reviewed task-local builder, validator,
+  physical mode-0600 one-shot operator, and fake harness. It binds artifacts to the fetched Codeup
+  commit and isolated image identity, accepts null stdin, validates the full archive graph and
+  exact Compose entrypoints, and never reuses a failed candidate or a prior task's frozen operator.
+- A captured production source baseline binds every managed regular file/directory by type, path,
+  mode, UID, GID, and file content. Capture and activation use the same algorithm: do not assume an
+  ownership/mode distribution that the read-only audit disproves, and do not ignore metadata drift.
+  Newly installed candidate source and protected release stages remain root-owned with restrictive
+  reviewed modes.
+- Optional production workers share the candidate application image but remain outside the
+  ordinary start/restore service tuple. Compose/Doctor tests must prove their exact command,
+  profiles, portlessness, mount permissions, and default-off settings.
 
 ### 7. Wrong vs Correct
 

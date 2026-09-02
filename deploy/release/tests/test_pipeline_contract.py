@@ -131,7 +131,7 @@ def test_ci_jobs_use_pinned_specified_container_and_probe_docker() -> None:
 def test_compose_uses_one_application_image_variable() -> None:
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     assert "image: ${APP_IMAGE:-edu-ai-lead-agent-backend:local}" in compose
-    assert compose.count("<<: *app-runtime") == 13
+    assert compose.count("<<: *app-runtime") == 14
     services = yaml.safe_load(compose)["services"]
     for service_name in (
         "official-account-local-worker",
@@ -142,6 +142,25 @@ def test_compose_uses_one_application_image_variable() -> None:
     assert services["official-account-weekly-dag-worker"]["profiles"] == [
         "official-account-weekly-dag"
     ]
+    draft_worker = services["wechat-official-account-draft-worker"]
+    assert draft_worker["profiles"] == ["wechat-official-account-draft"]
+    assert draft_worker.get("ports") is None
+    assert draft_worker["command"] == [
+        "python",
+        "-m",
+        "app.wechat_official_account_draft_main",
+        "worker",
+    ]
+    assert draft_worker["volumes"] == [
+        "official_account_weekly_dag_output:/app/input/official-account-weekly-editions:ro",
+        "wechat_mp_draft_artifacts:/app/output/wechat-mp-draft-artifacts",
+    ]
+    assert draft_worker["environment"]["WECHAT_MP_DRAFT_PRODUCTION_ENABLED"] == (
+        "${WECHAT_MP_DRAFT_PRODUCTION_ENABLED:-false}"
+    )
+    assert draft_worker["environment"]["WECHAT_MP_DRAFT_MIN_WEEK_START"] == (
+        "${WECHAT_MP_DRAFT_MIN_WEEK_START:-}"
+    )
 
 
 def test_repository_migration_declaration_and_doctor_match_the_single_head() -> None:
@@ -156,7 +175,7 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")
 
     assert json.loads(declaration)["alembic_head"] == head
-    assert reviewed is False
+    assert reviewed is True
     assert compatible is False
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
     for schema_identity in (
@@ -183,6 +202,7 @@ def test_frontend_is_a_ci_gate_only() -> None:
     assert all(not path.startswith("frontend") for path in BUNDLE_ALLOWED_PREFIXES)
     assert len(APPLICATION_SERVICES) == 9
     assert all("frontend" not in service for service in APPLICATION_SERVICES)
+    assert "wechat-official-account-draft-worker" not in APPLICATION_SERVICES
 
 
 def test_production_evidence_queries_the_bounded_diversity_warning_code() -> None:

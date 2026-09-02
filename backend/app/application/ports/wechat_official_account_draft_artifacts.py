@@ -14,10 +14,17 @@ from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER
 
 WECHAT_DRAFT_ARTIFACT_REF_VERSION: Final = "wechat-draft-v1"
 WECHAT_DRAFT_ARTIFACT_INVALID: Final = "wechat_mp_draft_artifact_invalid"
+WECHAT_DRAFT_BEFORE_ACTIVATION: Final = "wechat_mp_draft_before_activation"
 
 
 class WeChatDraftArtifactError(ValueError):
     code: Final = WECHAT_DRAFT_ARTIFACT_INVALID
+
+
+class WeChatDraftBeforeActivationError(ValueError):
+    """Stable rejection for a valid aggregate outside the production eligibility window."""
+
+    code: Final = WECHAT_DRAFT_BEFORE_ACTIVATION
 
 
 def _is_sha256(value: str) -> bool:
@@ -145,10 +152,12 @@ class WeChatDraftArtifactStore(Protocol):
 __all__ = [
     "WECHAT_DRAFT_ARTIFACT_INVALID",
     "WECHAT_DRAFT_ARTIFACT_REF_VERSION",
+    "WECHAT_DRAFT_BEFORE_ACTIVATION",
     "ResolvedWeChatDraftArtifactSource",
     "WeChatDraftArtifactBatch",
     "WeChatDraftArtifactDiscovery",
     "WeChatDraftArtifactError",
     "WeChatDraftArtifactSource",
     "WeChatDraftArtifactStore",
+    "WeChatDraftBeforeActivationError",
 ]

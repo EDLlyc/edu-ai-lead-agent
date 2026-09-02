@@ -297,6 +297,20 @@ job.filtered_count = terminal_filtered_count
 
 Publish one terminal value and derive the run aggregate from terminal jobs.
 
+## WeChat draft production activation at `20260901_0042`
+
+- Production activation introduces no schema beyond the existing `0042` jobs/items/attempts
+  migration. Eligibility is authenticated from the immutable aggregate `week_start`; it must not
+  be inferred from filesystem metadata or a mutable database timestamp.
+- The compatibility declaration is reviewed with
+  `previous_application_compatible=false`. A successful forward migration therefore forbids an
+  automatic old-application restore, Alembic downgrade, or database rollback.
+- Backups are mandatory before migration. After migration failure, stop application writers and
+  preserve PostgreSQL/MinIO/candidate evidence for incident handling.
+- Activation verification projects only safe aggregate counters: zero new draft jobs, attempts,
+  and provider writes. It must not expose row identifiers, paths, content, AppID, tokens, or media
+  IDs.
+
 ## Avoid
 
 - Storing evidence and brand chunks in an unlabeled shared collection.

@@ -20,7 +20,9 @@ from app.application.ports.wechat_official_account_draft_artifacts import (
     WeChatDraftArtifactBatch,
     WeChatDraftArtifactDiscovery,
     WeChatDraftArtifactSource,
+    WeChatDraftBeforeActivationError,
 )
+from app.application.services.official_account_weekly_edition import FinalizedWeeklyEdition
 from app.application.services.wechat_official_account_draft import (
     WeChatDraftLocalSource,
     WeChatPreparedDraft,
@@ -111,6 +113,11 @@ class _ArtifactStore:
             batches=(self.batch,),
             skipped_by_code={"weekly_edition_live_provenance_required": 2},
         )
+
+
+class _HistoricalArtifactStore(_ArtifactStore):
+    def stage_weekly(self, _source_directory: Path) -> WeChatDraftArtifactBatch:
+        raise WeChatDraftBeforeActivationError("private historical detail")
 
 
 class _Preparer:
@@ -755,6 +762,37 @@ async def test_reconcile_preserves_discovery_skips_and_is_idempotent() -> None:
     assert first.enqueued == 1 and first.existing == 0
     assert second.enqueued == 0 and second.existing == 1
     assert first.skipped_by_code == {"weekly_edition_live_provenance_required": 2}
+
+
+@pytest.mark.asyncio
+async def test_explicit_historical_enqueue_stops_before_load_prepare_and_database() -> None:
+    batch = _artifact_batch()
+    repository = _Repository(_command(batch))
+    preparer = _Preparer(batch)
+    weekly_loads = 0
+
+    def weekly_loader(_path: Path) -> FinalizedWeeklyEdition:
+        nonlocal weekly_loads
+        weekly_loads += 1
+        raise AssertionError("historical source reached weekly preparation")
+
+    service = WeChatOfficialAccountDraftJobService(
+        repository=repository,
+        artifact_store=_HistoricalArtifactStore(batch),
+        account_fingerprint=_ACCOUNT,
+        max_attempts=3,
+        max_image_bytes=1024,
+        clock=lambda: _NOW,
+        preparer=preparer,
+        weekly_loader=weekly_loader,
+    )
+
+    with pytest.raises(WeChatDraftBeforeActivationError):
+        await service.enqueue_weekly(Path("/private/historical-week"))
+
+    assert weekly_loads == 0
+    assert preparer.calls == 0
+    assert repository.enqueues == 0
 
 
 @pytest.mark.asyncio

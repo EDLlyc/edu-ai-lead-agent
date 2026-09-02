@@ -96,7 +96,7 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
-docker compose --profile governance --profile content --profile wecom --profile ip-assets --profile official-account-weekly-dag config --format json | \
+docker compose --profile governance --profile content --profile wecom --profile ip-assets --profile official-account-weekly-dag --profile wechat-official-account-draft config --format json | \
   "${python_command[@]}" -c '
 import json
 import re
@@ -111,6 +111,7 @@ names = (
     "governance-scheduler",
     "governance-worker",
     "official-account-weekly-dag-worker",
+    "wechat-official-account-draft-worker",
     "content-scheduler",
     "content-worker",
     "ip-asset-worker",
@@ -125,7 +126,7 @@ if image != "edu-ai-lead-agent-backend:local" and not re.fullmatch(
 ):
     raise SystemExit("non-local APP_IMAGE must be a digest-only reference")
 ' >/dev/null || fail "Application services do not share the local-or-digest APP_IMAGE contract"
-pass "All eleven application and migration services share one APP_IMAGE contract"
+pass "All twelve application and migration services share one APP_IMAGE contract"
 
 docker compose --profile official-account-weekly-dag config --format json | \
   "${python_command[@]}" -c '
@@ -155,6 +156,37 @@ if not any(item.get("target") == "/app/output" for item in mounts):
     raise SystemExit("weekly DAG worker output must use its durable volume")
 ' >/dev/null || fail "Official-account weekly DAG worker profile is invalid"
 pass "Official-account weekly DAG worker is bounded, durable, and has no network port"
+
+docker compose --profile wechat-official-account-draft config --format json | \
+  "${python_command[@]}" -c '
+import json
+import sys
+
+worker = json.load(sys.stdin)["services"]["wechat-official-account-draft-worker"]
+if tuple(worker.get("command", [])) != (
+    "python", "-m", "app.wechat_official_account_draft_main", "worker"
+):
+    raise SystemExit("WeChat draft worker entrypoint drifted")
+if worker.get("ports"):
+    raise SystemExit("WeChat draft worker must not publish a network port")
+environment = worker.get("environment", {})
+for key in (
+    "WECHAT_MP_DRAFT_WORKER_ENABLED",
+    "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED",
+    "WECHAT_MP_DRAFT_PRODUCTION_ENABLED",
+    "WECHAT_MP_DRAFT_MIN_WEEK_START",
+):
+    if key not in environment:
+        raise SystemExit(f"WeChat draft worker is missing {key}")
+mounts = {item.get("target"): item for item in worker.get("volumes", [])}
+inbox = mounts.get("/app/input/official-account-weekly-editions")
+artifacts = mounts.get("/app/output/wechat-mp-draft-artifacts")
+if inbox is None or inbox.get("read_only") is not True:
+    raise SystemExit("WeChat draft weekly inbox must be a read-only volume")
+if artifacts is None or artifacts.get("read_only") is True:
+    raise SystemExit("WeChat draft artifact volume must be writable")
+' >/dev/null || fail "WeChat Official Account draft worker profile is invalid"
+pass "WeChat Official Account draft worker is optional, portless, and volume-isolated"
 
 docker compose --profile ip-assets config --format json | \
   "${python_command[@]}" -c '
