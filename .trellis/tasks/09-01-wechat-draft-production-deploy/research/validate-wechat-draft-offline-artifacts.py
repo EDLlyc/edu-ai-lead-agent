@@ -288,6 +288,48 @@ def _oci_blob_name(digest_value: object) -> str:
     return f"blobs/sha256/{value}"
 
 
+def _validated_oci_config_name(
+    blobs: dict[str, tuple[str, int, bytes | None]],
+    metadata: dict[str, object],
+) -> str:
+    index = _json_blob(blobs, "index.json")
+    if not isinstance(index, dict) or not isinstance(index.get("manifests"), list):
+        fail("OCI index is invalid")
+    descriptors = index["manifests"]
+    if len(descriptors) != 1 or not isinstance(descriptors[0], dict):
+        fail("OCI index must contain one manifest")
+    manifest_name = _oci_blob_name(descriptors[0].get("digest"))
+    if (
+        manifest_name not in blobs
+        or blobs[manifest_name][0] != manifest_name.rsplit("/", 1)[1]
+        or manifest_name.rsplit("/", 1)[1]
+        != str(metadata["candidate_id"]).removeprefix("sha256:")
+    ):
+        fail("OCI manifest digest or image identity changed")
+    manifest = _json_blob(blobs, manifest_name)
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("config"), dict):
+        fail("OCI image manifest is invalid")
+    config_name = _oci_blob_name(manifest["config"].get("digest"))
+    layers = manifest.get("layers")
+    if not isinstance(layers, list) or not layers:
+        fail("OCI image layers are absent")
+    for descriptor in layers:
+        if not isinstance(descriptor, dict):
+            fail("OCI layer descriptor is invalid")
+        layer_name = _oci_blob_name(descriptor.get("digest"))
+        if (
+            layer_name not in blobs
+            or blobs[layer_name][0] != layer_name.rsplit("/", 1)[1]
+        ):
+            fail("OCI layer digest binding changed")
+    if (
+        config_name not in blobs
+        or blobs[config_name][0] != config_name.rsplit("/", 1)[1]
+    ):
+        fail("OCI config digest binding changed")
+    return config_name
+
+
 def validate_image_archive(stage: Path, metadata: dict[str, object]) -> None:
     blobs: dict[str, tuple[str, int, bytes | None]] = {}
     total = 0
@@ -328,6 +370,10 @@ def validate_image_archive(stage: Path, metadata: dict[str, object]) -> None:
 
     expected_tag = metadata["candidate_tag"]
     expected_commit = metadata["release_commit"]
+    has_oci_graph = "index.json" in blobs and "oci-layout" in blobs
+    oci_config_name = (
+        _validated_oci_config_name(blobs, metadata) if has_oci_graph else None
+    )
     if "manifest.json" in blobs:
         manifest = _json_blob(blobs, "manifest.json")
         if (
@@ -351,7 +397,10 @@ def validate_image_archive(stage: Path, metadata: dict[str, object]) -> None:
         ):
             fail("classic image manifest graph is incomplete")
         config_name = safe_relative(config_name)
-        if (
+        if oci_config_name is not None:
+            if config_name != oci_config_name:
+                fail("classic and OCI config identities differ")
+        elif (
             not config_name.endswith(".json")
             or config_name.removesuffix(".json")
             != str(metadata["candidate_id"]).removeprefix("sha256:")
@@ -359,47 +408,8 @@ def validate_image_archive(stage: Path, metadata: dict[str, object]) -> None:
         ):
             fail("classic image config identity changed")
         config = _json_blob(blobs, config_name)
-    elif "index.json" in blobs and "oci-layout" in blobs:
-        index = _json_blob(blobs, "index.json")
-        if not isinstance(index, dict) or not isinstance(index.get("manifests"), list):
-            fail("OCI index is invalid")
-        descriptors = index["manifests"]
-        if len(descriptors) != 1 or not isinstance(descriptors[0], dict):
-            fail("OCI index must contain one manifest")
-        manifest_name = _oci_blob_name(descriptors[0].get("digest"))
-        if (
-            manifest_name not in blobs
-            or blobs[manifest_name][0] != manifest_name.rsplit("/", 1)[1]
-        ):
-            fail("OCI manifest digest binding changed")
-        manifest = _json_blob(blobs, manifest_name)
-        if not isinstance(manifest, dict) or not isinstance(
-            manifest.get("config"), dict
-        ):
-            fail("OCI image manifest is invalid")
-        config_name = _oci_blob_name(manifest["config"].get("digest"))
-        layers = manifest.get("layers")
-        if not isinstance(layers, list) or not layers:
-            fail("OCI image layers are absent")
-        for descriptor in layers:
-            if not isinstance(descriptor, dict):
-                fail("OCI layer descriptor is invalid")
-            layer_name = _oci_blob_name(descriptor.get("digest"))
-            if (
-                layer_name not in blobs
-                or blobs[layer_name][0] != layer_name.rsplit("/", 1)[1]
-            ):
-                fail("OCI layer digest binding changed")
-        if (
-            config_name not in blobs
-            or blobs[config_name][0] != config_name.rsplit("/", 1)[1]
-        ):
-            fail("OCI config digest binding changed")
-        if config_name.rsplit("/", 1)[1] != str(metadata["candidate_id"]).removeprefix(
-            "sha256:"
-        ):
-            fail("OCI image config identity changed")
-        config = _json_blob(blobs, config_name)
+    elif oci_config_name is not None:
+        config = _json_blob(blobs, oci_config_name)
     else:
         fail("image archive is neither classic Docker nor OCI layout")
 
