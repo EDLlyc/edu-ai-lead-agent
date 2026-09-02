@@ -724,6 +724,13 @@ release artifacts, or production deployment automation change.
   fails, application writers remain stopped. Shell recovery functions invoked from `if`, `until`,
   or another conditional must explicitly return nonzero on every failed copy, move, inspect, or
   Compose command because Bash suppresses `errexit` in those call contexts.
+- Replace fixed post-start sleeps with a bounded health/restart/image convergence loop. If a
+  one-shot operator has already completed an incompatible migration, a readiness false negative
+  never authorizes re-invoking that operator. Recover only the activated candidate core with all
+  optional side effects disabled, then require a new checksum-bound continuation identity for the
+  remaining optional activation. That continuation binds the exact runtime commit/image, target
+  head and cutoff; requires zero rows plus absent optional worker/volumes; and cannot replace source,
+  run migration, or call the provider.
 - Backup inventory must not assume that a service image contains shell utilities such as `find` or
   `sha256sum`. For an opaque persistent volume, resolve and validate the exact named-volume mount,
   then mount it read-only into an already reviewed helper or candidate image with networking
@@ -779,6 +786,7 @@ release artifacts, or production deployment automation change.
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Pre-migration restoration succeeds but the EXIT trap continues into incident shutdown | Regression failure; return immediately after bounded previous-service verification. |
+| Target migration completed but a fixed readiness delay observed `starting` | Keep draft flags disabled, recover and verify the activated candidate core, never rerun the consumed one-shot identity, and use only a new bound no-migration continuation for optional activation. |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
 | Migration attempt fails or schema is not rollback-compatible | Writers remain stopped for incident response; no database restore/downgrade |
 | Post-activation failure with eligible compatibility | Previous runtime/digest is restored and health-verified |
@@ -895,6 +903,9 @@ release artifacts, or production deployment automation change.
   current RepoDigest, prove the candidate digest survives `.release.env` installation, restore
   primary/release environments even before source activation, and distinguish verified
   pre-migration recovery (previous services retained) from failed recovery (writers stopped).
+- Readiness/continuation regressions must prove multiple `starting` observations can converge within
+  the bound and that the incident continuation rejects runtime/head/cutoff drift, existing jobs,
+  existing worker/volumes, repeat invocation, migration commands, and publish/send surfaces.
 - A captured production source baseline binds every managed regular file/directory by type, path,
   mode, UID, GID, and file content. Capture and activation use the same algorithm: do not assume an
   ownership/mode distribution that the read-only audit disproves, and do not ignore metadata drift.

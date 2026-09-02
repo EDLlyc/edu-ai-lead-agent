@@ -131,6 +131,12 @@ Ordered flow:
   restore its enable flags to false, retain the candidate/core services and migrated schema, and
   verify no draft job or side effect began. If that absence cannot be proven, enter the
   post-migration incident state.
+- If the one-shot operator reaches the target migration but reports a false-negative core readiness
+  failure, do not invoke it again. Incident recovery may restart only the already-activated
+  candidate core with draft flags false and prove the exact runtime commit/image, target head,
+  restart-zero health, absent draft volumes, and zero draft rows. The remaining optional activation
+  then requires a new checksum-bound one-shot continuation identity that cannot replace source,
+  rerun migration, call WeChat, or consume historical work.
 - Never invoke the same failed activation candidate twice and never replay `outcome_unknown` work.
 
 ## 8. Security and evidence

@@ -477,6 +477,15 @@ verify_candidate_application_services() {
   done
 }
 
+wait_for_candidate_application_services() {
+  local deadline
+  deadline=$(( $(date +%s) + 60 )) || return 1
+  until verify_candidate_application_services; do
+    (( $(date +%s) < deadline )) || return 1
+    sleep 2
+  done
+}
+
 ensure_draft_volumes() {
   local logical volume observed
   for logical in official_account_weekly_dag_output wechat_mp_draft_artifacts; do
@@ -662,7 +671,8 @@ run_activation() {
   [[ "$(compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT version_num FROM alembic_version"')" == "$EXPECTED_HEAD" ]] \
     || die "database head differs after migration"
   compose up -d --no-build --no-deps "${APP_SERVICES[@]}"
-  sleep 5
+  wait_for_candidate_application_services \
+    || die "ordinary application services did not become ready within the bounded window"
   preflight_services
   verify_candidate_application_services \
     || die "ordinary application services did not converge on the candidate"

@@ -11,6 +11,7 @@ readonly BUILDER="${HERE}/build-wechat-draft-offline-artifacts.sh"
 readonly BASELINE_CAPTURE="${HERE}/capture-wechat-draft-production-baseline.sh"
 readonly VALIDATOR="${HERE}/validate-wechat-draft-offline-artifacts.py"
 readonly OPERATOR="${HERE}/wechat-draft-offline-release-operator.sh"
+readonly CONTINUATION="${HERE}/wechat-draft-post-migration-continuation.sh"
 test_root=$(mktemp -d /tmp/edu-ai-wechat-draft-harness.XXXXXX)
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -151,7 +152,7 @@ assert_validator_contract() {
 }
 
 assert_static_safety_contract() {
-  bash -n "$BASELINE_CAPTURE" "$BUILDER" "$OPERATOR" "$0"
+  bash -n "$BASELINE_CAPTURE" "$BUILDER" "$OPERATOR" "$CONTINUATION" "$0"
   python3 - "$VALIDATOR" <<'PY'
 import ast
 import pathlib
@@ -178,6 +179,7 @@ PY
   require_text "$OPERATOR" 'candidate immutable reference is absent after image load'
   require_text "$OPERATOR" 'bound release image is not an immutable digest'
   require_text "$OPERATOR" 'previous application services restored and verified'
+  require_text "$OPERATOR" 'ordinary application services did not become ready within the bounded window'
   require_text "$OPERATOR" '--no-build --no-deps wechat-official-account-draft-worker'
   reject_text "$OPERATOR" 'freepublish'
   reject_text "$OPERATOR" 'masssend'
@@ -185,6 +187,16 @@ PY
   reject_text "$OPERATOR" 'minio-init'
   reject_text "$OPERATOR" 'build-broad-offline-artifacts'
   reject_text "$OPERATOR" 'broad-offline-release-operator'
+  require_text "$CONTINUATION" 'continuation stdin must be /dev/null'
+  require_text "$CONTINUATION" '20260901_0042'
+  require_text "$CONTINUATION" '2026-09-07'
+  require_text "$CONTINUATION" 'provider_writes=0'
+  require_text "$CONTINUATION" 'continuation already has an attempt marker'
+  require_text "$CONTINUATION" 'draft worker did not become ready within the bounded window'
+  require_text "$CONTINUATION" '--no-build --no-deps wechat-official-account-draft-worker'
+  reject_text "$CONTINUATION" 'backend-migrate'
+  reject_text "$CONTINUATION" 'freepublish'
+  reject_text "$CONTINUATION" 'masssend'
 }
 
 baseline_source_fingerprint() {
@@ -314,6 +326,8 @@ assert_fake_failure_boundaries() {
     enable_draft_flags() { :; }
     ensure_draft_volumes() { :; }
     preflight_services() { :; }
+    wait_for_candidate_application_services() { :; }
+    verify_candidate_application_services() { :; }
     safe_job_counts() { printf '0:0:0\n'; }
     sleep() { :; }
     compose() {
@@ -574,6 +588,44 @@ assert_pre_migration_exit_retains_verified_previous_services() {
   ) || fail "failed pre-migration recovery did not stop application writers"
 }
 
+assert_candidate_readiness_is_bounded_and_retrying() {
+  local attempts="${test_root}/candidate-readiness-attempts"
+  printf '0\n' >"$attempts"
+  (
+    export WECHAT_DRAFT_OPERATOR_SOURCE_ONLY=1
+    source "$OPERATOR"
+    verify_candidate_application_services() {
+      local count
+      count=$(<"$attempts")
+      count=$((count + 1))
+      printf '%s\n' "$count" >"$attempts"
+      ((count >= 3))
+    }
+    sleep() { :; }
+    wait_for_candidate_application_services
+  ) || fail "candidate readiness did not retry to a bounded healthy result"
+  [[ "$(<"$attempts")" == 3 ]] || fail "candidate readiness retry count drifted"
+}
+
+assert_continuation_worker_readiness_is_bounded_and_retrying() {
+  local attempts="${test_root}/continuation-readiness-attempts"
+  printf '0\n' >"$attempts"
+  (
+    export WECHAT_DRAFT_CONTINUATION_SOURCE_ONLY=1
+    source "$CONTINUATION"
+    verify_worker() {
+      local count
+      count=$(<"$attempts")
+      count=$((count + 1))
+      printf '%s\n' "$count" >"$attempts"
+      ((count >= 3))
+    }
+    sleep() { :; }
+    wait_for_worker
+  ) || fail "continuation worker readiness did not retry to a bounded healthy result"
+  [[ "$(<"$attempts")" == 3 ]] || fail "continuation worker readiness retry count drifted"
+}
+
 assert_optional_zero_effect_recovery() {
   local app_root="${test_root}/optional-recovery-app"
   local disabled="${test_root}/optional-disabled" ordinary_stopped="${test_root}/ordinary-stopped"
@@ -647,6 +699,8 @@ assert_recovery_arming_and_exact_marker_restore
 assert_release_env_is_immutable_and_early_failure_restores
 assert_bound_release_image_requires_matching_digest
 assert_pre_migration_exit_retains_verified_previous_services
+assert_candidate_readiness_is_bounded_and_retrying
+assert_continuation_worker_readiness_is_bounded_and_retrying
 assert_optional_zero_effect_recovery
 assert_cutoff_is_next_monday
 printf 'wechat_draft_offline_release_harness_ok\n'
