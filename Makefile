@@ -13,9 +13,9 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	ip-asset-worker ip-asset-import-dry-run ip-asset-stack-up ip-asset-ui \
 	ip-asset-demo-preflight \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
-	topic-rerank-eval \
+	agent-workbench-eval-check topic-rerank-eval \
 	brand-retrieval-eval \
-	visual-retrieval-eval \
+	digital-ip-eval ip-asset-retrieval-eval visual-retrieval-eval \
 	ip-asset-grounded-eval-check ip-asset-grounded-eval-preflight \
 	ip-asset-grounded-eval-live ip-asset-grounded-eval-report \
 	ip-asset-grounded-eval-compare \
@@ -179,11 +179,17 @@ agent-workbench-ui:
 agent-workbench-eval:
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner
 
+agent-workbench-eval-check:
+	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check
+
 topic-rerank-eval:
 	cd backend && $(PY_RUN) python -m evals.topic_rerank.runner --check
 
 brand-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.brand_retrieval.runner --check
+
+digital-ip-eval:
+	cd backend && $(PY_RUN) python -m evals.digital_ip.runner --check
 
 ip-asset-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval.runner --check
@@ -192,6 +198,9 @@ ip-asset-grounded-eval-check:
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner validate-seed
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner check-canonical
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check-v2
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner validate-seed-v2
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner check-v2-canonical
 
 ip-asset-grounded-eval-preflight:
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner preflight-live
@@ -226,8 +235,9 @@ visual-retrieval-eval:
 image-quality-eval:
 	cd backend && $(PY_RUN) python -m evals.image_quality.runner --check
 
-eval-check: brand-retrieval-eval image-quality-eval ip-asset-grounded-eval-check \
-	ip-asset-retrieval-eval topic-rerank-eval visual-retrieval-eval
+eval-check: agent-workbench-eval-check brand-retrieval-eval digital-ip-eval \
+	image-quality-eval ip-asset-grounded-eval-check ip-asset-retrieval-eval \
+	topic-rerank-eval visual-retrieval-eval
 
 agent-portfolio-check: agent-api-contract-check
 	cd backend && $(PY_RUN) python -m evals.agent_workbench.runner --check

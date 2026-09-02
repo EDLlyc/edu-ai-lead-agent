@@ -321,11 +321,15 @@ make official-account-local-live-smoke MATERIAL_PACKAGE_ID=<uuid>
 ```bash
 make backend-check        # Ruff + mypy + pytest
 make frontend-check       # Prettier + ESLint + TypeScript + Vitest + build
+make eval-check           # 七套离线评测 + Grounded Seed V1/V2 数据契约
 make agent-portfolio-check
 make api-contract-check
 make doctor
 make check
 ```
+
+`make eval-check` 不访问网络、不需要模型 API Key，也不写入业务数据；它验证冻结 fixture、排序策略、
+Grounded Seed V1/V2 数据继承关系和 canonical 报告是否漂移，不代表真实模型准确率或线上业务效果。
 
 ## 个人简历
 

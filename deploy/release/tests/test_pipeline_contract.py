@@ -63,6 +63,7 @@ def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     assert "GITHUB_BACKUP_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert "PRODUCTION_DEPLOY_ENABLED\n    type: Boolean\n    value: false" in pipeline
     assert pipeline.count('"${CI_COMMIT_REF_NAME}" == "main"') == 3
+    assert 'make PY_RUN="$PWD/scripts/ci-python.sh" eval-check' in pipeline
     assert 'make PY_RUN="$PWD/scripts/ci-python.sh" release-tool-check' in pipeline
     assert "needs:" not in pipeline
     acr_login = parsed["stages"]["publish_stage"]["jobs"]["acr_publish_job"]["steps"][
@@ -94,6 +95,46 @@ def test_flow_pipeline_is_inactive_and_branch_scoped() -> None:
     )
     assert "--no-build" not in deploy_job
     assert "/usr/local/sbin/edu-ai-deploy" in pipeline
+
+
+def test_eval_check_runs_seven_offline_suites_and_grounded_seed_contracts() -> None:
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    command_prefix = "\tcd backend && $(PY_RUN) python -m "
+    runner_targets = {
+        "agent-workbench-eval-check": "evals.agent_workbench.runner --check",
+        "brand-retrieval-eval": "evals.brand_retrieval.runner --check",
+        "digital-ip-eval": "evals.digital_ip.runner --check",
+        "image-quality-eval": "evals.image_quality.runner --check",
+        "ip-asset-retrieval-eval": "evals.ip_asset_retrieval.runner --check",
+        "topic-rerank-eval": "evals.topic_rerank.runner --check",
+        "visual-retrieval-eval": "evals.visual_retrieval.runner --check",
+    }
+    for target, command in runner_targets.items():
+        recipe = makefile.split(f"\n{target}:\n", 1)[1].split("\n\n", 1)[0]
+        assert recipe.splitlines() == [f"{command_prefix}{command}"]
+
+    grounded_target = makefile.split("\nip-asset-grounded-eval-check:\n", 1)[1].split(
+        "\n\n", 1
+    )[0]
+    assert grounded_target.splitlines() == [
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.authoring --check",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.runner validate-seed",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.runner check-canonical",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.authoring --check-v2",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.runner validate-seed-v2",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.runner check-v2-canonical",
+    ]
+    eval_target = makefile.split("\neval-check:", 1)[1].split("\n\n", 1)[0]
+    assert eval_target.replace("\\\n\t", " ").split() == [
+        "agent-workbench-eval-check",
+        "brand-retrieval-eval",
+        "digital-ip-eval",
+        "image-quality-eval",
+        "ip-asset-grounded-eval-check",
+        "ip-asset-retrieval-eval",
+        "topic-rerank-eval",
+        "visual-retrieval-eval",
+    ]
 
 
 def test_flow_display_names_fit_documented_limits() -> None:

@@ -114,6 +114,7 @@ stages:
                 test -n "$CI_COMPOSE_NETWORK"
                 "$PWD/scripts/ci-python.sh" bash scripts/check-python-locks.sh
                 make PY_RUN="$PWD/scripts/ci-python.sh" backend-check
+                make PY_RUN="$PWD/scripts/ci-python.sh" eval-check
                 make PY_RUN="$PWD/scripts/ci-python.sh" release-tool-check
                 make PY_RUN="$PWD/scripts/ci-python.sh" frontend-check
                 docker compose build --pull backend-migrate

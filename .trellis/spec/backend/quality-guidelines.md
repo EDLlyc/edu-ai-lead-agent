@@ -393,11 +393,16 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
 - CI invocation: `make PY_RUN="$PWD/scripts/ci-python.sh" eval-check` after `backend-check`.
 - The gate runs the checked Agent Workbench, brand retrieval, digital IP, image quality, IP asset
   retrieval, topic rerank, and visual retrieval runners.
+- The same gate runs the provider-free Grounded Seed V1 and V2 authoring, strict dataset, and
+  canonical-drift contracts through `ip-asset-grounded-eval-check`.
 
 ### 3. Contracts
 
 - Every child runner uses `--check`; the diagnostic-only `agent-workbench-eval` target remains
   separate.
+- `ip-asset-grounded-eval-check` runs the three V1 checks first, followed by exactly
+  `authoring --check-v2`, `runner validate-seed-v2`, and `runner check-v2-canonical`. Keeping these
+  as separate Make recipe lines makes the first nonzero result stop the target.
 - The Make target propagates any child failure and remains provider-free: no network, API key,
   business-data write, live worker, or production service is permitted.
 - Topic-rerank fixtures use the current qualified-authoritative priority-rule identity. A fixture
@@ -411,15 +416,17 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
 | Condition | Required result |
 |---|---|
 | A runner exits nonzero or its canonical bytes drift | `make eval-check` exits nonzero and CI stops |
+| Seed V2 authoring, inherited V1 identity, strict dataset, or canonical bytes drift | The Grounded child exits nonzero and blocks `eval-check` |
 | Priority fixture collapses to one group | The explicit group-separation check fails |
 | Priority groups are crossed in final order | The priority-barrier check fails |
 | The exact space-station query is removed | Dataset unit test fails |
-| Provider credentials are absent | All seven checked runners still execute |
+| Provider credentials are absent | All seven checked runners and both Grounded seed contracts still execute |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: all seven runners reproduce their canonical reports, the priority fixture contains groups
-  `0` and `1`, and the exact IP demonstration query remains versioned.
+- Good: all seven runners reproduce their canonical reports, Grounded V1/V2 reproduce their frozen
+  data contracts, the priority fixture contains groups `0` and `1`, and the exact IP demonstration
+  query remains versioned.
 - Base: fixture metrics remain regression evidence only and are reported with their provider-free
   disclaimers.
 - Bad: changing expected order to accept a broken fixture, silently updating canonical output,
@@ -433,6 +440,8 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
 - The IP retrieval evaluator test asserts the exact demonstration query exists and verifies the
   reviewed aggregate/canonical output.
 - The release pipeline contract test asserts the exact Yunxiao `eval-check` command.
+- The same contract test asserts all seven runner recipes, the ordered six-command Grounded V1/V2
+  recipe, and the exact eight prerequisites of the top-level gate.
 - `make eval-check`, focused evaluator tests, Ruff, strict mypy, and `git diff --check` pass.
 
 ### 7. Wrong vs Correct

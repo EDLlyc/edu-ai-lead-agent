@@ -654,6 +654,8 @@ make ip-asset-grounded-eval-compare \
 PYTHONPATH=backend conda run --name edu-ai \
   python -m evals.ip_asset_retrieval_grounded.authoring --check-v2
 PYTHONPATH=backend conda run --name edu-ai \
+  python -m evals.ip_asset_retrieval_grounded.runner validate-seed-v2
+PYTHONPATH=backend conda run --name edu-ai \
   python -m evals.ip_asset_retrieval_grounded.runner check-v2-canonical
 ```
 
@@ -721,8 +723,10 @@ PYTHONPATH=backend conda run --name edu-ai \
   evidence. Validation reconstructs the envelope and binds every run, search, model, dataset,
   policy, bootstrap, aggregate and artifact-hash field back to the supplied run/report bytes. It
   never stores query text, paths, vectors, prompts, provider bodies or user identity.
-- `make ip-asset-grounded-eval-check` remains provider-free and joins `make eval-check`; preflight
-  and live commands are explicit local operations and never join the ordinary CI gate.
+- `make ip-asset-grounded-eval-check` remains provider-free and joins `make eval-check`. It runs
+  Seed V1 authoring/strict/canonical checks first, then Seed V2 `authoring --check-v2`,
+  `validate-seed-v2`, and `check-v2-canonical` as separate fail-fast recipe lines. Preflight and
+  live commands are explicit local operations and never join the ordinary CI gate.
 
 ### 4. Validation & Error Matrix
 
@@ -772,6 +776,8 @@ PYTHONPATH=backend conda run --name edu-ai \
   `search_text` and assert exactly one closed aggregate call with actual version/mode/date.
 - The existing provider-free 41-case selector suite remains green. Real provider runs are recorded
   as task-local evidence only after explicit authorization and are not committed as canonical truth.
+- The Make/release contract test freezes the Grounded V1/V2 command order and proves the top-level
+  `eval-check` depends on this target without including preflight or live commands.
 - Final checks include focused pytest, Ruff format/lint, strict mypy, authoring/canonical drift,
   `make eval-check`, privacy/scope scan, and `git diff --check`.
 
