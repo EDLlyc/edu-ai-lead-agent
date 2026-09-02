@@ -651,6 +651,10 @@ make ip-asset-grounded-eval-compare \
   BASELINE=/tmp/ip-grounded-v2.json CANDIDATE=/tmp/ip-grounded-v3.json \
   OUTPUT_JSON=/tmp/ip-grounded-comparison.json \
   OUTPUT_MARKDOWN=/tmp/ip-grounded-comparison.md
+PYTHONPATH=backend conda run --name edu-ai \
+  python -m evals.ip_asset_retrieval_grounded.authoring --check-v2
+PYTHONPATH=backend conda run --name edu-ai \
+  python -m evals.ip_asset_retrieval_grounded.runner check-v2-canonical
 ```
 
 - Frozen files live in `backend/evals/ip_asset_retrieval_grounded/`.
@@ -672,6 +676,14 @@ make ip-asset-grounded-eval-compare \
 - Dataset files are strict versioned JSON/JSONL with byte SHA-256 identities. Labels are authored
   after visual review and must never be derived from V2/V3 ranks, cosine, metadata scores, or
   expected output embedded in a fake ranker.
+- Additive Codex Seed V2 preserves the exact V1 asset/query/seed hashes. It contains exactly 124
+  queries (98 dev / 26 holdout), exactly 30 no-answer cases and a complete 5,084-grade matrix. Its
+  24 additions are all typed no-answer/near-miss challenges split 18 dev / 6 holdout, with one
+  same-split answerable robustness anchor each. The separately hashed review ledger is the complete
+  record of intentional V1-grade changes and explicitly freezes the reviewed V1 no-answer,
+  combined-constraint, grade-1/2-boundary and fixed space-station scopes. The evaluator is the same
+  Codex, so the evidence remains Seed and never establishes independent review, human Gold or human
+  agreement.
 - Preflight validates the committed safe snapshot against the approved manifest, maps all 41 refs
   one-to-one by checksum in memory, requires ready/shared dynamic rows, and proves all 41 have the
   exact compatible embedding identity. The bounded projection refuses a shared corpus larger than
@@ -683,6 +695,11 @@ make ip-asset-grounded-eval-compare \
   input policy, timestamp, and asset/query/seed hashes. It records only query refs, mode, safe top-k
   catalog refs, closed degraded reason, or closed failure code; it excludes query text, labels,
   scores, vectors, provider bodies, paths, dynamic identities, and actor/request data.
+- A Seed V2 live observation may additionally retain only bounded decision evidence: top semantic
+  similarity, non-negative top-two semantic margin, normalized metadata-match score/count and the
+  number of supporting ranking lanes. The service exposes these fields only on its internal result;
+  ordinary search response, ranking, telemetry and production search-version behavior do not
+  change.
 - Ordinary `search_text(...)` keeps one best-effort result/zero-result aggregate write. Evaluation
   uses `search_text_for_evaluation(...)` and performs no aggregate write; this choice is internal and
   cannot be selected from the HTTP API.
@@ -690,6 +707,20 @@ make ip-asset-grounded-eval-compare \
   No-answer cases report correct abstention and false-positive rate separately and never receive an
   artificial 1.0 in ranking macros. Reports aggregate overall/category/split/mode/degraded/failure
   and use a fixed-seed, 10,000-resample query-level paired bootstrap for V3-minus-V2 95% intervals.
+- Seed V2 selective evaluation scans a fixed bounded policy grid on dev only, fixes one candidate,
+  and then reports holdout once. It reports no-answer false-positive/correct-abstention,
+  answerable false-abstention, coverage/risk, Recall@3/5, MRR@5, nDCG@5, category/challenge slices,
+  safe bad-case refs, robustness consistency and paired bootstrap intervals. Every dev curve point
+  and category/challenge slice retains the ranking and abstention diagnostics needed to interpret
+  its coverage. The selected policy is diagnostic evidence only: it must not activate a production
+  threshold or search version.
+- An optional safe live-run manifest binds run/search/model/data identities, Git SHA, aggregate
+  duration/provider/token/cost counters, dev/holdout metrics, bootstrap identity and hashes of the
+  explicit run/report artifacts. Its validity notes disclose Codex-only provenance, contamination
+  and ambiguous-case limitations, holdout isolation, corpus-drift identity and absence of online
+  evidence. Validation reconstructs the envelope and binds every run, search, model, dataset,
+  policy, bootstrap, aggregate and artifact-hash field back to the supplied run/report bytes. It
+  never stores query text, paths, vectors, prompts, provider bodies or user identity.
 - `make ip-asset-grounded-eval-check` remains provider-free and joins `make eval-check`; preflight
   and live commands are explicit local operations and never join the ordinary CI gate.
 
@@ -702,6 +733,10 @@ make ip-asset-grounded-eval-compare \
 | Any of the 41 compatible vectors is missing | `compatible_embedding_incomplete`; no live run |
 | Shared library exceeds the bounded complete projection | `shared_corpus_exceeds_safe_projection`; do not report partial-corpus metrics |
 | Dataset has a duplicate/missing query, asset grade, illegal grade, split drift, or prohibited field | Validation/check exits nonzero; canonical is not rewritten |
+| Seed V1 hash drifts while authoring/checking Seed V2 | V2 authoring check exits nonzero; V1 is never rewritten |
+| V2 is not exactly 124 queries / 30 no-answer / 5,084 grades or changes an inherited V1 query | Strict V2 load fails closed |
+| A selective rule is chosen using holdout | Invalid methodology; select on dev and report holdout only after fixing the rule |
+| Safe manifest artifact bytes drift or a prohibited field appears | Validation fails; do not preserve or compare the manifest as evidence |
 | V2/V3 run dataset hashes or embedding identities differ | Paired comparison refuses the inputs |
 | No-answer run returns assets | Count a false positive; do not fold it into Recall/MRR |
 | Live provider degrades to metadata | Preserve `degraded_metadata` plus the closed reason and score that returned ranking honestly |
@@ -714,6 +749,9 @@ make ip-asset-grounded-eval-compare \
   corpus/seed identity, and a paired report discloses seed maturity plus confidence intervals.
 - Base: provider credentials/database are absent; the provider-free dataset/canonical gate still
   passes, while live preflight fails explicitly without manufacturing a ranking.
+- Good Seed V2: all 41 images are re-reviewed without opening live ranks/scores, the additive
+  no-answer matrix and bounded change ledger validate, and a dev-selected candidate reports
+  holdout without changing production behavior.
 - Bad: call the evaluator from a website, persist reviewer identities, call seed labels Gold,
   tune labels from current ranks, compare different embedding executions, include no-answer as
   perfect Recall, or let 100 evaluation queries increase business search counters.
@@ -723,6 +761,10 @@ make ip-asset-grounded-eval-compare \
 - Unit tests assert 41 assets, 100 queries, 80/20 split, all categories, the exact space-station
   query, 4,100 unique grades, `codex_seed`, no-answer consistency, strict/prohibited fields, stable
   canonical bytes, and snapshot drift refusal.
+- Seed V2 tests additionally freeze V1 hashes; assert 124 queries, 98/26 split, 30 no-answer cases,
+  5,084 `codex_seed_v2` grades, 24 robustness pairs and a complete change ledger; reject inherited
+  query drift; prove dev-only selection plus holdout metrics; and verify safe manifest artifact
+  hashes and prohibited-field rejection.
 - Metric tests cover Recall@3/5, MRR@5, graded nDCG@5, separate no-answer behavior, coverage,
   degraded/failure aggregation, fixed bootstrap reproduction, run hash/order checks, and identical
   embedding identity for paired comparison.

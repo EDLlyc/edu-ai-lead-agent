@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -10,7 +11,7 @@ from typing import Literal, cast
 import httpx
 from app.application.ports.ip_assets import IpAssetQuery
 from app.application.ports.visual_retrieval import VisualEmbeddingModel
-from app.application.services.ip_assets import IpAssetService
+from app.application.services.ip_assets import IpAssetSearchResult, IpAssetService
 from app.core.config import Settings
 from app.domain.ip_assets import (
     IP_ASSET_SEARCH_V2_VERSION,
@@ -30,11 +31,15 @@ from .assets import (
     GroundedLivePreflightError,
     map_live_grounded_assets,
 )
-from .dataset import GroundedDatasetBundle
+from .dataset import GroundedDatasetBundle, GroundedDatasetBundleV2
 from .models import (
     RUN_SCHEMA_VERSION,
+    RUN_V2_SCHEMA_VERSION,
+    GroundedDecisionEvidence,
     GroundedQueryObservation,
+    GroundedQueryObservationV2,
     GroundedRetrievalRun,
+    GroundedRetrievalRunV2,
 )
 
 
@@ -136,6 +141,113 @@ async def run_live_grounded(
         query_dataset_sha256=bundle.queries_sha256,
         seed_dataset_sha256=bundle.seed_sha256,
         observations=tuple(observations),
+    )
+
+
+async def run_live_grounded_v2(
+    *,
+    settings: Settings,
+    bundle: GroundedDatasetBundleV2,
+    manifest_path: Path,
+    search_version: str,
+) -> GroundedRetrievalRunV2:
+    """Run Seed V2 through the production retrieval path without business telemetry."""
+    _validate_live_settings(settings)
+    if search_version not in {IP_ASSET_SEARCH_V2_VERSION, IP_ASSET_SEARCH_V3_VERSION}:
+        raise ValueError("grounded live search version is unsupported")
+    version = cast(IpAssetSearchVersion, search_version)
+    started = time.monotonic()
+    engine = create_engine(settings)
+    try:
+        session_factory = create_session_factory(engine)
+        base_repository = PostgresIpAssetRepository(session_factory)
+        live_assets = await map_live_grounded_assets(
+            repository=base_repository,
+            snapshot=bundle.assets,
+            manifest_path=manifest_path,
+            identity=settings.visual_embedding_identity,
+        )
+        repository = GroundedIpAssetRepository(
+            session_factory,
+            allowed_asset_ids=live_assets.allowed_asset_ids,
+        )
+        async with _embedding_model(settings) as embeddings:
+            service = IpAssetService(
+                repository=repository,
+                store=MinioIpAssetStore(settings),
+                embeddings=embeddings,
+                identity=settings.visual_embedding_identity,
+                search_version=version,
+                business_timezone=settings.business_timezone,
+            )
+            observations: list[GroundedQueryObservationV2] = []
+            for query in bundle.queries:
+                result = await service.search_text_for_evaluation(
+                    message=query.query,
+                    prior_turns=(),
+                    filters=IpAssetQuery(limit=8),
+                )
+                try:
+                    selected = tuple(
+                        live_assets.catalog_ref_by_asset_ref[item.asset.asset_ref]
+                        for item in result.items
+                    )
+                except KeyError as error:
+                    raise ValueError(
+                        "grounded retrieval escaped the approved 41-asset corpus"
+                    ) from error
+                observations.append(
+                    GroundedQueryObservationV2(
+                        query_ref=query.query_ref,
+                        mode=result.mode.value,
+                        degraded_reason=result.degraded_reason,
+                        selected_catalog_refs=selected,
+                        decision_evidence=_decision_evidence(result),
+                        failure_code=None,
+                    )
+                )
+    finally:
+        await engine.dispose()
+    identity = settings.visual_embedding_identity
+    execution_mode = cast(Literal["fake", "alibaba"], settings.visual_embedding_provider_mode)
+    return GroundedRetrievalRunV2(
+        schema_version=RUN_V2_SCHEMA_VERSION,
+        run_ref=f"igr_{secrets.token_hex(10)}",
+        created_at=datetime.now(UTC).isoformat(),
+        maturity="seed",
+        search_version=version,
+        embedding_execution_mode=execution_mode,
+        embedding_provider=identity.provider,
+        embedding_model=identity.model,
+        embedding_dimensions=identity.dimensions,
+        embedding_input_policy_version=identity.input_policy_version,
+        asset_set_fingerprint=bundle.assets.asset_set_fingerprint,
+        query_dataset_sha256=bundle.queries_sha256,
+        seed_dataset_sha256=bundle.seed_sha256,
+        robustness_dataset_sha256=bundle.robustness_sha256,
+        review_ledger_sha256=bundle.review_sha256,
+        duration_ms=max(0, round((time.monotonic() - started) * 1_000)),
+        provider_request_count=len(bundle.queries) if execution_mode == "alibaba" else 0,
+        input_token_count=None,
+        estimated_cost_usd=None,
+        observations=tuple(observations),
+    )
+
+
+def _decision_evidence(result: IpAssetSearchResult) -> GroundedDecisionEvidence:
+    semantic_values = sorted(
+        (item.similarity for item in result.items if item.similarity is not None),
+        reverse=True,
+    )
+    top_similarity = semantic_values[0] if semantic_values else None
+    margin = semantic_values[0] - semantic_values[1] if len(semantic_values) >= 2 else None
+    top = result.items[0] if result.items else None
+    return GroundedDecisionEvidence(
+        top_semantic_similarity=top_similarity,
+        semantic_margin=margin,
+        metadata_match_score=(top.evaluation_metadata_score if top is not None else None),
+        metadata_match_count=(top.evaluation_metadata_match_count if top is not None else 0),
+        evidence_lane_count=(top.evaluation_evidence_lane_count if top is not None else 0),
     )
 
 

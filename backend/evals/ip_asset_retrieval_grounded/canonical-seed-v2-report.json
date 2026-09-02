@@ -1,0 +1,80 @@
+{
+  "dataset": {
+    "asset_count": 41,
+    "asset_set_fingerprint": "9a40b9ea1afe28cfe98633a2fbcbfe696c34802ca37911a09d5e2da4eb0c2bb2",
+    "assets_sha256": "9399146b747a5028052254cb8f5bf6934b9712dba31a1c48cba58f802640a506",
+    "judgment_count": 5084,
+    "no_answer_count": 30,
+    "queries_sha256": "81d6ee030b9e6178121b04417c95cda1c1cbe8b5839baf31d692b3fcf6763900",
+    "query_count": 124,
+    "review_sha256": "e35df59a4e0498de4c7f2144074d7934124e9998ab7bf298fa2c96c27c2d0486",
+    "robustness_sha256": "f4b23fb214f517302ecb1aafca375cebd672c63dbd4449d7f01059ebd587878f",
+    "seed_sha256": "472b995684d980f582d72145384a6eb59d1333a6a5ffd46697a883da08e9cb44",
+    "source_v1_queries_sha256": "637a4f155beeae969353d6fb7fafb7a555e2bb695eebf91ef1c9cec6644e7e98",
+    "source_v1_seed_sha256": "8bf85e957b21658dbb2de28d6c735927605571170a1a05cccf61339a61715165"
+  },
+  "distribution": {
+    "answer_kinds": {
+      "has_relevant": 94,
+      "no_answer": 30
+    },
+    "categories": {
+      "action": 12,
+      "asset_type": 8,
+      "character": 10,
+      "combined_constraints": 16,
+      "emotion": 8,
+      "intended_use": 10,
+      "no_answer": 30,
+      "noisy_alias": 4,
+      "paraphrase": 6,
+      "scene": 12,
+      "transparent_background": 8
+    },
+    "challenge_kinds": {
+      "contradictory_constraints": 4,
+      "nonexistent_character": 3,
+      "semantic_near_miss": 6,
+      "unavailable_action_or_use": 4,
+      "unsupported_visible_text": 4,
+      "wrong_scene": 3
+    },
+    "grades": {
+      "0": 3689,
+      "1": 351,
+      "2": 399,
+      "3": 645
+    },
+    "robustness_relations": {
+      "filter_monotonicity": 15,
+      "noisy_alias_near_miss": 4,
+      "paraphrase_near_miss": 5
+    },
+    "splits": {
+      "dev": 98,
+      "holdout": 26
+    }
+  },
+  "label_source": "codex_seed_v2",
+  "maturity": "seed",
+  "review": {
+    "changed_grade_count": 14,
+    "independent_human_review": false,
+    "rank_or_score_observations_opened": false,
+    "review_pass_id": "codex-blind-risk-review-v2",
+    "reviewed_asset_count": 41,
+    "reviewed_scopes": [
+      "v1_no_answer_queries",
+      "v1_combined_constraint_queries",
+      "v1_grade_1_2_boundaries",
+      "fixed_space_station_query"
+    ]
+  },
+  "schema_version": "ip-asset-grounded-seed-report-v2",
+  "truthfulness": {
+    "human_agreement_available": false,
+    "human_gold": false,
+    "independent_review_available": false,
+    "live_retrieval_measured": false
+  }
+}

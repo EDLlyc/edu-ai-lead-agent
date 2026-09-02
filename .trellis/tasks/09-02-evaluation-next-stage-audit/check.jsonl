@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review implementation against backend-wide non-negotiable contracts."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit logs, manifests and failure diagnostics for sensitive evaluation data."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/implementation-contracts.md","reason":"Verify exact Seed V2 counts, no-telemetry/privacy boundaries, provider-free gates and no production behavior change."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/repository-audit.md","reason":"Check that the implementation fixes the measured abstention gap without duplicating active work."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/external-methods.md","reason":"Check evidence maturity and ensure Codex review is never reported as human Gold or agreement."}

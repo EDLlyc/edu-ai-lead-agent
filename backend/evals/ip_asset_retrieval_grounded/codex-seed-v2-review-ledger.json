@@ -1,0 +1,115 @@
+{
+  "changes": [
+    {
+      "catalog_ref": "89dc2182a28f031f",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "action-03",
+      "reason_code": "missing_required_character"
+    },
+    {
+      "catalog_ref": "91d8302fbf315a6e",
+      "new_grade": 1,
+      "old_grade": 3,
+      "query_ref": "combined-constraints-01",
+      "reason_code": "missing_required_action"
+    },
+    {
+      "catalog_ref": "09c8fd9470cb5502",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-03",
+      "reason_code": "missing_required_scene"
+    },
+    {
+      "catalog_ref": "471bf408e572a3e0",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-03",
+      "reason_code": "missing_required_scene"
+    },
+    {
+      "catalog_ref": "89dc2182a28f031f",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-05",
+      "reason_code": "missing_required_object"
+    },
+    {
+      "catalog_ref": "a283092c9925185c",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-05",
+      "reason_code": "missing_required_object"
+    },
+    {
+      "catalog_ref": "12086739c0e77148",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-09",
+      "reason_code": "missing_required_object"
+    },
+    {
+      "catalog_ref": "c5ac14daf0b33357",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "combined-constraints-09",
+      "reason_code": "missing_required_object"
+    },
+    {
+      "catalog_ref": "6954687fbdae4366",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "scene-01",
+      "reason_code": "missing_required_character"
+    },
+    {
+      "catalog_ref": "c3b8b212acd4f34a",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "scene-01",
+      "reason_code": "missing_required_character"
+    },
+    {
+      "catalog_ref": "e533d4b5c0547c0d",
+      "new_grade": 1,
+      "old_grade": 2,
+      "query_ref": "scene-01",
+      "reason_code": "missing_required_character"
+    },
+    {
+      "catalog_ref": "029ee20bb1ff26c3",
+      "new_grade": 2,
+      "old_grade": 3,
+      "query_ref": "scene-03",
+      "reason_code": "missing_required_scene"
+    },
+    {
+      "catalog_ref": "5c2a29bbec16ca4f",
+      "new_grade": 1,
+      "old_grade": 3,
+      "query_ref": "scene-03",
+      "reason_code": "missing_required_scene"
+    },
+    {
+      "catalog_ref": "bab27fe77a8edff4",
+      "new_grade": 2,
+      "old_grade": 3,
+      "query_ref": "scene-03",
+      "reason_code": "missing_required_scene"
+    }
+  ],
+  "evaluator_version": "codex-visual-review-v2",
+  "independent_human_review": false,
+  "rank_or_score_observations_opened": false,
+  "review_pass_id": "codex-blind-risk-review-v2",
+  "reviewed_asset_count": 41,
+  "reviewed_scopes": [
+    "v1_no_answer_queries",
+    "v1_combined_constraint_queries",
+    "v1_grade_1_2_boundaries",
+    "fixed_space_station_query"
+  ],
+  "schema_version": "ip-asset-grounded-codex-review-v2",
+  "source_seed_sha256": "8bf85e957b21658dbb2de28d6c735927605571170a1a05cccf61339a61715165"
+}

@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend non-negotiable boundaries and routing index for the evaluation-only implementation."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Place new evaluator schemas, runners and tests in the established backend ownership boundaries."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Safe diagnostics must exclude query text, image locations, vectors, provider bodies and identity."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/implementation-contracts.md","reason":"Curated grounded-retrieval and quality-gate contracts plus pointers to the authoritative large specs."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/repository-audit.md","reason":"Repository-backed gap analysis, current metrics and overlap boundaries with active tasks."}
+{"file":".trellis/tasks/09-02-evaluation-next-stage-audit/research/external-methods.md","reason":"Primary-source method constraints and explicit decisions not to introduce a new platform or fake human evidence."}

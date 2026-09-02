@@ -98,6 +98,9 @@ class IpAssetSearchHit:
     asset: IpAssetRecord
     similarity: float | None
     explanation: str
+    evaluation_metadata_score: float | None = None
+    evaluation_metadata_match_count: int = 0
+    evaluation_evidence_lane_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -659,6 +662,9 @@ class IpAssetService:
                         query=query,
                         matches=hit.matches,
                     ),
+                    evaluation_metadata_score=hit.score,
+                    evaluation_metadata_match_count=len(hit.matches),
+                    evaluation_evidence_lane_count=1,
                 )
                 for hit in hits
             ),
@@ -1154,6 +1160,9 @@ def _merge_text_search_hits(
                 query=query,
                 matches=metadata.matches if metadata is not None else (),
             ),
+            evaluation_metadata_score=metadata.score if metadata is not None else None,
+            evaluation_metadata_match_count=(len(metadata.matches) if metadata is not None else 0),
+            evaluation_evidence_lane_count=int(semantic is not None) + int(metadata is not None),
         )
     ordered_refs = rank_ip_asset_candidates(
         tuple(candidates), version=search_version, limit=query.limit

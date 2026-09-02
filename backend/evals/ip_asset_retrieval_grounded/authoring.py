@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -12,21 +13,45 @@ from pathlib import Path
 from typing import Literal
 
 from .assets import build_safe_asset_snapshot
-from .dataset import DEFAULT_ASSETS_PATH, DEFAULT_QUERIES_PATH, DEFAULT_SEED_PATH
+from .dataset import (
+    DEFAULT_ASSETS_PATH,
+    DEFAULT_QUERIES_PATH,
+    DEFAULT_SEED_PATH,
+    DEFAULT_V2_QUERIES_PATH,
+    DEFAULT_V2_REVIEW_PATH,
+    DEFAULT_V2_ROBUSTNESS_PATH,
+    DEFAULT_V2_SEED_PATH,
+    EXPECTED_V1_ASSETS_SHA256,
+    EXPECTED_V1_QUERIES_SHA256,
+    EXPECTED_V1_SEED_SHA256,
+    load_grounded_bundle,
+)
 from .models import (
+    EVALUATOR_V2_VERSION,
     EVALUATOR_VERSION,
     QUERY_SCHEMA_VERSION,
+    QUERY_V2_SCHEMA_VERSION,
+    REVIEW_V2_SCHEMA_VERSION,
+    ROBUSTNESS_V2_SCHEMA_VERSION,
+    RUBRIC_V2_VERSION,
     RUBRIC_VERSION,
     SEED_SCHEMA_VERSION,
+    SEED_V2_SCHEMA_VERSION,
+    GroundedChallengeKind,
+    GroundedGradeReviewChange,
     GroundedQuery,
     GroundedQueryCategory,
+    GroundedQueryV2,
     GroundedRelevanceGrade,
+    GroundedRobustnessPairV2,
+    GroundedRobustnessRelation,
     GroundedSeedMatrix,
+    GroundedSeedMatrixV2,
+    GroundedSeedReviewLedgerV2,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MANIFEST_PATH = REPO_ROOT / "private/brand-materials/visual-assets.manifest.json"
-
 # Visual-review order from the approved 41-image contact sheets. Only safe public refs are kept.
 REF_BY_INDEX = (
     "fb10f2470cff475b",
@@ -894,6 +919,305 @@ def authored_queries() -> tuple[_AuthoredQuery, ...]:
     return tuple(sorted(queries, key=lambda item: item.query_ref))
 
 
+@dataclass(frozen=True, slots=True)
+class _AuthoredChallenge:
+    query: _AuthoredQuery
+    challenge_kind: GroundedChallengeKind
+    anchor_query_ref: str
+    relation: GroundedRobustnessRelation
+    constraint_dimension: Literal[
+        "character",
+        "scene",
+        "action",
+        "visible_text",
+        "background",
+        "object",
+    ]
+
+
+def authored_v2_challenges() -> tuple[_AuthoredChallenge, ...]:
+    c = GroundedQueryCategory.NO_ANSWER
+    k = GroundedChallengeKind
+    r = GroundedRobustnessRelation
+    challenges = (
+        _AuthoredChallenge(
+            _q(c, 7, "小赛、赛先生和熊猫三位角色同框", grade1=DUO, no_answer=True),
+            k.NONEXISTENT_CHARACTER,
+            "character-03",
+            r.FILTER_MONOTONICITY,
+            "character",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                8,
+                "紫色兔子IP在实验室做实验",
+                grade1=_refs(9, 11, 12, 22, 24, 36),
+                no_answer=True,
+            ),
+            k.NONEXISTENT_CHARACTER,
+            "scene-03",
+            r.NOISY_ALIAS_NEAR_MISS,
+            "character",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                9,
+                "小赛和赛先生与红色恐龙合影",
+                grade1=DUO,
+                holdout=True,
+                no_answer=True,
+            ),
+            k.NONEXISTENT_CHARACTER,
+            "character-10",
+            r.FILTER_MONOTONICITY,
+            "character",
+        ),
+        _AuthoredChallenge(
+            _q(c, 10, "小赛和赛先生在海底潜水且有珊瑚", grade1=_refs(39), no_answer=True),
+            k.WRONG_SCENE,
+            "scene-01",
+            r.PARAPHRASE_NEAR_MISS,
+            "scene",
+        ),
+        _AuthoredChallenge(
+            _q(c, 11, "赛先生在厨房炒菜", no_answer=True),
+            k.WRONG_SCENE,
+            "scene-03",
+            r.FILTER_MONOTONICITY,
+            "scene",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                12,
+                "小赛在足球场踢球",
+                grade1=_refs(37, 38, 39),
+                holdout=True,
+                no_answer=True,
+            ),
+            k.WRONG_SCENE,
+            "character-05",
+            r.FILTER_MONOTONICITY,
+            "scene",
+        ),
+        _AuthoredChallenge(
+            _q(c, 13, "只要小赛单人，但必须和赛先生同框", grade1=XIAO_SOLO | DUO, no_answer=True),
+            k.CONTRADICTORY_CONSTRAINTS,
+            "character-01",
+            r.FILTER_MONOTONICITY,
+            "character",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                14,
+                "纯透明背景，同时要完整空间站背景",
+                grade1=TRANSPARENT | _refs(39),
+                no_answer=True,
+            ),
+            k.CONTRADICTORY_CONSTRAINTS,
+            "transparent-background-01",
+            r.FILTER_MONOTONICITY,
+            "background",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                15,
+                "只要赛先生单人，同时两位角色携手奔跑",
+                grade1=SAI_SOLO | _refs(37, 38, 39),
+                holdout=True,
+                no_answer=True,
+            ),
+            k.CONTRADICTORY_CONSTRAINTS,
+            "character-10",
+            r.FILTER_MONOTONICITY,
+            "character",
+        ),
+        _AuthoredChallenge(
+            _q(c, 16, "不要宇航服的赛先生宇航员", grade1=_refs(32, 33, 34), no_answer=True),
+            k.CONTRADICTORY_CONSTRAINTS,
+            "combined-constraints-09",
+            r.FILTER_MONOTONICITY,
+            "object",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                17,
+                "图片上必须清晰写着2026科学节",
+                grade1=_refs(8, 9, 11, 12, 13, 14, 15, 21, 34),
+                no_answer=True,
+            ),
+            k.UNSUPPORTED_VISIBLE_TEXT,
+            "intended-use-07",
+            r.NOISY_ALIAS_NEAR_MISS,
+            "visible_text",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                18,
+                "胸牌必须准确写着量子实验室",
+                grade1=_refs(8, 9, 11, 12, 13, 14, 15, 30, 31, 40, 41),
+                no_answer=True,
+            ),
+            k.UNSUPPORTED_VISIBLE_TEXT,
+            "character-02",
+            r.FILTER_MONOTONICITY,
+            "visible_text",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                19,
+                "画面必须包含完整中文句子一起探索未来",
+                grade1=_refs(8, 9, 11, 12, 13, 14, 15, 21, 34),
+                holdout=True,
+                no_answer=True,
+            ),
+            k.UNSUPPORTED_VISIBLE_TEXT,
+            "asset-type-08",
+            r.NOISY_ALIAS_NEAR_MISS,
+            "visible_text",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                20,
+                "海报上精确显示AI资产中心",
+                grade1=_refs(2, 3, 4, 5, 6, 7, 11, 14, 17, 18, 23, 24, 25, 26, 28),
+                no_answer=True,
+            ),
+            k.UNSUPPORTED_VISIBLE_TEXT,
+            "combined-constraints-08",
+            r.NOISY_ALIAS_NEAR_MISS,
+            "visible_text",
+        ),
+        _AuthoredChallenge(
+            _q(c, 21, "小赛骑自行车向前", grade1=_refs(37, 38, 39), no_answer=True),
+            k.UNAVAILABLE_ACTION_OR_USE,
+            "action-09",
+            r.PARAPHRASE_NEAR_MISS,
+            "action",
+        ),
+        _AuthoredChallenge(
+            _q(c, 22, "赛先生打篮球投篮", grade1=_refs(37, 38, 39), no_answer=True),
+            k.UNAVAILABLE_ACTION_OR_USE,
+            "action-09",
+            r.PARAPHRASE_NEAR_MISS,
+            "action",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                23,
+                "两位角色在舞台上弹吉他",
+                grade1=_refs(30, 37, 38, 39),
+                holdout=True,
+                no_answer=True,
+            ),
+            k.UNAVAILABLE_ACTION_OR_USE,
+            "intended-use-10",
+            r.PARAPHRASE_NEAR_MISS,
+            "action",
+        ),
+        _AuthoredChallenge(
+            _q(c, 24, "小赛端着生日蛋糕庆祝", grade1=_refs(2, 7, 17, 23), no_answer=True),
+            k.UNAVAILABLE_ACTION_OR_USE,
+            "emotion-01",
+            r.FILTER_MONOTONICITY,
+            "object",
+        ),
+        _AuthoredChallenge(
+            _q(c, 25, "小赛和赛先生在空间站打篮球", grade1=_refs(39), no_answer=True),
+            k.SEMANTIC_NEAR_MISS,
+            "scene-01",
+            r.FILTER_MONOTONICITY,
+            "action",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                26,
+                "赛先生穿宇航服在显微镜前实验",
+                grade1=_refs(12, 32, 33, 34, 36, 39),
+                no_answer=True,
+            ),
+            k.SEMANTIC_NEAR_MISS,
+            "combined-constraints-05",
+            r.FILTER_MONOTONICITY,
+            "object",
+        ),
+        _AuthoredChallenge(
+            _q(
+                c,
+                27,
+                "小赛透明底拿着显微镜",
+                grade1=_refs(24, 36),
+                holdout=True,
+                no_answer=True,
+            ),
+            k.SEMANTIC_NEAR_MISS,
+            "combined-constraints-06",
+            r.FILTER_MONOTONICITY,
+            "object",
+        ),
+        _AuthoredChallenge(
+            _q(c, 28, "两位角色在时光机里做饭", grade1=_refs(19, 29), no_answer=True),
+            k.SEMANTIC_NEAR_MISS,
+            "action-03",
+            r.PARAPHRASE_NEAR_MISS,
+            "action",
+        ),
+        _AuthoredChallenge(
+            _q(c, 29, "赛先生拿地图在深海探险", grade1=_refs(35), no_answer=True),
+            k.SEMANTIC_NEAR_MISS,
+            "combined-constraints-11",
+            r.FILTER_MONOTONICITY,
+            "scene",
+        ),
+        _AuthoredChallenge(
+            _q(c, 30, "小赛疑问表情但必须是红色愤怒", grade1=_refs(13, 25, 26), no_answer=True),
+            k.SEMANTIC_NEAR_MISS,
+            "emotion-03",
+            r.FILTER_MONOTONICITY,
+            "action",
+        ),
+    )
+    if len(challenges) != 24:
+        raise ValueError("grounded Seed V2 must define exactly 24 challenges")
+    return tuple(sorted(challenges, key=lambda item: item.query.query_ref))
+
+
+_ReviewReason = Literal[
+    "missing_required_character",
+    "missing_required_action",
+    "missing_required_scene",
+    "missing_required_object",
+]
+
+
+_REVIEW_OVERRIDES: dict[tuple[str, str], tuple[int, _ReviewReason]] = {
+    ("action-03", REF_BY_INDEX[26]): (1, "missing_required_character"),
+    ("combined-constraints-01", REF_BY_INDEX[1]): (1, "missing_required_action"),
+    ("combined-constraints-03", REF_BY_INDEX[36]): (1, "missing_required_scene"),
+    ("combined-constraints-03", REF_BY_INDEX[37]): (1, "missing_required_scene"),
+    ("combined-constraints-05", REF_BY_INDEX[11]): (1, "missing_required_object"),
+    ("combined-constraints-05", REF_BY_INDEX[26]): (1, "missing_required_object"),
+    ("combined-constraints-09", REF_BY_INDEX[15]): (1, "missing_required_object"),
+    ("combined-constraints-09", REF_BY_INDEX[34]): (1, "missing_required_object"),
+    ("scene-01", REF_BY_INDEX[31]): (1, "missing_required_character"),
+    ("scene-01", REF_BY_INDEX[32]): (1, "missing_required_character"),
+    ("scene-01", REF_BY_INDEX[33]): (1, "missing_required_character"),
+    ("scene-03", REF_BY_INDEX[8]): (2, "missing_required_scene"),
+    ("scene-03", REF_BY_INDEX[21]): (1, "missing_required_scene"),
+    ("scene-03", REF_BY_INDEX[23]): (2, "missing_required_scene"),
+}
+
+
 def build_query_records() -> tuple[GroundedQuery, ...]:
     return tuple(
         GroundedQuery(
@@ -939,7 +1263,132 @@ def build_seed_records() -> tuple[GroundedSeedMatrix, ...]:
     return tuple(records)
 
 
-def _jsonl(records: Iterable[GroundedQuery | GroundedSeedMatrix]) -> str:
+def build_v2_query_records() -> tuple[GroundedQueryV2, ...]:
+    source_queries = load_grounded_bundle().queries
+    records = [
+        GroundedQueryV2(
+            schema_version=QUERY_V2_SCHEMA_VERSION,
+            query_ref=item.query_ref,
+            category=item.category,
+            split=item.split,
+            query=item.query,
+            expected_answer_kind=item.expected_answer_kind,
+            challenge_kind=None,
+        )
+        for item in source_queries
+    ]
+    records.extend(
+        GroundedQueryV2(
+            schema_version=QUERY_V2_SCHEMA_VERSION,
+            query_ref=challenge.query.query_ref,
+            category=challenge.query.category,
+            split=challenge.query.split,
+            query=challenge.query.text,
+            expected_answer_kind=challenge.query.expected_answer_kind,
+            challenge_kind=challenge.challenge_kind,
+        )
+        for challenge in authored_v2_challenges()
+    )
+    return tuple(sorted(records, key=lambda item: item.query_ref))
+
+
+def build_v2_seed_records() -> tuple[GroundedSeedMatrixV2, ...]:
+    source = {matrix.query_ref: matrix for matrix in load_grounded_bundle().seed}
+    records: list[GroundedSeedMatrixV2] = []
+    for query in build_v2_query_records():
+        if query.query_ref in source:
+            grades = tuple(
+                GroundedRelevanceGrade(
+                    catalog_ref=grade.catalog_ref,
+                    grade=_REVIEW_OVERRIDES.get(
+                        (query.query_ref, grade.catalog_ref), (grade.grade, "")
+                    )[0],
+                )
+                for grade in source[query.query_ref].grades
+            )
+        else:
+            authored = next(
+                challenge.query
+                for challenge in authored_v2_challenges()
+                if challenge.query.query_ref == query.query_ref
+            )
+            grades = tuple(
+                GroundedRelevanceGrade(
+                    catalog_ref=ref,
+                    grade=1 if ref in authored.grade1 else 0,
+                )
+                for ref in sorted(REF_BY_INDEX)
+            )
+        records.append(
+            GroundedSeedMatrixV2(
+                schema_version=SEED_V2_SCHEMA_VERSION,
+                query_ref=query.query_ref,
+                label_source="codex_seed_v2",
+                evaluator_version=EVALUATOR_V2_VERSION,
+                rubric_version=RUBRIC_V2_VERSION,
+                grades=grades,
+            )
+        )
+    return tuple(records)
+
+
+def build_v2_review_ledger() -> GroundedSeedReviewLedgerV2:
+    source_grades = {
+        (matrix.query_ref, grade.catalog_ref): grade.grade
+        for matrix in load_grounded_bundle().seed
+        for grade in matrix.grades
+    }
+    changes = tuple(
+        GroundedGradeReviewChange(
+            query_ref=query_ref,
+            catalog_ref=catalog_ref,
+            old_grade=source_grades[(query_ref, catalog_ref)],
+            new_grade=new_grade,
+            reason_code=reason,
+        )
+        for (query_ref, catalog_ref), (new_grade, reason) in sorted(_REVIEW_OVERRIDES.items())
+    )
+    return GroundedSeedReviewLedgerV2(
+        schema_version=REVIEW_V2_SCHEMA_VERSION,
+        review_pass_id="codex-blind-risk-review-v2",
+        evaluator_version=EVALUATOR_V2_VERSION,
+        source_seed_sha256=_sha256(DEFAULT_SEED_PATH),
+        rank_or_score_observations_opened=False,
+        independent_human_review=False,
+        reviewed_asset_count=41,
+        reviewed_scopes=(
+            "v1_no_answer_queries",
+            "v1_combined_constraint_queries",
+            "v1_grade_1_2_boundaries",
+            "fixed_space_station_query",
+        ),
+        changes=changes,
+    )
+
+
+def build_v2_robustness_pairs() -> tuple[GroundedRobustnessPairV2, ...]:
+    return tuple(
+        GroundedRobustnessPairV2(
+            schema_version=ROBUSTNESS_V2_SCHEMA_VERSION,
+            challenge_query_ref=challenge.query.query_ref,
+            anchor_query_ref=challenge.anchor_query_ref,
+            relation=challenge.relation,
+            constraint_dimension=challenge.constraint_dimension,
+            expected_relation="anchor_answers_challenge_abstains",
+        )
+        for challenge in authored_v2_challenges()
+    )
+
+
+def _jsonl(
+    records: Iterable[
+        GroundedQuery
+        | GroundedSeedMatrix
+        | GroundedQueryV2
+        | GroundedSeedMatrixV2
+        | GroundedRobustnessPairV2
+    ],
+) -> str:
     return "".join(
         json.dumps(
             record.model_dump(mode="json"),
@@ -975,18 +1424,52 @@ def _artifacts(manifest_path: Path) -> dict[Path, str]:
     }
 
 
+def _artifacts_v2() -> dict[Path, str]:
+    _assert_v1_identity()
+    review = build_v2_review_ledger()
+    return {
+        DEFAULT_V2_QUERIES_PATH: _jsonl(build_v2_query_records()),
+        DEFAULT_V2_SEED_PATH: _jsonl(build_v2_seed_records()),
+        DEFAULT_V2_REVIEW_PATH: json.dumps(
+            review.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, indent=2
+        )
+        + "\n",
+        DEFAULT_V2_ROBUSTNESS_PATH: _jsonl(build_v2_robustness_pairs()),
+    }
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _assert_v1_identity() -> None:
+    expected = {
+        DEFAULT_ASSETS_PATH: EXPECTED_V1_ASSETS_SHA256,
+        DEFAULT_QUERIES_PATH: EXPECTED_V1_QUERIES_SHA256,
+        DEFAULT_SEED_PATH: EXPECTED_V1_SEED_SHA256,
+    }
+    drifted = [path.name for path, digest in expected.items() if _sha256(path) != digest]
+    if drifted:
+        raise ValueError("grounded Seed V1 identity drifted: " + ", ".join(drifted))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--write-v2", action="store_true")
+    mode.add_argument("--check-v2", action="store_true")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST_PATH)
     args = parser.parse_args(argv)
-    artifacts = _artifacts(args.manifest)
-    if args.write:
+    artifacts = _artifacts_v2() if args.write_v2 or args.check_v2 else _artifacts(args.manifest)
+    if args.write or args.write_v2:
         for path, body in artifacts.items():
             path.write_text(body, encoding="utf-8")
-        print("Grounded IP retrieval authoring artifacts written: 100 queries, 4,100 grades")
+        if args.write_v2:
+            print("Grounded IP retrieval Seed V2 artifacts written: 124 queries, 5,084 grades")
+        else:
+            print("Grounded IP retrieval authoring artifacts written: 100 queries, 4,100 grades")
         return 0
     drifted = [
         path.name
@@ -996,7 +1479,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if drifted:
         print("Grounded IP retrieval authoring artifacts drifted: " + ", ".join(drifted))
         return 1
-    print("Grounded IP retrieval authoring artifacts match: 100 queries, 4,100 grades")
+    if args.check_v2:
+        print("Grounded IP retrieval Seed V2 artifacts match: 124 queries, 5,084 grades")
+    else:
+        print("Grounded IP retrieval authoring artifacts match: 100 queries, 4,100 grades")
     return 0
 
 
