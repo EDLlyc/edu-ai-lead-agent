@@ -13,7 +13,7 @@
 - [x] 9. 在忽略目录中顺序完成 Alibaba Seed V2 的 hybrid-v2 与 hybrid-v3-rrf 各 124-query run。
 - [x] 10. 生成两个 selective report、paired JSON/Markdown、两个 safe manifest，并完成 identity/privacy 校验。
 - [x] 11. 确认业务 search aggregate 未变化，记录指标、置信区间、失败/降级、耗时与请求数。
-- [ ] 12. Trellis 收尾、归档和本地提交；不推送、不部署。
+- [x] 12. Trellis 收尾、归档和本地提交；不推送、不部署。
 
 ## Validation commands
 
