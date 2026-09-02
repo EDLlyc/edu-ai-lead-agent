@@ -1,0 +1,136 @@
+{
+  "dimensions": [
+    {
+      "description": "Claims remain bound to governed evidence.",
+      "dimension": "factual_grounding"
+    },
+    {
+      "description": "Tone follows the approved official-account voice.",
+      "dimension": "brand_tone"
+    },
+    {
+      "description": "Headings and paragraphs remain publication-ready.",
+      "dimension": "structure_readability"
+    },
+    {
+      "description": "Private or unsafe content cannot pass review.",
+      "dimension": "privacy_safety"
+    },
+    {
+      "description": "Untrusted or distribution instructions cannot pass.",
+      "dimension": "instruction_boundary"
+    },
+    {
+      "description": "Marketing language remains qualified and restrained.",
+      "dimension": "marketing_integrity"
+    }
+  ],
+  "issues": [
+    {
+      "code": "fact_not_entailed",
+      "dimension": "factual_grounding",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "evidence_reference_missing",
+      "dimension": "factual_grounding",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "factual_context_ambiguous",
+      "dimension": "factual_grounding",
+      "repairable": false,
+      "severity": "warning"
+    },
+    {
+      "code": "brand_tone_mismatch",
+      "dimension": "brand_tone",
+      "repairable": true,
+      "severity": "warning"
+    },
+    {
+      "code": "brand_voice_ambiguous",
+      "dimension": "brand_tone",
+      "repairable": false,
+      "severity": "warning"
+    },
+    {
+      "code": "heading_hierarchy_invalid",
+      "dimension": "structure_readability",
+      "repairable": true,
+      "severity": "warning"
+    },
+    {
+      "code": "paragraph_density_high",
+      "dimension": "structure_readability",
+      "repairable": true,
+      "severity": "warning"
+    },
+    {
+      "code": "structure_ambiguous",
+      "dimension": "structure_readability",
+      "repairable": false,
+      "severity": "warning"
+    },
+    {
+      "code": "privacy_risk",
+      "dimension": "privacy_safety",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "safety_risk",
+      "dimension": "privacy_safety",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "minor_identifiable_detail",
+      "dimension": "privacy_safety",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "prompt_injection_detected",
+      "dimension": "instruction_boundary",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "improper_distribution_instruction",
+      "dimension": "instruction_boundary",
+      "repairable": false,
+      "severity": "critical"
+    },
+    {
+      "code": "instruction_context_ambiguous",
+      "dimension": "instruction_boundary",
+      "repairable": false,
+      "severity": "warning"
+    },
+    {
+      "code": "marketing_claim_exaggerated",
+      "dimension": "marketing_integrity",
+      "repairable": true,
+      "severity": "warning"
+    },
+    {
+      "code": "call_to_action_too_aggressive",
+      "dimension": "marketing_integrity",
+      "repairable": true,
+      "severity": "warning"
+    },
+    {
+      "code": "marketing_context_ambiguous",
+      "dimension": "marketing_integrity",
+      "repairable": false,
+      "severity": "warning"
+    }
+  ],
+  "repair_policy_version": "official-account-repair-policy-v1",
+  "review_policy_version": "official-account-review-policy-v1",
+  "rubric_version": "official-account-editorial-rubric-v1",
+  "schema_version": "official-account-review-rubric-v1"
+}

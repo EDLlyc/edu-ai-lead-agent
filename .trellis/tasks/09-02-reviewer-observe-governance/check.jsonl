@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Check observe integration matches actual persistence/restart constraints and did not create duplicate runtime pieces."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Check denial-before-handler, exact-once budgets, safe events and exact scoped artifacts."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Check lease/fencing/replay compatibility and no second checkpoint owner."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Check concurrency, request fingerprint, migration head and populated downgrade behavior."}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Check observed verdict never fabricates or changes a release decision."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check schema, events, logs and errors expose only allowlisted safe metadata."}

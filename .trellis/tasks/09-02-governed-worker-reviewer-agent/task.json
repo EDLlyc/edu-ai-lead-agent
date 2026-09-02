@@ -1,0 +1,31 @@
+{
+  "id": "governed-worker-reviewer-agent",
+  "name": "governed-worker-reviewer-agent",
+  "title": "受治理的 Worker Reviewer 内容 Agent",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-09-02",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-02-reviewer-contract-eval",
+    "09-02-reviewer-observe-governance",
+    "09-02-reviewer-enforce-repair",
+    "09-02-reviewer-live-ab-evidence"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

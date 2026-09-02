@@ -1,0 +1,1114 @@
+{
+  "aggregate": {
+    "case_count": 48,
+    "critical_expected_count": 10,
+    "critical_f1": 1.0,
+    "critical_precision": 1.0,
+    "critical_predicted_count": 10,
+    "critical_recall": 1.0,
+    "critical_true_positive_count": 10,
+    "failed_case_ids": [],
+    "false_accept_count": 0,
+    "false_accept_rate": 0.0,
+    "false_reject_count": 0,
+    "false_reject_rate": 0.0,
+    "hard_gate_override_case_count": 3,
+    "hard_gate_override_violation_count": 0,
+    "location_accuracy": 1.0,
+    "manual_review_count": 7,
+    "manual_review_rate": 0.145833,
+    "passed_count": 48,
+    "repairability_accuracy": 1.0,
+    "unavailable_count": 12,
+    "unavailable_rate": 0.25
+  },
+  "cases": [
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-01",
+      "dimension": "brand_tone",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-02",
+      "dimension": "brand_tone",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "actual_repair_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "case_id": "brand-tone-03",
+      "dimension": "brand_tone",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "expected_repair_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "actual_repair_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "case_id": "brand-tone-04",
+      "dimension": "brand_tone",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "expected_repair_issue_codes": [
+        "brand_tone_mismatch"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "brand_voice_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-05",
+      "dimension": "brand_tone",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "brand_voice_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "brand_voice_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-06",
+      "dimension": "brand_tone",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "brand_voice_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-07",
+      "dimension": "brand_tone",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "brand-tone-08",
+      "dimension": "brand_tone",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-01",
+      "dimension": "factual_grounding",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-02",
+      "dimension": "factual_grounding",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "fact_not_entailed"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-03",
+      "dimension": "factual_grounding",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "fact_not_entailed"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "evidence_reference_missing"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-04",
+      "dimension": "factual_grounding",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "evidence_reference_missing"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "factual_context_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-05",
+      "dimension": "factual_grounding",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "factual_context_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-06",
+      "dimension": "factual_grounding",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-07",
+      "dimension": "factual_grounding",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "fact_not_entailed"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "factual-grounding-08",
+      "dimension": "factual_grounding",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "fact_not_entailed"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_gate_override",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-01",
+      "dimension": "instruction_boundary",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-02",
+      "dimension": "instruction_boundary",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "prompt_injection_detected"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-03",
+      "dimension": "instruction_boundary",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "prompt_injection_detected"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "improper_distribution_instruction"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-04",
+      "dimension": "instruction_boundary",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "improper_distribution_instruction"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "instruction_context_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-05",
+      "dimension": "instruction_boundary",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "instruction_context_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-06",
+      "dimension": "instruction_boundary",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-07",
+      "dimension": "instruction_boundary",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "prompt_injection_detected"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "instruction-boundary-08",
+      "dimension": "instruction_boundary",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "prompt_injection_detected"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_gate_override",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "marketing-integrity-01",
+      "dimension": "marketing_integrity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "marketing-integrity-02",
+      "dimension": "marketing_integrity",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "actual_repair_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "case_id": "marketing-integrity-03",
+      "dimension": "marketing_integrity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "expected_repair_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "call_to_action_too_aggressive"
+      ],
+      "actual_repair_issue_codes": [
+        "call_to_action_too_aggressive"
+      ],
+      "case_id": "marketing-integrity-04",
+      "dimension": "marketing_integrity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "call_to_action_too_aggressive"
+      ],
+      "expected_repair_issue_codes": [
+        "call_to_action_too_aggressive"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "marketing_context_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "marketing-integrity-05",
+      "dimension": "marketing_integrity",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "marketing_context_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "marketing-integrity-06",
+      "dimension": "marketing_integrity",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "marketing-integrity-07",
+      "dimension": "marketing_integrity",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "actual_repair_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "case_id": "marketing-integrity-08",
+      "dimension": "marketing_integrity",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "expected_repair_issue_codes": [
+        "marketing_claim_exaggerated"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-01",
+      "dimension": "privacy_safety",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-02",
+      "dimension": "privacy_safety",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "brand_tone_mismatch",
+        "privacy_risk"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-03",
+      "dimension": "privacy_safety",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "brand_tone_mismatch",
+        "privacy_risk"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "safety_risk"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-04",
+      "dimension": "privacy_safety",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "safety_risk"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "minor_identifiable_detail"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-05",
+      "dimension": "privacy_safety",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "minor_identifiable_detail"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_negative",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-06",
+      "dimension": "privacy_safety",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-07",
+      "dimension": "privacy_safety",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "privacy_risk"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "privacy-safety-08",
+      "dimension": "privacy_safety",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "privacy_risk"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "hard_gate_override",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-01",
+      "dimension": "structure_readability",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "accepted",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-02",
+      "dimension": "structure_readability",
+      "expected_decision": "accepted",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "positive",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "heading_hierarchy_invalid"
+      ],
+      "actual_repair_issue_codes": [
+        "heading_hierarchy_invalid"
+      ],
+      "case_id": "structure-readability-03",
+      "dimension": "structure_readability",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "heading_hierarchy_invalid"
+      ],
+      "expected_repair_issue_codes": [
+        "heading_hierarchy_invalid"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "rejected",
+      "actual_issue_codes": [
+        "paragraph_density_high"
+      ],
+      "actual_repair_issue_codes": [
+        "paragraph_density_high"
+      ],
+      "case_id": "structure-readability-04",
+      "dimension": "structure_readability",
+      "expected_decision": "rejected",
+      "expected_issue_codes": [
+        "paragraph_density_high"
+      ],
+      "expected_repair_issue_codes": [
+        "paragraph_density_high"
+      ],
+      "failure_codes": [],
+      "fixture_kind": "repairable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "structure_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-05",
+      "dimension": "structure_readability",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "structure_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "manual_review",
+      "actual_issue_codes": [
+        "structure_ambiguous"
+      ],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-06",
+      "dimension": "structure_readability",
+      "expected_decision": "manual_review",
+      "expected_issue_codes": [
+        "structure_ambiguous"
+      ],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "warning",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-07",
+      "dimension": "structure_readability",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    },
+    {
+      "actual_decision": "unavailable",
+      "actual_issue_codes": [],
+      "actual_repair_issue_codes": [],
+      "case_id": "structure-readability-08",
+      "dimension": "structure_readability",
+      "expected_decision": "unavailable",
+      "expected_issue_codes": [],
+      "expected_repair_issue_codes": [],
+      "failure_codes": [],
+      "fixture_kind": "unavailable",
+      "hard_gate_override_passed": true,
+      "issue_precision": 1.0,
+      "issue_recall": 1.0,
+      "location_accuracy": 1.0,
+      "passed": true,
+      "repairability_matched": true
+    }
+  ],
+  "cases_sha256": "ad3f8b8c6937d5d70f57d36e3809e9e6cb5ed33749cf83e328b34e534113a0c8",
+  "dataset_version": "official-account-review-eval-dataset-v1",
+  "dimensions": [
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "factual_grounding",
+      "failed_case_ids": []
+    },
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "brand_tone",
+      "failed_case_ids": []
+    },
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "structure_readability",
+      "failed_case_ids": []
+    },
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "privacy_safety",
+      "failed_case_ids": []
+    },
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "instruction_boundary",
+      "failed_case_ids": []
+    },
+    {
+      "case_count": 8,
+      "defect_case_count": 4,
+      "defect_f1": 1.0,
+      "defect_precision": 1.0,
+      "defect_recall": 1.0,
+      "dimension": "marketing_integrity",
+      "failed_case_ids": []
+    }
+  ],
+  "disclaimer": "This provider-free, hand-authored fixture track measures closed-schema, input-binding, hard-gate, repair-policy, and metric-pipeline conformance. It does not measure live Reviewer accuracy, human agreement, production uplift, model quality, or online safety effectiveness.",
+  "fixture_distribution": [
+    {
+      "case_count": 12,
+      "fixture_kind": "positive"
+    },
+    {
+      "case_count": 7,
+      "fixture_kind": "warning"
+    },
+    {
+      "case_count": 7,
+      "fixture_kind": "repairable"
+    },
+    {
+      "case_count": 7,
+      "fixture_kind": "hard_negative"
+    },
+    {
+      "case_count": 12,
+      "fixture_kind": "unavailable"
+    },
+    {
+      "case_count": 3,
+      "fixture_kind": "hard_gate_override"
+    }
+  ],
+  "fixture_policy_version": "official-account-review-fixture-policy-v1",
+  "live_model_calls": 0,
+  "oracle_sha256": "b8b0aca86944d2bff52cbfdc15b1ec84a9a252ebbb4fc713dbd97c6a213dba5a",
+  "policy_sha256": "78d6a41861cd2df892ea494fe936c51d88cab360d7ac849b81e198db574b69d0",
+  "provider_free": true,
+  "repair_policy_version": "official-account-repair-policy-v1",
+  "review_policy_version": "official-account-review-policy-v1",
+  "rubric_sha256": "255b4beb44a0a13c531c5f5a981acdc9ca5291ca021326614b764e0664d834ed",
+  "rubric_version": "official-account-editorial-rubric-v1",
+  "runner_sha256": "41f5c9718eeb42b7b4f2dcbc176674e3b6c43a9be435850a517bb134efc9ab9e",
+  "schema_version": "official-account-review-eval-report-v1",
+  "track": "provider_free_fixture_contract"
+}

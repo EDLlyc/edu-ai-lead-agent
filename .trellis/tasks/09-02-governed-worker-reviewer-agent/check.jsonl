@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Audit final behavior against the repository evidence, known gaps and duplicate-runtime approaches to avoid."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Verify default-deny Reviewer/Writer roles, atomic budget accounting, exact artifacts and safe causal trace."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Verify restart, lease/fencing, replay and product-owned checkpoint semantics remain coherent."}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Verify no fabricated approval and exact final revision/review binding at the human handoff boundary."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Check migrations, relational lineage, concurrency, source-of-truth and populated downgrade refusal."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Reuse the established off/observe, frozen observation and canonical drift pattern without confusing it with live quality."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check traces, logs and errors contain no prohibited content or sensitive paths."}

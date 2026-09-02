@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Use the inspected Article/auditor lifecycle, governance API gaps, durable-intent requirement and collision map."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Integrate distinct Worker/Reviewer identity, least privilege, budget reservation and exact artifact lineage."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Reuse compatible run allocation, adapter, lease/fencing, checkpoint and stale recovery patterns."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Implement durable provider intent, relational lineage, replay-safe PostgreSQL and additive migrations."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Represent unavailable/result-unknown and governance denials with stable privacy-safe failures."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Prevent article, prompt, provider payload, credentials and private paths from entering safe trace/logs."}

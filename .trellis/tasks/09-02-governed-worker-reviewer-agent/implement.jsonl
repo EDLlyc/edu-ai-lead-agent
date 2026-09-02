@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Use the inspected Article lifecycle, revision gap, governance reuse points, persistence proposal and collision map."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Reuse the existing role, capability, budget, safe event and artifact ledger instead of building another runtime."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Reuse official-account checkpoint, lease/fencing, compatible replay and execution-governance adapter patterns."}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Keep the human release boundary truthful and bind handoff to the exact active Article/review lineage."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Plan additive PostgreSQL lineage, durable provider intent, exact fingerprints, concurrency and safe downgrade behavior."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Project provider ambiguity, policy denial and invalid lineage through stable safe failures."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Keep execution and product logs free of prompts, article bodies, credentials and private paths."}

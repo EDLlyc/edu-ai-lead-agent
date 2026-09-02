@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Check live evidence follows the inspected paired/human-review pattern and does not invent quality/cost claims."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Check provider identity, usage truth, bounded evaluation and reproducible safe projections."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Check deterministic canonical is not overwritten or mislabeled as live performance."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Check failed/partial/unknown attempts remain safely and truthfully represented."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check live manifests/reports/errors disclose no prompts, credentials or sensitive source content."}

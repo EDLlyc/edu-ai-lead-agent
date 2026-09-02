@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Define the new editorial Reviewer without duplicating the current hard auditor or inventing unsupported Article semantics."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Reuse bounded closed-world Agent contracts, provider-free evaluation truth and safe result projections."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Reuse the frozen observation/canonical pattern and explicit separation from live quality claims."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Use closed failure codes and reject malformed/unavailable outcomes without leaking provider payloads."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Keep evaluator artifacts and diagnostics free of prompts, source bodies and sensitive values."}

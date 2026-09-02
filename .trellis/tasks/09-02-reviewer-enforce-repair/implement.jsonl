@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Use the proven schema-version/revision distinction, copy one-repair pattern, recovery requirements and downstream collision map."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Enforce separate Writer/Reviewer capabilities, bounded child budgets, artifacts and causal lineage."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Reuse lease/fencing, restart checkpoints, compatible replay and affected-work retry patterns."}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Bind release to the exact active revision/review without fabricating approval or enabling publish."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Implement self-lineage, uniqueness, transactional active pointer, durable repair intent and safe migration."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Map exhausted/ambiguous/denied repair paths to stable manual-review or failure states."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Keep both review rounds and repair failures free of content-bearing or sensitive trace fields."}

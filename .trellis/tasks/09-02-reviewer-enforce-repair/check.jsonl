@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Audit revision semantics, one-repair recovery and exact downstream lineage against inspected current behavior."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Check role separation, no budget minting, artifact binding and safe causal events across both rounds."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Check restart, stale fencing, exact claim and no duplicated provider work."}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Check only the final accepted active revision reaches machine release and human truth remains intact."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Check revision constraints, concurrent replay, active pointer, migration/backfill and downgrade refusal."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check two-round events, failures and migration diagnostics remain privacy-safe."}

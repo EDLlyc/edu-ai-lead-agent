@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/09-02-governed-worker-reviewer-agent/research/reviewer-production-integration.md", "reason": "Check the contract remains additive, editorial-scoped and usable by the planned production adapter."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Check deterministic precedence, bounded contracts, evaluation semantics and safe outputs."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Check fixture/canonical results are not mislabeled as live model accuracy."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Check malformed, unknown and unavailable cases fail through bounded stable projections."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Check canonical and failure artifacts contain no source bodies, prompts or sensitive values."}
