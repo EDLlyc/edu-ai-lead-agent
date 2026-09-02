@@ -24,25 +24,26 @@ def test_ip_asset_retrieval_fixture_is_balanced_and_v3_passes_gates() -> None:
     cases = load_eval_cases()
     report = evaluate_path()
 
-    assert len(cases) == 40
+    assert len(cases) == 41
     assert Counter(case.category for case in cases) == Counter(
         {
             "action": 5,
             "asset_type": 5,
             "character": 5,
-            "combined_filters": 5,
+            "combined_filters": 6,
             "emotion": 5,
             "intended_use": 5,
             "scene": 5,
             "transparent_background": 5,
         }
     )
+    assert "小赛和赛先生在空间站" in {case.query for case in cases}
     aggregate = report["aggregate"]
-    assert aggregate["v2"]["macro_recall_at_5"] == 0.84
-    assert aggregate["v3"]["macro_recall_at_5"] == 0.92
+    assert aggregate["v2"]["macro_recall_at_5"] == 0.839024
+    assert aggregate["v3"]["macro_recall_at_5"] == 0.921951
     assert aggregate["v3"]["macro_mrr_at_5"] == 1.0
-    assert aggregate["v3"]["macro_ndcg_at_5"] == 0.970204
-    assert aggregate["v3"]["zero_result_rate"] == 0.2
+    assert aggregate["v3"]["macro_ndcg_at_5"] == 0.970931
+    assert aggregate["v3"]["zero_result_rate"] == 0.195122
     assert aggregate["exact_metadata_priority_passed"] is True
 
 

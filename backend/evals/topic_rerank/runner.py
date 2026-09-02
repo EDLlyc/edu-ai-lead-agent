@@ -22,7 +22,6 @@ from app.domain.content_slots import (
 )
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.ministry_education_priority import (
-    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
 )
 from app.domain.topic_rerank import (
@@ -36,6 +35,7 @@ from app.domain.topic_rerank import (
     finalize_daily_topic_rerank,
 )
 from app.domain.topic_selection import (
+    QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
     DailyTopicDecision,
     TopicCandidate,
     TopicScoringConfig,
@@ -50,7 +50,7 @@ CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 NOW = datetime(2026, 8, 18, 1, 0, tzinfo=UTC)
 CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
 )
 RERANK_CONFIG = TopicRerankConfig(
     enabled=True,
@@ -201,6 +201,7 @@ async def _evaluate_case(case: EvalCase) -> dict[str, object]:
         {candidate.event_id: candidate.priority_group for candidate in pool}[event_id]
         for event_id in outcome.final_order
     )
+    priority_fixture_groups_are_distinct = case.scenario != "priority" or len(set(groups)) >= 2
     priority_barrier_preserved = final_groups == tuple(sorted(final_groups))
     exact_permutation = len(outcome.final_order) == len(pool) and set(outcome.final_order) == set(
         pool_ids
@@ -218,7 +219,8 @@ async def _evaluate_case(case: EvalCase) -> dict[str, object]:
         "candidate_count": outcome.candidate_count == case.expected_candidate_count,
         "final_order": final_suffixes == case.expected_final_suffixes,
         "exact_permutation": exact_permutation,
-        "priority_barrier": priority_barrier_preserved and groups == tuple(sorted(groups)),
+        "priority_fixture_groups_are_distinct": priority_fixture_groups_are_distinct,
+        "priority_barrier": priority_barrier_preserved,
         "hard_exclusions": excluded_absent,
         "fallback_parity": fallback_preserved,
         "selection_boundary": selected_respects_pool,
@@ -231,6 +233,8 @@ async def _evaluate_case(case: EvalCase) -> dict[str, object]:
         "candidate_count": outcome.candidate_count,
         "base_order_suffixes": [_suffix(event_id) for event_id in outcome.base_order],
         "final_order_suffixes": list(final_suffixes),
+        "priority_groups": list(groups),
+        "final_priority_groups": list(final_groups),
         "failure_code": outcome.failure_code.value if outcome.failure_code else None,
         "checks": checks,
         "passed": all(checks.values()),

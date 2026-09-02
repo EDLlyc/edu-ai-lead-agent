@@ -16,6 +16,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "daily",
@@ -24,8 +25,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "reorder"
     },
     {
@@ -43,6 +52,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "evening",
@@ -51,8 +61,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "reorder"
     },
     {
@@ -70,6 +88,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "daily",
@@ -78,8 +97,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "hard_veto"
     },
     {
@@ -97,6 +124,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "morning",
@@ -105,8 +133,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "reorder"
     },
     {
@@ -124,6 +160,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "noon",
@@ -132,8 +169,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "reorder"
     },
     {
@@ -151,6 +196,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "daily",
@@ -159,8 +205,16 @@
         1,
         2
       ],
+      "final_priority_groups": [
+        0,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        0,
+        1
+      ],
       "scenario": "priority"
     },
     {
@@ -178,6 +232,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "daily",
@@ -186,8 +241,16 @@
         1,
         2
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "fallback",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "fallback"
     },
     {
@@ -205,6 +268,7 @@
         "hard_exclusions": true,
         "outcome": true,
         "priority_barrier": true,
+        "priority_fixture_groups_are_distinct": true,
         "selection_boundary": true
       },
       "context": "noon",
@@ -213,8 +277,16 @@
         2,
         1
       ],
+      "final_priority_groups": [
+        1,
+        1
+      ],
       "outcome": "applied",
       "passed": true,
+      "priority_groups": [
+        1,
+        1
+      ],
       "scenario": "same_day"
     }
   ],

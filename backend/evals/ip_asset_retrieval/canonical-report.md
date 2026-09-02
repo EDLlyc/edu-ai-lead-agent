@@ -2,17 +2,17 @@
 
 > This provider-free report measures frozen, sanitized rank observations. It is not a live embedding, private-library, user-conversion, or production-effectiveness claim.
 
-- Dataset: `ip-asset-retrieval-eval-case-v1:7d06b5d41ba98e54` (40 cases)
+- Dataset: `ip-asset-retrieval-eval-case-v1:e9f43c05ebb1314e` (41 cases)
 - Top K: 5
 
 ## Retrieval-policy comparison
 
 | Metric | V2 direct blend | V3 weighted RRF |
 | --- | ---: | ---: |
-| Recall@5 | 84.00% | 92.00% |
+| Recall@5 | 83.90% | 92.20% |
 | MRR@5 | 100.00% | 100.00% |
-| nDCG@5 | 95.48% | 97.02% |
-| Zero-result rate | 20.00% | 20.00% |
+| nDCG@5 | 95.50% | 97.09% |
+| Zero-result rate | 19.51% | 19.51% |
 
 ## Category breakdown
 
@@ -21,7 +21,7 @@
 | `action` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
 | `asset_type` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
 | `character` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
-| `combined_filters` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
+| `combined_filters` | 6 | 0.833/1.000/0.956 | 0.933/1.000/0.975 |
 | `emotion` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
 | `intended_use` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |
 | `scene` | 5 | 0.840/1.000/0.955 | 0.920/1.000/0.970 |

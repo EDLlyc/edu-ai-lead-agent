@@ -400,9 +400,12 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
 
 - Every child runner uses `--check`; the diagnostic-only `agent-workbench-eval` target remains
   separate.
-- `ip-asset-grounded-eval-check` runs the three V1 checks first, followed by exactly
-  `authoring --check-v2`, `runner validate-seed-v2`, and `runner check-v2-canonical`. Keeping these
-  as separate Make recipe lines makes the first nonzero result stop the target.
+- `ip-asset-grounded-eval-check` runs V1 `authoring --check-frozen-v1`, strict validation, and
+  canonical drift first, followed by exactly `authoring --check-v2`, `runner validate-seed-v2`, and
+  `runner check-v2-canonical`. The frozen V1 mode verifies committed hashes and deterministic
+  query/grade authoring bytes without the ignored private visual manifest; the existing
+  `authoring --check` remains the explicit local full-manifest regeneration check. Keeping these as
+  separate Make recipe lines makes the first nonzero result stop the target.
 - The Make target propagates any child failure and remains provider-free: no network, API key,
   business-data write, live worker, or production service is permitted.
 - Topic-rerank fixtures use the current qualified-authoritative priority-rule identity. A fixture
@@ -417,6 +420,8 @@ ranking-policy identity, root quality command, or Yunxiao quality-stage command 
 |---|---|
 | A runner exits nonzero or its canonical bytes drift | `make eval-check` exits nonzero and CI stops |
 | Seed V2 authoring, inherited V1 identity, strict dataset, or canonical bytes drift | The Grounded child exits nonzero and blocks `eval-check` |
+| A clean checkout has no private visual manifest | Frozen V1/V2 checks still run; no manifest or raw asset is required |
+| An operator requests full V1 authoring without the private manifest | Explicit local `authoring --check` fails; CI never substitutes a weaker private rebuild claim |
 | Priority fixture collapses to one group | The explicit group-separation check fails |
 | Priority groups are crossed in final order | The priority-barrier check fails |
 | The exact space-station query is removed | Dataset unit test fails |

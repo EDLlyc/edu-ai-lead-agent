@@ -652,6 +652,8 @@ make ip-asset-grounded-eval-compare \
   OUTPUT_JSON=/tmp/ip-grounded-comparison.json \
   OUTPUT_MARKDOWN=/tmp/ip-grounded-comparison.md
 PYTHONPATH=backend conda run --name edu-ai \
+  python -m evals.ip_asset_retrieval_grounded.authoring --check-frozen-v1
+PYTHONPATH=backend conda run --name edu-ai \
   python -m evals.ip_asset_retrieval_grounded.authoring --check-v2
 PYTHONPATH=backend conda run --name edu-ai \
   python -m evals.ip_asset_retrieval_grounded.runner validate-seed-v2
@@ -724,20 +726,26 @@ PYTHONPATH=backend conda run --name edu-ai \
   policy, bootstrap, aggregate and artifact-hash field back to the supplied run/report bytes. It
   never stores query text, paths, vectors, prompts, provider bodies or user identity.
 - `make ip-asset-grounded-eval-check` remains provider-free and joins `make eval-check`. It runs
-  Seed V1 authoring/strict/canonical checks first, then Seed V2 `authoring --check-v2`,
-  `validate-seed-v2`, and `check-v2-canonical` as separate fail-fast recipe lines. Preflight and
-  live commands are explicit local operations and never join the ordinary CI gate.
+  Seed V1 `authoring --check-frozen-v1`/strict/canonical checks first, then Seed V2
+  `authoring --check-v2`, `validate-seed-v2`, and `check-v2-canonical` as separate fail-fast recipe
+  lines. The frozen V1 check requires only Git-tracked artifacts: it verifies all three fixed hashes
+  and re-authors query/grade bytes, but does not claim to rebuild the asset snapshot from the ignored
+  private manifest. `authoring --check --manifest <private-path>` retains that explicit local full
+  check. Preflight and live commands never join the ordinary CI gate.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
 | --- | --- |
 | Approved manifest is not exactly the frozen 41-item identity | `asset_snapshot_drift`; no provider call |
+| Supplied frozen snapshot fingerprint is inconsistent with its catalog/assets | Reject as snapshot drift before reading the private manifest |
+| Snapshot is self-consistent but the private manifest is unavailable during live/full authoring checks | Fail explicitly; never treat the frozen-only CI check as a live corpus proof |
 | A dynamic row is missing, duplicated, private, or not ready/shared | Closed preflight failure; no query embedding call |
 | Any of the 41 compatible vectors is missing | `compatible_embedding_incomplete`; no live run |
 | Shared library exceeds the bounded complete projection | `shared_corpus_exceeds_safe_projection`; do not report partial-corpus metrics |
 | Dataset has a duplicate/missing query, asset grade, illegal grade, split drift, or prohibited field | Validation/check exits nonzero; canonical is not rewritten |
 | Seed V1 hash drifts while authoring/checking Seed V2 | V2 authoring check exits nonzero; V1 is never rewritten |
+| Clean CI has no private visual manifest | `--check-frozen-v1` validates tracked hashes and authored query/grade bytes without reading it |
 | V2 is not exactly 124 queries / 30 no-answer / 5,084 grades or changes an inherited V1 query | Strict V2 load fails closed |
 | A selective rule is chosen using holdout | Invalid methodology; select on dev and report holdout only after fixing the rule |
 | Safe manifest artifact bytes drift or a prohibited field appears | Validation fails; do not preserve or compare the manifest as evidence |
@@ -769,6 +777,8 @@ PYTHONPATH=backend conda run --name edu-ai \
   5,084 `codex_seed_v2` grades, 24 robustness pairs and a complete change ledger; reject inherited
   query drift; prove dev-only selection plus holdout metrics; and verify safe manifest artifact
   hashes and prohibited-field rejection.
+- Frozen V1 CLI tests pass with a nonexistent private-manifest argument, reject drift in each of the
+  asset/query/seed artifacts, and keep full `authoring --check` as the manifest-dependent path.
 - Metric tests cover Recall@3/5, MRR@5, graded nDCG@5, separate no-answer behavior, coverage,
   degraded/failure aggregation, fixed bootstrap reproduction, run hash/order checks, and identical
   embedding identity for paired comparison.

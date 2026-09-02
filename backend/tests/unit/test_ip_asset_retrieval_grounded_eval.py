@@ -4,13 +4,17 @@ import json
 from pathlib import Path
 
 import pytest
+from app.domain.visual_assets import VisualAssetError
 from evals.ip_asset_retrieval_grounded.assets import (
     assert_safe_snapshot_current,
 )
 from evals.ip_asset_retrieval_grounded.authoring import (
-    DEFAULT_MANIFEST_PATH,
+    assert_frozen_v1_artifacts,
     build_query_records,
     build_seed_records,
+)
+from evals.ip_asset_retrieval_grounded.authoring import (
+    main as authoring_main,
 )
 from evals.ip_asset_retrieval_grounded.dataset import (
     DEFAULT_ASSETS_PATH,
@@ -40,6 +44,58 @@ from evals.ip_asset_retrieval_grounded.reporting import (
 )
 
 FEATURE_ROOT = Path(__file__).resolve().parents[2] / "evals/ip_asset_retrieval_grounded"
+
+
+def test_frozen_v1_authoring_check_does_not_require_private_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing_manifest = tmp_path / "private-manifest-does-not-exist.json"
+
+    assert authoring_main(["--check-frozen-v1", "--manifest", str(missing_manifest)]) == 0
+    assert not missing_manifest.exists()
+    assert "frozen Seed V1 artifacts match" in capsys.readouterr().out
+
+
+def test_full_v1_authoring_check_still_requires_private_manifest(tmp_path: Path) -> None:
+    missing_manifest = tmp_path / "private-manifest-does-not-exist.json"
+
+    with pytest.raises(VisualAssetError, match="visual asset manifest is unavailable"):
+        authoring_main(["--check", "--manifest", str(missing_manifest)])
+
+
+@pytest.mark.parametrize(
+    "drifted_name",
+    ["assets.v1.json", "queries.v1.jsonl", "codex-seed.v1.jsonl"],
+)
+def test_frozen_v1_authoring_check_fails_closed_on_artifact_drift(
+    tmp_path: Path, drifted_name: str
+) -> None:
+    paths = {
+        "assets.v1.json": tmp_path / "assets.v1.json",
+        "queries.v1.jsonl": tmp_path / "queries.v1.jsonl",
+        "codex-seed.v1.jsonl": tmp_path / "codex-seed.v1.jsonl",
+    }
+    sources = {
+        "assets.v1.json": DEFAULT_ASSETS_PATH,
+        "queries.v1.jsonl": DEFAULT_QUERIES_PATH,
+        "codex-seed.v1.jsonl": DEFAULT_SEED_PATH,
+    }
+    for name, path in paths.items():
+        path.write_bytes(sources[name].read_bytes())
+    assert_frozen_v1_artifacts(
+        assets_path=paths["assets.v1.json"],
+        queries_path=paths["queries.v1.jsonl"],
+        seed_path=paths["codex-seed.v1.jsonl"],
+    )
+
+    paths[drifted_name].write_bytes(paths[drifted_name].read_bytes() + b" ")
+
+    with pytest.raises(ValueError, match=drifted_name):
+        assert_frozen_v1_artifacts(
+            assets_path=paths["assets.v1.json"],
+            queries_path=paths["queries.v1.jsonl"],
+            seed_path=paths["codex-seed.v1.jsonl"],
+        )
 
 
 def test_grounded_seed_covers_real_corpus_queries_and_complete_matrix() -> None:
@@ -87,12 +143,27 @@ def test_grounded_loader_rejects_prohibited_fields(tmp_path: Path) -> None:
         )
 
 
-def test_grounded_snapshot_fails_closed_on_identity_drift() -> None:
+def test_grounded_snapshot_fails_closed_on_identity_drift(tmp_path: Path) -> None:
     bundle = load_grounded_bundle()
     drifted = bundle.assets.model_copy(update={"asset_set_fingerprint": "f" * 64})
 
     with pytest.raises(ValueError, match="snapshot drifted"):
-        assert_safe_snapshot_current(drifted, manifest_path=DEFAULT_MANIFEST_PATH)
+        assert_safe_snapshot_current(
+            drifted,
+            manifest_path=tmp_path / "private-manifest-does-not-exist.json",
+        )
+
+
+def test_grounded_snapshot_current_check_still_rebuilds_private_manifest(
+    tmp_path: Path,
+) -> None:
+    bundle = load_grounded_bundle()
+
+    with pytest.raises(VisualAssetError, match="visual asset manifest is unavailable"):
+        assert_safe_snapshot_current(
+            bundle.assets,
+            manifest_path=tmp_path / "private-manifest-does-not-exist.json",
+        )
 
 
 def test_grounded_metrics_keep_no_answer_out_of_ranking_macro() -> None:

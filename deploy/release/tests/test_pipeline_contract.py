@@ -117,7 +117,7 @@ def test_eval_check_runs_seven_offline_suites_and_grounded_seed_contracts() -> N
         "\n\n", 1
     )[0]
     assert grounded_target.splitlines() == [
-        f"{command_prefix}evals.ip_asset_retrieval_grounded.authoring --check",
+        f"{command_prefix}evals.ip_asset_retrieval_grounded.authoring --check-frozen-v1",
         f"{command_prefix}evals.ip_asset_retrieval_grounded.runner validate-seed",
         f"{command_prefix}evals.ip_asset_retrieval_grounded.runner check-canonical",
         f"{command_prefix}evals.ip_asset_retrieval_grounded.authoring --check-v2",

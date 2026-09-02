@@ -1,20 +1,20 @@
 {
   "aggregate": {
-    "case_count": 40,
+    "case_count": 41,
     "exact_metadata_priority_passed": true,
     "v2": {
       "macro_mrr_at_5": 1.0,
-      "macro_ndcg_at_5": 0.954837,
-      "macro_recall_at_5": 0.84,
+      "macro_ndcg_at_5": 0.955002,
+      "macro_recall_at_5": 0.839024,
       "retrieval_version": "ip-asset-hybrid-v2",
-      "zero_result_rate": 0.2
+      "zero_result_rate": 0.195122
     },
     "v3": {
       "macro_mrr_at_5": 1.0,
-      "macro_ndcg_at_5": 0.970204,
-      "macro_recall_at_5": 0.92,
+      "macro_ndcg_at_5": 0.970931,
+      "macro_recall_at_5": 0.921951,
       "retrieval_version": "ip-asset-hybrid-v3-rrf",
-      "zero_result_rate": 0.2
+      "zero_result_rate": 0.195122
     }
   },
   "cases": [
@@ -628,6 +628,39 @@
         "retrieval_version": "ip-asset-hybrid-v3-rrf",
         "selected_candidate_ids": [],
         "zero_result": true
+      }
+    },
+    {
+      "case_id": "combined-filters-space-station-duo",
+      "category": "combined_filters",
+      "exact_metadata_priority_passed": true,
+      "v2": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 0.961582,
+        "recall_at_5": 0.8,
+        "retrieval_version": "ip-asset-hybrid-v2",
+        "selected_candidate_ids": [
+          "space-station-duo",
+          "space-station-xiaosai",
+          "space-station-sai-xiansheng",
+          "unrelated-duo-semantic-neighbor",
+          "space-station-background"
+        ],
+        "zero_result": false
+      },
+      "v3": {
+        "mrr_at_5": 1.0,
+        "ndcg_at_5": 1.0,
+        "recall_at_5": 1.0,
+        "retrieval_version": "ip-asset-hybrid-v3-rrf",
+        "selected_candidate_ids": [
+          "space-station-duo",
+          "space-station-xiaosai",
+          "space-station-sai-xiansheng",
+          "space-station-background",
+          "space-science-neighbor"
+        ],
+        "zero_result": false
       }
     },
     {
@@ -1299,21 +1332,21 @@
       }
     },
     "combined_filters": {
-      "case_count": 5,
+      "case_count": 6,
       "exact_metadata_priority_passed": true,
       "v2": {
         "macro_mrr_at_5": 1.0,
-        "macro_ndcg_at_5": 0.954837,
-        "macro_recall_at_5": 0.84,
+        "macro_ndcg_at_5": 0.955961,
+        "macro_recall_at_5": 0.833333,
         "retrieval_version": "ip-asset-hybrid-v2",
-        "zero_result_rate": 0.2
+        "zero_result_rate": 0.166667
       },
       "v3": {
         "macro_mrr_at_5": 1.0,
-        "macro_ndcg_at_5": 0.970204,
-        "macro_recall_at_5": 0.92,
+        "macro_ndcg_at_5": 0.97517,
+        "macro_recall_at_5": 0.933333,
         "retrieval_version": "ip-asset-hybrid-v3-rrf",
-        "zero_result_rate": 0.2
+        "zero_result_rate": 0.166667
       }
     },
     "emotion": {
@@ -1389,5 +1422,5 @@
       }
     }
   },
-  "dataset_version": "ip-asset-retrieval-eval-case-v1:7d06b5d41ba98e54"
+  "dataset_version": "ip-asset-retrieval-eval-case-v1:e9f43c05ebb1314e"
 }

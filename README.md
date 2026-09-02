@@ -328,8 +328,9 @@ make doctor
 make check
 ```
 
-`make eval-check` 不访问网络、不需要模型 API Key，也不写入业务数据；它验证冻结 fixture、排序策略、
-Grounded Seed V1/V2 数据继承关系和 canonical 报告是否漂移，不代表真实模型准确率或线上业务效果。
+`make eval-check` 不访问网络、不需要模型 API Key、私有素材清单或业务数据写入；它验证冻结 fixture、
+排序策略、Grounded Seed V1/V2 数据继承关系和 canonical 报告是否漂移，不代表真实模型准确率或
+线上业务效果。依赖私有素材清单的 V1 安全快照完整重建检查仍通过 authoring `--check` 显式运行。
 
 ## 个人简历
 

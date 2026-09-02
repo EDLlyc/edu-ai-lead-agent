@@ -84,6 +84,12 @@ def safe_asset_fingerprint(*, catalog_version: str, assets: tuple[SafeGroundedAs
 def assert_safe_snapshot_current(
     snapshot: SafeGroundedAssetSnapshot, *, manifest_path: Path
 ) -> None:
+    supplied_fingerprint = safe_asset_fingerprint(
+        catalog_version=snapshot.catalog_version,
+        assets=snapshot.assets,
+    )
+    if snapshot.asset_set_fingerprint != supplied_fingerprint:
+        raise ValueError("grounded approved 41-asset snapshot drifted")
     current = build_safe_asset_snapshot(manifest_path)
     if current != snapshot:
         raise ValueError("grounded approved 41-asset snapshot drifted")

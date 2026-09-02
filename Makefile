@@ -195,7 +195,7 @@ ip-asset-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval.runner --check
 
 ip-asset-grounded-eval-check:
-	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check
+	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check-frozen-v1
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner validate-seed
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.runner check-canonical
 	cd backend && $(PY_RUN) python -m evals.ip_asset_retrieval_grounded.authoring --check-v2

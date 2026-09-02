@@ -12,8 +12,20 @@ Gold；报告不声称人工一致性、线上用户效果或业务提升。
 make ip-asset-grounded-eval-check
 ```
 
-该命令检查 authoring artifact、strict schema、完整矩阵、hash 与 canonical seed report，不访问
-数据库或模型服务，也不会改写 canonical 文件。
+该命令仅使用 Git 内冻结文件，依次检查 V1 的固定 hash、查询/判断的确定性 authoring bytes、
+strict schema、完整矩阵和 canonical seed report，再检查 V2 authoring、strict schema 与
+canonical report。它不需要被忽略的私有素材清单，不访问数据库或模型服务，也不会改写 canonical
+文件。
+
+需要根据私有素材清单完整重建并核对 V1 安全资产快照时，显式运行：
+
+```bash
+PYTHONPATH=backend conda run --name edu-ai \
+  python -m evals.ip_asset_retrieval_grounded.authoring --check \
+  --manifest private/brand-materials/visual-assets.manifest.json
+```
+
+该完整检查保留私有清单依赖，不属于干净 checkout 的 CI 门禁。
 
 ## 显式真实运行
 

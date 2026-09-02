@@ -1442,15 +1442,47 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _assert_v1_identity() -> None:
+def _assert_v1_identity(
+    *,
+    assets_path: Path = DEFAULT_ASSETS_PATH,
+    queries_path: Path = DEFAULT_QUERIES_PATH,
+    seed_path: Path = DEFAULT_SEED_PATH,
+) -> None:
     expected = {
-        DEFAULT_ASSETS_PATH: EXPECTED_V1_ASSETS_SHA256,
-        DEFAULT_QUERIES_PATH: EXPECTED_V1_QUERIES_SHA256,
-        DEFAULT_SEED_PATH: EXPECTED_V1_SEED_SHA256,
+        assets_path: EXPECTED_V1_ASSETS_SHA256,
+        queries_path: EXPECTED_V1_QUERIES_SHA256,
+        seed_path: EXPECTED_V1_SEED_SHA256,
     }
-    drifted = [path.name for path, digest in expected.items() if _sha256(path) != digest]
+    drifted = [
+        path.name
+        for path, digest in expected.items()
+        if not path.is_file() or _sha256(path) != digest
+    ]
     if drifted:
         raise ValueError("grounded Seed V1 identity drifted: " + ", ".join(drifted))
+
+
+def assert_frozen_v1_artifacts(
+    *,
+    assets_path: Path = DEFAULT_ASSETS_PATH,
+    queries_path: Path = DEFAULT_QUERIES_PATH,
+    seed_path: Path = DEFAULT_SEED_PATH,
+) -> None:
+    """Validate committed V1 identity and reproducible authored bytes without private inputs."""
+    _assert_v1_identity(
+        assets_path=assets_path,
+        queries_path=queries_path,
+        seed_path=seed_path,
+    )
+    authored = {
+        queries_path: _jsonl(build_query_records()),
+        seed_path: _jsonl(build_seed_records()),
+    }
+    drifted = [
+        path.name for path, body in authored.items() if path.read_text(encoding="utf-8") != body
+    ]
+    if drifted:
+        raise ValueError("grounded Seed V1 deterministic authoring drifted: " + ", ".join(drifted))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1458,10 +1490,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--check-frozen-v1", action="store_true")
     mode.add_argument("--write-v2", action="store_true")
     mode.add_argument("--check-v2", action="store_true")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST_PATH)
     args = parser.parse_args(argv)
+    if args.check_frozen_v1:
+        try:
+            assert_frozen_v1_artifacts()
+        except ValueError as exc:
+            print(f"Grounded IP retrieval frozen Seed V1 check failed: {exc}")
+            return 1
+        print(
+            "Grounded IP retrieval frozen Seed V1 artifacts match: "
+            "41 assets, 100 queries, 4,100 grades"
+        )
+        return 0
     artifacts = _artifacts_v2() if args.write_v2 or args.check_v2 else _artifacts(args.manifest)
     if args.write or args.write_v2:
         for path, body in artifacts.items():
