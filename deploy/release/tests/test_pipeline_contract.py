@@ -131,7 +131,7 @@ def test_ci_jobs_use_pinned_specified_container_and_probe_docker() -> None:
 def test_compose_uses_one_application_image_variable() -> None:
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     assert "image: ${APP_IMAGE:-edu-ai-lead-agent-backend:local}" in compose
-    assert compose.count("<<: *app-runtime") == 14
+    assert compose.count("<<: *app-runtime") == 15
     services = yaml.safe_load(compose)["services"]
     for service_name in (
         "official-account-local-worker",
@@ -141,6 +141,30 @@ def test_compose_uses_one_application_image_variable() -> None:
     assert services["ip-asset-worker"]["profiles"] == ["ip-assets"]
     assert services["official-account-weekly-dag-worker"]["profiles"] == [
         "official-account-weekly-dag"
+    ]
+    weekly_scheduler = services["official-account-weekly-scheduler"]
+    assert weekly_scheduler["profiles"] == ["official-account-weekly-dag"]
+    assert weekly_scheduler.get("ports") is None
+    assert weekly_scheduler["command"] == [
+        "python",
+        "-m",
+        "app.official_account_weekly_scheduler_main",
+    ]
+    weekly_worker = services["official-account-weekly-dag-worker"]
+    assert weekly_worker.get("ports") is None
+    assert weekly_worker["command"] == [
+        "python",
+        "-m",
+        "app.official_account_weekly_dag_main",
+        "--handler-mode",
+        "${OFFICIAL_ACCOUNT_WEEKLY_HANDLER_MODE:-fixture}",
+        "worker",
+        "--concurrency",
+        "3",
+        "--lease-seconds",
+        "${OFFICIAL_ACCOUNT_WEEKLY_WORKER_LEASE_SECONDS:-900}",
+        "--poll-seconds",
+        "${OFFICIAL_ACCOUNT_WEEKLY_WORKER_POLL_SECONDS:-2}",
     ]
     draft_worker = services["wechat-official-account-draft-worker"]
     assert draft_worker["profiles"] == ["wechat-official-account-draft"]
@@ -160,6 +184,9 @@ def test_compose_uses_one_application_image_variable() -> None:
     )
     assert draft_worker["environment"]["WECHAT_MP_DRAFT_MIN_WEEK_START"] == (
         "${WECHAT_MP_DRAFT_MIN_WEEK_START:-}"
+    )
+    assert draft_worker["environment"]["WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT"] == (
+        "/app/input/weekly-inbox"
     )
 
 

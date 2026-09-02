@@ -397,21 +397,59 @@ services:
         condition: service_completed_successfully
     environment:
       <<: *backend-environment
+      AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
+      OFFICIAL_ACCOUNT_LOCAL_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_ENABLED:-false}
+      OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED: ${OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED: "false"
+      OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED: ${OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START: ${OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START:-}
+      OFFICIAL_ACCOUNT_WEEKLY_WORKER_POLL_SECONDS: ${OFFICIAL_ACCOUNT_WEEKLY_WORKER_POLL_SECONDS:-2}
+      OFFICIAL_ACCOUNT_WEEKLY_WORKER_LEASE_SECONDS: ${OFFICIAL_ACCOUNT_WEEKLY_WORKER_LEASE_SECONDS:-900}
+      OFFICIAL_ACCOUNT_WEEKLY_ARTICLE_WAIT_SECONDS: ${OFFICIAL_ACCOUNT_WEEKLY_ARTICLE_WAIT_SECONDS:-720}
+      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/output/weekly-inbox
+      OFFICIAL_ACCOUNT_WEEKLY_ARTIFACT_ROOT: /app/output/weekly-production
+      IMAGE_ASSET_MANIFEST: ${IMAGE_ASSET_MANIFEST:-private/brand-materials/visual-assets.manifest.json}
     volumes:
       - official_account_weekly_dag_output:/app/output
+      - ./private/brand-materials:/app/private/brand-materials:ro
     command:
       [
         "python",
         "-m",
         "app.official_account_weekly_dag_main",
+        "--handler-mode",
+        "${OFFICIAL_ACCOUNT_WEEKLY_HANDLER_MODE:-fixture}",
         "worker",
         "--concurrency",
         "3",
         "--lease-seconds",
-        "60",
+        "${OFFICIAL_ACCOUNT_WEEKLY_WORKER_LEASE_SECONDS:-900}",
         "--poll-seconds",
-        "2",
+        "${OFFICIAL_ACCOUNT_WEEKLY_WORKER_POLL_SECONDS:-2}",
       ]
+
+  official-account-weekly-scheduler:
+    profiles: ["official-account-weekly-dag"]
+    <<: *app-runtime
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *backend-environment
+      OFFICIAL_ACCOUNT_LOCAL_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_ENABLED:-false}
+      OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED: ${OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED: ${OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED:-false}
+      OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED: "false"
+      OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START: ${OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START:-}
+      OFFICIAL_ACCOUNT_WEEKLY_RECONCILE_SECONDS: ${OFFICIAL_ACCOUNT_WEEKLY_RECONCILE_SECONDS:-300}
+      OFFICIAL_ACCOUNT_WEEKLY_ARTIFACT_ROOT: /app/output/weekly-production
+    volumes:
+      - official_account_weekly_dag_output:/app/output
+    command: ["python", "-m", "app.official_account_weekly_scheduler_main"]
 
   wechat-official-account-draft-worker:
     profiles: ["wechat-official-account-draft"]
@@ -440,7 +478,7 @@ services:
       WECHAT_MP_DRAFT_HEARTBEAT_SECONDS: ${WECHAT_MP_DRAFT_HEARTBEAT_SECONDS:-60}
       WECHAT_MP_DRAFT_MAX_ATTEMPTS: ${WECHAT_MP_DRAFT_MAX_ATTEMPTS:-3}
       WECHAT_MP_DRAFT_RETRY_BASE_SECONDS: ${WECHAT_MP_DRAFT_RETRY_BASE_SECONDS:-30}
-      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/input/official-account-weekly-editions
+      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/input/weekly-inbox
       WECHAT_MP_DRAFT_ARTIFACT_ROOT: /app/output/wechat-mp-draft-artifacts
     volumes:
       - official_account_weekly_dag_output:/app/input/official-account-weekly-editions:ro

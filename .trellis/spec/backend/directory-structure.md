@@ -228,10 +228,19 @@ See [`wecom-delivery.md`](./wecom-delivery.md) for the executable API, database,
 
 - `application/ports/wechat_official_account_draft_artifacts.py` owns opaque staged-source
   identities and typed pre-activation rejection.
+- `application/ports/official_account_weekly_production.py` owns the path-free frozen real-input
+  identity; `infrastructure/db/official_account_weekly_production.py` is its read-only PostgreSQL
+  planner and must reuse stored scores plus the existing weekly selector.
+- `application/services/official_account_weekly_production.py` owns production DAG behavior;
+  `official_account_weekly_scheduler_main.py` is the only production enqueue boundary, while
+  `official_account_weekly_dag_main.py --handler-mode production` is worker-only.
 - `application/services/wechat_official_account_draft_jobs.py` owns preflight, idempotent enqueue,
   reconciliation, fenced execution, and conservative provider-write outcomes.
 - `infrastructure/wechat_official_account/artifacts.py` owns manifest-authenticated Monday
   eligibility, bounded complete inbox discovery, immutable staging, and safe source resolution.
+- `infrastructure/wechat_official_account/prepared_artifacts.py` owns verified persisted-run media,
+  private-URL rewriting, exact prepared child/batch directories, and the complete three-role inbox
+  handoff. It never owns WeChat credentials or provider calls.
 - `infrastructure/db/wechat_official_account_draft_jobs.py` owns the `0042` job/item/attempt state
   machine. Provider adapters never write job rows directly.
 - `wechat_official_account_draft_main.py` is a portless, optional CLI/worker process. It is not

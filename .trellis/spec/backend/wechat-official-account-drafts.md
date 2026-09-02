@@ -159,7 +159,8 @@ and exact allowlisted HTML/media correspondence. The three-role method prepares 
 before it uploads article 1.
 
 The HTML allowlist is the existing inline WeChat fragment shape: `section`, `p`, `span`, `a`,
-`img`, and `br`, with bounded registered attributes. Image `src` values must be unique safe
+`img`, `br`, `h1`, `h2`, `ul`, `ol`, `li`, `blockquote`, `figure`, `figcaption`, `strong`, and
+`em`, with bounded registered attributes. Image `src` values must be unique safe
 `assets/*` paths; external, `data:`, `blob:`, path-traversal, missing, duplicate, or unused media
 fails preparation. The service replaces each exact local `src` once with the returned HTTPS
 WeChat URL.
@@ -178,6 +179,15 @@ store copies the aggregate into an immutable content-addressed directory, then r
 reference; later loading resolves under the trusted root and rejects traversal, symlinks, and
 identity drift. Database rows and safe projections store references/fingerprints, never local paths
 or article content.
+
+The same adapter also accepts the production scheduler's strict
+`wechat-draft-prepared-batch-v1`. Its three child manifests bind live persisted Article/content
+fingerprints and verified database/object-owned media rather than legacy V2 ZIP provenance. The
+prepared loader enforces exact canonical directories, all file hashes and sizes, non-symlink real
+files, decoded image properties, HTML/media correspondence, aggregate identity, and
+`published=false`/`draft_only=true`. Legacy finalized V2 input remains supported; prepared input
+does not weaken any provider preflight, three-role ordering, activation-week, idempotency, or
+side-effect checkpoint rule.
 
 Revision `20260901_0042` adds one job row, exactly three role items, and append-only attempts.
 Request identity includes the staged artifact fingerprint, exact AppID account fingerprint, item

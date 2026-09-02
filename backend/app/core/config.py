@@ -132,9 +132,7 @@ class Settings(BaseSettings):
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
     content_scoring_version: str = "scoring-v1-preview.11-qualified-authoritative-priority"
     content_scoring_profile: str = "preview"
-    content_selection_priority_rule_version: str | None = (
-        "qualified-authoritative-priority-v1"
-    )
+    content_selection_priority_rule_version: str | None = "qualified-authoritative-priority-v1"
     content_llm_rerank_enabled: bool = True
     content_llm_rerank_policy_version: str = Field(
         default=DEFAULT_TOPIC_RERANK_POLICY_VERSION, min_length=1, max_length=80
@@ -252,6 +250,19 @@ class Settings(BaseSettings):
     )
     wechat_mp_draft_artifact_root: str = Field(
         default="output/wechat-mp-draft-artifacts",
+        min_length=1,
+        max_length=4_096,
+    )
+    official_account_weekly_production_enabled: bool = False
+    official_account_weekly_scheduler_enabled: bool = False
+    official_account_weekly_worker_enabled: bool = False
+    official_account_weekly_min_week_start: date | None = None
+    official_account_weekly_reconcile_seconds: int = Field(default=300, ge=30, le=3_600)
+    official_account_weekly_worker_poll_seconds: float = Field(default=2.0, ge=0.1, le=60)
+    official_account_weekly_worker_lease_seconds: int = Field(default=900, ge=60, le=3_600)
+    official_account_weekly_article_wait_seconds: int = Field(default=720, ge=30, le=840)
+    official_account_weekly_artifact_root: str = Field(
+        default="output/official-account-weekly-production",
         min_length=1,
         max_length=4_096,
     )
@@ -518,6 +529,7 @@ class Settings(BaseSettings):
     @field_validator(
         "wechat_mp_draft_weekly_inbox_root",
         "wechat_mp_draft_artifact_root",
+        "official_account_weekly_artifact_root",
         mode="before",
     )
     @classmethod
@@ -529,7 +541,11 @@ class Settings(BaseSettings):
             raise ValueError("WeChat draft process paths must be non-blank and contain no controls")
         return value
 
-    @field_validator("wechat_mp_draft_min_week_start", mode="before")
+    @field_validator(
+        "wechat_mp_draft_min_week_start",
+        "official_account_weekly_min_week_start",
+        mode="before",
+    )
     @classmethod
     def normalize_wechat_mp_draft_min_week_start(cls, value: object) -> object:
         if value == "":
@@ -540,11 +556,11 @@ class Settings(BaseSettings):
             raise ValueError("WeChat draft minimum week start must be an ISO date")
         return value
 
-    @field_validator("wechat_mp_draft_min_week_start")
+    @field_validator("wechat_mp_draft_min_week_start", "official_account_weekly_min_week_start")
     @classmethod
     def validate_wechat_mp_draft_min_week_start(cls, value: date | None) -> date | None:
         if value is not None and value.weekday() != 0:
-            raise ValueError("WeChat draft minimum week start must be a Monday")
+            raise ValueError("official-account minimum week start must be a Monday")
         return value
 
     def content_slot_schedules(self) -> tuple[ContentSlotSchedule, ...]:
@@ -638,6 +654,19 @@ class Settings(BaseSettings):
             and self.wechat_mp_draft_min_week_start is None
         ):
             raise ValueError("production automatic WeChat draft enqueue requires a minimum week")
+        weekly_process_enabled = (
+            self.official_account_weekly_scheduler_enabled
+            or self.official_account_weekly_worker_enabled
+        )
+        if self.official_account_weekly_production_enabled and self.app_env != "production":
+            raise ValueError("weekly production acknowledgement is production-only")
+        if weekly_process_enabled:
+            if not self.official_account_weekly_production_enabled:
+                raise ValueError("weekly production processes require explicit acknowledgement")
+            if self.official_account_weekly_min_week_start is None:
+                raise ValueError("weekly production processes require a minimum week")
+            if self.official_account_weekly_min_week_start < date(2026, 9, 7):
+                raise ValueError("weekly production cannot activate before 2026-09-07")
         if self.ip_asset_worker_enabled and not self.ip_asset_hub_enabled:
             raise ValueError("IP asset worker requires the hub to be enabled")
         if self.ip_asset_heartbeat_seconds >= self.ip_asset_lease_seconds:

@@ -10,10 +10,12 @@ from itertools import islice
 from pathlib import Path, PurePosixPath
 from typing import Final, cast
 
+from app.application.ports.wechat_official_account import WECHAT_MP_MAX_IMAGE_BYTES
 from app.application.ports.wechat_official_account_draft_artifacts import (
     WECHAT_DRAFT_ARTIFACT_INVALID,
     WECHAT_DRAFT_ARTIFACT_REF_VERSION,
     WECHAT_DRAFT_BEFORE_ACTIVATION,
+    WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION,
     ResolvedWeChatDraftArtifactSource,
     WeChatDraftArtifactBatch,
     WeChatDraftArtifactDiscovery,
@@ -28,6 +30,10 @@ from app.application.services.official_account_weekly_edition import (
     load_finalized_weekly_edition,
 )
 from app.domain.official_account_weekly_edition import WeeklyArticleRole
+from app.infrastructure.wechat_official_account.prepared_artifacts import (
+    PREPARED_DRAFT_SOURCE_REF_VERSION,
+    load_prepared_weekly_draft_batch,
+)
 
 _MAX_DISCOVERY_COUNT: Final = 1000
 
@@ -41,6 +47,7 @@ class LocalWeChatDraftArtifactStore:
         staging_root: Path,
         inbox_root: Path | None = None,
         minimum_week_start: date | None = None,
+        max_image_bytes: int = WECHAT_MP_MAX_IMAGE_BYTES,
     ) -> None:
         self._staging_root = _validated_root(staging_root, label="staging")
         self._inbox_root = (
@@ -49,6 +56,7 @@ class LocalWeChatDraftArtifactStore:
         if minimum_week_start is not None and minimum_week_start.weekday() != 0:
             raise ValueError("WeChat draft minimum week start must be a Monday")
         self._minimum_week_start = minimum_week_start
+        self._max_image_bytes = max_image_bytes
         if self._inbox_root is not None and (
             self._inbox_root == self._staging_root
             or self._inbox_root.is_relative_to(self._staging_root)
@@ -57,6 +65,8 @@ class LocalWeChatDraftArtifactStore:
             raise ValueError("WeChat draft inbox and staging roots must be independent")
 
     def stage_weekly(self, source_directory: Path) -> WeChatDraftArtifactBatch:
+        if (source_directory / "prepared-weekly.json").is_file():
+            return self._stage_prepared_weekly(source_directory)
         try:
             edition = load_finalized_weekly_edition(source_directory)
             self._require_eligible(edition)
@@ -105,9 +115,76 @@ class LocalWeChatDraftArtifactStore:
         except (OSError, ValueError) as exc:
             raise WeChatDraftArtifactError("WeChat draft artifact staging failed") from exc
 
+    def _stage_prepared_weekly(self, source_directory: Path) -> WeChatDraftArtifactBatch:
+        try:
+            batch = load_prepared_weekly_draft_batch(
+                source_directory,
+                max_image_bytes=self._max_image_bytes,
+            )
+            self._require_week_eligible(batch.week_start)
+            target = self._prepared_target(batch.aggregate_fingerprint)
+            self._staging_root.mkdir(parents=True, exist_ok=True)
+            if _path_has_symlink_component(self._staging_root):
+                raise ValueError("WeChat draft staging root cannot contain symlinks")
+            if target.exists() or target.is_symlink():
+                staged = load_prepared_weekly_draft_batch(
+                    target,
+                    max_image_bytes=self._max_image_bytes,
+                )
+                if staged.aggregate_fingerprint != batch.aggregate_fingerprint:
+                    raise ValueError("staged prepared draft identity changed")
+                return staged.as_artifact_batch()
+            temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=self._staging_root))
+            clean_temporary = True
+            try:
+                shutil.copytree(batch.directory, temporary, dirs_exist_ok=True)
+                staged_temporary = load_prepared_weekly_draft_batch(
+                    temporary,
+                    max_image_bytes=self._max_image_bytes,
+                )
+                if staged_temporary.aggregate_fingerprint != batch.aggregate_fingerprint:
+                    raise ValueError("prepared draft staging copy changed")
+                try:
+                    temporary.rename(target)
+                except OSError:
+                    if not target.exists():
+                        raise
+                else:
+                    clean_temporary = False
+            finally:
+                if clean_temporary and temporary.exists():
+                    shutil.rmtree(temporary)
+            staged = load_prepared_weekly_draft_batch(
+                target,
+                max_image_bytes=self._max_image_bytes,
+            )
+            if staged.aggregate_fingerprint != batch.aggregate_fingerprint:
+                raise ValueError("staged prepared draft identity changed")
+            return staged.as_artifact_batch()
+        except WeChatDraftBeforeActivationError:
+            raise
+        except (OSError, ValueError) as exc:
+            raise WeChatDraftArtifactError("prepared WeChat draft staging failed") from exc
+
     def resolve(self, source_ref: str) -> ResolvedWeChatDraftArtifactSource:
         try:
-            aggregate_fingerprint, role = _parse_source_ref(source_ref)
+            ref_version, aggregate_fingerprint, role = _parse_source_ref(source_ref)
+            if ref_version == WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION:
+                prepared = load_prepared_weekly_draft_batch(
+                    self._prepared_target(aggregate_fingerprint),
+                    max_image_bytes=self._max_image_bytes,
+                )
+                batch = prepared.as_artifact_batch()
+                source = batch.sources[role.ordinal - 1]
+                if source.source_ref != source_ref:
+                    raise ValueError("resolved prepared draft source ref changed")
+                directory = prepared.directory / "articles" / f"{role.ordinal:02d}-{role.value}"
+                return ResolvedWeChatDraftArtifactSource(
+                    directory=directory,
+                    source=source,
+                    batch_fingerprint=prepared.batch_fingerprint,
+                    aggregate_fingerprint=prepared.aggregate_fingerprint,
+                )
             edition = load_finalized_weekly_edition(self._target(aggregate_fingerprint))
             if edition.zip_sha256 != aggregate_fingerprint:
                 raise ValueError("WeChat draft artifact aggregate identity changed")
@@ -150,6 +227,7 @@ class LocalWeChatDraftArtifactStore:
                     candidate
                     for candidate in self._inbox_root.iterdir()
                     if candidate.name.startswith("official-account-weekly-edition-")
+                    or candidate.name.startswith("official-account-prepared-weekly-")
                 ),
                 _MAX_DISCOVERY_COUNT + 1,
             ),
@@ -161,8 +239,17 @@ class LocalWeChatDraftArtifactStore:
         skipped: Counter[str] = Counter()
         for candidate in candidates:
             try:
-                edition = load_finalized_weekly_edition(candidate)
-                self._require_eligible(edition)
+                if candidate.name.startswith("official-account-prepared-weekly-"):
+                    prepared = load_prepared_weekly_draft_batch(
+                        candidate,
+                        max_image_bytes=self._max_image_bytes,
+                    )
+                    self._require_week_eligible(prepared.week_start)
+                    fingerprint = prepared.aggregate_fingerprint
+                else:
+                    edition = load_finalized_weekly_edition(candidate)
+                    self._require_eligible(edition)
+                    fingerprint = edition.zip_sha256
             except WeeklyEditionLiveProvenanceError:
                 skipped[WEEKLY_EDITION_LIVE_PROVENANCE_REQUIRED] += 1
             except WeChatDraftBeforeActivationError:
@@ -170,7 +257,7 @@ class LocalWeChatDraftArtifactStore:
             except (OSError, ValueError):
                 skipped[WECHAT_DRAFT_ARTIFACT_INVALID] += 1
             else:
-                eligible.setdefault(edition.zip_sha256, candidate)
+                eligible.setdefault(fingerprint, candidate)
         batches = tuple(
             self.stage_weekly(eligible[fingerprint]) for fingerprint in sorted(eligible)[:maximum]
         )
@@ -180,9 +267,12 @@ class LocalWeChatDraftArtifactStore:
         )
 
     def _require_eligible(self, edition: FinalizedWeeklyEdition) -> None:
+        self._require_week_eligible(edition.week_start)
+
+    def _require_week_eligible(self, week_start: str) -> None:
         if (
             self._minimum_week_start is not None
-            and date.fromisoformat(edition.week_start) < self._minimum_week_start
+            and date.fromisoformat(week_start) < self._minimum_week_start
         ):
             raise WeChatDraftBeforeActivationError("WeChat draft aggregate predates activation")
 
@@ -192,6 +282,14 @@ class LocalWeChatDraftArtifactStore:
         target = self._staging_root / f"official-account-weekly-edition-{aggregate_fingerprint}"
         if target.parent != self._staging_root:
             raise ValueError("WeChat draft artifact target escaped its root")
+        return target
+
+    def _prepared_target(self, aggregate_fingerprint: str) -> Path:
+        if not _is_sha256(aggregate_fingerprint):
+            raise ValueError("prepared WeChat draft aggregate fingerprint is invalid")
+        target = self._staging_root / f"official-account-prepared-weekly-{aggregate_fingerprint}"
+        if target.parent != self._staging_root:
+            raise ValueError("prepared WeChat draft target escaped its root")
         return target
 
 
@@ -225,11 +323,14 @@ def _batch_projection(edition: FinalizedWeeklyEdition) -> WeChatDraftArtifactBat
     )
 
 
-def _parse_source_ref(value: str) -> tuple[str, WeeklyArticleRole]:
+def _parse_source_ref(value: str) -> tuple[str, str, WeeklyArticleRole]:
     if not isinstance(value, str) or len(value) > 128:
         raise ValueError("WeChat draft source ref is invalid")
     parts = value.split(":")
-    if len(parts) != 3 or parts[0] != WECHAT_DRAFT_ARTIFACT_REF_VERSION:
+    if len(parts) != 3 or parts[0] not in {
+        WECHAT_DRAFT_ARTIFACT_REF_VERSION,
+        PREPARED_DRAFT_SOURCE_REF_VERSION,
+    }:
         raise ValueError("WeChat draft source ref is invalid")
     aggregate_fingerprint = parts[1]
     if not _is_sha256(aggregate_fingerprint):
@@ -238,7 +339,7 @@ def _parse_source_ref(value: str) -> tuple[str, WeeklyArticleRole]:
         role = WeeklyArticleRole(parts[2])
     except ValueError as exc:
         raise ValueError("WeChat draft source ref is invalid") from exc
-    return aggregate_fingerprint, role
+    return parts[0], aggregate_fingerprint, role
 
 
 def _validated_root(value: Path, *, label: str) -> Path:

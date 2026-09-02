@@ -57,7 +57,7 @@ from app.infrastructure.db.models import (
 
 _ROOT_AGENT_ID = WEEKLY_DAG_ROOT_AGENT_ID
 _ROOT_TARGET = "weekly.dag"
-_CAPABILITY_TIMEOUT_MS = 30_000
+_CAPABILITY_TIMEOUT_MS = 15 * 60 * 1000
 _CAPABILITY_RESULT_BYTES = 16 * 1024
 
 

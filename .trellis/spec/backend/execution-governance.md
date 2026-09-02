@@ -156,6 +156,11 @@ source of truth and uses the existing async session factory.
 - Authorization and reservation denials happen before the handler. Timeout, cancellation, and
   handler exception reconcile the reservation with bounded observable usage and append a safe
   failure event. Raw exceptions and provider bodies are not projected.
+- Capability timeouts are positive and have a non-configurable hard maximum of 900,000 ms. A
+  registry should choose the smallest bound that covers its operation; the weekly persisted
+  long-form article boundary is the explicit 15-minute exception, with its internal provider wait
+  kept below that outer bound. Timeout remains a cancellation and reconciliation boundary, not a
+  promise that an external side effect can be replayed.
 - Result, token, model-turn, or artifact usage beyond the reservation is capped during
   reconciliation and then rejected with a stable denial. Oversized output is never returned as a
   successful governed result.

@@ -1,4 +1,4 @@
-"""Development-only scheduler, worker and status CLI for the weekly article DAG."""
+"""Operate the durable weekly article DAG in fixture or explicit production mode."""
 
 from __future__ import annotations
 
@@ -12,22 +12,39 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.application.ports.official_account_weekly_dag import WeeklyDagHandlerRegistry
 from app.application.services.official_account_weekly_dag import (
     OfficialAccountWeeklyDagService,
 )
 from app.application.services.official_account_weekly_dag_fixture import (
     LocalWeeklyDagFixtureHandlers,
 )
-from app.core.config import get_settings
+from app.application.services.official_account_weekly_production import (
+    ProductionWeeklyDagHandlers,
+)
+from app.core.config import Settings, get_settings
 from app.infrastructure.db.execution_governance import (
     PostgresExecutionGovernanceRepository,
 )
+from app.infrastructure.db.official_account_local import PostgresOfficialAccountRepository
 from app.infrastructure.db.official_account_weekly_dag import (
     PostgresOfficialAccountWeeklyDagRepository,
 )
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.official_account_media import OfficialAccountLocalMediaResolver
+from app.infrastructure.official_account_runtime import official_account_identity_from_settings
 from app.infrastructure.official_account_weekly_dag_governance import (
     PostgresOfficialAccountWeeklyDagGovernance,
+)
+from app.infrastructure.official_account_weekly_production import (
+    LocalWeeklyProductionArtifactOwner,
+)
+from app.infrastructure.storage.minio_image_store import MinioImageStore
+from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
+from app.infrastructure.wechat_official_account.prepared_artifacts import (
+    PreparedWeeklyDraftArtifactOwner,
 )
 
 _FIXTURE_INPUT_FINGERPRINT = sha256(b"official-account-weekly-fixture-input-v1").hexdigest()
@@ -40,6 +57,12 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("output/official-account-weekly-dag"),
         help="local artifact owner; paths are never persisted in DAG checkpoints",
+    )
+    parser.add_argument(
+        "--handler-mode",
+        choices=("fixture", "production"),
+        default="fixture",
+        help="production mode reuses persisted Zhipu article runs and prepared draft artifacts",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -81,14 +104,19 @@ async def _run(args: argparse.Namespace) -> int:
         repository=governance_repository,
         session_factory=session_factory,
     )
-    fixtures = LocalWeeklyDagFixtureHandlers(args.output_root)
+    handlers = _handler_registry(
+        args=args,
+        settings=settings,
+        session_factory=session_factory,
+    )
     service = OfficialAccountWeeklyDagService(
         repository=dag_repository,
         governance=governance,
-        handlers=fixtures.registry(),
+        handlers=handlers,
     )
     try:
         if args.command == "enqueue":
+            _require_fixture_enqueue(args)
             run, created = await service.enqueue(
                 week_start=args.week_start,
                 input_fingerprint=args.input_fingerprint,
@@ -102,6 +130,7 @@ async def _run(args: argparse.Namespace) -> int:
             )
             return 0
         if args.command == "enqueue-due":
+            _require_fixture_enqueue(args)
             now = args.now or datetime.now(UTC)
             if now.utcoffset() is None:
                 raise ValueError("--now must include a timezone offset")
@@ -139,6 +168,64 @@ async def _run(args: argparse.Namespace) -> int:
         raise AssertionError("weekly DAG command routing is incomplete")
     finally:
         await engine.dispose()
+
+
+def _handler_registry(
+    *,
+    args: argparse.Namespace,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> WeeklyDagHandlerRegistry:
+    if args.handler_mode == "fixture":
+        return LocalWeeklyDagFixtureHandlers(args.output_root).registry()
+
+    if (
+        not settings.official_account_weekly_production_enabled
+        or not settings.official_account_weekly_worker_enabled
+    ):
+        raise RuntimeError("production weekly DAG worker is not explicitly enabled")
+    provider_key = (
+        settings.ai_platform_api_key.get_secret_value().strip()
+        if settings.ai_platform_api_key is not None
+        else ""
+    )
+    if (
+        not settings.official_account_local_enabled
+        or not settings.official_account_local_worker_enabled
+        or settings.ai_provider_mode != "zhipu"
+        or not provider_key
+    ):
+        raise RuntimeError("production weekly DAG requires the persisted Zhipu article worker")
+    artifact_root = Path(settings.official_account_weekly_artifact_root)
+    checkpoints = LocalWeeklyProductionArtifactOwner(artifact_root)
+    prepared = PreparedWeeklyDraftArtifactOwner(
+        session_factory=session_factory,
+        resolver=OfficialAccountLocalMediaResolver(
+            image_asset_manifest=settings.image_asset_manifest,
+            image_store=MinioImageStore(settings),
+            snapshot_store=MinioSnapshotStore(settings),
+        ),
+        work_root=artifact_root / "prepared",
+        inbox_root=Path(settings.wechat_mp_draft_weekly_inbox_root),
+        max_image_bytes=settings.wechat_mp_max_image_bytes,
+    )
+    return ProductionWeeklyDagHandlers(
+        checkpoints=checkpoints,
+        article_repository=PostgresOfficialAccountRepository(session_factory),
+        prepared_artifacts=prepared,
+        article_identity=official_account_identity_from_settings(
+            settings,
+            provider="zhipu",
+            model=settings.ai_chat_model,
+        ),
+        article_wait_seconds=settings.official_account_weekly_article_wait_seconds,
+        article_poll_seconds=settings.official_account_weekly_worker_poll_seconds,
+    ).registry()
+
+
+def _require_fixture_enqueue(args: argparse.Namespace) -> None:
+    if args.handler_mode != "fixture":
+        raise RuntimeError("production weekly inputs are owned by the Monday scheduler")
 
 
 async def _worker_loop(

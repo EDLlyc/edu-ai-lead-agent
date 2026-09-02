@@ -32,8 +32,8 @@ tests.
 | [Official-Account Editorial Repackage](./official-account-editorial-repackage.md) | Frozen offline repackages plus durable V10 five-visual/news-context generation, disjoint staging attempts, polished deterministic local export, and permanent no-publish truth |
 | [Official-Account Editor Handoff V2](./official-account-editor-handoff-v2.md) | Development-only automatic release, block-bound news media, semantic Xiaosai rendering, exact mobile identity, and permanent no-publish truth |
 | [Official-Account Weekly Three-Article Edition](./official-account-weekly-edition.md) | One weekly local batch containing independent official, industry, and application V2 handoffs with governed selection and deterministic aggregate integrity |
-| [Official-Account Weekly Three-Article DAG](./official-account-weekly-dag.md) | Development-only static 16-node orchestration with durable leases, fencing, checkpoint recovery, governed execution, and no social delivery |
-| [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled development-only adapter plus durable three-role draft worker, without publish/send semantics |
+| [Official-Account Weekly Three-Article DAG](./official-account-weekly-dag.md) | Static 16-node orchestration with development fixtures plus explicit production scheduling, frozen real inputs, durable recovery, and prepared draft-only handoff |
+| [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled adapter plus durable three-role worker for legacy and prepared weekly inputs, without publish/send semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |
@@ -58,7 +58,8 @@ tests.
 - Keep Enterprise WeChat side effects in the independent dispatcher; the API only enqueues
   material-package jobs that satisfy the configured manual-review or direct-quality policy, and
   the dispatcher never publishes to a social platform.
-- Keep WeChat Official Account draft staging in its separate default-disabled development adapter;
+- Keep WeChat Official Account draft staging in its separate default-disabled adapter with explicit
+  production acknowledgement;
   do not reuse WeCom credentials/contracts, construct it from ordinary API/worker paths, combine
   the weekly articles into one draft, or interpret a draft as published/pinned state.
 - Run deterministic validation before the LLM audit; the audit is not a fact source.

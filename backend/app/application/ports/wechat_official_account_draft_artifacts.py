@@ -13,6 +13,7 @@ from app.application.ports.wechat_official_account import WeChatDraftRole
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER
 
 WECHAT_DRAFT_ARTIFACT_REF_VERSION: Final = "wechat-draft-v1"
+WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION: Final = "wechat-draft-prepared-v1"
 WECHAT_DRAFT_ARTIFACT_INVALID: Final = "wechat_mp_draft_artifact_invalid"
 WECHAT_DRAFT_BEFORE_ACTIVATION: Final = "wechat_mp_draft_before_activation"
 
@@ -47,9 +48,15 @@ class WeChatDraftArtifactSource:
         expected_role = (
             WEEKLY_EDITION_ROLE_ORDER[self.ordinal - 1] if 1 <= self.ordinal <= 3 else None
         )
+        parts = self.source_ref.split(":")
         expected_ref = (
-            f"{WECHAT_DRAFT_ARTIFACT_REF_VERSION}:{self.source_ref.split(':')[1]}:{self.role}"
-            if self.source_ref.count(":") == 2
+            f"{parts[0]}:{parts[1]}:{self.role}"
+            if len(parts) == 3
+            and parts[0]
+            in {
+                WECHAT_DRAFT_ARTIFACT_REF_VERSION,
+                WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION,
+            }
             else None
         )
         if (
@@ -58,7 +65,7 @@ class WeChatDraftArtifactSource:
             or len(self.source_ref) > 128
         ):
             raise ValueError("WeChat draft artifact source identity is invalid")
-        aggregate_fingerprint = self.source_ref.split(":")[1]
+        aggregate_fingerprint = parts[1]
         if not _is_sha256(aggregate_fingerprint) or any(
             not _is_sha256(value)
             for value in (
@@ -97,8 +104,15 @@ class WeChatDraftArtifactBatch:
             raise ValueError("WeChat draft artifact batch role order changed")
         if tuple(source.ordinal for source in self.sources) != (1, 2, 3):
             raise ValueError("WeChat draft artifact batch ordinals changed")
-        expected_prefix = f"{WECHAT_DRAFT_ARTIFACT_REF_VERSION}:{self.aggregate_fingerprint}:"
-        if any(not source.source_ref.startswith(expected_prefix) for source in self.sources):
+        ref_versions = {source.source_ref.split(":", 1)[0] for source in self.sources}
+        if len(ref_versions) != 1 or ref_versions.pop() not in {
+            WECHAT_DRAFT_ARTIFACT_REF_VERSION,
+            WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION,
+        }:
+            raise ValueError("WeChat draft artifact reference version changed")
+        if any(
+            source.source_ref.split(":")[1] != self.aggregate_fingerprint for source in self.sources
+        ):
             raise ValueError("WeChat draft artifact aggregate binding changed")
 
 
@@ -116,9 +130,8 @@ class ResolvedWeChatDraftArtifactSource:
             raise ValueError("resolved WeChat draft artifact directory must be absolute")
         if not _is_sha256(self.batch_fingerprint) or not _is_sha256(self.aggregate_fingerprint):
             raise ValueError("resolved WeChat draft artifact identity is invalid")
-        if not self.source.source_ref.startswith(
-            f"{WECHAT_DRAFT_ARTIFACT_REF_VERSION}:{self.aggregate_fingerprint}:"
-        ):
+        parts = self.source.source_ref.split(":")
+        if len(parts) != 3 or parts[1] != self.aggregate_fingerprint:
             raise ValueError("resolved WeChat draft artifact binding changed")
 
 
@@ -153,6 +166,7 @@ __all__ = [
     "WECHAT_DRAFT_ARTIFACT_INVALID",
     "WECHAT_DRAFT_ARTIFACT_REF_VERSION",
     "WECHAT_DRAFT_BEFORE_ACTIVATION",
+    "WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION",
     "ResolvedWeChatDraftArtifactSource",
     "WeChatDraftArtifactBatch",
     "WeChatDraftArtifactDiscovery",

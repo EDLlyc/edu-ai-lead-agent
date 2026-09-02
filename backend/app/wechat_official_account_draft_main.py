@@ -93,6 +93,7 @@ async def _run(args: argparse.Namespace) -> int:
             staging_root=Path(settings.wechat_mp_draft_artifact_root),
             inbox_root=Path(settings.wechat_mp_draft_weekly_inbox_root),
             minimum_week_start=settings.wechat_mp_draft_min_week_start,
+            max_image_bytes=settings.wechat_mp_max_image_bytes,
         )
         job_service = _job_service(
             settings=settings,

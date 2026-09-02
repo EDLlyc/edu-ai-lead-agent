@@ -45,9 +45,20 @@ _ALLOWED_TAG_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
     "span": frozenset({"style", "leaf"}),
     "a": frozenset({"href", "rel", "referrerpolicy", "style"}),
     "img": frozenset({"src", "alt", "style"}),
+    "h1": frozenset({"style"}),
+    "h2": frozenset({"style"}),
+    "ul": frozenset({"style"}),
+    "ol": frozenset({"style"}),
+    "li": frozenset({"style"}),
+    "blockquote": frozenset({"style"}),
+    "figure": frozenset({"style", "data-media-role", "data-context-only-not-evidence"}),
+    "figcaption": frozenset({"style"}),
+    "strong": frozenset(),
+    "em": frozenset(),
     "br": frozenset(),
 }
 _VOID_TAGS: Final = frozenset({"img", "br"})
+_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +253,11 @@ def _prepare_draft_source(
     max_image_bytes: int,
 ) -> WeChatPreparedDraft:
     try:
+        if (source.directory / "prepared-manifest.json").is_file():
+            return _prepare_persisted_draft_source(
+                source,
+                max_image_bytes=max_image_bytes,
+            )
         role = WeeklyArticleRole(source.role)
         child = load_finalized_v2_child(source.directory, role=role)
         article = _json_object(child.files["article.json"])
@@ -308,6 +324,144 @@ def _prepare_draft_source(
         need_open_comment=source.need_open_comment,
         only_fans_can_comment=source.only_fans_can_comment,
     )
+
+
+def _prepare_persisted_draft_source(
+    source: WeChatDraftLocalSource,
+    *,
+    max_image_bytes: int,
+) -> WeChatPreparedDraft:
+    root = source.directory.expanduser().resolve(strict=True)
+    if not root.is_dir() or source.directory.is_symlink():
+        raise ValueError("prepared draft directory is invalid")
+    for candidate in root.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError("prepared draft directory contains a symlink")
+    manifest_path = root / "prepared-manifest.json"
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise ValueError("prepared draft manifest is unavailable")
+    manifest_body = manifest_path.read_bytes()
+    if not manifest_body or len(manifest_body) > 256 * 1024:
+        raise ValueError("prepared draft manifest size is invalid")
+    manifest = _json_object(manifest_body)
+    if (
+        manifest.get("version") != _PREPARED_CHILD_VERSION
+        or manifest.get("role") != source.role
+        or manifest.get("published") is not False
+        or manifest.get("draft_only") is not True
+    ):
+        raise ValueError("prepared draft identity is invalid")
+    projections = manifest.get("files")
+    if not isinstance(projections, list) or not projections:
+        raise ValueError("prepared draft file projection is missing")
+    files: dict[str, bytes] = {}
+    projected_paths: set[str] = set()
+    for raw_projection in projections:
+        if not isinstance(raw_projection, dict):
+            raise ValueError("prepared draft file projection is invalid")
+        path = _prepared_file_path(raw_projection.get("path"))
+        if path in projected_paths:
+            raise ValueError("prepared draft file path is duplicated")
+        projected_paths.add(path)
+        target = root.joinpath(*PurePosixPath(path).parts)
+        if not target.is_file() or target.is_symlink():
+            raise ValueError("prepared draft file is unavailable")
+        body = target.read_bytes()
+        if (
+            raw_projection.get("byte_size") != len(body)
+            or raw_projection.get("sha256") != sha256(body).hexdigest()
+        ):
+            raise ValueError("prepared draft file identity changed")
+        files[path] = body
+    actual_paths = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name != "prepared-manifest.json"
+    }
+    if actual_paths != projected_paths or "article-body.html" not in files:
+        raise ValueError("prepared draft file set changed")
+    identity = dict(manifest)
+    child_fingerprint = identity.pop("child_fingerprint", None)
+    if (
+        not isinstance(child_fingerprint, str)
+        or sha256(
+            json.dumps(
+                identity,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        != child_fingerprint
+    ):
+        raise ValueError("prepared draft manifest fingerprint changed")
+    article_fingerprint = _sha_text(manifest.get("article_fingerprint"))
+    content_fingerprint = _sha_text(manifest.get("content_fingerprint"))
+    title = _bounded_text(
+        manifest.get("title"),
+        minimum=1,
+        maximum=WECHAT_MP_MAX_DRAFT_TITLE_CHARACTERS,
+    )
+    author = _bounded_text(
+        manifest.get("author"),
+        minimum=1,
+        maximum=WECHAT_MP_MAX_DRAFT_AUTHOR_CHARACTERS,
+    )
+    digest = _bounded_text(
+        manifest.get("digest"),
+        minimum=1,
+        maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
+    )
+    body_html = files["article-body.html"].decode("utf-8")
+    _validate_draft_html_size(body_html)
+    parser = _DraftHtmlValidator()
+    parser.feed(body_html)
+    parser.close()
+    image_paths = parser.finish()
+    body_media, cover = _prepare_media(
+        manifest=manifest,
+        files=files,
+        image_paths=image_paths,
+        max_image_bytes=max_image_bytes,
+    )
+    content_source_url = _optional_https_url(source.content_source_url)
+    if source.only_fans_can_comment and not source.need_open_comment:
+        raise ValueError("invalid comment policy")
+    if not isinstance(source.need_open_comment, bool) or not isinstance(
+        source.only_fans_can_comment,
+        bool,
+    ):
+        raise TypeError("invalid comment policy")
+    return WeChatPreparedDraft(
+        role=source.role,
+        article_fingerprint=article_fingerprint,
+        content_fingerprint=content_fingerprint,
+        title=title,
+        author=author,
+        digest=digest,
+        content_source_url=content_source_url,
+        body_html=body_html,
+        body_media=body_media,
+        cover=cover,
+        need_open_comment=source.need_open_comment,
+        only_fans_can_comment=source.only_fans_can_comment,
+    )
+
+
+def _prepared_file_path(value: object) -> str:
+    if value == "article-body.html":
+        return "article-body.html"
+    return _safe_media_path(value)
+
+
+def _sha_text(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != _SHA256_LENGTH
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError("prepared draft fingerprint is invalid")
+    return value
 
 
 def _prepare_media(

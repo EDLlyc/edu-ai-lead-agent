@@ -33,10 +33,28 @@ from app.infrastructure.official_account_media import (
     OfficialAccountMediaIntegrityError,
     persisted_media_snapshot,
 )
+from app.infrastructure.official_account_runtime import (
+    official_account_identity_from_settings,
+)
 from app.infrastructure.storage.minio_image_store import MinioImageStore
 from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
 
 _TERMINAL_STATUSES = frozenset({"review_required", "ready", "failed", "result_unknown"})
+
+
+def _identity(
+    settings: Settings,
+    *,
+    provider: Literal["fake", "zhipu"],
+    model: str,
+) -> OfficialAccountVersionIdentity:
+    """Backward-compatible CLI seam over the shared runtime identity builder."""
+
+    return official_account_identity_from_settings(
+        settings,
+        provider=provider,
+        model=model,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -337,46 +355,6 @@ async def _wait_for_terminal(
         if asyncio.get_running_loop().time() >= deadline:
             raise TimeoutError("official-account local run did not reach a terminal state")
         await asyncio.sleep(1)
-
-
-def _identity(
-    settings: Settings,
-    *,
-    provider: Literal["fake", "zhipu"],
-    model: str,
-) -> OfficialAccountVersionIdentity:
-    return OfficialAccountVersionIdentity(
-        provider=provider,
-        model=model,
-        generator_prompt_version=settings.official_account_local_generator_prompt_version,
-        article_schema_version=settings.official_account_local_article_schema_version,
-        media_plan_version=settings.official_account_local_media_plan_version,
-        auditor_prompt_version=settings.official_account_local_auditor_prompt_version,
-        audit_schema_version=settings.official_account_local_audit_schema_version,
-        rule_version=settings.official_account_local_rule_version,
-        renderer_version=settings.official_account_local_renderer_version,
-        style_version=settings.official_account_local_style_version,
-        template_version=settings.official_account_local_template_version,
-        local_adapter_version=settings.official_account_local_adapter_version,
-        default_author=settings.official_account_local_default_author,
-        min_characters=settings.official_account_local_min_characters,
-        target_min_characters=settings.official_account_local_target_min_characters,
-        target_max_characters=settings.official_account_local_target_max_characters,
-        max_characters=settings.official_account_local_max_characters,
-        visual_query_version=settings.official_account_local_visual_query_version,
-        visual_selector_version=settings.official_account_local_visual_selector_version,
-        context_media_plan_version=settings.official_account_local_context_media_plan_version,
-        generated_visual_plan_version=(
-            settings.official_account_local_generated_visual_plan_version
-            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
-            else None
-        ),
-        generated_visual_prompt_version=(
-            settings.official_account_local_generated_visual_prompt_version
-            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
-            else None
-        ),
-    )
 
 
 def main() -> None:

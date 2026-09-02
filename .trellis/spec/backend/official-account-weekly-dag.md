@@ -1,9 +1,10 @@
 # Official-Account Weekly Three-Article DAG
 
-This specification defines the development-only durable orchestration layer above the existing
-weekly three-article V2 edition. The DAG schedules, checkpoints, resumes, and reports work; it does
-not redefine article selection, rendering, validation, aggregation, publication, or homepage-pin
-truth.
+This specification defines the durable orchestration layer above the existing weekly three-article
+edition. Fixture mode remains development-only. The additive production mode freezes real governed
+material packages, reuses the persisted Zhipu article worker, prepares an immutable three-child
+handoff, and stops at WeChat draft creation. The DAG schedules, checkpoints, resumes, and reports
+work; it does not publish, mass-send, or change homepage-pin truth.
 
 ## Scenario: Durable deterministic weekly orchestration
 
@@ -19,9 +20,12 @@ permission, trace, and artifact-lineage contract remains
 [`execution-governance.md`](./execution-governance.md). This layer must call those public contracts;
 it must not duplicate their rules.
 
-The feature is development-only and defaults off unless its worker profile is started explicitly.
-It has no public HTTP API or frontend in v1. It must not import, construct, or call WeChat, WeCom,
-browser-login, publish, mass-send, or homepage-pin clients.
+The feature defaults off. Fixture mode starts only when its worker profile is selected. Production
+requires separate production, scheduler, worker, persisted-local-worker, and WeChat draft-worker
+acknowledgements plus an authenticated minimum Monday. It has no public HTTP API or frontend. The
+weekly scheduler and DAG worker must not import, construct, or call WeChat, WeCom, browser-login,
+publish, mass-send, or homepage-pin clients; only the independent downstream draft worker owns the
+WeChat draft adapter.
 
 ### 2. Signatures
 
@@ -105,7 +109,7 @@ class WeeklyDagGovernance(Protocol):
     async def complete_run(status: WeeklyDagStatusProjection) -> None: ...
 ```
 
-#### Development CLI
+#### Runtime CLI and scheduler
 
 ```bash
 python -m app.official_account_weekly_dag_main enqueue \
@@ -124,6 +128,31 @@ python -m app.official_account_weekly_dag_main worker \
 `--output-root` selects the local artifact owner, but its filesystem path is never persisted in a
 DAG checkpoint. Worker concurrency is `1..3`; lease seconds are `3..3600`; poll seconds are
 `0.1..60`.
+
+`--handler-mode fixture` preserves the development commands above. `--handler-mode production`
+is worker-only: direct `enqueue` and `enqueue-due` are rejected so production cannot bypass the
+authenticated scheduler/planner boundary.
+
+The portless production scheduler uses the canonical `Asia/Shanghai` schedule: Monday at 09:00,
+with bounded periodic reconciliation for restart catch-up. It checks due/completed state and the
+minimum Monday before reading candidates or creating artifacts. For a due week it reads recent
+eligible real material packages and their persisted score/source lineage, selects exactly the
+canonical three roles with the existing pure selector, writes one content-addressed frozen input,
+and idempotently enqueues its deterministic run. Reconciliation outside the due window is a
+read-only no-op.
+
+| Production key | Contract |
+|---|---|
+| `OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED` | Production-only explicit acknowledgement; default `false` |
+| `OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED` | Enables only the scheduler process; default `false` |
+| `OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED` | Enables only the DAG worker process; default `false` |
+| `OFFICIAL_ACCOUNT_WEEKLY_HANDLER_MODE` | Compose worker mode, `fixture` or `production`; production deployment uses `production` |
+| `OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START` | Required ISO Monday for either production process; never before `2026-09-07` |
+| `OFFICIAL_ACCOUNT_WEEKLY_RECONCILE_SECONDS` | Scheduler reconciliation interval, `30..3600`; default `300` |
+| `OFFICIAL_ACCOUNT_WEEKLY_WORKER_POLL_SECONDS` | Worker polling interval, `0.1..60`; default `2` |
+| `OFFICIAL_ACCOUNT_WEEKLY_WORKER_LEASE_SECONDS` | Attempt lease, `60..3600`; production default `900` |
+| `OFFICIAL_ACCOUNT_WEEKLY_ARTICLE_WAIT_SECONDS` | Persisted article wait, `30..840`; production default `720` |
+| `OFFICIAL_ACCOUNT_WEEKLY_ARTIFACT_ROOT` | Private durable checkpoint/work root; path never enters rows or status |
 
 #### PostgreSQL schema
 
@@ -198,6 +227,29 @@ edge JSON column; graph edges remain code-owned.
 - No partial aggregate directory is written. Local writes remain no-clobber and their private paths
   stay in the artifact owner, outside DAG rows and status output.
 
+#### Production input and prepared draft handoff
+
+- Production selection never rescoring raw articles at scheduling time. It reconstructs governed
+  candidates from delivered material packages, their exact selected event/version, authoritative
+  stored topic or content-slot score, and active source-version metadata. Ineligible, rejected,
+  invalid, unaudited, or image-incomplete packages are excluded.
+- The frozen input binds three distinct material/event identities, material request fingerprint,
+  complete score fingerprint, source metadata fingerprint, organization type, authority evidence,
+  selected role/reason, governed total, and scoring version. Replays validate the same immutable
+  fingerprint; database rows retain only safe checkpoint metadata.
+- A production article node idempotently enqueues the existing persisted local article run using a
+  frozen Zhipu identity. It waits only for the authoritative persisted run state. Review-required,
+  failed, or timed-out generation never advances to preparation.
+- Prepared child version `wechat-draft-prepared-child-v1` is built only from a live, accepted,
+  validated ready article plus database media rows whose bytes are reverified through the owning
+  object/local resolver. Private local media URLs are replaced by exact relative `assets/*` paths;
+  WebP is deterministically converted to supported JPEG. No credential, database URL, object key,
+  prompt, or provider response enters the handoff.
+- Aggregate version `wechat-draft-prepared-batch-v1` contains exactly three canonical children and
+  is exposed in the shared weekly inbox only after all children pass strict file-set, symlink,
+  hash, size, image, HTML/media-binding, identity, and unpublished/draft-only checks. The downstream
+  draft worker preflights all three before its first provider write.
+
 #### Execution governance integration
 
 - One root `orchestrator` allocation owns the run. Every node attempt has a distinct deterministic
@@ -207,8 +259,11 @@ edge JSON column; graph edges remain code-owned.
   render handoff, validate child, aggregate, and finalize. They are `business_write`, worker-only,
   task-scoped, and dependency-artifact-scoped except the root schedule node.
 - Root limits are frozen to one hour, 128 tool calls, 64 MiB tool-result bytes, 16 GiB artifact
-  bytes, 64 children, depth 1, and zero model/token budget. A node reserves at most 30 seconds, one
-  tool call, 16 KiB tool-result metadata, 512 MiB artifact bytes, depth 1, and zero model/tokens.
+  bytes, 64 children, depth 1, and zero model/token budget. A production weekly node may reserve up
+  to 15 minutes for the persisted long-form generation boundary; all nodes still reserve one tool
+  call, 16 KiB tool-result metadata, 512 MiB artifact bytes, depth 1, and zero model/tokens. The
+  article wait is bounded below that capability timeout, and the worker lease covers the attempt
+  while periodic heartbeat retains ownership.
 - Capability authorization and budget reservation happen before the handler. Permission/budget
   denial is fail-closed and downstream nodes remain blocked.
 - Every success registers metadata through the execution artifact ledger. Completion validates the
@@ -224,8 +279,14 @@ edge JSON column; graph edges remain code-owned.
 
 #### Rollback and operational boundary
 
-- Compose owns a separate default-disabled `weekly-dag-worker` profile with no published port and a
-  persistent local output volume. Starting ordinary API/worker profiles does not schedule this DAG.
+- Compose owns a separate default-disabled `official-account-weekly-dag` profile containing one
+  scheduler and one DAG worker, both portless, plus a persistent shared output volume. Production
+  additionally starts only the persisted local article worker and the independent WeChat draft
+  worker; ordinary API/worker profiles do not schedule this DAG. The weekly worker receives the
+  Zhipu key but no WeChat credentials, while the draft worker receives the read-only weekly inbox.
+- Production activation starts at an explicit Monday (initial rollout `2026-09-07`). Rollback stops
+  the three additive worker/scheduler services and restores the previous reviewed image; immutable
+  checkpoints and audit rows are preserved. No historical week is backfilled automatically.
 - Migration downgrade is allowed only while all three weekly DAG tables are empty. Populated rows
   refuse destructive downgrade. Existing weekly child directories and ZIPs are never deleted.
 - Doctor validates worker import/help, Compose isolation, code/database head `0040`, and all three
@@ -253,6 +314,13 @@ edge JSON column; graph edges remain code-owned.
 | Stale worker heartbeat/fail/complete | Fencing rejection | No write-back |
 | Explicit retry targets `succeeded`, `running`, or `terminal_failed` | Reject | No reset |
 | Aggregate/finalize sees partial, duplicate, tampered, or cross-node artifacts | Fail closed | No partial output |
+| Scheduler/worker enabled without production acknowledgement or minimum Monday | Settings `ValueError` | No process construction |
+| Minimum Monday precedes `2026-09-07` | Settings `ValueError` | No process construction |
+| Reconciliation is not due or is before activation | Safe `due=false` log | No candidate read/artifact/run |
+| Due input has fewer than three valid governed roles | Deferred `weekly_input_unavailable` | No run/provider call |
+| Production CLI attempts direct enqueue | Reject | No run/provider call |
+| Frozen material, score, source, article, or media lineage drifts | `invalid_checkpoint` or terminal validation failure | No downstream draft |
+| Prepared child/batch has private URL, symlink, extra file, bad hash/image/HTML, or wrong role order | Fail closed | No aggregate/provider call |
 | Populated `0040` downgrade | `RuntimeError` | No table drop |
 
 Infrastructure exceptions and raw provider errors must not escape into persisted error text or
@@ -272,6 +340,14 @@ operator status.
   PostgreSQL and opaque artifact ownership, then produce bytes identical to uninterrupted execution.
 - Base: Re-enqueue the same week/version/input fingerprint. The same run is returned and all
   successful checkpoints remain untouched.
+- Good: Monday 09:00 reconciliation selects three real delivered packages, freezes their stored
+  scoring/source lineage, and three persisted Zhipu runs converge into one prepared draft-only
+  inbox batch; the independent worker creates three drafts and no publication state.
+- Base: The production services start on Wednesday with minimum week `2026-09-07`. Reconciliation
+  reports `due=false`, creates no checkpoint or row, and makes zero Zhipu/WeChat calls.
+- Bad: A caller uses fixture enqueue to fabricate a production input, reads current mutable scores
+  after the run starts, or gives WeChat credentials to the weekly worker. Construction or
+  validation must reject the attempt.
 - Bad: Persist an output directory or article body in `output_artifact_ref`; reuse an execution
   artifact from another node in the same run; let a stale token complete; or reset a successful
   sibling during retry. All must fail closed.
@@ -301,6 +377,14 @@ operator status.
 - Runtime: CLI help and bounds, `enqueue`/`enqueue-due`/`status`/`retry`, worker once/drain/polling,
   SIGINT/SIGTERM behavior, Compose profile isolation/no port/persistent volume/90-second grace,
   Docker image command, and Doctor checks.
+- Production: assert stored-score/source reconstruction, latest eligible package per distinct
+  event, immutable input fingerprint, canonical role selection, scheduler due/minimum/idempotency,
+  direct-enqueue rejection, persisted article polling, prepared child and complete batch identity,
+  WebP conversion, no private media URLs, three-child preflight, and zero WeChat calls in the DAG.
+- Deployment acceptance: against production data, run the planner read-only; after optional
+  services start outside the due window assert scheduler `due=false`, all weekly run/node/attempt
+  and draft job/item/attempt counts unchanged, no provider-write log, no published port, zero
+  restarts, and ordinary services healthy.
 - Regression: existing weekly edition/V1/V2/live, execution governance, migration/downgrade, release
   contract, Ruff, format, strict mypy, full backend pytest, shell syntax, and `git diff --check`.
   Prove unrelated dirty-worktree failures before excluding them.
@@ -347,3 +431,17 @@ status = await repository.complete(                  # exact attempt lineage
 
 Authorization, reservation, lease ownership, fencing, exact lineage, and dependency fingerprints
 must all succeed before a node can become a durable successful checkpoint.
+
+For production, the correct entry boundary is the scheduler and frozen planner, never the fixture
+CLI:
+
+```python
+# Wrong: bypass authenticated due/minimum checks with a caller-chosen fingerprint.
+await service.enqueue(week_start=week_start, input_fingerprint=user_value)
+
+# Correct: derive and persist one real immutable input before idempotent enqueue.
+planned = await planner.plan(week_start=due_week, cutoff=aware_now)
+artifact = checkpoints.put_json(planned.as_dict())
+assert artifact.fingerprint == planned.fingerprint
+await service.enqueue(week_start=due_week, input_fingerprint=planned.fingerprint, now=aware_now)
+```

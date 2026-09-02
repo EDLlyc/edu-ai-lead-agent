@@ -104,6 +104,21 @@ def test_identity_budget_and_artifact_contracts_are_strict_and_stable() -> None:
         replace(artifact, sha256="not-a-hash")
 
 
+def test_capability_timeout_supports_bounded_long_running_content_nodes() -> None:
+    definition = CapabilityDefinition(
+        name="build-long-article",
+        access=CapabilityAccess.BUSINESS_WRITE,
+        allowed_roles=frozenset({ExecutionRole.WORKER}),
+        timeout_ms=15 * 60 * 1000,
+        max_argument_bytes=1024,
+        max_result_bytes=2048,
+    )
+
+    assert definition.timeout_ms == 900_000
+    with pytest.raises(ValueError, match="900000"):
+        replace(definition, timeout_ms=900_001)
+
+
 def test_safe_event_requires_contiguous_root_shape_and_artifact_binding() -> None:
     identity = _identity()
     root = SafeExecutionEvent(

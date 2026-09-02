@@ -110,6 +110,7 @@ names = (
     "acquisition-worker",
     "governance-scheduler",
     "governance-worker",
+    "official-account-weekly-scheduler",
     "official-account-weekly-dag-worker",
     "wechat-official-account-draft-worker",
     "content-scheduler",
@@ -126,24 +127,28 @@ if image != "edu-ai-lead-agent-backend:local" and not re.fullmatch(
 ):
     raise SystemExit("non-local APP_IMAGE must be a digest-only reference")
 ' >/dev/null || fail "Application services do not share the local-or-digest APP_IMAGE contract"
-pass "All twelve application and migration services share one APP_IMAGE contract"
+pass "All application and migration services share one APP_IMAGE contract"
 
 docker compose --profile official-account-weekly-dag config --format json | \
   "${python_command[@]}" -c '
 import json
 import sys
 
-worker = json.load(sys.stdin)["services"]["official-account-weekly-dag-worker"]
+services = json.load(sys.stdin)["services"]
+worker = services["official-account-weekly-dag-worker"]
+scheduler = services["official-account-weekly-scheduler"]
 command = worker.get("command", [])
 expected = (
     "python",
     "-m",
     "app.official_account_weekly_dag_main",
+    "--handler-mode",
+    "fixture",
     "worker",
     "--concurrency",
     "3",
     "--lease-seconds",
-    "60",
+    "900",
     "--poll-seconds",
     "2",
 )
@@ -151,11 +156,20 @@ if tuple(command) != expected:
     raise SystemExit("weekly DAG worker command or bounds drifted")
 if worker.get("ports"):
     raise SystemExit("weekly DAG worker must not publish a network port")
+if tuple(scheduler.get("command", [])) != (
+    "python", "-m", "app.official_account_weekly_scheduler_main"
+):
+    raise SystemExit("weekly scheduler entrypoint drifted")
+if scheduler.get("ports"):
+    raise SystemExit("weekly scheduler must not publish a network port")
 mounts = worker.get("volumes", [])
 if not any(item.get("target") == "/app/output" for item in mounts):
     raise SystemExit("weekly DAG worker output must use its durable volume")
+scheduler_mounts = scheduler.get("volumes", [])
+if not any(item.get("target") == "/app/output" for item in scheduler_mounts):
+    raise SystemExit("weekly scheduler output must use the shared durable volume")
 ' >/dev/null || fail "Official-account weekly DAG worker profile is invalid"
-pass "Official-account weekly DAG worker is bounded, durable, and has no network port"
+pass "Official-account weekly scheduler and DAG worker are bounded, durable, and portless"
 
 docker compose --profile wechat-official-account-draft config --format json | \
   "${python_command[@]}" -c '

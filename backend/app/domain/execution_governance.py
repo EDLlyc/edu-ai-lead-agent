@@ -396,8 +396,8 @@ class CapabilityDefinition:
         _validate_name(self.name, "capability")
         if not self.allowed_roles:
             raise ValueError("capability role allowlist cannot be empty")
-        if not 1 <= self.timeout_ms <= 30_000:
-            raise ValueError("capability timeout must be between one and 30000 milliseconds")
+        if not 1 <= self.timeout_ms <= 15 * 60 * 1000:
+            raise ValueError("capability timeout must be between one and 900000 milliseconds")
         if not 1 <= self.max_argument_bytes <= 256 * 1024:
             raise ValueError("capability argument budget is invalid")
         if not 1 <= self.max_result_bytes <= 1024 * 1024:
