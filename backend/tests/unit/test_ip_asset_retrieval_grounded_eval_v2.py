@@ -47,6 +47,28 @@ from evals.ip_asset_retrieval_grounded.runner import main as runner_main
 from evals.ip_asset_retrieval_grounded.selective import build_selective_report
 
 FEATURE_ROOT = Path(__file__).resolve().parents[2] / "evals/ip_asset_retrieval_grounded"
+PAIRED_PROHIBITED_KEYS = {
+    "cookie",
+    "filename",
+    "grade",
+    "ip",
+    "label",
+    "object_key",
+    "path",
+    "profile_id",
+    "profile_token",
+    "prompt",
+    "provider_body",
+    "provider_request_id",
+    "query",
+    "rank",
+    "score",
+    "session_id",
+    "similarity",
+    "user_agent",
+    "user_id",
+    "vector",
+}
 
 
 def test_seed_v1_identity_is_immutable_while_seed_v2_is_complete() -> None:
@@ -310,6 +332,12 @@ def test_seed_v2_real_run_pairing_reports_slices_and_reproducible_intervals() ->
     assert first["paired_bootstrap"]["holdout"]["mrr_at_5"]["query_count"] == 18
     assert first["paired_bootstrap"]["overall"]["mrr_at_5"]["delta"] > 0
     assert first["paired_outcomes"]["overall"]["mrr_at_5"]["wins"] > 0
+    assert set(first["baseline"]["overall"]["categories"]) == {
+        query.category.value for query in bundle.queries
+    }
+    assert set(first["baseline"]["overall"]["challenge_kinds"]) == {
+        query.challenge_kind.value for query in bundle.queries if query.challenge_kind is not None
+    }
     assert first["diagnostics"]["baseline"]["overall"] == {
         "query_count": 124,
         "successful_query_count": 124,
@@ -324,6 +352,7 @@ def test_seed_v2_real_run_pairing_reports_slices_and_reproducible_intervals() ->
     assert "not human Gold" in markdown
     assert "小赛和赛先生在空间站" not in markdown
     assert "小赛和赛先生在空间站" not in canonical_json(first)
+    assert not (_collect_keys(first) & PAIRED_PROHIBITED_KEYS)
 
 
 def test_seed_v2_pairing_rejects_version_provider_and_identity_drift() -> None:
@@ -348,6 +377,13 @@ def test_seed_v2_pairing_rejects_version_provider_and_identity_drift() -> None:
             candidate,
             bootstrap_samples=1_000,
         )
+    with pytest.raises(ValueError, match="candidate must use"):
+        compare_runs_v2(
+            bundle,
+            baseline,
+            candidate.model_copy(update={"search_version": "ip-asset-hybrid-v2"}),
+            bootstrap_samples=1_000,
+        )
     with pytest.raises(ValueError, match="requires real Alibaba"):
         compare_runs_v2(
             bundle,
@@ -369,6 +405,20 @@ def test_seed_v2_pairing_rejects_version_provider_and_identity_drift() -> None:
             bundle,
             baseline,
             candidate.model_copy(update={"run_ref": baseline.run_ref}),
+            bootstrap_samples=1_000,
+        )
+    with pytest.raises(ValueError, match="complete provider request counts"):
+        compare_runs_v2(
+            bundle,
+            baseline,
+            candidate.model_copy(update={"provider_request_count": 123}),
+            bootstrap_samples=1_000,
+        )
+    with pytest.raises(ValueError, match="does not cover the query set"):
+        compare_runs_v2(
+            bundle,
+            baseline,
+            candidate.model_copy(update={"observations": candidate.observations[:-1]}),
             bootstrap_samples=1_000,
         )
 
@@ -494,3 +544,17 @@ def _run(
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _collect_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        result = {str(key).casefold() for key in value}
+        for child in value.values():
+            result.update(_collect_keys(child))
+        return result
+    if isinstance(value, (list, tuple)):
+        result: set[str] = set()
+        for child in value:
+            result.update(_collect_keys(child))
+        return result
+    return set()

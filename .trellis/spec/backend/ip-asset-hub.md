@@ -789,8 +789,9 @@ PYTHONPATH=backend conda run --name edu-ai \
   no-answer matrix and bounded change ledger validate, and a dev-selected candidate reports
   holdout without changing production behavior.
 - Bad: call the evaluator from a website, persist reviewer identities, call seed labels Gold,
-  tune labels from current ranks, compare different embedding executions, include no-answer as
-  perfect Recall, or let 100 evaluation queries increase business search counters.
+  tune labels from current ranks, compare runs with mismatched embedding/data identities or conceal
+  that query embeddings came from separate executions, include no-answer as perfect Recall, or let
+  evaluation queries increase business search counters.
 - Bad Seed V2 pair: compare fake with Alibaba, accept a V3 baseline/V2 candidate, include no-answer
   rows in ranking bootstrap, or commit one volatile provider run as checked canonical truth.
 

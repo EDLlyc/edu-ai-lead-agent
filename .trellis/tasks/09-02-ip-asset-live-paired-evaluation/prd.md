@@ -61,17 +61,17 @@
 
 ## Acceptance Criteria
 
-- [ ] 只读 preflight 在真实运行前通过并确认 41/41 目标资产与兼容向量。
-- [ ] V2/V3 两个真实 run 均为 `alibaba` 模式、各覆盖 124 条查询，数据和模型身份完全一致，
+- [x] 只读 preflight 在真实运行前通过并确认 41/41 目标资产与兼容向量。
+- [x] V2/V3 两个真实 run 均为 `alibaba` 模式、各覆盖 124 条查询，数据和模型身份完全一致，
       baseline/candidate 版本方向正确。
-- [ ] 成对报告包含总体及 dev/holdout/category/challenge 切片、失败/降级统计、四项排名指标和
+- [x] 成对报告包含总体及 dev/holdout/category/challenge 切片、失败/降级统计、四项排名指标和
       固定 10,000 次 bootstrap 的 V3-V2 95% CI。
-- [ ] 报告明确披露 30 条 no-answer、Codex Seed 非人工 Gold、两次独立 provider 查询的限制，
+- [x] 报告明确披露 30 条 no-answer、Codex Seed 非人工 Gold、两次独立 provider 查询的限制，
       不声称线上效果或生产阈值。
-- [ ] 两个 run、两个单跑选择性报告、paired JSON/Markdown 和安全 manifest 全部保存在本地忽略目录，
+- [x] 两个 run、两个单跑选择性报告、paired JSON/Markdown 和安全 manifest 全部保存在本地忽略目录，
       artifact hash/identity validation 通过且隐私扫描无禁止字段。
-- [ ] 评测前后业务搜索聚合计数相同，无数据库业务写入、向量重建、服务发布、远端推送或生产部署。
-- [ ] focused tests、Ruff、Mypy、`make ip-asset-grounded-eval-check`、`make eval-check` 和
+- [x] 评测前后业务搜索聚合计数相同，无数据库业务写入、向量重建、服务发布、远端推送或生产部署。
+- [x] focused tests、Ruff、Mypy、`make ip-asset-grounded-eval-check`、`make eval-check` 和
       `git diff --check` 通过；其他并行工作区改动不进入本任务提交。
 
 ## Key Decisions
