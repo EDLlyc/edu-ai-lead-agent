@@ -161,6 +161,11 @@ ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 PY
   require_text "$BUILDER" 'refs/remotes/origin/main'
   require_text "$BUILDER" 'worktree add --detach'
+  require_text "$BUILDER" 'DOCKER_BUILDKIT=0'
+  require_text "$BUILDER" 'candidate image build failed'
+  reject_text "$BUILDER" 'candidate_id=$(build_image'
+  reject_text "$BUILDER" 'DOCKER_BUILDKIT=1'
+  reject_text "$BUILDER" 'Labels \"org.opencontainers.image.revision\"'
   require_text "$BUILDER" '--network none --read-only --cap-drop ALL'
   require_text "$BASELINE_CAPTURE" 'metadata.st_uid'
   require_text "$BASELINE_CAPTURE" 'metadata.st_gid'

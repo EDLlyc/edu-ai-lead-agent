@@ -36,6 +36,7 @@ repo_root=""
 scratch=""
 worktree=""
 stage=""
+built_candidate_id=""
 
 log() { printf '[wechat-draft-builder] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; return 1; }
@@ -133,15 +134,16 @@ build_source() {
 build_image() {
   local tag=$1 created candidate_id module
   created=$(git_clean -C "$repo_root" show -s --format=%cI "$release_sha")
-  env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=1 \
+  env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=0 \
     docker build --pull --platform linux/amd64 \
       --build-arg "CODEUP_COMMIT=${release_sha}" \
       --build-arg "SOURCE_URL=${SOURCE_URL}" \
       --build-arg "BUILD_CREATED=${created}" \
-      --tag "$tag" "$worktree/backend"
+      --tag "$tag" "$worktree/backend" >&2 \
+    || die "candidate image build failed"
   candidate_id=$(docker image inspect --format '{{.Id}}' "$tag")
   [[ "$candidate_id" =~ ^sha256:[0-9a-f]{64}$ ]] || die "candidate image ID is invalid"
-  [[ "$(docker image inspect --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' "$tag")" == "$release_sha" ]] \
+  [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$tag")" == "$release_sha" ]] \
     || die "candidate revision label changed"
   for module in "${RUNTIME_MODULES[@]}"; do
     docker run --rm --network none --read-only --cap-drop ALL \
@@ -157,7 +159,7 @@ build_image() {
     cd "$stage"
     sha256sum backend-image.tar.gz >backend-image.tar.gz.sha256
   )
-  printf '%s\n' "$candidate_id"
+  built_candidate_id=$candidate_id
 }
 
 write_metadata() {
@@ -216,7 +218,8 @@ main() {
   git_clean -C "$repo_root" show "${release_sha}:${VALIDATOR_PATH}" >"$stage/validate-wechat-draft-offline-artifacts.py"
   install -m 600 "$production_baseline" "$stage/production-baseline.json"
   local tag="edu-ai-lead-agent-backend:wechat-draft-${release_sha:0:12}" candidate_id member
-  candidate_id=$(build_image "$tag")
+  build_image "$tag"
+  candidate_id=$built_candidate_id
   write_metadata "$tag" "$candidate_id"
   (
     cd "$stage"

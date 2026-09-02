@@ -283,7 +283,7 @@ load_and_verify_image() {
   gzip -dc "${stage_dir}/backend-image.tar.gz" | docker image load >/dev/null
   [[ "$(docker image inspect --format '{{.Id}}' "$candidate_tag")" == "$candidate_id" ]] \
     || die "loaded image ID differs from metadata"
-  [[ "$(docker image inspect --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' "$candidate_tag")" == "$release_commit" ]] \
+  [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$candidate_tag")" == "$release_commit" ]] \
     || die "loaded image revision differs from metadata"
   docker run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges:true --entrypoint python "$candidate_tag" -c \
