@@ -158,3 +158,25 @@ Added strict Zhipu JSON-mode Agent compatibility guidance, a private two-cell re
 ### Status
 
 [OK] **Completed**
+
+
+## Session 94: IP asset filter and GLM-5V metadata repair
+
+**Date**: 2026-09-03
+**Task**: IP asset filter and GLM-5V metadata repair
+**Branch**: `main`
+
+### Summary
+
+Separated inferred IP search hints from explicit hard filters; added audited GLM-5V-Turbo V2 metadata repair with private artifacts, transient circuit breaking, verified MinIO content binding, row-locked CAS apply/restore, and locally applied 41 validated metadata updates idempotently without deployment or push.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `419243b` | (see git log) |
+| `5c0ab05` | (see git log) |
+
+### Status
+
+[OK] **Completed**

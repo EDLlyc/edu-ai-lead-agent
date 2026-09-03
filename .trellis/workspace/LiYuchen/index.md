@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 93
+- **Total Sessions**: 94
 - **Last Active**: 2026-09-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~160 | Active |
+| `journal-2.md` | ~182 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 94 | 2026-09-03 | IP asset filter and GLM-5V metadata repair | `419243b`, `5c0ab05` | `main` |
 | 93 | 2026-09-03 | Agent retrieval compatibility canary | `cb03851` | `main` |
 | 92 | 2026-09-02 | Governed Worker Reviewer Agent integration | `ae525f1`, `d8daca0`, `b8835d4`, `c9db9a6` | `main` |
 | 91 | 2026-09-02 | Governed Reviewer paired evidence harness | `c9db9a6` | `main` |
