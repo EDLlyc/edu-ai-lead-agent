@@ -238,7 +238,7 @@ def _create_image_validation_provider(
         client=client,
         base_url=base_url,
         api_key=SecretStr(api_key_value),
-        model=settings.ai_chat_model,
+        model=settings.image_quality_audit_model,
         connect_timeout_seconds=settings.ai_connect_timeout_seconds,
         read_timeout_seconds=settings.ai_read_timeout_seconds,
         total_timeout_seconds=settings.ai_total_timeout_seconds,

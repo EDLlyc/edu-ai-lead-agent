@@ -129,6 +129,7 @@ def test_validation_adapters_share_the_supplied_ai_client(
         ai_platform_base_url="https://ai.example.test/v1",
         ai_platform_api_key=SecretStr("test-key"),
         ai_chat_model="glm-5.2",
+        image_quality_audit_model="glm-5v-turbo",
         image_ocr_model="glm-ocr",
     )
     client = object()
@@ -146,5 +147,5 @@ def test_validation_adapters_share_the_supplied_ai_client(
     assert calls[0][1]["model"] == "glm-ocr"
     assert calls[0][1]["max_input_bytes"] == 10 * 1024 * 1024
     assert calls[0][1]["max_response_bytes"] == 1024 * 1024
-    assert calls[1][1]["model"] == "glm-5.2"
+    assert calls[1][1]["model"] == "glm-5v-turbo"
     assert calls[1][1]["max_request_bytes"] == settings.image_max_request_bytes

@@ -263,6 +263,11 @@ async def test_vision_audit_accepts_typed_reference_inputs_in_order() -> None:
         result = await adapter.audit(_audit_request())
 
     payload = captured["payload"]
+    assert set(payload) == {"model", "max_tokens", "thinking", "do_sample", "messages"}
+    assert payload["thinking"] == {"type": "disabled"}
+    assert payload["do_sample"] is False
+    assert "response_format" not in payload
+    assert "temperature" not in payload
     content = payload["messages"][1]["content"]
     assert len(content) == 4
     assert _data_url_bytes(content[1]["image_url"]["url"]) == IMAGE_BYTES

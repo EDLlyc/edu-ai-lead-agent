@@ -291,6 +291,26 @@ def test_compose_and_doctor_share_the_bounded_image_ocr_contract() -> None:
     assert "controlled image OCR must use the reviewed glm-ocr model" in doctor
 
 
+def test_compose_exposes_dedicated_image_quality_audit_model_default() -> None:
+    compose = Path("compose.yaml").read_text(encoding="utf-8")
+
+    assert (
+        compose.count(
+            "IMAGE_QUALITY_AUDIT_MODEL: ${IMAGE_QUALITY_AUDIT_MODEL:-glm-5v-turbo}"
+        )
+        == 1
+    )
+    assert (
+        compose.count("IMAGE_QUALITY_EVAL_MODE: ${IMAGE_QUALITY_EVAL_MODE:-off}") == 2
+    )
+    assert (
+        compose.count(
+            "IMAGE_QUALITY_AUDIT_ENABLED: ${IMAGE_QUALITY_AUDIT_ENABLED:-false}"
+        )
+        == 2
+    )
+
+
 def test_compose_and_doctor_pin_layered_topic_rerank_defaults() -> None:
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")

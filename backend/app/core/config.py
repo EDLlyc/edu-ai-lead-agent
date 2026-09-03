@@ -445,6 +445,7 @@ class Settings(BaseSettings):
     image_ocr_max_response_bytes: int = Field(default=1024 * 1024, ge=1, le=1024 * 1024)
     image_ocr_timeout_seconds: float = Field(default=120.0, gt=0, le=360)
     image_quality_audit_enabled: bool = False
+    image_quality_audit_model: str = Field(default="glm-5v-turbo", min_length=1, max_length=120)
     image_diversity_enabled: bool = False
     image_diversity_policy_version: str = VISUAL_DIVERSITY_POLICY_VERSION
     image_visual_brief_version: str = VISUAL_BRIEF_V2_VERSION
@@ -1136,6 +1137,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "image OCR model identifier must be non-blank and contain no whitespace"
             )
+        if any(character.isspace() for character in self.image_quality_audit_model):
+            raise ValueError("image quality audit model identifier must contain no whitespace")
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")
         brand_derivation_versions = (

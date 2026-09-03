@@ -6,6 +6,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Awaitable, Callable, Mapping
+from enum import StrEnum
 from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
@@ -45,6 +46,13 @@ _MAX_REFERENCE_METADATA_LENGTH: Final[int] = 240
 _SAFE_REFERENCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SAFE_SHA256 = re.compile(r"^[A-Fa-f0-9]{64}$")
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+
+
+class _VisionRequestProfile(StrEnum):
+    """Closed provider dialects for the shared vision transport."""
+
+    JSON_OBJECT = "json-object-v1"
+    ZHIPU_VISION = "zhipu-vision-v1"
 
 
 class _ProviderMessage(BaseModel):
@@ -209,6 +217,7 @@ class _OpenAICompatibleVisionAdapter:
         user_prompt: str,
         image_parts: tuple[str, ...],
         max_output_tokens: int,
+        request_profile: _VisionRequestProfile,
     ) -> dict[str, Any]:
         content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
         content.extend(
@@ -220,10 +229,24 @@ class _OpenAICompatibleVisionAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content},
             ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
             "max_tokens": max_output_tokens,
         }
+        if request_profile is _VisionRequestProfile.JSON_OBJECT:
+            payload.update(
+                {
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.0,
+                }
+            )
+        elif request_profile is _VisionRequestProfile.ZHIPU_VISION:
+            payload.update(
+                {
+                    "thinking": {"type": "disabled"},
+                    "do_sample": False,
+                }
+            )
+        else:  # pragma: no cover - the enum keeps production callers on a closed profile.
+            raise ValueError("unsupported vision request profile")
         try:
             request_size = len(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -294,6 +317,7 @@ class OpenAICompatibleImageTextRecognizer(_OpenAICompatibleVisionAdapter):
             user_prompt=user_prompt,
             image_parts=(image_data_url,),
             max_output_tokens=_OCR_MAX_OUTPUT_TOKENS,
+            request_profile=_VisionRequestProfile.JSON_OBJECT,
         )
         completion = await self._complete(payload, request_fingerprint=request.request_fingerprint)
         output = _parse_ocr_output(completion.choices[0].message.content)
@@ -370,6 +394,7 @@ class OpenAICompatibleImageQualityAuditor(_OpenAICompatibleVisionAdapter):
             user_prompt=_audit_prompt(request, reference_metadata),
             image_parts=tuple(image_parts),
             max_output_tokens=_AUDIT_MAX_OUTPUT_TOKENS,
+            request_profile=_VisionRequestProfile.ZHIPU_VISION,
         )
         completion = await self._complete(payload, request_fingerprint=request.request_fingerprint)
         output = _parse_audit_output(completion.choices[0].message.content)
