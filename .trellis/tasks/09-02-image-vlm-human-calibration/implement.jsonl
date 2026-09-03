@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/image-quality-evaluation.md","reason":"Owns the six-dimension rubric, final-publication observer, default-off behavior, immutable evidence, and canonical separation."}
+{"file":".trellis/spec/backend/execution-governance.md","reason":"Owns bounded external calls, safe artifacts, budget reconciliation, and failure semantics."}
+{"file":".trellis/tasks/09-02-reviewer-image-live-evidence/research/model-panel-selection.md","reason":"Freezes VLM candidates, panel families, public-only gateway boundary, pricing, and claim validity."}
+{"file":".trellis/tasks/09-02-reviewer-image-live-evidence/research/implementation-readiness-review.md","reason":"Records the six-source-family validity limit, rights basis, multi-image case shape, arm-level verdicts, kappa coverage, and capability gate."}

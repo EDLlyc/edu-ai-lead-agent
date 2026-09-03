@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/image-quality-evaluation.md","reason":"Check final-JPEG scope, six dimensions, no aggregate score, provider failure behavior, canonical separation, and default-off compatibility."}
+{"file":".trellis/tasks/09-02-reviewer-image-live-evidence/research/quality-gates.md","reason":"Check strict schemas/types, secret safety, deterministic tests, canonical drift, and final quality gates."}
