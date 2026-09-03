@@ -137,3 +137,24 @@ Completed the four-part governed Worker-Reviewer program: strict editorial contr
 ### Status
 
 [OK] **Completed**
+
+
+## Session 93: Agent retrieval compatibility canary
+
+**Date**: 2026-09-03
+**Task**: Agent retrieval compatibility canary
+**Branch**: `main`
+
+### Summary
+
+Added strict Zhipu JSON-mode Agent compatibility guidance, a private two-cell retrieval A/B canary harness, and verified the live canary: both Agent arms completed without provider failures while enhanced Top-3 ranking failed the retrieval gate, so no uplift claim was made.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cb03851` | (see git log) |
+
+### Status
+
+[OK] **Completed**
