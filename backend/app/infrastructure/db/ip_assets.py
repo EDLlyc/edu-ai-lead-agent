@@ -19,6 +19,7 @@ from app.application.ports.ip_assets import (
     IpAssetGenerationReferenceRecord,
     IpAssetLeaderboardItemRecord,
     IpAssetLeaderboardRecord,
+    IpAssetMetadataMutationOutcome,
     IpAssetObjectDescriptor,
     IpAssetPage,
     IpAssetPersonalItemRecord,
@@ -26,11 +27,17 @@ from app.application.ports.ip_assets import (
     IpAssetProfileRecord,
     IpAssetQuery,
     IpAssetRecord,
+    IpAssetRepairableMetadataState,
     IpAssetSearchAggregateRecord,
     IpAssetVectorHit,
 )
 from app.core.errors import ConflictError
 from app.domain.image_similarity import perceptual_hash_distance
+from app.domain.ip_asset_metadata_repair import (
+    IpAssetMetadataMutationStatus,
+    content_commitment,
+    metadata_fingerprint,
+)
 from app.domain.ip_assets import (
     IpAssetCharacter,
     IpAssetLeaderboardPeriod,
@@ -117,6 +124,129 @@ class PostgresIpAssetRepository:
         async with self._session_factory() as session:
             model = await session.get(IpAssetModel, asset_id)
             return await _record_or_none(session, model)
+
+    async def get_repairable_metadata(
+        self, asset_ref: str
+    ) -> IpAssetRepairableMetadataState | None:
+        async with self._session_factory() as session:
+            model = await session.scalar(
+                select(IpAssetModel).where(IpAssetModel.asset_ref == asset_ref)
+            )
+            return await _repairable_metadata_state(session, model)
+
+    async def compare_and_swap_metadata(
+        self,
+        *,
+        asset_ref: str,
+        expected_content_commitment: str,
+        expected_metadata_fingerprint: str,
+        target_metadata: IpAssetMetadata,
+        target_metadata_fingerprint: str,
+    ) -> IpAssetMetadataMutationOutcome:
+        if metadata_fingerprint(target_metadata) != target_metadata_fingerprint:
+            raise ValueError("IP asset repair target fingerprint is invalid")
+        async with self._session_factory() as session:
+            model = await session.scalar(
+                select(IpAssetModel).where(IpAssetModel.asset_ref == asset_ref).with_for_update()
+            )
+            if model is None:
+                await session.rollback()
+                return IpAssetMetadataMutationOutcome(
+                    status=IpAssetMetadataMutationStatus.NOT_FOUND,
+                    state=None,
+                )
+            current = await _repairable_metadata_state(session, model)
+            if current is None:
+                raise RuntimeError("locked IP asset could not be projected")
+            if model.status != IpAssetStatus.READY.value or model.shared_at is None:
+                await session.rollback()
+                return IpAssetMetadataMutationOutcome(
+                    status=IpAssetMetadataMutationStatus.NOT_ELIGIBLE,
+                    state=current,
+                )
+            if content_commitment(model.blob_sha256) != expected_content_commitment:
+                await session.rollback()
+                return IpAssetMetadataMutationOutcome(
+                    status=IpAssetMetadataMutationStatus.CONTENT_DRIFT,
+                    state=current,
+                )
+            current_fingerprint = metadata_fingerprint(current.metadata)
+            if current_fingerprint == target_metadata_fingerprint:
+                await session.rollback()
+                return IpAssetMetadataMutationOutcome(
+                    status=IpAssetMetadataMutationStatus.ALREADY_APPLIED,
+                    state=current,
+                )
+            if current_fingerprint != expected_metadata_fingerprint:
+                await session.rollback()
+                return IpAssetMetadataMutationOutcome(
+                    status=IpAssetMetadataMutationStatus.METADATA_DRIFT,
+                    state=current,
+                )
+
+            canonical_metadata = IpAssetMetadata(
+                character=target_metadata.character,
+                asset_type=target_metadata.asset_type,
+                department=model.department,
+                contributor=model.contributor,
+                emotion=target_metadata.emotion,
+                action=target_metadata.action,
+                scene=target_metadata.scene,
+                intended_use=target_metadata.intended_use,
+                style=target_metadata.style,
+                tags=target_metadata.tags,
+            )
+            display_base, naming = canonical_name_base(
+                canonical_metadata, IpAssetOrientation(model.orientation)
+            )
+            naming_key, slug_base = naming.split(":", 1)
+            if naming_key == model.naming_key:
+                version = model.name_version
+            else:
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": naming_key},
+                )
+                maximum = await session.scalar(
+                    select(func.max(IpAssetModel.name_version)).where(
+                        IpAssetModel.naming_key == naming_key
+                    )
+                )
+                version = int(maximum or 0) + 1
+            canonical_name, canonical_slug = versioned_canonical_name(
+                display_base, slug_base, version
+            )
+            model.naming_key = naming_key
+            model.canonical_name = canonical_name
+            model.canonical_slug = canonical_slug
+            model.name_version = version
+            model.character = canonical_metadata.character.value
+            model.asset_type = canonical_metadata.asset_type.value
+            model.emotion = canonical_metadata.emotion
+            model.action = canonical_metadata.action
+            model.scene = canonical_metadata.scene
+            model.intended_use = canonical_metadata.intended_use
+            model.style = canonical_metadata.style
+            model.updated_at = datetime.now(UTC)
+            await session.execute(
+                delete(IpAssetTagModel).where(IpAssetTagModel.asset_id == model.id)
+            )
+            for dimension, value in _tag_rows(canonical_metadata):
+                session.add(
+                    IpAssetTagModel(id=uuid4(), asset_id=model.id, dimension=dimension, value=value)
+                )
+            await session.flush()
+            updated = await _repairable_metadata_state(session, model)
+            if (
+                updated is None
+                or metadata_fingerprint(updated.metadata) != target_metadata_fingerprint
+            ):
+                raise RuntimeError("IP asset repair write verification failed")
+            await session.commit()
+            return IpAssetMetadataMutationOutcome(
+                status=IpAssetMetadataMutationStatus.APPLIED,
+                state=updated,
+            )
 
     async def get_derivative(
         self, *, asset_id: UUID, policy_version: str, kind: str
@@ -355,7 +485,10 @@ class PostgresIpAssetRepository:
 
     async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
         async with self._session_factory() as session:
-            statement = select(IpAssetModel).where(IpAssetModel.shared_at.is_not(None))
+            statement = select(IpAssetModel).where(
+                IpAssetModel.status == IpAssetStatus.READY.value,
+                IpAssetModel.shared_at.is_not(None),
+            )
             statement = _apply_filters(statement, query, include_keyword=True)
             if query.cursor_created_at is not None and query.cursor_id is not None:
                 statement = statement.where(
@@ -1602,6 +1735,39 @@ async def _tags_for(
         if value not in values.setdefault(asset_id, []):
             values[asset_id].append(value)
     return {asset_id: tuple(tags) for asset_id, tags in values.items()}
+
+
+async def _repairable_metadata_state(
+    session: AsyncSession, model: IpAssetModel | None
+) -> IpAssetRepairableMetadataState | None:
+    if model is None:
+        return None
+    rows = tuple(
+        (
+            await session.execute(
+                select(IpAssetTagModel.dimension, IpAssetTagModel.value)
+                .where(IpAssetTagModel.asset_id == model.id)
+                .order_by(IpAssetTagModel.dimension, IpAssetTagModel.value)
+            )
+        ).tuples()
+    )
+    all_tags = tuple(dict.fromkeys(value for _dimension, value in rows))
+    free_tags = tuple(value for dimension, value in rows if dimension == "free")
+    return IpAssetRepairableMetadataState(
+        asset=_record(model, all_tags),
+        metadata=IpAssetMetadata(
+            character=IpAssetCharacter(model.character),
+            asset_type=IpAssetType(model.asset_type),
+            department=model.department,
+            contributor=model.contributor,
+            emotion=model.emotion,
+            action=model.action,
+            scene=model.scene,
+            intended_use=model.intended_use,
+            style=model.style,
+            tags=free_tags,
+        ),
+    )
 
 
 async def _record_or_none(

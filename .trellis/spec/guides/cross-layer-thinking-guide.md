@@ -431,3 +431,29 @@ state correctly, but several commands still re-parsed event payload fields with
 local casts. The fix was to make the core event layer own `ThreadChannelEvent`
 and `isThreadEvent`, make `reduceChannelMetadata` the only channel metadata
 projection, and make `reduceThreads` the only thread replay reducer.
+
+---
+
+## Provider Batch Completion Is A Cross-Layer Contract
+
+A provider batch crosses transport classification, orchestration, artifact validation and mutation.
+A successful canary proves request compatibility once; it does not prove that quota or availability
+will hold for the remaining items.
+
+### Checklist: Provider Batch To Mutation
+
+- [ ] Classify body-free provider failures into stable categories at the transport boundary.
+- [ ] Decide explicitly which categories are item-local and which trip a batch circuit breaker.
+- [ ] On a shared transient failure, preserve completed results and mark the ordered remainder as
+      not called; never invent suggestions or continue consuming calls.
+- [ ] Treat concurrency and request rate as separate controls; add bounded, testable pacing without
+      silently multiplying per-item attempts.
+- [ ] Separate `diagnostic-valid` artifacts from `mutation-ready` artifacts.
+- [ ] Enforce whole-plan completeness before the first repository mutation, not inside the row loop.
+- [ ] Test a shared failure after a successful prefix and prove both call-count cessation and zero
+      partial mutations.
+
+**Real-world example**: An IP metadata repair flow reused a passing image canary, but a later shared
+provider failure would have allowed the batch to continue and the successful prefix to be applied.
+The fix added paced calls, transient circuit breaking with exact-set checkpoints, and a complete-plan
+gate before any CAS.

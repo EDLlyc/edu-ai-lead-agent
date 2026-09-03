@@ -11,7 +11,10 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	official-account-local-live-smoke official-account-local-export \
 	wechat-official-account-draft-config-check \
 	ip-asset-worker ip-asset-import-dry-run ip-asset-stack-up ip-asset-ui \
-	ip-asset-demo-preflight \
+	ip-asset-demo-preflight ip-asset-metadata-repair-preflight \
+	ip-asset-metadata-repair-canary ip-asset-metadata-repair-plan \
+	ip-asset-metadata-repair-apply \
+	ip-asset-metadata-repair-restore \
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
 	agent-workbench-eval-check topic-rerank-eval \
 	brand-retrieval-eval \
@@ -146,6 +149,36 @@ ip-asset-ui:
 
 ip-asset-demo-preflight:
 	$(PY_RUN) python scripts/ip_asset_demo_preflight.py
+
+ip-asset-metadata-repair-preflight:
+	$(PY_RUN) python -m app.ip_asset_metadata_repair_main preflight
+
+ip-asset-metadata-repair-canary:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	$(PY_RUN) python -m app.ip_asset_metadata_repair_main canary \
+		--output "$(abspath $(OUTPUT))" \
+		--acknowledgement I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2
+
+ip-asset-metadata-repair-plan:
+	@test -n "$(CANARY)" || (echo "CANARY is required" >&2; exit 2)
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	$(PY_RUN) python -m app.ip_asset_metadata_repair_main plan \
+		--canary "$(abspath $(CANARY))" --output "$(abspath $(OUTPUT))" \
+		--acknowledgement I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2
+
+ip-asset-metadata-repair-apply:
+	@test -n "$(PLAN)" || (echo "PLAN is required" >&2; exit 2)
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	$(PY_RUN) python -m app.ip_asset_metadata_repair_main apply \
+		--plan "$(abspath $(PLAN))" --output "$(abspath $(OUTPUT))" \
+		--acknowledgement I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2
+
+ip-asset-metadata-repair-restore:
+	@test -n "$(RESULT)" || (echo "RESULT is required" >&2; exit 2)
+	@test -n "$(OUTPUT)" || (echo "OUTPUT is required" >&2; exit 2)
+	$(PY_RUN) python -m app.ip_asset_metadata_repair_main restore \
+		--result "$(abspath $(RESULT))" --output "$(abspath $(OUTPUT))" \
+		--acknowledgement I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2
 
 governance-fake-check:
 	$(PY_RUN) pytest backend/tests/unit/test_governance_delivery.py \

@@ -120,7 +120,7 @@ the current queue is idle.
 | `IP_ASSET_WORKER_ENABLED`                 | Default `false`; requires hub enabled                                                |
 | `IP_ASSET_GENERATION_ENABLED`             | Default `false`; requires hub and configured image provider                          |
 | `IP_ASSET_RECOGNITION_ENABLED`            | Default `false`; requires hub plus configured Zhipu HTTPS endpoint and credential    |
-| `IP_ASSET_RECOGNITION_MODEL`              | Bounded reviewed vision-model identity; default `glm-4.1v-thinking-flash`            |
+| `IP_ASSET_RECOGNITION_MODEL`              | Bounded reviewed upload-assistant model identity; default `glm-4.1v-thinking-flash`  |
 | `IP_ASSET_RECOGNITION_TIMEOUT_SECONDS`    | One bounded synchronous suggestion window, maximum 180 seconds                       |
 | `IP_ASSET_RECOGNITION_CONCURRENCY`        | Provider-side recognition concurrency bound `1..4`                                   |
 | `IP_ASSET_RECOGNITION_MAX_REQUEST_BYTES`  | Maximum serialized provider request bytes; bounded 1..32 MiB                         |
@@ -868,3 +868,173 @@ ranking because it supplies identity-critical generation references. A continuou
 library cannot preserve that invariant without disabling all search after every upload. Therefore
 the hub owns separate tables/repository semantics, reuses only fixed embedding/normalization
 identity, and degrades per row/provider rather than per catalog.
+
+## Scenario: soft text intent and local metadata repair
+
+### 1. Scope / Trigger
+
+Use this scenario whenever text-search intent extraction changes candidate admission, or when an
+operator uses AI suggestions to repair metadata for the approved local 41-asset corpus. It spans
+API schemas, search orchestration, provider transport, private artifacts, verified MinIO reads,
+PostgreSQL CAS, generated frontend types, and safe UI degradation copy. It is not the ordinary
+click-triggered upload assistant and must never become an HTTP batch endpoint.
+
+### 2. Signatures
+
+```text
+POST /api/v1/ip-assets/search/text
+  -> IpAssetTextSearchResponse.degraded_reason: IpAssetSearchDegradedReason | null
+
+make ip-asset-metadata-repair-preflight
+make ip-asset-metadata-repair-canary OUTPUT=<private-v2-json>
+make ip-asset-metadata-repair-plan CANARY=<private-v2-json> OUTPUT=<private-v2-json>
+make ip-asset-metadata-repair-apply PLAN=<private-v2-json> OUTPUT=<private-v2-json>
+make ip-asset-metadata-repair-restore RESULT=<private-v2-json> OUTPUT=<private-v2-json>
+
+IpAssetRepository.get_repairable_metadata(asset_ref)
+IpAssetRepository.compare_and_swap_metadata(...)
+```
+
+Every mutating CLI command requires `I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2`; V1 artifacts and
+the V1 acknowledgement are incompatible inputs, not migration candidates.
+
+### 3. Contracts
+
+#### Search provenance
+
+- Only `character`, `asset_type`, `orientation`, `department`, `source_kind`, and `tag` values
+  explicitly supplied by the request are repository filters. Role/type/orientation inferred from
+  the current message are positive in-memory metadata hints and never exclusions or SQL predicates.
+- Prior turns contribute only to the bounded embedding text. They never infer current filters or
+  metadata hints.
+- Enumerate the ready/shared hard-filtered pool before a provider call. An empty pool returns
+  `degraded_metadata/no_filtered_candidates` with zero embedding calls. `partial_index` means the
+  pool exists and a successful query embedding found no compatible indexed row.
+- The closed degraded reasons are `semantic_disabled`, `provider_unavailable`,
+  `input_normalization_failed`, `partial_index`, and `no_filtered_candidates`. The frontend maps
+  each generated enum value to bounded Chinese guidance and never renders the raw code.
+- This is a pre-ranking candidate-admission correction shared by V2/V3; do not change their frozen
+  rank weights or claim old live evidence represents post-repair behavior.
+
+#### Exact-41 local repair
+
+- Batch repair is CLI-only. `preflight` is provider-free; `plan` requires the exact local
+  v2 acknowledgement `I_ACKNOWLEDGE_LOCAL_IP_METADATA_REPAIR_V2`, uses exact `glm-5v-turbo`,
+  thinking disabled, concurrency one, and no model fallback, then writes an exclusive private
+  artifact under `output/ip-asset-metadata-repair/`. The old v1 acknowledgement is rejected before
+  provider or database setup and cannot drive a v2 apply.
+- Canary schema `ip-asset-metadata-repair-canary-v2`, plan schema
+  `ip-asset-metadata-repair-plan-v2`, and result schema `ip-asset-metadata-repair-result-v2` require
+  `glm-5v-turbo` and use v2 fingerprint domains. Old v1 `glm-4.6v-flash` artifacts are intentionally
+  incompatible and cannot be reused, applied, or restored.
+- Before `canary`, `plan`, `apply`, or `restore` performs any provider or database side effect, the
+  CLI creates a private sibling lock and proves the requested output does not already exist. A
+  collision fails before settings/provider/repository work; the final artifact remains an atomic,
+  no-overwrite `0600` file inside an exact-`0700` directory.
+- The GLM vision request uses `/api/paas/v4/chat/completions`, one `image_url` content part,
+  `thinking={"type":"disabled"}`, `do_sample=false`, and strict local JSON extraction/validation.
+  Do not send `response_format`: the provider documents that field as text-model-only. Reuse the
+  bounded provider JSON-envelope scanner so an array root, multiple JSON structures, malformed
+  object, or oversized/ambiguous wrapper fails closed.
+- Resolve exactly 41 unique approved manifest checksums one-to-one to ready/shared rows. Read
+  originals only through `MinioIpAssetStore.get_verified`; persisted artifacts contain safe
+  `asset_ref` plus domain-separated content commitments, never raw checksums, UUIDs, filenames,
+  paths, object keys, pixels, provider bodies, request IDs, credentials, or profile information.
+  Free-form metadata is validated against storage locations, filenames, UUIDs, credentials and
+  embedded image/URL representations before it can enter a plan or result.
+- The first asset is the compatibility canary and its suggestion is reused. Any canary failure
+  stops before the remaining 40; a complete plan makes at most one recognition request per asset.
+- Two historical failed canaries remain charged. The current lifetime cap is 43 calls, leaving at
+  most 41 new calls for one GLM-5V-Turbo canary and, only on success, the remaining 40 assets.
+- A passing canary proves one request only. The batch paces provider-bound calls at a fingerprinted
+  2-second default, accepts only an explicit CLI value in the closed 0.5–60 second range, and keeps
+  the adapter at one attempt per image. Concurrency one is not a substitute for rate pacing.
+- After the first `provider_rate_limited`, `provider_timeout`, or `provider_unavailable`, stop
+  provider consumption. Preserve completed items, record the failing item, and fill every remaining
+  canonical asset as `not_processed/not_called_after_transient_failure` with no suggestion. The
+  resulting 41-item artifact is diagnostic-valid but not mutation-ready.
+- Canary failures retain only one closed category: `provider_authentication_failed`,
+  `provider_rate_limited`, `provider_request_rejected`, `provider_timeout`,
+  `invalid_provider_output`, or `provider_unavailable`. Never retain provider response bodies,
+  exception strings, headers, request identifiers, credentials, or input identity.
+- Snapshot free tags from rows whose `dimension='free'`; the public combined `IpAssetRecord.tags`
+  projection is never a repair/restore source.
+- Apply/restore are provider-free. Before each row CAS, reread the current descriptor through
+  `MinioIpAssetStore.get_verified` and recompute its content commitment; an unavailable, moved, or
+  corrupt object is `content_drift` with zero row write. Then use one row-locked transaction to
+  return `already_applied`, reject metadata drift, or update repairable scalar fields, dimensioned
+  tags, and the derived canonical name atomically. Preserve stable asset/blob identity,
+  department/contributor, visibility/status, embeddings, favorites, downloads, memberships, and
+  generation lineage.
+- Before the first repository CAS, apply requires all 41 recognitions to be completed and the plan
+  failure count to be zero. Any failed or not-called item rejects the whole apply with zero row
+  mutations; never partially apply the successful prefix of a diagnostic plan.
+- AI values remain `ai_suggestion_unreviewed`. Existing non-`other` character wins, recognized
+  non-`other` asset type may replace the imported type, optional non-empty suggestions replace old
+  values, and normalized free tags merge within the 20-tag limit.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Inferred role/type/orientation conflicts with no explicit filter | Keep it as a positive soft hint; never add a repository predicate |
+| Explicit hard filters yield no ready/shared candidate | `no_filtered_candidates`, empty results, zero embedding calls |
+| Candidates exist but no compatible vector exists | `partial_index` with metadata results where available |
+| V1 acknowledgement, canary, plan, or result reaches a V2 command | Reject before settings, provider, storage, or database setup |
+| Canary returns another model, ambiguous JSON, invalid schema, or a provider error | Write one private diagnostic canary and stop before the remaining 40 |
+| Batch receives rate limit, timeout, or provider unavailability | Record one breaker item, mark the ordered suffix not-called, stop provider consumption |
+| Plan has any failed or not-called item | Diagnostic-valid but reject apply before the first object read or CAS |
+| Output exists, aliases a symlink, escapes the private root, or cannot meet permissions | Reject before provider/database side effects; never overwrite |
+| MinIO bytes cannot be verified immediately before apply/restore | `content_drift` for that item and zero row mutation |
+| DB content commitment or metadata fingerprint changed | `content_drift` or `metadata_drift`; never overwrite concurrent state |
+| Current metadata already equals the proposal | `already_applied`; no second mutation or naming allocation |
+| Apply succeeds for all 41 items | Result is V2, exact-model-bound, private, fingerprinted, and restore-ready |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a GLM-5V-Turbo V2 canary passes, its first item is reused, the remaining 40 calls complete
+  with two-second pacing, all object and metadata fingerprints match, and a second apply reports 41
+  `already_applied` items.
+- Base: explicit filters return no ready/shared candidates, so search returns the safe empty
+  `no_filtered_candidates` response without calling the embedding provider.
+- Bad: treat natural-language taxonomy as SQL, reuse a V1 artifact, continue after a shared 429,
+  apply a successful prefix, trust only the DB checksum, or write the audit artifact after side
+  effects have already occurred.
+
+### 6. Tests Required
+
+- Provider-free tests cover soft hints, explicit hard filters, zero candidates, partial index,
+  strict/private plan files, exact-41 preflight, canary stop, conservative merge, CAS drift,
+  mid-batch transient circuit breaking, bounded pacing, partial-plan zero-mutation rejection,
+  idempotent second apply, naming, dimensioned tags, non-metadata preservation, and restore.
+- Default startup, HTTP routes, tests, and `eval-check` never invoke the repair provider. This local
+  workflow adds no migration, web annotation page, deployment, or automatic 248-query rerun.
+
+Assertion points must include exact model/schema/fingerprint identity, canary reuse, call-count
+cessation after a transient breaker, contiguous not-called suffixes, output pre-reservation,
+provider-body privacy, verified MinIO bytes before each CAS, dimensioned free tags, canonical naming,
+whole-plan completeness before mutation, replay idempotency, and reverse-CAS restore readiness.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+# Inferred text becomes a hard repository filter, and a partially successful batch is applied.
+query.asset_type = inferred_asset_type
+for item in plan.items:
+    await repository.compare_and_swap_metadata(item)
+```
+
+#### Correct
+
+```python
+# Explicit request fields remain hard; inferred values stay in-memory positive hints.
+hard_filters = request_owned_filters
+soft_hints = infer_current_turn_hints(message, excluding=hard_filters)
+
+# Prove the complete V2 plan and immutable object before any per-row CAS.
+validate_metadata_repair_plan(plan, require_complete=True)
+await store.get_verified(current_descriptor)
+await repository.compare_and_swap_metadata(...)
+```

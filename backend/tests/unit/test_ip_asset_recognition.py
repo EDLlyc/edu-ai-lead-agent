@@ -12,6 +12,7 @@ from app.api.v1.routes import ip_assets as routes
 from app.application.services.ip_asset_recognition import IpAssetRecognitionService
 from app.core.config import Settings
 from app.core.errors import AppError, InvalidProviderOutputError, ProviderTimeoutError
+from app.domain.ip_asset_metadata_repair import IP_ASSET_METADATA_REPAIR_MODEL
 from app.domain.ip_asset_recognition import (
     IpAssetRecognitionRequest,
     IpAssetRecognitionSuggestion,
@@ -44,12 +45,12 @@ def _raster(media_type: str = "image/png", size: tuple[int, int] = (96, 72)) -> 
     return output.getvalue()
 
 
-def _adapter(client: httpx.AsyncClient) -> ZhipuIpAssetRecognitionAdapter:
+def _adapter(client: httpx.AsyncClient, *, model: str = _MODEL) -> ZhipuIpAssetRecognitionAdapter:
     return ZhipuIpAssetRecognitionAdapter(
         client=client,
         base_url="https://open.bigmodel.cn/api/paas/v4",
         api_key=SecretStr("test-secret"),
-        model=_MODEL,
+        model=model,
         connect_timeout_seconds=1,
         total_timeout_seconds=5,
         concurrency=1,
@@ -130,10 +131,52 @@ async def test_zhipu_recognition_discards_reasoning_extra_fields_and_unsafe_valu
     assert "private-provider-id" not in serialized
     assert "must-not-leak" not in serialized
     assert captured["thinking"] == {"type": "disabled"}
+    assert captured["do_sample"] is False
+    assert "response_format" not in captured
+    assert "temperature" not in captured
     messages = cast(list[dict[str, object]], captured["messages"])
     user_content = cast(list[dict[str, object]], messages[1]["content"])
     image_url = cast(dict[str, str], user_content[1]["image_url"])["url"]
     assert image_url.startswith("data:image/")
+
+
+@pytest.mark.asyncio
+async def test_glm5_repair_request_uses_exact_visual_contract_without_json_mode() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "model": IP_ASSET_METADATA_REPAIR_MODEL,
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "character": "xiao_sai",
+                                    "asset_type": "portrait_avatar",
+                                }
+                            )
+                        }
+                    }
+                ],
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _adapter(client, model=IP_ASSET_METADATA_REPAIR_MODEL).suggest(_request())
+
+    assert IP_ASSET_METADATA_REPAIR_MODEL == "glm-5v-turbo"
+    assert result.model == IP_ASSET_METADATA_REPAIR_MODEL
+    assert captured["model"] == IP_ASSET_METADATA_REPAIR_MODEL
+    assert captured["thinking"] == {"type": "disabled"}
+    assert captured["do_sample"] is False
+    assert "response_format" not in captured
+    messages = cast(list[dict[str, object]], captured["messages"])
+    user_content = cast(list[dict[str, object]], messages[1]["content"])
+    assert user_content[1]["type"] == "image_url"
 
 
 @pytest.mark.asyncio
@@ -156,6 +199,21 @@ async def test_zhipu_recognition_rejects_unknown_required_taxonomy_and_timeout()
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(invalid_handler)) as client:
+        with pytest.raises(InvalidProviderOutputError):
+            await _adapter(client).suggest(_request())
+
+    def ambiguous_handler(_request: httpx.Request) -> httpx.Response:
+        first = json.dumps({"character": "xiao_sai", "asset_type": "meme_sticker"})
+        second = json.dumps({"character": "duo", "asset_type": "scene_illustration"})
+        return httpx.Response(
+            200,
+            json={
+                "model": _MODEL,
+                "choices": [{"message": {"content": f"{first} {second}"}}],
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(ambiguous_handler)) as client:
         with pytest.raises(InvalidProviderOutputError):
             await _adapter(client).suggest(_request())
 

@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.ip_asset_metadata_repair import IpAssetMetadataMutationStatus
 from app.domain.ip_asset_recognition import (
     IpAssetRecognitionRequest,
     IpAssetRecognitionSuggestion,
@@ -172,6 +173,18 @@ class IpAssetVectorHit:
 
 
 @dataclass(frozen=True, slots=True)
+class IpAssetRepairableMetadataState:
+    asset: IpAssetRecord
+    metadata: IpAssetMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class IpAssetMetadataMutationOutcome:
+    status: IpAssetMetadataMutationStatus
+    state: IpAssetRepairableMetadataState | None
+
+
+@dataclass(frozen=True, slots=True)
 class IpAssetEmbeddingClaim:
     job_id: UUID
     asset: IpAssetRecord
@@ -237,6 +250,20 @@ class IpAssetRepository(Protocol):
     ) -> IpAssetRecord | None: ...
 
     async def get_by_id(self, asset_id: UUID) -> IpAssetRecord | None: ...
+
+    async def get_repairable_metadata(
+        self, asset_ref: str
+    ) -> IpAssetRepairableMetadataState | None: ...
+
+    async def compare_and_swap_metadata(
+        self,
+        *,
+        asset_ref: str,
+        expected_content_commitment: str,
+        expected_metadata_fingerprint: str,
+        target_metadata: IpAssetMetadata,
+        target_metadata_fingerprint: str,
+    ) -> IpAssetMetadataMutationOutcome: ...
 
     async def get_derivative(
         self, *, asset_id: UUID, policy_version: str, kind: str

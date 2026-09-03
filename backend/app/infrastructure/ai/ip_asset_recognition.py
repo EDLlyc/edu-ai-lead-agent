@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Final
 from urllib.parse import urlsplit
@@ -25,6 +24,7 @@ from app.domain.ip_assets import (
     normalize_optional_text,
     normalize_tags,
 )
+from app.infrastructure.ai.provider_json import extract_provider_json_object
 from app.infrastructure.ai.zhipu import _post_json_with_retries
 
 _Sleep = Callable[[float], Awaitable[None]]
@@ -155,9 +155,10 @@ class ZhipuIpAssetRecognitionAdapter(IpAssetRecognitionModel):
                     ],
                 },
             ],
-            "response_format": {"type": "json_object"},
             "thinking": {"type": "disabled"},
-            "temperature": 0.0,
+            # Zhipu's visual-model contract does not support response_format. Keep
+            # generation deterministic and enforce JSON locally with the strict parser.
+            "do_sample": False,
             "max_tokens": _MAX_OUTPUT_TOKENS,
         }
         try:
@@ -185,7 +186,8 @@ class ZhipuIpAssetRecognitionAdapter(IpAssetRecognitionModel):
             completion = _ProviderCompletion.model_validate(response.json())
             if completion.model != self._model:
                 raise ValueError("provider model identity mismatch")
-            parsed = _extract_json_object(completion.choices[0].message.content)
+            normalized = extract_provider_json_object(completion.choices[0].message.content)
+            parsed = json.loads(normalized)
             output = _RecognitionOutput.model_validate(parsed)
             character = IpAssetCharacter(output.character)
             asset_type = IpAssetType(output.asset_type)
@@ -229,21 +231,6 @@ def _recognition_prompt() -> str:
         f"Use short Chinese values and at most {IP_ASSET_MAX_FREE_TAGS} short tags. "
         f"Policy identity: {IP_ASSET_RECOGNITION_POLICY_VERSION}."
     )
-
-
-def _extract_json_object(content: str) -> dict[str, object]:
-    cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.IGNORECASE | re.DOTALL)
-    decoder = json.JSONDecoder()
-    for index, character in enumerate(cleaned):
-        if character != "{":
-            continue
-        try:
-            value, _end = decoder.raw_decode(cleaned[index:])
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        if isinstance(value, dict):
-            return value
-    raise ValueError("provider response has no JSON object")
 
 
 def _safe_optional(value: str, *, maximum: int) -> str:
