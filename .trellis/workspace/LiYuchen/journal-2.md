@@ -180,3 +180,26 @@ Separated inferred IP search hints from explicit hard filters; added audited GLM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 95: GLM-5V-Turbo 图片 Judge 校准
+
+**Date**: 2026-09-03
+**Task**: GLM-5V-Turbo 图片 Judge 校准
+**Branch**: `main`
+
+### Summary
+
+完成仅智谱 GLM-5V-Turbo 的六源 48 派生 pair、120 次 AB/BA+repeat 图片评测；落地单次调用、原生 CNY 预算、私有哈希证据、严格视觉方言与非激活报告。真实运行 119 完成、1 provider_rejected；objective 29/36，holdout 15/18，OCR 0/6，保留确定性 OCR 门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5af4f21` | (see git log) |
+| `1890d81` | (see git log) |
+| `1dca0b7` | (see git log) |
+
+### Status
+
+[OK] **Completed**
