@@ -11,6 +11,7 @@ from app.domain.ip_assets import (
     IpAssetLeaderboardPeriod,
     IpAssetMembershipSource,
     IpAssetOrientation,
+    IpAssetSearchDegradedReason,
     IpAssetSearchEventKind,
     IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
@@ -161,7 +162,7 @@ class IpAssetSearchItemResponse(BaseModel):
 
 class IpAssetSearchResponse(BaseModel):
     mode: IpAssetSearchMode
-    degraded_reason: str | None
+    degraded_reason: IpAssetSearchDegradedReason | None
     search_version: IpAssetSearchVersion
     items: list[IpAssetSearchItemResponse]
 

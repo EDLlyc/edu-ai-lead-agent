@@ -396,8 +396,47 @@ describe("IpAssetHub", () => {
     );
     await user.click(screen.getByRole("button", { name: "开始找图" }));
     expect(await screen.findByText("元数据降级结果")).toBeInTheDocument();
-    expect(screen.getByText(/provider_unavailable/)).toBeInTheDocument();
+    expect(
+      screen.getByText("语义检索暂时不可用，已展示可用的元数据结果。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/provider_unavailable/)).toBeNull();
     expect(screen.getByText("角色与用途匹配")).toBeInTheDocument();
+  });
+
+  it("distinguishes an empty filtered pool from a partial semantic index", async () => {
+    const user = userEvent.setup();
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: "no_filtered_candidates",
+      items: [],
+      mode: "degraded_metadata",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    renderHub();
+
+    await user.type(await screen.findByLabelText("自然语言找图"), "双角色头像");
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+
+    expect(
+      await screen.findByText(
+        "当前筛选范围内没有可用图片，建议放宽角色、类型或构图筛选。",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/no_filtered_candidates/)).toBeNull();
+
+    apiMocks.searchIpAssetsText.mockResolvedValueOnce({
+      degraded_reason: "partial_index",
+      items: [{ asset, explanation: "角色提示: 小赛", similarity: null }],
+      mode: "degraded_metadata",
+      search_version: "ip-asset-hybrid-v3-rrf",
+    });
+    await user.click(screen.getByRole("button", { name: "开始找图" }));
+
+    expect(
+      await screen.findByText(
+        "筛选结果暂未建立兼容语义索引，已展示可用的元数据结果。",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/partial_index/)).toBeNull();
   });
 
   it("uploads a bounded image with self-reported metadata", async () => {

@@ -58,6 +58,7 @@ from app.domain.ip_assets import (
     IpAssetMembershipSource,
     IpAssetMetadata,
     IpAssetOrientation,
+    IpAssetSearchDegradedReason,
     IpAssetSearchEventKind,
     IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
@@ -931,7 +932,7 @@ async def test_text_search_blends_unindexed_metadata_ahead_of_weak_semantic_hit(
 
     class Repository:
         async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
-            assert query.character is IpAssetCharacter.XIAO_SAI
+            assert query.character is None
             assert query.query == ""
             return IpAssetPage(
                 items=(semantic_asset, metadata_asset, unindexed_filtered_asset),
@@ -939,7 +940,10 @@ async def test_text_search_blends_unindexed_metadata_ahead_of_weak_semantic_hit(
                 next_cursor_id=None,
             )
 
-        async def search_vectors(self, **_kwargs: object) -> tuple[IpAssetVectorHit, ...]:
+        async def search_vectors(
+            self, *, query: IpAssetQuery, **_kwargs: object
+        ) -> tuple[IpAssetVectorHit, ...]:
+            assert query.character is None
             return (IpAssetVectorHit(record=semantic_asset, similarity=0.08),)
 
     service = IpAssetService(
@@ -957,12 +961,12 @@ async def test_text_search_blends_unindexed_metadata_ahead_of_weak_semantic_hit(
 
     assert result.mode is IpAssetSearchMode.SEMANTIC
     assert [item.asset.asset_ref for item in result.items] == [
-        metadata_asset.asset_ref,
         semantic_asset.asset_ref,
+        metadata_asset.asset_ref,
         unindexed_filtered_asset.asset_ref,
     ]
-    assert result.items[0].similarity is None
-    assert "文字匹配: 开心、庆祝" in result.items[0].explanation
+    assert result.items[1].similarity is None
+    assert "文字匹配: 开心、庆祝" in result.items[1].explanation
 
 
 @pytest.mark.asyncio
@@ -1005,16 +1009,89 @@ async def test_text_search_current_turn_and_explicit_filters_override_stale_term
         ),
     )
 
-    assert all(query.character is IpAssetCharacter.SAI_XIANSHENG for query in captured)
+    assert [query.character for query in captured] == [
+        None,
+        None,
+        IpAssetCharacter.SAI_XIANSHENG,
+        IpAssetCharacter.SAI_XIANSHENG,
+    ]
     assert all(query.asset_type is None for query in captured)
 
 
 def test_generic_transparent_background_term_stays_lexical_not_asset_type() -> None:
-    query = _extract_filters("找一张小赛开心庆祝的透明底图片", IpAssetQuery(limit=20))
+    intent = _extract_filters("找一张小赛开心庆祝的透明底图片", IpAssetQuery(limit=20))
 
-    assert query.character is IpAssetCharacter.XIAO_SAI
-    assert query.asset_type is None
-    assert query.query == "找一张小赛开心庆祝的透明底图片"
+    assert intent.hard_query.character is None
+    assert intent.hard_query.asset_type is None
+    assert intent.hard_query.query == "找一张小赛开心庆祝的透明底图片"
+    assert intent.character_hint is IpAssetCharacter.XIAO_SAI
+    assert intent.asset_type_hint is None
+    assert intent.alpha_hint is True
+
+
+@pytest.mark.asyncio
+async def test_text_search_zero_filtered_candidates_skips_embedding_provider() -> None:
+    provider_calls = 0
+
+    class Repository:
+        async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
+            assert query.character is IpAssetCharacter.DUO
+            return IpAssetPage(items=(), next_cursor_created_at=None, next_cursor_id=None)
+
+    class Embeddings:
+        async def embed_visual(self, _request: object) -> VisualEmbeddingResult:
+            nonlocal provider_calls
+            provider_calls += 1
+            raise AssertionError("zero candidates must stop before embedding")
+
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, Repository()),
+        store=cast(object, SimpleNamespace()),
+        embeddings=cast(object, Embeddings()),
+        identity=VisualEmbeddingIdentity(),
+    )
+
+    result = await service.search_text(
+        message="找双角色合影",
+        prior_turns=(),
+        filters=IpAssetQuery(character=IpAssetCharacter.DUO, limit=20),
+    )
+
+    assert result.degraded_reason is IpAssetSearchDegradedReason.NO_FILTERED_CANDIDATES
+    assert result.items == ()
+    assert provider_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_text_search_existing_candidates_without_vectors_is_partial_index() -> None:
+    captured: list[IpAssetQuery] = []
+
+    class Repository:
+        async def list_assets(self, query: IpAssetQuery) -> IpAssetPage:
+            captured.append(query)
+            return IpAssetPage(items=(_asset(),), next_cursor_created_at=None, next_cursor_id=None)
+
+        async def search_vectors(
+            self, *, query: IpAssetQuery, **_kwargs: object
+        ) -> tuple[IpAssetVectorHit, ...]:
+            captured.append(query)
+            return ()
+
+    service = IpAssetService(
+        repository=cast(IpAssetRepository, Repository()),
+        store=cast(object, SimpleNamespace()),
+        embeddings=_TextEmbedding(),
+        identity=VisualEmbeddingIdentity(),
+    )
+
+    result = await service.search_text(
+        message="找一张小赛头像",
+        prior_turns=(),
+        filters=IpAssetQuery(limit=20),
+    )
+
+    assert result.degraded_reason is IpAssetSearchDegradedReason.PARTIAL_INDEX
+    assert all(query.character is None and query.asset_type is None for query in captured)
 
 
 @pytest.mark.parametrize(

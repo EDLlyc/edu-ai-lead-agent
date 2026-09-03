@@ -21,6 +21,7 @@ import {
   type IpAssetRecognition,
   type IpAssetSource,
   type IpAssetSearchEventKind,
+  type IpAssetSearchResponse,
   type IpAssetSearchTelemetry,
   type IpAssetType,
 } from "./api";
@@ -77,6 +78,18 @@ const assetTypeOptions: readonly Readonly<{
   { value: "poster_element", label: "海报元素" },
   { value: "other", label: "其他" },
 ];
+
+const degradedSearchGuidance: Readonly<
+  Record<NonNullable<IpAssetSearchResponse["degraded_reason"]>, string>
+> = {
+  semantic_disabled: "当前使用元数据匹配，语义检索暂未启用。",
+  provider_unavailable: "语义检索暂时不可用，已展示可用的元数据结果。",
+  input_normalization_failed:
+    "图片无法用于相似检索，请更换 PNG、JPEG 或 WebP 图片。",
+  partial_index: "筛选结果暂未建立兼容语义索引，已展示可用的元数据结果。",
+  no_filtered_candidates:
+    "当前筛选范围内没有可用图片，建议放宽角色、类型或构图筛选。",
+};
 
 const sourceOptions: readonly Readonly<{
   value: IpAssetSource;
@@ -448,7 +461,7 @@ export function IpAssetHub() {
                 <span>{searchResult.items.length} 项</span>
                 {searchResult.degraded_reason !== null ? (
                   <small>
-                    语义服务暂不可用：{searchResult.degraded_reason}
+                    {degradedSearchGuidance[searchResult.degraded_reason]}
                   </small>
                 ) : null}
               </div>

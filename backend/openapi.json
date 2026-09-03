@@ -8115,6 +8115,17 @@
         "title": "IpAssetSearchActionRequest",
         "type": "object"
       },
+      "IpAssetSearchDegradedReason": {
+        "enum": [
+          "semantic_disabled",
+          "provider_unavailable",
+          "input_normalization_failed",
+          "partial_index",
+          "no_filtered_candidates"
+        ],
+        "title": "IpAssetSearchDegradedReason",
+        "type": "string"
+      },
       "IpAssetSearchEventKind": {
         "enum": [
           "search_results",
@@ -8327,13 +8338,12 @@
           "degraded_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/IpAssetSearchDegradedReason"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Degraded Reason"
+            ]
           },
           "items": {
             "items": {

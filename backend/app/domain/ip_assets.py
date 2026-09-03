@@ -95,6 +95,14 @@ class IpAssetSearchMode(StrEnum):
     DEGRADED_METADATA = "degraded_metadata"
 
 
+class IpAssetSearchDegradedReason(StrEnum):
+    SEMANTIC_DISABLED = "semantic_disabled"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    INPUT_NORMALIZATION_FAILED = "input_normalization_failed"
+    PARTIAL_INDEX = "partial_index"
+    NO_FILTERED_CANDIDATES = "no_filtered_candidates"
+
+
 class IpAssetSearchEventKind(StrEnum):
     SEARCH_RESULTS = "search_results"
     ZERO_RESULTS = "zero_results"

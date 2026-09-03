@@ -56,6 +56,7 @@ from app.domain.ip_assets import (
     IpAssetMetadata,
     IpAssetOrientation,
     IpAssetRankCandidate,
+    IpAssetSearchDegradedReason,
     IpAssetSearchEventKind,
     IpAssetSearchMetricPeriod,
     IpAssetSearchMode,
@@ -106,7 +107,7 @@ class IpAssetSearchHit:
 @dataclass(frozen=True, slots=True)
 class IpAssetSearchResult:
     mode: IpAssetSearchMode
-    degraded_reason: str | None
+    degraded_reason: IpAssetSearchDegradedReason | None
     search_version: IpAssetSearchVersion
     items: tuple[IpAssetSearchHit, ...]
 
@@ -135,6 +136,21 @@ class _MetadataSearchHit:
     asset: IpAssetRecord
     score: float
     matches: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _IpAssetTextSearchIntent:
+    hard_query: IpAssetQuery
+    character_hint: IpAssetCharacter | None = None
+    asset_type_hint: IpAssetType | None = None
+    orientation_hint: IpAssetOrientation | None = None
+    alpha_hint: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _MetadataSearchOutcome:
+    hits: tuple[_MetadataSearchHit, ...]
+    has_filtered_candidates: bool
 
 
 _IP_ASSET_SEARCH_CANDIDATE_LIMIT = 500
@@ -501,14 +517,31 @@ class IpAssetService:
             )
         except ValueError as error:
             raise IpAssetUploadRejectedError("invalid_ip_asset_metadata") from error
-        # Only the current turn may infer hard taxonomy constraints. Historical turns still add
-        # semantic context, but a stale role/type must never override the user's current request.
-        # Explicit controls in ``filters`` remain authoritative over inferred terms.
-        extracted = _extract_filters(current, filters)
-        metadata_hits = await self._search_metadata(text=current, query=extracted)
+        # Current-turn controlled terms are positive ranking evidence only. Request fields retain
+        # their provenance and remain the only hard repository filters; historical turns add only
+        # semantic context.
+        intent = _extract_filters(current, filters)
+        metadata = await self._search_metadata(
+            text=current,
+            query=intent.hard_query,
+            intent=intent,
+        )
+        if not metadata.has_filtered_candidates:
+            return await self._complete_text_search(
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.NO_FILTERED_CANDIDATES,
+                    intent.hard_query,
+                ),
+                record_outcome=record_outcome,
+            )
         if self._embeddings is None:
             return await self._complete_text_search(
-                self._metadata_result(metadata_hits, "semantic_disabled", extracted),
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.SEMANTIC_DISABLED,
+                    intent.hard_query,
+                ),
                 record_outcome=record_outcome,
             )
         try:
@@ -518,16 +551,24 @@ class IpAssetService:
                 )
             )
             hits = await self._repository.search_vectors(
-                query=extracted, embedding=embedding, identity=self._identity
+                query=intent.hard_query, embedding=embedding, identity=self._identity
             )
         except (VisualEmbeddingError, ValueError):
             return await self._complete_text_search(
-                self._metadata_result(metadata_hits, "provider_unavailable", extracted),
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.PROVIDER_UNAVAILABLE,
+                    intent.hard_query,
+                ),
                 record_outcome=record_outcome,
             )
         if not hits:
             return await self._complete_text_search(
-                self._metadata_result(metadata_hits, "partial_index", extracted),
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.PARTIAL_INDEX,
+                    intent.hard_query,
+                ),
                 record_outcome=record_outcome,
             )
         return await self._complete_text_search(
@@ -537,8 +578,8 @@ class IpAssetService:
                 search_version=self._search_version,
                 items=_merge_text_search_hits(
                     semantic_hits=hits,
-                    metadata_hits=metadata_hits,
-                    query=extracted,
+                    metadata_hits=metadata.hits,
+                    query=intent.hard_query,
                     search_version=self._search_version,
                 ),
             ),
@@ -562,9 +603,22 @@ class IpAssetService:
             )
         except IpAssetValidationError as error:
             raise IpAssetUploadRejectedError(error.code) from error
+        metadata = await self._search_metadata(text="", query=filters)
+        if not metadata.has_filtered_candidates:
+            return await self._record_search_outcome(
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.NO_FILTERED_CANDIDATES,
+                    filters,
+                )
+            )
         if self._embeddings is None:
             return await self._record_search_outcome(
-                await self._metadata_fallback(filters, "semantic_disabled")
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.SEMANTIC_DISABLED,
+                    filters,
+                )
             )
         try:
             normalized = await asyncio.to_thread(
@@ -580,15 +634,27 @@ class IpAssetService:
             )
         except ValueError:
             return await self._record_search_outcome(
-                await self._metadata_fallback(filters, "input_normalization_failed")
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.INPUT_NORMALIZATION_FAILED,
+                    filters,
+                )
             )
         except VisualEmbeddingError:
             return await self._record_search_outcome(
-                await self._metadata_fallback(filters, "provider_unavailable")
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.PROVIDER_UNAVAILABLE,
+                    filters,
+                )
             )
         if not hits:
             return await self._record_search_outcome(
-                await self._metadata_fallback(filters, "partial_index")
+                self._metadata_result(
+                    metadata.hits,
+                    IpAssetSearchDegradedReason.PARTIAL_INDEX,
+                    filters,
+                )
             )
         return await self._record_search_outcome(
             IpAssetSearchResult(
@@ -611,13 +677,13 @@ class IpAssetService:
             )
         )
 
-    async def _metadata_fallback(self, query: IpAssetQuery, reason: str) -> IpAssetSearchResult:
-        hits = await self._search_metadata(text="", query=query)
-        return self._metadata_result(hits, reason, query)
-
     async def _search_metadata(
-        self, *, text: str, query: IpAssetQuery
-    ) -> tuple[_MetadataSearchHit, ...]:
+        self,
+        *,
+        text: str,
+        query: IpAssetQuery,
+        intent: _IpAssetTextSearchIntent | None = None,
+    ) -> _MetadataSearchOutcome:
         # Conversational text is rarely an exact SQL substring (for example, "找小赛开心庆祝").
         # Fetch a bounded, structure-filtered candidate pool and rank exact metadata values in the
         # service. This also keeps assets without a compatible vector discoverable.
@@ -631,22 +697,28 @@ class IpAssetService:
             )
         )
         include_unmatched = not text or _has_structured_filter(query)
-        ranked = tuple(_metadata_search_hit(asset, text) for asset in page.items)
+        ranked = tuple(_metadata_search_hit(asset, text, intent=intent) for asset in page.items)
         selected = tuple(hit for hit in ranked if include_unmatched or hit.score > 0)
-        return tuple(
-            sorted(
-                selected,
-                key=lambda hit: (
-                    hit.score,
-                    hit.asset.created_at,
-                    hit.asset.id.hex,
-                ),
-                reverse=True,
-            )[: query.limit]
+        return _MetadataSearchOutcome(
+            hits=tuple(
+                sorted(
+                    selected,
+                    key=lambda hit: (
+                        hit.score,
+                        hit.asset.created_at,
+                        hit.asset.id.hex,
+                    ),
+                    reverse=True,
+                )[: query.limit]
+            ),
+            has_filtered_candidates=bool(page.items),
         )
 
     def _metadata_result(
-        self, hits: tuple[_MetadataSearchHit, ...], reason: str, query: IpAssetQuery
+        self,
+        hits: tuple[_MetadataSearchHit, ...],
+        reason: IpAssetSearchDegradedReason,
+        query: IpAssetQuery,
     ) -> IpAssetSearchResult:
         return IpAssetSearchResult(
             mode=IpAssetSearchMode.DEGRADED_METADATA,
@@ -1019,22 +1091,22 @@ async def enqueue_ip_asset_generation(
     )
 
 
-def _extract_filters(text: str, base: IpAssetQuery) -> IpAssetQuery:
+def _extract_filters(text: str, base: IpAssetQuery) -> _IpAssetTextSearchIntent:
     normalized = text.casefold()
-    character = base.character
-    if character is None:
+    character_hint = None
+    if base.character is None:
         has_xiao_sai = "小赛" in normalized
         has_sai_xiansheng = "赛先生" in normalized
         if (has_xiao_sai and has_sai_xiansheng) or any(
             term in normalized for term in ("双角色", "两个角色", "同框", "合影")
         ):
-            character = IpAssetCharacter.DUO
+            character_hint = IpAssetCharacter.DUO
         elif has_xiao_sai:
-            character = IpAssetCharacter.XIAO_SAI
+            character_hint = IpAssetCharacter.XIAO_SAI
         elif has_sai_xiansheng:
-            character = IpAssetCharacter.SAI_XIANSHENG
-    asset_type = base.asset_type
-    if asset_type is None:
+            character_hint = IpAssetCharacter.SAI_XIANSHENG
+    asset_type_hint = None
+    if base.asset_type is None:
         for terms, value in (
             (("表情包", "贴纸", "meme"), IpAssetType.MEME_STICKER),
             (("头像",), IpAssetType.PORTRAIT_AVATAR),
@@ -1046,27 +1118,31 @@ def _extract_filters(text: str, base: IpAssetQuery) -> IpAssetQuery:
             (("形象设定", "角色设定"), IpAssetType.IDENTITY_REFERENCE),
         ):
             if any(term in normalized for term in terms):
-                asset_type = value
+                asset_type_hint = value
                 break
-    orientation = base.orientation
-    if orientation is None:
+    orientation_hint = None
+    if base.orientation is None:
         if "横图" in normalized:
-            orientation = IpAssetOrientation.LANDSCAPE
+            orientation_hint = IpAssetOrientation.LANDSCAPE
         elif "竖图" in normalized:
-            orientation = IpAssetOrientation.PORTRAIT
+            orientation_hint = IpAssetOrientation.PORTRAIT
         elif "方图" in normalized or "正方形" in normalized:
-            orientation = IpAssetOrientation.SQUARE
-    return IpAssetQuery(
-        # Keep the lexical evidence even after controlled terms become hard constraints. Vector
-        # retrieval ignores this field, while hybrid metadata ranking uses the normalized text.
-        query=base.query or text[-200:],
-        character=character,
-        asset_type=asset_type,
-        department=base.department,
-        source_kind=base.source_kind,
-        orientation=orientation,
-        tag=base.tag,
-        limit=base.limit,
+            orientation_hint = IpAssetOrientation.SQUARE
+    return _IpAssetTextSearchIntent(
+        hard_query=IpAssetQuery(
+            query=base.query or text[-200:],
+            character=base.character,
+            asset_type=base.asset_type,
+            department=base.department,
+            source_kind=base.source_kind,
+            orientation=base.orientation,
+            tag=base.tag,
+            limit=base.limit,
+        ),
+        character_hint=character_hint,
+        asset_type_hint=asset_type_hint,
+        orientation_hint=orientation_hint,
+        alpha_hint="透明底" in normalized or "免抠" in normalized,
     )
 
 
@@ -1083,7 +1159,12 @@ def _has_structured_filter(query: IpAssetQuery) -> bool:
     )
 
 
-def _metadata_search_hit(asset: IpAssetRecord, text: str) -> _MetadataSearchHit:
+def _metadata_search_hit(
+    asset: IpAssetRecord,
+    text: str,
+    *,
+    intent: _IpAssetTextSearchIntent | None = None,
+) -> _MetadataSearchHit:
     normalized = text.casefold()
     matches_by_value: dict[str, tuple[str, float]] = {}
     for value, explanation, weight in (
@@ -1106,6 +1187,24 @@ def _metadata_search_hit(asset: IpAssetRecord, text: str) -> _MetadataSearchHit:
         previous = matches_by_value.get(clean)
         if previous is None or weight > previous[1]:
             matches_by_value[clean] = (explanation, weight)
+    if intent is not None:
+        if intent.character_hint is not None and asset.character is intent.character_hint:
+            matches_by_value["__character_hint"] = (
+                f"角色提示: {_character_hint_label(asset.character)}",
+                2.0,
+            )
+        if intent.asset_type_hint is not None and asset.asset_type is intent.asset_type_hint:
+            matches_by_value["__asset_type_hint"] = (
+                f"类型提示: {_asset_type_hint_label(asset.asset_type)}",
+                2.0,
+            )
+        if intent.orientation_hint is not None and asset.orientation is intent.orientation_hint:
+            matches_by_value["__orientation_hint"] = (
+                f"构图提示: {_orientation_hint_label(asset.orientation)}",
+                0.75,
+            )
+        if intent.alpha_hint and asset.has_alpha:
+            matches_by_value["__alpha_hint"] = ("透明背景提示", 0.75)
     ordered = tuple(
         value
         for value, _weight in sorted(
@@ -1118,6 +1217,37 @@ def _metadata_search_hit(asset: IpAssetRecord, text: str) -> _MetadataSearchHit:
         score=min(1.0, raw_score / 8.0),
         matches=ordered,
     )
+
+
+def _character_hint_label(value: IpAssetCharacter) -> str:
+    return {
+        IpAssetCharacter.SAI_XIANSHENG: "赛先生",
+        IpAssetCharacter.XIAO_SAI: "小赛",
+        IpAssetCharacter.DUO: "双角色",
+        IpAssetCharacter.OTHER: "其他",
+    }[value]
+
+
+def _asset_type_hint_label(value: IpAssetType) -> str:
+    return {
+        IpAssetType.IDENTITY_REFERENCE: "形象设定",
+        IpAssetType.PORTRAIT_AVATAR: "头像",
+        IpAssetType.FULL_BODY_ACTION: "全身动作",
+        IpAssetType.EXPRESSION: "表情",
+        IpAssetType.MEME_STICKER: "表情包",
+        IpAssetType.TRANSPARENT_CUTOUT: "透明抠图",
+        IpAssetType.SCENE_ILLUSTRATION: "场景插画",
+        IpAssetType.POSTER_ELEMENT: "海报元素",
+        IpAssetType.OTHER: "其他",
+    }[value]
+
+
+def _orientation_hint_label(value: IpAssetOrientation) -> str:
+    return {
+        IpAssetOrientation.SQUARE: "方图",
+        IpAssetOrientation.PORTRAIT: "竖图",
+        IpAssetOrientation.LANDSCAPE: "横图",
+    }[value]
 
 
 def _merge_text_search_hits(

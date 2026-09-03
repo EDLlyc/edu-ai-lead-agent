@@ -4320,6 +4320,11 @@ export interface components {
             search_version: "ip-asset-hybrid-v2" | "ip-asset-hybrid-v3-rrf";
         };
         /**
+         * IpAssetSearchDegradedReason
+         * @enum {string}
+         */
+        IpAssetSearchDegradedReason: "semantic_disabled" | "provider_unavailable" | "input_normalization_failed" | "partial_index" | "no_filtered_candidates";
+        /**
          * IpAssetSearchEventKind
          * @enum {string}
          */
@@ -4400,8 +4405,7 @@ export interface components {
         IpAssetSearchMode: "semantic" | "degraded_metadata";
         /** IpAssetSearchResponse */
         IpAssetSearchResponse: {
-            /** Degraded Reason */
-            degraded_reason: string | null;
+            degraded_reason: components["schemas"]["IpAssetSearchDegradedReason"] | null;
             /** Items */
             items: components["schemas"]["IpAssetSearchItemResponse"][];
             mode: components["schemas"]["IpAssetSearchMode"];
