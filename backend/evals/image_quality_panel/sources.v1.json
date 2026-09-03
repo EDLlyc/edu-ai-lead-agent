@@ -1,0 +1,125 @@
+{
+  "schema_version": "image-panel-sources-v1",
+  "catalog_version": "image-panel-public-portfolio-sources-v1",
+  "external_model_use_basis": "project_owner_authorized_external_evaluation_2026-09-02",
+  "sources": [
+    {
+      "source_family": "brain-computer-interface-ai",
+      "split": "calibration",
+      "repository_path": "docs/portfolio/assets/content-showcase/brain-computer-interface-ai.png",
+      "git_blob_oid": "163fe9f3f36c6b84b57a20dc8025fdcc3d3c2561",
+      "content_sha256": "ee5eb2848163a30597a51820ed2e5b4728a022e5366fd721f6531fc3b0cef653",
+      "media_type": "image/png",
+      "byte_size": 1367851,
+      "width": 1024,
+      "height": 1024,
+      "derivative_of": null
+    },
+    {
+      "source_family": "science-learning-by-doing",
+      "split": "holdout",
+      "repository_path": "docs/portfolio/assets/content-showcase/science-learning-by-doing.png",
+      "git_blob_oid": "91f020a4311e3ae3347bcc477c651781724bfc47",
+      "content_sha256": "120295d1743380b584239c385dfd93266d7b30c850c3e98291cd9e3f7a29b9af",
+      "media_type": "image/png",
+      "byte_size": 1392227,
+      "width": 1024,
+      "height": 1024,
+      "derivative_of": null
+    },
+    {
+      "source_family": "xiaosai-science-observe",
+      "split": "calibration",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-observe-v1.png",
+      "git_blob_oid": "46db6e359526df1850f6d52d7decc66a40c672b6",
+      "content_sha256": "3646a4bd12e028519404ddac2e332a5c9d5681383b58a40b89551a9f037d1ca2",
+      "media_type": "image/png",
+      "byte_size": 2846089,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": null
+    },
+    {
+      "source_family": "xiaosai-science-experiment",
+      "split": "calibration",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-experiment-v1.png",
+      "git_blob_oid": "e9465a540a81a2b038510a0070bfb6774cf1b370",
+      "content_sha256": "408e5338e9c7ca43b7717c43e9e3b2e6eb34d87982dc41209a13f934974d0cda",
+      "media_type": "image/png",
+      "byte_size": 2760791,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": null
+    },
+    {
+      "source_family": "xiaosai-science-reflect",
+      "split": "holdout",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-reflect-v1.png",
+      "git_blob_oid": "4d98cc16d776184e891dfe1170950f23653fc74a",
+      "content_sha256": "56d501efe649b41f709c527b47058dd181e807908287a286788fbd540b5e3932",
+      "media_type": "image/png",
+      "byte_size": 2673835,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": null
+    },
+    {
+      "source_family": "xiaosai-science-inquiry-cover",
+      "split": "holdout",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-inquiry-cover-v1.png",
+      "git_blob_oid": "2d975fe7b008dec2049edbcd4cc5bb8bde08d19b",
+      "content_sha256": "9f2ac22535e30dfa03530347420df93121bd2e7b93ed3a67b0c93eb668022a50",
+      "media_type": "image/png",
+      "byte_size": 2268247,
+      "width": 1923,
+      "height": 818,
+      "derivative_of": null
+    }
+  ],
+  "derivatives": [
+    {
+      "source_family": "xiaosai-science-observe",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-observe-publication-v2.jpg",
+      "git_blob_oid": "b5e1deeef3f764fb3cb61f8a63dee923d5d8c16e",
+      "content_sha256": "dd24dc59546bd712fe61ce4b1e173a095e2cabd43b4cf6f64761ffcd1768cc45",
+      "media_type": "image/jpeg",
+      "byte_size": 287970,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": "docs/portfolio/assets/content-showcase/xiaosai-science-observe-v1.png"
+    },
+    {
+      "source_family": "xiaosai-science-experiment",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-experiment-publication-v2.jpg",
+      "git_blob_oid": "79067cd4f6e3607eb3b042e6c0a31fc35c9f87bc",
+      "content_sha256": "2b37891d5cd9a5c4e3a330e01e9b6fddfc30a5a7da70ba3b8d998cc310228f0c",
+      "media_type": "image/jpeg",
+      "byte_size": 252376,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": "docs/portfolio/assets/content-showcase/xiaosai-science-experiment-v1.png"
+    },
+    {
+      "source_family": "xiaosai-science-reflect",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-reflect-publication-v2.jpg",
+      "git_blob_oid": "cd0d2fde28bc646ff34db19248c6c6afdd00292c",
+      "content_sha256": "f2a2bbfe43e0d8905e39a706a6e432f43a3ef88bd80d38164be7d013cced5f1d",
+      "media_type": "image/jpeg",
+      "byte_size": 254978,
+      "width": 1536,
+      "height": 1024,
+      "derivative_of": "docs/portfolio/assets/content-showcase/xiaosai-science-reflect-v1.png"
+    },
+    {
+      "source_family": "xiaosai-science-inquiry-cover",
+      "repository_path": "docs/portfolio/assets/content-showcase/xiaosai-science-inquiry-cover-publication-v2.jpg",
+      "git_blob_oid": "296f6d5851fb0a12a81d795660a35e4404ab99b0",
+      "content_sha256": "3186de546e92409bd7180ffca374aafc2062b7491e1d6bb522ac7b092eef2b4e",
+      "media_type": "image/jpeg",
+      "byte_size": 209477,
+      "width": 1923,
+      "height": 818,
+      "derivative_of": "docs/portfolio/assets/content-showcase/xiaosai-science-inquiry-cover-v1.png"
+    }
+  ]
+}

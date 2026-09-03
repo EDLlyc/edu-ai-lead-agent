@@ -26,7 +26,8 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	ip-asset-grounded-eval-compare ip-asset-grounded-eval-compare-v2 \
 	ip-asset-grounded-eval-safe-manifest-v2 \
 	ip-asset-grounded-eval-safe-manifest-v2-check \
-	image-quality-eval \
+	image-quality-eval image-quality-panel-preflight \
+	image-quality-panel-provider-free-smoke image-quality-panel-live \
 	eval-check \
 	agent-workbench-dev agent-workbench-ui agent-workbench-eval agent-portfolio-check \
 	agent-portfolio-capture agent-portfolio-capture-check \
@@ -326,6 +327,47 @@ visual-retrieval-eval:
 
 image-quality-eval:
 	cd backend && $(PY_RUN) python -m evals.image_quality.runner --check
+
+image-quality-panel-preflight:
+	@test -n "$(MANIFEST)" || (echo "MANIFEST is required" >&2; exit 2)
+	@test -n "$(AUTHORIZATION)" || (echo "AUTHORIZATION is required" >&2; exit 2)
+	@test -n "$(REQUESTS)" || (echo "REQUESTS is required" >&2; exit 2)
+	@test -n "$(PRICING)" || (echo "PRICING is required" >&2; exit 2)
+	@test -n "$(MANIFEST_FILE_SHA256)" || (echo "MANIFEST_FILE_SHA256 is required" >&2; exit 2)
+	@test -n "$(AUTHORIZATION_FILE_SHA256)" || (echo "AUTHORIZATION_FILE_SHA256 is required" >&2; exit 2)
+	@test -n "$(REQUESTS_FILE_SHA256)" || (echo "REQUESTS_FILE_SHA256 is required" >&2; exit 2)
+	@test -n "$(PRICING_FILE_SHA256)" || (echo "PRICING_FILE_SHA256 is required" >&2; exit 2)
+	cd backend && $(PY_RUN) python -m app.image_quality_panel_main preflight \
+		--manifest "$(abspath $(MANIFEST))" \
+		--authorization "$(abspath $(AUTHORIZATION))" \
+		--requests "$(abspath $(REQUESTS))" \
+		--pricing "$(abspath $(PRICING))" \
+		--manifest-file-sha256 "$(MANIFEST_FILE_SHA256)" \
+		--authorization-file-sha256 "$(AUTHORIZATION_FILE_SHA256)" \
+		--requests-file-sha256 "$(REQUESTS_FILE_SHA256)" \
+		--pricing-file-sha256 "$(PRICING_FILE_SHA256)"
+
+image-quality-panel-provider-free-smoke:
+	cd backend && $(PY_RUN) python -m evals.image_quality_panel.runner preflight
+
+image-quality-panel-live:
+	@test -n "$(RUN_DIR)" || (echo "RUN_DIR is required" >&2; exit 2)
+	$(MAKE) image-quality-panel-preflight \
+		MANIFEST="$(MANIFEST)" AUTHORIZATION="$(AUTHORIZATION)" REQUESTS="$(REQUESTS)" \
+		PRICING="$(PRICING)" MANIFEST_FILE_SHA256="$(MANIFEST_FILE_SHA256)" \
+		AUTHORIZATION_FILE_SHA256="$(AUTHORIZATION_FILE_SHA256)" \
+		REQUESTS_FILE_SHA256="$(REQUESTS_FILE_SHA256)" \
+		PRICING_FILE_SHA256="$(PRICING_FILE_SHA256)"
+	cd backend && $(PY_RUN) python -m app.image_quality_panel_main live \
+		--manifest "$(abspath $(MANIFEST))" \
+		--authorization "$(abspath $(AUTHORIZATION))" \
+		--requests "$(abspath $(REQUESTS))" \
+		--pricing "$(abspath $(PRICING))" \
+		--run-dir "$(abspath $(RUN_DIR))" \
+		--manifest-file-sha256 "$(MANIFEST_FILE_SHA256)" \
+		--authorization-file-sha256 "$(AUTHORIZATION_FILE_SHA256)" \
+		--requests-file-sha256 "$(REQUESTS_FILE_SHA256)" \
+		--pricing-file-sha256 "$(PRICING_FILE_SHA256)"
 
 eval-check: agent-workbench-eval-check brand-retrieval-eval digital-ip-eval \
 	image-quality-eval ip-asset-grounded-eval-check ip-asset-retrieval-eval \
