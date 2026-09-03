@@ -7,8 +7,8 @@
 
 \noindent
 \name{李昱辰}
-\otherInfo{27 届}{意向岗位：Python Agent / LLM 应用开发实习}{}{}
-\otherInfo{邮箱：edllyc041202@gmail.com}{GitHub：\href{https://github.com/EDLlyc}{github.com/EDLlyc}}{}{}
+\otherInfo{27 届}{意向岗位：Agent 应用 / AI 平台后端 / Agent Evaluation 实习}{}{}
+\otherInfo{邮箱：edllyc041202@gmail.com}{GitHub：\href{https://github.com/EDLlyc}{github.com/EDLlyc}}{项目：\href{https://github.com/EDLlyc/edu-ai-lead-agent}{edu-ai-lead-agent}}{}
 \otherInfo{个人主页：\href{https://liyuchen.space/}{liyuchen.space}}{}{}{}
 
 \vspace{-1.0em}
@@ -30,13 +30,13 @@
 
 \section{实习经历}
 \datedsubsection{\textbf{赛先文化} - AI Agent 应用开发实习生}{2026.07 - 2026.08}
-\textbf{项目技术}：Python, FastAPI, LangGraph, Tool Calling, MCP, PostgreSQL/pgvector, 智谱 GLM, Qwen3-VL-Embedding, RAG, Docker\\
-\textbf{业务方向}：参与教育行业新媒体数字员工建设，围绕新闻采集、事实治理、智能选题、品牌文案、配图审核与企业微信交付，搭建可追溯、可评测、可恢复的内容生产链路。\\
+\textbf{项目技术}：Python, FastAPI, LangGraph, Pydantic, MCP, PostgreSQL/pgvector, 智谱 GLM, RAG, Docker\\
+\textbf{业务方向}：面向教育新媒体数字员工，负责事实治理、智能选题、品牌文案与多模态配图的可追溯、可评测、可恢复生产链路。\\
 \textbf{主要工作}：
 \begin{enumerate}[parsep=0.5ex]
-    \item \textbf{Agent 编排与 MCP 工具封装}：基于 LangGraph 构建状态化 Agent 与有界工具循环，将知识检索、事件详情、品牌 RAG 和文案校验封装为统一 Typed Tool Registry，并通过 MCP Server 向 Agent 客户端提供标准化调用；结合严格 Schema 与确定性回退约束执行。
-    \item \textbf{智能选题与品牌 RAG}：接入 RSS/网页等权威源，完成不可变快照、正文解析、标准化与分段、URL/内容指纹去重；以事实标签、事件版本、引用绑定实现可追溯治理；采用“硬规则粗筛 + LLM 多维评分排序 + 确定性终审”选题；按页面/问答父子切片构建 pgvector 品牌 RAG，脱敏离线评测 Recall@5 95\%、nDCG@5 92.86\%。
-    \item \textbf{多模态素材检索与图片评测}：接入 Qwen3-VL-Embedding + pgvector，以身份/审批硬过滤、语义排序和规则回退完成自动配图；构建 48 条脱敏 fixture 的语义/IP/OCR/瑕疵/裁切/多样性六维无 Provider 评测（冻结策略 48/48、关键缺陷误放 0/18），并将审校记录绑定最终 JPEG SHA-256 与 rubric/policy 版本后原子落库。
+    \item \textbf{执行治理与受控 Reviewer}：设计 Agent Capability Gateway，在模型/工具调用前校验 role、task、Artifact scope 与读写权限，原子预留并 exactly-once 对账 token、tool call、result bytes 等多维预算；实现固定 Writer--Reviewer 分权协议，支持 observe/enforce、最多一次 code-directed repair 与 result\_unknown 恢复，48/48 条 provider-free 策略契约通过（不代表模型质量提升）。
+    \item \textbf{Typed Registry、MCP 与 Grounding}：以 Pydantic Typed Tool Registry 同源支持 Function Calling、MCP v2 stdio 与 Eval Schema，统一校验参数、结果、超时和 byte budget；外部事实采用 claim-level citation，仅接受本轮合格证据并对冲突/无支撑引用 fail closed，42/42 条 provider-free 工具与 Grounding 契约通过（非 live accuracy）；品牌 RAG 脱敏离线 Recall@5 95\%、nDCG@5 92.86\%。
+    \item \textbf{GLM-5V 图片评测与失效决策}：在 6 个独立素材族上构造 48 组派生对，执行 GLM-5V-Turbo 120 次 hash-bound one-shot AB/BA + repeat 调用（119 完成、1 次 provider rejection、0 人工/外部标注）；holdout 客观对比 15/18（83.33\%），定位 OCR 0/6、OCR 维度 critical FAR 33.33\% 的失效，据此不自动激活 VLM 策略并保留确定性 OCR 门禁。
 \end{enumerate}
 
 \section{项目经历}
