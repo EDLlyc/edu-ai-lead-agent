@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Verify explicit-vs-inferred filtering, reason taxonomy, batch recognition, CAS, privacy, and evaluation boundaries."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Full backend tests, typing, generated contract, integration, security and regression gate."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Verify safe reason guidance, accessible feedback, and no regression to upload/search/gallery behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend generated-contract, strict TypeScript, test, lint, and build gate."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Reject handwritten duplicate wire enums and generated-file edits."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/search-filter-semantics.md","reason":"Review exact root cause, edge cases, version caveat, and required regression matrix."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/metadata-repair-seams.md","reason":"Review exact-41 identity, dimensioned tags, atomic naming/CAS, idempotency, restore and non-metadata invariants."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/model-selection.md","reason":"Verify selected model identity, canary, one-attempt and maximum-41 request constraints."}

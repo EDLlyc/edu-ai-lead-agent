@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/ip-asset-hub.md","reason":"Production search, recognition, storage, ranking, privacy, and Grounded evaluation contracts."}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Standalone hub search presentation, explicit recognition, accessibility, and state-preservation contracts."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Typed expected outcomes and safe user-facing error guidance."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Generated OpenAPI types are the wire source of truth; generated files must not be hand-edited."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/search-filter-semantics.md","reason":"Root cause, provenance-preserving soft-hint design, reason precedence, affected paths, and test matrix."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/metadata-repair-seams.md","reason":"Existing recognition/storage seams plus safe exact-41 plan, CAS apply/restore, tag-dimension and naming constraints."}
+{"file":".trellis/tasks/09-02-ip-asset-filter-metadata-repair/research/model-selection.md","reason":"Official-source selection of glm-5v-turbo, versioned artifact identity, and canary/call-budget boundary."}

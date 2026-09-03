@@ -226,7 +226,7 @@ Use a new strict Pydantic schema (`extra="forbid"`, frozen) and canonical JSON. 
 fields:
 
 ```text
-schema_version: ip-asset-metadata-repair-plan-v1
+schema_version: ip-asset-metadata-repair-plan-v2
 policy_version: ip-asset-recognition-v1
 provider: zhipu
 model: <configured exact model>
@@ -237,6 +237,10 @@ provider_call_count
 items: exactly 41 closed item records when corpus preflight succeeds
 plan_fingerprint: canonical hash excluding this field
 ```
+
+Apply/restore results use `ip-asset-metadata-repair-result-v2`, carry the exact `zhipu` /
+`glm-5v-turbo` identity, and use the v2 result fingerprint domain. V1 result manifests are not
+restore-compatible with the GLM-5V-Turbo execution contract.
 
 Suggested item fields:
 
