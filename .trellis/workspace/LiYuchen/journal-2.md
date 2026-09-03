@@ -224,3 +224,24 @@ Refreshed the project audit against current public main, execution governance, g
 ### Status
 
 [OK] **Completed**
+
+
+## Session 97: Optimize public resume for Agent internships
+
+**Date**: 2026-09-03
+**Task**: Optimize public resume for Agent internships
+**Branch**: `main`
+
+### Summary
+
+Repositioned the one-page public resume for Agent application, AI platform backend, and Agent Evaluation roles; surfaced execution governance, Typed Registry/MCP/Grounding, and failure-driven GLM-5V evidence with explicit provider-free/live/human-label boundaries; rebuilt and verified the A4 PDF.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1f4033a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
