@@ -203,3 +203,24 @@ Separated inferred IP search hints from explicit hard filters; added audited GLM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 96: Refresh Agent internship project audit
+
+**Date**: 2026-09-03
+**Task**: Refresh Agent internship project audit
+**Branch**: `main`
+
+### Summary
+
+Refreshed the project audit against current public main, execution governance, governed Reviewer architecture, and frozen GLM-5V evidence; added defensible resume bullets and a P0/P1/P2 internship roadmap with strict deterministic/live and public/WIP claim boundaries.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0a7b309` | (see git log) |
+
+### Status
+
+[OK] **Completed**
