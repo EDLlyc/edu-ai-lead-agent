@@ -425,3 +425,140 @@ return await rerank_or_return_rrf(fused[:10])
 
 Keep intelligence at the retrieval service boundary while the MCP adapter remains a strict,
 versioned, auditable projection of the same four tools.
+
+## Scenario: Canary-gated local live Agent retrieval A/B
+
+### 1. Scope / Trigger
+
+Use this contract when measuring whether the existing controlled retrieval enhancement improves the
+real local Agent over governed PostgreSQL data. This is an opt-in exploratory evaluation, not a CI
+canonical, production rollout, human-Gold study, or online traffic experiment. It must compare the
+plain and enhanced readers without changing the Agent prompt, tool schemas, evidence rules, database
+snapshot, model identity, or scoring oracle between arms.
+
+### 2. Signatures
+
+```bash
+make agent-retrieval-live-ab-preflight \
+  OUTPUT=output/evals/agent-retrieval-ab/<new-run> \
+  RUN_REF=<new-run> VALID_ON=YYYY-MM-DD
+
+make agent-retrieval-live-ab-run \
+  OUTPUT=output/evals/agent-retrieval-ab/<same-run> \
+  ACKNOWLEDGEMENT=I_AUTHORIZE_AGENT_RETRIEVAL_COMPATIBILITY_CANARY_V3
+```
+
+`preflight` creates a new private dataset/oracle/manifest and performs zero provider calls. `live`
+accepts only the exact acknowledgement and a preflight-bound, previously unused manifest.
+
+### 3. Contracts
+
+- Run only from repository-root configuration in `development`, with a loopback PostgreSQL URL,
+  configured Zhipu Agent/planner/reranker, and configured Alibaba multimodal brand Embedding. No
+  server, crawler, publisher, migration, or business write path participates.
+- Freeze exactly twelve Codex-Seed cases: two each for evidence, event, brand, multi-tool, copy
+  validation, and safety/refusal. The first eight are retrieval-sensitive; the final four are
+  negative controls. Dataset/oracle labels remain evaluator-side and are not human Gold.
+- Compare the plain `PostgresAgentKnowledgeReader` with the existing
+  `EnhancedAgentKnowledgeReader`. Registry hashes must match. Both arms use the same Agent model,
+  temperature-zero adapter, four model turns, four tool calls, query set, snapshot, and scorer.
+- The frozen study design remains twelve cases by two arms by three repetitions, but v3 is a
+  compatibility-canary-only authorization: exactly the first paired cells are reachable, with hard
+  caps of two Agent attempts, eight Agent decisions, and four planner, reranker, or Embedding calls.
+  Each provider adapter remains one-attempt; existing attempt files cannot be overwritten or
+  silently retried.
+- Cells one and two are the two arms of the same case/repetition and form the complete v3
+  authorization. Both are attempted once. After cell two, execution stops whether the pair passes
+  or fails; no v3 code path may execute cells 3--72 or generate a retrieval-uplift claim.
+- Top-K oracles must be mathematically reachable: each evidence/brand namespace contains at most
+  three graded qrels when the gate requires `Recall@3 == 1`. Multi-tool scoring applies Top-3 within
+  each namespace before macro-averaging; one tool cannot crowd the other out of a shared Top-3.
+- Private cases, qrels, UUIDs, text, attempts, and full reports stay under ignored owner-only
+  `output/evals/agent-retrieval-ab/<run>/`. Bind artifacts to dataset/oracle/manifest/source/Git/
+  provider hashes and reject symlinks or permissions broader than directories `0700` and files
+  `0600`.
+- A paired estimate exists only after all expected case/arm/repetition cells are terminal. An
+  incomplete matrix reports completed-attempt diagnostics and arm-specific failure codes, but all
+  deltas and confidence intervals are `null`/`N/A` and `supports_uplift_claim=false`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Preflight succeeds | Twelve valid cases, matching registries and hashes, frozen limits, zero provider calls |
+| Non-development, non-loopback DB, wrong provider/model, missing key, or source/Git drift | Fail before live execution with a safe code |
+| A namespace has more qrels than its Top-K denominator | Preflight fails; do not create an impossible canary |
+| Either first-pair arm fails terminal/tool/retrieval/citation checks | `canary_failed`; exactly two attempts at most; no remaining cells |
+| Both first-pair arms pass | `compatibility_canary_complete`; stop after cell two; no remaining cells or uplift claim |
+| Capability limit is reached | Stop before the next provider boundary and retain an incomplete ledger |
+| Attempt path exists, manifest/hash differs, or a path component is a symlink | Reject; never resume, overwrite, or redirect private evidence |
+| Matrix has fewer than all 72 terminal cells | `complete=false`; paired metrics `N/A`; no resume or résumé claim |
+| Provider omits usage or no dated price sheet is frozen | Preserve `unknown`; do not infer exact token cost from response text |
+
+### 5. Good / Base / Bad Cases
+
+- Good: both first-pair arms pass and v3 stops at `compatibility_canary_complete`; the report shows
+  two authorized attempts, 2/72 full-matrix coverage, and no paired uplift estimate.
+- Base: one canary arm returns invalid structured output; the circuit stops after two cells and the
+  report names that arm/failure while all uplift fields remain `N/A`.
+- Bad: run all 72 after repeated protocol failures, zero-fill missing cells, calculate CI from seven
+  attempts, let five qrels compete for Recall@3, share one Top-3 across evidence and brand, or commit
+  private UUIDs/queries/provider bodies.
+
+### 6. Tests Required
+
+- Dataset tests assert six-category balance, oracle isolation, per-namespace qrel count `<= 3`,
+  governed-reference existence, and read-only repeatable-read database behavior.
+- Schedule/budget tests assert the first two cells are one paired canary, cells 3--72 are unreachable
+  even when both canary cells pass, and hard capability counters stop before their provider boundary.
+- Metrics tests assert every v3 report rejects cells beyond the authorized pair, incomplete
+  matrices have null arm/delta/CI values, the underlying paired estimator remains case-level, and
+  multi-tool Top-3 is calculated per namespace.
+- Artifact tests assert exclusive creation, manifest/authorization/attempt/hash binding, symlink
+  rejection, owner-only modes, privacy redaction, and no query text in safe trace arguments.
+- Existing Agent 42-case and Brand RAG 36-case canonicals, focused Ruff, strict mypy, and diff checks
+  remain provider-free regression gates. Tests and report recomputation never resume a live run.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+scores = completed_scores + [0.0] * missing_cells
+delta, ci = paired_bootstrap(scores)
+```
+
+This turns missing provider observations into measured failures and produces a precise-looking but
+invalid A/B result.
+
+#### Correct
+
+```python
+if not complete_paired_matrix(attempts, cases=12, arms=2, repetitions=3):
+    return PairedEstimate(delta=None, ci_low=None, ci_high=None, supports_uplift_claim=False)
+```
+
+Keep descriptive failure evidence, but do not perform paired inference until the full frozen matrix
+exists.
+
+### 8. Zhipu structured-output compatibility
+
+- The OpenAI-compatible Agent adapter sends
+  `response_format={"type":"json_object"}` and accepts only the standard Chat Completions envelope
+  and standard function tool calls. JSON mode does not replace strict validation: final answers
+  still pass through `AgentProposedAnswer`, exact top-level fields, duplicate-key rejection, citation
+  grounding, and the existing unknown-tool/call-ID/argument gates.
+- The system message includes a fixed completed/refused JSON shape. History-derived next-action
+  guidance reads only tool names, statuses, and whether typed results are empty; it must not copy
+  result text or provider bodies into the guidance or trace.
+- A successful non-empty retrieval should lead to strict final synthesis unless the original user
+  goal requires a different not-yet-called tool. A successful empty retrieval should lead to a safe
+  refusal unless a different evidence source is explicitly required. Successful retrieval tools
+  must not be called again with an identical or paraphrased query.
+- Explicit event-detail requests may follow `search_evidence` with `get_event`, and explicit
+  evidence-plus-brand requests may use both retrieval tools. Pure evidence searches must not
+  unconditionally drill into event details.
+- Provider-free MockTransport tests cover the JSON-mode payload, standard tool-call envelope,
+  strict final-answer rejection, private-content-free guidance, and legitimate multi-tool flow.
+  Live provider calls, preflight, deployment, publishing, and server work are never part of the
+  check gate.

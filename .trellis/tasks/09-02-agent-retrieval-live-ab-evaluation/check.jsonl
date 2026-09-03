@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Verify identical tool schemas, bounded runs, read-only real data, citation invariants and no fixture/live evidence conflation."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify strict types, test coverage, version/hash provenance and proportionate final gates."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify failed, partial, exhausted and unknown-usage attempts remain safely represented without hidden reruns."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify committed and ignored artifacts do not expose API keys, DB URLs, raw prompts, UUIDs or private corpus text."}
+{"file":".trellis/tasks/09-02-agent-retrieval-live-ab-evaluation/research/repository-evidence.md","reason":"Check implementation reuses repository seams and does not mutate production retrieval, MCP or publication paths."}
+{"file":".trellis/tasks/archive/2026-09/09-02-evaluation-next-stage-audit/research/repository-audit.md","reason":"Check claims retain small-sample, local-data and Codex Seed limitations and never become human Gold or production uplift."}

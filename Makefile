@@ -15,6 +15,7 @@ PY_RUN ?= conda run --name $(CONDA_ENV)
 	api-generate api-contract-check agent-api-generate agent-api-contract-check \
 	agent-workbench-eval-check topic-rerank-eval \
 	brand-retrieval-eval \
+	agent-retrieval-live-ab-preflight agent-retrieval-live-ab-run \
 	digital-ip-eval ip-asset-retrieval-eval visual-retrieval-eval \
 	ip-asset-grounded-eval-check ip-asset-grounded-eval-preflight \
 	ip-asset-grounded-eval-live ip-asset-grounded-eval-live-v2 \
@@ -190,6 +191,19 @@ topic-rerank-eval:
 
 brand-retrieval-eval:
 	cd backend && $(PY_RUN) python -m evals.brand_retrieval.runner --check
+
+agent-retrieval-live-ab-preflight:
+	@test -n "$(OUTPUT)" || { echo "OUTPUT is required" >&2; exit 2; }
+	@test -n "$(RUN_REF)" || { echo "RUN_REF is required" >&2; exit 2; }
+	PYTHONPATH=backend $(PY_RUN) python -m evals.agent_retrieval_live_ab.runner preflight \
+		--output-dir "$(abspath $(OUTPUT))" --run-ref "$(RUN_REF)" \
+		--valid-on "$(or $(VALID_ON),$(shell date +%F))"
+
+agent-retrieval-live-ab-run:
+	@test -n "$(OUTPUT)" || { echo "OUTPUT is required" >&2; exit 2; }
+	@test -n "$(ACKNOWLEDGEMENT)" || { echo "ACKNOWLEDGEMENT is required" >&2; exit 2; }
+	PYTHONPATH=backend $(PY_RUN) python -m evals.agent_retrieval_live_ab.runner live \
+		--run-dir "$(abspath $(OUTPUT))" --acknowledgement "$(ACKNOWLEDGEMENT)"
 
 digital-ip-eval:
 	cd backend && $(PY_RUN) python -m evals.digital_ip.runner --check

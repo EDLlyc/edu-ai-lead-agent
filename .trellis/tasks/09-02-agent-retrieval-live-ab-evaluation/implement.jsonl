@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/agent-workbench.md","reason":"Reuse the bounded Agent loop, strict registry, citation grounding, development-only PostgreSQL and truthful live-model evidence contracts."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply typed boundaries, deterministic versioning, focused checks and the one final quality gate without repeatedly running the full suite."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Keep provider, budget, data-drift and partial-run failures typed, bounded and non-retryable where required."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Record safe model/request/latency/usage metadata without queries, private brand text, provider bodies or credentials."}
+{"file":".trellis/tasks/09-02-agent-retrieval-live-ab-evaluation/research/repository-evidence.md","reason":"Use the inspected plain/enhanced reader seam and existing eval boundaries instead of forking production Agent behavior."}
+{"file":".trellis/tasks/archive/2026-09/09-02-evaluation-next-stage-audit/research/repository-audit.md","reason":"Address the documented live Agent repeated-trial gap while preserving Seed-versus-human-Gold and canonical-versus-live distinctions."}
