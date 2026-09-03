@@ -6,7 +6,7 @@
 `edu-ai-lead-agent` 项目已有能力与招聘证据之间的差距，给出按求职价值、实现成本和优先级排序的
 提升清单。目标不是继续堆功能，而是让招聘者更快地看到、复现并相信候选人的 Agent 工程能力。
 
-## Background and confirmed facts
+## Background and confirmed facts (refreshed 2026-09-03)
 
 - 项目已经具备完整的业务流水线、治理证据、品牌 RAG、LLM 选题重排、图片生成和企业微信交付，
   不是只有 Prompt 的玩具 Demo。
@@ -18,9 +18,15 @@
   provider-free contract eval；仍没有真实 embedding/召回质量数据或跨会话反馈闭环。
 - LLM 选题重排已经具备 fake/Zhipu adapter、严格输出契约、durable audit 和 8/8 provider-free eval；
   近期单次智谱兼容性验证成功，但这不等于系统化模型评测。
-- README 和 case study 已有作品集入口、架构、安全边界、截图和面试讲解；但公开 GitHub 树仍未包含
-  已完成 Workbench，仓库也没有公开 CI、LICENSE、静态 Demo 或一键演示入口。现有
-  `08-17-agent-workbench-public-portfolio` 任务已经规划了这些缺口，但尚未实施。
+- Workbench、case study、真实 loopback fixture 截图、hash manifest、公开简历与复验命令已经进入
+  GitHub；旧评审中的“公开树看不到 Workbench”结论已经失效。但仓库仍无 GitHub Actions、LICENSE、
+  description/topics/homepage、静态 replay 或面向求职者的一条命令式演示入口。
+- 执行治理与固定 Writer--Reviewer 已经落地：角色/任务/Artifact 最小权限、多维预算预留与 exactly-once
+  对账、因果 Trace、observe/enforce、最多一次 code-directed repair 和恢复语义均有代码与测试证据；
+  Reviewer live A/B 仍未形成可用质量结论，不能声称 uplift 或人工一致率。
+- 图片评测已经有唯一智谱 `glm-5v-turbo` 的 120-call live evidence：holdout objective pair accuracy
+  83.33%，同时暴露 OCR/visible-text 0/6 的关键失效。该结果只有 6 个独立 source families、0 人工/
+  外部标签且 non-activating，证明评测与失败归因能力，不证明广义视觉质量或 Agent 规划能力。
 - 当前代码更匹配 Agent 应用工程、AI 平台工程和 Agent 评测岗位；若改投 Agentic RL、SFT/DPO/GRPO
   等算法研究岗，需要独立的训练/研究项目，不能靠给本项目再加几个框架名补齐。
 

@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Verify every Agent capability claim against the executable contract."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Verify capability authorization, durable budget reservation, reconciliation, trace, and artifact claims."}
+{"file": ".trellis/spec/backend/official-account-reviewer.md", "reason": "Verify fixed Writer--Reviewer roles, rollout modes, failure handling, and live-evidence limitations."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Verify image-evaluation metrics and limitations are stated truthfully."}
+{"file": ".trellis/tasks/archive/2026-09/09-02-image-vlm-human-calibration/research/glm-5v-turbo-live-evidence-2026-09-03.md", "reason": "Verify resume metrics against immutable live evidence."}
+{"file": ".trellis/tasks/archive/2026-08/08-17-agent-workbench-public-portfolio/research/public-portfolio-evidence.md", "reason": "Verify public-reproducibility claims against delivered artifacts."}

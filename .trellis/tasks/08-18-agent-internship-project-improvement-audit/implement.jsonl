@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Review current bounded Agent, MCP, trace, and evaluation contracts."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Review runtime budgets, evidence lineage, and safe tool-execution boundaries."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Review current GLM-5V image-evaluation evidence and claim boundaries."}
+{"file": ".trellis/spec/backend/official-account-reviewer.md", "reason": "Review current governed Worker/Reviewer architecture."}
+{"file": ".trellis/tasks/archive/2026-08/08-17-agent-workbench-public-portfolio/research/public-portfolio-evidence.md", "reason": "Compare the now-delivered public portfolio evidence against the older audit."}
