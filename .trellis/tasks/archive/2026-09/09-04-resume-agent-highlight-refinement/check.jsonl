@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/archive/2026-09/08-18-agent-internship-project-improvement-audit/research/project-improvement-audit.md", "reason": "Verify role fit, bullet hierarchy, and public-versus-WIP claim boundaries."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Verify bounded Agent, TypedToolRegistry, MCP, tool calling, and claim-level grounding statements."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Verify execution-governance and recovery terminology against the executable contract."}
+{"file": ".trellis/spec/backend/official-account-reviewer.md", "reason": "Ensure the resume does not imply unproven live Reviewer uplift."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Verify multimodal metrics and the decision not to auto-activate the VLM policy."}
+{"file": ".trellis/tasks/archive/2026-09/09-02-image-vlm-human-calibration/research/glm-5v-turbo-live-evidence-2026-09-03.md", "reason": "Verify all GLM-5V numbers, provider failure, and non-human-label boundary in the source and PDF."}

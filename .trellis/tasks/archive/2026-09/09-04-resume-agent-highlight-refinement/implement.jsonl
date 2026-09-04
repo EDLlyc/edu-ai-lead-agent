@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/archive/2026-09/08-18-agent-internship-project-improvement-audit/research/project-improvement-audit.md", "reason": "Use the previously audited Agent-internship positioning, ranked highlights, and public claim boundaries."}
+{"file": ".trellis/spec/backend/agent-workbench.md", "reason": "Keep TypedToolRegistry, bounded Agent loop, MCP, tool calling, and grounding wording aligned with the implemented contracts."}
+{"file": ".trellis/spec/backend/execution-governance.md", "reason": "Keep Capability Gateway, execution budget, trace, and recovery terminology accurate."}
+{"file": ".trellis/spec/backend/official-account-reviewer.md", "reason": "Describe the fixed Writer--Reviewer protocol without claiming unproven live uplift."}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Keep the multimodal evaluation design and non-activation decision within the frozen evidence boundary."}
+{"file": ".trellis/tasks/archive/2026-09/09-02-image-vlm-human-calibration/research/glm-5v-turbo-live-evidence-2026-09-03.md", "reason": "Source exact GLM-5V live attempt counts, holdout results, OCR failures, and label limitations."}
