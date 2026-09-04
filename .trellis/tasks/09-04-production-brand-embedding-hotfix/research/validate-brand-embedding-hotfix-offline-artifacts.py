@@ -378,6 +378,9 @@ def validate_baseline(path: Path) -> dict[str, object]:
         "current_image_reference",
         "current_image_revision",
         "primary_env_sha256",
+        "primary_env_mode",
+        "primary_env_uid",
+        "primary_env_gid",
         "release_env_sha256",
         "legacy_release_commit_sha256",
         "legacy_release_commit_mode",
@@ -390,8 +393,11 @@ def validate_baseline(path: Path) -> dict[str, object]:
     }
     if not isinstance(payload, dict) or set(payload) != keys:
         fail("production baseline keys changed")
+    schema_version = payload["schema_version"]
     if (
-        payload["schema_version"] != SCHEMA_VERSION
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != SCHEMA_VERSION
         or payload["current_commit"] != PRODUCTION_COMMIT
         or payload["current_alembic_head"] != ALEMBIC_HEAD
         or payload["current_image_revision"] != PRODUCTION_COMMIT
@@ -410,11 +416,28 @@ def validate_baseline(path: Path) -> dict[str, object]:
     ):
         if not isinstance(payload[key], str) or SHA256.fullmatch(payload[key]) is None:
             fail("production environment checksum changed")
+    primary_identity = (
+        payload["primary_env_mode"],
+        payload["primary_env_uid"],
+        payload["primary_env_gid"],
+    )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int)
+        for value in primary_identity
+    ) or primary_identity != (0o600, 1000, 1001):
+        fail("primary environment baseline identity changed")
+    legacy_identity = (
+        payload["legacy_release_commit_mode"],
+        payload["legacy_release_commit_uid"],
+        payload["legacy_release_commit_gid"],
+    )
     if (
         payload["legacy_release_commit_sha256"] not in LEGACY_PRODUCTION_COMMIT_HASHES
-        or payload["legacy_release_commit_mode"] != 0o600
-        or payload["legacy_release_commit_uid"] != 1000
-        or payload["legacy_release_commit_gid"] != 1001
+        or any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in legacy_identity
+        )
+        or legacy_identity != (0o600, 1000, 1001)
     ):
         fail("legacy release marker baseline identity changed")
     services = sorted((*INFRA_SERVICES, *APP_SERVICES))

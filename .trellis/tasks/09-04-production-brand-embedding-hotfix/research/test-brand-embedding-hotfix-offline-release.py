@@ -211,6 +211,9 @@ def _baseline(terminal_count: int = 18) -> dict[str, object]:
         "current_image_reference": f"{REPOSITORY}@sha256:{'c' * 64}",
         "current_image_revision": VALIDATOR.PRODUCTION_COMMIT,
         "primary_env_sha256": "1" * 64,
+        "primary_env_mode": 0o600,
+        "primary_env_uid": 1000,
+        "primary_env_gid": 1001,
         "release_env_sha256": "2" * 64,
         "legacy_release_commit_sha256": _digest(
             VALIDATOR.LEGACY_PRODUCTION_COMMIT + b"\n"
@@ -438,12 +441,24 @@ def test_terminal_baseline_accepts_more_than_diagnosed_minimum(tmp_path: Path) -
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
+        ("schema_bool", "identity"),
+        ("schema_float", "identity"),
         ("service", "service topology"),
         ("image", "identity"),
         ("env", "environment checksum"),
         ("head", "identity"),
         ("terminal", "effect counters"),
         ("legacy", "legacy release marker"),
+        ("legacy_type", "legacy release marker"),
+        ("primary_mode", "primary environment baseline identity"),
+        ("primary_owner", "primary environment baseline identity"),
+        ("primary_group", "primary environment baseline identity"),
+        ("primary_mode_bool", "primary environment baseline identity"),
+        ("primary_mode_float", "primary environment baseline identity"),
+        ("primary_uid_bool", "primary environment baseline identity"),
+        ("primary_uid_float", "primary environment baseline identity"),
+        ("primary_gid_bool", "primary environment baseline identity"),
+        ("primary_gid_float", "primary environment baseline identity"),
         ("pending", "effect counters"),
         ("restart", "restart counts"),
     ],
@@ -453,7 +468,11 @@ def test_production_baseline_drift_is_rejected(
 ) -> None:
     stage = _stage(tmp_path)
     baseline = json.loads((stage / "production-baseline.json").read_bytes())
-    if mutation == "service":
+    if mutation == "schema_bool":
+        baseline["schema_version"] = True
+    elif mutation == "schema_float":
+        baseline["schema_version"] = 1.0
+    elif mutation == "service":
         baseline["running_services"].pop()
     elif mutation == "image":
         baseline["current_image_reference"] = f"{REPOSITORY}:mutable"
@@ -465,6 +484,26 @@ def test_production_baseline_drift_is_rejected(
         baseline["effect_counts"]["copy_provider_unavailable_terminal"] = 17
     elif mutation == "legacy":
         baseline["legacy_release_commit_sha256"] = _digest(b"drifted\n")
+    elif mutation == "legacy_type":
+        baseline["legacy_release_commit_uid"] = 1000.0
+    elif mutation == "primary_mode":
+        baseline["primary_env_mode"] = 0o640
+    elif mutation == "primary_owner":
+        baseline["primary_env_uid"] = 0
+    elif mutation == "primary_group":
+        baseline["primary_env_gid"] = 0
+    elif mutation == "primary_mode_bool":
+        baseline["primary_env_mode"] = True
+    elif mutation == "primary_mode_float":
+        baseline["primary_env_mode"] = float(0o600)
+    elif mutation == "primary_uid_bool":
+        baseline["primary_env_uid"] = True
+    elif mutation == "primary_uid_float":
+        baseline["primary_env_uid"] = 1000.0
+    elif mutation == "primary_gid_bool":
+        baseline["primary_env_gid"] = True
+    elif mutation == "primary_gid_float":
+        baseline["primary_env_gid"] = 1001.0
     elif mutation == "pending":
         baseline["effect_counts"]["pending_wecom_jobs"] = 1
     else:
@@ -554,6 +593,13 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
     assert "copy_provider_unavailable" in capture
     assert "pending_wecom_jobs" in capture
     assert "current_image_reference" in capture
+    assert "primary_env_mode" in capture
+    assert "primary_env_uid" in capture
+    assert "primary_env_gid" in capture
+    assert 'getattr(os, "O_NOFOLLOW", 0)' in capture
+    assert "primary environment changed during baseline capture" in capture
+    operator = OPERATOR_PATH.read_text(encoding="utf-8")
+    assert 'getattr(os, "O_NOFOLLOW", 0)' in operator
     for forbidden in ("INSERT ", "UPDATE ", "DELETE ", "curl ", "wget "):
         assert forbidden not in capture
 
@@ -627,6 +673,73 @@ def test_capture_accepts_documented_stale_legacy_marker_and_rejects_drift(
     )
     assert rejected.returncode != 0
     assert "legacy release marker differs" in rejected.stderr
+
+
+@pytest.mark.parametrize(
+    ("mode", "uid", "gid", "accepted"),
+    [
+        (0o600, 1000, 1001, True),
+        (0o640, 1000, 1001, False),
+        (0o600, 0, 1001, False),
+        (0o600, 1000, 0, False),
+    ],
+)
+def test_capture_binds_reviewed_primary_environment_metadata(
+    tmp_path: Path, mode: int, uid: int, gid: int, accepted: bool
+) -> None:
+    app = tmp_path / "app"
+    app.mkdir()
+    primary_env = app / ".env"
+    primary_env.write_text("secret=value\n", encoding="utf-8")
+    primary_env.chmod(mode)
+    os.chown(primary_env, uid, gid)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BRAND_HOTFIX_CAPTURE_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_CAPTURE_TEST_APP_DIR": str(app),
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {CAPTURE_PATH!s}\nvalidate_primary_environment"],
+        env=environment,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert (result.returncode == 0) is accepted
+    if not accepted:
+        assert "reviewed stable physical mode and owner" in result.stderr
+
+
+def test_capture_rejects_linked_primary_environment(tmp_path: Path) -> None:
+    app = tmp_path / "app"
+    app.mkdir()
+    target = tmp_path / "primary.env"
+    target.write_text("secret=value\n", encoding="utf-8")
+    target.chmod(0o600)
+    os.chown(target, 1000, 1001)
+    (app / ".env").symlink_to(target)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BRAND_HOTFIX_CAPTURE_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_CAPTURE_TEST_APP_DIR": str(app),
+        }
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", f"source {CAPTURE_PATH!s}\nvalidate_primary_environment"],
+        env=environment,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "reviewed stable physical mode and owner" in result.stderr
 
 
 @pytest.mark.parametrize("failure", ["", "fetch", "ref", "ancestor"])
@@ -767,6 +880,146 @@ def test_operator_rejects_repeat_and_expired_cutoff(tmp_path: Path) -> None:
     assert result.returncode != 0
 
 
+@pytest.mark.parametrize("mutation", ["mode", "owner", "group", "bytes"])
+def test_operator_rejects_primary_environment_drift(
+    tmp_path: Path, mutation: str
+) -> None:
+    app = tmp_path / "app"
+    app.mkdir(parents=True)
+    primary_env = app / ".env"
+    primary_env.write_text("safe\n", encoding="utf-8")
+    primary_env.chmod(0o600)
+    os.chown(primary_env, 1000, 1001)
+    baseline = _baseline()
+    baseline["primary_env_sha256"] = _digest(b"safe\n")
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(_json_bytes(baseline))
+    if mutation == "mode":
+        primary_env.chmod(0o640)
+    elif mutation == "owner":
+        os.chown(primary_env, 0, 1001)
+    elif mutation == "group":
+        os.chown(primary_env, 1000, 0)
+    else:
+        primary_env.write_text("drifted\n", encoding="utf-8")
+
+    result = _source_operator_shell(
+        tmp_path,
+        f"baseline_json={baseline_path!s}\nprimary_env_matches_baseline",
+    )
+
+    assert result.returncode != 0
+
+
+def test_primary_environment_rollback_restores_bytes_mode_and_owner(
+    tmp_path: Path,
+) -> None:
+    app = tmp_path / "app"
+    backup = tmp_path / "backup"
+    app.mkdir(parents=True)
+    backup.mkdir()
+    expected = b"safe\n"
+    saved_env = backup / "env.before"
+    saved_env.write_bytes(expected)
+    saved_env.chmod(0o600)
+    os.chown(saved_env, 1000, 1001)
+    primary_env = app / ".env"
+    primary_env.write_bytes(b"drifted\n")
+    primary_env.chmod(0o644)
+    os.chown(primary_env, 0, 0)
+    baseline = _baseline()
+    baseline["primary_env_sha256"] = _digest(expected)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(_json_bytes(baseline))
+
+    result = _source_operator_shell(
+        tmp_path,
+        "\n".join(
+            (
+                f"baseline_json={baseline_path!s}",
+                f"backup_dir={backup!s}",
+                "restore_primary_environment_from_backup",
+            )
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert primary_env.read_bytes() == expected
+    assert primary_env.stat().st_mode & 0o777 == 0o600
+    assert (primary_env.stat().st_uid, primary_env.stat().st_gid) == (1000, 1001)
+
+
+def test_primary_environment_rollback_rejects_invalid_backup(
+    tmp_path: Path,
+) -> None:
+    app = tmp_path / "app"
+    backup = tmp_path / "backup"
+    app.mkdir(parents=True)
+    backup.mkdir()
+    saved_env = backup / "env.before"
+    saved_env.write_bytes(b"safe\n")
+    saved_env.chmod(0o640)
+    os.chown(saved_env, 1000, 1001)
+    primary_env = app / ".env"
+    primary_env.write_bytes(b"drifted\n")
+    primary_env.chmod(0o644)
+    baseline = _baseline()
+    baseline["primary_env_sha256"] = _digest(b"safe\n")
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(_json_bytes(baseline))
+
+    result = _source_operator_shell(
+        tmp_path,
+        "\n".join(
+            (
+                f"baseline_json={baseline_path!s}",
+                f"backup_dir={backup!s}",
+                "restore_primary_environment_from_backup",
+            )
+        ),
+    )
+
+    assert result.returncode != 0
+    assert primary_env.read_bytes() == b"drifted\n"
+
+
+def test_primary_environment_rollback_cleans_temporary_on_atomic_move_failure(
+    tmp_path: Path,
+) -> None:
+    app = tmp_path / "app"
+    backup = tmp_path / "backup"
+    app.mkdir(parents=True)
+    backup.mkdir()
+    expected = b"safe\n"
+    saved_env = backup / "env.before"
+    saved_env.write_bytes(expected)
+    saved_env.chmod(0o600)
+    os.chown(saved_env, 1000, 1001)
+    primary_env = app / ".env"
+    primary_env.write_bytes(b"drifted\n")
+    primary_env.chmod(0o644)
+    baseline = _baseline()
+    baseline["primary_env_sha256"] = _digest(expected)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(_json_bytes(baseline))
+
+    result = _source_operator_shell(
+        tmp_path,
+        "\n".join(
+            (
+                f"baseline_json={baseline_path!s}",
+                f"backup_dir={backup!s}",
+                "mv() { return 23; }",
+                "restore_primary_environment_from_backup",
+            )
+        ),
+    )
+
+    assert result.returncode != 0
+    assert primary_env.read_bytes() == b"drifted\n"
+    assert not list(backup.glob(".primary-env-restore.*"))
+
+
 def test_evidence_records_captured_terminal_count_without_fixed_literal(
     tmp_path: Path,
 ) -> None:
@@ -796,6 +1049,8 @@ def _activation_harness(
     app = tmp_path / "app"
     app.mkdir(parents=True)
     (app / ".env").write_text("safe\n", encoding="utf-8")
+    (app / ".env").chmod(0o600)
+    os.chown(app / ".env", 1000, 1001)
     (app / ".release-commit").write_text(
         VALIDATOR.PRODUCTION_COMMIT + "\n", encoding="utf-8"
     )
@@ -810,6 +1065,7 @@ def _activation_harness(
         else "write_candidate_release_env() { printf 'release-env\\n' >>\"$EVENTS\"; }"
     )
     compose_failure = "return 19" if failure == "migration" else "return 0"
+    primary_env_sha256 = _digest(b"safe\n")
     body = f"""
 EVENTS={events!s}
 release_commit={RELEASE_COMMIT}
@@ -822,6 +1078,7 @@ prepare_roots_and_attempt() {{
   chmod 700 "$BACKUP_ROOT"
   backup_dir="$BACKUP_ROOT/backup"
   mkdir -p "$backup_dir"
+  cp -a "$PRIMARY_ENV" "$backup_dir/env.before"
   cp -a "$RELEASE_MARKER" "$backup_dir/release-commit.before"
   cp -a "$LEGACY_RELEASE_MARKER" "$backup_dir/legacy-release-commit.before"
   printf 'prepare\\n' >>"$EVENTS"
@@ -830,9 +1087,16 @@ prepare_candidate_source() {{ printf 'candidate-source\\n' >>"$EVENTS"; }}
 quiesce_and_backup() {{ recovery_armed=1; printf 'quiesce-backup\\n' >>"$EVENTS"; }}
 verify_quiesced_baseline() {{
   printf 'quiesced-baseline\\n' >>"$EVENTS"
-  [[ {failure!r} != quiesced_drift ]]
+  [[ {failure!r} != quiesced_drift ]] || return 1
+  [[ {failure!r} != quiesced_metadata_drift ]] || chmod 640 "$PRIMARY_ENV"
+  primary_env_matches_baseline
 }}
-activate_source() {{ source_activated=1; write_commit_marker "$RELEASE_MARKER" "$release_commit"; write_commit_marker "$LEGACY_RELEASE_MARKER" "$release_commit"; printf 'activate-source\\n' >>"$EVENTS"; }}
+activate_source() {{
+  source_activated=1
+  write_commit_marker "$RELEASE_MARKER" "$release_commit"
+  write_commit_marker "$LEGACY_RELEASE_MARKER" "$release_commit"
+  printf 'activate-source\\n' >>"$EVENTS"
+}}
 verify_installed_source() {{ printf 'verify-source\\n' >>"$EVENTS"; }}
 {fail_function}
 compose() {{
@@ -845,14 +1109,23 @@ compose() {{
 database_head() {{ printf '%s\\n' "$ALEMBIC_HEAD"; }}
 wait_for_candidate() {{ printf 'wait-ready\\n' >>"$EVENTS"; }}
 require_safe_window() {{ printf 'window\\n' >>"$EVENTS"; }}
-effect_counts() {{ [[ {failure!r} == counter_drift ]] && printf '24:0\\n' || printf '23:0\\n'; }}
+effect_counts() {{
+  [[ {failure!r} != final_metadata_drift ]] || chmod 640 "$PRIMARY_ENV"
+  [[ {failure!r} == counter_drift ]] && printf '24:0\\n' || printf '23:0\\n'
+}}
 baseline_effect_counts() {{ printf '23:0\\n'; }}
 sha256sum() {{ printf '%s  %s\\n' "{"1" * 64}" "$1"; }}
-json_string() {{ printf '%s\\n' "{"1" * 64}"; }}
+json_string() {{ printf '%s\\n' "{primary_env_sha256}"; }}
+baseline_primary_identity() {{ printf '600:1000:1001\\n'; }}
 release_reference() {{ printf '%s\\n' "$candidate_reference"; }}
 docker() {{ printf '%s\\n' "$release_commit"; }}
 write_evidence() {{ printf 'evidence\\n' >>"$EVENTS"; }}
-restore_previous_state() {{ cp -a "$backup_dir/release-commit.before" "$RELEASE_MARKER"; cp -a "$backup_dir/legacy-release-commit.before" "$LEGACY_RELEASE_MARKER"; printf 'restore-previous\\n' >>"$EVENTS"; }}
+restore_previous_state() {{
+  cp -a "$backup_dir/env.before" "$PRIMARY_ENV"
+  cp -a "$backup_dir/release-commit.before" "$RELEASE_MARKER"
+  cp -a "$backup_dir/legacy-release-commit.before" "$LEGACY_RELEASE_MARKER"
+  printf 'restore-previous\\n' >>"$EVENTS"
+}}
 stop_writers_for_incident() {{ printf 'stop-incident\\n' >>"$EVENTS"; }}
 run_activation
 """
@@ -882,7 +1155,15 @@ def test_fake_operator_success_runs_one_migration_and_no_effect_command(
 
 
 @pytest.mark.parametrize(
-    "failure", ["quiesced_drift", "pre_migration", "migration", "counter_drift"]
+    "failure",
+    [
+        "quiesced_drift",
+        "quiesced_metadata_drift",
+        "pre_migration",
+        "migration",
+        "counter_drift",
+        "final_metadata_drift",
+    ],
 )
 def test_fake_operator_restores_previous_state_when_schema_is_unchanged(
     tmp_path: Path, failure: str
@@ -897,9 +1178,13 @@ def test_fake_operator_restores_previous_state_when_schema_is_unchanged(
     assert legacy_marker.read_bytes() == VALIDATOR.LEGACY_PRODUCTION_COMMIT + b"\n"
     assert legacy_marker.stat().st_mode & 0o777 == 0o600
     assert (legacy_marker.stat().st_uid, legacy_marker.stat().st_gid) == (1000, 1001)
-    if failure in {"quiesced_drift", "pre_migration"}:
+    primary_env = tmp_path / "app" / ".env"
+    assert primary_env.read_text(encoding="utf-8") == "safe\n"
+    assert primary_env.stat().st_mode & 0o777 == 0o600
+    assert (primary_env.stat().st_uid, primary_env.stat().st_gid) == (1000, 1001)
+    if failure in {"quiesced_drift", "quiesced_metadata_drift", "pre_migration"}:
         assert "<backend-migrate>" not in events
-    if failure == "quiesced_drift":
+    if failure in {"quiesced_drift", "quiesced_metadata_drift"}:
         assert "activate-source" not in events
     else:
         if failure != "pre_migration":

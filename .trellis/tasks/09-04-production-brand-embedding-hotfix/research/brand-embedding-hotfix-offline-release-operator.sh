@@ -34,6 +34,7 @@ readonly PRODUCTION_COMMIT=40e4dec0ae82569fc798355d4515ab0009697c6f
 readonly LEGACY_PRODUCTION_COMMIT=7a45a65
 readonly ALEMBIC_HEAD=20260901_0042
 readonly ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+readonly PRIMARY_ENV_IDENTITY=600:1000:1001
 readonly OPERATOR_NAME=brand-embedding-hotfix-offline-release-operator.sh
 readonly VALIDATOR_NAME=validate-brand-embedding-hotfix-offline-artifacts.py
 readonly -a PROFILES=(
@@ -151,6 +152,76 @@ if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for va
     raise SystemExit(1)
 print(f"{values[0]:o}:{values[1]}:{values[2]}")
 PY
+}
+
+baseline_primary_identity() {
+  python3 - "$baseline_json" "$PRIMARY_ENV_IDENTITY" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+values = [
+    payload["primary_env_mode"],
+    payload["primary_env_uid"],
+    payload["primary_env_gid"],
+]
+if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+    raise SystemExit(1)
+identity = f"{values[0]:o}:{values[1]}:{values[2]}"
+if identity != sys.argv[2]:
+    raise SystemExit(1)
+print(identity)
+PY
+}
+
+primary_environment_fingerprint() {
+  local path=${1:-$PRIMARY_ENV}
+  python3 - "$path" <<'PY'
+import hashlib
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+try:
+    descriptor = os.open(path, flags)
+except OSError:
+    raise SystemExit(1) from None
+try:
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode):
+        raise SystemExit(1)
+    digest = hashlib.sha256()
+    while chunk := os.read(descriptor, 1024 * 1024):
+        digest.update(chunk)
+    after = os.fstat(descriptor)
+    observed = os.lstat(path)
+    stable_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+        or not stat.S_ISREG(observed.st_mode)
+        or any(getattr(after, field) != getattr(observed, field) for field in stable_fields)
+    ):
+        raise SystemExit(1)
+    print(
+        f"{digest.hexdigest()}:{stat.S_IMODE(after.st_mode):o}"
+        f":{after.st_uid}:{after.st_gid}"
+    )
+finally:
+    os.close(descriptor)
+PY
+}
+
+primary_env_matches_baseline() {
+  local path=${1:-$PRIMARY_ENV} expected_sha expected_identity expected_fingerprint
+  local observed_fingerprint
+  expected_sha=$(json_string "$baseline_json" primary_env_sha256) || return 1
+  expected_identity=$(baseline_primary_identity) || return 1
+  expected_fingerprint="${expected_sha}:${expected_identity}"
+  observed_fingerprint=$(primary_environment_fingerprint "$path") || return 1
+  [[ "$observed_fingerprint" == "$expected_fingerprint" ]]
 }
 
 marker_equals() {
@@ -385,8 +456,8 @@ verify_service_set() {
 }
 
 verify_baseline() {
-  require_mode_0600_file "$PRIMARY_ENV" \
-    || die 'primary environment is not a physical root-owned mode-0600 file'
+  primary_env_matches_baseline \
+    || die 'primary environment bytes, mode, or owner drifted'
   require_mode_0600_file "$RELEASE_ENV" \
     || die 'release environment is not a physical root-owned mode-0600 file'
   require_mode_0600_file "$RELEASE_MARKER" \
@@ -536,6 +607,8 @@ prepare_roots_and_attempt() {
   cp -a "$RELEASE_ENV" "$backup_dir/release.env.before"
   cp -a "$RELEASE_MARKER" "$backup_dir/release-commit.before"
   cp -a "$LEGACY_RELEASE_MARKER" "$backup_dir/legacy-release-commit.before"
+  primary_env_matches_baseline "$backup_dir/env.before" \
+    || die 'primary environment backup did not preserve bytes, mode, and owner'
 }
 
 prepare_candidate_source() {
@@ -589,7 +662,7 @@ quiesce_and_backup() {
 }
 
 verify_quiesced_baseline() {
-  require_mode_0600_file "$PRIMARY_ENV" \
+  primary_env_matches_baseline \
     && require_mode_0600_file "$RELEASE_ENV" \
     && require_mode_0600_file "$RELEASE_MARKER" \
     || return 1
@@ -701,6 +774,22 @@ write_candidate_release_env() {
   mv -T "$temporary" "$RELEASE_ENV"
 }
 
+restore_primary_environment_from_backup() {
+  local source="${backup_dir}/env.before" temporary
+  primary_env_matches_baseline "$source" || return 1
+  primary_env_matches_baseline && return 0
+  temporary=$(mktemp "${backup_dir}/.primary-env-restore.XXXXXX") || return 1
+  if ! cp -- "$source" "$temporary" \
+      || ! chown 1000:1001 "$temporary" \
+      || ! chmod 600 "$temporary" \
+      || ! primary_env_matches_baseline "$temporary" \
+      || ! mv -T "$temporary" "$PRIMARY_ENV"; then
+    rm -f -- "$temporary" >/dev/null 2>&1 || true
+    return 1
+  fi
+  primary_env_matches_baseline
+}
+
 restore_previous_state() {
   local name
   compose stop -t 30 "${STOP_ORDER[@]}" >/dev/null 2>&1 || return 1
@@ -716,7 +805,7 @@ restore_previous_state() {
       mv -T "$backup_dir/source.before/$name" "$APP_DIR/$name" || return 1
     done <"$backup_dir/activation-started"
   fi
-  cp -a "$backup_dir/env.before" "$PRIMARY_ENV" || return 1
+  restore_primary_environment_from_backup || return 1
   cp -a "$backup_dir/release.env.before" "$RELEASE_ENV" || return 1
   cp -a "$backup_dir/release-commit.before" "$RELEASE_MARKER" || return 1
   cp -a "$backup_dir/legacy-release-commit.before" "$LEGACY_RELEASE_MARKER" || return 1
@@ -727,8 +816,7 @@ restore_previous_state() {
     (( $(date +%s) < deadline )) || return 1
     sleep 2
   done
-  [[ "$(sha256sum "$PRIMARY_ENV" | awk '{print $1}')" == \
-      "$(json_string "$baseline_json" primary_env_sha256)" ]] || return 1
+  primary_env_matches_baseline || return 1
   [[ "$(sha256sum "$RELEASE_ENV" | awk '{print $1}')" == \
       "$(json_string "$baseline_json" release_env_sha256)" ]] || return 1
   [[ "$(sha256sum "$LEGACY_RELEASE_MARKER" | awk '{print $1}')" == \
@@ -814,17 +902,20 @@ run_activation() {
   activate_source
   verify_installed_source
   write_candidate_release_env
+  primary_env_matches_baseline \
+    || die 'primary environment drifted immediately before migration'
   migration_attempted=1
   compose run --rm --no-deps -T backend-migrate </dev/null
   [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || die 'database head changed after migration'
+  primary_env_matches_baseline \
+    || die 'primary environment drifted immediately before service start'
   compose up -d --no-build --no-deps "${APP_SERVICES[@]}"
   wait_for_candidate || die 'candidate services did not converge within the readiness bound'
   require_safe_window
   [[ "$(effect_counts)" == "$(baseline_effect_counts)" ]] \
     || die 'activation changed a protected effect counter'
-  [[ "$(sha256sum "$PRIMARY_ENV" | awk '{print $1}')" == \
-      "$(json_string "$baseline_json" primary_env_sha256)" ]] \
-    || die 'activation changed primary environment bytes'
+  primary_env_matches_baseline \
+    || die 'activation changed primary environment bytes, mode, or owner'
   [[ "$(release_reference)" == "$candidate_reference" ]] \
     || die 'candidate RepoDigest did not survive release environment installation'
   verify_candidate_identity_markers \

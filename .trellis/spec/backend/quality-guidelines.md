@@ -738,6 +738,15 @@ release artifacts, or production deployment automation change.
   installing candidate source. Candidate source must contain every managed path present in that
   captured production manifest. Any drift enters the reviewed recovery path; it is never accepted
   by refreshing evidence after writers stop.
+- Protected configuration files do not have to share one owner: the primary `.env` may intentionally
+  belong to the application account while `.release.env` remains root-owned. The task-specific
+  capture policy must first allowlist the exact physical-file mode/UID/GID, then persist those values
+  with the byte hash. Compute each fingerprint through one `O_NOFOLLOW` descriptor with
+  `fstat -> read -> fstat`, and confirm `lstat(path)` still names the same inode; separate `stat` and
+  checksum commands can otherwise create a mixed snapshot. Repeat this stable fingerprint directly
+  before migration and service start. Rollback writes a protected same-filesystem temporary file,
+  applies the bound mode/owner, verifies it, and atomically replaces the target; failed replacement
+  must clean the temporary file without weakening the original.
 - Snapshot both the primary and release environment before the first release mutation, even when
   source activation has not started. A pre-migration failure restores both environments and any
   activated source, restarts the complete previous application set, verifies the captured image
@@ -811,6 +820,7 @@ release artifacts, or production deployment automation change.
 | Existing `.release.env` uses a tag, is not attached to the captured image, or resolves elsewhere | Reject before quiescence. Correct it to the proven current RepoDigest while services remain active, recapture the exact baseline, and require a new one-shot candidate identity. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Locked baseline differs from pre-lock evidence, or protected state/source/effect counters drift after quiescence | Reject before activation and run the reviewed pre-migration recovery path; never recapture a more convenient baseline after writers stop |
+| Protected `.env` bytes, mode, UID, GID, inode, or path type changes during one fingerprint or before migration/service start | Fail closed and recover the captured file metadata; never combine checksum and metadata from separate path opens |
 | Candidate source omits a managed path from the captured production source manifest | Reject before source installation; the candidate cannot silently delete an unreviewed production path |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Pre-migration restoration succeeds but the EXIT trap continues into incident shutdown | Regression failure; return immediately after bounded previous-service verification. |
@@ -937,6 +947,11 @@ release artifacts, or production deployment automation change.
   drift at each boundary, require rollback, and reject candidate manifests that omit any captured
   production path. Temporary baseline/probe evidence must be EXIT-cleaned on early failure without
   printing its contents.
+- Protected-environment tests must cover strict integer schema fields, the reviewed non-root
+  application owner, wrong mode/UID/GID, symlink/path replacement, same-read inode drift, invalid
+  backup metadata, migration/start-adjacent drift, atomic replacement failure, and final-gate
+  rollback. Assert restoration of both bytes and exact mode/UID/GID and cleanup of every failed
+  temporary replacement.
 - Readiness/continuation regressions must prove multiple `starting` observations can converge within
   the bound and that the incident continuation rejects runtime/head/cutoff drift, existing jobs,
   existing worker/volumes, repeat invocation, migration commands, and publish/send surfaces.

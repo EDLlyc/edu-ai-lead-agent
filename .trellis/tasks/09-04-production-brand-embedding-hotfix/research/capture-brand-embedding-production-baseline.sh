@@ -21,6 +21,7 @@ readonly COMPOSE_PROJECT=edu-ai-lead-agent
 readonly PRODUCTION_COMMIT=40e4dec0ae82569fc798355d4515ab0009697c6f
 readonly LEGACY_PRODUCTION_COMMIT=7a45a65
 readonly ALEMBIC_HEAD=20260901_0042
+readonly PRIMARY_ENV_IDENTITY=600:1000:1001
 readonly -a PROFILES=(
   --profile governance
   --profile content
@@ -80,6 +81,51 @@ compose() {
 require_mode_0600_file() {
   local path=$1
   [[ -f "$path" && ! -L "$path" && "$(stat -c '%a:%u:%g' "$path")" == 600:0:0 ]]
+}
+
+primary_environment_fingerprint() {
+  python3 - "$PRIMARY_ENV" "$PRIMARY_ENV_IDENTITY" <<'PY'
+import hashlib
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+expected_identity = sys.argv[2]
+flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+try:
+    descriptor = os.open(path, flags)
+except OSError:
+    raise SystemExit(1) from None
+try:
+    before = os.fstat(descriptor)
+    identity = f"{stat.S_IMODE(before.st_mode):o}:{before.st_uid}:{before.st_gid}"
+    if not stat.S_ISREG(before.st_mode) or identity != expected_identity:
+        raise SystemExit(1)
+    digest = hashlib.sha256()
+    while chunk := os.read(descriptor, 1024 * 1024):
+        digest.update(chunk)
+    after = os.fstat(descriptor)
+    observed = os.lstat(path)
+    stable_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+        or not stat.S_ISREG(observed.st_mode)
+        or any(getattr(after, field) != getattr(observed, field) for field in stable_fields)
+    ):
+        raise SystemExit(1)
+    print(
+        f"{digest.hexdigest()}\t{stat.S_IMODE(after.st_mode):o}"
+        f"\t{after.st_uid}\t{after.st_gid}"
+    )
+finally:
+    os.close(descriptor)
+PY
+}
+
+validate_primary_environment() {
+  primary_environment_fingerprint >/dev/null \
+    || die 'primary environment must match the reviewed stable physical mode and owner'
 }
 
 validate_legacy_release_marker() {
@@ -221,8 +267,10 @@ main() {
   done
   [[ "$output" == /* && "$output" != */ && ! -e "$output" && ! -L "$output" ]] \
     || die 'output must be an absent absolute path'
-  require_mode_0600_file "$PRIMARY_ENV" \
-    || die 'primary environment must be a physical root-owned mode-0600 file'
+  local primary_env_fingerprint primary_env_fingerprint_after
+  local primary_env_sha256 primary_env_mode primary_env_uid primary_env_gid
+  primary_env_fingerprint=$(primary_environment_fingerprint) \
+    || die 'primary environment must match the reviewed stable physical mode and owner'
   require_mode_0600_file "$RELEASE_ENV" \
     || die 'release environment must be a physical root-owned mode-0600 file'
   require_mode_0600_file "$RELEASE_MARKER" \
@@ -282,10 +330,16 @@ main() {
   source_json=$(mktemp "$(dirname -- "$output")/.brand-hotfix-source.XXXXXX")
   rm -f -- "$source_json"
   capture_source_manifest "$source_json"
+  primary_env_fingerprint_after=$(primary_environment_fingerprint) \
+    || die 'primary environment changed during baseline capture'
+  [[ "$primary_env_fingerprint_after" == "$primary_env_fingerprint" ]] \
+    || die 'primary environment changed during baseline capture'
+  IFS=$'\t' read -r primary_env_sha256 primary_env_mode primary_env_uid primary_env_gid \
+    <<<"$primary_env_fingerprint"
   temporary=$(mktemp "$(dirname -- "$output")/.brand-hotfix-baseline.XXXXXX")
   python3 - "$temporary" "$source_json" "$current_commit" "$head" "$image_id" \
     "$release_reference" "$revision" \
-    "$(sha256sum "$PRIMARY_ENV" | awk '{print $1}')" \
+    "$primary_env_sha256" "$primary_env_mode" "$primary_env_uid" "$primary_env_gid" \
     "$(sha256sum "$RELEASE_ENV" | awk '{print $1}')" \
     "$(sha256sum "$LEGACY_RELEASE_MARKER" | awk '{print $1}')" \
     "$(stat -c '%a' "$LEGACY_RELEASE_MARKER")" \
@@ -305,6 +359,9 @@ import sys
     image_reference,
     revision,
     primary_env,
+    primary_env_mode,
+    primary_env_uid,
+    primary_env_gid,
     release_env,
     legacy_release_commit,
     legacy_release_commit_mode,
@@ -349,6 +406,9 @@ payload = {
     "current_image_reference": image_reference,
     "current_image_revision": revision,
     "primary_env_sha256": primary_env,
+    "primary_env_mode": int(primary_env_mode, 8),
+    "primary_env_uid": int(primary_env_uid),
+    "primary_env_gid": int(primary_env_gid),
     "release_env_sha256": release_env,
     "legacy_release_commit_sha256": legacy_release_commit,
     "legacy_release_commit_mode": int(legacy_release_commit_mode, 8),
