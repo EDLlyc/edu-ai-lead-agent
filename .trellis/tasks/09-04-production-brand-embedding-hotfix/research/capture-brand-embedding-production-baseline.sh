@@ -22,6 +22,8 @@ readonly PRODUCTION_COMMIT=40e4dec0ae82569fc798355d4515ab0009697c6f
 readonly LEGACY_PRODUCTION_COMMIT=7a45a65
 readonly ALEMBIC_HEAD=20260901_0042
 readonly PRIMARY_ENV_IDENTITY=600:1000:1001
+readonly BUSINESS_TIMEZONE=Asia/Shanghai
+readonly CONTENT_MAX_ATTEMPTS=3
 readonly -a PROFILES=(
   --profile governance
   --profile content
@@ -224,7 +226,19 @@ with os.fdopen(fd, "w", encoding="utf-8") as stream:
 PY
 }
 
+current_business_date() {
+  python3 - "$BUSINESS_TIMEZONE" <<'PY'
+from datetime import datetime
+import sys
+from zoneinfo import ZoneInfo
+
+print(datetime.now(ZoneInfo(sys.argv[1])).date().isoformat())
+PY
+}
+
 effect_counts() {
+  local business_date=$1
+  [[ "$business_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
   compose exec -T postgres sh -eu -c '
     psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
       SELECT
@@ -241,12 +255,73 @@ effect_counts() {
         (SELECT count(*) FROM wechat_mp_draft_jobs)::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_items)::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_attempts)::text || '\'':'\'' ||
-        (SELECT count(*) FROM copy_generation_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date = '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''retry_scheduled'\'')
+            AND job.available_at <= statement_timestamp()
+            AND job.attempt_count < $2::integer)::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs WHERE status = '\''running'\'')::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date = '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''running'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date > '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM wecom_delivery_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''partial'\'', '\''delivery_unknown'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM official_account_weekly_dag_runs WHERE status IN ('\''pending'\'', '\''running'\'', '\''partial'\'', '\''retryable_failed'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM official_account_article_runs WHERE status IN ('\''queued'\'', '\''running'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''retryable_failed'\''))::text
-    "' </dev/null
+    "
+  ' brand-hotfix "$business_date" "$CONTENT_MAX_ATTEMPTS" </dev/null
+}
+
+frozen_copy_cohort() {
+  local business_date=$1
+  [[ "$business_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  compose exec -T postgres sh -eu -c '
+    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+      SELECT concat_ws('\''|'\'', job.id::text, job.run_id::text, job.status,
+        run.business_date::text, job.attempt_count::text,
+        to_char(job.available_at AT TIME ZONE '\''UTC'\'', '\''YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\''))
+      FROM copy_generation_jobs job
+      JOIN copy_generation_runs run ON run.id = job.run_id
+      WHERE run.business_date < '\''$1'\''::date
+        AND job.status IN ('\''queued'\'', '\''retry_scheduled'\'')
+      ORDER BY run.business_date, job.id::text, job.run_id::text, job.status,
+        job.attempt_count, job.available_at
+    "
+  ' brand-hotfix "$business_date" </dev/null | python3 -c '
+import hashlib
+import re
+import sys
+
+rows = sys.stdin.buffer.read().splitlines()
+uuid = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+timestamp = re.compile(rb"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z")
+expected_dates = [
+    b"2026-08-04", b"2026-08-05", b"2026-08-07", b"2026-08-08",
+    b"2026-08-09", b"2026-08-10", b"2026-08-11",
+]
+for row in rows:
+    fields = row.split(b"|")
+    if (
+        len(fields) != 6
+        or uuid.fullmatch(fields[0]) is None
+        or uuid.fullmatch(fields[1]) is None
+        or fields[2] != b"queued"
+        or re.fullmatch(rb"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields[3]) is None
+        or fields[4] != b"0"
+        or timestamp.fullmatch(fields[5]) is None
+    ):
+        raise SystemExit("frozen copy cohort evidence is malformed")
+if [row.split(b"|")[3] for row in rows] != expected_dates:
+    raise SystemExit("frozen copy cohort differs from the reviewed business dates")
+canonical = b"\n".join(rows) + (b"\n" if rows else b"")
+print(f"{len(rows)}:{hashlib.sha256(canonical).hexdigest()}")
+'
 }
 
 main() {
@@ -322,11 +397,20 @@ main() {
     </dev/null)
   [[ "$head" == "$ALEMBIC_HEAD" ]] || die 'production Alembic head changed'
 
-  local counts
-  counts=$(effect_counts)
-  [[ "$counts" =~ ^([0-9]+)(:[0-9]+){10}(:0){5}$ \
+  local counts business_date business_date_after frozen_copy
+  business_date=$(current_business_date) \
+    || die 'current business date could not be resolved'
+  counts=$(effect_counts "$business_date")
+  [[ "$counts" =~ ^([0-9]+)(:[0-9]+){10}(:0){8}$ \
       && $((10#${BASH_REMATCH[1]})) -ge 18 ]] \
-    || die 'known terminal-copy/effect counters or pending-work gates changed'
+    || die 'known terminal-copy/effect counters or claimable-work gates changed'
+  frozen_copy=$(frozen_copy_cohort "$business_date")
+  [[ "$frozen_copy" =~ ^7:[0-9a-f]{64}$ ]] \
+    || die 'historical frozen copy cohort differs from the reviewed seven jobs'
+  business_date_after=$(current_business_date) \
+    || die 'current business date could not be re-resolved'
+  [[ "$business_date_after" == "$business_date" ]] \
+    || die 'business date crossed its reviewed boundary during baseline capture'
   source_json=$(mktemp "$(dirname -- "$output")/.brand-hotfix-source.XXXXXX")
   rm -f -- "$source_json"
   capture_source_manifest "$source_json"
@@ -344,7 +428,8 @@ main() {
     "$(sha256sum "$LEGACY_RELEASE_MARKER" | awk '{print $1}')" \
     "$(stat -c '%a' "$LEGACY_RELEASE_MARKER")" \
     "$(stat -c '%u' "$LEGACY_RELEASE_MARKER")" \
-    "$(stat -c '%g' "$LEGACY_RELEASE_MARKER")" "$restart_rows" "$counts" <<'PY'
+    "$(stat -c '%g' "$LEGACY_RELEASE_MARKER")" "$restart_rows" "$counts" \
+    "$BUSINESS_TIMEZONE" "$business_date" "$CONTENT_MAX_ATTEMPTS" "$frozen_copy" <<'PY'
 from datetime import UTC, datetime
 import json
 import pathlib
@@ -369,6 +454,10 @@ import sys
     legacy_release_commit_gid,
     restart_rows,
     count_row,
+    business_timezone,
+    business_date,
+    content_max_attempts,
+    frozen_copy,
 ) = sys.argv[1:]
 service_names = [
     "postgres", "minio", "acquisition-api", "acquisition-scheduler",
@@ -391,7 +480,8 @@ count_names = [
     "weekly_dag_attempts", "official_account_article_runs",
     "official_account_article_attempts", "wechat_mp_draft_jobs",
     "wechat_mp_draft_items", "wechat_mp_draft_attempts",
-    "pending_copy_jobs", "pending_wecom_jobs", "pending_weekly_runs",
+    "claimable_copy_jobs", "running_copy_jobs", "current_business_date_copy_jobs",
+    "future_copy_jobs", "pending_wecom_jobs", "pending_weekly_runs",
     "pending_official_account_runs", "pending_wechat_draft_jobs",
 ]
 count_values = count_row.split(":")
@@ -400,6 +490,11 @@ if len(count_values) != len(count_names) or not all(value.isdigit() for value in
 payload = {
     "schema_version": 1,
     "captured_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "business_timezone": business_timezone,
+    "business_date": business_date,
+    "content_max_attempts": int(content_max_attempts),
+    "frozen_copy_job_count": int(frozen_copy.split(":", 1)[0]),
+    "frozen_copy_job_sha256": frozen_copy.split(":", 1)[1],
     "current_commit": commit,
     "current_alembic_head": head,
     "current_image_id": image_id,

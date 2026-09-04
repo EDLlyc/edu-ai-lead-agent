@@ -16,6 +16,9 @@
   继续由严格 provider/model identity 过滤，不伪装为智谱向量。
 - 2026-09-02 晚间至 2026-09-04 午间的 18 个 copy run 已终态为
   `review_required/copy_provider_unavailable`。它们不属于安全自动重试范围。
+- 生产另有 7 个 `queued/attempt_count=0` copy job，其 run 业务日期为 2026-08-04、05、07、08、09、10、11。
+  `_claim` 只处理 `Asia/Shanghai` 当天业务日期，因此它们是不会被新 worker 自然领取的历史冻结 cohort，
+  不是本次发布要清空的实时 pending。
 
 ## Requirements
 
@@ -55,6 +58,10 @@
   builder/validator/operator/fake harness；不得复用历史任务 operator，也不得把 transport tag 当生产身份。
 - 离线 operator 必须保留 weekly production 拓扑并让全部 12 个应用服务收敛到同一不可变镜像；部署后只读
   验证 release identity、容器 health/restart、resolved brand provider 和未来任务 readiness。
+- baseline 必须固定 `Asia/Shanghai`、capture 当天业务日期与 `content_max_attempts=3`，严格要求当天可领取、
+  当天任意 queued/running/retry、全局 running 及未来 copy 队列均为 0；7 条历史冻结 job 只以精确数量和
+  不暴露 UUID/正文的稳定 SHA-256 绑定。首次 capture 也必须拒绝把日期集合、`queued` 状态或
+  `attempt_count=0` 已漂移的七条记录重新确认为合法基线；发布全程不得新增、领取、更新或删除。
 
 ## Acceptance Criteria
 
@@ -70,12 +77,15 @@
   一致。
 - [ ] 生产一次有界智谱 `embedding-3` smoke 成功，且未写数据库、未入队、未发送任何消息。
 - [ ] 部署后服务健康且 resolved provider 为 `zhipu`；不自动 replay 18 个历史 copy run。
+- [ ] 7 条历史冻结 copy job 的数量和稳定摘要在锁前、锁内、停服后、迁移前、启动前、最终及回滚服务重启
+  前后均不变；日期跨界或出现当天/未来可运行 copy job 时 fail closed。
 - [ ] 生产受保护 `.env` 内容和校验和保持不变；`auto` 的 resolved identity 通过运行时读回证明为
   `zhipu/embedding-3/2048`，不在镜像事务之外引入配置漂移。
 
 ## Out of Scope
 
 - 自动重放、重试或补发 2026-09-02 至 2026-09-04 的历史新闻。
+- 更新、删除或重放 7 条历史冻结 copy job；它们仅作为只读生产状态被发布门禁绑定。
 - 把 fake 或 Alibaba 向量原地改写成智谱向量，或大规模重建已有 57 条智谱向量。
 - 启用 Alibaba/Qwen 视觉 embedding、替换图片识别模型，或改变 `GLM-5V-Turbo` 图片 Reviewer 方案。
 - 触发企业微信发送、微信公众号发布/群发，或用 provider smoke 代替真实投递终态证据。

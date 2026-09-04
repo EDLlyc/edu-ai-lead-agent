@@ -10,6 +10,7 @@ import json
 import re
 import stat
 import tarfile
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
 
@@ -31,6 +32,7 @@ IMAGE_REFERENCE = re.compile(
 )
 REPOSITORY = re.compile(r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*")
 TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+BUSINESS_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 SAFE_SOURCE_PATH = re.compile(r"[A-Za-z0-9._/-]+")
 
 APP_SERVICES = (
@@ -117,7 +119,7 @@ AUDIT_EXACT = {
     "scripts/release-prod.sh": "M",
 }
 AUDIT_TASK_PREFIX = ".trellis/tasks/09-04-production-brand-embedding-hotfix/"
-EFFECT_COUNT_KEYS = {
+EFFECT_COUNT_ORDER = (
     "copy_provider_unavailable_terminal",
     "copy_generation_attempts",
     "wecom_delivery_jobs",
@@ -129,12 +131,16 @@ EFFECT_COUNT_KEYS = {
     "wechat_mp_draft_jobs",
     "wechat_mp_draft_items",
     "wechat_mp_draft_attempts",
-    "pending_copy_jobs",
+    "claimable_copy_jobs",
+    "running_copy_jobs",
+    "current_business_date_copy_jobs",
+    "future_copy_jobs",
     "pending_wecom_jobs",
     "pending_weekly_runs",
     "pending_official_account_runs",
     "pending_wechat_draft_jobs",
-}
+)
+EFFECT_COUNT_KEYS = set(EFFECT_COUNT_ORDER)
 MEMBERS = {
     "artifacts.sha256",
     "audit-diff.tsv",
@@ -372,6 +378,11 @@ def validate_baseline(path: Path) -> dict[str, object]:
     keys = {
         "schema_version",
         "captured_at_utc",
+        "business_timezone",
+        "business_date",
+        "content_max_attempts",
+        "frozen_copy_job_count",
+        "frozen_copy_job_sha256",
         "current_commit",
         "current_alembic_head",
         "current_image_id",
@@ -409,6 +420,30 @@ def validate_baseline(path: Path) -> dict[str, object]:
         or IMAGE_REFERENCE.fullmatch(payload["current_image_reference"]) is None
     ):
         fail("production baseline identity changed")
+    business_date = payload["business_date"]
+    if (
+        payload["business_timezone"] != "Asia/Shanghai"
+        or not isinstance(business_date, str)
+        or BUSINESS_DATE.fullmatch(business_date) is None
+        or isinstance(payload["content_max_attempts"], bool)
+        or payload["content_max_attempts"] != 3
+        or not isinstance(payload["content_max_attempts"], int)
+    ):
+        fail("production business-date claim identity changed")
+    try:
+        date.fromisoformat(business_date)
+    except ValueError:
+        fail("production business-date claim identity changed")
+    frozen_count = payload["frozen_copy_job_count"]
+    frozen_digest = payload["frozen_copy_job_sha256"]
+    if (
+        isinstance(frozen_count, bool)
+        or not isinstance(frozen_count, int)
+        or frozen_count != 7
+        or not isinstance(frozen_digest, str)
+        or SHA256.fullmatch(frozen_digest) is None
+    ):
+        fail("production frozen copy cohort identity changed")
     for key in (
         "primary_env_sha256",
         "release_env_sha256",
@@ -464,10 +499,20 @@ def validate_baseline(path: Path) -> dict[str, object]:
         )
         or effects["copy_provider_unavailable_terminal"] < 18
         or any(
-            effects[key] != 0 for key in EFFECT_COUNT_KEYS if key.startswith("pending_")
+            effects[key] != 0
+            for key in (
+                "claimable_copy_jobs",
+                "running_copy_jobs",
+                "current_business_date_copy_jobs",
+                "future_copy_jobs",
+                "pending_wecom_jobs",
+                "pending_weekly_runs",
+                "pending_official_account_runs",
+                "pending_wechat_draft_jobs",
+            )
         )
     ):
-        fail("production zero-effect counters changed")
+        fail("production effect counters and claimable-work gates changed")
     baseline_manifest(payload["source_manifest"])
     return payload
 

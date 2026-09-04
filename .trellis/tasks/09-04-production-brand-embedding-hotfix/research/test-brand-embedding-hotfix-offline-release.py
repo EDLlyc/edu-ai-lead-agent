@@ -199,12 +199,17 @@ def _oci_graph() -> tuple[bytes, str, str]:
 
 
 def _baseline(terminal_count: int = 18) -> dict[str, object]:
-    effects = {name: 0 for name in VALIDATOR.EFFECT_COUNT_KEYS}
+    effects = {name: 0 for name in VALIDATOR.EFFECT_COUNT_ORDER}
     effects["copy_provider_unavailable_terminal"] = terminal_count
     services = sorted((*VALIDATOR.INFRA_SERVICES, *VALIDATOR.APP_SERVICES))
     return {
         "schema_version": 1,
         "captured_at_utc": "2026-09-04T05:00:00Z",
+        "business_timezone": "Asia/Shanghai",
+        "business_date": "2026-09-04",
+        "content_max_attempts": 3,
+        "frozen_copy_job_count": 7,
+        "frozen_copy_job_sha256": "4" * 64,
         "current_commit": VALIDATOR.PRODUCTION_COMMIT,
         "current_alembic_head": VALIDATOR.ALEMBIC_HEAD,
         "current_image_id": "sha256:" + "d" * 64,
@@ -439,6 +444,27 @@ def test_terminal_baseline_accepts_more_than_diagnosed_minimum(tmp_path: Path) -
 
 
 @pytest.mark.parametrize(
+    "key",
+    [
+        "claimable_copy_jobs",
+        "running_copy_jobs",
+        "current_business_date_copy_jobs",
+        "future_copy_jobs",
+    ],
+)
+def test_copy_claim_gates_must_remain_zero(tmp_path: Path, key: str) -> None:
+    stage = _stage(tmp_path)
+    baseline = _baseline()
+    effects = baseline["effect_counts"]
+    assert isinstance(effects, dict)
+    effects[key] = 1
+    (stage / "production-baseline.json").write_bytes(_json_bytes(baseline))
+    _rebind(stage, "production_baseline_sha256", "production-baseline.json")
+    with pytest.raises(ValueError, match="effect counters"):
+        VALIDATOR.validate_stage(stage)
+
+
+@pytest.mark.parametrize(
     ("mutation", "message"),
     [
         ("schema_bool", "identity"),
@@ -460,6 +486,14 @@ def test_terminal_baseline_accepts_more_than_diagnosed_minimum(tmp_path: Path) -
         ("primary_gid_bool", "primary environment baseline identity"),
         ("primary_gid_float", "primary environment baseline identity"),
         ("pending", "effect counters"),
+        ("business_timezone", "business-date claim identity"),
+        ("business_date", "business-date claim identity"),
+        ("business_date_invalid", "business-date claim identity"),
+        ("max_attempts", "business-date claim identity"),
+        ("max_attempts_bool", "business-date claim identity"),
+        ("frozen_count", "frozen copy cohort identity"),
+        ("frozen_count_bool", "frozen copy cohort identity"),
+        ("frozen_digest", "frozen copy cohort identity"),
         ("restart", "restart counts"),
     ],
 )
@@ -506,6 +540,22 @@ def test_production_baseline_drift_is_rejected(
         baseline["primary_env_gid"] = 1001.0
     elif mutation == "pending":
         baseline["effect_counts"]["pending_wecom_jobs"] = 1
+    elif mutation == "business_timezone":
+        baseline["business_timezone"] = "UTC"
+    elif mutation == "business_date":
+        baseline["business_date"] = 20260904
+    elif mutation == "business_date_invalid":
+        baseline["business_date"] = "2026-09-31"
+    elif mutation == "max_attempts":
+        baseline["content_max_attempts"] = 4
+    elif mutation == "max_attempts_bool":
+        baseline["content_max_attempts"] = True
+    elif mutation == "frozen_count":
+        baseline["frozen_copy_job_count"] = 6
+    elif mutation == "frozen_count_bool":
+        baseline["frozen_copy_job_count"] = True
+    elif mutation == "frozen_digest":
+        baseline["frozen_copy_job_sha256"] = "bad"
     else:
         baseline["restart_counts"]["content-worker"] = 1
     (stage / "production-baseline.json").write_bytes(_json_bytes(baseline))
@@ -592,6 +642,15 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
     assert "the twelve application services do not share one image" in capture
     assert "copy_provider_unavailable" in capture
     assert "pending_wecom_jobs" in capture
+    assert "claimable_copy_jobs" in capture
+    assert "running_copy_jobs" in capture
+    assert "current_business_date_copy_jobs" in capture
+    assert "future_copy_jobs" in capture
+    assert "frozen_copy_job_sha256" in capture
+    assert "ORDER BY run.business_date, job.id::text" in capture
+    assert r"run.business_date = '\''$1'\''::date" in capture
+    assert "job.available_at <= statement_timestamp()" in capture
+    assert "job.attempt_count < $2::integer" in capture
     assert "current_image_reference" in capture
     assert "primary_env_mode" in capture
     assert "primary_env_uid" in capture
@@ -600,6 +659,9 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
     assert "primary environment changed during baseline capture" in capture
     operator = OPERATOR_PATH.read_text(encoding="utf-8")
     assert 'getattr(os, "O_NOFOLLOW", 0)' in operator
+    assert operator.count("copy_state_matches_baseline") >= 7
+    assert operator.count("verify_baseline") == 3
+    assert "frozen_copy_job_sha256" in operator
     for forbidden in ("INSERT ", "UPDATE ", "DELETE ", "curl ", "wget "):
         assert forbidden not in capture
 
@@ -652,7 +714,6 @@ def test_capture_accepts_documented_stale_legacy_marker_and_rejects_drift(
             "BRAND_HOTFIX_CAPTURE_TEST_APP_DIR": str(app),
         }
     )
-
     accepted = subprocess.run(
         ["bash", "-c", f"source {CAPTURE_PATH!s}\nvalidate_legacy_release_marker"],
         env=environment,
@@ -673,6 +734,158 @@ def test_capture_accepts_documented_stale_legacy_marker_and_rejects_drift(
     )
     assert rejected.returncode != 0
     assert "legacy release marker differs" in rejected.stderr
+
+
+REVIEWED_FROZEN_DATES = (
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-07",
+    "2026-08-08",
+    "2026-08-09",
+    "2026-08-10",
+    "2026-08-11",
+)
+
+
+def _frozen_copy_rows() -> list[str]:
+    return [
+        (
+            f"00000000-0000-4000-8000-{index:012d}|"
+            f"10000000-0000-4000-8000-{index:012d}|queued|{business_date}|0|"
+            f"2026-08-12T00:00:0{index}.000000Z"
+        )
+        for index, business_date in enumerate(REVIEWED_FROZEN_DATES, start=1)
+    ]
+
+
+def _run_frozen_copy_cohort(
+    tmp_path: Path, script: Path, rows: list[str]
+) -> subprocess.CompletedProcess[str]:
+    shell_rows = "\n".join(f"  printf '%s\\n' '{row}'" for row in rows)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BRAND_HOTFIX_CAPTURE_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_CAPTURE_TEST_APP_DIR": str(tmp_path),
+            "BRAND_HOTFIX_OPERATOR_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_OPERATOR_TEST_ROOT": str(tmp_path),
+        }
+    )
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            (
+                f"source {script!s}\ncompose() {{\n{shell_rows}\n}}\n"
+                "frozen_copy_cohort 2026-09-04"
+            ),
+        ],
+        env=environment,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "script", [CAPTURE_PATH, OPERATOR_PATH], ids=["capture", "operator"]
+)
+def test_frozen_copy_cohort_outputs_only_count_and_stable_digest(
+    tmp_path: Path, script: Path
+) -> None:
+    rows = _frozen_copy_rows()
+    canonical = ("\n".join(rows) + "\n").encode()
+    result = _run_frozen_copy_cohort(tmp_path, script, rows)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"7:{_digest(canonical)}\n"
+    assert "00000000-" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "script", [CAPTURE_PATH, OPERATOR_PATH], ids=["capture", "operator"]
+)
+@pytest.mark.parametrize("mutation", ["count", "date", "status", "attempt", "order"])
+def test_frozen_copy_cohort_rejects_pre_capture_identity_drift(
+    tmp_path: Path, script: Path, mutation: str
+) -> None:
+    rows = _frozen_copy_rows()
+    if mutation == "count":
+        rows.pop()
+    elif mutation == "date":
+        rows[2] = rows[2].replace("2026-08-07", "2026-08-06")
+    elif mutation == "status":
+        rows[2] = rows[2].replace("|queued|", "|retry_scheduled|")
+    elif mutation == "attempt":
+        rows[2] = rows[2].replace("|2026-08-07|0|", "|2026-08-07|1|")
+    else:
+        rows[1], rows[2] = rows[2], rows[1]
+
+    result = _run_frozen_copy_cohort(tmp_path, script, rows)
+
+    assert result.returncode != 0
+    assert "frozen copy cohort" in result.stderr
+    assert "00000000-" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "script", [CAPTURE_PATH, OPERATOR_PATH], ids=["capture", "operator"]
+)
+def test_effect_count_query_and_index_schema_match_real_claim_contract(
+    tmp_path: Path, script: Path
+) -> None:
+    arguments = tmp_path / f"{script.stem}.arguments"
+    expected = [18, *range(1, 11), *([0] * 8)]
+    expected_row = ":".join(map(str, expected))
+    baseline = _baseline(terminal_count=18)
+    effects = baseline["effect_counts"]
+    assert isinstance(effects, dict)
+    for index, key in enumerate(VALIDATOR.EFFECT_COUNT_ORDER[1:11], start=1):
+        effects[key] = index
+    baseline_path = tmp_path / f"{script.stem}.baseline.json"
+    baseline_path.write_bytes(_json_bytes(baseline))
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BRAND_HOTFIX_CAPTURE_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_CAPTURE_TEST_APP_DIR": str(tmp_path),
+            "BRAND_HOTFIX_OPERATOR_SOURCE_ONLY": "1",
+            "BRAND_HOTFIX_OPERATOR_TEST_ROOT": str(tmp_path),
+        }
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            (
+                f"source {script!s}\n"
+                f"compose() {{ printf '%s\\0' \"$@\" >{arguments!s}; "
+                f"printf '%s\\n' '{expected_row}'; }}\n"
+                "effect_counts 2026-09-04"
+            ),
+        ],
+        env=environment,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == expected_row + "\n"
+    query = arguments.read_bytes().decode().split("\0")[6]
+    assert "run.business_date = '$1'::date" in query
+    assert "job.status IN ('queued', 'retry_scheduled')" in query
+    assert "job.available_at <= statement_timestamp()" in query
+    assert "job.attempt_count < $2::integer" in query
+    assert "copy_generation_jobs WHERE status = 'running'" in query
+    assert "run.business_date > '$1'::date" in query
+    assert "job.status IN ('queued', 'running', 'retry_scheduled')" in query
+
+    if script == OPERATOR_PATH:
+        indexed = _source_operator_shell(
+            tmp_path,
+            f"baseline_json={baseline_path!s}\nbaseline_effect_counts",
+        )
+        assert indexed.returncode == 0, indexed.stderr
+        assert indexed.stdout == expected_row + "\n"
 
 
 @pytest.mark.parametrize(
@@ -817,6 +1030,48 @@ def _source_operator_shell(
         text=True,
         capture_output=True,
     )
+
+
+@pytest.mark.parametrize(
+    ("drift", "accepted"),
+    [
+        ("", True),
+        ("date", False),
+        ("boundary", False),
+        ("effects", False),
+        ("cohort", False),
+    ],
+)
+def test_copy_state_gate_binds_business_date_and_frozen_cohort(
+    tmp_path: Path, drift: str, accepted: bool
+) -> None:
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_bytes(_json_bytes(_baseline()))
+    date_calls = tmp_path / "date-calls"
+    date_calls.write_text("0\n", encoding="utf-8")
+    body = f"""
+baseline_json={baseline_path!s}
+current_business_date() {{
+  if [[ {drift!r} == date ]]; then printf '2026-09-05\\n'; return; fi
+  if [[ {drift!r} == boundary ]]; then
+    value=$(cat {date_calls!s})
+    value=$((value + 1))
+    printf '%s\\n' "$value" >{date_calls!s}
+    [[ $value -eq 1 ]] && printf '2026-09-04\\n' || printf '2026-09-05\\n'
+    return
+  fi
+  printf '2026-09-04\\n'
+}}
+effect_counts() {{
+  [[ {drift!r} == effects ]] && printf 'drifted\\n' || baseline_effect_counts
+}}
+frozen_copy_cohort() {{
+  [[ {drift!r} == cohort ]] && printf '7:{"5" * 64}\\n' || baseline_frozen_copy_cohort
+}}
+copy_state_matches_baseline
+"""
+    result = _source_operator_shell(tmp_path, body)
+    assert (result.returncode == 0) is accepted
 
 
 def test_candidate_source_cannot_omit_a_captured_production_path(
@@ -1020,6 +1275,66 @@ def test_primary_environment_rollback_cleans_temporary_on_atomic_move_failure(
     assert not list(backup.glob(".primary-env-restore.*"))
 
 
+@pytest.mark.parametrize("pre_start_drift", [False, True])
+def test_rollback_checks_copy_state_before_and_after_restarting_writers(
+    tmp_path: Path, pre_start_drift: bool
+) -> None:
+    app = tmp_path / "app"
+    backup = tmp_path / "backup"
+    app.mkdir(parents=True)
+    backup.mkdir()
+    values = {
+        ".env": b"safe\n",
+        ".release.env": b"APP_IMAGE=old\n",
+        ".release-commit": (VALIDATOR.PRODUCTION_COMMIT + "\n").encode(),
+        "RELEASE_COMMIT": VALIDATOR.LEGACY_PRODUCTION_COMMIT + b"\n",
+    }
+    backup_names = {
+        ".env": "env.before",
+        ".release.env": "release.env.before",
+        ".release-commit": "release-commit.before",
+        "RELEASE_COMMIT": "legacy-release-commit.before",
+    }
+    for name, value in values.items():
+        (app / name).write_bytes(b"candidate\n")
+        (backup / backup_names[name]).write_bytes(value)
+        (backup / backup_names[name]).chmod(0o600)
+    events = tmp_path / "rollback-events"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+backup_dir={backup!s}
+baseline_json=/unused
+EVENTS={events!s}
+compose() {{ printf 'compose:%s\\n' "$*" >>"$EVENTS"; }}
+primary_env_matches_baseline() {{ return 0; }}
+json_string() {{ printf '{"1" * 64}\\n'; }}
+sha256sum() {{ printf '{"1" * 64}  %s\\n' "$1"; }}
+baseline_legacy_identity() {{ printf '600:0:0\\n'; }}
+marker_equals() {{ return 0; }}
+database_head() {{ printf '%s\\n' "$ALEMBIC_HEAD"; }}
+verify_service_set() {{ return 0; }}
+copy_state_calls=0
+copy_state_matches_baseline() {{
+  copy_state_calls=$((copy_state_calls + 1))
+  printf 'copy-state:%s\\n' "$copy_state_calls" >>"$EVENTS"
+  [[ {str(pre_start_drift).lower()} != true || $copy_state_calls -ne 1 ]]
+}}
+restore_previous_state
+""",
+    )
+
+    events_text = events.read_text(encoding="utf-8")
+    assert (result.returncode != 0) is pre_start_drift
+    assert events_text.index("compose:stop") < events_text.index("copy-state:1")
+    if pre_start_drift:
+        assert "compose:up" not in events_text
+    else:
+        assert events_text.count("copy-state:") == 2
+        assert events_text.index("copy-state:1") < events_text.index("compose:up")
+        assert events_text.index("compose:up") < events_text.index("copy-state:2")
+
+
 def test_evidence_records_captured_terminal_count_without_fixed_literal(
     tmp_path: Path,
 ) -> None:
@@ -1032,6 +1347,8 @@ backup_dir={backup!s}
 release_commit={RELEASE_COMMIT}
 candidate_reference={REPOSITORY}@sha256:{"b" * 64}
 baseline_effect_counts() {{ printf '23:0:0\\n'; }}
+baseline_frozen_copy_cohort() {{ printf '7:{"4" * 64}\\n'; }}
+json_string() {{ printf '2026-09-04\\n'; }}
 write_evidence
 """,
     )
@@ -1041,6 +1358,8 @@ write_evidence
     )
     assert "copy_provider_unavailable_terminal=23\n" in evidence
     assert "copy_provider_unavailable_terminal=18\n" not in evidence
+    assert "frozen_copy_job_count=7\n" in evidence
+    assert f"frozen_copy_job_sha256={'4' * 64}\n" in evidence
 
 
 def _activation_harness(
@@ -1114,6 +1433,15 @@ effect_counts() {{
   [[ {failure!r} == counter_drift ]] && printf '24:0\\n' || printf '23:0\\n'
 }}
 baseline_effect_counts() {{ printf '23:0\\n'; }}
+copy_state_calls=0
+copy_state_matches_baseline() {{
+  copy_state_calls=$((copy_state_calls + 1))
+  printf 'copy-state-%s\\n' "$copy_state_calls" >>"$EVENTS"
+  [[ {failure!r} != final_metadata_drift || $copy_state_calls -ne 3 ]] || chmod 640 "$PRIMARY_ENV"
+  [[ {failure!r} != copy_pre_migration_drift || $copy_state_calls -ne 1 ]] || return 1
+  [[ {failure!r} != copy_pre_start_drift || $copy_state_calls -ne 2 ]] || return 1
+  [[ {failure!r} != counter_drift || $copy_state_calls -ne 3 ]] || return 1
+}}
 sha256sum() {{ printf '%s  %s\\n' "{"1" * 64}" "$1"; }}
 json_string() {{ printf '%s\\n' "{primary_env_sha256}"; }}
 baseline_primary_identity() {{ printf '600:1000:1001\\n'; }}
@@ -1143,6 +1471,9 @@ def test_fake_operator_success_runs_one_migration_and_no_effect_command(
     assert events.index("locked-baseline") < events.index("prepare")
     assert events.index("quiesce-backup") < events.index("quiesced-baseline")
     assert events.index("quiesced-baseline") < events.index("activate-source")
+    assert events.index("copy-state-1") < events.index("<backend-migrate>")
+    assert events.index("<backend-migrate>") < events.index("copy-state-2")
+    assert events.index("copy-state-2") < events.index("copy-state-3")
     assert "wait-ready" in events
     assert "evidence" in events
     assert "restore-previous" not in events
@@ -1161,6 +1492,8 @@ def test_fake_operator_success_runs_one_migration_and_no_effect_command(
         "quiesced_metadata_drift",
         "pre_migration",
         "migration",
+        "copy_pre_migration_drift",
+        "copy_pre_start_drift",
         "counter_drift",
         "final_metadata_drift",
     ],
@@ -1182,10 +1515,15 @@ def test_fake_operator_restores_previous_state_when_schema_is_unchanged(
     assert primary_env.read_text(encoding="utf-8") == "safe\n"
     assert primary_env.stat().st_mode & 0o777 == 0o600
     assert (primary_env.stat().st_uid, primary_env.stat().st_gid) == (1000, 1001)
-    if failure in {"quiesced_drift", "quiesced_metadata_drift", "pre_migration"}:
+    if failure in {
+        "quiesced_drift",
+        "quiesced_metadata_drift",
+        "pre_migration",
+        "copy_pre_migration_drift",
+    }:
         assert "<backend-migrate>" not in events
     if failure in {"quiesced_drift", "quiesced_metadata_drift"}:
         assert "activate-source" not in events
     else:
-        if failure != "pre_migration":
+        if failure not in {"pre_migration", "copy_pre_migration_drift"}:
             assert events.count("<run> <--rm> <--no-deps> <-T> <backend-migrate>") == 1
