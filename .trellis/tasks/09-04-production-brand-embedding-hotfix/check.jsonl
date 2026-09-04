@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"核对 zhipu/Alibaba/fake provider identity 与不可变向量兼容性"}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"核对 copy provider 门禁和历史任务不回放"}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"核对生产自动投递与 delivery window 安全边界"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"核对 fail-fast、provider error 与无静默降级"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"执行完整质量门禁并检查跨层 wiring"}

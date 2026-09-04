@@ -670,7 +670,9 @@ release artifacts, or production deployment automation change.
 - Local image input: `APP_IMAGE` defaults to `edu-ai-lead-agent-backend:local`.
 - Production image input: `registry/namespace/repository@sha256:<64-lowercase-hex>`.
 - Current release entrypoint: `make release-prod`, with non-secret
-  `RELEASE_IMAGE_REPOSITORY`, `RELEASE_SSH_HOST`, and optional boolean `RELEASE_DRY_RUN` inputs.
+  `RELEASE_IMAGE_REPOSITORY`, `RELEASE_SSH_HOST`, optional boolean `RELEASE_DRY_RUN`, and optional
+  reviewed `RELEASE_SOURCE_REF` inputs. The source input accepts only `main` or a bounded lowercase
+  `release/<hyphen-slug>` incident branch.
 - Artifact tools: `deploy/release/release_tool.py`; root deployment entrypoint:
   `scripts/edu-ai-deploy.sh`.
 
@@ -767,15 +769,16 @@ release artifacts, or production deployment automation change.
   root or match a backup ID. Use the preserved destination mode and an
   atomic no-target-dereference replacement so a final-component symlink race cannot redirect the
   copy; never preserve candidate group-write into production or relax a stricter active mode.
-- The developer-PC release is the current activation path. Its dry run uses only cached
-  `origin/main` identity and local capability/config probes and performs no fetch, build, push,
-  SSH connection, artifact transfer, or production call. A real release fetches authoritative
-  Codeup `main`, takes a non-blocking local lock, and does all quality/build/artifact work in a clean
-  detached temporary worktree; caller workspace content is never a release input.
+- The developer-PC release is the current activation path. Its dry run uses only the cached
+  selected `origin/main` or reviewed `origin/release/<name>` identity and local capability/config
+  probes and performs no fetch, build, push, SSH connection, artifact transfer, or production call.
+  A real release fetches that exact authoritative Codeup source ref, takes a non-blocking local
+  lock, and does all quality/build/artifact work in a clean detached temporary worktree; caller
+  workspace content is never a release input.
 - Accept only the exact project Codeup HTTPS/SSH remote or the reviewed `codeup-edu-ai` alias when
-  that alias resolves to user `git` at `codeup.aliyun.com:22`. Fetch the explicit
-  `refs/heads/main:refs/remotes/origin/main` refspec with terminal/askpass authentication disabled,
-  and require the running release orchestrator to match the fetched committed copy.
+  that alias resolves to user `git` at `codeup.aliyun.com:22`. Fetch the explicit selected
+  `refs/heads/<source>:refs/remotes/origin/<source>` refspec with terminal/askpass authentication
+  disabled, and require the running release orchestrator to match the fetched committed copy.
 - `origin/main` remains the ordinary release authority. A task-specific incident hotfix may use
   one newly created, non-force-pushed Codeup ref below `refs/heads/release/` only when deploying
   `main` would also activate a separately identified, out-of-scope runtime change. The hotfix ref
@@ -783,8 +786,10 @@ release artifacts, or production deployment automation change.
   revert or exclude only the named out-of-scope runtime path. Fetch it into the matching
   `refs/remotes/origin/release/` namespace, bind its exact commit in the builder/operator, and prove
   the complete runtime application diff against the current production commit equals the reviewed
-  allowlist. Record both the `main` fix/operator commits and isolated runtime commit in evidence;
-  never treat an arbitrary feature branch or mutable tag as release authority.
+  allowlist. Audit-only additions use exact task-owned spec, test, release, and task-local paths;
+  a broad backend/spec/test directory prefix must not admit unrelated dirty work. Record both the
+  `main` fix/operator commits and isolated runtime commit in evidence; never treat an arbitrary
+  feature branch or mutable tag as release authority.
 - The local release accepts only a repository name and strict SSH host alias as non-secret
   configuration. It relies on the existing Docker credential store and OpenSSH config/agent plus
   known-host entry. Positional arguments and registry/SSH password, token, private-key, or secret
@@ -819,6 +824,13 @@ release artifacts, or production deployment automation change.
   actual `RepoDigests`, then persist that digest rather than the isolated transport tag. A mutable
   prior tag is corrected only while production remains active, followed by a fresh bound baseline;
   never bypass the backup validator or record `unknown` for an observable image.
+- A baseline check before acquiring the release lock is advisory, not activation authority. Re-run
+  the complete checksum-bound baseline validator after taking the lock. After quiescence and backup,
+  revalidate the protected primary/release environments, canonical and legacy release markers,
+  Alembic head, safe effect counters, and the complete captured production source manifest before
+  installing candidate source. Candidate source must contain every managed path present in that
+  captured production manifest. Any drift enters the reviewed recovery path; it is never accepted
+  by refreshing evidence after writers stop.
 - Snapshot both the primary and release environment before the first release mutation, even when
   source activation has not started. A pre-migration failure restores both environments and any
   activated source, restarts the complete previous application set, verifies the captured image
@@ -826,6 +838,11 @@ release artifacts, or production deployment automation change.
   fails, application writers remain stopped. Shell recovery functions invoked from `if`, `until`,
   or another conditional must explicitly return nonzero on every failed copy, move, inspect, or
   Compose command because Bash suppresses `errexit` in those call contexts.
+- A task-authorized offline activation snapshots, atomically updates, and verifies both the
+  canonical `.release-commit` marker and every observed legacy `RELEASE_COMMIT` marker. Bind their
+  activated full SHA to the candidate OCI revision; never assume a stale short legacy marker already
+  matches. Rollback restores each marker's exact prior bytes, ownership, and mode before verifying
+  the previous runtime.
 - Replace fixed post-start sleeps with a bounded health/restart/image convergence loop. If a
   one-shot operator has already completed an incompatible migration, a readiness false negative
   never authorizes re-invoking that operator. Recover only the activated candidate core with all
@@ -886,6 +903,8 @@ release artifacts, or production deployment automation change.
 | A prior migration one-shot exists | Remove it only when its unique exited identity matches the captured previous release; otherwise fail before migration and do not guess which container is stale. |
 | Existing `.release.env` uses a tag, is not attached to the captured image, or resolves elsewhere | Reject before quiescence. Correct it to the proven current RepoDigest while services remain active, recapture the exact baseline, and require a new one-shot candidate identity. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
+| Locked baseline differs from pre-lock evidence, or protected state/source/effect counters drift after quiescence | Reject before activation and run the reviewed pre-migration recovery path; never recapture a more convenient baseline after writers stop |
+| Candidate source omits a managed path from the captured production source manifest | Reject before source installation; the candidate cannot silently delete an unreviewed production path |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Pre-migration restoration succeeds but the EXIT trap continues into incident shutdown | Regression failure; return immediately after bounded previous-service verification. |
 | Target migration completed but a fixed readiness delay observed `starting` | Keep draft flags disabled, recover and verify the activated candidate core, never rerun the consumed one-shot identity, and use only a new bound no-migration continuation for optional activation. |
@@ -1009,6 +1028,12 @@ release artifacts, or production deployment automation change.
   current RepoDigest, prove the candidate digest survives `.release.env` installation, restore
   primary/release environments even before source activation, and distinguish verified
   pre-migration recovery (previous services retained) from failed recovery (writers stopped).
+- Offline operator regressions must prove the complete baseline is checked again inside the lock,
+  then prove protected environments, both release markers, Alembic, effect counters, and the full
+  source manifest are checked again after quiescence/backup and before source installation. Inject
+  drift at each boundary, require rollback, and reject candidate manifests that omit any captured
+  production path. Temporary baseline/probe evidence must be EXIT-cleaned on early failure without
+  printing its contents.
 - Readiness/continuation regressions must prove multiple `starting` observations can converge within
   the bound and that the incident continuation rejects runtime/head/cutoff drift, existing jobs,
   existing worker/volumes, repeat invocation, migration commands, and publish/send surfaces.
