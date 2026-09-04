@@ -1,0 +1,837 @@
+#!/usr/bin/env python3
+"""Pure validation for the brand-embedding incident offline release stage."""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import json
+import re
+import stat
+import tarfile
+from pathlib import Path, PurePosixPath
+from typing import Any, NoReturn
+
+SCHEMA_VERSION = 1
+PRODUCTION_COMMIT = "40e4dec0ae82569fc798355d4515ab0009697c6f"
+LEGACY_PRODUCTION_COMMIT = b"7a45a65"
+LEGACY_PRODUCTION_COMMIT_HASHES = {
+    hashlib.sha256(LEGACY_PRODUCTION_COMMIT).hexdigest(),
+    hashlib.sha256(LEGACY_PRODUCTION_COMMIT + b"\n").hexdigest(),
+}
+RELEASE_REF = "refs/remotes/origin/release/brand-embedding-hotfix-20260904"
+ALEMBIC_HEAD = "20260901_0042"
+SHA256 = re.compile(r"[0-9a-f]{64}")
+COMMIT = re.compile(r"[0-9a-f]{40}")
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
+IMAGE_REFERENCE = re.compile(
+    r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
+    r"@sha256:[0-9a-f]{64}"
+)
+REPOSITORY = re.compile(r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*")
+TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+SAFE_SOURCE_PATH = re.compile(r"[A-Za-z0-9._/-]+")
+
+APP_SERVICES = (
+    "acquisition-api",
+    "acquisition-scheduler",
+    "acquisition-worker",
+    "governance-scheduler",
+    "governance-worker",
+    "content-scheduler",
+    "content-worker",
+    "wecom-dispatcher",
+    "official-account-weekly-dag-worker",
+    "official-account-weekly-scheduler",
+    "official-account-local-worker",
+    "wechat-official-account-draft-worker",
+)
+INFRA_SERVICES = ("postgres", "minio")
+SERVICE_COMMANDS: dict[str, tuple[str, ...]] = {
+    "acquisition-api": (
+        "python",
+        "-m",
+        "uvicorn",
+        "app.api_main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+    ),
+    "acquisition-scheduler": ("python", "-m", "app.scheduler_main"),
+    "acquisition-worker": ("python", "-m", "app.worker_main"),
+    "governance-scheduler": ("python", "-m", "app.governance_scheduler_main"),
+    "governance-worker": ("python", "-m", "app.governance_worker_main"),
+    "content-scheduler": ("python", "-m", "app.content_scheduler_main"),
+    "content-worker": ("python", "-m", "app.content_worker_main"),
+    "wecom-dispatcher": ("python", "-m", "app.wecom_dispatcher_main"),
+    "official-account-weekly-dag-worker": (
+        "python",
+        "-m",
+        "app.official_account_weekly_dag_main",
+        "--handler-mode",
+        "production",
+        "worker",
+        "--concurrency",
+        "3",
+        "--lease-seconds",
+        "900",
+        "--poll-seconds",
+        "2",
+    ),
+    "official-account-weekly-scheduler": (
+        "python",
+        "-m",
+        "app.official_account_weekly_scheduler_main",
+    ),
+    "official-account-local-worker": (
+        "python",
+        "-m",
+        "app.official_account_worker_main",
+    ),
+    "wechat-official-account-draft-worker": (
+        "python",
+        "-m",
+        "app.wechat_official_account_draft_main",
+        "worker",
+    ),
+}
+RUNTIME_DIFF = {
+    ".env.example": "M",
+    "backend/app/api_main.py": "M",
+    "backend/app/content_worker_main.py": "M",
+    "backend/app/core/config.py": "M",
+    "backend/app/infrastructure/ai/factory.py": "M",
+    "compose.yaml": "M",
+    "scripts/doctor.sh": "M",
+    "scripts/validate_brand_delivery_config.py": "A",
+}
+AUDIT_EXACT = {
+    ".trellis/spec/backend/brand-knowledge-rag.md": "M",
+    ".trellis/spec/backend/official-account-weekly-dag.md": "M",
+    ".trellis/spec/backend/quality-guidelines.md": "M",
+    "backend/tests/unit/test_brand_embedding_zhipu.py": "A",
+    "deploy/release/tests/test_brand_embedding_hotfix_contract.py": "A",
+    "deploy/release/tests/test_local_release.py": "M",
+    "scripts/release-prod.sh": "M",
+}
+AUDIT_TASK_PREFIX = ".trellis/tasks/09-04-production-brand-embedding-hotfix/"
+EFFECT_COUNT_KEYS = {
+    "copy_provider_unavailable_terminal",
+    "copy_generation_attempts",
+    "wecom_delivery_jobs",
+    "wecom_delivery_attempts",
+    "weekly_dag_runs",
+    "weekly_dag_attempts",
+    "official_account_article_runs",
+    "official_account_article_attempts",
+    "wechat_mp_draft_jobs",
+    "wechat_mp_draft_items",
+    "wechat_mp_draft_attempts",
+    "pending_copy_jobs",
+    "pending_wecom_jobs",
+    "pending_weekly_runs",
+    "pending_official_account_runs",
+    "pending_wechat_draft_jobs",
+}
+MEMBERS = {
+    "artifacts.sha256",
+    "audit-diff.tsv",
+    "backend-image.oci.tar.gz",
+    "build-brand-embedding-hotfix-offline-artifacts.sh",
+    "capture-brand-embedding-production-baseline.sh",
+    "image-source.sha256",
+    "production-baseline.json",
+    "release-metadata.json",
+    "runtime-diff.tsv",
+    "source-manifest.tsv",
+    "source.tar.gz",
+    "validate-brand-embedding-hotfix-offline-artifacts.py",
+    "brand-embedding-hotfix-offline-release-operator.sh",
+}
+CHECKSUM_TARGETS = MEMBERS - {"artifacts.sha256"}
+MAX_STAGE_MEMBER = 8 * 1024 * 1024 * 1024
+MAX_ARCHIVE_TOTAL = 8 * 1024 * 1024 * 1024
+MAX_JSON = 16 * 1024 * 1024
+
+
+def fail(message: str) -> NoReturn:
+    raise ValueError(message)
+
+
+def digest_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest_file(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            value.update(chunk)
+    return value.hexdigest()
+
+
+def strict_json(value: bytes, label: str) -> Any:
+    try:
+        text = value.decode("utf-8")
+        parsed = json.loads(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{label} is not strict JSON") from exc
+    if not text or text.strip() != text or "\r" in text:
+        fail(f"{label} JSON encoding is non-canonical")
+    return parsed
+
+
+def safe_path(value: str) -> str:
+    candidate = value.removeprefix("./").removesuffix("/")
+    path = PurePosixPath(candidate)
+    normalized = str(path)
+    if (
+        not normalized
+        or path.is_absolute()
+        or normalized != candidate
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or SAFE_SOURCE_PATH.fullmatch(normalized) is None
+    ):
+        fail("unsafe archive path")
+    return normalized
+
+
+def has_symlink_component(path: Path) -> bool:
+    current = Path(path.anchor) if path.is_absolute() else Path()
+    for part in path.parts:
+        if part == path.anchor:
+            continue
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def checksum_rows(path: Path) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)", line)
+        if match is None or match.group(2) in rows:
+            fail("artifact checksum manifest is malformed")
+        rows[match.group(2)] = match.group(1)
+    if set(rows) != CHECKSUM_TARGETS or list(rows) != sorted(rows):
+        fail("artifact checksum member set changed")
+    return rows
+
+
+def diff_rows(path: Path, *, runtime: bool) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        pieces = line.split("\t")
+        if len(pieces) != 2 or pieces[0] not in {"A", "M"}:
+            fail("diff evidence is malformed")
+        name = safe_path(pieces[1])
+        if name in rows:
+            fail("diff evidence has duplicate paths")
+        rows[name] = pieces[0]
+    if list(rows) != sorted(rows):
+        fail("diff evidence is unsorted")
+    if runtime:
+        if rows != RUNTIME_DIFF:
+            fail("runtime diff is not the complete reviewed allowlist")
+    elif (
+        any(rows.get(name) != status for name, status in AUDIT_EXACT.items())
+        or not any(name.startswith(AUDIT_TASK_PREFIX) for name in rows)
+        or any(
+            name not in AUDIT_EXACT
+            and not (name.startswith(AUDIT_TASK_PREFIX) and status == "A")
+            for name, status in rows.items()
+        )
+    ):
+        fail(
+            "non-runtime diff escaped or incompletely matched the audit/test allowlist"
+        )
+    return rows
+
+
+def source_manifest(path: Path) -> dict[str, tuple[str, int, str]]:
+    rows: dict[str, tuple[str, int, str]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        pieces = line.split("\t")
+        if len(pieces) != 4 or pieces[0] not in {"d", "f"}:
+            fail("source manifest is malformed")
+        kind, raw_mode, raw_hash, raw_name = pieces
+        name = safe_path(raw_name)
+        if name in rows or re.fullmatch(r"0[0-7]{3}", raw_mode) is None:
+            fail("source manifest identity is malformed")
+        mode = int(raw_mode, 8)
+        if kind == "d":
+            if mode != 0o755 or raw_hash != "-":
+                fail("source directory mode or digest changed")
+        elif mode not in {0o644, 0o755} or SHA256.fullmatch(raw_hash) is None:
+            fail("source file mode or digest changed")
+        rows[name] = (kind, mode, raw_hash)
+    if list(rows) != sorted(rows):
+        fail("source manifest is unsorted")
+    required = {
+        "backend",
+        "deploy",
+        "infra",
+        "scripts",
+        "compose.yaml",
+        "backend/alembic.ini",
+        "backend/pyproject.toml",
+        "backend/alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
+        *RUNTIME_DIFF,
+    }
+    if not required.issubset(rows) or any(
+        name in {".env", ".release.env"} or name.startswith("private/") for name in rows
+    ):
+        fail("source manifest is incomplete or contains protected state")
+    return rows
+
+
+def validate_source_archive(stage: Path) -> None:
+    expected = source_manifest(stage / "source-manifest.tsv")
+    observed: dict[str, tuple[str, int, str]] = {}
+    total = 0
+    try:
+        with tarfile.open(stage / "source.tar.gz", "r:gz") as archive:
+            for member in archive:
+                name = safe_path(member.name)
+                if name in observed or member.issym() or member.islnk():
+                    fail("source archive has duplicate or linked members")
+                mode = stat.S_IMODE(member.mode)
+                if member.isdir():
+                    if mode != 0o755:
+                        fail("source archive directory mode changed")
+                    observed[name] = ("d", mode, "-")
+                    continue
+                if not member.isfile() or mode not in {0o644, 0o755}:
+                    fail("source archive member type or mode changed")
+                total += member.size
+                if member.size < 0 or total > MAX_ARCHIVE_TOTAL:
+                    fail("source archive exceeds its bound")
+                stream = archive.extractfile(member)
+                if stream is None:
+                    fail("source archive member is unreadable")
+                observed[name] = ("f", mode, digest_bytes(stream.read()))
+    except (OSError, tarfile.TarError) as exc:
+        raise ValueError("source archive is unreadable") from exc
+    if observed != expected:
+        fail("source archive differs from the complete source manifest")
+
+
+def baseline_manifest(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list) or not value:
+        fail("production source baseline is absent")
+    result: list[dict[str, object]] = []
+    previous = ""
+    for row in value:
+        if not isinstance(row, dict) or set(row) != {
+            "kind",
+            "path",
+            "mode",
+            "uid",
+            "gid",
+            "sha256",
+        }:
+            fail("production source baseline row changed")
+        name = safe_path(row["path"] if isinstance(row["path"], str) else "")
+        kind = row["kind"]
+        mode = row["mode"]
+        uid = row["uid"]
+        gid = row["gid"]
+        checksum = row["sha256"]
+        if (
+            name <= previous
+            or kind not in {"d", "f"}
+            or isinstance(mode, bool)
+            or not isinstance(mode, int)
+            or isinstance(uid, bool)
+            or not isinstance(uid, int)
+            or isinstance(gid, bool)
+            or not isinstance(gid, int)
+            or uid < 0
+            or gid < 0
+        ):
+            fail("production source baseline ordering or metadata changed")
+        if kind == "d":
+            if mode not in {0o700, 0o755} or checksum is not None:
+                fail("production directory baseline changed")
+        elif (
+            mode not in {0o600, 0o644, 0o700, 0o755}
+            or not isinstance(checksum, str)
+            or SHA256.fullmatch(checksum) is None
+        ):
+            fail("production file baseline changed")
+        previous = name
+        result.append(row)
+    return result
+
+
+def validate_baseline(path: Path) -> dict[str, object]:
+    payload = strict_json(path.read_bytes(), "production baseline")
+    keys = {
+        "schema_version",
+        "captured_at_utc",
+        "current_commit",
+        "current_alembic_head",
+        "current_image_id",
+        "current_image_reference",
+        "current_image_revision",
+        "primary_env_sha256",
+        "release_env_sha256",
+        "legacy_release_commit_sha256",
+        "legacy_release_commit_mode",
+        "legacy_release_commit_uid",
+        "legacy_release_commit_gid",
+        "running_services",
+        "restart_counts",
+        "effect_counts",
+        "source_manifest",
+    }
+    if not isinstance(payload, dict) or set(payload) != keys:
+        fail("production baseline keys changed")
+    if (
+        payload["schema_version"] != SCHEMA_VERSION
+        or payload["current_commit"] != PRODUCTION_COMMIT
+        or payload["current_alembic_head"] != ALEMBIC_HEAD
+        or payload["current_image_revision"] != PRODUCTION_COMMIT
+        or not isinstance(payload["captured_at_utc"], str)
+        or TIMESTAMP.fullmatch(payload["captured_at_utc"]) is None
+        or not isinstance(payload["current_image_id"], str)
+        or IMAGE_ID.fullmatch(payload["current_image_id"]) is None
+        or not isinstance(payload["current_image_reference"], str)
+        or IMAGE_REFERENCE.fullmatch(payload["current_image_reference"]) is None
+    ):
+        fail("production baseline identity changed")
+    for key in (
+        "primary_env_sha256",
+        "release_env_sha256",
+        "legacy_release_commit_sha256",
+    ):
+        if not isinstance(payload[key], str) or SHA256.fullmatch(payload[key]) is None:
+            fail("production environment checksum changed")
+    if (
+        payload["legacy_release_commit_sha256"] not in LEGACY_PRODUCTION_COMMIT_HASHES
+        or payload["legacy_release_commit_mode"] != 0o600
+        or payload["legacy_release_commit_uid"] != 1000
+        or payload["legacy_release_commit_gid"] != 1001
+    ):
+        fail("legacy release marker baseline identity changed")
+    services = sorted((*INFRA_SERVICES, *APP_SERVICES))
+    if payload["running_services"] != services:
+        fail("production service topology changed")
+    restart_counts = payload["restart_counts"]
+    if (
+        not isinstance(restart_counts, dict)
+        or set(restart_counts) != set(services)
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in restart_counts.values()
+        )
+        or any(value != 0 for value in restart_counts.values())
+    ):
+        fail("production restart counts changed")
+    effects = payload["effect_counts"]
+    if (
+        not isinstance(effects, dict)
+        or set(effects) != EFFECT_COUNT_KEYS
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in effects.values()
+        )
+        or effects["copy_provider_unavailable_terminal"] < 18
+        or any(
+            effects[key] != 0 for key in EFFECT_COUNT_KEYS if key.startswith("pending_")
+        )
+    ):
+        fail("production zero-effect counters changed")
+    baseline_manifest(payload["source_manifest"])
+    return payload
+
+
+def descriptor_blob(
+    blobs: dict[str, tuple[str, int, bytes | None]],
+    descriptor: object,
+    media_type: str,
+    label: str,
+) -> tuple[str, bytes | None]:
+    if not isinstance(descriptor, dict) or set(descriptor) - {
+        "annotations",
+        "digest",
+        "mediaType",
+        "platform",
+        "size",
+    }:
+        fail(f"{label} descriptor keys changed")
+    raw_digest = descriptor.get("digest")
+    size = descriptor.get("size")
+    if (
+        descriptor.get("mediaType") != media_type
+        or not isinstance(raw_digest, str)
+        or not raw_digest.startswith("sha256:")
+        or SHA256.fullmatch(raw_digest.removeprefix("sha256:")) is None
+        or isinstance(size, bool)
+        or not isinstance(size, int)
+        or size < 0
+    ):
+        fail(f"{label} descriptor identity changed")
+    name = f"blobs/sha256/{raw_digest.removeprefix('sha256:')}"
+    record = blobs.get(name)
+    if record is None or record[0] != raw_digest[7:] or record[1] != size:
+        fail(f"{label} descriptor bytes changed")
+    return raw_digest, record[2]
+
+
+def json_record(value: bytes | None, label: str) -> Any:
+    if value is None:
+        fail(f"{label} exceeds the JSON size bound")
+    return strict_json(value, label)
+
+
+def layer_diff_ids(archive_path: Path, layers: list[tuple[str, bool]]) -> list[str]:
+    expected = dict(layers)
+    if len(expected) != len(layers):
+        fail("OCI layer descriptors contain duplicates")
+    observed: dict[str, str] = {}
+    try:
+        with tarfile.open(archive_path, "r:gz") as archive:
+            for member in archive:
+                name = safe_path(member.name)
+                if name not in expected or not member.isfile():
+                    continue
+                stream = archive.extractfile(member)
+                if stream is None:
+                    fail("OCI layer is unreadable")
+                reader = gzip.GzipFile(fileobj=stream) if expected[name] else stream
+                value = hashlib.sha256()
+                while chunk := reader.read(1024 * 1024):
+                    value.update(chunk)
+                observed[name] = f"sha256:{value.hexdigest()}"
+    except (EOFError, gzip.BadGzipFile, OSError, tarfile.TarError) as exc:
+        raise ValueError("OCI layer compression is invalid") from exc
+    if set(observed) != set(expected):
+        fail("OCI layer graph is incomplete")
+    return [observed[name] for name, _ in layers]
+
+
+def validate_image_archive(stage: Path, metadata: dict[str, object]) -> str:
+    archive_path = stage / "backend-image.oci.tar.gz"
+    blobs: dict[str, tuple[str, int, bytes | None]] = {}
+    total = 0
+    try:
+        with tarfile.open(archive_path, "r:gz") as archive:
+            for member in archive:
+                name = safe_path(member.name)
+                if member.isdir():
+                    if stat.S_IMODE(member.mode) not in {0o755, 0o775}:
+                        fail("OCI archive directory mode changed")
+                    continue
+                if (
+                    not member.isfile()
+                    or member.issym()
+                    or member.islnk()
+                    or name in blobs
+                ):
+                    fail("OCI archive member is unsafe")
+                total += member.size
+                if member.size < 0 or total > MAX_ARCHIVE_TOTAL:
+                    fail("OCI archive exceeds its bound")
+                stream = archive.extractfile(member)
+                if stream is None:
+                    fail("OCI archive member is unreadable")
+                value = hashlib.sha256()
+                captured = bytearray() if member.size <= MAX_JSON else None
+                while chunk := stream.read(1024 * 1024):
+                    value.update(chunk)
+                    if captured is not None:
+                        captured.extend(chunk)
+                blobs[name] = (
+                    value.hexdigest(),
+                    member.size,
+                    bytes(captured) if captured is not None else None,
+                )
+    except (OSError, tarfile.TarError) as exc:
+        raise ValueError("OCI image archive is unreadable") from exc
+    if set(blobs) < {"oci-layout", "index.json"}:
+        fail("OCI archive root is incomplete")
+    layout = json_record(blobs["oci-layout"][2], "OCI layout")
+    index = json_record(blobs["index.json"][2], "OCI index")
+    if layout != {"imageLayoutVersion": "1.0.0"}:
+        fail("OCI layout version changed")
+    if not isinstance(index, dict) or set(index) != {
+        "schemaVersion",
+        "mediaType",
+        "manifests",
+    }:
+        fail("OCI index keys changed")
+    manifests = index["manifests"]
+    if (
+        index["schemaVersion"] != 2
+        or index["mediaType"] != "application/vnd.oci.image.index.v1+json"
+        or not isinstance(manifests, list)
+        or len(manifests) != 1
+    ):
+        fail("OCI index must bind one manifest")
+    index_descriptor = manifests[0]
+    if not isinstance(index_descriptor, dict):
+        fail("OCI index descriptor changed")
+    annotations = index_descriptor.get("annotations")
+    if annotations != {
+        "io.containerd.image.name": metadata["transport_tag"],
+        "org.opencontainers.image.ref.name": metadata["transport_tag"],
+    }:
+        fail("OCI transport tag annotation changed")
+    if index_descriptor.get("platform") != {"architecture": "amd64", "os": "linux"}:
+        fail("OCI manifest platform changed")
+    manifest_digest, manifest_bytes = descriptor_blob(
+        blobs,
+        index_descriptor,
+        "application/vnd.oci.image.manifest.v1+json",
+        "OCI manifest",
+    )
+    manifest = json_record(manifest_bytes, "OCI manifest")
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schemaVersion",
+        "mediaType",
+        "config",
+        "layers",
+    }:
+        fail("OCI manifest keys changed")
+    if (
+        manifest["schemaVersion"] != 2
+        or manifest["mediaType"] != "application/vnd.oci.image.manifest.v1+json"
+        or not isinstance(manifest["layers"], list)
+        or not manifest["layers"]
+    ):
+        fail("OCI manifest graph changed")
+    config_digest, config_bytes = descriptor_blob(
+        blobs,
+        manifest["config"],
+        "application/vnd.oci.image.config.v1+json",
+        "OCI config",
+    )
+    layer_digests: list[str] = []
+    layer_names: list[tuple[str, bool]] = []
+    for index_value, descriptor in enumerate(manifest["layers"]):
+        media_type = descriptor.get("mediaType") if isinstance(descriptor, dict) else ""
+        if media_type not in {
+            "application/vnd.oci.image.layer.v1.tar",
+            "application/vnd.oci.image.layer.v1.tar+gzip",
+        }:
+            fail("OCI layer media type changed")
+        layer_digest, _ = descriptor_blob(
+            blobs, descriptor, media_type, f"OCI layer {index_value}"
+        )
+        layer_digests.append(layer_digest)
+        layer_names.append(
+            (
+                f"blobs/sha256/{layer_digest[7:]}",
+                media_type.endswith("+gzip"),
+            )
+        )
+    diff_ids = layer_diff_ids(archive_path, layer_names)
+    config = json_record(config_bytes, "OCI config")
+    runtime = config.get("config") if isinstance(config, dict) else None
+    labels = runtime.get("Labels") if isinstance(runtime, dict) else None
+    rootfs = config.get("rootfs") if isinstance(config, dict) else None
+    if (
+        not isinstance(config, dict)
+        or config.get("architecture") != "amd64"
+        or config.get("os") != "linux"
+        or not isinstance(runtime, dict)
+        or runtime.get("User") != "app"
+        or not isinstance(labels, dict)
+        or labels.get("org.opencontainers.image.revision") != metadata["release_commit"]
+        or not isinstance(rootfs, dict)
+        or rootfs.get("type") != "layers"
+        or rootfs.get("diff_ids") != diff_ids
+    ):
+        fail("OCI config platform, identity, or diff-ID graph changed")
+    referenced = {
+        "oci-layout",
+        "index.json",
+        f"blobs/sha256/{manifest_digest[7:]}",
+        f"blobs/sha256/{config_digest[7:]}",
+        *(f"blobs/sha256/{value[7:]}" for value in layer_digests),
+    }
+    if set(blobs) != referenced:
+        fail("OCI archive contains dangling or missing blobs")
+    if metadata["candidate_config_digest"] != config_digest:
+        fail("candidate config digest binding changed")
+    expected_reference = f"{metadata['candidate_repository']}@{manifest_digest}"
+    if metadata["candidate_reference"] != expected_reference:
+        fail("candidate repository digest binding changed")
+    return manifest_digest
+
+
+def validate_image_source(path: Path) -> None:
+    rows: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9._/-]+)", line)
+        if match is None:
+            fail("image source manifest is malformed")
+        name = safe_path(match.group(2))
+        if name in rows:
+            fail("image source manifest contains duplicates")
+        rows[name] = match.group(1)
+    if list(rows) != sorted(rows) or not {
+        "alembic.ini",
+        "pyproject.toml",
+        "app/api_main.py",
+        "app/content_worker_main.py",
+        "app/core/config.py",
+        "app/infrastructure/ai/factory.py",
+        "alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
+    }.issubset(rows):
+        fail("image source manifest is incomplete or unsorted")
+
+
+def validate_metadata(path: Path) -> dict[str, object]:
+    payload = strict_json(path.read_bytes(), "release metadata")
+    keys = {
+        "schema_version",
+        "production_commit",
+        "release_ref",
+        "release_commit",
+        "main_fix_commit",
+        "main_operator_commit",
+        "alembic_head",
+        "scheduler_cutoff_utc",
+        "candidate_repository",
+        "transport_tag",
+        "candidate_reference",
+        "candidate_config_digest",
+        "source_sha256",
+        "source_manifest_sha256",
+        "image_archive_sha256",
+        "image_source_sha256",
+        "runtime_diff_sha256",
+        "audit_diff_sha256",
+        "production_baseline_sha256",
+        "builder_sha256",
+        "capture_sha256",
+        "operator_sha256",
+        "validator_sha256",
+        "app_services",
+        "service_commands",
+    }
+    if not isinstance(payload, dict) or set(payload) != keys:
+        fail("release metadata keys changed")
+    if (
+        payload["schema_version"] != SCHEMA_VERSION
+        or payload["production_commit"] != PRODUCTION_COMMIT
+        or payload["release_ref"] != RELEASE_REF
+        or payload["alembic_head"] != ALEMBIC_HEAD
+        or not isinstance(payload["release_commit"], str)
+        or COMMIT.fullmatch(payload["release_commit"]) is None
+        or not isinstance(payload["main_fix_commit"], str)
+        or COMMIT.fullmatch(payload["main_fix_commit"]) is None
+        or not isinstance(payload["main_operator_commit"], str)
+        or COMMIT.fullmatch(payload["main_operator_commit"]) is None
+        or not isinstance(payload["scheduler_cutoff_utc"], str)
+        or TIMESTAMP.fullmatch(payload["scheduler_cutoff_utc"]) is None
+        or not isinstance(payload["candidate_repository"], str)
+        or REPOSITORY.fullmatch(payload["candidate_repository"]) is None
+        or not isinstance(payload["candidate_reference"], str)
+        or IMAGE_REFERENCE.fullmatch(payload["candidate_reference"]) is None
+        or not isinstance(payload["candidate_config_digest"], str)
+        or IMAGE_ID.fullmatch(payload["candidate_config_digest"]) is None
+    ):
+        fail("release metadata identity changed")
+    expected_tag = (
+        f"{payload['candidate_repository']}:brand-embedding-"
+        f"{str(payload['release_commit'])[:12]}"
+    )
+    if payload["transport_tag"] != expected_tag:
+        fail("transport tag is not bound to the release")
+    for key in (
+        "source_sha256",
+        "source_manifest_sha256",
+        "image_archive_sha256",
+        "image_source_sha256",
+        "runtime_diff_sha256",
+        "audit_diff_sha256",
+        "production_baseline_sha256",
+        "builder_sha256",
+        "capture_sha256",
+        "operator_sha256",
+        "validator_sha256",
+    ):
+        if not isinstance(payload[key], str) or SHA256.fullmatch(payload[key]) is None:
+            fail("release metadata checksum changed")
+    if payload["app_services"] != list(APP_SERVICES) or payload["service_commands"] != {
+        name: list(command) for name, command in SERVICE_COMMANDS.items()
+    }:
+        fail("release service/entrypoint contract changed")
+    return payload
+
+
+def validate_stage(raw_stage: Path) -> dict[str, object]:
+    stage = raw_stage.resolve(strict=True)
+    metadata = stage.stat()
+    if (
+        not stage.is_dir()
+        or has_symlink_component(raw_stage.absolute())
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+        or metadata.st_uid != 0
+        or metadata.st_gid != 0
+    ):
+        fail("stage must be a physical root-owned mode-0700 directory")
+    entries = list(stage.iterdir())
+    if {entry.name for entry in entries} != MEMBERS or any(
+        not entry.is_file()
+        or entry.is_symlink()
+        or stat.S_IMODE(entry.stat().st_mode) != 0o600
+        or entry.stat().st_uid != 0
+        or entry.stat().st_gid != 0
+        or entry.stat().st_size > MAX_STAGE_MEMBER
+        for entry in entries
+    ):
+        fail("stage member set, type, owner, or mode changed")
+    rows = checksum_rows(stage / "artifacts.sha256")
+    if any(digest_file(stage / name) != checksum for name, checksum in rows.items()):
+        fail("artifact checksum binding changed")
+    payload = validate_metadata(stage / "release-metadata.json")
+    validate_baseline(stage / "production-baseline.json")
+    diff_rows(stage / "runtime-diff.tsv", runtime=True)
+    diff_rows(stage / "audit-diff.tsv", runtime=False)
+    validate_source_archive(stage)
+    validate_image_source(stage / "image-source.sha256")
+    validate_image_archive(stage, payload)
+    bindings = {
+        "source_sha256": "source.tar.gz",
+        "source_manifest_sha256": "source-manifest.tsv",
+        "image_archive_sha256": "backend-image.oci.tar.gz",
+        "image_source_sha256": "image-source.sha256",
+        "runtime_diff_sha256": "runtime-diff.tsv",
+        "audit_diff_sha256": "audit-diff.tsv",
+        "production_baseline_sha256": "production-baseline.json",
+        "builder_sha256": "build-brand-embedding-hotfix-offline-artifacts.sh",
+        "capture_sha256": "capture-brand-embedding-production-baseline.sh",
+        "operator_sha256": "brand-embedding-hotfix-offline-release-operator.sh",
+        "validator_sha256": "validate-brand-embedding-hotfix-offline-artifacts.py",
+    }
+    if any(payload[key] != digest_file(stage / name) for key, name in bindings.items()):
+        fail("release metadata file binding changed")
+    return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("stage", type=Path)
+    args = parser.parse_args()
+    try:
+        payload = validate_stage(args.stage)
+    except (OSError, ValueError) as exc:
+        print(f"brand_embedding_artifact_validation_failed reason={exc}")
+        return 1
+    print(
+        "brand_embedding_artifact_validation_ok "
+        f"release_commit={payload['release_commit']} "
+        f"candidate_reference={payload['candidate_reference']}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

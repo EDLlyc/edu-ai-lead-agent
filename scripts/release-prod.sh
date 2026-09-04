@@ -15,7 +15,9 @@ readonly IMAGE_REPOSITORY="${RELEASE_IMAGE_REPOSITORY:-}"
 readonly SSH_HOST="${RELEASE_SSH_HOST:-}"
 readonly DRY_RUN="${RELEASE_DRY_RUN:-false}"
 readonly SOURCE_REMOTE="origin"
-readonly SOURCE_REF="refs/remotes/origin/main"
+readonly SOURCE_BRANCH="${RELEASE_SOURCE_REF-main}"
+readonly SOURCE_HEAD_REF="refs/heads/${SOURCE_BRANCH}"
+readonly SOURCE_TRACKING_REF="refs/remotes/${SOURCE_REMOTE}/${SOURCE_BRANCH}"
 readonly SOURCE_URL="https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git"
 readonly SOURCE_SSH_URL="git@codeup.aliyun.com:601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git"
 readonly SOURCE_SSH_ALIAS="codeup-edu-ai"
@@ -48,6 +50,15 @@ fail() {
     exit 2
 }
 
+fail_source() {
+    local source_code="$1"
+    local main_compatibility_code="$2"
+    if [[ "${SOURCE_BRANCH}" == "main" ]]; then
+        fail "${main_compatibility_code}"
+    fi
+    fail "${source_code}"
+}
+
 emit() {
     printf 'release_prod event=%s' "$1"
     shift
@@ -66,6 +77,15 @@ validate_inputs() {
     case "${DRY_RUN}" in
         true|false) ;;
         *) fail invalid_dry_run ;;
+    esac
+    case "${SOURCE_BRANCH}" in
+        main) ;;
+        release/*)
+            [[ "${SOURCE_BRANCH}" =~ ^release/[a-z0-9]+(-[a-z0-9]+)*$ \
+                && "${#SOURCE_BRANCH}" -le 128 ]] \
+                || fail invalid_source_ref
+            ;;
+        *) fail invalid_source_ref ;;
     esac
     [[ "${IMAGE_REPOSITORY}" =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9]+([._-][a-z0-9]+)*){2,}$ ]] \
         || fail invalid_image_repository
@@ -87,7 +107,7 @@ validate_inputs() {
     local release_variable
     for release_variable in "${!RELEASE_@}"; do
         case "${release_variable}" in
-            RELEASE_DRY_RUN|RELEASE_IMAGE_REPOSITORY|RELEASE_SSH_HOST) ;;
+            RELEASE_DRY_RUN|RELEASE_IMAGE_REPOSITORY|RELEASE_SOURCE_REF|RELEASE_SSH_HOST) ;;
             *) fail unsupported_release_environment ;;
         esac
     done
@@ -102,11 +122,14 @@ cached_source_identity() {
         "${SOURCE_SSH_ALIAS_URL}") codeup_alias_preflight ;;
         *) fail origin_is_not_authoritative_codeup ;;
     esac
-    release_commit="$(git -C "${PROJECT_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}")" \
-        || fail cached_origin_main_unavailable
-    [[ "${release_commit}" =~ ^[0-9a-f]{40}$ ]] || fail cached_origin_main_invalid
+    release_commit="$(git -C "${PROJECT_ROOT}" rev-parse --verify \
+        "${SOURCE_TRACKING_REF}^{commit}")" \
+        || fail_source cached_source_ref_unavailable cached_origin_main_unavailable
+    [[ "${release_commit}" =~ ^[0-9a-f]{40}$ ]] \
+        || fail_source cached_source_ref_invalid cached_origin_main_invalid
     git -C "${PROJECT_ROOT}" cat-file -e "${release_commit}^{commit}" \
-        || fail cached_origin_main_object_missing
+        || fail_source \
+            cached_source_ref_object_missing cached_origin_main_object_missing
 }
 
 codeup_alias_preflight() {
@@ -189,9 +212,14 @@ ssh_configuration_preflight() {
 }
 
 emit_plan() {
+    local source_identity=codeup-origin-release
+    if [[ "${SOURCE_BRANCH}" == "main" ]]; then
+        source_identity=codeup-origin-main
+    fi
     emit plan \
         "commit=${release_commit}" \
-        source=codeup-origin-main \
+        "source=${source_identity}" \
+        "source_ref=${SOURCE_HEAD_REF}" \
         stages=fetch,isolated-quality,cached-build,oci-digest,verified-artifacts,strict-ssh,root-deploy \
         mutation=false
 }
@@ -254,14 +282,16 @@ fetch_and_create_worktree() {
     SSH_ASKPASS=/bin/false \
     GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o NumberOfPasswordPrompts=0 -o ConnectTimeout=10' \
         git -C "${PROJECT_ROOT}" fetch --quiet --no-tags "${SOURCE_REMOTE}" \
-            "refs/heads/main:${SOURCE_REF}" </dev/null >/dev/null 2>&1 \
-        || fail codeup_main_fetch_failed
-    release_commit="$(git -C "${PROJECT_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}")" \
-        || fail fetched_origin_main_unavailable
-    [[ "${release_commit}" =~ ^[0-9a-f]{40}$ ]] || fail fetched_origin_main_invalid
+            "${SOURCE_HEAD_REF}:${SOURCE_TRACKING_REF}" </dev/null >/dev/null 2>&1 \
+        || fail_source codeup_source_fetch_failed codeup_main_fetch_failed
+    release_commit="$(git -C "${PROJECT_ROOT}" rev-parse --verify \
+        "${SOURCE_TRACKING_REF}^{commit}")" \
+        || fail_source fetched_source_ref_unavailable fetched_origin_main_unavailable
+    [[ "${release_commit}" =~ ^[0-9a-f]{40}$ ]] \
+        || fail_source fetched_source_ref_invalid fetched_origin_main_invalid
     git -C "${PROJECT_ROOT}" merge-base --is-ancestor \
         "${previous_commit}" "${release_commit}" \
-        || fail codeup_main_not_fast_forward
+        || fail_source codeup_source_not_fast_forward codeup_main_not_fast_forward
     temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/edu-ai-release.XXXXXX")"
     worktree="${temporary_root}/source"
     git -C "${PROJECT_ROOT}" worktree add --detach "${worktree}" "${release_commit}" \
@@ -276,7 +306,8 @@ fetch_and_create_worktree() {
     cmp -s "${PROJECT_ROOT}/scripts/release-prod.sh" \
         "${worktree}/scripts/release-prod.sh" \
         || fail release_orchestrator_not_committed
-    emit source_isolated "commit=${release_commit}"
+    emit source_isolated \
+        "commit=${release_commit}" "source_ref=${SOURCE_HEAD_REF}"
 }
 
 prepare_toolchains_and_infrastructure() {

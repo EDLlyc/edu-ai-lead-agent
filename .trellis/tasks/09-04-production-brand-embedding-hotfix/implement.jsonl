@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"品牌 provider、不可变向量身份、上传/检索与 worker 装配契约"}
+{"file":".trellis/spec/backend/agent-pipeline.md","reason":"copy generation provider 可用性、终态与不回放契约"}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"生产三时段任务、自动投递和过期任务边界"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"provider fail-closed、安全错误与重试边界"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"启动和 smoke 只允许安全 provider identity 日志"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"backend 测试、lint、type-check 与验证要求"}
