@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/governance-event-organization.md", "reason": "Trace acquisition normalization and governance terminal states without loading the oversized aggregate pipeline spec."}
+{"file": ".trellis/spec/backend/topic-selection.md", "reason": "Interpret daily selection, no-topic, eligibility, and repeat-window states."}
+{"file": ".trellis/spec/backend/content-slot-production.md", "reason": "Distinguish slot scheduling, readiness, delivery windows, valid unfilled outcomes, and expiry."}
+{"file": ".trellis/spec/backend/wecom-delivery.md", "reason": "Interpret durable delivery jobs, child attempts, retries, partial states, and delivery_unknown safely."}
+{"file": ".trellis/spec/backend/official-account-weekly-dag.md", "reason": "Distinguish the Monday weekly unpublished-draft workflow from daily Enterprise WeChat delivery."}
+{"file": ".trellis/tasks/09-04-production-news-delivery-incident/research/deployment-context.md", "reason": "Use the verified production activation timeline and explicit unknowns without assuming local WIP is deployed."}
