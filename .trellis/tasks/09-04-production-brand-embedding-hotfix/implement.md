@@ -17,8 +17,10 @@
    `40e4dec…` 后代且运行时 diff 命中白名单，不发布当前分叉的完整 `main`。
 10. 因当前没有可用 registry，新增并回归本任务专属离线 builder、纯 validator、mode-0600 一次性 operator
    和 fake harness；绑定 fetched release ref、生产 baseline、完整 source/image 归档、12 服务、零发送状态和回滚。
-11. 从该 release ref 构建 linux/amd64 不可变镜像并通过离线 operator 部署；保持受保护 `.env` 原始值不变，
-   核对 resolved provider、release marker、OCI revision、迁移版本、12 服务 health/image/restart count。
+11. 从该 release ref 构建 linux/amd64 不可变镜像并通过离线 operator 部署；保持受保护 `.env` 的 bytes 及
+   已审核 `0600 / 1000:1001` 身份不变；用拒绝 symlink/路径替换/读取期漂移的单 fd 稳定指纹，在锁前、锁内、
+   quiesce 后、迁移与服务启动前、回滚恢复后和最终阶段重复核对，并验证 resolved provider、release marker、
+   OCI revision、迁移版本、12 服务 health/image/restart count。
 12. 在生产执行一次无持久化写入的有界 `embedding-3` smoke，只保留 provider/model/dimension/状态；随后
     只读确认 worker readiness，不 enqueue、不 replay、不发送。
 13. 将生产验证、未恢复的历史任务边界和下一次自然调度观察项写入任务结果。

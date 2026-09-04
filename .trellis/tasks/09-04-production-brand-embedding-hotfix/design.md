@@ -81,7 +81,12 @@ contract 新建本任务专属 builder、纯 validator、一次性 root operator
 Codeup release ref、完整镜像归档图、source manifest、生产 baseline、12 个应用服务、相同 Alembic head、
 零发送计数以及回滚证据；不得复用旧任务 operator。
 
-生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。当前 `auto` 在本修复后确定解析为
+生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
+身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
+不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一
+文件描述符生成稳定指纹，拒绝 symlink、读取期元数据变化和路径替换，避免把不同 inode 的 bytes/metadata
+拼成一个 baseline。operator 在锁前、锁内、quiesce 后、迁移/服务启动前、回滚恢复后和最终验证阶段都必须
+同时匹配 bytes/mode/uid/gid，备份和同文件系统原子恢复也必须保持该身份。当前 `auto` 在本修复后确定解析为
 `zhipu/embedding-3/2048`，本次保留原始 `.env` 不变并验证 resolved identity，避免在镜像回滚之外制造第二个
 配置回滚边界。显式 pin 改为后续 registry-backed 配置发布项。
 
