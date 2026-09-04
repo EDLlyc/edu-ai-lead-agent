@@ -840,6 +840,13 @@ release artifacts, or production deployment automation change.
   before migration and service start. Rollback writes a protected same-filesystem temporary file,
   applies the bound mode/owner, verifies it, and atomically replaces the target; failed replacement
   must clean the temporary file without weakening the original.
+- A pre-existing non-claimable queue may be preserved only when the task records the independently
+  reviewed cohort shape before the first capture: exact count, allowed statuses, attempt counts, and
+  business dates, plus a canonical digest over stable row identity/state fields. The capture must
+  reject a same-count cohort whose status, attempts, dates, or membership already drifted; it may not
+  redefine that drift as the new baseline. Separate zero gates must cover every running row, current
+  business-day pending row, future pending row, and the exact claimable predicate used by the worker.
+  Recompute the frozen digest at every protected-state gate without logging row identifiers.
 - Snapshot both the primary and release environment before the first release mutation, even when
   source activation has not started. A pre-migration failure restores both environments and any
   activated source, restarts the complete previous application set, verifies the captured image
@@ -914,6 +921,8 @@ release artifacts, or production deployment automation change.
 | Lock is already held | Typed preflight failure; concurrent release is rejected |
 | Locked baseline differs from pre-lock evidence, or protected state/source/effect counters drift after quiescence | Reject before activation and run the reviewed pre-migration recovery path; never recapture a more convenient baseline after writers stop |
 | Protected `.env` bytes, mode, UID, GID, inode, or path type changes during one fingerprint or before migration/service start | Fail closed and recover the captured file metadata; never combine checksum and metadata from separate path opens |
+| First capture sees the expected frozen-queue count but different status, attempt count, reviewed business dates, or canonical digest | Reject the capture; do not bless the changed cohort as a new baseline |
+| Rollback-time queue/effect state differs before old writers restart | Keep writers stopped; restoring files or images does not authorize restarting into a changed queue |
 | Candidate source omits a managed path from the captured production source manifest | Reject before source installation; the candidate cannot silently delete an unreviewed production path |
 | Failure after quiesce but before activation | Previous digest is restarted and verified |
 | Pre-migration restoration succeeds but the EXIT trap continues into incident shutdown | Regression failure; return immediately after bounded previous-service verification. |
@@ -1049,6 +1058,11 @@ release artifacts, or production deployment automation change.
   backup metadata, migration/start-adjacent drift, atomic replacement failure, and final-gate
   rollback. Assert restoration of both bytes and exact mode/UID/GID and cleanup of every failed
   temporary replacement.
+- Frozen-queue tests must execute the real capture and operator functions, not only inspect their
+  source. They cover the worker's exact business-date/status/availability/attempt predicate, global
+  running/current-day/future zero gates, canonical digest ordering, same-count membership/state
+  drift, business-date rollover, and queue/effect verification both before and after rollback
+  service restart.
 - Readiness/continuation regressions must prove multiple `starting` observations can converge within
   the bound and that the incident continuation rejects runtime/head/cutoff drift, existing jobs,
   existing worker/volumes, repeat invocation, migration commands, and publish/send surfaces.

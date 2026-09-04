@@ -90,6 +90,16 @@ Codeup release ref、完整镜像归档图、source manifest、生产 baseline�
 `zhipu/embedding-3/2048`，本次保留原始 `.env` 不变并验证 resolved identity，避免在镜像回滚之外制造第二个
 配置回滚边界。显式 pin 改为后续 registry-backed 配置发布项。
 
+生产只读 capture 还确认 7 条旧 `queued/attempt_count=0` copy job 的业务日期均早于当前日期。真实 `_claim`
+只查询 `run.business_date == Asia/Shanghai 当天`、`queued/retry_scheduled`、已到 `available_at` 且 attempt
+小于 3 的任务，因此不能把这 7 条冻结记录误算成发布必须清零的实时 pending。baseline 固定时区、业务日期、
+max-attempts，并要求 exact-claimable、全局 running、当天 queued/running/retry 和未来 queued/retry 全为 0。
+冻结 cohort 以严格排序的 `job id/run id/status/business_date/attempt_count/available_at` canonical rows 计算
+`count=7 + sha256`；首次 capture 还逐项匹配已审核的七个业务日期、`queued` 与 `attempt_count=0`，不能将
+capture 前的同数量状态漂移重新确认为 baseline。输出与日志只出现聚合和摘要。operator 在锁前、锁内、
+quiesce 后、迁移前、启动前、最终及回滚服务重启前后重新计算；日期跨界、cohort 增删改或任何实时可执行
+copy 状态均 fail closed，绝不通过 DML “修正”现场数据。
+
 ```text
 local tests + check
   -> hotfix-only commit

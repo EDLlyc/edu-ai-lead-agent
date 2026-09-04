@@ -35,6 +35,8 @@ readonly LEGACY_PRODUCTION_COMMIT=7a45a65
 readonly ALEMBIC_HEAD=20260901_0042
 readonly ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 readonly PRIMARY_ENV_IDENTITY=600:1000:1001
+readonly BUSINESS_TIMEZONE=Asia/Shanghai
+readonly CONTENT_MAX_ATTEMPTS=3
 readonly OPERATOR_NAME=brand-embedding-hotfix-offline-release-operator.sh
 readonly VALIDATOR_NAME=validate-brand-embedding-hotfix-offline-artifacts.py
 readonly -a PROFILES=(
@@ -379,7 +381,19 @@ PY
   rm -f -- "$source_observed" "$source_expected"
 }
 
+current_business_date() {
+  python3 - "$BUSINESS_TIMEZONE" <<'PY'
+from datetime import datetime
+import sys
+from zoneinfo import ZoneInfo
+
+print(datetime.now(ZoneInfo(sys.argv[1])).date().isoformat())
+PY
+}
+
 effect_counts() {
+  local business_date=$1
+  [[ "$business_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
   compose exec -T postgres sh -eu -c '
     psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
       SELECT
@@ -394,12 +408,73 @@ effect_counts() {
         (SELECT count(*) FROM wechat_mp_draft_jobs)::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_items)::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_attempts)::text || '\'':'\'' ||
-        (SELECT count(*) FROM copy_generation_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date = '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''retry_scheduled'\'')
+            AND job.available_at <= statement_timestamp()
+            AND job.attempt_count < $2::integer)::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs WHERE status = '\''running'\'')::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date = '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''running'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
+        (SELECT count(*) FROM copy_generation_jobs job
+          JOIN copy_generation_runs run ON run.id = job.run_id
+          WHERE run.business_date > '\''$1'\''::date
+            AND job.status IN ('\''queued'\'', '\''retry_scheduled'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM wecom_delivery_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''partial'\'', '\''delivery_unknown'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM official_account_weekly_dag_runs WHERE status IN ('\''pending'\'', '\''running'\'', '\''partial'\'', '\''retryable_failed'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM official_account_article_runs WHERE status IN ('\''queued'\'', '\''running'\''))::text || '\'':'\'' ||
         (SELECT count(*) FROM wechat_mp_draft_jobs WHERE status IN ('\''queued'\'', '\''running'\'', '\''retryable_failed'\''))::text
-    "' </dev/null
+    "
+  ' brand-hotfix "$business_date" "$CONTENT_MAX_ATTEMPTS" </dev/null
+}
+
+frozen_copy_cohort() {
+  local business_date=$1
+  [[ "$business_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  compose exec -T postgres sh -eu -c '
+    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+      SELECT concat_ws('\''|'\'', job.id::text, job.run_id::text, job.status,
+        run.business_date::text, job.attempt_count::text,
+        to_char(job.available_at AT TIME ZONE '\''UTC'\'', '\''YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\''))
+      FROM copy_generation_jobs job
+      JOIN copy_generation_runs run ON run.id = job.run_id
+      WHERE run.business_date < '\''$1'\''::date
+        AND job.status IN ('\''queued'\'', '\''retry_scheduled'\'')
+      ORDER BY run.business_date, job.id::text, job.run_id::text, job.status,
+        job.attempt_count, job.available_at
+    "
+  ' brand-hotfix "$business_date" </dev/null | python3 -c '
+import hashlib
+import re
+import sys
+
+rows = sys.stdin.buffer.read().splitlines()
+uuid = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+timestamp = re.compile(rb"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z")
+expected_dates = [
+    b"2026-08-04", b"2026-08-05", b"2026-08-07", b"2026-08-08",
+    b"2026-08-09", b"2026-08-10", b"2026-08-11",
+]
+for row in rows:
+    fields = row.split(b"|")
+    if (
+        len(fields) != 6
+        or uuid.fullmatch(fields[0]) is None
+        or uuid.fullmatch(fields[1]) is None
+        or fields[2] != b"queued"
+        or re.fullmatch(rb"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields[3]) is None
+        or fields[4] != b"0"
+        or timestamp.fullmatch(fields[5]) is None
+    ):
+        raise SystemExit("frozen copy cohort evidence is malformed")
+if [row.split(b"|")[3] for row in rows] != expected_dates:
+    raise SystemExit("frozen copy cohort differs from the reviewed business dates")
+canonical = b"\n".join(rows) + (b"\n" if rows else b"")
+print(f"{len(rows)}:{hashlib.sha256(canonical).hexdigest()}")
+'
 }
 
 baseline_effect_counts() {
@@ -414,12 +489,39 @@ keys = [
     "weekly_dag_attempts", "official_account_article_runs",
     "official_account_article_attempts", "wechat_mp_draft_jobs",
     "wechat_mp_draft_items", "wechat_mp_draft_attempts",
-    "pending_copy_jobs", "pending_wecom_jobs", "pending_weekly_runs",
+    "claimable_copy_jobs", "running_copy_jobs", "current_business_date_copy_jobs",
+    "future_copy_jobs", "pending_wecom_jobs", "pending_weekly_runs",
     "pending_official_account_runs", "pending_wechat_draft_jobs",
 ]
 values = json.loads(pathlib.Path(sys.argv[1]).read_bytes())["effect_counts"]
 print(":".join(str(values[key]) for key in keys))
 PY
+}
+
+baseline_frozen_copy_cohort() {
+  python3 - "$baseline_json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+print(f"{payload['frozen_copy_job_count']}:{payload['frozen_copy_job_sha256']}")
+PY
+}
+
+copy_state_matches_baseline() {
+  local business_date business_date_after
+  [[ "$(json_string "$baseline_json" business_timezone)" == "$BUSINESS_TIMEZONE" ]] \
+    || return 1
+  business_date=$(current_business_date) || return 1
+  [[ "$business_date" == "$(json_string "$baseline_json" business_date)" ]] \
+    || return 1
+  [[ "$(effect_counts "$business_date")" == "$(baseline_effect_counts)" ]] \
+    || return 1
+  [[ "$(frozen_copy_cohort "$business_date")" == \
+      "$(baseline_frozen_copy_cohort)" ]] || return 1
+  business_date_after=$(current_business_date) || return 1
+  [[ "$business_date_after" == "$business_date" ]]
 }
 
 database_head() {
@@ -491,7 +593,8 @@ verify_baseline() {
   [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$previous_image")" == "$PRODUCTION_COMMIT" ]] \
     || die 'baseline image revision drifted'
   [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || die 'database head drifted'
-  [[ "$(effect_counts)" == "$(baseline_effect_counts)" ]] || die 'effect counters drifted'
+  copy_state_matches_baseline \
+    || die 'business date, copy cohort, or protected effect counters drifted'
   verify_current_source_baseline || die 'production source baseline drifted'
   verify_service_set "$previous_image" baseline || die 'service/image/restart baseline drifted'
 }
@@ -680,7 +783,7 @@ verify_quiesced_baseline() {
         "$(json_string "$baseline_json" release_env_sha256)" ]] \
     || return 1
   [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || return 1
-  [[ "$(effect_counts)" == "$(baseline_effect_counts)" ]] || return 1
+  copy_state_matches_baseline || return 1
   verify_current_source_baseline || return 1
 }
 
@@ -810,6 +913,8 @@ restore_previous_state() {
   cp -a "$backup_dir/release-commit.before" "$RELEASE_MARKER" || return 1
   cp -a "$backup_dir/legacy-release-commit.before" "$LEGACY_RELEASE_MARKER" || return 1
   source_activated=0
+  copy_state_matches_baseline || return 1
+  [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || return 1
   compose up -d --no-build --no-deps "${APP_SERVICES[@]}" >/dev/null || return 1
   local deadline=$(( $(date +%s) + 90 ))
   until verify_service_set "$(json_string "$baseline_json" current_image_id)" baseline; do
@@ -824,7 +929,7 @@ restore_previous_state() {
       && "$(stat -c '%a:%u:%g' "$LEGACY_RELEASE_MARKER")" == \
         "$(baseline_legacy_identity)" ]] || return 1
   marker_equals "$LEGACY_RELEASE_MARKER" "$LEGACY_PRODUCTION_COMMIT" || return 1
-  [[ "$(effect_counts)" == "$(baseline_effect_counts)" ]] || return 1
+  copy_state_matches_baseline || return 1
   [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || return 1
 }
 
@@ -865,13 +970,22 @@ wait_for_candidate() {
 }
 
 write_evidence() {
-  local evidence="$backup_dir/brand-embedding-activation-evidence.txt" terminal_count
+  local evidence="$backup_dir/brand-embedding-activation-evidence.txt"
+  local terminal_count frozen_copy frozen_count frozen_digest
   terminal_count=$(baseline_effect_counts)
   terminal_count=${terminal_count%%:*}
+  frozen_copy=$(baseline_frozen_copy_cohort)
+  frozen_count=${frozen_copy%%:*}
+  frozen_digest=${frozen_copy#*:}
   {
     printf 'schema_version=1\nrelease_commit=%s\n' "$release_commit"
     printf 'candidate_reference=%s\nalembic_head=%s\n' "$candidate_reference" "$ALEMBIC_HEAD"
     printf 'application_services=12\ncopy_provider_unavailable_terminal=%s\n' "$terminal_count"
+    printf 'business_timezone=%s\nbusiness_date=%s\n' \
+      "$BUSINESS_TIMEZONE" "$(json_string "$baseline_json" business_date)"
+    printf 'frozen_copy_job_count=%s\nfrozen_copy_job_sha256=%s\n' \
+      "$frozen_count" "$frozen_digest"
+    printf 'claimable_copy_jobs=0\nrunning_copy_jobs=0\ncurrent_business_date_copy_jobs=0\n'
     printf 'effect_counters_unchanged=true\nprimary_env_unchanged=true\n'
     printf 'migration_invocations=1\nprovider_calls=0\nsend_calls=0\nreplay_calls=0\n'
     printf 'completed_at=%s\n' "$(date -u +%FT%TZ)"
@@ -904,16 +1018,20 @@ run_activation() {
   write_candidate_release_env
   primary_env_matches_baseline \
     || die 'primary environment drifted immediately before migration'
+  copy_state_matches_baseline \
+    || die 'copy state drifted immediately before migration'
   migration_attempted=1
   compose run --rm --no-deps -T backend-migrate </dev/null
   [[ "$(database_head)" == "$ALEMBIC_HEAD" ]] || die 'database head changed after migration'
   primary_env_matches_baseline \
     || die 'primary environment drifted immediately before service start'
+  copy_state_matches_baseline \
+    || die 'copy state drifted immediately before service start'
   compose up -d --no-build --no-deps "${APP_SERVICES[@]}"
   wait_for_candidate || die 'candidate services did not converge within the readiness bound'
   require_safe_window
-  [[ "$(effect_counts)" == "$(baseline_effect_counts)" ]] \
-    || die 'activation changed a protected effect counter'
+  copy_state_matches_baseline \
+    || die 'activation changed business date, copy cohort, or a protected effect counter'
   primary_env_matches_baseline \
     || die 'activation changed primary environment bytes, mode, or owner'
   [[ "$(release_reference)" == "$candidate_reference" ]] \
