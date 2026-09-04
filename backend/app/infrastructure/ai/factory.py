@@ -48,6 +48,22 @@ from app.infrastructure.ai.zhipu import (
 _ImageValidationProvider = TypeVar("_ImageValidationProvider")
 
 
+def select_brand_embedding_client(
+    settings: Settings,
+    *,
+    zhipu_client: httpx.AsyncClient | None,
+    alibaba_client: httpx.AsyncClient | None,
+) -> httpx.AsyncClient | None:
+    """Bind the resolved brand provider to the matching owned client."""
+
+    mode = settings.resolved_brand_embedding_provider_mode
+    if mode == "zhipu":
+        return zhipu_client
+    if mode == "alibaba":
+        return alibaba_client
+    return None
+
+
 def create_ip_asset_recognition_model(
     settings: Settings, *, client: httpx.AsyncClient | None = None
 ) -> IpAssetRecognitionModel | None:
@@ -114,6 +130,12 @@ def create_brand_embedding_model(
     if mode == "disabled":
         raise RuntimeError("brand embedding model provider is disabled")
     if mode == "fake":
+        if settings.ai_provider_mode != "fake":
+            raise RuntimeError("fake brand embedding requires fake AI provider mode")
+        return GovernanceEmbeddingBrandAdapter(create_embedding_model(settings, client=client))
+    if mode == "zhipu":
+        if settings.ai_provider_mode != "zhipu":
+            raise RuntimeError("Zhipu brand embedding requires Zhipu AI provider mode")
         return GovernanceEmbeddingBrandAdapter(create_embedding_model(settings, client=client))
     if (
         client is None

@@ -169,6 +169,7 @@ services:
       BRAND_CHUNK_VERSION: ${BRAND_CHUNK_VERSION:-brand-chunk-v3-parent-child}
       BRAND_EMBEDDING_INPUT_VERSION: ${BRAND_EMBEDDING_INPUT_VERSION:-brand-embedding-input-v2-section-context}
       BRAND_RETRIEVAL_VERSION: ${BRAND_RETRIEVAL_VERSION:-brand-hybrid-rrf-v3-parent-diverse}
+      # Shared by API and content services so one release cannot query a different vector space.
       BRAND_EMBEDDING_PROVIDER_MODE: ${BRAND_EMBEDDING_PROVIDER_MODE:-auto}
       BRAND_OCR_MODEL: ${BRAND_OCR_MODEL:-glm-ocr}
       BRAND_OCR_SPARSE_TEXT_THRESHOLD: ${BRAND_OCR_SPARSE_TEXT_THRESHOLD:-40}
@@ -489,6 +490,8 @@ services:
     environment:
       <<: *backend-environment
       CONTENT_WORKER_ENABLED: ${CONTENT_WORKER_ENABLED:-false}
+      # Project delivery intent without injecting WeCom credentials into the content worker.
+      CONTENT_COPY_PROVIDER_REQUIRED: ${WECOM_AUTO_DELIVERY_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
       IMAGE_ENABLED: ${IMAGE_ENABLED:-false}
       IMAGE_PROVIDER_MODE: ${IMAGE_PROVIDER_MODE:-disabled}

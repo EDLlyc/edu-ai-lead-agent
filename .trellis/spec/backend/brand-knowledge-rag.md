@@ -29,10 +29,12 @@ user or public search role.
   with a bounded safe projection of the private visual catalog.
 - Worker: `python -m app.content_worker_main`; it alternates topic-selection and brand-ingestion
   claims when both queues contain work.
-- Offline acceptance: `AI_PROVIDER_MODE=fake`; live brand vectors:
-  `BRAND_EMBEDDING_PROVIDER_MODE=alibaba` (or `auto` with the Alibaba visual provider configured),
-  using `qwen3-vl-embedding` and secrets supplied only through process/deployment settings. Zhipu
-  remains the text-generation/OCR and governance-vector provider.
+- Offline acceptance: `AI_PROVIDER_MODE=fake`; live brand vectors may explicitly use
+  `BRAND_EMBEDDING_PROVIDER_MODE=zhipu` with `embedding-3/2048`, or Alibaba
+  `qwen3-vl-embedding/2048`. `auto` preserves fake, prefers a configured Alibaba visual provider,
+  then resolves to Zhipu when `AI_PROVIDER_MODE=zhipu`. Production must read back and verify the
+  resolved identity; changing the raw provider pin belongs in an atomic configuration release so
+  it cannot drift outside image rollback.
 
 ### 3. Contracts
 
@@ -52,10 +54,22 @@ user or public search role.
 - Brand upload, worker claim, API/content retrieval, and real-data MCP retrieval resolve provider,
   model, and dimensions through the same brand-specific settings/factory. They must not reuse the
   governance/article embedding identity merely because both vectors have 2048 dimensions.
+- The Zhipu brand branch deliberately reuses the bounded `ZhipuEmbeddingModel` transport through
+  `GovernanceEmbeddingBrandAdapter`; its persisted identity remains exactly
+  `zhipu/embedding-3/2048`. API owns a dedicated Zhipu brand client, while content worker reuses its
+  already-owned Zhipu client; neither branch may pass the Alibaba visual client into Zhipu.
 - Brand-ingestion worker availability follows the resolved brand provider, not
-  `AI_PROVIDER_MODE`. Alibaba brand ingestion may run while governance AI is disabled; sparse PDFs
-  then fail through the existing typed OCR-unavailable path rather than disabling all text-layer
-  brand ingestion. Copy generation keeps its independent fake/Zhipu provider requirement.
+  `AI_PROVIDER_MODE`. Alibaba brand ingestion may run while governance AI is disabled; Zhipu brand
+  embedding requires the validated Zhipu AI transport identity. Sparse PDFs without Zhipu OCR fail
+  through the existing typed OCR-unavailable path rather than disabling all text-layer brand
+  ingestion. Copy generation keeps its independent fake/Zhipu chat-provider requirement.
+- Compose projects automatic WeCom delivery intent into the content-worker-only
+  `CONTENT_COPY_PROVIDER_REQUIRED` setting without copying WeCom credentials into that process.
+  When projected true, Settings requires an enabled content worker, a copy-capable fake/Zhipu chat
+  provider, and a non-disabled resolved brand provider. Provider-free selection remains valid when
+  that projected intent is false. The deployment doctor joins API, content-worker, and WeCom
+  service environments, requires the projection to equal the automatic-delivery flag, and rejects
+  automatic delivery unless the complete upstream chain is usable.
 - Alibaba's upstream text fingerprint may repeat for identical text. The persisted brand
   `request_fingerprint` therefore hashes a version label, `chunk_id`, and the upstream fingerprint;
   it remains deterministic 64-hex metadata without including text. This changes no vector input,
@@ -372,6 +386,9 @@ regression evidence.
 - [`test_brand_knowledge_ocr.py`](../../../backend/tests/unit/test_brand_knowledge_ocr.py) asserts the
   worker's existing one-request OCR handoff, contextual embedding input, and successful bounded
   coalescing of pathological generic OCR Markdown before persistence.
+- [`test_brand_embedding_zhipu.py`](../../../backend/tests/unit/test_brand_embedding_zhipu.py)
+  asserts auto/explicit provider resolution, immutable Zhipu identity, one bounded provider call,
+  owned-client selection and lifecycle, and the automatic-delivery worker startup gate.
 - [`test_brand_knowledge_rag.py`](../../../backend/tests/integration/test_brand_knowledge_rag.py)
   uses real PostgreSQL/pgvector and MinIO to assert upload/replay, metadata/provider version splits,
   v3/v2 worker isolation, stale v2 rollback completion with null parents/raw input, activation,

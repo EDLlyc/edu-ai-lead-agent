@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
+import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,7 @@ from app.infrastructure.ai.factory import (
     create_brand_embedding_model,
     create_image_generator,
     create_ip_asset_recognition_model,
+    select_brand_embedding_client,
 )
 from app.infrastructure.ai.visual_embedding import (
     AlibabaVisualEmbeddingAdapter,
@@ -57,6 +59,7 @@ from app.schemas.common import ErrorDetail, ErrorEnvelope
 
 settings = get_settings()
 configure_logging(json_output=settings.app_env != "development")
+logger = structlog.get_logger()
 engine = create_engine(settings)
 session_factory = create_session_factory(engine)
 
@@ -71,6 +74,7 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     image_client: httpx.AsyncClient | None = None
+    brand_embedding_client: httpx.AsyncClient | None = None
     visual_embedding_client: httpx.AsyncClient | None = None
     ip_asset_recognition_client: httpx.AsyncClient | None = None
     visual_embeddings: VisualEmbeddingModel | None = None
@@ -84,16 +88,29 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _app.state.ip_asset_service = None
     _app.state.ip_asset_recognition_service = None
     _app.state.ip_asset_upload_semaphore = asyncio.Semaphore(settings.ip_asset_upload_concurrency)
-    alibaba_embedding_required = settings.resolved_brand_embedding_provider_mode == "alibaba" or (
+    brand_embedding_mode = settings.resolved_brand_embedding_provider_mode
+    alibaba_embedding_required = brand_embedding_mode == "alibaba" or (
         settings.visual_semantic_enabled and settings.visual_embedding_provider_mode == "alibaba"
     )
+    if brand_embedding_mode == "zhipu":
+        brand_embedding_client = httpx.AsyncClient(follow_redirects=False)
     if alibaba_embedding_required:
         visual_embedding_client = httpx.AsyncClient(follow_redirects=False)
-    if settings.resolved_brand_embedding_provider_mode != "disabled":
+    if brand_embedding_mode != "disabled":
         _app.state.brand_embedding_model = create_brand_embedding_model(
             settings,
-            client=visual_embedding_client,
+            client=select_brand_embedding_client(
+                settings,
+                zhipu_client=brand_embedding_client,
+                alibaba_client=visual_embedding_client,
+            ),
         )
+    logger.info(
+        "api_brand_embedding_configured",
+        provider=settings.brand_embedding_provider,
+        model=settings.brand_embedding_model,
+        dimensions=settings.brand_embedding_dimensions,
+    )
     if settings.image_enabled and settings.image_provider_mode != "disabled":
         if settings.image_provider_mode in {"toapis", "comfly"}:
             image_client = httpx.AsyncClient(follow_redirects=False)
@@ -146,6 +163,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         if image_client is not None:
             await image_client.aclose()
+        if brand_embedding_client is not None:
+            await brand_embedding_client.aclose()
         if visual_embedding_client is not None:
             await visual_embedding_client.aclose()
         if ip_asset_recognition_client is not None:

@@ -39,6 +39,7 @@ from app.infrastructure.ai.factory import (
     create_image_generator,
     create_image_quality_auditor,
     create_image_text_recognizer,
+    select_brand_embedding_client,
 )
 from app.infrastructure.ai.topic_rerank import (
     DeterministicFakeTopicReranker,
@@ -196,7 +197,11 @@ async def run_content_worker() -> None:
             brand_repository = PostgresBrandKnowledgeRepository(session_factory)
             brand_embeddings = create_brand_embedding_model(
                 settings,
-                client=visual_embedding_client,
+                client=select_brand_embedding_client(
+                    settings,
+                    zhipu_client=embedding_client,
+                    alibaba_client=visual_embedding_client,
+                ),
             )
             brand_ocr = (
                 create_brand_ocr_model(settings, client=embedding_client)
@@ -270,6 +275,9 @@ async def run_content_worker() -> None:
             "content_worker_started",
             concurrency=settings.content_worker_concurrency,
             scoring_version=settings.content_scoring_version,
+            brand_embedding_provider=settings.brand_embedding_provider,
+            brand_embedding_model=settings.brand_embedding_model,
+            brand_embedding_dimensions=settings.brand_embedding_dimensions,
         )
         workers = [
             asyncio.create_task(

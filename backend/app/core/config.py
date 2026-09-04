@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     content_enabled: bool = False
     content_scheduler_enabled: bool = False
     content_worker_enabled: bool = False
+    # Compose projects automatic-delivery intent only into the content worker so the
+    # process can fail fast without receiving WeCom credentials.
+    content_copy_provider_required: bool = False
     content_schedule_hour: int = Field(default=7, ge=0, le=23)
     content_schedule_minute: int = Field(default=30, ge=0, le=59)
     content_catchup_hours: int = Field(default=12, ge=1, le=24)
@@ -473,9 +476,9 @@ class Settings(BaseSettings):
     visual_index_lease_seconds: int = Field(default=300, ge=30, le=3_600)
 
     # Brand text RAG intentionally has an identity separate from the governance/article
-    # embedding provider. ``auto`` preserves deterministic fake tests while selecting the
-    # configured Alibaba multimodal vector space in development/runtime deployments.
-    brand_embedding_provider_mode: Literal["auto", "disabled", "fake", "alibaba"] = "auto"
+    # embedding provider. ``auto`` preserves deterministic fake tests, prefers an explicitly
+    # configured Alibaba multimodal vector space, and otherwise reuses Zhipu embedding-3.
+    brand_embedding_provider_mode: Literal["auto", "disabled", "fake", "zhipu", "alibaba"] = "auto"
 
     ai_provider_mode: Literal["disabled", "fake", "zhipu"] = "disabled"
     ai_platform_base_url: str | None = None
@@ -551,13 +554,17 @@ class Settings(BaseSettings):
         )
 
     @property
-    def resolved_brand_embedding_provider_mode(self) -> Literal["disabled", "fake", "alibaba"]:
+    def resolved_brand_embedding_provider_mode(
+        self,
+    ) -> Literal["disabled", "fake", "zhipu", "alibaba"]:
         if self.brand_embedding_provider_mode != "auto":
             return self.brand_embedding_provider_mode
         if self.ai_provider_mode == "fake":
             return "fake"
         if self.visual_embedding_provider_mode == "alibaba":
             return "alibaba"
+        if self.ai_provider_mode == "zhipu":
+            return "zhipu"
         return "disabled"
 
     @property
@@ -1000,6 +1007,34 @@ class Settings(BaseSettings):
                 or parsed_base_url.fragment
             ):
                 raise ValueError("Zhipu base URL must be an HTTPS origin/path without credentials")
+        if self.brand_embedding_provider_mode == "zhipu" and self.ai_provider_mode != "zhipu":
+            raise ValueError("Zhipu brand embedding requires Zhipu AI provider mode")
+        if self.resolved_brand_embedding_provider_mode == "zhipu":
+            api_key = (
+                self.ai_platform_api_key.get_secret_value().strip()
+                if self.ai_platform_api_key is not None
+                else ""
+            )
+            if self.ai_embedding_model != "embedding-3":
+                raise ValueError("Zhipu brand embedding requires embedding-3 model identity")
+            if self.brand_embedding_provider_mode == "zhipu" and not api_key:
+                raise ValueError("explicit Zhipu brand embedding requires a non-blank API key")
+        if self.content_copy_provider_required and (
+            not self.content_enabled or not self.content_worker_enabled
+        ):
+            raise ValueError("automatic delivery copy upstream requires the content worker")
+        if self.content_copy_provider_required and self.ai_provider_mode not in {
+            "fake",
+            "zhipu",
+        }:
+            raise ValueError("automatic delivery copy upstream requires a copy-capable AI provider")
+        if (
+            self.content_copy_provider_required
+            and self.resolved_brand_embedding_provider_mode == "disabled"
+        ):
+            raise ValueError(
+                "automatic delivery copy upstream requires an enabled brand embedding provider"
+            )
         if self.image_enabled and self.image_provider_mode == "disabled":
             raise ValueError("image provider must be enabled when image generation is enabled")
         if self.visual_semantic_enabled and self.visual_embedding_provider_mode == "disabled":
