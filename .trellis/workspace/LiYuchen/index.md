@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 97
-- **Last Active**: 2026-09-03
+- **Total Sessions**: 98
+- **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~247 | Active |
+| `journal-2.md` | ~268 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 98 | 2026-09-04 | Diagnose missing production news delivery | `aca7be500c9aab3bfe726cef33645ac4c606e05e` | `main` |
 | 97 | 2026-09-03 | Optimize public resume for Agent internships | `1f4033a` | `main` |
 | 96 | 2026-09-03 | Refresh Agent internship project audit | `0a7b309` | `main` |
 | 95 | 2026-09-03 | GLM-5V-Turbo 图片 Judge 校准 | `5af4f21`, `1890d81`, `1dca0b7` | `main` |

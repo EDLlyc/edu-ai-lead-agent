@@ -245,3 +245,24 @@ Repositioned the one-page public resume for Agent application, AI platform backe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 98: Diagnose missing production news delivery
+
+**Date**: 2026-09-04
+**Task**: Diagnose missing production news delivery
+**Branch**: `main`
+
+### Summary
+
+Performed a strictly read-only production diagnosis. Confirmed healthy services and successful selection, then traced 18 terminal copy_provider_unavailable runs to brand embedding auto resolving disabled after provider decoupling; verified no provider or WeCom attempts, documented weekly draft timing, release-marker drift, and no-mutation evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aca7be500c9aab3bfe726cef33645ac4c606e05e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
