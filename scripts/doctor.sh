@@ -368,6 +368,11 @@ if enabled and mode == "alibaba":
 ' >/dev/null || fail "Visual-retrieval settings are invalid or inconsistent"
 pass "Visual retrieval is bounded, shared, and provider-gated"
 
+docker compose --profile content --profile wecom config --format json | \
+  "${python_command[@]}" scripts/validate_brand_delivery_config.py \
+  >/dev/null || fail "Brand embedding and automatic-delivery provider settings are invalid"
+pass "Brand embedding identity is shared and automatic delivery is copy-provider-gated"
+
 docker compose --profile content config --format json | \
   "${python_command[@]}" -c '
 import json
