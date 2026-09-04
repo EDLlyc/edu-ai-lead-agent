@@ -266,3 +266,33 @@ Performed a strictly read-only production diagnosis. Confirmed healthy services 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 99: 强化 Agent 实习简历技术亮点
+
+**Date**: 2026-09-04
+**Task**: 强化 Agent 实习简历技术亮点
+**Branch**: `main`
+
+### Summary
+
+重写赛先文化实习经历以突出 Agent Runtime、Tool Calling/MCP、Grounded RAG 与 Agent Eval；移除顶部意向岗位、项目入口及单独的 27 届行，更新实习日期并重新验证单页 PDF。
+
+### Main Changes
+
+- 更新公开简历 LaTeX 与 PDF，保留已核验指标边界
+- 按用户要求删除顶部冗余信息并将赛先文化日期更新为 2026.06 - 2026.09
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bd36372` | (see git log) |
+
+### Testing
+
+- [OK] XeLaTeX 编译收敛，PDF 为单页 A4，链接和负向文本检查通过
+
+### Status
+
+[OK] **Completed**
