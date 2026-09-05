@@ -100,6 +100,14 @@ blob digest、标准化 name annotation 和短 ref annotation；它把 Docker gz
 和本次新建的 candidate tag/reference 在成功与失败路径都清理；构建前记录已有 RepoDigest，清理不得移除
 先存引用。
 
+真实 release 镜像复现证明失配不是 Docker 把 OCI layer media type 改回 Docker media type：旧 canonical index
+错误地把未规范化 full tag 同时写入 name/ref-name，`docker image load` 返回成功却没有创建 transport tag；此时
+后续 inspect 读到的是 legacy build 留下的 raw tag。修复后 index 固定为 containerd-normalized full name 与
+short ref-name，严格 validator 从 metadata 独立推导并逐项匹配。legacy 路径还会在严格图验证后、load 前只
+删除本次预检后创建的 raw tag，并确认 tag 已消失；fresh load 必须重新创建 tag、精确 RepoDigest 与已验证
+manifest/config ID，不能借用 stale local identity。真实 11-layer release 归档 fresh-load 后 `.Id` 与 canonical
+manifest digest 完全相同，重新 export 的 layer media types 也保持 OCI。
+
 `docker image inspect .Id` 不是跨 image store 固定为 config digest：classic store 返回 config digest，而审核构建
 机的 Docker 29.1.3/containerd image store 对单 manifest OCI 返回 manifest digest。builder 与 operator 因此只
 接受严格 validator 已绑定 graph 中的 manifest/config digest 二选一，再要求 transport tag 的 RepoDigests 包含

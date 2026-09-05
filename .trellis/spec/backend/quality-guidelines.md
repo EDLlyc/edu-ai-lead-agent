@@ -807,17 +807,24 @@ release artifacts, or production deployment automation change.
   arguments, exports the exact isolated image reference through the capability-checked `ctr`, and
   canonicalizes that export into the same strict single-image OCI contract used by the primary
   path. Canonicalization preserves config/layer bytes, maps only reviewed Docker layer media types,
-  recomputes manifest/index descriptors, and binds exact `linux/amd64` transport annotations; it
-  must not make the downstream validator more permissive. Snapshot pre-existing image references
-  before building and clean up only the candidate tag or digest proven to have been created by this
-  attempt.
+  recomputes manifest/index descriptors, and binds exact `linux/amd64` transport annotations. The
+  containerd image-name annotation uses the normalized full name, while the OCI ref-name annotation
+  uses the short transport tag; writing the unnormalized full tag into both can make `docker load`
+  return success without creating the requested tag. This path must not make the downstream
+  validator more permissive. Snapshot pre-existing image references before building and clean up
+  only the candidate tag or digest proven to have been created by this attempt.
 - Strictly validate the final compressed OCI artifact before any `docker image load`, and load that
   same verified file rather than a raw intermediate archive. Docker image-store identity is
   implementation-dependent: a classic graphdriver may expose the validated config digest as
   `.Id`, while Docker's containerd image store may expose the validated manifest digest. Accept
   only those two identities already bound by the verified OCI graph, require the exact derived
   RepoDigest to resolve to the observed loaded ID, and use that observed ID when checking every
-  production service. A third digest or a service bound to either non-observed identity is drift.
+  production service. Loading is successful only when a fresh transport tag is actually present;
+  never inspect a raw legacy-build tag left at the same name. Before removing that raw tag, bind it
+  to the exact image ID created by this attempt and recheck ownership; immediately abandon ownership
+  after removal. Every later cleanup repeats the ID check and also abandons ownership on a missing,
+  malformed, drifting, or unqueryable identity so it cannot delete a concurrent replacement. A
+  third digest or a service bound to either non-observed identity is drift.
 - A cached mutable tag may accelerate the backend build, but deployment identity never comes from
   it. Exercise migration and doctor against the local candidate before push; then push the commit
   tag, resolve and pull the repository digest, verify OCI source/commit/created labels, and repeat
@@ -922,6 +929,7 @@ release artifacts, or production deployment automation change.
 | `buildx` is absent but the legacy Docker/containerd socket, snapshotter, namespace, version, platform, command surface, or exact image reference is unproven | Fail before building/exporting; do not install a plugin, guess a containerd endpoint, or relax the OCI validator |
 | The selected `buildx` or legacy build fails after construction starts | Preserve that failure; do not silently retry with the other build route |
 | Legacy `ctr` export is nested, ambiguous, dangling, unsafe, has unknown media, changes config/layer bytes, or cannot be deterministically canonicalized | Fail before image load; do not accept the raw export or weaken the strict OCI graph checks |
+| OCI annotations do not bind normalized image-name plus short ref-name, load returns zero without creating a fresh transport tag, or raw-tag ownership/ID cannot be revalidated | Fail closed; do not inspect a stale tag, and abandon cleanup ownership rather than deleting an unproven or concurrent image |
 | Caller worktree is dirty or differs from Codeup `main` | Ignore it as release input; fetch and use the clean detached `origin/main` worktree |
 | Running release orchestrator differs from fetched Codeup `main` | Stop before toolchain/build work; local uncommitted release logic is not authoritative |
 | Cache pull misses | Continue with a clean backend build; do not weaken locks or digest verification |
@@ -966,6 +974,9 @@ release artifacts, or production deployment automation change.
 - Good: the strict validator binds manifest and config from the final gzip artifact before load;
   containerd-store `.Id=manifest` and classic-store `.Id=config` both retain one exact RepoDigest,
   while readiness always compares services with the single ID actually returned by the engine.
+- Good: a legacy raw tag is removed only while it still resolves to the image ID built by this
+  attempt; ownership is then disarmed, `docker load` must create a fresh annotation-correct tag, and
+  any concurrent replacement remains untouched.
 - Base: local development builds the shared local image, the local release dry run performs only
   read-only probes, and Flow quality/production activation flags remain false as a later path.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
@@ -1016,6 +1027,11 @@ release artifacts, or production deployment automation change.
   Exercise both classic and containerd store results, exact RepoDigest resolution, and all 12
   services converging on the one observed loaded ID; one service using the other otherwise-valid
   graph digest must fail readiness.
+- Annotation/load tests must require normalized full containerd image-name plus short OCI ref-name
+  on both build routes and prove `docker load` returning zero without creating the tag still fails.
+  Cleanup tests bind the exact raw image ID, recheck it before removal and every later cleanup, disarm
+  ownership immediately after removal, and preserve missing, drifting, malformed, unqueryable, or
+  concurrently recreated tags.
 - Post-load source-manifest tests execute the real collection/validation boundary instead of
   stubbing the whole candidate gate. Fake runtime argument assertions must return nonzero
   explicitly because `errexit` is suppressed when a function is called from a conditional. Prove

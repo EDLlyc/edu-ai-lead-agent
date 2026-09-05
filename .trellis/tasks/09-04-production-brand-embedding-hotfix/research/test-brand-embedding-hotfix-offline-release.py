@@ -156,13 +156,15 @@ def _oci_graph() -> tuple[bytes, str, str]:
     )
     manifest_digest = _digest(manifest)
     transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    normalized_reference = VALIDATOR.normalize_containerd_reference(transport_tag)
+    short_reference = transport_tag.rsplit(":", 1)[1]
     index = _json_bytes(
         {
             "manifests": [
                 {
                     "annotations": {
-                        "io.containerd.image.name": transport_tag,
-                        "org.opencontainers.image.ref.name": transport_tag,
+                        "io.containerd.image.name": normalized_reference,
+                        "org.opencontainers.image.ref.name": short_reference,
                     },
                     "digest": f"sha256:{manifest_digest}",
                     "mediaType": "application/vnd.oci.image.manifest.v1+json",
@@ -712,9 +714,16 @@ def _rewrite_oci(stage: Path, mutate: str) -> None:
         entries[f"blobs/sha256/{'9' * 64}"] = b"dangling"
     else:
         index = json.loads(entries["index.json"])
-        index["manifests"][0]["annotations"]["org.opencontainers.image.ref.name"] = (
-            "evil:tag"
-        )
+        if mutate == "old_full_annotations":
+            transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+            index["manifests"][0]["annotations"] = {
+                "io.containerd.image.name": transport_tag,
+                "org.opencontainers.image.ref.name": transport_tag,
+            }
+        else:
+            index["manifests"][0]["annotations"][
+                "org.opencontainers.image.ref.name"
+            ] = "evil:tag"
         entries["index.json"] = _json_bytes(index)
     tar_entries: list[tuple[str, str, int, bytes | None]] = [
         ("blobs", "d", 0o755, None),
@@ -728,7 +737,12 @@ def _rewrite_oci(stage: Path, mutate: str) -> None:
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
-    [("blob", "descriptor bytes"), ("dangling", "dangling"), ("tag", "transport tag")],
+    [
+        ("blob", "descriptor bytes"),
+        ("dangling", "dangling"),
+        ("tag", "transport tag"),
+        ("old_full_annotations", "transport tag"),
+    ],
 )
 def test_complete_oci_graph_rejects_tamper(
     tmp_path: Path, mutation: str, message: str
@@ -847,8 +861,10 @@ def test_legacy_oci_canonicalization_is_accepted_by_strict_validator(
         "os": "linux",
     }
     assert index["manifests"][0]["annotations"] == {
-        "io.containerd.image.name": transport_tag,
-        "org.opencontainers.image.ref.name": transport_tag,
+        "io.containerd.image.name": VALIDATOR.normalize_containerd_reference(
+            transport_tag
+        ),
+        "org.opencontainers.image.ref.name": transport_tag.rsplit(":", 1)[1],
     }
     assert manifest["layers"][0]["mediaType"] == expected_media_type
     assert f"blobs/sha256/{original_manifest[7:]}" not in names
@@ -1388,6 +1404,7 @@ transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
 git_clean() {{ printf '2026-09-04T00:00:00+00:00\n'; }}
 select_image_builder_route() {{ printf 'buildx\n'; }}
 assert_transport_tag_absent() {{ candidate_image_owned=1; }}
+normalize_containerd_reference() {{ printf 'docker.io/library/%s\n' "$1"; }}
 run_buildx_image() {{ return 42; }}
 run_legacy_docker_build() {{ touch {legacy_called!s}; }}
 build_and_probe_image
@@ -1517,6 +1534,275 @@ run_legacy_docker_build 2026-09-04T00:00:00+00:00
     ]
 
 
+def test_buildx_uses_loadable_normalized_oci_reference_annotations(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "buildx.argv"
+    scratch = tmp_path / "scratch"
+    worktree = tmp_path / "worktree"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    normalized = VALIDATOR.normalize_containerd_reference(transport_tag)
+    short = transport_tag.rsplit(":", 1)[1]
+    result = _source_builder_shell(
+        f"""
+scratch={scratch!s}
+worktree={worktree!s}
+release_sha={RELEASE_COMMIT}
+transport_tag={transport_tag}
+containerd_reference={normalized}
+short_transport_reference={short}
+capture={capture!s}
+env() {{ printf '%s\\0' "$@" >"$capture"; }}
+run_buildx_image 2026-09-04T00:00:00+00:00 {tmp_path / "image.oci.tar"!s}
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    argv = capture.read_bytes().split(b"\0")[:-1]
+    assert f"manifest-descriptor:io.containerd.image.name={normalized}".encode() in argv
+    assert (
+        f"manifest-descriptor:org.opencontainers.image.ref.name={short}".encode()
+        in argv
+    )
+    assert (
+        f"manifest-descriptor:io.containerd.image.name={transport_tag}".encode()
+        not in argv
+    )
+
+
+def test_legacy_raw_tag_is_discarded_only_after_owned_build(tmp_path: Path) -> None:
+    calls = tmp_path / "discard.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=1
+transport_tag={transport_tag}
+legacy_builder_image_id=sha256:{"4" * 64}
+candidate_owned_image_id=$legacy_builder_image_id
+removed=0
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}")
+      [[ "$removed" == 0 ]] || return 1
+      printf 'sha256:%s\n' '{"4" * 64}'
+      ;;
+    "image rm {transport_tag}") removed=1 ;;
+    "image ls --quiet --filter reference={transport_tag}")
+      [[ "$removed" == 1 ]]
+      ;;
+    *) return 90 ;;
+  esac
+}}
+discard_owned_legacy_transport_tag
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_owned_image_id"
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:\n"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}",
+        f"image rm {transport_tag}",
+        f"image ls --quiet --filter reference={transport_tag}",
+    ]
+
+
+def test_legacy_raw_tag_discard_refuses_unowned_reference(tmp_path: Path) -> None:
+    calls = tmp_path / "discard.calls"
+    result = _source_builder_shell(
+        f"""
+candidate_image_owned=0
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+legacy_builder_image_id=sha256:{"4" * 64}
+docker_clean() {{ touch {calls!s}; }}
+discard_owned_legacy_transport_tag
+"""
+    )
+    assert result.returncode != 0
+    assert "ownership is unavailable" in result.stderr
+    assert not calls.exists()
+
+
+def test_legacy_builder_identity_is_bound_before_raw_tag_removal(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "legacy-bind.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    image_id = "sha256:" + "4" * 64
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=0
+candidate_owned_image_id=
+transport_tag={transport_tag}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  printf '%s\n' {image_id}
+}}
+bind_legacy_builder_image_identity
+printf 'owned=%s:%s:%s\n' \
+  "$candidate_image_owned" "$candidate_owned_image_id" "$legacy_builder_image_id"
+candidate_image_owned=0
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"owned=1:{image_id}:{image_id}\n"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}"
+    ]
+
+
+def test_legacy_raw_tag_discard_rejects_identity_drift(tmp_path: Path) -> None:
+    calls = tmp_path / "discard.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=1
+transport_tag={transport_tag}
+legacy_builder_image_id=sha256:{"4" * 64}
+candidate_owned_image_id=$legacy_builder_image_id
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  if [[ "$*" == "image inspect --format {{{{.Id}}}} {transport_tag}" ]]; then
+    printf 'sha256:%s\n' '{"5" * 64}'
+    return 0
+  fi
+  return 90
+}}
+discard_owned_legacy_transport_tag
+"""
+    )
+    assert result.returncode != 0
+    assert "identity changed" in result.stderr
+    assert (
+        f"image rm {transport_tag}"
+        not in calls.read_text(encoding="utf-8").splitlines()
+    )
+
+
+def test_load_preflight_abandons_ownership_when_transport_tag_appears(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "load-preflight.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"4" * 64}
+transport_tag={transport_tag}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  printf 'sha256:%s\n' '{"5" * 64}'
+}}
+assert_transport_tag_absent_before_load
+"""
+    )
+    assert result.returncode != 0
+    assert "appeared before validated OCI load" in result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image ls --quiet --filter reference={transport_tag}"
+    ]
+    assert f"image rm {transport_tag}" not in calls.read_text(encoding="utf-8")
+
+
+def test_load_preflight_does_not_treat_docker_error_as_tag_absence(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "load-preflight-error.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"4" * 64}
+transport_tag={transport_tag}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  return 72
+}}
+assert_transport_tag_absent_before_load
+"""
+    )
+    assert result.returncode != 0
+    assert "load preflight failed" in result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image ls --quiet --filter reference={transport_tag}"
+    ]
+
+
+def test_cleanup_abandons_transport_tag_that_drifted_after_load(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "cleanup-drift.calls"
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"4" * 64}
+transport_tag={transport_tag}
+candidate_reference=edu-ai-lead-agent-backend@sha256:{"1" * 64}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  printf 'sha256:%s\n' '{"5" * 64}'
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s:%s\n' \
+  "$candidate_image_owned" "$candidate_reference_owned" "$candidate_owned_image_id"
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0:\n"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}"
+    ]
+
+
+def test_builder_identity_mismatch_diagnostic_contains_only_sha256_identities() -> None:
+    config_digest = "sha256:" + "a" * 64
+    manifest_digest = "sha256:" + "b" * 64
+    loaded_digest = "sha256:" + "c" * 64
+    result = _source_builder_shell(
+        f"""
+candidate_config_digest={config_digest}
+candidate_manifest_digest={manifest_digest}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"d" * 64}
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+bind_loaded_candidate_image_identity {loaded_digest}
+"""
+    )
+    assert result.returncode != 0
+    assert (
+        result.stderr.splitlines()[0]
+        == "[brand-embedding-builder] image identity mismatch "
+        f"manifest={manifest_digest} config={config_digest} loaded={loaded_digest}"
+    )
+    assert f"brand-embedding-{RELEASE_COMMIT[:12]}" not in result.stderr
+
+
+def test_builder_malformed_loaded_identity_is_not_echoed() -> None:
+    result = _source_builder_shell(
+        f"""
+candidate_config_digest=sha256:{"a" * 64}
+candidate_manifest_digest=sha256:{"b" * 64}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"d" * 64}
+bind_loaded_candidate_image_identity unsafe-loaded-value
+"""
+    )
+    assert result.returncode != 0
+    assert "not a SHA-256 identity" in result.stderr
+    assert "unsafe-loaded-value" not in result.stderr
+
+
 @pytest.mark.parametrize("identity_kind", ["config", "manifest"])
 def test_builder_accepts_exact_image_id_for_both_docker_image_stores(
     identity_kind: str,
@@ -1528,10 +1814,16 @@ def test_builder_accepts_exact_image_id_for_both_docker_image_stores(
         f"""
 candidate_config_digest={config_digest}
 candidate_manifest_digest={manifest_digest}
-loaded_image_id_matches_candidate {loaded_id}
+candidate_image_owned=0
+candidate_reference_owned=1
+candidate_owned_image_id=
+bind_loaded_candidate_image_identity {loaded_id}
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_owned_image_id"
+candidate_image_owned=0
 """
     )
     assert result.returncode == 0, result.stderr
+    assert result.stdout == f"owned=1:{loaded_id}\n"
 
 
 def test_builder_rejects_image_id_outside_validated_oci_graph() -> None:
@@ -1573,6 +1865,11 @@ validate_candidate_image_graph
         '  gzip -dc "$stage/backend-image.oci.tar.gz" | docker image load >/dev/null'
     )
     assert builder.index(validation_call) < builder.index(validated_load)
+    assert (
+        builder.index(validation_call)
+        < builder.index("    discard_owned_legacy_transport_tag || return 1")
+        < builder.index(validated_load)
+    )
     assert 'docker image load -i "$raw_archive"' not in builder
 
 
@@ -1586,16 +1883,28 @@ IFS=' '
 scratch=/tmp/brand-builder-test
 candidate_image_owned=1
 candidate_reference_owned=1
+candidate_owned_image_id=sha256:{"2" * 64}
 transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
 candidate_reference=edu-ai-lead-agent-backend@sha256:{"1" * 64}
-docker_clean() {{ printf '%s\n' "$*" >>{calls!s}; }}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  printf 'sha256:%s\n' '{"2" * 64}'
+}}
 cleanup_candidate_image
-printf 'owned=%s\n' "$candidate_image_owned"
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_owned_image_id"
 """
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "owned=0\n"
+    assert result.stdout == "owned=0:\n"
     assert calls.read_text(encoding="utf-8").splitlines() == [
+        (
+            f"image inspect --format {{{{.Id}}}} "
+            f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+        ),
+        (
+            f"image inspect --format {{{{.Id}}}} "
+            f"edu-ai-lead-agent-backend@sha256:{'1' * 64}"
+        ),
         f"image rm edu-ai-lead-agent-backend@sha256:{'1' * 64}",
         f"image rm edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}",
     ]
@@ -1612,10 +1921,14 @@ IFS=' '
 scratch=/tmp/brand-builder-test
 candidate_image_owned=1
 candidate_reference_owned=0
+candidate_owned_image_id=sha256:{"2" * 64}
 preexisting_repo_digests={inventory!s}
 transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
 candidate_reference={candidate}
-docker_clean() {{ printf '%s\n' "$*" >>{calls!s}; }}
+docker_clean() {{
+  printf '%s\n' "$*" >>{calls!s}
+  printf 'sha256:%s\n' '{"2" * 64}'
+}}
 bind_candidate_reference_ownership
 cleanup_candidate_image
 printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
@@ -1624,7 +1937,11 @@ printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
     assert result.returncode == 0, result.stderr
     assert result.stdout == "owned=0:0\n"
     assert calls.read_text(encoding="utf-8").splitlines() == [
-        f"image rm edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+        (
+            f"image inspect --format {{{{.Id}}}} "
+            f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+        ),
+        f"image rm edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}",
     ]
 
 
@@ -1677,6 +1994,34 @@ loaded_image_id_matches_candidate sha256:{"c" * 64}
 """,
     )
     assert result.returncode != 0
+
+
+def test_operator_rejects_successful_load_without_transport_tag(
+    tmp_path: Path,
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "backend-image.oci.tar.gz").write_bytes(b"not-read-by-stub")
+    transport_tag = f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+stage_dir={stage!s}
+transport_tag={transport_tag}
+gzip() {{ return 0; }}
+docker() {{
+  case "$*" in
+    "image load") return 0 ;;
+    "image inspect --format {{{{.Id}}}} {transport_tag}") return 1 ;;
+    *) return 90 ;;
+  esac
+}}
+load_and_verify_candidate
+""",
+    )
+    assert result.returncode != 0
+    assert "did not create the transport tag" in result.stderr
 
 
 def test_candidate_readiness_uses_the_observed_docker_image_id() -> None:
