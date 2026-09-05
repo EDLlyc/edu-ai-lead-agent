@@ -453,7 +453,7 @@ PY
 }
 
 normalize_containerd_reference() {
-  python3 "$stage/$VALIDATOR_NAME" --normalize-containerd-reference "$1"
+  python3 -B "$stage/$VALIDATOR_NAME" --normalize-containerd-reference "$1"
 }
 
 validate_containerd_socket() {
@@ -602,7 +602,7 @@ bind_loaded_candidate_image_identity() {
 }
 
 validate_candidate_image_graph() {
-  python3 - "$stage/$VALIDATOR_NAME" "$stage" "$release_sha" \
+  python3 -B - "$stage/$VALIDATOR_NAME" "$stage" "$release_sha" \
     "$transport_tag" "$candidate_repository" "$candidate_reference" \
     "$candidate_config_digest" "$candidate_manifest_digest" <<'PY'
 import importlib.util
@@ -665,7 +665,7 @@ export_canonical_legacy_oci() {
   ctr_clean --namespace moby images export --skip-manifest-json --platform linux/amd64 \
     "$legacy_archive" "$containerd_reference" >&2 \
     || { die 'legacy containerd OCI export failed'; return 1; }
-  python3 "$stage/$VALIDATOR_NAME" --canonicalize-legacy-oci \
+  python3 -B "$stage/$VALIDATOR_NAME" --canonicalize-legacy-oci \
     "$legacy_archive" "$raw_archive" "$transport_tag" >&2 \
     || { die 'legacy containerd OCI canonicalization failed'; return 1; }
 }
@@ -908,13 +908,13 @@ PY
     sha256sum "${FINAL_MEMBERS[@]}" | sort -k2 >artifacts.sha256
     chmod 600 artifacts.sha256
   )
-  python3 "$stage/$VALIDATOR_NAME" "$stage"
+  python3 -B "$stage/$VALIDATOR_NAME" "$stage"
   mkdir -m 700 "$output_dir"
   local member
   for member in artifacts.sha256 "${FINAL_MEMBERS[@]}"; do
     install -m 600 "$stage/$member" "$output_dir/$member"
   done
-  python3 "$output_dir/$VALIDATOR_NAME" "$output_dir"
+  python3 -B "$output_dir/$VALIDATOR_NAME" "$output_dir"
   printf 'brand_embedding_artifact_stage=%s\nrelease_ref=%s\nrelease_commit=%s\ncandidate_reference=%s\n' \
     "$output_dir" "$RELEASE_REF" "$release_sha" "$candidate_reference"
 }
