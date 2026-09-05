@@ -81,6 +81,25 @@ contract 新建本任务专属 builder、纯 validator、一次性 root operator
 Codeup release ref、完整镜像归档图、source manifest、生产 baseline、12 个应用服务、相同 Alembic head、
 零发送计数以及回滚证据；不得复用旧任务 operator。
 
+审核构建机的 Docker client/server 为 29.1.3，本地 daemon 使用
+`io.containerd.snapshotter.v1`，`ctr 2.2.1` 可读同一 `moby` namespace，但没有 buildx CLI plugin。builder
+因此在构建前选择且锁定一条路径：`docker buildx version` 成功时执行原 buildx OCI output；只有输出明确为
+命令不存在时才进入 legacy 预检。其他 buildx probe 错误或选定路径后的任何构建错误直接终止，不做运行期
+fallback。
+
+legacy 预检固定本地 Unix Docker socket、`/run/containerd/containerd.sock` server、linux/amd64 daemon、
+containerd snapshotter、moby namespace、
+`docker build --pull/--platform/--tag` 与 `ctr images export --skip-manifest-json/--platform` 能力。构建使用
+`DOCKER_BUILDKIT=0 docker build --pull --platform linux/amd64` 和 buildx 相同的 commit/source/created args 与
+唯一 transport tag，再从 moby 精确导出 Docker-normalized reference。纯 Python canonicalizer 对原始 tar 做
+两遍有界校验与复制，只接受 root-owned regular members、单 OCI manifest、完整 config/layer graph、匹配
+blob digest、标准化 name annotation 和短 ref annotation；它把 Docker gzip/uncompressed layer media type
+映射为 OCI 等价类型，保持 config/layer bytes，重算 canonical manifest/index 并原子生成确定性安全 tar。
+旧 manifest 不进入新 graph；nested index、dangling blob、链接、重复项、digest/diff-ID/platform/user 漂移
+全部拒绝。其输出继续走原有 derive、严格 validator、`docker load`/RepoDigest、network-none probes；临时归档
+和本次新建的 candidate tag/reference 在成功与失败路径都清理；构建前记录已有 RepoDigest，清理不得移除
+先存引用。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一

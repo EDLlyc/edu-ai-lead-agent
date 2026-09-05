@@ -20,6 +20,7 @@ BUILDER_PATH = RESEARCH / "build-brand-embedding-hotfix-offline-artifacts.sh"
 CAPTURE_PATH = RESEARCH / "capture-brand-embedding-production-baseline.sh"
 RELEASE_COMMIT = "e" * 40
 REPOSITORY = "registry.example.test/edu-ai/edu-ai-lead-agent"
+SOURCE_URL = "https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git"
 
 
 def _load_validator() -> ModuleType:
@@ -196,6 +197,136 @@ def _oci_graph() -> tuple[bytes, str, str]:
             info.size = len(value)
             archive.addfile(info, io.BytesIO(value))
     return output.getvalue(), f"sha256:{manifest_digest}", f"sha256:{config_digest}"
+
+
+def _legacy_oci_archive(path: Path, mutation: str = "") -> tuple[str, str]:
+    raw_layer = b"one reviewed legacy layer"
+    layer = (
+        raw_layer if mutation == "uncompressed" else gzip.compress(raw_layer, mtime=0)
+    )
+    layer_digest = _digest(layer)
+    diff_id = _digest(raw_layer)
+    config = _json_bytes(
+        {
+            "architecture": "amd64",
+            "config": {
+                "Labels": {"org.opencontainers.image.revision": RELEASE_COMMIT},
+                "User": "app",
+            },
+            "os": "linux",
+            "rootfs": {"diff_ids": [f"sha256:{diff_id}"], "type": "layers"},
+        }
+    )
+    config_digest = _digest(config)
+    manifest = _json_bytes(
+        {
+            "config": {
+                "digest": f"sha256:{config_digest}",
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "size": len(config),
+            },
+            "layers": [
+                {
+                    "digest": f"sha256:{layer_digest}",
+                    "mediaType": (
+                        "application/invalid"
+                        if mutation == "malformed"
+                        else (
+                            "application/vnd.docker.image.rootfs.diff.tar"
+                            if mutation == "uncompressed"
+                            else "application/vnd.docker.image.rootfs.diff.tar.gzip"
+                        )
+                    ),
+                    "size": len(layer),
+                }
+            ],
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "schemaVersion": 2,
+        }
+    )
+    manifest_digest = _digest(manifest)
+    normalized = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    index = _json_bytes(
+        {
+            "manifests": [
+                {
+                    "annotations": {
+                        "io.containerd.image.name": normalized,
+                        "org.opencontainers.image.ref.name": (
+                            f"brand-embedding-{RELEASE_COMMIT[:12]}"
+                        ),
+                    },
+                    "digest": f"sha256:{manifest_digest}",
+                    "mediaType": (
+                        "application/vnd.oci.image.index.v1+json"
+                        if mutation == "nested"
+                        else "application/vnd.oci.image.manifest.v1+json"
+                    ),
+                    "platform": None,
+                    "size": len(manifest),
+                }
+            ],
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "schemaVersion": 2,
+        }
+    )
+    if mutation == "duplicate-json":
+        index = index.replace(
+            b'"schemaVersion":2}',
+            b'"schemaVersion":2,"schemaVersion":2}',
+        )
+    values = {
+        "oci-layout": _json_bytes({"imageLayoutVersion": "1.0.0"}),
+        "index.json": index,
+        f"blobs/sha256/{manifest_digest}": manifest,
+        f"blobs/sha256/{config_digest}": config,
+        f"blobs/sha256/{layer_digest}": layer,
+    }
+    if mutation == "dangling":
+        dangling = b"dangling"
+        values[f"blobs/sha256/{_digest(dangling)}"] = dangling
+    with tarfile.open(path, "w") as archive:
+        for directory in ("blobs", "blobs/sha256"):
+            info = tarfile.TarInfo(directory)
+            info.type = tarfile.DIRTYPE
+            info.mode = 0o755
+            info.uid = 0
+            info.gid = 0
+            archive.addfile(info)
+        for name, value in sorted(values.items()):
+            info = tarfile.TarInfo(name)
+            info.mode = 0o644
+            info.uid = 0
+            info.gid = 0
+            info.size = len(value)
+            archive.addfile(info, io.BytesIO(value))
+        if mutation == "symlink":
+            info = tarfile.TarInfo("linked")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "index.json"
+            info.mode = 0o777
+            archive.addfile(info)
+        elif mutation == "hardlink":
+            info = tarfile.TarInfo("linked")
+            info.type = tarfile.LNKTYPE
+            info.linkname = "index.json"
+            info.mode = 0o777
+            archive.addfile(info)
+        elif mutation == "duplicate":
+            info = tarfile.TarInfo("index.json")
+            info.mode = 0o644
+            info.uid = 0
+            info.gid = 0
+            info.size = len(index)
+            archive.addfile(info, io.BytesIO(index))
+        elif mutation == "path":
+            info = tarfile.TarInfo("../index.json")
+            info.mode = 0o644
+            info.uid = 0
+            info.gid = 0
+            info.size = len(index)
+            archive.addfile(info, io.BytesIO(index))
+    return f"sha256:{manifest_digest}", f"sha256:{config_digest}"
 
 
 def _baseline(terminal_count: int = 18) -> dict[str, object]:
@@ -609,6 +740,181 @@ def test_complete_oci_graph_rejects_tamper(
         VALIDATOR.validate_stage(stage)
 
 
+@pytest.mark.parametrize(
+    ("reference", "expected"),
+    [
+        (
+            "edu-ai-lead-agent-backend:brand-embedding-eeeeeeeeeeee",
+            "docker.io/library/edu-ai-lead-agent-backend:brand-embedding-eeeeeeeeeeee",
+        ),
+        (
+            "team/backend:brand-embedding-eeeeeeeeeeee",
+            "docker.io/team/backend:brand-embedding-eeeeeeeeeeee",
+        ),
+        (
+            "registry.example.test/team/backend:brand-embedding-eeeeeeeeeeee",
+            "registry.example.test/team/backend:brand-embedding-eeeeeeeeeeee",
+        ),
+        (
+            "localhost:5000/team/backend:brand-embedding-eeeeeeeeeeee",
+            "localhost:5000/team/backend:brand-embedding-eeeeeeeeeeee",
+        ),
+    ],
+)
+def test_containerd_reference_normalization_is_exact(
+    reference: str, expected: str
+) -> None:
+    assert VALIDATOR.normalize_containerd_reference(reference) == expected
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "Backend:brand-embedding-eeeeeeeeeeee",
+        "backend",
+        "backend@sha256:" + "1" * 64,
+        "registry.example.test//backend:brand-embedding-eeeeeeeeeeee",
+        "registry.example.test/backend:tag:extra",
+        "registry.example.test/-backend:brand-embedding-eeeeeeeeeeee",
+    ],
+)
+def test_containerd_reference_normalization_rejects_ambiguous_input(
+    reference: str,
+) -> None:
+    with pytest.raises(ValueError, match="cannot be normalized safely"):
+        VALIDATOR.normalize_containerd_reference(reference)
+
+
+@pytest.mark.parametrize(
+    ("legacy_kind", "expected_media_type"),
+    [
+        ("", "application/vnd.oci.image.layer.v1.tar+gzip"),
+        ("uncompressed", "application/vnd.oci.image.layer.v1.tar"),
+    ],
+)
+def test_legacy_oci_canonicalization_is_accepted_by_strict_validator(
+    tmp_path: Path, legacy_kind: str, expected_media_type: str
+) -> None:
+    legacy = tmp_path / "legacy.tar"
+    original_manifest, config_digest = _legacy_oci_archive(legacy, legacy_kind)
+    canonical = tmp_path / "canonical.tar"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+
+    canonical_manifest = VALIDATOR.canonicalize_legacy_oci_archive(
+        legacy, canonical, transport_tag
+    )
+    repeated = tmp_path / "canonical-repeated.tar"
+    assert (
+        VALIDATOR.canonicalize_legacy_oci_archive(legacy, repeated, transport_tag)
+        == canonical_manifest
+    )
+
+    assert canonical_manifest != original_manifest
+    assert canonical.read_bytes() == repeated.read_bytes()
+    with tarfile.open(canonical, "r:") as archive:
+        names = {member.name.rstrip("/") for member in archive}
+        index_stream = archive.extractfile("index.json")
+        assert index_stream is not None
+        index = json.load(index_stream)
+        manifest_stream = archive.extractfile(
+            f"blobs/sha256/{index['manifests'][0]['digest'][7:]}"
+        )
+        assert manifest_stream is not None
+        manifest = json.load(manifest_stream)
+        config_stream = archive.extractfile(
+            f"blobs/sha256/{manifest['config']['digest'][7:]}"
+        )
+        layer_stream = archive.extractfile(
+            f"blobs/sha256/{manifest['layers'][0]['digest'][7:]}"
+        )
+        assert config_stream is not None
+        assert layer_stream is not None
+        canonical_config = config_stream.read()
+        canonical_layer = layer_stream.read()
+    with tarfile.open(legacy, "r:") as archive:
+        original_config_stream = archive.extractfile(
+            f"blobs/sha256/{manifest['config']['digest'][7:]}"
+        )
+        original_layer_stream = archive.extractfile(
+            f"blobs/sha256/{manifest['layers'][0]['digest'][7:]}"
+        )
+        assert original_config_stream is not None
+        assert original_layer_stream is not None
+        assert canonical_config == original_config_stream.read()
+        assert canonical_layer == original_layer_stream.read()
+    assert index["manifests"][0]["platform"] == {
+        "architecture": "amd64",
+        "os": "linux",
+    }
+    assert index["manifests"][0]["annotations"] == {
+        "io.containerd.image.name": transport_tag,
+        "org.opencontainers.image.ref.name": transport_tag,
+    }
+    assert manifest["layers"][0]["mediaType"] == expected_media_type
+    assert f"blobs/sha256/{original_manifest[7:]}" not in names
+
+    stage = _stage(tmp_path / "strict")
+    with (
+        canonical.open("rb") as source,
+        (stage / "backend-image.oci.tar.gz").open("wb") as raw_output,
+        gzip.GzipFile(filename="", mode="wb", fileobj=raw_output, mtime=0) as output,
+    ):
+        while chunk := source.read(1024 * 1024):
+            output.write(chunk)
+    metadata = json.loads((stage / "release-metadata.json").read_bytes())
+    metadata["candidate_config_digest"] = config_digest
+    metadata["candidate_reference"] = f"{REPOSITORY}@{canonical_manifest}"
+    metadata["image_archive_sha256"] = VALIDATOR.digest_file(
+        stage / "backend-image.oci.tar.gz"
+    )
+    (stage / "release-metadata.json").write_bytes(_json_bytes(metadata))
+    _refresh_artifacts(stage)
+    payload = VALIDATOR.validate_stage(stage)
+    assert payload["candidate_reference"] == f"{REPOSITORY}@{canonical_manifest}"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("malformed", "layer media type"),
+        ("nested", "descriptor"),
+        ("dangling", "dangling"),
+        ("symlink", "unsafe"),
+        ("hardlink", "unsafe"),
+        ("duplicate", "duplicate"),
+        ("duplicate-json", "duplicate JSON keys"),
+        ("path", "unsafe archive path"),
+    ],
+)
+def test_legacy_oci_canonicalization_rejects_unsafe_graphs(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    legacy = tmp_path / f"legacy-{mutation}.tar"
+    _legacy_oci_archive(legacy, mutation)
+    output = tmp_path / f"canonical-{mutation}.tar"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+
+    with pytest.raises(ValueError, match=message):
+        VALIDATOR.canonicalize_legacy_oci_archive(legacy, output, transport_tag)
+
+    assert not output.exists()
+
+
+def test_legacy_oci_canonicalization_enforces_total_size_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    legacy = tmp_path / "legacy.tar"
+    _legacy_oci_archive(legacy)
+    monkeypatch.setattr(VALIDATOR, "MAX_ARCHIVE_TOTAL", 1)
+
+    with pytest.raises(ValueError, match="exceeds its bound"):
+        VALIDATOR.canonicalize_legacy_oci_archive(
+            legacy,
+            tmp_path / "canonical.tar",
+            f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}",
+        )
+
+
 def test_operator_is_one_shot_null_stdin_and_has_no_effect_surface() -> None:
     operator = OPERATOR_PATH.read_text(encoding="utf-8")
     for service in VALIDATOR.APP_SERVICES:
@@ -667,6 +973,8 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
 
     assert f"readonly RELEASE_REF={VALIDATOR.RELEASE_REF}" in builder
     assert f"readonly PRODUCTION_COMMIT={VALIDATOR.PRODUCTION_COMMIT}" in builder
+    assert "readonly CONTAINERD_ADDRESS=/run/containerd/containerd.sock" in builder
+    assert 'ctr --address "$CONTAINERD_ADDRESS"' in builder
     assert "fetch --quiet --no-tags origin" in builder
     assert '"$RELEASE_HEAD_REF:$RELEASE_REF" "$MAIN_HEAD_REF:$MAIN_REF"' in builder
     assert 'merge-base --is-ancestor "$PRODUCTION_COMMIT" "$release_sha"' in builder
@@ -680,6 +988,11 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
     assert "--platform linux/amd64" in builder
     assert "manifest-descriptor:io.containerd.image.name" in builder
     assert "manifest-descriptor:org.opencontainers.image.ref.name" in builder
+    assert "DOCKER_BUILDKIT=0" in builder
+    assert "--skip-manifest-json --platform linux/amd64" in builder
+    assert "io.containerd.snapshotter.v1" in builder
+    assert "--canonicalize-legacy-oci" in builder
+    assert "docker buildx capability probe failed; refusing fallback" in builder
     assert 'grep -Fxq "$candidate_reference"' in builder
     assert "--env AI_PLATFORM_BASE_URL=https://open.bigmodel.cn/api/paas/v4" in builder
     assert VALIDATOR.SERVICE_COMMANDS["official-account-weekly-dag-worker"] == (
@@ -1011,6 +1324,249 @@ assert_authority
         assert expected in result.stderr
     else:
         assert result.returncode == 0, result.stderr
+
+
+def _source_builder_shell(body: str) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment["BRAND_HOTFIX_BUILDER_SOURCE_ONLY"] = "1"
+    return subprocess.run(
+        ["bash", "-c", f"source {BUILDER_PATH!s}\n{body}"],
+        env=environment,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("probe", "route", "accepted"),
+    [
+        ("available", "buildx", True),
+        ("missing", "legacy-containerd", True),
+        ("broken", "", False),
+    ],
+)
+def test_builder_route_is_selected_only_by_capability_probe(
+    probe: str, route: str, accepted: bool
+) -> None:
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+docker_clean() {{
+  if [[ "$*" == "buildx version" ]]; then
+    case {probe!r} in
+      available) printf 'github.com/docker/buildx 1.0\n'; return 0 ;;
+      missing) printf 'docker: unknown command: docker buildx\n' >&2; return 1 ;;
+      broken) printf 'buildx plugin crashed\n' >&2; return 2 ;;
+    esac
+  fi
+  return 90
+}}
+validate_legacy_builder_capabilities() {{ printf 'legacy-capability-ok\n' >&2; }}
+select_image_builder_route
+"""
+    )
+    assert (result.returncode == 0) is accepted
+    if accepted:
+        assert result.stdout == route + "\n"
+        assert ("legacy-capability-ok" in result.stderr) is (probe == "missing")
+    else:
+        assert "refusing fallback" in result.stderr
+        assert "legacy-capability-ok" not in result.stderr
+
+
+def test_selected_buildx_failure_never_retries_with_legacy(tmp_path: Path) -> None:
+    legacy_called = tmp_path / "legacy-called"
+    result = _source_builder_shell(
+        f"""
+scratch={tmp_path / "scratch"!s}
+stage={tmp_path / "stage"!s}
+repo_root={tmp_path / "repository"!s}
+worktree={tmp_path / "worktree"!s}
+release_sha={RELEASE_COMMIT}
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+git_clean() {{ printf '2026-09-04T00:00:00+00:00\n'; }}
+select_image_builder_route() {{ printf 'buildx\n'; }}
+assert_transport_tag_absent() {{ candidate_image_owned=1; }}
+run_buildx_image() {{ return 42; }}
+run_legacy_docker_build() {{ touch {legacy_called!s}; }}
+build_and_probe_image
+"""
+    )
+    assert result.returncode != 0
+    assert not legacy_called.exists()
+
+
+def test_legacy_builder_capability_gate_binds_local_containerd() -> None:
+    result = _source_builder_shell(
+        """
+IFS=' '
+scratch=/tmp/brand-builder-test
+validate_containerd_socket() { return 0; }
+docker_clean() {
+  case "$*" in
+    "context show") printf 'default\n' ;;
+    "context inspect --format {{.Endpoints.docker.Host}} default") printf 'unix:///var/run/docker.sock\n' ;;
+    "version --format {{.Client.Version}} {{.Server.Version}}") printf '29.1.3 29.1.3\n' ;;
+    "info --format {{.OSType}}/{{.Architecture}}") printf 'linux/x86_64\n' ;;
+    "info --format {{json .DriverStatus}}") printf '[["driver-type","io.containerd.snapshotter.v1"]]\n' ;;
+    "build --help") printf '  --pull value\n  --platform value\n  --tag value\n' ;;
+    *) return 90 ;;
+  esac
+}
+ctr_clean() {
+  case "$*" in
+    version) printf 'Client:\n  Version:  2.2.1\nServer:\n  Version:  2.2.1\n' ;;
+    "namespaces list -q") printf 'moby\n' ;;
+    "--namespace moby images inspect --help") return 0 ;;
+    "--namespace moby images export --help") printf '%s\n' ' --skip-manifest-json' ' --platform value' ;;
+    *) return 91 ;;
+  esac
+}
+validate_legacy_builder_capabilities
+"""
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_legacy_builder_capability_gate_rejects_unreviewed_docker_version() -> None:
+    result = _source_builder_shell(
+        """
+IFS=' '
+scratch=/tmp/brand-builder-test
+validate_containerd_socket() { return 0; }
+docker_clean() {
+  case "$*" in
+    "context show") printf 'default\n' ;;
+    "context inspect --format {{.Endpoints.docker.Host}} default") printf 'unix:///var/run/docker.sock\n' ;;
+    "version --format {{.Client.Version}} {{.Server.Version}}") printf '30.0.0 30.0.0\n' ;;
+    *) return 90 ;;
+  esac
+}
+validate_legacy_builder_capabilities
+"""
+    )
+    assert result.returncode != 0
+    assert "differ from the reviewed pair" in result.stderr
+
+
+def test_ctr_commands_bind_the_reviewed_server_address(tmp_path: Path) -> None:
+    capture = tmp_path / "ctr.argv"
+    result = _source_builder_shell(
+        f"""
+scratch={tmp_path / "scratch"!s}
+capture={capture!s}
+env() {{ printf '%s\\0' "$@" >"$capture"; }}
+ctr_clean --namespace moby images inspect docker.io/library/example:reviewed
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert capture.read_bytes().split(b"\0")[:-1] == [
+        b"-i",
+        b"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        f"HOME={tmp_path / 'scratch'!s}".encode(),
+        b"LC_ALL=C",
+        b"ctr",
+        b"--address",
+        b"/run/containerd/containerd.sock",
+        b"--namespace",
+        b"moby",
+        b"images",
+        b"inspect",
+        b"docker.io/library/example:reviewed",
+    ]
+
+
+def test_legacy_build_argv_and_environment_are_exact(tmp_path: Path) -> None:
+    capture = tmp_path / "legacy-build.argv"
+    scratch = tmp_path / "scratch"
+    worktree = tmp_path / "worktree"
+    result = _source_builder_shell(
+        f"""
+scratch={scratch!s}
+worktree={worktree!s}
+release_sha={RELEASE_COMMIT}
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+capture={capture!s}
+env() {{ printf '%s\\0' "$@" >"$capture"; }}
+run_legacy_docker_build 2026-09-04T00:00:00+00:00
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    argv = capture.read_bytes().split(b"\0")[:-1]
+    assert argv == [
+        b"-i",
+        b"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        f"HOME={scratch!s}".encode(),
+        b"LC_ALL=C",
+        b"DOCKER_BUILDKIT=0",
+        b"docker",
+        b"build",
+        b"--pull",
+        b"--platform",
+        b"linux/amd64",
+        b"--build-arg",
+        f"CODEUP_COMMIT={RELEASE_COMMIT}".encode(),
+        b"--build-arg",
+        f"SOURCE_URL={SOURCE_URL}".encode(),
+        b"--build-arg",
+        b"BUILD_CREATED=2026-09-04T00:00:00+00:00",
+        b"--tag",
+        f"edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}".encode(),
+        f"{worktree!s}/backend".encode(),
+    ]
+
+
+def test_candidate_image_cleanup_is_scoped_to_derived_references(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "cleanup.calls"
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+scratch=/tmp/brand-builder-test
+candidate_image_owned=1
+candidate_reference_owned=1
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+candidate_reference=edu-ai-lead-agent-backend@sha256:{"1" * 64}
+docker_clean() {{ printf '%s\n' "$*" >>{calls!s}; }}
+cleanup_candidate_image
+printf 'owned=%s\n' "$candidate_image_owned"
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0\n"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image rm edu-ai-lead-agent-backend@sha256:{'1' * 64}",
+        f"image rm edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}",
+    ]
+
+
+def test_candidate_cleanup_preserves_preexisting_repo_digest(tmp_path: Path) -> None:
+    calls = tmp_path / "cleanup.calls"
+    inventory = tmp_path / "preexisting-repo-digests"
+    candidate = f"edu-ai-lead-agent-backend@sha256:{'1' * 64}"
+    inventory.write_text(candidate + "\n", encoding="utf-8")
+    result = _source_builder_shell(
+        f"""
+IFS=' '
+scratch=/tmp/brand-builder-test
+candidate_image_owned=1
+candidate_reference_owned=0
+preexisting_repo_digests={inventory!s}
+transport_tag=edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}
+candidate_reference={candidate}
+docker_clean() {{ printf '%s\n' "$*" >>{calls!s}; }}
+bind_candidate_reference_ownership
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        f"image rm edu-ai-lead-agent-backend:brand-embedding-{RELEASE_COMMIT[:12]}"
+    ]
 
 
 def _source_operator_shell(

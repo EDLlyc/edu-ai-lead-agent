@@ -7,10 +7,13 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 import re
 import stat
 import tarfile
+import tempfile
 from datetime import date
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
 
@@ -160,6 +163,27 @@ CHECKSUM_TARGETS = MEMBERS - {"artifacts.sha256"}
 MAX_STAGE_MEMBER = 8 * 1024 * 1024 * 1024
 MAX_ARCHIVE_TOTAL = 8 * 1024 * 1024 * 1024
 MAX_JSON = 16 * 1024 * 1024
+OCI_LAYOUT_MEDIA_TYPE = "application/vnd.oci.image.index.v1+json"
+OCI_MANIFEST_MEDIA_TYPE = "application/vnd.oci.image.manifest.v1+json"
+OCI_CONFIG_MEDIA_TYPE = "application/vnd.oci.image.config.v1+json"
+OCI_LAYER_MEDIA_TYPES = {
+    "application/vnd.oci.image.layer.v1.tar": (
+        "application/vnd.oci.image.layer.v1.tar",
+        False,
+    ),
+    "application/vnd.oci.image.layer.v1.tar+gzip": (
+        "application/vnd.oci.image.layer.v1.tar+gzip",
+        True,
+    ),
+    "application/vnd.docker.image.rootfs.diff.tar": (
+        "application/vnd.oci.image.layer.v1.tar",
+        False,
+    ),
+    "application/vnd.docker.image.rootfs.diff.tar.gzip": (
+        "application/vnd.oci.image.layer.v1.tar+gzip",
+        True,
+    ),
+}
 
 
 def fail(message: str) -> NoReturn:
@@ -179,14 +203,53 @@ def digest_file(path: Path) -> str:
 
 
 def strict_json(value: bytes, label: str) -> Any:
+    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                fail(f"{label} contains duplicate JSON keys")
+            result[key] = item
+        return result
+
+    def reject_constant(_: str) -> NoReturn:
+        fail(f"{label} contains a non-finite JSON value")
+
     try:
         text = value.decode("utf-8")
-        parsed = json.loads(text)
+        parsed = json.loads(
+            text,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{label} is not strict JSON") from exc
     if not text or text.strip() != text or "\r" in text:
         fail(f"{label} JSON encoding is non-canonical")
     return parsed
+
+
+def canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True).encode()
+
+
+def normalize_containerd_reference(transport_tag: str) -> str:
+    if (
+        re.fullmatch(
+            r"[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
+            r":[a-z0-9][a-z0-9._-]*",
+            transport_tag,
+        )
+        is None
+    ):
+        fail("transport tag cannot be normalized safely")
+    repository, tag = transport_tag.rsplit(":", 1)
+    pieces = repository.split("/")
+    first = pieces[0]
+    if len(pieces) == 1:
+        repository = f"docker.io/library/{repository}"
+    elif "." not in first and ":" not in first and first != "localhost":
+        repository = f"docker.io/{repository}"
+    return f"{repository}:{tag}"
 
 
 def safe_path(value: str) -> str:
@@ -556,13 +619,361 @@ def json_record(value: bytes | None, label: str) -> Any:
     return strict_json(value, label)
 
 
+def _legacy_archive_records(
+    archive_path: Path,
+) -> dict[str, tuple[str, int, bytes | None]]:
+    if (
+        not archive_path.is_absolute()
+        or archive_path.is_symlink()
+        or has_symlink_component(archive_path)
+        or not archive_path.is_file()
+    ):
+        fail("legacy OCI input must be a physical absolute file")
+    records: dict[str, tuple[str, int, bytes | None]] = {}
+    seen: set[str] = set()
+    total = 0
+    try:
+        with tarfile.open(archive_path, "r:") as archive:
+            for member in archive:
+                name = safe_path(member.name)
+                if name in seen:
+                    fail("legacy OCI archive contains duplicate members")
+                seen.add(name)
+                if member.isdir():
+                    if (
+                        name not in {"blobs", "blobs/sha256"}
+                        or stat.S_IMODE(member.mode) != 0o755
+                        or member.uid != 0
+                        or member.gid != 0
+                    ):
+                        fail("legacy OCI archive directory changed")
+                    continue
+                if (
+                    not member.isfile()
+                    or member.issym()
+                    or member.islnk()
+                    or stat.S_IMODE(member.mode) not in {0o444, 0o644}
+                    or member.uid != 0
+                    or member.gid != 0
+                    or (
+                        name not in {"oci-layout", "index.json"}
+                        and re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", name) is None
+                    )
+                ):
+                    fail("legacy OCI archive member is unsafe")
+                total += member.size
+                if member.size < 0 or total > MAX_ARCHIVE_TOTAL:
+                    fail("legacy OCI archive exceeds its bound")
+                stream = archive.extractfile(member)
+                if stream is None:
+                    fail("legacy OCI archive member is unreadable")
+                value = hashlib.sha256()
+                captured = (
+                    bytearray()
+                    if name in {"oci-layout", "index.json"} and member.size <= MAX_JSON
+                    else None
+                )
+                while chunk := stream.read(1024 * 1024):
+                    value.update(chunk)
+                    if captured is not None:
+                        captured.extend(chunk)
+                digest = value.hexdigest()
+                if (
+                    name.startswith("blobs/sha256/")
+                    and name.rsplit("/", 1)[1] != digest
+                ):
+                    fail("legacy OCI blob filename differs from its bytes")
+                records[name] = (
+                    digest,
+                    member.size,
+                    bytes(captured) if captured is not None else None,
+                )
+    except (OSError, tarfile.TarError) as exc:
+        raise ValueError("legacy OCI archive is unreadable") from exc
+    if seen != {*records, "blobs", "blobs/sha256"}:
+        fail("legacy OCI archive directory graph is incomplete")
+    return records
+
+
+def _read_legacy_archive_member(
+    archive_path: Path, name: str, *, maximum: int = MAX_JSON
+) -> bytes:
+    try:
+        with tarfile.open(archive_path, "r:") as archive:
+            member = archive.getmember(name)
+            if not member.isfile() or member.size > maximum:
+                fail("legacy OCI JSON member exceeds its bound")
+            stream = archive.extractfile(member)
+            if stream is None:
+                fail("legacy OCI JSON member is unreadable")
+            value = stream.read(maximum + 1)
+    except (KeyError, OSError, tarfile.TarError) as exc:
+        raise ValueError("legacy OCI JSON member is missing") from exc
+    if len(value) != member.size:
+        fail("legacy OCI JSON member size changed")
+    return value
+
+
+def _write_canonical_oci_archive(
+    source: Path,
+    output: Path,
+    values: dict[str, bytes | None],
+) -> None:
+    parent = output.parent.resolve(strict=True)
+    if (
+        not output.is_absolute()
+        or output.exists()
+        or output.is_symlink()
+        or has_symlink_component(output.parent)
+        or not parent.is_dir()
+        or parent != output.parent
+    ):
+        fail("canonical OCI output must be an absent path in a physical directory")
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=parent, prefix=".brand-embedding-oci.", suffix=".tmp"
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with (
+            os.fdopen(descriptor, "wb") as raw_output,
+            tarfile.open(source, "r:") as incoming,
+            tarfile.open(
+                fileobj=raw_output, mode="w|", format=tarfile.PAX_FORMAT
+            ) as outgoing,
+        ):
+            for directory in ("blobs", "blobs/sha256"):
+                info = tarfile.TarInfo(directory + "/")
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755
+                info.uid = 0
+                info.gid = 0
+                info.mtime = 0
+                outgoing.addfile(info)
+            for name in sorted(values):
+                value = values[name]
+                info = tarfile.TarInfo(name)
+                info.type = tarfile.REGTYPE
+                info.mode = 0o644
+                info.uid = 0
+                info.gid = 0
+                info.mtime = 0
+                if value is not None:
+                    info.size = len(value)
+                    outgoing.addfile(info, BytesIO(value))
+                    continue
+                original = incoming.getmember(name)
+                stream = incoming.extractfile(original)
+                if stream is None:
+                    fail("legacy OCI content blob is unreadable")
+                info.size = original.size
+                outgoing.addfile(info, stream)
+            raw_output.flush()
+            os.fsync(raw_output.fileno())
+        os.link(temporary, output)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    temporary.unlink()
+
+
+def canonicalize_legacy_oci_archive(
+    source: Path, output: Path, transport_tag: str
+) -> str:
+    """Convert one containerd legacy-export graph into the strict release OCI shape."""
+
+    source = source.absolute()
+    output = output.absolute()
+    normalized_reference = normalize_containerd_reference(transport_tag)
+    short_reference = transport_tag.rsplit(":", 1)[1]
+    records = _legacy_archive_records(source)
+    if set(records) < {"oci-layout", "index.json"}:
+        fail("legacy OCI archive root is incomplete")
+    layout = json_record(records["oci-layout"][2], "legacy OCI layout")
+    index = json_record(records["index.json"][2], "legacy OCI index")
+    if layout != {"imageLayoutVersion": "1.0.0"}:
+        fail("legacy OCI layout version changed")
+    if not isinstance(index, dict) or set(index) != {
+        "schemaVersion",
+        "mediaType",
+        "manifests",
+    }:
+        fail("legacy OCI index keys changed")
+    manifests = index["manifests"]
+    if (
+        index["schemaVersion"] != 2
+        or index["mediaType"] != OCI_LAYOUT_MEDIA_TYPE
+        or not isinstance(manifests, list)
+        or len(manifests) != 1
+        or not isinstance(manifests[0], dict)
+    ):
+        fail("legacy OCI index must bind one manifest")
+    index_descriptor = manifests[0]
+    if (
+        set(index_descriptor)
+        not in (
+            {"annotations", "digest", "mediaType", "size"},
+            {"annotations", "digest", "mediaType", "platform", "size"},
+        )
+        or index_descriptor.get("platform") is not None
+    ):
+        fail("legacy OCI manifest descriptor changed")
+    if index_descriptor.get("annotations") != {
+        "io.containerd.image.name": normalized_reference,
+        "org.opencontainers.image.ref.name": short_reference,
+    }:
+        fail("legacy OCI transport annotations changed")
+    original_manifest_digest, _ = descriptor_blob(
+        records,
+        index_descriptor,
+        OCI_MANIFEST_MEDIA_TYPE,
+        "legacy OCI manifest",
+    )
+    original_manifest_name = f"blobs/sha256/{original_manifest_digest[7:]}"
+    manifest = json_record(
+        _read_legacy_archive_member(source, original_manifest_name),
+        "legacy OCI manifest",
+    )
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schemaVersion",
+        "mediaType",
+        "config",
+        "layers",
+    }:
+        fail("legacy OCI manifest keys changed")
+    layers = manifest["layers"]
+    if (
+        manifest["schemaVersion"] != 2
+        or manifest["mediaType"] != OCI_MANIFEST_MEDIA_TYPE
+        or not isinstance(layers, list)
+        or not layers
+    ):
+        fail("legacy OCI manifest graph changed")
+    config_descriptor = manifest["config"]
+    if not isinstance(config_descriptor, dict) or set(config_descriptor) != {
+        "digest",
+        "mediaType",
+        "size",
+    }:
+        fail("legacy OCI config descriptor changed")
+    config_digest, _ = descriptor_blob(
+        records,
+        config_descriptor,
+        OCI_CONFIG_MEDIA_TYPE,
+        "legacy OCI config",
+    )
+    canonical_layers: list[dict[str, object]] = []
+    layer_names: list[tuple[str, bool]] = []
+    layer_digests: list[str] = []
+    for index_value, descriptor in enumerate(layers):
+        if not isinstance(descriptor, dict) or set(descriptor) != {
+            "digest",
+            "mediaType",
+            "size",
+        }:
+            fail("legacy OCI layer descriptor changed")
+        raw_media_type = descriptor["mediaType"]
+        mapping = OCI_LAYER_MEDIA_TYPES.get(raw_media_type)
+        if mapping is None:
+            fail("legacy OCI layer media type changed")
+        canonical_media_type, compressed = mapping
+        layer_digest, _ = descriptor_blob(
+            records,
+            descriptor,
+            raw_media_type,
+            f"legacy OCI layer {index_value}",
+        )
+        if layer_digest in layer_digests:
+            fail("legacy OCI layer descriptors contain duplicates")
+        layer_digests.append(layer_digest)
+        layer_names.append((f"blobs/sha256/{layer_digest[7:]}", compressed))
+        canonical_layers.append(
+            {
+                "digest": layer_digest,
+                "mediaType": canonical_media_type,
+                "size": descriptor["size"],
+            }
+        )
+    config_name = f"blobs/sha256/{config_digest[7:]}"
+    config = json_record(
+        _read_legacy_archive_member(source, config_name), "legacy OCI config"
+    )
+    diff_ids = layer_diff_ids(source, layer_names)
+    rootfs = config.get("rootfs") if isinstance(config, dict) else None
+    runtime = config.get("config") if isinstance(config, dict) else None
+    if (
+        not isinstance(config, dict)
+        or config.get("architecture") != "amd64"
+        or config.get("os") != "linux"
+        or not isinstance(runtime, dict)
+        or runtime.get("User") != "app"
+        or not isinstance(rootfs, dict)
+        or rootfs.get("type") != "layers"
+        or rootfs.get("diff_ids") != diff_ids
+    ):
+        fail("legacy OCI config platform, user, or diff-ID graph changed")
+    referenced = {
+        "oci-layout",
+        "index.json",
+        original_manifest_name,
+        config_name,
+        *(name for name, _ in layer_names),
+    }
+    if set(records) != referenced:
+        fail("legacy OCI archive contains dangling or missing blobs")
+
+    canonical_manifest = canonical_json_bytes(
+        {
+            "config": {
+                "digest": config_digest,
+                "mediaType": OCI_CONFIG_MEDIA_TYPE,
+                "size": config_descriptor["size"],
+            },
+            "layers": canonical_layers,
+            "mediaType": OCI_MANIFEST_MEDIA_TYPE,
+            "schemaVersion": 2,
+        }
+    )
+    canonical_manifest_digest = f"sha256:{digest_bytes(canonical_manifest)}"
+    canonical_manifest_name = f"blobs/sha256/{canonical_manifest_digest[7:]}"
+    canonical_index = canonical_json_bytes(
+        {
+            "manifests": [
+                {
+                    "annotations": {
+                        "io.containerd.image.name": transport_tag,
+                        "org.opencontainers.image.ref.name": transport_tag,
+                    },
+                    "digest": canonical_manifest_digest,
+                    "mediaType": OCI_MANIFEST_MEDIA_TYPE,
+                    "platform": {"architecture": "amd64", "os": "linux"},
+                    "size": len(canonical_manifest),
+                }
+            ],
+            "mediaType": OCI_LAYOUT_MEDIA_TYPE,
+            "schemaVersion": 2,
+        }
+    )
+    values: dict[str, bytes | None] = {
+        "oci-layout": canonical_json_bytes({"imageLayoutVersion": "1.0.0"}),
+        "index.json": canonical_index,
+        canonical_manifest_name: canonical_manifest,
+        config_name: None,
+        **{name: None for name, _ in layer_names},
+    }
+    if len(values) != 4 + len(layer_names):
+        fail("canonical OCI graph contains a digest collision")
+    _write_canonical_oci_archive(source, output, values)
+    return canonical_manifest_digest
+
+
 def layer_diff_ids(archive_path: Path, layers: list[tuple[str, bool]]) -> list[str]:
     expected = dict(layers)
     if len(expected) != len(layers):
         fail("OCI layer descriptors contain duplicates")
     observed: dict[str, str] = {}
     try:
-        with tarfile.open(archive_path, "r:gz") as archive:
+        with tarfile.open(archive_path, "r:*") as archive:
             for member in archive:
                 name = safe_path(member.name)
                 if name not in expected or not member.isfile():
@@ -886,9 +1297,37 @@ def validate_stage(raw_stage: Path) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", type=Path)
+    parser.add_argument("stage", type=Path, nargs="?")
+    parser.add_argument("--normalize-containerd-reference")
+    parser.add_argument(
+        "--canonicalize-legacy-oci",
+        nargs=3,
+        metavar=("SOURCE", "OUTPUT", "TRANSPORT_TAG"),
+    )
     args = parser.parse_args()
     try:
+        selected = sum(
+            value is not None
+            for value in (
+                args.stage,
+                args.normalize_containerd_reference,
+                args.canonicalize_legacy_oci,
+            )
+        )
+        if selected != 1:
+            fail("select exactly one validation operation")
+        if args.normalize_containerd_reference is not None:
+            print(normalize_containerd_reference(args.normalize_containerd_reference))
+            return 0
+        if args.canonicalize_legacy_oci is not None:
+            source, output, transport_tag = args.canonicalize_legacy_oci
+            digest = canonicalize_legacy_oci_archive(
+                Path(source), Path(output), transport_tag
+            )
+            print(f"brand_embedding_legacy_oci_canonicalized manifest_digest={digest}")
+            return 0
+        if args.stage is None:
+            fail("stage is required")
         payload = validate_stage(args.stage)
     except (OSError, ValueError) as exc:
         print(f"brand_embedding_artifact_validation_failed reason={exc}")
