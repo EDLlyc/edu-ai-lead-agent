@@ -363,7 +363,7 @@ for subtree in (root / "app", root / "alembic"):
         path for path in subtree.rglob("*") if path.is_file() and path.suffix in {".py", ".html"}
     )
 rows = []
-for path in sorted(set(paths)):
+for path in set(paths):
     if path.is_symlink() or not path.is_file():
         raise SystemExit("image source scope contains an unsafe path")
     relative = path.relative_to(root).as_posix()
@@ -374,8 +374,11 @@ for path in sorted(set(paths)):
         or re.fullmatch(r"[A-Za-z0-9._/-]+", relative) is None
     ):
         raise SystemExit("image source scope contains an unsafe path")
-    rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}\n")
-output.write_text("".join(rows), encoding="utf-8")
+    rows.append((relative, hashlib.sha256(path.read_bytes()).hexdigest()))
+output.write_text(
+    "".join(f"{checksum}  {relative}\n" for relative, checksum in sorted(rows)),
+    encoding="utf-8",
+)
 PY
 }
 
@@ -383,7 +386,7 @@ write_observed_image_source_manifest() {
   local reference=$1 output=$2
   docker run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges:true --entrypoint python "$reference" -c \
-    'import hashlib,pathlib,re,sys; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; paths=sorted(set(paths)); names=[p.relative_to(root).as_posix() for p in paths]; all(pathlib.PurePosixPath(name).as_posix()==name and all(part not in {"",".",".."} for part in pathlib.PurePosixPath(name).parts) and re.fullmatch(r"[A-Za-z0-9._/-]+",name) is not None for name in names) or sys.exit("image source scope contains an unsafe path"); rows=[f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {name}" for p,name in zip(paths,names,strict=True)]; print(*rows,sep=chr(10))' \
+    'import hashlib,pathlib,re,sys; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; rows=sorted((p.relative_to(root).as_posix(),p) for p in set(paths)); all(pathlib.PurePosixPath(name).as_posix()==name and all(part not in {"",".",".."} for part in pathlib.PurePosixPath(name).parts) and re.fullmatch(r"[A-Za-z0-9._/-]+",name) is not None for name,p in rows) or sys.exit("image source scope contains an unsafe path"); print(*(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {name}" for name,p in rows),sep=chr(10))' \
     </dev/null >"$output"
 }
 

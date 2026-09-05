@@ -14,11 +14,13 @@ from types import ModuleType
 import pytest
 
 RESEARCH = Path(__file__).resolve().parent
+REPOSITORY_ROOT = RESEARCH.parents[3]
 VALIDATOR_PATH = RESEARCH / "validate-brand-embedding-hotfix-offline-artifacts.py"
 OPERATOR_PATH = RESEARCH / "brand-embedding-hotfix-offline-release-operator.sh"
 BUILDER_PATH = RESEARCH / "build-brand-embedding-hotfix-offline-artifacts.sh"
 CAPTURE_PATH = RESEARCH / "capture-brand-embedding-production-baseline.sh"
 RELEASE_COMMIT = "e" * 40
+EXACT_RELEASE_SOURCE_COMMIT = "dfd6703637062ce07d52f848d9bb82a68250f474"
 REPOSITORY = "registry.example.test/edu-ai/edu-ai-lead-agent"
 SOURCE_URL = "https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git"
 
@@ -110,14 +112,88 @@ def _source_entries() -> list[tuple[str, str, int, bytes | None]]:
     return sorted(entries)
 
 
-def _write_source(stage: Path) -> None:
-    entries = _source_entries()
+def _write_source(
+    stage: Path,
+    entries: list[tuple[str, str, int, bytes | None]] | None = None,
+) -> None:
+    if entries is None:
+        entries = _source_entries()
     _write_tar_gz(stage / "source.tar.gz", entries)
     rows = []
     for name, kind, mode, value in entries:
         checksum = "-" if kind == "d" else _digest(value or b"")
         rows.append(f"{kind}\t{mode:04o}\t{checksum}\t{name}\n")
     (stage / "source-manifest.tsv").write_text("".join(rows), encoding="utf-8")
+
+
+def _write_image_source(
+    stage: Path, entries: list[tuple[str, str, int, bytes | None]]
+) -> None:
+    rows: list[tuple[str, str]] = []
+    for name, kind, _mode, value in entries:
+        if kind != "f" or not name.startswith("backend/"):
+            continue
+        relative = name.removeprefix("backend/")
+        relative_path = Path(relative)
+        if relative in {"alembic.ini", "pyproject.toml"} or (
+            relative_path.suffix in {".py", ".html"}
+            and relative_path.parts[0] in {"app", "alembic"}
+        ):
+            assert value is not None
+            rows.append((relative, _digest(value)))
+    (stage / "image-source.sha256").write_text(
+        "".join(f"{checksum}  {name}\n" for name, checksum in sorted(rows)),
+        encoding="utf-8",
+    )
+
+
+def _exact_release_source_entries(
+    worktree: Path,
+) -> list[tuple[str, str, int, bytes | None]]:
+    result = subprocess.run(
+        [
+            "git",
+            "archive",
+            "--format=tar",
+            EXACT_RELEASE_SOURCE_COMMIT,
+            "--",
+            "backend",
+            "deploy",
+            "infra",
+            "scripts",
+            "compose.yaml",
+            ".env.example",
+            ".gitattributes",
+            ".gitignore",
+            "AGENTS.md",
+            "Makefile",
+            "README.md",
+            "environment.yml",
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    entries: list[tuple[str, str, int, bytes | None]] = []
+    with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+        for member in archive:
+            name = member.name.rstrip("/")
+            assert VALIDATOR.safe_path(name) == name
+            if member.isdir():
+                entries.append((name, "d", 0o755, None))
+                continue
+            assert member.isfile() and not member.issym() and not member.islnk()
+            stream = archive.extractfile(member)
+            assert stream is not None
+            value = stream.read()
+            mode = 0o755 if member.mode & 0o111 else 0o644
+            entries.append((name, "f", mode, value))
+            if name.startswith("backend/"):
+                target = worktree / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(value)
+    return sorted(entries)
 
 
 def _oci_graph() -> tuple[bytes, str, str]:
@@ -436,19 +512,7 @@ def _stage(tmp_path: Path) -> Path:
     _write_source(stage)
     image, manifest_digest, config_digest = _oci_graph()
     (stage / "backend-image.oci.tar.gz").write_bytes(image)
-    image_paths = (
-        "alembic.ini",
-        "pyproject.toml",
-        "app/api_main.py",
-        "app/content_worker_main.py",
-        "app/core/config.py",
-        "app/infrastructure/ai/factory.py",
-        "alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
-    )
-    (stage / "image-source.sha256").write_text(
-        "".join(f"{'4' * 64}  {name}\n" for name in sorted(image_paths)),
-        encoding="utf-8",
-    )
+    _write_image_source(stage, _source_entries())
     (stage / "runtime-diff.tsv").write_text(
         "".join(
             f"{VALIDATOR.RUNTIME_DIFF[name]}\t{name}\n"
@@ -1023,6 +1087,9 @@ def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() ->
     assert "docker buildx capability probe failed; refusing fallback" in builder
     assert 'grep -Fxq "$candidate_reference"' in builder
     assert "--env AI_PLATFORM_BASE_URL=https://open.bigmodel.cn/api/paas/v4" in builder
+    assert '--entrypoint alembic "$candidate_reference"' in builder
+    assert "-c alembic.ini heads" in builder
+    assert '[[ "$observed" == "$ALEMBIC_HEAD (head)" ]]' in builder
     assert VALIDATOR.SERVICE_COMMANDS["official-account-weekly-dag-worker"] == (
         "python",
         "-m",
@@ -1506,12 +1573,143 @@ write_observed_image_source_manifest candidate:reviewed {observed!s}
         ["python3", "-c", probe], check=False, text=True, capture_output=True
     )
     assert executed.returncode == 0, executed.stderr
-    expected = "".join(
-        f"{_digest(files[name])}  {name}\n"
-        for name in sorted(files, key=lambda value: backend / value)
-    )
+    expected = "".join(f"{_digest(files[name])}  {name}\n" for name in sorted(files))
     assert executed.stdout == expected
     assert executed.stdout.count("\n") == len(files)
+
+
+def test_exact_release_image_source_is_sorted_and_fully_bound(tmp_path: Path) -> None:
+    worktree = tmp_path / "release"
+    entries = _exact_release_source_entries(worktree)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    _write_source(stage, entries)
+
+    result = _source_builder_shell(
+        f"worktree={worktree!s}\nstage={stage!s}\nwrite_image_source_manifest"
+    )
+
+    assert result.returncode == 0, result.stderr
+    expected = VALIDATOR.validate_source_archive(stage)
+    VALIDATOR.validate_image_source(stage / "image-source.sha256", expected)
+    rows = (stage / "image-source.sha256").read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 298
+    assert rows[0].endswith("  alembic.ini")
+    assert any(
+        row.endswith("  alembic/versions/20260901_0042_wechat_mp_draft_jobs.py")
+        for row in rows
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_source_archive_requires_one_declared_alembic_head(
+    tmp_path: Path, mutation: str
+) -> None:
+    entries = _source_entries()
+    head_name = "backend/alembic/versions/20260901_0042_wechat_mp_draft_jobs.py"
+    if mutation == "missing":
+        entries = [
+            (
+                name,
+                kind,
+                mode,
+                b"revision='20260901_0999'\n" if name == head_name else value,
+            )
+            for name, kind, mode, value in entries
+        ]
+        message = "Alembic head revision declaration is missing"
+    else:
+        entries.append(
+            (
+                "backend/alembic/versions/renamed_head.py",
+                "f",
+                0o644,
+                b"revision='20260901_0042'\n",
+            )
+        )
+        entries.sort()
+        message = "Alembic revision declaration is duplicated"
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    _write_source(stage, entries)
+
+    with pytest.raises(ValueError, match=message):
+        VALIDATOR.validate_source_archive(stage)
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        (b"down_revision = None\n", "missing or duplicated"),
+        (b"revision = make_revision()\n", "not a static string"),
+        (b"revision = 'one'\nrevision = 'two'\n", "missing or duplicated"),
+        (b"revision: str\nrevision = 'one'\n", "missing or duplicated"),
+        (b"revision = 'one'\nrevision += 'two'\n", "dynamically rebound"),
+    ],
+)
+def test_alembic_revision_requires_one_static_unmodified_declaration(
+    source: bytes, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        VALIDATOR.alembic_revision(source, "reviewed.py")
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        (
+            b"revision = 'reviewed'\n" + b"#" * VALIDATOR.MAX_ALEMBIC_SOURCE,
+            "source exceeds its bound",
+        ),
+        (
+            b"revision = 'reviewed'\n"
+            + b"value = 0\n" * (VALIDATOR.MAX_ALEMBIC_AST_NODES // 3),
+            "AST exceeds its bound",
+        ),
+    ],
+)
+def test_alembic_revision_ast_has_explicit_resource_bounds(
+    source: bytes, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        VALIDATOR.alembic_revision(source, "reviewed.py")
+
+
+def test_source_archive_bounds_alembic_revision_count(tmp_path: Path) -> None:
+    entries = _source_entries()
+    entries.extend(
+        (
+            f"backend/alembic/versions/generated_{index:03d}.py",
+            "f",
+            0o644,
+            f"revision = 'generated_{index:03d}'\n".encode(),
+        )
+        for index in range(VALIDATOR.MAX_ALEMBIC_REVISIONS)
+    )
+    entries.sort()
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    _write_source(stage, entries)
+
+    with pytest.raises(ValueError, match="revision count exceeds its bound"):
+        VALIDATOR.validate_source_archive(stage)
+
+
+def test_image_source_rejects_a_partial_dynamic_migration_projection(
+    tmp_path: Path,
+) -> None:
+    stage = _stage(tmp_path)
+    expected = VALIDATOR.validate_source_archive(stage)
+    rows = (stage / "image-source.sha256").read_text(encoding="utf-8").splitlines()
+    migration_rows = [row for row in rows if "  alembic/versions/" in row]
+    assert len(migration_rows) == 1
+    (stage / "image-source.sha256").write_text(
+        "\n".join(row for row in rows if row != migration_rows[0]) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="complete source projection"):
+        VALIDATOR.validate_image_source(stage / "image-source.sha256", expected)
 
 
 @pytest.mark.parametrize(
