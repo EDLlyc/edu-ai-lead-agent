@@ -101,7 +101,12 @@
 - [ ] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
   `image-source.sha256` 字节相等；不得因 shell/Python 转义把多行摘要折叠为字面量 `\n`，不得缩小源码范围，
   且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path；排序身份必须是
-  manifest 中实际序列化的 relative POSIX path string，不能依赖 `Path` 的分段比较语义。
+  manifest 中实际序列化的 relative POSIX path string，不能依赖 `Path` 的分段比较语义；builder 与
+  production operator 必须由可执行 parity test 证明使用完全相同的 probe argv，避免其中一份单独回归。
+- [ ] operator 在 preflight 加载 candidate 后、quiesce 前任一门禁失败时，只能清理本次从 absent transport tag
+  加载且仍绑定同一已验证 image ID 的 inactive candidate；若 tag 漂移、Docker 容器枚举/inspect 失败或任意
+  running/stopped container 使用该 ID，必须放弃清理。精确预加载 candidate 可安全复用但不归本次 operator
+  所有，既不得删除它，也不得触碰 baseline running image。
 - [ ] stage validator 必须把 `image-source.sha256` 与完整 source archive 的 backend 镜像范围逐 path/hash
   精确匹配，并从完整 Alembic revision 源码声明中确认 `20260901_0042` 唯一存在；不得以手写迁移文件名代替
   revision identity；AST 解析前后必须限制迁移文件数、单文件 bytes 和节点数，并拒绝动态或重复绑定；builder 对

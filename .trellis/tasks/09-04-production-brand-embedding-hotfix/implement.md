@@ -55,7 +55,10 @@
   手写文件名；解析前后固定迁移数、单文件 bytes 与 AST 节点上限，拒绝动态声明和解析资源耗尽；
   staged baseline 与 pre-load OCI graph 的两次真实
   validator import 以及其余 staged validator 执行都必须以 no-bytecode 模式运行，测试证明有效和拒绝路径的
-  递归 stage member set 均不变且不会产生 `__pycache__`，并静态约束所有 invocation 防止新增第三个写入边界。
+  递归 stage member set 均不变且不会产生 `__pycache__`，并静态约束所有 invocation 防止新增第三个写入边界；
+  builder/operator source probe 的真实 `python -c` argv 必须完全相等，并在 298-file release 投影上产生与
+  stage 逐字节相同的 LF-delimited manifest；operator preflight 失败清理还需覆盖 owned inactive、preloaded、
+  tag drift、Docker inventory error 与 container-in-use 路径，任何不确定状态均保留镜像。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。
 - copy-state：`Asia/Shanghai` 业务日期在发布窗口内不跨界，7 条历史冻结 job 的 count/digest 不变，且当天
   claimable/running/current-day/future copy gate 始终为 0。

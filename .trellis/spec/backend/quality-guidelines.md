@@ -657,6 +657,11 @@ release artifacts, or production deployment automation change.
   rebound declarations. Cap migration count, source bytes, and AST nodes before parsing to prevent
   a release artifact from turning this gate into a resource-exhaustion path. The runtime candidate
   must still report exactly the same `alembic heads` value.
+- When the local builder and production operator both collect the post-load image-source manifest,
+  keep their actual container `python -c` argv under executable parity: safe relative POSIX paths,
+  string ordering, scope, hashing, and LF serialization must be byte-identical. A static description
+  is insufficient because shell/Python escaping can drift in only one copy while both still look
+  plausible in source review.
 - Bind post-load import probes to the Compose entrypoint contract. The API module and every
   long-lived scheduler/worker/dispatcher module must come from one reviewed constant list that
   static tests compare with the current `compose.yaml` commands; do not invent service-prefixed
@@ -776,6 +781,12 @@ release artifacts, or production deployment automation change.
   actual `RepoDigests`, then persist that digest rather than the isolated transport tag. A mutable
   prior tag is corrected only while production remains active, followed by a fresh bound baseline;
   never bypass the backup validator or record `unknown` for an observable image.
+- Treat an image loaded during offline preflight as owned only when its tag was absent before load
+  and its observed ID is bound to the validated OCI graph. Cleanup revalidates both RepoDigest and
+  transport-tag IDs and checks the complete running/stopped container inventory. Any inspect/list
+  error, missing or drifting identity, or container reference immediately abandons ownership and
+  preserves the image; uncertainty never authorizes `image rm`, and a preloaded candidate is never
+  acquired merely because its bytes happen to match.
 - A baseline check before acquiring the release lock is advisory, not activation authority. Re-run
   the complete checksum-bound baseline validator after taking the lock. After quiescence and backup,
   revalidate the protected primary/release environments, canonical and legacy release markers,
@@ -868,6 +879,7 @@ release artifacts, or production deployment automation change.
 | OCI validation occurs after image load, load consumes a different raw archive, the engine image ID is outside the validated config/manifest pair, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before active-tag mutation; retain the prior image and source |
 | Post-load source collection omits either backend root manifest input, emits literal escaped newlines, admits a record-injecting path, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count or normalize the malformed record stream |
 | Host/image source uses component-wise `Path` ordering, image projection differs from the complete archive, or migration revision is missing, dynamic, duplicated, rebound, over resource bounds, or lacks the target head | Fail before artifact acceptance; do not hardcode a filename, accept a partial migration projection, or rely only on the runtime head command |
+| Builder/operator source-probe argv differs, preflight candidate existed before load, its tag/digest ID drifts or cannot be inspected, or any running/stopped container references it | Fail before quiescence; preserve the image and abandon cleanup ownership rather than guessing |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
@@ -979,6 +991,11 @@ release artifacts, or production deployment automation change.
   and a renamed file retaining the same unique revision. Repeat both the positive and old-command
   partial-scan rejection on the exact local candidate with network disabled, a read-only filesystem,
   dropped capabilities and no image load.
+- Capture and execute both builder and operator source-probe argv in a parity regression; require the
+  exact release projection to match byte-for-byte and prove a one-sided escaping/order/path change
+  fails. Preflight cleanup cases cover preloaded candidates, tag and RepoDigest drift/inspect errors,
+  running and stopped container references, inventory failures, and source mismatch ordering before
+  Compose/repeat/quiesce; assert every uncertain case performs no image removal.
 - Full post-load tests execute `assert_candidate_image` itself with strict fake-Docker arguments
   and against the exact local inactive candidate. They cover image identity/labels, the full source
   manifest, API plus all seven Compose module imports, non-root/default-off Settings, `pip check`,

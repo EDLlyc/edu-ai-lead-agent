@@ -1578,6 +1578,72 @@ write_observed_image_source_manifest candidate:reviewed {observed!s}
     assert executed.stdout.count("\n") == len(files)
 
 
+def test_builder_and_operator_share_the_exact_complete_image_source_probe(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "release"
+    entries = _exact_release_source_entries(worktree)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    _write_source(stage, entries)
+    expected = stage / "image-source.sha256"
+    builder_probe = tmp_path / "builder-probe.py"
+    operator_probe = tmp_path / "operator-probe.py"
+
+    builder_result = _source_builder_shell(
+        f"""
+worktree={worktree!s}
+stage={stage!s}
+docker() {{
+  while (($#)); do
+    if [[ "$1" == -c ]]; then
+      shift
+      printf '%s' "$1" >{builder_probe!s}
+      return 0
+    fi
+    shift
+  done
+  return 90
+}}
+write_image_source_manifest
+write_observed_image_source_manifest candidate:reviewed {tmp_path / "builder-observed"!s}
+"""
+    )
+    operator_result = _source_operator_shell(
+        tmp_path / "operator-root",
+        f"""
+docker() {{
+  while (($#)); do
+    if [[ "$1" == -c ]]; then
+      shift
+      printf '%s' "$1" >{operator_probe!s}
+      return 0
+    fi
+    shift
+  done
+  return 90
+}}
+write_observed_image_source_manifest candidate:reviewed {tmp_path / "operator-observed"!s}
+""",
+    )
+
+    assert builder_result.returncode == 0, builder_result.stderr
+    assert operator_result.returncode == 0, operator_result.stderr
+    assert operator_probe.read_bytes() == builder_probe.read_bytes()
+    probe = operator_probe.read_text(encoding="utf-8").replace(
+        'pathlib.Path("/app")', f"pathlib.Path({str(worktree / 'backend')!r})"
+    )
+    executed = subprocess.run(
+        ["python3", "-c", probe], check=False, text=True, capture_output=True
+    )
+    assert executed.returncode == 0, executed.stderr
+    assert executed.stdout == expected.read_text(encoding="utf-8")
+    rows = executed.stdout.splitlines()
+    assert len(rows) == 298
+    assert rows[0].endswith("  alembic.ini")
+    assert next(row for row in rows if row.endswith("  alembic/env.py")) != rows[0]
+
+
 def test_exact_release_image_source_is_sorted_and_fully_bound(tmp_path: Path) -> None:
     worktree = tmp_path / "release"
     entries = _exact_release_source_entries(worktree)
@@ -2374,6 +2440,8 @@ transport_tag={transport_tag}
 gzip() {{ return 0; }}
 docker() {{
   case "$*" in
+    "image ls --quiet --no-trunc --filter reference={transport_tag}") return 0 ;;
+    "image ls --digests --format {{{{.Repository}}}}@{{{{.Digest}}}}") return 0 ;;
     "image load") return 0 ;;
     "image inspect --format {{{{.Id}}}} {transport_tag}") return 1 ;;
     *) return 90 ;;
@@ -2384,6 +2452,343 @@ load_and_verify_candidate
     )
     assert result.returncode != 0
     assert "did not create the transport tag" in result.stderr
+
+
+def test_operator_source_probe_failure_cleans_only_the_owned_inactive_candidate(
+    tmp_path: Path,
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "backend-image.oci.tar.gz").write_bytes(b"not-read-by-stub")
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    candidate_reference = f"{REPOSITORY}@{candidate_id}"
+    baseline_id = "sha256:" + "d" * 64
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+stage_dir={stage!s}
+transport_tag={transport_tag}
+candidate_reference={candidate_reference}
+candidate_manifest_digest={candidate_id}
+candidate_config_digest=sha256:{"a" * 64}
+gzip() {{ return 0; }}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image ls --quiet --no-trunc --filter reference={transport_tag}") return 0 ;;
+    "image ls --digests --format {{{{.Repository}}}}@{{{{.Digest}}}}") return 0 ;;
+    "image load") return 0 ;;
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "image inspect --format {{{{range .RepoDigests}}}}{{{{println .}}}}{{{{end}}}} {transport_tag}")
+      printf '%s\n' {candidate_reference}
+      ;;
+    "image inspect --format {{{{.Id}}}} {candidate_reference}") printf '%s\n' {candidate_id} ;;
+    "run "*"--env-file "*) return 0 ;;
+    "run "*) printf 'not-the-reviewed-manifest\n' ;;
+    "container ls --all --quiet --no-trunc") printf 'running-baseline\n' ;;
+    "container inspect --format {{{{.Image}}}} running-baseline") printf '%s\n' {baseline_id} ;;
+    "image rm {candidate_reference}") return 0 ;;
+    "image rm {transport_tag}") return 0 ;;
+    *) return 90 ;;
+  esac
+}}
+if load_and_verify_candidate; then
+  rc=0
+else
+  rc=$?
+fi
+cleanup_candidate_image
+printf 'rc=%s owned=%s:%s\n' "$rc" "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "rc=1 owned=0:0\n"
+    assert "loaded image source differs from the complete manifest" in result.stderr
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert "container inspect --format {{.Image}} running-baseline" in docker_calls
+    assert [call for call in docker_calls if call.startswith("image rm ")] == [
+        f"image rm {candidate_reference}",
+        f"image rm {transport_tag}",
+    ]
+    assert baseline_id != candidate_id
+
+
+def test_operator_preflight_source_mismatch_exits_before_quiescence(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "events"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+EVENTS={events!s}
+parse_args() {{ preflight_only=1; printf 'parse\n' >>"$EVENTS"; }}
+require_physical_operator() {{ printf 'physical\n' >>"$EVENTS"; }}
+validate_stage() {{ printf 'stage\n' >>"$EVENTS"; }}
+require_safe_window() {{ printf 'window\n' >>"$EVENTS"; }}
+verify_baseline() {{ printf 'baseline\n' >>"$EVENTS"; }}
+load_and_verify_candidate() {{
+  printf 'source-mismatch\n' >>"$EVENTS"
+  die 'loaded image source differs from the complete manifest'
+}}
+verify_candidate_compose() {{ printf 'compose\n' >>"$EVENTS"; }}
+reject_repeat() {{ printf 'repeat\n' >>"$EVENTS"; }}
+run_activation() {{ printf 'quiesce\n' >>"$EVENTS"; }}
+main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight-only
+""",
+    )
+
+    assert result.returncode != 0
+    assert "loaded image source differs from the complete manifest" in result.stderr
+    assert events.read_text(encoding="utf-8").splitlines() == [
+        "parse",
+        "physical",
+        "stage",
+        "window",
+        "baseline",
+        "source-mismatch",
+    ]
+
+
+def test_operator_cleanup_preserves_a_candidate_used_by_any_container(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    candidate_reference = f"{REPOSITORY}@{candidate_id}"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_reference={candidate_reference}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id={candidate_id}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "container ls --all --quiet --no-trunc") printf 'candidate-container\n' ;;
+    "container inspect --format {{{{.Image}}}} candidate-container") printf '%s\n' {candidate_id} ;;
+    *) return 90 ;;
+  esac
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    assert not any(
+        call.startswith("image rm ")
+        for call in calls.read_text(encoding="utf-8").splitlines()
+    )
+
+
+def test_operator_cleanup_preserves_candidate_when_container_inventory_fails(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    candidate_reference = f"{REPOSITORY}@{candidate_id}"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_reference={candidate_reference}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id={candidate_id}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "container ls --all --quiet --no-trunc") return 72 ;;
+    *) return 90 ;;
+  esac
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert docker_calls == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}",
+        "container ls --all --quiet --no-trunc",
+    ]
+    assert not any(call.startswith("image rm ") for call in docker_calls)
+
+
+@pytest.mark.parametrize("failure", ["reference-inspect", "reference-drift"])
+def test_operator_cleanup_preserves_candidate_when_owned_reference_is_uncertain(
+    tmp_path: Path, failure: str
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    candidate_reference = f"{REPOSITORY}@{candidate_id}"
+    reference_result = (
+        "return 72"
+        if failure == "reference-inspect"
+        else f"printf '%s\\n' sha256:{'c' * 64}"
+    )
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_reference={candidate_reference}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id={candidate_id}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "container ls --all --quiet --no-trunc") return 0 ;;
+    "image inspect --format {{{{.Id}}}} {candidate_reference}") {reference_result} ;;
+    *) return 90 ;;
+  esac
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert docker_calls == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}",
+        "container ls --all --quiet --no-trunc",
+        f"image inspect --format {{{{.Id}}}} {candidate_reference}",
+    ]
+    assert not any(call.startswith("image rm ") for call in docker_calls)
+
+
+def test_operator_cleanup_preserves_candidate_when_container_inspect_fails(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id={candidate_id}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "container ls --all --quiet --no-trunc") printf 'unknown-container\n' ;;
+    "container inspect --format {{{{.Image}}}} unknown-container") return 72 ;;
+    *) return 90 ;;
+  esac
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert docker_calls == [
+        f"image inspect --format {{{{.Id}}}} {transport_tag}",
+        "container ls --all --quiet --no-trunc",
+        "container inspect --format {{.Image}} unknown-container",
+    ]
+    assert not any(call.startswith("image rm ") for call in docker_calls)
+
+
+def test_operator_cleanup_preserves_transport_tag_after_identity_drift(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    drifted_id = "sha256:" + "c" * 64
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_image_owned=1
+candidate_reference_owned=1
+candidate_owned_image_id={candidate_id}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {drifted_id} ;;
+    *) return 90 ;;
+  esac
+}}
+cleanup_candidate_image
+printf 'owned=%s:%s\n' "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "owned=0:0\n"
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert docker_calls == [f"image inspect --format {{{{.Id}}}} {transport_tag}"]
+    assert not any(call.startswith("image rm ") for call in docker_calls)
+
+
+def test_operator_reuses_but_never_owns_an_exact_preloaded_candidate(
+    tmp_path: Path,
+) -> None:
+    calls = tmp_path / "docker.calls"
+    transport_tag = f"{REPOSITORY}:brand-embedding-{RELEASE_COMMIT[:12]}"
+    candidate_id = "sha256:" + "b" * 64
+    candidate_reference = f"{REPOSITORY}@{candidate_id}"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+transport_tag={transport_tag}
+candidate_reference={candidate_reference}
+candidate_manifest_digest={candidate_id}
+candidate_config_digest=sha256:{"a" * 64}
+docker() {{
+  printf '%s\n' "$*" >>{calls!s}
+  case "$*" in
+    "image ls --quiet --no-trunc --filter reference={transport_tag}") printf '%s\n' {candidate_id} ;;
+    "image inspect --format {{{{.Id}}}} {transport_tag}") printf '%s\n' {candidate_id} ;;
+    "image inspect --format {{{{range .RepoDigests}}}}{{{{println .}}}}{{{{end}}}} {transport_tag}")
+      printf '%s\n' {candidate_reference}
+      ;;
+    "image inspect --format {{{{.Id}}}} {candidate_reference}") printf '%s\n' {candidate_id} ;;
+    *) return 90 ;;
+  esac
+}}
+load_or_reuse_candidate_image
+cleanup_candidate_image
+printf 'runtime=%s owned=%s:%s\n' \
+  "$candidate_runtime_image_id" "$candidate_image_owned" "$candidate_reference_owned"
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"runtime={candidate_id} owned=0:0\n"
+    docker_calls = calls.read_text(encoding="utf-8").splitlines()
+    assert "image load" not in docker_calls
+    assert not any(call.startswith("image rm ") for call in docker_calls)
 
 
 def test_candidate_readiness_uses_the_observed_docker_image_id() -> None:

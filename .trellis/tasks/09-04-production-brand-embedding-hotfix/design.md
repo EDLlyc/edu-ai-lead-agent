@@ -148,6 +148,19 @@ migration 恰有一个未重绑定的静态 revision、所有 revision 唯一且
 backend image scope 逐 path/hash 精确比较。builder 真实执行 `alembic heads` 并要求唯一 reported head 的门禁
 保持不变；真实 `dfd6703` release manifest 以及 missing/duplicate head、partial projection 均有回归。
 
+完整验证通过的 `d6d60af` stage 在生产执行 `--preflight-only` 时仍于 quiesce 前安全终止：operator 保留了
+builder 修复前的双重转义 `\\n` source probe，导致 298 条正确摘要被序列化成一条含字面量反斜杠的记录；
+生产失败后重采集证明 14 个服务、配置、源码、冻结 cohort 与 effect counters 均未变化。operator 现复用与
+builder 字节完全相同的 canonical ASCII-safe probe argv，以 relative POSIX string 排序并用 `chr(10)` 产生
+真实 LF；可执行 parity test 同时捕获两份脚本传给容器的 `python -c` 参数，要求 argv 相等，并在真实
+`dfd6703` 的 298-file backend 投影上执行后与 stage manifest 逐字节相等。
+
+preflight source mismatch 发生在 candidate 已经 load、但应用未停服的边界。operator 因此只把“调用前
+transport tag 不存在、load 后 tag 的 `.Id` 精确属于已验证 manifest/config digest”视为本次所有；退出清理前
+再次绑定 tag 与 image ID，并枚举所有 running/stopped containers 的 `.Image`。任何 tag 漂移、枚举/inspect
+错误或容器占用都放弃清理；预加载的精确 candidate 只复用、不取得所有权。这样失败重试能处理前次遗留的
+精确 candidate，同时不会把 baseline 或并发出现的未知 image 当成本次临时对象删除。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一
