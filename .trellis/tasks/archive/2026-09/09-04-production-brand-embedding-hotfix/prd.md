@@ -78,48 +78,48 @@
 
 ## Acceptance Criteria
 
-- [ ] `Settings(ai_provider_mode="zhipu", brand_embedding_provider_mode="auto", ...)` 解析为 `zhipu`，
+- [x] `Settings(ai_provider_mode="zhipu", brand_embedding_provider_mode="auto", ...)` 解析为 `zhipu`，
   `brand_embedding_provider/model/dimensions` 与生产 57 条活跃向量身份兼容。
-- [ ] 显式 `zhipu`、Alibaba、fake、disabled 及非法组合均有测试，且不会跨 provider 静默降级。
-- [ ] `create_brand_embedding_model` 的智谱分支复用受控 adapter，测试证明一次调用、2048 维、正确身份和
+- [x] 显式 `zhipu`、Alibaba、fake、disabled 及非法组合均有测试，且不会跨 provider 静默降级。
+- [x] `create_brand_embedding_model` 的智谱分支复用受控 adapter，测试证明一次调用、2048 维、正确身份和
   provider request metadata 契约。
-- [ ] API 与 content worker 在智谱模式传入 owned 智谱 client；Alibaba 路径和 provider-free 默认不回归。
-- [ ] 自动企业微信链路无法生成 copy 时在启动/doctor 阶段失败，而不是消费业务任务后才终态失败。
-- [ ] 相关单元、契约、静态检查和 release pipeline tests 全部通过。
-- [ ] Git 提交仅包含本任务增量；GitHub 分支/主线具备可追溯 commit，生产 release marker 与 OCI revision
+- [x] API 与 content worker 在智谱模式传入 owned 智谱 client；Alibaba 路径和 provider-free 默认不回归。
+- [x] 自动企业微信链路无法生成 copy 时在启动/doctor 阶段失败，而不是消费业务任务后才终态失败。
+- [x] 相关单元、契约、静态检查和 release pipeline tests 全部通过。
+- [x] Git 提交仅包含本任务增量；GitHub 分支/主线具备可追溯 commit，生产 release marker 与 OCI revision
   一致。
-- [ ] 生产一次有界智谱 `embedding-3` smoke 成功，且未写数据库、未入队、未发送任何消息。
-- [ ] 部署后服务健康且 resolved provider 为 `zhipu`；不自动 replay 18 个历史 copy run。
-- [ ] 7 条历史冻结 copy job 的数量和稳定摘要在锁前、锁内、停服后、迁移前、启动前、最终及回滚服务重启
+- [x] 生产一次有界智谱 `embedding-3` smoke 成功，且未写数据库、未入队、未发送任何消息。
+- [x] 部署后服务健康且 resolved provider 为 `zhipu`；不自动 replay 18 个历史 copy run。
+- [x] 7 条历史冻结 copy job 的数量和稳定摘要在锁前、锁内、停服后、迁移前、启动前、最终及回滚服务重启
   前后均不变；日期跨界或出现当天/未来可运行 copy job 时 fail closed。
-- [ ] 生产受保护 `.env` 内容和校验和保持不变；`auto` 的 resolved identity 通过运行时读回证明为
+- [x] 生产受保护 `.env` 内容和校验和保持不变；`auto` 的 resolved identity 通过运行时读回证明为
   `zhipu/embedding-3/2048`，不在镜像事务之外引入配置漂移。
-- [ ] 无 `docker buildx` 的审核主机能经预检选择 legacy/containerd 路径，并由 harness 覆盖能力路由、legacy
+- [x] 无 `docker buildx` 的审核主机能经预检选择 legacy/containerd 路径，并由 harness 覆盖能力路由、legacy
   argv/env、reference normalization、OCI graph canonicalization、loadable annotation、raw-tag freshness、
   危险归档拒绝和本地 candidate cleanup；buildx 存在但执行失败时不得 fallback；Docker
   classic/containerd image store 的两种严格 `.Id` 语义均通过，tag 缺失及任意 graph 外 ID 被拒绝。
-- [ ] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
+- [x] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
   `image-source.sha256` 字节相等；不得因 shell/Python 转义把多行摘要折叠为字面量 `\n`，不得缩小源码范围，
   且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path；排序身份必须是
   manifest 中实际序列化的 relative POSIX path string，不能依赖 `Path` 的分段比较语义；builder 与
   production operator 必须由可执行 parity test 证明使用完全相同的 probe argv，避免其中一份单独回归。
-- [ ] operator 在 preflight 加载 candidate 后、quiesce 前任一门禁失败时，只能清理本次从 absent transport tag
+- [x] operator 在 preflight 加载 candidate 后、quiesce 前任一门禁失败时，只能清理本次从 absent transport tag
   加载且仍绑定同一已验证 image ID 的 inactive candidate；若 tag 漂移、Docker 容器枚举/inspect 失败或任意
   running/stopped container 使用该 ID，必须放弃清理。精确预加载 candidate 可安全复用但不归本次 operator
   所有，既不得删除它，也不得触碰 baseline running image。
-- [ ] production operator 允许共享 Compose 为本地开发保留的精确 `backend/Dockerfile` build metadata，但必须
+- [x] production operator 允许共享 Compose 为本地开发保留的精确 `backend/Dockerfile` build metadata，但必须
   逐服务绑定该继承值并拒绝显式 `pull_policy`；所有 `compose create/up` 路径必须使用 `--no-build`，并由运行时
   wrapper 与静态全路径枚举双重拒绝任何遗漏；不支持该参数的迁移 `run` 必须拒绝 `--build` 及赋值形式，避免
   生产根据现场源码隐式构建或覆盖审核镜像。
-- [ ] stage validator 必须把 `image-source.sha256` 与完整 source archive 的 backend 镜像范围逐 path/hash
+- [x] stage validator 必须把 `image-source.sha256` 与完整 source archive 的 backend 镜像范围逐 path/hash
   精确匹配，并从完整 Alembic revision 源码声明中确认 `20260901_0042` 唯一存在；不得以手写迁移文件名代替
   revision identity；AST 解析前后必须限制迁移文件数、单文件 bytes 和节点数，并拒绝动态或重复绑定；builder 对
   candidate 运行 `alembic heads` 的 reported-head 门禁保持不变。
-- [ ] 纯 stage validator 必须在镜像加载前比较 candidate source manifest 与 production baseline 的重叠路径，
+- [x] 纯 stage validator 必须在镜像加载前比较 candidate source manifest 与 production baseline 的重叠路径，
   拒绝遗漏、类型变化和 executable-class 漂移；operator 在只读 preflight 及 release lock 内、创建 one-shot
   attempt marker 前重复该门禁。仅由 `python`/`python3` 调用的 `deploy.py` 与 `release_tool.py` 必须在 Git 中保持
   non-executable，不能通过放宽全部 mode 漂移来适配生产现场的 `0600`。
-- [ ] builder 对 staged baseline 的早期校验和 OCI graph 的 pre-load 校验均不得改变最终 stage：每一次从
+- [x] builder 对 staged baseline 的早期校验和 OCI graph 的 pre-load 校验均不得改变最终 stage：每一次从
   stage 导入或执行验证器时都必须禁止 Python 写入 bytecode，避免生成额外 `__pycache__` 成员；最终 validator 的
   root-owned physical regular、`0600` 与精确 member-set 契约保持不变，不得通过忽略或删除未知成员绕过。
 
