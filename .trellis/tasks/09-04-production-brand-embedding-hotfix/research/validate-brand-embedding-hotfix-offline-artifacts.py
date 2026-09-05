@@ -118,6 +118,8 @@ AUDIT_EXACT = {
     ".trellis/spec/backend/official-account-weekly-dag.md": "M",
     ".trellis/spec/backend/quality-guidelines.md": "M",
     "backend/tests/unit/test_brand_embedding_zhipu.py": "A",
+    "deploy/release/deploy.py": "M",
+    "deploy/release/release_tool.py": "M",
     "deploy/release/tests/test_brand_embedding_hotfix_contract.py": "A",
     "deploy/release/tests/test_local_release.py": "M",
     "scripts/release-prod.sh": "M",
@@ -516,6 +518,26 @@ def baseline_manifest(value: object) -> list[dict[str, object]]:
         previous = name
         result.append(row)
     return result
+
+
+def validate_candidate_source_compatibility(
+    candidate: dict[str, tuple[str, int, str]],
+    production: list[dict[str, object]],
+) -> None:
+    baseline = {str(row["path"]): row for row in production}
+    if set(baseline) - set(candidate):
+        fail("candidate source omits a captured production path")
+    for name, previous in baseline.items():
+        kind, mode, _checksum = candidate[name]
+        if previous["kind"] != kind:
+            fail("candidate source type differs from production")
+        previous_mode = previous["mode"]
+        if (
+            kind == "f"
+            and isinstance(previous_mode, int)
+            and bool(previous_mode & 0o111) != bool(mode & 0o111)
+        ):
+            fail("candidate executable class differs from production")
 
 
 def validate_baseline(path: Path) -> dict[str, object]:
@@ -1356,9 +1378,13 @@ def validate_stage(raw_stage: Path) -> dict[str, object]:
     if any(digest_file(stage / name) != checksum for name, checksum in rows.items()):
         fail("artifact checksum binding changed")
     payload = validate_metadata(stage / "release-metadata.json")
-    validate_baseline(stage / "production-baseline.json")
+    baseline = validate_baseline(stage / "production-baseline.json")
     diff_rows(stage / "runtime-diff.tsv", runtime=True)
     diff_rows(stage / "audit-diff.tsv", runtime=False)
+    validate_candidate_source_compatibility(
+        source_manifest(stage / "source-manifest.tsv"),
+        baseline_manifest(baseline["source_manifest"]),
+    )
     expected_image_source = validate_source_archive(stage)
     validate_image_source(stage / "image-source.sha256", expected_image_source)
     validate_image_archive(stage, payload)

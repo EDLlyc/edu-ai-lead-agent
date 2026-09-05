@@ -827,6 +827,68 @@ PY
   rm -f -- "$rendered"
 }
 
+verify_candidate_source_compatibility() {
+  if ! python3 - "$baseline_json" "$stage_dir/source-manifest.tsv" <<'PY'
+import json
+import pathlib
+import sys
+
+baseline_path = pathlib.Path(sys.argv[1])
+manifest_path = pathlib.Path(sys.argv[2])
+baseline_payload = json.loads(baseline_path.read_bytes())
+baseline_rows = baseline_payload.get("source_manifest")
+if not isinstance(baseline_rows, list) or not baseline_rows:
+    raise SystemExit("production source baseline is absent")
+
+baseline = {}
+for row in baseline_rows:
+    if not isinstance(row, dict) or set(row) != {
+        "kind", "path", "mode", "uid", "gid", "sha256"
+    }:
+        raise SystemExit("production source baseline row changed")
+    name = row["path"]
+    if not isinstance(name, str) or name in baseline:
+        raise SystemExit("production source baseline path changed")
+    baseline[name] = row
+
+candidate = {}
+for line in manifest_path.read_text(encoding="utf-8").splitlines():
+    pieces = line.split("\t")
+    if len(pieces) != 4:
+        raise SystemExit("candidate source manifest row changed")
+    kind, raw_mode, _checksum, name = pieces
+    if name in candidate:
+        raise SystemExit("candidate source manifest path is duplicated")
+    try:
+        mode = int(raw_mode, 8)
+    except ValueError as error:
+        raise SystemExit("candidate source manifest mode changed") from error
+    if (kind == "d" and mode != 0o755) or (
+        kind == "f" and mode not in {0o644, 0o755}
+    ):
+        raise SystemExit("candidate source manifest mode changed")
+    if kind not in {"d", "f"}:
+        raise SystemExit("candidate source manifest type changed")
+    candidate[name] = (kind, mode)
+
+missing = set(baseline) - set(candidate)
+if missing:
+    raise SystemExit("candidate source omits a captured production path")
+for name, previous in baseline.items():
+    kind, semantic_mode = candidate[name]
+    if previous["kind"] != kind:
+        raise SystemExit("candidate source type differs from production")
+    if kind == "f" and bool(previous["mode"] & 0o111) != bool(
+        semantic_mode & 0o111
+    ):
+        raise SystemExit("candidate executable class differs from production")
+PY
+  then
+    die 'candidate source compatibility validation failed'
+    return 1
+  fi
+}
+
 prepare_roots_and_attempt() {
   [[ $EUID -eq 0 ]] || die 'activation requires root'
   install -d -o root -g root -m 700 "$BACKUP_ROOT" "$ATTEMPT_ROOT"
@@ -1143,6 +1205,10 @@ run_activation() {
   # The read-only preflight precedes the release lock. Recheck under that lock so
   # a competing release or late operator drift cannot authorize stale mutation.
   verify_baseline
+  # Recheck archive-to-destination type/mode compatibility before consuming the
+  # one-shot attempt identity. prepare_candidate_source repeats the invariant
+  # after extraction and before any writer is stopped.
+  verify_candidate_source_compatibility
   prepare_roots_and_attempt
   workspace=$(mktemp -d "${BACKUP_ROOT}/.brand-embedding-tmp.XXXXXX")
   [[ "$(stat -c '%a:%u:%g' "$workspace")" == 700:0:0 ]] \
@@ -1188,6 +1254,7 @@ main() {
   validate_stage
   require_safe_window
   verify_baseline
+  verify_candidate_source_compatibility
   load_and_verify_candidate
   verify_candidate_compose
   reject_repeat

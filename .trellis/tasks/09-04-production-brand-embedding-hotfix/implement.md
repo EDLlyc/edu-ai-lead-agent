@@ -61,7 +61,9 @@
   tag drift、Docker inventory error 与 container-in-use 路径，任何不确定状态均保留镜像；Compose topology
   对 12 个服务精确绑定继承的 backend build metadata、拒绝显式 pull policy，而不是拒绝共享开发字段，同时运行时强制且静态枚举
   candidate activation 与 rollback/recovery 的全部 create/up 路径均带 `--no-build`，并禁止 migration run 显式
-  请求 `--build` 及赋值形式（该子命令不支持 `--no-build`）。
+  请求 `--build` 及赋值形式（该子命令不支持 `--no-build`）；纯 stage validator 与 operator preflight/锁内复核
+  必须在 image load、attempt marker 或 quiesce 之前拒绝 candidate/baseline 重叠路径的遗漏、类型或 executable-class
+  漂移，并以测试证明两个 Python-only release 工具为 non-executable、所有生产调用仍显式经过解释器。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。
 - copy-state：`Asia/Shanghai` 业务日期在发布窗口内不跨界，7 条历史冻结 job 的 count/digest 不变，且当天
   claimable/running/current-day/future copy gate 始终为 0。
