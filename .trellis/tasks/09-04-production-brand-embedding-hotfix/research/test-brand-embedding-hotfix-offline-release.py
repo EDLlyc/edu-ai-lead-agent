@@ -1414,6 +1414,116 @@ build_and_probe_image
     assert not legacy_called.exists()
 
 
+def test_builder_image_source_probe_emits_one_canonical_row_per_file(
+    tmp_path: Path,
+) -> None:
+    backend = tmp_path / "backend"
+    files = {
+        "alembic.ini": b"[alembic]\n",
+        "pyproject.toml": b"[project]\n",
+        "app/api_main.py": b"app = object()\n",
+        "app/template.html": b"<p>safe</p>\n",
+        "alembic/versions/revision.py": b"revision = 'test'\n",
+    }
+    excluded = {
+        "app/runtime.txt": b"not copied into the image-source manifest\n",
+        "alembic/README": b"not a Python or HTML source file\n",
+    }
+    for name, value in (files | excluded).items():
+        path = backend / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(value)
+    captured_script = tmp_path / "probe.py"
+    observed = tmp_path / "observed-image-source.sha256"
+    result = _source_builder_shell(
+        f"""
+docker() {{
+  while (($#)); do
+    if [[ "$1" == -c ]]; then
+      shift
+      printf '%s' "$1" >{captured_script!s}
+      return 0
+    fi
+    shift
+  done
+  return 90
+}}
+write_observed_image_source_manifest candidate:reviewed {observed!s}
+"""
+    )
+    assert result.returncode == 0, result.stderr
+    probe = captured_script.read_text(encoding="utf-8")
+    assert r"\\n" not in probe
+    probe = probe.replace('pathlib.Path("/app")', f"pathlib.Path({str(backend)!r})")
+    executed = subprocess.run(
+        ["python3", "-c", probe], check=False, text=True, capture_output=True
+    )
+    assert executed.returncode == 0, executed.stderr
+    expected = "".join(
+        f"{_digest(files[name])}  {name}\n"
+        for name in sorted(files, key=lambda value: backend / value)
+    )
+    assert executed.stdout == expected
+    assert executed.stdout.count("\n") == len(files)
+
+
+@pytest.mark.parametrize(
+    "unsafe_name", ["app/injected\nrow.py", "app/injected\trow.py"]
+)
+def test_builder_image_source_manifests_reject_record_injection_paths(
+    tmp_path: Path, unsafe_name: str
+) -> None:
+    backend = tmp_path / "backend"
+    required = {
+        "alembic.ini": b"[alembic]\n",
+        "pyproject.toml": b"[project]\n",
+        "app/api_main.py": b"app = object()\n",
+        unsafe_name: b"injected = True\n",
+    }
+    for name, value in required.items():
+        path = backend / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(value)
+
+    host_result = _source_builder_shell(
+        f"""
+worktree={tmp_path!s}
+stage={tmp_path!s}
+write_image_source_manifest
+"""
+    )
+    assert host_result.returncode != 0
+    assert "image source scope contains an unsafe path" in host_result.stderr
+
+    captured_script = tmp_path / "probe.py"
+    observed = tmp_path / "observed-image-source.sha256"
+    capture_result = _source_builder_shell(
+        f"""
+docker() {{
+  while (($#)); do
+    if [[ "$1" == -c ]]; then
+      shift
+      printf '%s' "$1" >{captured_script!s}
+      return 0
+    fi
+    shift
+  done
+  return 90
+}}
+write_observed_image_source_manifest candidate:reviewed {observed!s}
+"""
+    )
+    assert capture_result.returncode == 0, capture_result.stderr
+    probe = captured_script.read_text(encoding="utf-8")
+    probe = probe.replace('pathlib.Path("/app")', f"pathlib.Path({str(backend)!r})")
+    executed = subprocess.run(
+        ["python3", "-c", probe], check=False, text=True, capture_output=True
+    )
+    assert executed.returncode != 0
+    assert "image source scope contains an unsafe path" in executed.stderr
+    assert executed.stdout == ""
+
+
 def test_legacy_builder_capability_gate_binds_local_containerd() -> None:
     result = _source_builder_shell(
         """

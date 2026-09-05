@@ -114,6 +114,13 @@ manifest digest 完全相同，重新 export 的 layer media types 也保持 OCI
 精确 manifest reference、该 reference inspect 返回相同运行时 ID。operator 保存这次实际加载 ID，并用它核验
 12 个应用容器的 `.Image`；不把任意第三个 digest 当作兼容值，也不放宽 OCI validator。
 
+candidate 首次真实 source probe 的失败来自命令参数转义，而不是镜像内容：builder 传入容器内 Python 的
+`-c` 参数使用了双重转义换行，导致每条正确摘要之间写出字面量 `\n`，严格字节比较因此安全终止。probe 现改为
+先生成完整、排序后的逐文件行，再用 `chr(10)` 分隔并由 `print` 写入终止换行，避开 shell/Python 双层转义；
+回归测试捕获真实 `-c` argv 并执行，要求输出行数、顺序、path 与 SHA-256 全部精确相等。完整 app/alembic
+`.py/.html`、`alembic.ini` 与 `pyproject.toml` 范围不变；worktree 与 image probe 均在生成记录前拒绝
+非 canonical ASCII safe path，阻止换行或制表符文件名注入记录，validator 和 `cmp` 均不放宽。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一

@@ -637,7 +637,10 @@ release artifacts, or production deployment automation change.
   regular `*.py`/`*.html` files below `app/` and `alembic/`. Collect NUL-delimited names under the
   network-none/read-only/cap-drop probe, sort with the C locale, and compare a safe, unique,
   deterministically ordered path/hash manifest exactly; reject missing roots, extra/replaced paths,
-  duplicate entries, whitespace/unsafe paths, hash drift and count drift.
+  duplicate entries, whitespace/unsafe paths, hash drift and count drift. Validate the canonical
+  ASCII-safe path on both the host and image side before serializing each record. When a shell passes
+  an inline Python program, generate the record's actual LF inside Python (for example `chr(10)`),
+  not through multiply escaped `\n` text that can collapse the complete manifest into one line.
 - Bind post-load import probes to the Compose entrypoint contract. The API module and every
   long-lived scheduler/worker/dispatcher module must come from one reviewed constant list that
   static tests compare with the current `compose.yaml` commands; do not invent service-prefixed
@@ -846,7 +849,7 @@ release artifacts, or production deployment automation change.
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
 | OCI validation occurs after image load, load consumes a different raw archive, the engine image ID is outside the validated config/manifest pair, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before active-tag mutation; retain the prior image and source |
-| Post-load source collection omits either backend root manifest input, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count |
+| Post-load source collection omits either backend root manifest input, emits literal escaped newlines, admits a record-injecting path, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count or normalize the malformed record stream |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
@@ -944,9 +947,11 @@ release artifacts, or production deployment automation change.
   explicitly because `errexit` is suppressed when a function is called from a conditional. Prove
   the former 163-entry partial scan fails through the real boundary, the exact 165-entry manifest
   passes, transient output is EXIT-cleaned, and missing root, root hash drift, extra/replaced path,
-  duplicate, unsafe filename/hash/order and whitespace-path cases fail. Repeat both the positive
-  and old-command 163 rejection on the exact local candidate with network disabled, a read-only
-  filesystem, dropped capabilities and no image load.
+  duplicate, unsafe filename/hash/order and whitespace-path cases fail. Execute the captured image
+  Python argv rather than checking its source string: require one real LF-delimited record per file,
+  exclude non-scope suffixes, and reject newline/tab record injection on both sides. Repeat both the
+  positive and old-command 163 rejection on the exact local candidate with network disabled, a
+  read-only filesystem, dropped capabilities and no image load.
 - Full post-load tests execute `assert_candidate_image` itself with strict fake-Docker arguments
   and against the exact local inactive candidate. They cover image identity/labels, the full source
   manifest, API plus all seven Compose module imports, non-root/default-off Settings, `pip check`,
