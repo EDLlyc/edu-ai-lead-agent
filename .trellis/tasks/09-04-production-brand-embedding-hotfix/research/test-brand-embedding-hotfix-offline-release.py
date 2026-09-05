@@ -486,6 +486,18 @@ def test_valid_stage_binds_distinct_manifest_config_and_repository_digest(
     )
 
 
+def test_stage_rejects_unexpected_python_bytecode_cache(tmp_path: Path) -> None:
+    stage = _stage(tmp_path)
+    cache = stage / "__pycache__"
+    cache.mkdir(mode=0o700)
+    bytecode = cache / "validator.cpython-311.pyc"
+    bytecode.write_bytes(b"unexpected bytecode")
+    bytecode.chmod(0o600)
+
+    with pytest.raises(ValueError, match="stage member set"):
+        VALIDATOR.validate_stage(stage)
+
+
 @pytest.mark.parametrize(
     "name",
     [
@@ -1352,6 +1364,27 @@ def _source_builder_shell(body: str) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+@pytest.mark.parametrize("baseline_is_valid", [True, False])
+def test_builder_baseline_preflight_is_fail_closed_and_preserves_exact_stage_member_set(
+    tmp_path: Path, baseline_is_valid: bool
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir(mode=0o700)
+    staged_validator = stage / VALIDATOR_PATH.name
+    staged_validator.write_bytes(VALIDATOR_PATH.read_bytes())
+    staged_validator.chmod(0o600)
+    staged_baseline = stage / "production-baseline.json"
+    staged_baseline.write_bytes(_json_bytes(_baseline()) if baseline_is_valid else b"{}")
+    staged_baseline.chmod(0o600)
+    members_before = {path.name for path in stage.iterdir()}
+
+    result = _source_builder_shell(f"stage={stage!s}\nvalidate_staged_baseline")
+
+    assert (result.returncode == 0) is baseline_is_valid, result.stderr
+    assert {path.name for path in stage.iterdir()} == members_before
+    assert not (stage / "__pycache__").exists()
 
 
 @pytest.mark.parametrize(
