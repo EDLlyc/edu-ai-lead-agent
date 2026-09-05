@@ -107,6 +107,10 @@
   加载且仍绑定同一已验证 image ID 的 inactive candidate；若 tag 漂移、Docker 容器枚举/inspect 失败或任意
   running/stopped container 使用该 ID，必须放弃清理。精确预加载 candidate 可安全复用但不归本次 operator
   所有，既不得删除它，也不得触碰 baseline running image。
+- [ ] production operator 允许共享 Compose 为本地开发保留的精确 `backend/Dockerfile` build metadata，但必须
+  逐服务绑定该继承值并拒绝显式 `pull_policy`；所有 `compose create/up` 路径必须使用 `--no-build`，并由运行时
+  wrapper 与静态全路径枚举双重拒绝任何遗漏；不支持该参数的迁移 `run` 必须拒绝 `--build` 及赋值形式，避免
+  生产根据现场源码隐式构建或覆盖审核镜像。
 - [ ] stage validator 必须把 `image-source.sha256` 与完整 source archive 的 backend 镜像范围逐 path/hash
   精确匹配，并从完整 Alembic revision 源码声明中确认 `20260901_0042` 唯一存在；不得以手写迁移文件名代替
   revision identity；AST 解析前后必须限制迁移文件数、单文件 bytes 和节点数，并拒绝动态或重复绑定；builder 对

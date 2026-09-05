@@ -973,6 +973,8 @@ release artifacts, or production deployment automation change.
 | Post-load source collection omits either backend root manifest input, emits literal escaped newlines, admits a record-injecting path, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count or normalize the malformed record stream |
 | Host/image source uses component-wise `Path` ordering, image projection differs from the complete archive, or migration revision is missing, dynamic, duplicated, rebound, over resource bounds, or lacks the target head | Fail before artifact acceptance; do not hardcode a filename, accept a partial migration projection, or rely only on the runtime head command |
 | Builder/operator source-probe argv differs, preflight candidate existed before load, its tag/digest ID drifts or cannot be inspected, or any running/stopped container references it | Fail before quiescence; preserve the image and abandon cleanup ownership rather than guessing |
+| Rendered production Compose retains the reviewed local-development `build` metadata | Accept only the exact inherited `${APP_DIR}/backend` context plus `Dockerfile`, no explicit `pull_policy`, and the immutable candidate digest plus reviewed command for every application service. `create`/`up` must pass `--no-build`; `run` must reject the complete `--build` argument family because the supported Compose CLI has no `run --no-build`. |
+| Any production container-creation path omits its supported no-build guard, adds `--build`/`--build=*`, or introduces a pull policy | Fail before Docker Compose execution; do not remove the shared local-development build definition or silently ignore new build metadata. |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
@@ -1089,6 +1091,13 @@ release artifacts, or production deployment automation change.
   fails. Preflight cleanup cases cover preloaded candidates, tag and RepoDigest drift/inspect errors,
   running and stopped container references, inventory failures, and source mismatch ordering before
   Compose/repeat/quiesce; assert every uncertain case performs no image removal.
+- Production Compose regressions must bind every application service to the exact immutable image,
+  reviewed command, and inherited `${APP_DIR}/backend + Dockerfile` metadata. Statically enumerate
+  migration, activation, recovery, and rollback creation paths; execute wrapper cases proving
+  `create`/`up` reject missing `--no-build`, all creation operations reject `--build` and
+  `--build=*`, and `run` forwards only the safe default path. Reject explicit `pull_policy` because
+  `pull_policy: build` can change that default. This preserves local builds without permitting a
+  production build from mutable source.
 - Full post-load tests execute `assert_candidate_image` itself with strict fake-Docker arguments
   and against the exact local inactive candidate. They cover image identity/labels, the full source
   manifest, API plus all seven Compose module imports, non-root/default-off Settings, `pip check`,
@@ -1218,7 +1227,10 @@ docker compose --env-file .env --env-file .release.env up -d --no-build
 ~~~
 
 The mode-600 release environment supplies the single verified digest used by all application and
-migration services.
+migration services. Shared Compose may still render its reviewed local-development `build` block;
+the production wrapper binds that exact block, requires `--no-build` for `create`/`up`, and rejects
+the complete `--build` argument family for every creation operation. It also rejects an explicit
+`pull_policy`; the supported Compose CLI does not expose `run --no-build`.
 
 #### Wrong: assume every Docker image store uses the config digest as `.Id`
 
