@@ -799,6 +799,18 @@ release artifacts, or production deployment automation change.
   overrides, pin the worktree Compose file, disable Compose dotenv loading, replace inherited
   database/storage values with fixed local placeholders, blank provider/WeCom credentials, and
   force every external-effect flag false before starting containers.
+- Select the offline-image build route before starting the build. Prefer the reviewed `buildx`
+  route when that capability exists; a later build failure must remain a failure and must not fall
+  through to another builder. When `buildx` is absent, a task-specific legacy route may run only
+  against the validated local Unix Docker context backed by the containerd snapshotter, the exact
+  physical containerd socket, and the `moby` namespace. It uses the fixed legacy Docker build
+  arguments, exports the exact isolated image reference through the capability-checked `ctr`, and
+  canonicalizes that export into the same strict single-image OCI contract used by the primary
+  path. Canonicalization preserves config/layer bytes, maps only reviewed Docker layer media types,
+  recomputes manifest/index descriptors, and binds exact `linux/amd64` transport annotations; it
+  must not make the downstream validator more permissive. Snapshot pre-existing image references
+  before building and clean up only the candidate tag or digest proven to have been created by this
+  attempt.
 - A cached mutable tag may accelerate the backend build, but deployment identity never comes from
   it. Exercise migration and doctor against the local candidate before push; then push the commit
   tag, resolve and pull the repository digest, verify OCI source/commit/created labels, and repeat
@@ -900,6 +912,9 @@ release artifacts, or production deployment automation change.
 | Local release dry run is requested | Report cached commit and planned stages after read-only local probes; no fetch/build/push/SSH connection/transfer/deploy |
 | Codeup origin is a lookalike URL, the dedicated alias resolves elsewhere, or fetch would prompt | Typed failure before worktree/build/push; never accept wildcard host identity or interactive Git authentication |
 | Docker context is non-local, Compose points outside the worktree, or host provider/WeCom secrets are set | Reject the non-local daemon and replace Compose inputs with fixed side-effect-disabled local values |
+| `buildx` is absent but the legacy Docker/containerd socket, snapshotter, namespace, version, platform, command surface, or exact image reference is unproven | Fail before building/exporting; do not install a plugin, guess a containerd endpoint, or relax the OCI validator |
+| The selected `buildx` or legacy build fails after construction starts | Preserve that failure; do not silently retry with the other build route |
+| Legacy `ctr` export is nested, ambiguous, dangling, unsafe, has unknown media, changes config/layer bytes, or cannot be deterministically canonicalized | Fail before image load; do not accept the raw export or weaken the strict OCI graph checks |
 | Caller worktree is dirty or differs from Codeup `main` | Ignore it as release input; fetch and use the clean detached `origin/main` worktree |
 | Running release orchestrator differs from fetched Codeup `main` | Stop before toolchain/build work; local uncommitted release logic is not authoritative |
 | Cache pull misses | Continue with a clean backend build; do not weaken locks or digest verification |
@@ -938,6 +953,9 @@ release artifacts, or production deployment automation change.
   all nine production services without production PyPI access.
 - Good: an offline candidate is transported by an isolated tag, but activation writes its verified
   local RepoDigest and a later backup binds that exact digest.
+- Good: on a reviewed Docker host without `buildx`, the builder selects the legacy route before the
+  build, exports through the bound containerd socket/namespace, emits a deterministic strict OCI
+  archive, and retains any image reference that existed before the attempt.
 - Base: local development builds the shared local image, the local release dry run performs only
   read-only probes, and Flow quality/production activation flags remain false as a later path.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
@@ -977,6 +995,12 @@ release artifacts, or production deployment automation change.
   extra/dangling blobs, unsafe or duplicate paths, and non-regular members. Before a production
   retry, run the same validator-only contract against the exact engine-produced bundle without
   loading it.
+- A no-`buildx` regression must prove route selection happens before construction; a selected route
+  never falls through after failure; every `ctr` command binds the reviewed physical socket and
+  `moby` namespace; and only references absent from the pre-build snapshot are cleaned. Exercise
+  the real canonicalizer with gzip and uncompressed layers, assert config/layer bytes are unchanged,
+  and reject duplicate JSON keys, non-finite numbers, nested indexes, dangling blobs, unknown media,
+  path traversal, duplicate members, symlinks, hardlinks, size drift, and nondeterministic output.
 - Post-load source-manifest tests execute the real collection/validation boundary instead of
   stubbing the whole candidate gate. Fake runtime argument assertions must return nonzero
   explicitly because `errexit` is suppressed when a function is called from a conditional. Prove

@@ -7,6 +7,7 @@ umask 077
 export LC_ALL=C
 
 readonly SAFE_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+readonly CONTAINERD_ADDRESS=/run/containerd/containerd.sock
 readonly SOURCE_URL=https://codeup.aliyun.com/601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
 readonly SOURCE_SSH_URL=git@codeup.aliyun.com:601cdb1a841cc46b7c49b115/marketingUseOnly/edu-ai-lead-agent.git
 readonly SOURCE_SSH_ALIAS=codeup-edu-ai
@@ -63,12 +64,36 @@ transport_tag=
 candidate_config_digest=
 candidate_manifest_digest=
 candidate_reference=
+candidate_image_owned=0
+candidate_reference_owned=0
+containerd_reference=
+preexisting_repo_digests=
 
 log() { printf '[brand-embedding-builder] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; return 1; }
 
+docker_clean() {
+  env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C docker "$@" </dev/null
+}
+
+ctr_clean() {
+  env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C \
+    ctr --address "$CONTAINERD_ADDRESS" "$@" </dev/null
+}
+
+cleanup_candidate_image() {
+  [[ "${candidate_image_owned:-0}" == 1 && -n "${transport_tag:-}" ]] || return 0
+  if [[ "${candidate_reference_owned:-0}" == 1 && -n "${candidate_reference:-}" ]]; then
+    docker_clean image rm "$candidate_reference" >/dev/null 2>&1 || true
+  fi
+  docker_clean image rm "$transport_tag" >/dev/null 2>&1 || true
+  candidate_image_owned=0
+  candidate_reference_owned=0
+}
+
 cleanup() {
   local rc=$?
+  cleanup_candidate_image
   if [[ -n "${worktree:-}" && -d "$worktree" && -n "${repo_root:-}" ]]; then
     git -C "$repo_root" worktree remove --force "$worktree" >/dev/null 2>&1 || true
   fi
@@ -387,18 +412,161 @@ PY
   candidate_reference="${candidate_repository}@${candidate_manifest_digest}"
 }
 
-build_and_probe_image() {
-  local raw_archive="$scratch/backend-image.oci.tar" created loaded_id repo_digests observed
-  created=$(git_clean -C "$repo_root" show -s --format=%cI "$release_sha")
+normalize_containerd_reference() {
+  python3 "$stage/$VALIDATOR_NAME" --normalize-containerd-reference "$1"
+}
+
+validate_containerd_socket() {
+  [[ -S "$CONTAINERD_ADDRESS" && ! -L "$CONTAINERD_ADDRESS" \
+      && "$(realpath -e -- "$CONTAINERD_ADDRESS")" == "$CONTAINERD_ADDRESS" ]]
+}
+
+validate_legacy_builder_capabilities() {
+  local context endpoint platform driver_status docker_versions docker_help ctr_version ctr_help
+  context=$(docker_clean context show) || { die 'Docker context cannot be read'; return 1; }
+  [[ "$context" =~ ^[A-Za-z0-9._-]+$ ]] \
+    || { die 'Docker context name is unsafe'; return 1; }
+  endpoint=$(docker_clean context inspect --format '{{.Endpoints.docker.Host}}' "$context") \
+    || { die 'Docker context endpoint cannot be read'; return 1; }
+  [[ "$endpoint" == unix:///var/run/docker.sock ]] \
+    || { die 'legacy fallback requires the reviewed local Docker socket'; return 1; }
+  validate_containerd_socket \
+    || { die 'legacy fallback requires the reviewed local containerd socket'; return 1; }
+  docker_versions=$(docker_clean version --format '{{.Client.Version}} {{.Server.Version}}') \
+    || { die 'Docker client/server capability probe failed'; return 1; }
+  [[ "$docker_versions" == '29.1.3 29.1.3' ]] \
+    || { die 'Docker client/server versions differ from the reviewed pair'; return 1; }
+  platform=$(docker_clean info --format '{{.OSType}}/{{.Architecture}}') \
+    || { die 'Docker daemon platform probe failed'; return 1; }
+  [[ "$platform" == linux/x86_64 ]] \
+    || { die 'legacy fallback requires a linux/amd64 Docker daemon'; return 1; }
+  driver_status=$(docker_clean info --format '{{json .DriverStatus}}') \
+    || { die 'Docker snapshotter capability probe failed'; return 1; }
+  python3 - "$driver_status" <<'PY' \
+    || { die 'Docker does not use the reviewed containerd snapshotter'; return 1; }
+import json
+import sys
+
+try:
+    status = json.loads(sys.argv[1])
+except json.JSONDecodeError as exc:
+    raise SystemExit(1) from exc
+if not isinstance(status, list) or ["driver-type", "io.containerd.snapshotter.v1"] not in status:
+    raise SystemExit(1)
+PY
+  docker_help=$(docker_clean build --help) \
+    || { die 'legacy Docker build help is unavailable'; return 1; }
+  for flag in --pull --platform --tag; do
+    grep -Eq "(^|[[:space:]])${flag}([[:space:]]|$)" <<<"$docker_help" \
+      || { die "legacy Docker build lacks ${flag}"; return 1; }
+  done
+  ctr_version=$(ctr_clean version) \
+    || { die 'containerd client/server capability probe failed'; return 1; }
+  [[ "$(grep -c '^Client:$' <<<"$ctr_version")" == 1 \
+      && "$(grep -c '^Server:$' <<<"$ctr_version")" == 1 \
+      && "$(grep -c '^  Version:  2\.2\.1$' <<<"$ctr_version")" == 2 ]] \
+    || { die 'containerd client/server versions differ from the reviewed pair'; return 1; }
+  ctr_clean namespaces list -q | grep -Fxq moby \
+    || { die 'containerd moby namespace is unavailable'; return 1; }
+  ctr_clean --namespace moby images inspect --help >/dev/null \
+    || { die 'containerd image inspect capability is unavailable'; return 1; }
+  ctr_help=$(ctr_clean --namespace moby images export --help) \
+    || { die 'containerd OCI export help is unavailable'; return 1; }
+  for flag in --skip-manifest-json --platform; do
+    grep -Fq -- "$flag" <<<"$ctr_help" \
+      || { die "containerd OCI export lacks ${flag}"; return 1; }
+  done
+}
+
+select_image_builder_route() {
+  local output
+  if output=$(docker_clean buildx version 2>&1); then
+    printf 'buildx\n'
+    return 0
+  fi
+  case "$output" in
+    *"unknown command"*"buildx"*|*"is not a docker command"*"buildx"*) ;;
+    *) die 'docker buildx capability probe failed; refusing fallback'; return 1 ;;
+  esac
+  validate_legacy_builder_capabilities || return 1
+  printf 'legacy-containerd\n'
+}
+
+assert_transport_tag_absent() {
+  local existing
+  existing=$(docker_clean image ls --quiet --filter "reference=${transport_tag}") \
+    || { die 'candidate transport tag preflight failed'; return 1; }
+  [[ -z "$existing" ]] \
+    || { die 'candidate transport tag already exists locally'; return 1; }
+  preexisting_repo_digests="$scratch/preexisting-repo-digests"
+  docker_clean image ls --digests --format '{{.Repository}}@{{.Digest}}' \
+    >"$preexisting_repo_digests" \
+    || { die 'preexisting image reference inventory failed'; return 1; }
+  candidate_image_owned=1
+}
+
+bind_candidate_reference_ownership() {
+  [[ -n "$candidate_reference" && -f "$preexisting_repo_digests" ]] \
+    || { die 'candidate reference ownership cannot be established'; return 1; }
+  if grep -Fxq "$candidate_reference" "$preexisting_repo_digests"; then
+    candidate_reference_owned=0
+  else
+    candidate_reference_owned=1
+  fi
+}
+
+run_buildx_image() {
+  local created=$1 raw_archive=$2
   env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=1 \
     docker buildx build --pull --platform linux/amd64 --provenance=false --sbom=false \
       --annotation "manifest-descriptor:io.containerd.image.name=${transport_tag}" \
       --annotation "manifest-descriptor:org.opencontainers.image.ref.name=${transport_tag}" \
       --build-arg "CODEUP_COMMIT=${release_sha}" --build-arg "SOURCE_URL=${SOURCE_URL}" \
       --build-arg "BUILD_CREATED=${created}" --tag "$transport_tag" \
-      --output "type=oci,name=${transport_tag},dest=${raw_archive}" "$worktree/backend" >&2
+      --output "type=oci,name=${transport_tag},dest=${raw_archive}" "$worktree/backend" \
+      </dev/null >&2
+}
+
+run_legacy_docker_build() {
+  local created=$1
+  env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=0 \
+    docker build --pull --platform linux/amd64 \
+      --build-arg "CODEUP_COMMIT=${release_sha}" --build-arg "SOURCE_URL=${SOURCE_URL}" \
+      --build-arg "BUILD_CREATED=${created}" --tag "$transport_tag" "$worktree/backend" \
+      </dev/null >&2
+}
+
+export_canonical_legacy_oci() {
+  local raw_archive=$1 legacy_archive="$scratch/backend-image.containerd.oci.tar"
+  containerd_reference=$(normalize_containerd_reference "$transport_tag") \
+    || { die 'candidate containerd reference normalization failed'; return 1; }
+  ctr_clean --namespace moby images inspect "$containerd_reference" >/dev/null \
+    || { die 'legacy image is absent from the reviewed containerd namespace'; return 1; }
+  ctr_clean --namespace moby images export --skip-manifest-json --platform linux/amd64 \
+    "$legacy_archive" "$containerd_reference" >&2 \
+    || { die 'legacy containerd OCI export failed'; return 1; }
+  python3 "$stage/$VALIDATOR_NAME" --canonicalize-legacy-oci \
+    "$legacy_archive" "$raw_archive" "$transport_tag" >&2 \
+    || { die 'legacy containerd OCI canonicalization failed'; return 1; }
+}
+
+build_and_probe_image() {
+  local raw_archive="$scratch/backend-image.oci.tar" created loaded_id repo_digests observed route
+  created=$(git_clean -C "$repo_root" show -s --format=%cI "$release_sha")
+  route=$(select_image_builder_route) \
+    || { die 'no reviewed image builder route is available'; return 1; }
+  assert_transport_tag_absent || return 1
+  case "$route" in
+    buildx) run_buildx_image "$created" "$raw_archive" ;;
+    legacy-containerd)
+      run_legacy_docker_build "$created"
+      export_canonical_legacy_oci "$raw_archive"
+      ;;
+    *) die 'image builder route changed unexpectedly' ;;
+  esac
   gzip -n -c "$raw_archive" >"$stage/backend-image.oci.tar.gz"
   derive_oci_identity
+  bind_candidate_reference_ownership
   docker image load -i "$raw_archive" </dev/null >/dev/null
   loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag")
   [[ "$loaded_id" == "$candidate_config_digest" ]] \
@@ -433,6 +601,7 @@ build_and_probe_image() {
   docker run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges:true --entrypoint python "$candidate_reference" \
     -m pip check </dev/null >/dev/null
+  cleanup_candidate_image
 }
 
 write_metadata() {

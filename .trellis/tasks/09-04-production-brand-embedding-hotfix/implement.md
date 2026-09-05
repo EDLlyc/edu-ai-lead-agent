@@ -16,7 +16,11 @@
 9. 从生产分支 `a4a3c00` 创建非强推 `release/brand-embedding-hotfix-20260904`，只移植热修复；验证其为
    `40e4dec…` 后代且运行时 diff 命中白名单，不发布当前分叉的完整 `main`。
 10. 因当前没有可用 registry，新增并回归本任务专属离线 builder、纯 validator、mode-0600 一次性 operator
-   和 fake harness；绑定 fetched release ref、生产 baseline、完整 source/image 归档、12 服务、零发送状态和回滚。
+    和 fake harness；绑定 fetched release ref、生产 baseline、完整 source/image 归档、12 服务、零发送状态和回滚。
+    builder 在 build 前基于能力选择 buildx 或严格 legacy/containerd 路径；后者固定本地 Docker socket 与
+    `/run/containerd/containerd.sock`、linux/amd64、
+    containerd snapshotter/moby namespace 和 legacy argv/env，导出后由纯 Python 重建严格单-manifest OCI graph，
+    不因 buildx 或构建运行失败静默 fallback，也不放宽最终 validator。
 11. 从该 release ref 构建 linux/amd64 不可变镜像并通过离线 operator 部署；保持受保护 `.env` 的 bytes 及
    已审核 `0600 / 1000:1001` 身份不变；用拒绝 symlink/路径替换/读取期漂移的单 fd 稳定指纹，在锁前、锁内、
    quiesce 后、迁移与服务启动前、回滚服务重启前后和最终阶段重复核对，并验证 resolved provider、release
@@ -38,6 +42,9 @@
   只含审核白名单，Codeup/GitHub ref 一致。
 - Offline release：builder/validator/operator/fake harness 的 task-local tests 通过；归档绑定 fetched ref、
   linux/amd64 image graph、source manifest、生产 baseline、相同 migration head 和全部 12 个应用服务。
+- Builder fallback：harness 覆盖 buildx/明确缺失/异常失败路由、legacy 能力及 argv/env、Docker normalized ref、
+  Docker→OCI layer media canonicalization、manifest digest 更新、nested/dangling/symlink/malformed 拒绝及 cleanup；
+  canonical graph 必须由未放宽的真实 stage validator 接受。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。
 - copy-state：`Asia/Shanghai` 业务日期在发布窗口内不跨界，7 条历史冻结 job 的 count/digest 不变，且当天
   claimable/running/current-day/future copy gate 始终为 0。
