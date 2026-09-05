@@ -75,6 +75,9 @@ candidate_config_digest=
 candidate_manifest_digest=
 candidate_reference=
 candidate_runtime_image_id=
+candidate_image_owned=0
+candidate_reference_owned=0
+candidate_owned_image_id=
 workspace=
 backup_dir=
 attempt_marker=
@@ -99,6 +102,63 @@ cleanup_transient_paths() {
         ;;
     esac
   done
+}
+
+candidate_image_container_state() {
+  local containers container observed_id
+  containers=$(docker container ls --all --quiet --no-trunc 2>/dev/null) || return 2
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    observed_id=$(docker container inspect --format '{{.Image}}' "$container" 2>/dev/null) \
+      || return 2
+    [[ "$observed_id" == "$candidate_owned_image_id" ]] && return 0
+  done <<<"$containers"
+  return 1
+}
+
+abandon_candidate_image_ownership() {
+  candidate_image_owned=0
+  candidate_reference_owned=0
+  candidate_owned_image_id=
+}
+
+cleanup_candidate_image() {
+  local current_id reference_id container_state
+  [[ "${completed:-0}" == 0 && "${candidate_image_owned:-0}" == 1 \
+      && -n "${transport_tag:-}" \
+      && "${candidate_owned_image_id:-}" =~ ^sha256:[0-9a-f]{64}$ ]] || return 0
+  current_id=$(docker image inspect --format '{{.Id}}' "$transport_tag" 2>/dev/null) \
+    || { abandon_candidate_image_ownership; return 0; }
+  [[ "$current_id" == "$candidate_owned_image_id" ]] \
+    || { abandon_candidate_image_ownership; return 0; }
+  if candidate_image_container_state; then
+    abandon_candidate_image_ownership
+    return 0
+  else
+    container_state=$?
+    ((container_state == 1)) || { abandon_candidate_image_ownership; return 0; }
+  fi
+  if [[ "${candidate_reference_owned:-0}" == 1 && -n "${candidate_reference:-}" ]]; then
+    reference_id=$(docker image inspect --format '{{.Id}}' "$candidate_reference" 2>/dev/null) \
+      || { abandon_candidate_image_ownership; return 0; }
+    [[ "$reference_id" == "$candidate_owned_image_id" ]] \
+      || { abandon_candidate_image_ownership; return 0; }
+    docker image rm "$candidate_reference" >/dev/null 2>&1 \
+      || { abandon_candidate_image_ownership; return 0; }
+  fi
+  current_id=$(docker image inspect --format '{{.Id}}' "$transport_tag" 2>/dev/null) \
+    || { abandon_candidate_image_ownership; return 0; }
+  [[ "$current_id" == "$candidate_owned_image_id" ]] \
+    || { abandon_candidate_image_ownership; return 0; }
+  if candidate_image_container_state; then
+    abandon_candidate_image_ownership
+    return 0
+  else
+    container_state=$?
+    ((container_state == 1)) || { abandon_candidate_image_ownership; return 0; }
+  fi
+  docker image rm "$transport_tag" >/dev/null 2>&1 || true
+  abandon_candidate_image_ownership
 }
 
 usage() {
@@ -353,6 +413,14 @@ for name in names:
 rows.sort(key=lambda row: row["path"])
 output.write_text(json.dumps(rows, separators=(",", ":"), sort_keys=True), encoding="utf-8")
 PY
+}
+
+write_observed_image_source_manifest() {
+  local reference=$1 output=$2
+  docker run --rm --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges:true --entrypoint python "$reference" -c \
+    'import hashlib,pathlib,re,sys; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; rows=sorted((p.relative_to(root).as_posix(),p) for p in set(paths)); all(pathlib.PurePosixPath(name).as_posix()==name and all(part not in {"",".",".."} for part in pathlib.PurePosixPath(name).parts) and re.fullmatch(r"[A-Za-z0-9._/-]+",name) is not None for name,p in rows) or sys.exit("image source scope contains an unsafe path"); print(*(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {name}" for name,p in rows),sep=chr(10))' \
+    </dev/null >"$output"
 }
 
 verify_current_source_baseline() {
@@ -610,24 +678,53 @@ loaded_image_id_matches_candidate() {
       || "$loaded_id" == "$candidate_config_digest" ) ]]
 }
 
+load_or_reuse_candidate_image() {
+  local existing loaded_id repo_digests preexisting_references
+  existing=$(docker image ls --quiet --no-trunc --filter "reference=${transport_tag}") \
+    || { die 'candidate transport tag preflight failed'; return 1; }
+  if [[ -n "$existing" ]]; then
+    [[ "$(sort -u <<<"$existing" | sed '/^$/d' | wc -l)" == 1 ]] \
+      || { die 'candidate transport tag resolves ambiguously'; return 1; }
+    loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag") \
+      || { die 'preloaded candidate transport tag could not be inspected'; return 1; }
+    loaded_image_id_matches_candidate "$loaded_id" \
+      || { die 'preloaded candidate differs from the validated manifest and config digests'; return 1; }
+    candidate_image_owned=0
+    candidate_reference_owned=0
+    candidate_owned_image_id=
+  else
+    preexisting_references=$(docker image ls --digests --format '{{.Repository}}@{{.Digest}}') \
+      || { die 'preexisting image reference inventory failed'; return 1; }
+    if grep -Fxq "$candidate_reference" <<<"$preexisting_references"; then
+      candidate_reference_owned=0
+    else
+      candidate_reference_owned=1
+    fi
+    gzip -dc "${stage_dir}/backend-image.oci.tar.gz" | docker image load >/dev/null
+    loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag") \
+      || { candidate_reference_owned=0; die 'validated OCI archive did not create the transport tag'; return 1; }
+    loaded_image_id_matches_candidate "$loaded_id" \
+      || { candidate_reference_owned=0; die 'loaded image differs from the validated manifest and config digests'; return 1; }
+    candidate_owned_image_id=$loaded_id
+    candidate_image_owned=1
+  fi
+  repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag") \
+    || { die 'candidate RepoDigest inventory failed'; return 1; }
+  grep -Fxq "$candidate_reference" <<<"$repo_digests" \
+    || { die 'derived candidate RepoDigest is absent after image load'; return 1; }
+  [[ "$(docker image inspect --format '{{.Id}}' "$candidate_reference")" == "$loaded_id" ]] \
+    || { die 'candidate RepoDigest resolves to another image'; return 1; }
+  candidate_runtime_image_id=$loaded_id
+}
+
 load_and_verify_candidate() {
-  local loaded_id repo_digests observed_source
+  local observed_source
   observed_source=$(mktemp /tmp/brand-hotfix-image-source.XXXXXX)
   transient_paths+=("$observed_source")
   rm -f -- "$observed_source"
   [[ ! -e "$observed_source" && ! -L "$observed_source" ]] \
     || die 'candidate probe output collision'
-  gzip -dc "${stage_dir}/backend-image.oci.tar.gz" | docker image load >/dev/null
-  loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag") \
-    || { die 'validated OCI archive did not create the transport tag'; return 1; }
-  loaded_image_id_matches_candidate "$loaded_id" \
-    || die 'loaded image differs from the validated manifest and config digests'
-  repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag")
-  grep -Fxq "$candidate_reference" <<<"$repo_digests" \
-    || die 'derived candidate RepoDigest is absent after image load'
-  [[ "$(docker image inspect --format '{{.Id}}' "$candidate_reference")" == "$loaded_id" ]] \
-    || die 'candidate RepoDigest resolves to another image'
-  candidate_runtime_image_id=$loaded_id
+  load_or_reuse_candidate_image
   docker run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges:true --env-file "$PRIMARY_ENV" \
     --env WECOM_ENABLED=false --env WECOM_AUTO_DELIVERY_ENABLED=false \
@@ -641,12 +738,10 @@ load_and_verify_candidate() {
     --entrypoint python "$candidate_reference" -c \
     'from app.core.config import Settings; s=Settings(_env_file=None); assert s.resolved_brand_embedding_provider_mode == "zhipu"; assert s.brand_embedding_model == "embedding-3"; assert s.brand_embedding_dimensions == 2048; assert not s.wecom_auto_delivery_enabled; import app.api_main, app.scheduler_main, app.worker_main, app.governance_scheduler_main, app.governance_worker_main, app.content_scheduler_main, app.content_worker_main, app.wecom_dispatcher_main, app.official_account_weekly_dag_main, app.official_account_weekly_scheduler_main, app.official_account_worker_main, app.wechat_official_account_draft_main' \
     </dev/null >/dev/null
-  docker run --rm --network none --read-only --cap-drop ALL \
-    --security-opt no-new-privileges:true --entrypoint python "$candidate_reference" -c \
-    'import hashlib,pathlib; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; print("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root).as_posix()}\\n" for p in sorted(set(paths))),end="")' \
-    </dev/null >"$observed_source"
+  write_observed_image_source_manifest "$candidate_reference" "$observed_source" \
+    || { die 'loaded image source manifest could not be read'; return 1; }
   cmp -s "$observed_source" "$stage_dir/image-source.sha256" \
-    || die 'loaded image source differs from the complete manifest'
+    || { die 'loaded image source differs from the complete manifest'; return 1; }
   rm -f -- "$observed_source"
 }
 
@@ -1021,7 +1116,7 @@ run_activation() {
   workspace=$(mktemp -d "${BACKUP_ROOT}/.brand-embedding-tmp.XXXXXX")
   [[ "$(stat -c '%a:%u:%g' "$workspace")" == 700:0:0 ]] \
     || die 'release workspace identity changed'
-  trap 'on_exit; cleanup_workspace; cleanup_transient_paths' EXIT
+  trap 'on_exit; cleanup_workspace; cleanup_candidate_image; cleanup_transient_paths' EXIT
   prepare_candidate_source
   quiesce_and_backup
   verify_quiesced_baseline \
@@ -1076,6 +1171,6 @@ main() {
 }
 
 if [[ "${BRAND_HOTFIX_OPERATOR_SOURCE_ONLY:-0}" != 1 ]]; then
-  trap cleanup_transient_paths EXIT
+  trap 'cleanup_candidate_image; cleanup_transient_paths' EXIT
   main "$@"
 fi
