@@ -72,7 +72,9 @@ baseline_json=
 release_commit=
 transport_tag=
 candidate_config_digest=
+candidate_manifest_digest=
 candidate_reference=
+candidate_runtime_image_id=
 workspace=
 backup_dir=
 attempt_marker=
@@ -270,8 +272,10 @@ validate_stage() {
   transport_tag=$(json_string "$metadata_json" transport_tag)
   candidate_config_digest=$(json_string "$metadata_json" candidate_config_digest)
   candidate_reference=$(json_string "$metadata_json" candidate_reference)
+  candidate_manifest_digest=${candidate_reference##*@}
   [[ "$release_commit" =~ ^[0-9a-f]{40}$ \
       && "$candidate_config_digest" =~ ^sha256:[0-9a-f]{64}$ \
+      && "$candidate_manifest_digest" =~ ^sha256:[0-9a-f]{64}$ \
       && "$candidate_reference" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] \
     || die 'validated candidate identity could not be read'
   [[ "$(json_string "$metadata_json" scheduler_cutoff_utc)" == "$scheduler_cutoff_utc" ]] \
@@ -599,6 +603,13 @@ verify_baseline() {
   verify_service_set "$previous_image" baseline || die 'service/image/restart baseline drifted'
 }
 
+loaded_image_id_matches_candidate() {
+  local loaded_id=$1
+  [[ "$loaded_id" =~ ^sha256:[0-9a-f]{64}$ \
+      && ( "$loaded_id" == "$candidate_manifest_digest" \
+      || "$loaded_id" == "$candidate_config_digest" ) ]]
+}
+
 load_and_verify_candidate() {
   local loaded_id repo_digests observed_source
   observed_source=$(mktemp /tmp/brand-hotfix-image-source.XXXXXX)
@@ -608,13 +619,14 @@ load_and_verify_candidate() {
     || die 'candidate probe output collision'
   gzip -dc "${stage_dir}/backend-image.oci.tar.gz" | docker image load >/dev/null
   loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag")
-  [[ "$loaded_id" == "$candidate_config_digest" ]] \
-    || die 'loaded image differs from the validated config digest'
+  loaded_image_id_matches_candidate "$loaded_id" \
+    || die 'loaded image differs from the validated manifest and config digests'
   repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag")
   grep -Fxq "$candidate_reference" <<<"$repo_digests" \
     || die 'derived candidate RepoDigest is absent after image load'
-  [[ "$(docker image inspect --format '{{.Id}}' "$candidate_reference")" == "$candidate_config_digest" ]] \
+  [[ "$(docker image inspect --format '{{.Id}}' "$candidate_reference")" == "$loaded_id" ]] \
     || die 'candidate RepoDigest resolves to another image'
+  candidate_runtime_image_id=$loaded_id
   docker run --rm --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges:true --env-file "$PRIMARY_ENV" \
     --env WECOM_ENABLED=false --env WECOM_AUTO_DELIVERY_ENABLED=false \
@@ -963,7 +975,7 @@ on_exit() {
 
 wait_for_candidate() {
   local deadline=$(( $(date +%s) + 90 ))
-  until verify_service_set "$candidate_config_digest" zero; do
+  until verify_service_set "$candidate_runtime_image_id" zero; do
     (( $(date +%s) < deadline )) || return 1
     sleep 2
   done

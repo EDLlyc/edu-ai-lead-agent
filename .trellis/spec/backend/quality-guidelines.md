@@ -718,6 +718,13 @@ release artifacts, or production deployment automation change.
   must not make the downstream validator more permissive. Snapshot pre-existing image references
   before building and clean up only the candidate tag or digest proven to have been created by this
   attempt.
+- Strictly validate the final compressed OCI artifact before any `docker image load`, and load that
+  same verified file rather than a raw intermediate archive. Docker image-store identity is
+  implementation-dependent: a classic graphdriver may expose the validated config digest as
+  `.Id`, while Docker's containerd image store may expose the validated manifest digest. Accept
+  only those two identities already bound by the verified OCI graph, require the exact derived
+  RepoDigest to resolve to the observed loaded ID, and use that observed ID when checking every
+  production service. A third digest or a service bound to either non-observed identity is drift.
 - A cached mutable tag may accelerate the backend build, but deployment identity never comes from
   it. Exercise migration and doctor against the local candidate before push; then push the commit
   tag, resolve and pull the repository digest, verify OCI source/commit/created labels, and repeat
@@ -830,7 +837,7 @@ release artifacts, or production deployment automation change.
 | Candidate push succeeds but transfer/deploy later fails | Keep the verified local artifact attempt for audit/retry; if SSH status is unknown, also retain the remote inbox until reconciled |
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
-| OCI image archive treats its config digest as the candidate image ID, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before image load or active-tag mutation; retain the prior image and source |
+| OCI validation occurs after image load, load consumes a different raw archive, the engine image ID is outside the validated config/manifest pair, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before active-tag mutation; retain the prior image and source |
 | Post-load source collection omits either backend root manifest input, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
@@ -863,6 +870,9 @@ release artifacts, or production deployment automation change.
 - Good: on a reviewed Docker host without `buildx`, the builder selects the legacy route before the
   build, exports through the bound containerd socket/namespace, emits a deterministic strict OCI
   archive, and retains any image reference that existed before the attempt.
+- Good: the strict validator binds manifest and config from the final gzip artifact before load;
+  containerd-store `.Id=manifest` and classic-store `.Id=config` both retain one exact RepoDigest,
+  while readiness always compares services with the single ID actually returned by the engine.
 - Base: local development builds the shared local image, the local release dry run performs only
   read-only probes, and Flow quality/production activation flags remain false as a later path.
 - Bad: `pip install` resolves broad ranges during image build, production uses a tag/build, a
@@ -908,6 +918,11 @@ release artifacts, or production deployment automation change.
   the real canonicalizer with gzip and uncompressed layers, assert config/layer bytes are unchanged,
   and reject duplicate JSON keys, non-finite numbers, nested indexes, dangling blobs, unknown media,
   path traversal, duplicate members, symlinks, hardlinks, size drift, and nondeterministic output.
+- Image-store identity tests must execute the strict validator before load against the exact final
+  gzip artifact, accept only its bound config or manifest digest, and reject an arbitrary third ID.
+  Exercise both classic and containerd store results, exact RepoDigest resolution, and all 12
+  services converging on the one observed loaded ID; one service using the other otherwise-valid
+  graph digest must fail readiness.
 - Post-load source-manifest tests execute the real collection/validation boundary instead of
   stubbing the whole candidate gate. Fake runtime argument assertions must return nonzero
   explicitly because `errexit` is suppressed when a function is called from a conditional. Prove
@@ -1042,6 +1057,28 @@ docker compose --env-file .env --env-file .release.env up -d --no-build
 
 The mode-600 release environment supplies the single verified digest used by all application and
 migration services.
+
+#### Wrong: assume every Docker image store uses the config digest as `.Id`
+
+~~~bash
+test "$(docker image inspect --format '{{.Id}}' "$tag")" = "$config_digest"
+~~~
+
+Docker backed by the containerd image store may expose the manifest digest as `.Id`; hard-coding
+classic-store semantics rejects a valid image and encourages bypassing stronger graph checks.
+
+#### Correct: validate the graph before load and bind the observed engine identity
+
+~~~text
+strict_validate(final.oci.tar.gz) -> {manifest_digest, config_digest, repo_digest}
+docker_load(final.oci.tar.gz) -> loaded_id
+require loaded_id in {manifest_digest, config_digest}
+require inspect(repo_digest).Id == loaded_id
+require every application service image ID == loaded_id
+~~~
+
+The two acceptable IDs come only from the already verified OCI graph; the engine's observed choice
+then becomes the single runtime identity.
 
 #### Wrong: conditional recovery that relies on `errexit`
 

@@ -1517,6 +1517,65 @@ run_legacy_docker_build 2026-09-04T00:00:00+00:00
     ]
 
 
+@pytest.mark.parametrize("identity_kind", ["config", "manifest"])
+def test_builder_accepts_exact_image_id_for_both_docker_image_stores(
+    identity_kind: str,
+) -> None:
+    config_digest = "sha256:" + "a" * 64
+    manifest_digest = "sha256:" + "b" * 64
+    loaded_id = config_digest if identity_kind == "config" else manifest_digest
+    result = _source_builder_shell(
+        f"""
+candidate_config_digest={config_digest}
+candidate_manifest_digest={manifest_digest}
+loaded_image_id_matches_candidate {loaded_id}
+"""
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_builder_rejects_image_id_outside_validated_oci_graph() -> None:
+    result = _source_builder_shell(
+        f"""
+candidate_config_digest=sha256:{"a" * 64}
+candidate_manifest_digest=sha256:{"b" * 64}
+loaded_image_id_matches_candidate sha256:{"c" * 64}
+"""
+    )
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize("mutation", ["", "dangling"])
+def test_builder_strictly_validates_oci_graph_before_loading(
+    tmp_path: Path, mutation: str
+) -> None:
+    stage = _stage(tmp_path)
+    if mutation:
+        _rewrite_oci(stage, mutation)
+    metadata = json.loads((stage / "release-metadata.json").read_bytes())
+    result = _source_builder_shell(
+        f"""
+stage={stage!s}
+release_sha={metadata["release_commit"]}
+transport_tag={metadata["transport_tag"]}
+candidate_repository={metadata["candidate_repository"]}
+candidate_reference={metadata["candidate_reference"]}
+candidate_config_digest={metadata["candidate_config_digest"]}
+candidate_manifest_digest={str(metadata["candidate_reference"]).rsplit("@", 1)[1]}
+validate_candidate_image_graph
+"""
+    )
+    assert (result.returncode != 0) is bool(mutation), result.stderr
+
+    builder = BUILDER_PATH.read_text(encoding="utf-8")
+    validation_call = "  validate_candidate_image_graph \\\n"
+    validated_load = (
+        '  gzip -dc "$stage/backend-image.oci.tar.gz" | docker image load >/dev/null'
+    )
+    assert builder.index(validation_call) < builder.index(validated_load)
+    assert 'docker image load -i "$raw_archive"' not in builder
+
+
 def test_candidate_image_cleanup_is_scoped_to_derived_references(
     tmp_path: Path,
 ) -> None:
@@ -1586,6 +1645,102 @@ def _source_operator_shell(
         text=True,
         capture_output=True,
     )
+
+
+@pytest.mark.parametrize("identity_kind", ["config", "manifest"])
+def test_operator_accepts_exact_image_id_for_both_docker_image_stores(
+    tmp_path: Path, identity_kind: str
+) -> None:
+    config_digest = "sha256:" + "a" * 64
+    manifest_digest = "sha256:" + "b" * 64
+    loaded_id = config_digest if identity_kind == "config" else manifest_digest
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+candidate_config_digest={config_digest}
+candidate_manifest_digest={manifest_digest}
+loaded_image_id_matches_candidate {loaded_id}
+""",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_operator_rejects_image_id_outside_validated_oci_graph(
+    tmp_path: Path,
+) -> None:
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+candidate_config_digest=sha256:{"a" * 64}
+candidate_manifest_digest=sha256:{"b" * 64}
+loaded_image_id_matches_candidate sha256:{"c" * 64}
+""",
+    )
+    assert result.returncode != 0
+
+
+def test_candidate_readiness_uses_the_observed_docker_image_id() -> None:
+    operator = OPERATOR_PATH.read_text(encoding="utf-8")
+    assert 'verify_service_set "$candidate_runtime_image_id" zero' in operator
+    assert 'verify_service_set "$candidate_config_digest" zero' not in operator
+    reference_gate = "docker image inspect --format '{{.Id}}' \"$candidate_reference\""
+    assert operator.index(reference_gate) < operator.index(
+        "candidate_runtime_image_id=$loaded_id"
+    )
+
+
+@pytest.mark.parametrize("drift_service", ["", "content-worker"])
+def test_candidate_service_set_binds_all_twelve_apps_to_observed_image_id(
+    tmp_path: Path, drift_service: str
+) -> None:
+    observed_id = "sha256:" + "b" * 64
+    image_checks = tmp_path / "image-checks"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+EXPECTED_IMAGE={observed_id}
+DRIFT_SERVICE={drift_service}
+IMAGE_CHECKS={image_checks!s}
+compose() {{
+  if [[ "$*" == "ps --services --status running" ]]; then
+    printf '%s\n' "${{ALL_SERVICES[@]}}" | tr ' ' '\n' | sort
+    return
+  fi
+  if [[ "$1 $2" == "ps -q" ]]; then
+    printf 'container-%s\n' "$3"
+    return
+  fi
+  return 90
+}}
+docker() {{
+  local format=$3 container=$4 service=${{4#container-}}
+  [[ "$1 $2" == "inspect --format" ]] || return 91
+  case "$format" in
+    '{{{{.State.Status}}}}') printf 'running\n' ;;
+    '{{{{.RestartCount}}}}') printf '0\n' ;;
+    '{{{{if .State.Health}}}}{{{{.State.Health.Status}}}}{{{{end}}}}') printf 'healthy\n' ;;
+    '{{{{.Image}}}}')
+      printf '%s\n' "$service" >>"$IMAGE_CHECKS"
+      if [[ -n "$DRIFT_SERVICE" && "$service" == "$DRIFT_SERVICE" ]]; then
+        printf 'sha256:%064d\n' 0
+      else
+        printf '%s\n' "$EXPECTED_IMAGE"
+      fi
+      ;;
+    *) return 92 ;;
+  esac
+}}
+candidate_runtime_image_id=$EXPECTED_IMAGE
+verify_service_set "$candidate_runtime_image_id" zero
+""",
+    )
+    assert (result.returncode != 0) is bool(drift_service), result.stderr
+    checked_services = image_checks.read_text(encoding="utf-8").splitlines()
+    if not drift_service:
+        assert checked_services == list(VALIDATOR.APP_SERVICES)
+    else:
+        assert checked_services[-1] == drift_service
 
 
 @pytest.mark.parametrize(

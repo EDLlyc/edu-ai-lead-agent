@@ -63,6 +63,9 @@
   media type后重算 manifest/index digest、size、platform 与 transport annotations，且保持 config/layer bytes
   不变。nested index、dangling blob、链接成员或异常本地 Docker/context/containerd 能力必须 fail closed，
   最终产物仍需通过同一个严格 OCI validator，不能为 fallback 放宽验收口径。
+- 加载同一严格 OCI graph 后，兼容 Docker classic store 将 `.Id` 表示为 config digest、containerd image store
+  将 `.Id` 表示为 manifest digest 的差异；只接受这两个已验证 digest 之一，并继续要求精确 RepoDigest 与
+  reference inspect 指向同一运行时 ID。服务收敛必须绑定实际加载得到的 ID，不接受任意第三种身份。
 - 离线 operator 必须保留 weekly production 拓扑并让全部 12 个应用服务收敛到同一不可变镜像；部署后只读
   验证 release identity、容器 health/restart、resolved brand provider 和未来任务 readiness。
 - baseline 必须固定 `Asia/Shanghai`、capture 当天业务日期与 `content_max_attempts=3`，严格要求当天可领取、
@@ -90,7 +93,8 @@
   `zhipu/embedding-3/2048`，不在镜像事务之外引入配置漂移。
 - [ ] 无 `docker buildx` 的审核主机能经预检选择 legacy/containerd 路径，并由 harness 覆盖能力路由、legacy
   argv/env、reference normalization、OCI graph canonicalization、危险归档拒绝和本地 candidate cleanup；
-  buildx 存在但执行失败时不得 fallback。
+  buildx 存在但执行失败时不得 fallback；Docker classic/containerd image store 的两种严格 `.Id` 语义均通过，
+  任意 graph 外 ID 被拒绝。
 
 ## Out of Scope
 
