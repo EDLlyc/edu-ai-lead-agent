@@ -58,7 +58,10 @@
   递归 stage member set 均不变且不会产生 `__pycache__`，并静态约束所有 invocation 防止新增第三个写入边界；
   builder/operator source probe 的真实 `python -c` argv 必须完全相等，并在 298-file release 投影上产生与
   stage 逐字节相同的 LF-delimited manifest；operator preflight 失败清理还需覆盖 owned inactive、preloaded、
-  tag drift、Docker inventory error 与 container-in-use 路径，任何不确定状态均保留镜像。
+  tag drift、Docker inventory error 与 container-in-use 路径，任何不确定状态均保留镜像；Compose topology
+  对 12 个服务精确绑定继承的 backend build metadata、拒绝显式 pull policy，而不是拒绝共享开发字段，同时运行时强制且静态枚举
+  candidate activation 与 rollback/recovery 的全部 create/up 路径均带 `--no-build`，并禁止 migration run 显式
+  请求 `--build` 及赋值形式（该子命令不支持 `--no-build`）。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。
 - copy-state：`Asia/Shanghai` 业务日期在发布窗口内不跨界，7 条历史冻结 job 的 count/digest 不变，且当天
   claimable/running/current-day/future copy gate 始终为 0。

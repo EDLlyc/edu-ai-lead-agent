@@ -183,6 +183,32 @@ parse_args() {
 }
 
 compose() {
+  local argument no_build=0
+  case "${1:-}" in
+    create|up)
+      for argument in "$@"; do
+        case "$argument" in
+          --no-build) no_build=1 ;;
+          --build|--build=*)
+            die "production Compose ${1} forbids --build"
+            return 1
+            ;;
+        esac
+      done
+      ((no_build == 1)) \
+        || { die "production Compose ${1} requires --no-build"; return 1; }
+      ;;
+    run)
+      for argument in "$@"; do
+        case "$argument" in
+          --build|--build=*)
+            die 'production Compose run forbids --build'
+            return 1
+            ;;
+        esac
+      done
+      ;;
+  esac
   docker compose --project-name "$COMPOSE_PROJECT" --project-directory "$APP_DIR" \
     --env-file "$PRIMARY_ENV" --env-file "$RELEASE_ENV" "${PROFILES[@]}" "$@"
 }
@@ -754,15 +780,17 @@ verify_candidate_compose() {
     die 'candidate Compose render failed'
     return 1
   fi
-  if ! python3 - "$rendered" "$candidate_reference" "${APP_SERVICES[@]}" <<'PY'
+  if ! python3 - "$rendered" "$candidate_reference" "$APP_DIR" "${APP_SERVICES[@]}" <<'PY'
 import json
 import pathlib
 import sys
 
 payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 reference = sys.argv[2]
-names = sys.argv[3:]
+app_dir = pathlib.Path(sys.argv[3])
+names = sys.argv[4:]
 services = payload.get("services", {})
+expected_build = {"context": str(app_dir / "backend"), "dockerfile": "Dockerfile"}
 expected = {
     "acquisition-api": ["python", "-m", "uvicorn", "app.api_main:app", "--host", "0.0.0.0", "--port", "8000"],
     "acquisition-scheduler": ["python", "-m", "app.scheduler_main"],
@@ -783,10 +811,13 @@ for name in names:
     service = services[name]
     if (
         service.get("image") != reference
-        or "build" in service
+        or service.get("build") != expected_build
+        or "pull_policy" in service
         or service.get("command") != expected[name]
     ):
-        raise SystemExit("candidate service image or command changed")
+        raise SystemExit(
+            "candidate service image, inherited build, pull policy, or command changed"
+        )
 PY
   then
     rm -f -- "$rendered"

@@ -161,6 +161,15 @@ transport tag 不存在、load 后 tag 的 `.Id` 精确属于已验证 manifest/
 错误或容器占用都放弃清理；预加载的精确 candidate 只复用、不取得所有权。这样失败重试能处理前次遗留的
 精确 candidate，同时不会把 baseline 或并发出现的未知 image 当成本次临时对象删除。
 
+下一次生产 preflight 已通过完整 source parity，但 Compose topology 门禁把共享 `x-app-runtime` 中供本地开发
+使用的 `build: {context: ./backend}` 错判为生产漂移。该字段不会因 `APP_IMAGE` 被渲染掉；正确的生产边界是
+逐个服务同时绑定不可变 candidate image、审核命令和解析为 `${APP_DIR}/backend + Dockerfile` 的精确继承 build
+metadata，拒绝会改变默认决策的 `pull_policy`，并保证任何创建容器的执行路径都禁止构建。operator 的 Compose wrapper 现对 `create/run/up` 在运行时
+实施与当前 Compose CLI 能力相符的 fail-closed 策略：`create/up` 强制要求 `--no-build`，迁移 `run` 因不支持
+该参数而拒绝 `--build` 及赋值形式。candidate 激活和 rollback/recovery 的两个 `up` 均显式携带 `--no-build`；
+回归测试既执行 wrapper 的接受/拒绝分支，也静态枚举全部 create/up 路径并绑定唯一 migration run，因此不删除
+本地 build 支持、不宽泛忽略 Compose 字段，也不允许未来新 phase 绕过审核镜像。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一

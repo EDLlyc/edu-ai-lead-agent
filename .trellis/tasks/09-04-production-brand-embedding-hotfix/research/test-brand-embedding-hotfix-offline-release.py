@@ -1031,6 +1031,120 @@ def test_operator_is_one_shot_null_stdin_and_has_no_effect_surface() -> None:
     assert "printf 'APP_IMAGE=%s\\n' \"$transport_tag\"" not in operator
 
 
+def test_operator_all_container_creation_paths_are_statically_no_build() -> None:
+    operator = OPERATOR_PATH.read_text(encoding="utf-8")
+    assert operator.count("docker compose") == 1
+    creation_lines = [
+        line.strip()
+        for line in operator.splitlines()
+        if line.strip().startswith(("compose create ", "compose up "))
+    ]
+    assert creation_lines == [
+        'compose up -d --no-build --no-deps "${APP_SERVICES[@]}" >/dev/null || return 1',
+        'compose up -d --no-build --no-deps "${APP_SERVICES[@]}"',
+    ]
+    assert operator.count("compose run --rm --no-deps -T backend-migrate") == 1
+    assert "compose run --build" not in operator
+
+
+@pytest.mark.parametrize("operation", ["create", "up"])
+def test_operator_compose_rejects_container_creation_without_no_build(
+    tmp_path: Path, operation: str
+) -> None:
+    calls = tmp_path / "docker.calls"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+docker() {{ printf '%s\\n' "$*" >>{calls!s}; }}
+compose {operation} service
+""",
+    )
+
+    assert result.returncode != 0
+    assert f"production Compose {operation} requires --no-build" in result.stderr
+    assert not calls.exists()
+
+
+@pytest.mark.parametrize("operation", ["create", "up"])
+def test_operator_compose_forwards_no_build_container_creation(
+    tmp_path: Path, operation: str
+) -> None:
+    calls = tmp_path / "docker.calls"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+docker() {{ printf '%s\\n' "$*" >>{calls!s}; }}
+compose {operation} --no-build service
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    call = calls.read_text(encoding="utf-8")
+    assert call.startswith(
+        f"compose --project-name edu-ai-lead-agent --project-directory {tmp_path / 'app'} "
+    )
+    assert call.endswith(f" {operation} --no-build service\n")
+
+
+@pytest.mark.parametrize("operation", ["create", "up"])
+@pytest.mark.parametrize("build_argument", ["--build", "--build=true", "--build=false"])
+def test_operator_compose_container_creation_rejects_build_even_with_no_build(
+    tmp_path: Path, operation: str, build_argument: str
+) -> None:
+    calls = tmp_path / "docker.calls"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+docker() {{ printf '%s\\n' "$*" >>{calls!s}; }}
+compose {operation} --no-build {build_argument} service
+""",
+    )
+
+    assert result.returncode != 0
+    assert f"production Compose {operation} forbids --build" in result.stderr
+    assert not calls.exists()
+
+
+@pytest.mark.parametrize("build_argument", ["--build", "--build=true", "--build=false"])
+def test_operator_compose_run_forbids_explicit_build(
+    tmp_path: Path, build_argument: str
+) -> None:
+    calls = tmp_path / "docker.calls"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+docker() {{ printf '%s\\n' "$*" >>{calls!s}; }}
+compose run {build_argument} service
+""",
+    )
+
+    assert result.returncode != 0
+    assert "production Compose run forbids --build" in result.stderr
+    assert not calls.exists()
+
+
+def test_operator_compose_run_forwards_migration_without_build(tmp_path: Path) -> None:
+    calls = tmp_path / "docker.calls"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+docker() {{ printf '%s\\n' "$*" >>{calls!s}; }}
+compose run --rm --no-deps -T backend-migrate
+""",
+    )
+
+    assert result.returncode == 0, result.stderr
+    call = calls.read_text(encoding="utf-8")
+    assert call.startswith(
+        f"compose --project-name edu-ai-lead-agent --project-directory {tmp_path / 'app'} "
+    )
+    assert call.endswith(" run --rm --no-deps -T backend-migrate\n")
+    assert "--build" not in call
+    assert "--no-build" not in call
+
+
 def test_capture_and_builder_bind_authority_topology_and_read_only_baseline() -> None:
     capture = CAPTURE_PATH.read_text(encoding="utf-8")
     builder = BUILDER_PATH.read_text(encoding="utf-8")
@@ -2392,6 +2506,73 @@ def _source_operator_shell(
     )
 
 
+@pytest.mark.parametrize(
+    ("mutation", "accepted"),
+    [
+        ("", True),
+        ("missing-build", False),
+        ("build-context", False),
+        ("build-extra", False),
+        ("pull-policy-build", False),
+        ("image", False),
+        ("command", False),
+    ],
+)
+def test_operator_candidate_compose_binds_reviewed_inherited_build_metadata(
+    tmp_path: Path, mutation: str, accepted: bool
+) -> None:
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    candidate_reference = f"{REPOSITORY}@sha256:{'b' * 64}"
+    services: dict[str, dict[str, object]] = {
+        name: {
+            "build": {
+                "context": str(app_dir / "backend"),
+                "dockerfile": "Dockerfile",
+            },
+            "command": list(VALIDATOR.SERVICE_COMMANDS[name]),
+            "image": candidate_reference,
+        }
+        for name in VALIDATOR.APP_SERVICES
+    }
+    target = services[VALIDATOR.APP_SERVICES[0]]
+    if mutation == "missing-build":
+        del target["build"]
+    elif mutation == "build-context":
+        target_build = target["build"]
+        assert isinstance(target_build, dict)
+        target_build["context"] = str(tmp_path / "unreviewed")
+    elif mutation == "build-extra":
+        target_build = target["build"]
+        assert isinstance(target_build, dict)
+        target_build["args"] = {"UNREVIEWED": "1"}
+    elif mutation == "pull-policy-build":
+        target["pull_policy"] = "build"
+    elif mutation == "image":
+        target["image"] = "unreviewed:latest"
+    elif mutation == "command":
+        target["command"] = ["python", "unreviewed.py"]
+    rendered = tmp_path / "compose.json"
+    rendered.write_bytes(_json_bytes({"services": services}))
+
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+IFS=' '
+candidate_reference={candidate_reference}
+compose() {{
+  [[ "$*" == "config --format json" ]] || return 90
+  cat {rendered!s}
+}}
+verify_candidate_compose
+""",
+    )
+
+    assert (result.returncode == 0) is accepted, result.stderr
+    if not accepted:
+        assert "candidate Compose topology validation failed" in result.stderr
+
+
 @pytest.mark.parametrize("identity_kind", ["config", "manifest"])
 def test_operator_accepts_exact_image_id_for_both_docker_image_stores(
     tmp_path: Path, identity_kind: str
@@ -2550,6 +2731,43 @@ main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight
         "window",
         "baseline",
         "source-mismatch",
+    ]
+
+
+def test_operator_preflight_compose_mismatch_exits_before_quiescence(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "events"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+EVENTS={events!s}
+parse_args() {{ preflight_only=1; printf 'parse\n' >>"$EVENTS"; }}
+require_physical_operator() {{ printf 'physical\n' >>"$EVENTS"; }}
+validate_stage() {{ printf 'stage\n' >>"$EVENTS"; }}
+require_safe_window() {{ printf 'window\n' >>"$EVENTS"; }}
+verify_baseline() {{ printf 'baseline\n' >>"$EVENTS"; }}
+load_and_verify_candidate() {{ printf 'candidate\n' >>"$EVENTS"; }}
+verify_candidate_compose() {{
+  printf 'compose-mismatch\n' >>"$EVENTS"
+  die 'candidate Compose topology validation failed'
+}}
+reject_repeat() {{ printf 'repeat\n' >>"$EVENTS"; }}
+run_activation() {{ printf 'quiesce\n' >>"$EVENTS"; }}
+main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight-only
+""",
+    )
+
+    assert result.returncode != 0
+    assert "candidate Compose topology validation failed" in result.stderr
+    assert events.read_text(encoding="utf-8").splitlines() == [
+        "parse",
+        "physical",
+        "stage",
+        "window",
+        "baseline",
+        "candidate",
+        "compose-mismatch",
     ]
 
 
@@ -3290,6 +3508,7 @@ def test_fake_operator_success_runs_one_migration_and_no_effect_command(
     assert result.returncode == 0, result.stderr
     events = (tmp_path / "events").read_text(encoding="utf-8")
     assert events.count("<run> <--rm> <--no-deps> <-T> <backend-migrate>") == 1
+    assert events.count("<up> <-d> <--no-build> <--no-deps>") == 1
     assert "quiesce-backup" in events
     assert events.index("locked-baseline") < events.index("prepare")
     assert events.index("quiesce-backup") < events.index("quiesced-baseline")
