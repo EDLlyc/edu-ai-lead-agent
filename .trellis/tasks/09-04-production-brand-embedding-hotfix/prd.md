@@ -98,6 +98,9 @@
   argv/env、reference normalization、OCI graph canonicalization、loadable annotation、raw-tag freshness、
   危险归档拒绝和本地 candidate cleanup；buildx 存在但执行失败时不得 fallback；Docker
   classic/containerd image store 的两种严格 `.Id` 语义均通过，tag 缺失及任意 graph 外 ID 被拒绝。
+- [ ] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
+  `image-source.sha256` 字节相等；不得因 shell/Python 转义把多行摘要折叠为字面量 `\n`，不得缩小源码范围，
+  且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path。
 
 ## Out of Scope
 

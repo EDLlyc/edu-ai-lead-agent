@@ -352,6 +352,7 @@ write_image_source_manifest() {
   python3 - "$worktree/backend" "$stage/image-source.sha256" <<'PY'
 import hashlib
 import pathlib
+import re
 import sys
 
 root = pathlib.Path(sys.argv[1]).resolve(strict=True)
@@ -365,9 +366,25 @@ rows = []
 for path in sorted(set(paths)):
     if path.is_symlink() or not path.is_file():
         raise SystemExit("image source scope contains an unsafe path")
-    rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(root).as_posix()}\n")
+    relative = path.relative_to(root).as_posix()
+    normalized = pathlib.PurePosixPath(relative)
+    if (
+        normalized.as_posix() != relative
+        or any(part in {"", ".", ".."} for part in normalized.parts)
+        or re.fullmatch(r"[A-Za-z0-9._/-]+", relative) is None
+    ):
+        raise SystemExit("image source scope contains an unsafe path")
+    rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}\n")
 output.write_text("".join(rows), encoding="utf-8")
 PY
+}
+
+write_observed_image_source_manifest() {
+  local reference=$1 output=$2
+  docker run --rm --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges:true --entrypoint python "$reference" -c \
+    'import hashlib,pathlib,re,sys; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; paths=sorted(set(paths)); names=[p.relative_to(root).as_posix() for p in paths]; all(pathlib.PurePosixPath(name).as_posix()==name and all(part not in {"",".",".."} for part in pathlib.PurePosixPath(name).parts) and re.fullmatch(r"[A-Za-z0-9._/-]+",name) is not None for name in names) or sys.exit("image source scope contains an unsafe path"); rows=[f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {name}" for p,name in zip(paths,names,strict=True)]; print(*rows,sep=chr(10))' \
+    </dev/null >"$output"
 }
 
 validate_compose_entrypoints() {
@@ -758,10 +775,9 @@ build_and_probe_image() {
     --env BRAND_EMBEDDING_PROVIDER_MODE=auto "$candidate_reference" -c \
     'from app.core.config import Settings; s=Settings(_env_file=None); assert s.resolved_brand_embedding_provider_mode == "zhipu"; assert s.brand_embedding_model == "embedding-3"; assert s.brand_embedding_dimensions == 2048; assert not s.wecom_auto_delivery_enabled' \
     </dev/null >/dev/null
-  docker run --rm --network none --read-only --cap-drop ALL \
-    --security-opt no-new-privileges:true --entrypoint python "$candidate_reference" -c \
-    'import hashlib,pathlib; root=pathlib.Path("/app"); paths=[root/"alembic.ini",root/"pyproject.toml"]; paths += [p for base in (root/"app",root/"alembic") for p in base.rglob("*") if p.is_file() and p.suffix in {".py",".html"}]; print("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root).as_posix()}\\n" for p in sorted(set(paths))),end="")' \
-    </dev/null >"$scratch/observed-image-source.sha256"
+  write_observed_image_source_manifest \
+    "$candidate_reference" "$scratch/observed-image-source.sha256" \
+    || { die 'candidate image source manifest could not be read'; return 1; }
   cmp -s "$scratch/observed-image-source.sha256" "$stage/image-source.sha256" \
     || die 'candidate image source differs from the complete manifest'
   observed=$(docker run --rm --network none --read-only --cap-drop ALL \
