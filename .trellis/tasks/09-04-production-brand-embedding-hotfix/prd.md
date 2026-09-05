@@ -100,7 +100,12 @@
   classic/containerd image store 的两种严格 `.Id` 语义均通过，tag 缺失及任意 graph 外 ID 被拒绝。
 - [ ] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
   `image-source.sha256` 字节相等；不得因 shell/Python 转义把多行摘要折叠为字面量 `\n`，不得缩小源码范围，
-  且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path。
+  且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path；排序身份必须是
+  manifest 中实际序列化的 relative POSIX path string，不能依赖 `Path` 的分段比较语义。
+- [ ] stage validator 必须把 `image-source.sha256` 与完整 source archive 的 backend 镜像范围逐 path/hash
+  精确匹配，并从完整 Alembic revision 源码声明中确认 `20260901_0042` 唯一存在；不得以手写迁移文件名代替
+  revision identity；AST 解析前后必须限制迁移文件数、单文件 bytes 和节点数，并拒绝动态或重复绑定；builder 对
+  candidate 运行 `alembic heads` 的 reported-head 门禁保持不变。
 - [ ] builder 对 staged baseline 的早期校验和 OCI graph 的 pre-load 校验均不得改变最终 stage：每一次从
   stage 导入或执行验证器时都必须禁止 Python 写入 bytecode，避免生成额外 `__pycache__` 成员；最终 validator 的
   root-owned physical regular、`0600` 与精确 member-set 契约保持不变，不得通过忽略或删除未知成员绕过。

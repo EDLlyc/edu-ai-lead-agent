@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import gzip
 import hashlib
 import json
@@ -163,6 +164,9 @@ CHECKSUM_TARGETS = MEMBERS - {"artifacts.sha256"}
 MAX_STAGE_MEMBER = 8 * 1024 * 1024 * 1024
 MAX_ARCHIVE_TOTAL = 8 * 1024 * 1024 * 1024
 MAX_JSON = 16 * 1024 * 1024
+MAX_ALEMBIC_REVISIONS = 256
+MAX_ALEMBIC_SOURCE = 512 * 1024
+MAX_ALEMBIC_AST_NODES = 20_000
 OCI_LAYOUT_MEDIA_TYPE = "application/vnd.oci.image.index.v1+json"
 OCI_MANIFEST_MEDIA_TYPE = "application/vnd.oci.image.manifest.v1+json"
 OCI_CONFIG_MEDIA_TYPE = "application/vnd.oci.image.config.v1+json"
@@ -347,7 +351,6 @@ def source_manifest(path: Path) -> dict[str, tuple[str, int, str]]:
         "compose.yaml",
         "backend/alembic.ini",
         "backend/pyproject.toml",
-        "backend/alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
         *RUNTIME_DIFF,
     }
     if not required.issubset(rows) or any(
@@ -357,9 +360,74 @@ def source_manifest(path: Path) -> dict[str, tuple[str, int, str]]:
     return rows
 
 
-def validate_source_archive(stage: Path) -> None:
+def alembic_revision(source: bytes, name: str) -> str:
+    if len(source) > MAX_ALEMBIC_SOURCE:
+        fail("Alembic revision source exceeds its bound")
+    try:
+        tree = ast.parse(source, filename=name)
+    except (MemoryError, RecursionError, SyntaxError, ValueError) as exc:
+        raise ValueError("Alembic revision source is malformed") from exc
+    for index, _node in enumerate(ast.walk(tree), start=1):
+        if index > MAX_ALEMBIC_AST_NODES:
+            fail("Alembic revision AST exceeds its bound")
+    declarations: list[tuple[ast.expr | None, ast.Name]] = []
+    for node in tree.body:
+        match node:
+            case ast.Assign(targets=targets, value=value):
+                declarations.extend(
+                    (value, target)
+                    for target in targets
+                    if isinstance(target, ast.Name) and target.id == "revision"
+                )
+            case ast.AnnAssign(target=ast.Name(id="revision") as target, value=value):
+                declarations.append((value, target))
+    if len(declarations) != 1:
+        fail("Alembic revision declaration is missing or duplicated")
+    value, allowed_target = declarations[0]
+    if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+        fail("Alembic revision declaration is not a static string")
+    if any(
+        isinstance(node, ast.Name)
+        and node.id == "revision"
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+        and node is not allowed_target
+        for node in ast.walk(tree)
+    ):
+        fail("Alembic revision declaration is dynamically rebound")
+    return value.value
+
+
+def image_source_projection(
+    rows: dict[str, tuple[str, int, str]],
+) -> dict[str, str]:
+    projected: dict[str, str] = {}
+    for name, (kind, _mode, checksum) in rows.items():
+        if kind != "f" or not name.startswith("backend/"):
+            continue
+        relative = name.removeprefix("backend/")
+        relative_path = PurePosixPath(relative)
+        if relative in {"alembic.ini", "pyproject.toml"} or (
+            relative_path.suffix in {".py", ".html"}
+            and relative_path.parts[0] in {"app", "alembic"}
+        ):
+            projected[relative] = checksum
+    required = {
+        "alembic.ini",
+        "pyproject.toml",
+        "app/api_main.py",
+        "app/content_worker_main.py",
+        "app/core/config.py",
+        "app/infrastructure/ai/factory.py",
+    }
+    if not required.issubset(projected):
+        fail("complete image source projection is missing required runtime files")
+    return projected
+
+
+def validate_source_archive(stage: Path) -> dict[str, str]:
     expected = source_manifest(stage / "source-manifest.tsv")
     observed: dict[str, tuple[str, int, str]] = {}
+    revisions: dict[str, str] = {}
     total = 0
     try:
         with tarfile.open(stage / "source.tar.gz", "r:gz") as archive:
@@ -381,11 +449,25 @@ def validate_source_archive(stage: Path) -> None:
                 stream = archive.extractfile(member)
                 if stream is None:
                     fail("source archive member is unreadable")
-                observed[name] = ("f", mode, digest_bytes(stream.read()))
+                value = stream.read()
+                observed[name] = ("f", mode, digest_bytes(value))
+                if (
+                    name.startswith("backend/alembic/versions/")
+                    and PurePosixPath(name).suffix == ".py"
+                ):
+                    if len(revisions) >= MAX_ALEMBIC_REVISIONS:
+                        fail("Alembic revision count exceeds its bound")
+                    revision = alembic_revision(value, name)
+                    if revision in revisions:
+                        fail("Alembic revision declaration is duplicated")
+                    revisions[revision] = name
     except (OSError, tarfile.TarError) as exc:
         raise ValueError("source archive is unreadable") from exc
     if observed != expected:
         fail("source archive differs from the complete source manifest")
+    if ALEMBIC_HEAD not in revisions:
+        fail("Alembic head revision declaration is missing")
+    return image_source_projection(expected)
 
 
 def baseline_manifest(value: object) -> list[dict[str, object]]:
@@ -1152,7 +1234,7 @@ def validate_image_archive(stage: Path, metadata: dict[str, object]) -> str:
     return manifest_digest
 
 
-def validate_image_source(path: Path) -> None:
+def validate_image_source(path: Path, expected: dict[str, str]) -> None:
     rows: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9._/-]+)", line)
@@ -1162,16 +1244,10 @@ def validate_image_source(path: Path) -> None:
         if name in rows:
             fail("image source manifest contains duplicates")
         rows[name] = match.group(1)
-    if list(rows) != sorted(rows) or not {
-        "alembic.ini",
-        "pyproject.toml",
-        "app/api_main.py",
-        "app/content_worker_main.py",
-        "app/core/config.py",
-        "app/infrastructure/ai/factory.py",
-        "alembic/versions/20260901_0042_wechat_mp_draft_jobs.py",
-    }.issubset(rows):
-        fail("image source manifest is incomplete or unsorted")
+    if list(rows) != sorted(rows):
+        fail("image source manifest is unsorted")
+    if rows != expected:
+        fail("image source manifest differs from the complete source projection")
 
 
 def validate_metadata(path: Path) -> dict[str, object]:
@@ -1283,8 +1359,8 @@ def validate_stage(raw_stage: Path) -> dict[str, object]:
     validate_baseline(stage / "production-baseline.json")
     diff_rows(stage / "runtime-diff.tsv", runtime=True)
     diff_rows(stage / "audit-diff.tsv", runtime=False)
-    validate_source_archive(stage)
-    validate_image_source(stage / "image-source.sha256")
+    expected_image_source = validate_source_archive(stage)
+    validate_image_source(stage / "image-source.sha256", expected_image_source)
     validate_image_archive(stage, payload)
     bindings = {
         "source_sha256": "source.tar.gz",

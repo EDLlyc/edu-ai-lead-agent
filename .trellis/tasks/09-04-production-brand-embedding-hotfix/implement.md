@@ -49,7 +49,11 @@
   store 的 config digest 与 containerd image store 的 manifest digest 两种精确语义，拒绝 tag 缺失、stale tag
   和 graph 外 ID，并以实际加载 ID 验证服务收敛；source probe 测试捕获并执行真实容器 Python argv，证明每个
   完整范围文件恰好生成一条 canonical newline 分隔摘要，而非字面量 `\n` 拼接行，并在 host/image 两侧
-  拒绝可通过换行或制表符注入摘要记录的非 canonical path；staged baseline 与 pre-load OCI graph 的两次真实
+  拒绝可通过换行或制表符注入摘要记录的非 canonical path；真实 298-file release manifest 必须按序列化后的
+  relative POSIX path string 排序并与完整 source archive 投影逐 path/hash 相等，Alembic head 由完整 migration
+  源码中的唯一、未重绑定静态 revision 声明与 candidate `alembic heads` reported identity 共同证明，不绑定
+  手写文件名；解析前后固定迁移数、单文件 bytes 与 AST 节点上限，拒绝动态声明和解析资源耗尽；
+  staged baseline 与 pre-load OCI graph 的两次真实
   validator import 以及其余 staged validator 执行都必须以 no-bytecode 模式运行，测试证明有效和拒绝路径的
   递归 stage member set 均不变且不会产生 `__pycache__`，并静态约束所有 invocation 防止新增第三个写入边界。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。

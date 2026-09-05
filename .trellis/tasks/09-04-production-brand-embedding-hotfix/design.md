@@ -136,6 +136,18 @@ stage 校验仍安全终止。聚合复现确认 builder 早期通过 `importlib
 有效和 dangling OCI graph 两条路径上比较递归成员集合，证明成功与 fail-closed 校验都不再改变 stage。所有
 staged validator 的直接执行也统一固定 `-B`，并由回归测试枚举 invocation，避免后续新增第三个 bytecode 写入边界。
 
+第六次真实 authority build 已通过 final exact stage-member validation，随后在 image-source 完整性门禁安全终止。
+release 的迁移文件实际为 `20260901_0042_wechat_mp_draft_jobs.py`，其静态声明为
+`revision: str = "20260901_0042"`、`down_revision: str | None = "20260901_0041"`；298 条 path/hash 也完整。
+失败来自 host manifest
+使用 `sorted(Path)` 的分段排序，让 `alembic/env.py` 排在 `alembic.ini` 前，而 validator 按序列化后的 POSIX
+字符串排序，要求 `alembic.ini` 在前。host 与 candidate probe 现统一先生成 relative POSIX path string，再按
+该字符串排序。validator 同时移除手写迁移文件名：它完整读取 checksum-bound source archive，以 AST 验证每个
+migration 恰有一个未重绑定的静态 revision、所有 revision 唯一且目标 head 存在；迁移数、单文件 bytes 与 AST
+节点数都有独立上限，避免 checksum-bound 输入仍可造成解析资源耗尽，再把 298-file image manifest 与完整
+backend image scope 逐 path/hash 精确比较。builder 真实执行 `alembic heads` 并要求唯一 reported head 的门禁
+保持不变；真实 `dfd6703` release manifest 以及 missing/duplicate head、partial projection 均有回归。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一
