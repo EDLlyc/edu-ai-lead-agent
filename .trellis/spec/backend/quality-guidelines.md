@@ -621,6 +621,11 @@ release artifacts, or production deployment automation change.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
+- A builder that imports its staged Python validator before sealing an exact-member artifact runs
+  that interpreter with bytecode writes disabled (for example `python3 -B`). Validate both valid
+  and invalid inputs through the real staged module without creating `__pycache__` or `.pyc` members.
+  Do not delete or ignore generated/unknown members to make the final set pass; the strict validator
+  must continue rejecting every member outside the reviewed allowlist.
 - Validate an offline image archive before loading it by its declared format, never by assuming
   the candidate image ID names the config file. A classic archive binds the candidate ID to the
   config bytes. An OCI/containerd archive binds it to the `index.json` image-manifest descriptor,
@@ -848,6 +853,7 @@ release artifacts, or production deployment automation change.
 | Candidate push succeeds but transfer/deploy later fails | Keep the verified local artifact attempt for audit/retry; if SSH status is unknown, also retain the remote inbox until reconciled |
 | Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
+| Pre-seal staged-validator execution creates `__pycache__`/pyc or otherwise changes the exact member set | Fail artifact validation; disable bytecode generation at the import boundary rather than deleting or allowlisting the extra member |
 | OCI validation occurs after image load, load consumes a different raw archive, the engine image ID is outside the validated config/manifest pair, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before active-tag mutation; retain the prior image and source |
 | Post-load source collection omits either backend root manifest input, emits literal escaped newlines, admits a record-injecting path, or its path/hash set differs despite matching a partial recursive scan | Fail candidate validation before retag/overlay; do not weaken the reviewed count or normalize the malformed record stream |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
@@ -926,6 +932,10 @@ release artifacts, or production deployment automation change.
   extra/dangling blobs, unsafe or duplicate paths, and non-regular members. Before a production
   retry, run the same validator-only contract against the exact engine-produced bundle without
   loading it.
+- Staged-validator tests execute the real import plus validation boundary with bytecode disabled for
+  both a valid and invalid baseline. Assert the invalid input still fails closed and neither path
+  changes the top-level member set or creates `__pycache__`/pyc; separately prove the final strict
+  validator rejects a bytecode-cache directory if one is present.
 - A no-`buildx` regression must prove route selection happens before construction; a selected route
   never falls through after failure; every `ctr` command binds the reviewed physical socket and
   `moby` namespace; and only references absent from the pre-build snapshot are cleaned. Exercise

@@ -854,6 +854,21 @@ pathlib.Path(output).write_text(
 PY
 }
 
+validate_staged_baseline() {
+  python3 -B - "$stage/$VALIDATOR_NAME" "$stage/production-baseline.json" <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+spec = importlib.util.spec_from_file_location("brand_hotfix_validator", sys.argv[1])
+if spec is None or spec.loader is None:
+    raise SystemExit("validator import failed")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.validate_baseline(pathlib.Path(sys.argv[2]))
+PY
+}
+
 main() {
   parse_args "$@"
   repo_root=$(realpath -e -- "$(git rev-parse --show-toplevel)")
@@ -869,18 +884,7 @@ main() {
   chmod 600 "$stage/$BUILDER_NAME" "$stage/$CAPTURE_NAME" \
     "$stage/$OPERATOR_NAME" "$stage/$VALIDATOR_NAME"
   install -m 600 "$production_baseline" "$stage/production-baseline.json"
-  python3 - "$stage/$VALIDATOR_NAME" "$stage/production-baseline.json" <<'PY'
-import importlib.util
-import pathlib
-import sys
-
-spec = importlib.util.spec_from_file_location("brand_hotfix_validator", sys.argv[1])
-if spec is None or spec.loader is None:
-    raise SystemExit("validator import failed")
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-module.validate_baseline(pathlib.Path(sys.argv[2]))
-PY
+  validate_staged_baseline
   capture_complete_diff
   validate_compose_entrypoints
   build_source_archive

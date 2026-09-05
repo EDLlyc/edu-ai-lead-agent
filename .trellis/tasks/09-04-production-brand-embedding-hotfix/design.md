@@ -121,6 +121,14 @@ candidate 首次真实 source probe 的失败来自命令参数转义，而不�
 `.py/.html`、`alembic.ini` 与 `pyproject.toml` 范围不变；worktree 与 image probe 均在生成记录前拒绝
 非 canonical ASCII safe path，阻止换行或制表符文件名注入记录，validator 和 `cmp` 均不放宽。
 
+第四次真实 authority build 已通过 OCI graph、fresh load、双 image identity 和 298-file source manifest，最终
+stage 校验仍安全终止。聚合复现确认 builder 早期通过 `importlib` 从 stage 导入 validator 时，CPython 自动新增
+了 `__pycache__/validate-brand-embedding-hotfix-offline-artifacts.cpython-311.pyc`；额外目录正是精确 member-set
+失败原因，不是归档或权限漂移。早期 baseline helper 现用 Python `-B` 执行同一真实 validator，禁止在 stage
+写 bytecode；回归测试实际复制并导入 validator，比较调用前后的顶层成员集合并要求 `__pycache__` 不存在。
+最终 validator 继续拒绝任何额外成员、非 regular file、非 root owner、非 `0600` 或超限文件，不增加清理未知
+成员的逻辑。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一
