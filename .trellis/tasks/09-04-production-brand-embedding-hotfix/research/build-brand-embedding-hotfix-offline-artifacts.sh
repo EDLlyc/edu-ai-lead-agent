@@ -66,7 +66,10 @@ candidate_manifest_digest=
 candidate_reference=
 candidate_image_owned=0
 candidate_reference_owned=0
+candidate_owned_image_id=
 containerd_reference=
+short_transport_reference=
+legacy_builder_image_id=
 preexisting_repo_digests=
 
 log() { printf '[brand-embedding-builder] %s\n' "$*" >&2; }
@@ -82,13 +85,33 @@ ctr_clean() {
 }
 
 cleanup_candidate_image() {
-  [[ "${candidate_image_owned:-0}" == 1 && -n "${transport_tag:-}" ]] || return 0
+  local current_id reference_id
+  [[ "${candidate_image_owned:-0}" == 1 && -n "${transport_tag:-}" \
+      && "${candidate_owned_image_id:-}" =~ ^sha256:[0-9a-f]{64}$ ]] || return 0
+  current_id=$(docker_clean image inspect --format '{{.Id}}' "$transport_tag" 2>/dev/null) \
+    || {
+      candidate_image_owned=0
+      candidate_reference_owned=0
+      candidate_owned_image_id=
+      return 0
+    }
+  if [[ "$current_id" != "$candidate_owned_image_id" ]]; then
+    candidate_image_owned=0
+    candidate_reference_owned=0
+    candidate_owned_image_id=
+    return 0
+  fi
   if [[ "${candidate_reference_owned:-0}" == 1 && -n "${candidate_reference:-}" ]]; then
-    docker_clean image rm "$candidate_reference" >/dev/null 2>&1 || true
+    reference_id=$(docker_clean image inspect --format '{{.Id}}' "$candidate_reference" 2>/dev/null) \
+      || reference_id=
+    if [[ "$reference_id" == "$candidate_owned_image_id" ]]; then
+      docker_clean image rm "$candidate_reference" >/dev/null 2>&1 || true
+    fi
   fi
   docker_clean image rm "$transport_tag" >/dev/null 2>&1 || true
   candidate_image_owned=0
   candidate_reference_owned=0
+  candidate_owned_image_id=
 }
 
 cleanup() {
@@ -502,7 +525,27 @@ assert_transport_tag_absent() {
   docker_clean image ls --digests --format '{{.Repository}}@{{.Digest}}' \
     >"$preexisting_repo_digests" \
     || { die 'preexisting image reference inventory failed'; return 1; }
-  candidate_image_owned=1
+  candidate_image_owned=0
+  candidate_owned_image_id=
+}
+
+assert_transport_tag_absent_before_load() {
+  local existing
+  existing=$(docker_clean image ls --quiet --filter "reference=${transport_tag}") \
+    || {
+      candidate_image_owned=0
+      candidate_reference_owned=0
+      candidate_owned_image_id=
+      die 'candidate transport tag load preflight failed'
+      return 1
+    }
+  if [[ -n "$existing" ]]; then
+    candidate_image_owned=0
+    candidate_reference_owned=0
+    candidate_owned_image_id=
+    die 'candidate transport tag appeared before validated OCI load'
+    return 1
+  fi
 }
 
 bind_candidate_reference_ownership() {
@@ -520,6 +563,25 @@ loaded_image_id_matches_candidate() {
   [[ "$loaded_id" =~ ^sha256:[0-9a-f]{64}$ \
       && ( "$loaded_id" == "$candidate_manifest_digest" \
       || "$loaded_id" == "$candidate_config_digest" ) ]]
+}
+
+bind_loaded_candidate_image_identity() {
+  local loaded_id=$1
+  candidate_image_owned=0
+  candidate_owned_image_id=
+  if ! [[ "$loaded_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    candidate_reference_owned=0
+    die 'loaded image ID is not a SHA-256 identity'
+    return 1
+  fi
+  if ! loaded_image_id_matches_candidate "$loaded_id"; then
+    candidate_reference_owned=0
+    log "image identity mismatch manifest=${candidate_manifest_digest} config=${candidate_config_digest} loaded=${loaded_id}"
+    die 'loaded image ID differs from the archive manifest and config digests'
+    return 1
+  fi
+  candidate_owned_image_id=$loaded_id
+  candidate_image_owned=1
 }
 
 validate_candidate_image_graph() {
@@ -562,8 +624,8 @@ run_buildx_image() {
   local created=$1 raw_archive=$2
   env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=1 \
     docker buildx build --pull --platform linux/amd64 --provenance=false --sbom=false \
-      --annotation "manifest-descriptor:io.containerd.image.name=${transport_tag}" \
-      --annotation "manifest-descriptor:org.opencontainers.image.ref.name=${transport_tag}" \
+      --annotation "manifest-descriptor:io.containerd.image.name=${containerd_reference}" \
+      --annotation "manifest-descriptor:org.opencontainers.image.ref.name=${short_transport_reference}" \
       --build-arg "CODEUP_COMMIT=${release_sha}" --build-arg "SOURCE_URL=${SOURCE_URL}" \
       --build-arg "BUILD_CREATED=${created}" --tag "$transport_tag" \
       --output "type=oci,name=${transport_tag},dest=${raw_archive}" "$worktree/backend" \
@@ -581,8 +643,6 @@ run_legacy_docker_build() {
 
 export_canonical_legacy_oci() {
   local raw_archive=$1 legacy_archive="$scratch/backend-image.containerd.oci.tar"
-  containerd_reference=$(normalize_containerd_reference "$transport_tag") \
-    || { die 'candidate containerd reference normalization failed'; return 1; }
   ctr_clean --namespace moby images inspect "$containerd_reference" >/dev/null \
     || { die 'legacy image is absent from the reviewed containerd namespace'; return 1; }
   ctr_clean --namespace moby images export --skip-manifest-json --platform linux/amd64 \
@@ -593,16 +653,77 @@ export_canonical_legacy_oci() {
     || { die 'legacy containerd OCI canonicalization failed'; return 1; }
 }
 
+bind_legacy_builder_image_identity() {
+  candidate_image_owned=0
+  candidate_owned_image_id=
+  legacy_builder_image_id=
+  legacy_builder_image_id=$(docker_clean image inspect --format '{{.Id}}' "$transport_tag") \
+    || {
+      candidate_image_owned=0
+      die 'legacy builder transport tag is unavailable'
+      return 1
+    }
+  [[ "$legacy_builder_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || {
+      candidate_image_owned=0
+      die 'legacy builder image identity is invalid'
+      return 1
+    }
+  candidate_owned_image_id=$legacy_builder_image_id
+  candidate_image_owned=1
+}
+
+discard_owned_legacy_transport_tag() {
+  local current_id
+  [[ "$candidate_image_owned" == 1 && -n "$transport_tag" \
+      && "$legacy_builder_image_id" =~ ^sha256:[0-9a-f]{64}$ \
+      && "$candidate_owned_image_id" == "$legacy_builder_image_id" ]] \
+    || {
+      candidate_image_owned=0
+      candidate_reference_owned=0
+      candidate_owned_image_id=
+      die 'legacy transport tag ownership is unavailable'
+      return 1
+    }
+  current_id=$(docker_clean image inspect --format '{{.Id}}' "$transport_tag") \
+    || {
+      candidate_image_owned=0
+      candidate_reference_owned=0
+      candidate_owned_image_id=
+      die 'owned legacy transport tag disappeared before OCI load'
+      return 1
+    }
+  [[ "$current_id" == "$legacy_builder_image_id" ]] \
+    || {
+      candidate_image_owned=0
+      candidate_reference_owned=0
+      candidate_owned_image_id=
+      die 'owned legacy transport tag identity changed before OCI load'
+      return 1
+    }
+  docker_clean image rm "$transport_tag" >/dev/null \
+    || { die 'owned legacy transport tag could not be removed before OCI load'; return 1; }
+  assert_transport_tag_absent_before_load || return 1
+  candidate_image_owned=0
+  candidate_owned_image_id=
+}
+
 build_and_probe_image() {
   local raw_archive="$scratch/backend-image.oci.tar" created loaded_id repo_digests observed route
   created=$(git_clean -C "$repo_root" show -s --format=%cI "$release_sha")
   route=$(select_image_builder_route) \
     || { die 'no reviewed image builder route is available'; return 1; }
   assert_transport_tag_absent || return 1
+  containerd_reference=$(normalize_containerd_reference "$transport_tag") \
+    || { die 'candidate containerd reference normalization failed'; return 1; }
+  short_transport_reference=${transport_tag##*:}
+  [[ "$short_transport_reference" =~ ^[a-z0-9][a-z0-9._-]*$ ]] \
+    || { die 'candidate short transport reference is invalid'; return 1; }
   case "$route" in
     buildx) run_buildx_image "$created" "$raw_archive" ;;
     legacy-containerd)
       run_legacy_docker_build "$created"
+      bind_legacy_builder_image_identity
       export_canonical_legacy_oci "$raw_archive"
       ;;
     *) die 'image builder route changed unexpectedly' ;;
@@ -612,10 +733,14 @@ build_and_probe_image() {
   validate_candidate_image_graph \
     || { die 'candidate image failed strict OCI graph validation'; return 1; }
   bind_candidate_reference_ownership
+  if [[ "$route" == legacy-containerd ]]; then
+    discard_owned_legacy_transport_tag || return 1
+  fi
+  assert_transport_tag_absent_before_load || return 1
   gzip -dc "$stage/backend-image.oci.tar.gz" | docker image load >/dev/null
-  loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag")
-  loaded_image_id_matches_candidate "$loaded_id" \
-    || die 'loaded image ID differs from the archive manifest and config digests'
+  loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag") \
+    || { die 'validated OCI archive did not create the transport tag'; return 1; }
+  bind_loaded_candidate_image_identity "$loaded_id" || return 1
   repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag")
   grep -Fxq "$candidate_reference" <<<"$repo_digests" \
     || die 'loaded archive did not produce the derived candidate RepoDigest'

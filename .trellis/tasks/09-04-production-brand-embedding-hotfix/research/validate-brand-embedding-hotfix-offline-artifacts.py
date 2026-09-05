@@ -936,13 +936,17 @@ def canonicalize_legacy_oci_archive(
     )
     canonical_manifest_digest = f"sha256:{digest_bytes(canonical_manifest)}"
     canonical_manifest_name = f"blobs/sha256/{canonical_manifest_digest[7:]}"
+    # Keep the OCI reference conventions emitted by containerd: Docker uses the
+    # normalized name to create the tag, while ref.name is the short tag.  A
+    # full, unnormalized value in both fields can make `docker image load`
+    # return success without attaching the archive graph to the requested tag.
     canonical_index = canonical_json_bytes(
         {
             "manifests": [
                 {
                     "annotations": {
-                        "io.containerd.image.name": transport_tag,
-                        "org.opencontainers.image.ref.name": transport_tag,
+                        "io.containerd.image.name": normalized_reference,
+                        "org.opencontainers.image.ref.name": short_reference,
                     },
                     "digest": canonical_manifest_digest,
                     "mediaType": OCI_MANIFEST_MEDIA_TYPE,
@@ -1055,9 +1059,14 @@ def validate_image_archive(stage: Path, metadata: dict[str, object]) -> str:
     if not isinstance(index_descriptor, dict):
         fail("OCI index descriptor changed")
     annotations = index_descriptor.get("annotations")
+    transport_tag = metadata.get("transport_tag")
+    if not isinstance(transport_tag, str):
+        fail("OCI transport tag identity changed")
+    normalized_reference = normalize_containerd_reference(transport_tag)
+    short_reference = transport_tag.rsplit(":", 1)[1]
     if annotations != {
-        "io.containerd.image.name": metadata["transport_tag"],
-        "org.opencontainers.image.ref.name": metadata["transport_tag"],
+        "io.containerd.image.name": normalized_reference,
+        "org.opencontainers.image.ref.name": short_reference,
     }:
         fail("OCI transport tag annotation changed")
     if index_descriptor.get("platform") != {"architecture": "amd64", "os": "linux"}:

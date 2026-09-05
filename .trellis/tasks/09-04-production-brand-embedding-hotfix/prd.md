@@ -63,6 +63,9 @@
   media type后重算 manifest/index digest、size、platform 与 transport annotations，且保持 config/layer bytes
   不变。nested index、dangling blob、链接成员或异常本地 Docker/context/containerd 能力必须 fail closed，
   最终产物仍需通过同一个严格 OCI validator，不能为 fallback 放宽验收口径。
+- canonical index 必须使用 containerd 可加载的两类精确 annotation：规范化完整 name 与短 ref name。legacy
+  构建产生的同名 raw tag 只在已证明为本次新建时于 load 前移除，随后要求 `docker image load` 重新创建 tag；
+  load 返回 0 但未创建 tag、残留 raw tag 或 graph 外摘要都必须失败，不得把旧 tag 的 `.Id` 当作归档转换。
 - 加载同一严格 OCI graph 后，兼容 Docker classic store 将 `.Id` 表示为 config digest、containerd image store
   将 `.Id` 表示为 manifest digest 的差异；只接受这两个已验证 digest 之一，并继续要求精确 RepoDigest 与
   reference inspect 指向同一运行时 ID。服务收敛必须绑定实际加载得到的 ID，不接受任意第三种身份。
@@ -92,9 +95,9 @@
 - [ ] 生产受保护 `.env` 内容和校验和保持不变；`auto` 的 resolved identity 通过运行时读回证明为
   `zhipu/embedding-3/2048`，不在镜像事务之外引入配置漂移。
 - [ ] 无 `docker buildx` 的审核主机能经预检选择 legacy/containerd 路径，并由 harness 覆盖能力路由、legacy
-  argv/env、reference normalization、OCI graph canonicalization、危险归档拒绝和本地 candidate cleanup；
-  buildx 存在但执行失败时不得 fallback；Docker classic/containerd image store 的两种严格 `.Id` 语义均通过，
-  任意 graph 外 ID 被拒绝。
+  argv/env、reference normalization、OCI graph canonicalization、loadable annotation、raw-tag freshness、
+  危险归档拒绝和本地 candidate cleanup；buildx 存在但执行失败时不得 fallback；Docker
+  classic/containerd image store 的两种严格 `.Id` 语义均通过，tag 缺失及任意 graph 外 ID 被拒绝。
 
 ## Out of Scope
 

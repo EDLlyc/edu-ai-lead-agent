@@ -618,7 +618,8 @@ load_and_verify_candidate() {
   [[ ! -e "$observed_source" && ! -L "$observed_source" ]] \
     || die 'candidate probe output collision'
   gzip -dc "${stage_dir}/backend-image.oci.tar.gz" | docker image load >/dev/null
-  loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag")
+  loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag") \
+    || { die 'validated OCI archive did not create the transport tag'; return 1; }
   loaded_image_id_matches_candidate "$loaded_id" \
     || die 'loaded image differs from the validated manifest and config digests'
   repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag")

@@ -44,8 +44,10 @@
   linux/amd64 image graph、source manifest、生产 baseline、相同 migration head 和全部 12 个应用服务。
 - Builder fallback：harness 覆盖 buildx/明确缺失/异常失败路由、legacy 能力及 argv/env、Docker normalized ref、
   Docker→OCI layer media canonicalization、manifest digest 更新、nested/dangling/symlink/malformed 拒绝及 cleanup；
-  canonical graph 必须由未放宽的真实 stage validator 接受；加载身份覆盖 classic store 的 config digest 与
-  containerd image store 的 manifest digest 两种精确语义，拒绝 graph 外 ID，并以实际加载 ID 验证服务收敛。
+  canonical graph 必须由未放宽的真实 stage validator 接受；index 的 normalized full name/short ref name
+  必须能在 fresh load 后重建 tag，legacy raw tag 仅在证明为本次所有时于 load 前移除；加载身份覆盖 classic
+  store 的 config digest 与 containerd image store 的 manifest digest 两种精确语义，拒绝 tag 缺失、stale tag
+  和 graph 外 ID，并以实际加载 ID 验证服务收敛。
 - production：一次 embedding 请求；数据库业务计数、18 个历史 copy run 和企业微信 attempt 数不因 smoke 增加。
 - copy-state：`Asia/Shanghai` 业务日期在发布窗口内不跨界，7 条历史冻结 job 的 count/digest 不变，且当天
   claimable/running/current-day/future copy gate 始终为 0。
