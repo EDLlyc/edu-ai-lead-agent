@@ -714,11 +714,13 @@ release artifacts, or production deployment automation change.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
-- A builder that imports its staged Python validator before sealing an exact-member artifact runs
-  that interpreter with bytecode writes disabled (for example `python3 -B`). Validate both valid
-  and invalid inputs through the real staged module without creating `__pycache__` or `.pyc` members.
-  Do not delete or ignore generated/unknown members to make the final set pass; the strict validator
-  must continue rejecting every member outside the reviewed allowlist.
+- A builder that imports or executes its staged Python validator before sealing an exact-member
+  artifact runs every such interpreter boundary with bytecode writes disabled (for example
+  `python3 -B`). Audit and test the complete invocation set rather than fixing only the first import.
+  Validate valid and invalid baseline/graph inputs through the real staged module without creating
+  `__pycache__` or `.pyc` members. Do not delete or ignore generated/unknown members to make the
+  final set pass; the strict validator must continue rejecting every member outside the reviewed
+  allowlist.
 - Validate an offline image archive before loading it by its declared format, never by assuming
   the candidate image ID names the config file. A classic archive binds the candidate ID to the
   config bytes. An OCI/containerd archive binds it to the `index.json` image-manifest descriptor,
@@ -1025,10 +1027,11 @@ release artifacts, or production deployment automation change.
   extra/dangling blobs, unsafe or duplicate paths, and non-regular members. Before a production
   retry, run the same validator-only contract against the exact engine-produced bundle without
   loading it.
-- Staged-validator tests execute the real import plus validation boundary with bytecode disabled for
-  both a valid and invalid baseline. Assert the invalid input still fails closed and neither path
-  changes the top-level member set or creates `__pycache__`/pyc; separately prove the final strict
-  validator rejects a bytecode-cache directory if one is present.
+- Staged-validator tests enumerate every pre-seal invocation and require bytecode-disabled Python at
+  each boundary. Execute the real import plus validation for valid/invalid baselines and valid/
+  dangling OCI graphs; assert invalid inputs still fail closed, no path changes the recursive member
+  set or creates `__pycache__`/pyc, and the valid graph then passes the real final `validate_stage`.
+  Separately prove the strict validator rejects a bytecode-cache directory if one is present.
 - A no-`buildx` regression must prove route selection happens before construction; a selected route
   never falls through after failure; every `ctr` command binds the reviewed physical socket and
   `moby` namespace; and only references absent from the pre-build snapshot are cleaned. Exercise

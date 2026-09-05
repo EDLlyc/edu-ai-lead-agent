@@ -129,6 +129,13 @@ stage 校验仍安全终止。聚合复现确认 builder 早期通过 `importlib
 最终 validator 继续拒绝任何额外成员、非 regular file、非 root owner、非 `0600` 或超限文件，不增加清理未知
 成员的逻辑。
 
+第五次真实 authority build 证明 baseline import 修复后仍有第二个同类写入边界：OCI archive 生成后，
+`validate_candidate_image_graph` 在 load 前通过另一段 `importlib` 再次导入 staged validator，外部只读观察捕获
+到该调用新增 mode-`0700` 的 `__pycache__` 目录及 mode-`0600` 的 validator pyc，均为 `root:root`；其余固定成员
+类型、mode 与 owner 未漂移。该 helper 同样固定使用 Python `-B`，不删除或忽略生成物；真实完整 stage 回归在
+有效和 dangling OCI graph 两条路径上比较递归成员集合，证明成功与 fail-closed 校验都不再改变 stage。所有
+staged validator 的直接执行也统一固定 `-B`，并由回归测试枚举 invocation，避免后续新增第三个 bytecode 写入边界。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一

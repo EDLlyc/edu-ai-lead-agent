@@ -1376,7 +1376,9 @@ def test_builder_baseline_preflight_is_fail_closed_and_preserves_exact_stage_mem
     staged_validator.write_bytes(VALIDATOR_PATH.read_bytes())
     staged_validator.chmod(0o600)
     staged_baseline = stage / "production-baseline.json"
-    staged_baseline.write_bytes(_json_bytes(_baseline()) if baseline_is_valid else b"{}")
+    staged_baseline.write_bytes(
+        _json_bytes(_baseline()) if baseline_is_valid else b"{}"
+    )
     staged_baseline.chmod(0o600)
     members_before = {path.name for path in stage.iterdir()}
 
@@ -1385,6 +1387,18 @@ def test_builder_baseline_preflight_is_fail_closed_and_preserves_exact_stage_mem
     assert (result.returncode == 0) is baseline_is_valid, result.stderr
     assert {path.name for path in stage.iterdir()} == members_before
     assert not (stage / "__pycache__").exists()
+
+
+def test_builder_disables_bytecode_for_every_staged_validator_execution() -> None:
+    builder = BUILDER_PATH.read_text(encoding="utf-8")
+    invocations = [
+        line.strip()
+        for line in builder.splitlines()
+        if line.strip().startswith("python3 ") and "$VALIDATOR_NAME" in line
+    ]
+
+    assert len(invocations) == 6
+    assert all(line.startswith("python3 -B ") for line in invocations)
 
 
 @pytest.mark.parametrize(
@@ -1987,6 +2001,7 @@ def test_builder_strictly_validates_oci_graph_before_loading(
     stage = _stage(tmp_path)
     if mutation:
         _rewrite_oci(stage, mutation)
+    members_before = {path.relative_to(stage).as_posix() for path in stage.rglob("*")}
     metadata = json.loads((stage / "release-metadata.json").read_bytes())
     result = _source_builder_shell(
         f"""
@@ -2001,6 +2016,12 @@ validate_candidate_image_graph
 """
     )
     assert (result.returncode != 0) is bool(mutation), result.stderr
+    assert {
+        path.relative_to(stage).as_posix() for path in stage.rglob("*")
+    } == members_before
+    assert not (stage / "__pycache__").exists()
+    if not mutation:
+        VALIDATOR.validate_stage(stage)
 
     builder = BUILDER_PATH.read_text(encoding="utf-8")
     validation_call = "  validate_candidate_image_graph \\\n"

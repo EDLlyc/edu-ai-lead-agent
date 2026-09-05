@@ -101,9 +101,9 @@
 - [ ] candidate 容器内完整源码摘要必须逐文件输出 canonical newline 分隔行并与 release worktree 的完整
   `image-source.sha256` 字节相等；不得因 shell/Python 转义把多行摘要折叠为字面量 `\n`，不得缩小源码范围，
   且 host/image 两侧均须在输出前拒绝可用换行或制表符注入摘要记录的非 canonical path。
-- [ ] builder 对 staged baseline 的早期校验不得改变最终 stage：从 stage 导入验证器时必须禁止 Python 写入
-  bytecode，避免生成额外 `__pycache__` 成员；最终 validator 的 root-owned physical regular、`0600` 与精确
-  member-set 契约保持不变，不得通过忽略或删除未知成员绕过。
+- [ ] builder 对 staged baseline 的早期校验和 OCI graph 的 pre-load 校验均不得改变最终 stage：每一次从
+  stage 导入或执行验证器时都必须禁止 Python 写入 bytecode，避免生成额外 `__pycache__` 成员；最终 validator 的
+  root-owned physical regular、`0600` 与精确 member-set 契约保持不变，不得通过忽略或删除未知成员绕过。
 
 ## Out of Scope
 
