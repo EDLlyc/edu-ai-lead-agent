@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 99
-- **Last Active**: 2026-09-04
+- **Total Sessions**: 100
+- **Last Active**: 2026-09-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~298 | Active |
+| `journal-2.md` | ~332 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 100 | 2026-09-05 | 修复生产品牌 Embedding 与新闻生成链路并上线 | `e43ccc368638a35f51dd0b28e734b868336bca5b`, `dfe09c5fbff0ccabd643c6e769ba075de08b4f11`, `e040527890300640cfef646dd61783a7169eda7c`, `df3006c463ccb6393c19e3d08e61cc1dcf76032d`, `bb4b730a65a920fee0272bd638ab0431ef701888`, `d93e29b22f533e2d05da135d1aeab65346b30235`, `2b2f7a58db885b70abee276c05b9d2555edd380f`, `4f1acf3ad6eac56c95fe3b35ca8310b3e306a40b`, `12151c6a00b2166d94f19cfbe429b2ab122f530f`, `bfdf4ef3a1dfe2dfbbf7860631d114743dbe9981`, `6ca026eba78f609b79d0da8361ea7813b409272c`, `5bfb49db908735183fbe3fce8c875d885de01b2f`, `d9333dc9eac5229ff4195dd7be77a630f8c86214`, `d92ff12314fc27eeb34086012977ac616ddbfa6a` | `main` |
 | 99 | 2026-09-04 | 强化 Agent 实习简历技术亮点 | `bd36372` | `main` |
 | 98 | 2026-09-04 | Diagnose missing production news delivery | `aca7be500c9aab3bfe726cef33645ac4c606e05e` | `main` |
 | 97 | 2026-09-03 | Optimize public resume for Agent internships | `1f4033a` | `main` |

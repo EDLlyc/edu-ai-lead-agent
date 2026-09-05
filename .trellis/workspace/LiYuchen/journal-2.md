@@ -296,3 +296,37 @@ Performed a strictly read-only production diagnosis. Confirmed healthy services 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 100: 修复生产品牌 Embedding 与新闻生成链路并上线
+
+**Date**: 2026-09-05
+**Task**: 修复生产品牌 Embedding 与新闻生成链路并上线
+**Branch**: `main`
+
+### Summary
+
+恢复 Zhipu embedding-3 品牌检索配置，构建严格离线 release/preflight/rollback 门禁并部署 5c560da；14 服务健康零重启，真实 2048 维 smoke 成功且无数据库、队列或发送副作用。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e43ccc368638a35f51dd0b28e734b868336bca5b` | (see git log) |
+| `dfe09c5fbff0ccabd643c6e769ba075de08b4f11` | (see git log) |
+| `e040527890300640cfef646dd61783a7169eda7c` | (see git log) |
+| `df3006c463ccb6393c19e3d08e61cc1dcf76032d` | (see git log) |
+| `bb4b730a65a920fee0272bd638ab0431ef701888` | (see git log) |
+| `d93e29b22f533e2d05da135d1aeab65346b30235` | (see git log) |
+| `2b2f7a58db885b70abee276c05b9d2555edd380f` | (see git log) |
+| `4f1acf3ad6eac56c95fe3b35ca8310b3e306a40b` | (see git log) |
+| `12151c6a00b2166d94f19cfbe429b2ab122f530f` | (see git log) |
+| `bfdf4ef3a1dfe2dfbbf7860631d114743dbe9981` | (see git log) |
+| `6ca026eba78f609b79d0da8361ea7813b409272c` | (see git log) |
+| `5bfb49db908735183fbe3fce8c875d885de01b2f` | (see git log) |
+| `d9333dc9eac5229ff4195dd7be77a630f8c86214` | (see git log) |
+| `d92ff12314fc27eeb34086012977ac616ddbfa6a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
