@@ -884,6 +884,7 @@ release artifacts, or production deployment automation change.
 | Any production container-creation path omits its supported no-build guard, adds `--build`/`--build=*`, or introduces a pull policy | Fail before Docker Compose execution; do not remove the shared local-development build definition or silently ignore new build metadata. |
 | Post-load probe imports a module that differs from a Compose entrypoint, or names a nonexistent migration file for the expected revision | Fail offline/full candidate review; correct the probe and require a new reviewed artifact rather than bypassing the gate |
 | Source archive mode comes from workspace umask/group-write | Map only `0644/0664` and `0755/0775` into candidate semantic classes before quiesce; reject every other source mode and never install candidate group-write |
+| Candidate and captured production manifests disagree on an existing path's type or executable class | Reject during local artifact construction and server-side pure stage validation, then repeat in operator preflight and under the release lock before image load, one-shot attempt creation, or quiescence; extraction keeps the same defense before installation. |
 | Existing source is `0600/0700` while candidate semantics are `0644/0755` | Accept the matching executable class, bind the exact active mode before quiesce, and preserve it through atomic install; never broaden it to the candidate semantic mode |
 | Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path. The sole f20 bootstrap exception is the exact three named app-owned `0664` metadata files under the bound `292:12:3` distribution. |
 | A backup inventory depends on a utility absent from the service image, the named-volume identity/mountpoint drifts, or the read-only helper rejects an entry/race | Fail the backup before activation, retain partial evidence as non-restorable, and restore the captured prior service set; never accept an empty or partial manifest. |
@@ -1024,7 +1025,11 @@ release artifacts, or production deployment automation change.
   evidence for all regular files, and cover `0644/0755` plus legacy `0664/0775` positives. They
   reject regular and directory `0600/0700`, world-write, setuid/setgid/sticky, encoded type bits and
   unknown modes in the candidate archive, including an unsafe explicit root directory. Separate
-  destination tests accept and preserve `0600/0644` for non-executable and `0700/0755` for
+  baseline/candidate compatibility cases reject a missing captured path, type drift, and executable-
+  class drift in the pure validator. Operator ordering tests repeat that gate in read-only preflight
+  and under the release lock before candidate image load, one-shot attempt creation, or quiescence;
+  extracted-source preparation retains the invariant as a final TOCTOU defense. Destination tests
+  accept and preserve `0600/0644` for non-executable and `0700/0755` for
   executable files, including a production-shaped 307-file `295x0600 + 12x0700` tree and a mixed
   exact-mode tree. They reject destination `0664/0775`, world-write, special/unknown modes,
   executable-class and ownership drift, malformed/duplicate/unsorted/escaping mode/owner/group

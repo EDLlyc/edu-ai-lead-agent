@@ -550,6 +550,41 @@ def test_valid_stage_binds_distinct_manifest_config_and_repository_digest(
     )
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("executable", "candidate executable class differs from production"),
+        ("type", "candidate source type differs from production"),
+        ("missing", "candidate source omits a captured production path"),
+    ],
+)
+def test_stage_rejects_source_incompatible_with_production_before_image_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str, message: str
+) -> None:
+    stage = _stage(tmp_path)
+    baseline = _baseline()
+    source_manifest = baseline["source_manifest"]
+    assert isinstance(source_manifest, list)
+    row = source_manifest[0]
+    assert isinstance(row, dict)
+    if mutation == "executable":
+        row["mode"] = 0o700
+    elif mutation == "type":
+        row.update({"kind": "d", "mode": 0o700, "sha256": None})
+    else:
+        row["path"] = "production-only.txt"
+    (stage / "production-baseline.json").write_bytes(_json_bytes(baseline))
+    _rebind(stage, "production_baseline_sha256", "production-baseline.json")
+
+    def reject_image_validation(*_args: object) -> None:
+        pytest.fail("image validation ran before source compatibility rejection")
+
+    monkeypatch.setattr(VALIDATOR, "validate_image_archive", reject_image_validation)
+
+    with pytest.raises(ValueError, match=message):
+        VALIDATOR.validate_stage(stage)
+
+
 def test_stage_rejects_unexpected_python_bytecode_cache(tmp_path: Path) -> None:
     stage = _stage(tmp_path)
     cache = stage / "__pycache__"
@@ -1029,6 +1064,39 @@ def test_operator_is_one_shot_null_stdin_and_has_no_effect_surface() -> None:
     assert "printf 'APP_IMAGE=%s\\n' \"$candidate_reference\"" in operator
     assert "printf 'APP_IMAGE=%s\\n' \"$candidate_config_digest\"" not in operator
     assert "printf 'APP_IMAGE=%s\\n' \"$transport_tag\"" not in operator
+
+
+def test_release_python_tools_use_interpreter_entrypoints_and_non_executable_modes() -> (
+    None
+):
+    deploy = REPOSITORY_ROOT / "deploy/release/deploy.py"
+    release_tool = REPOSITORY_ROOT / "deploy/release/release_tool.py"
+    wrapper = REPOSITORY_ROOT / "scripts/edu-ai-deploy.sh"
+
+    assert deploy.stat().st_mode & 0o111 == 0
+    assert release_tool.stat().st_mode & 0o111 == 0
+    assert wrapper.stat().st_mode & 0o111 != 0
+    assert 'exec python3 "${DEPLOY_ENTRYPOINT}" "$@"' in wrapper.read_text(
+        encoding="utf-8"
+    )
+    for caller in (
+        REPOSITORY_ROOT / "Makefile",
+        REPOSITORY_ROOT / "deploy/yunxiao/pipeline.yaml",
+        REPOSITORY_ROOT / "scripts/release-prod.sh",
+    ):
+        text = caller.read_text(encoding="utf-8")
+        assert "python deploy/release/release_tool.py" in text
+
+    expected_audit_modes = {
+        "deploy/release/deploy.py": "M",
+        "deploy/release/release_tool.py": "M",
+    }
+    assert {
+        name: VALIDATOR.AUDIT_EXACT.get(name) for name in expected_audit_modes
+    } == expected_audit_modes
+    builder = BUILDER_PATH.read_text(encoding="utf-8")
+    for name, status in expected_audit_modes.items():
+        assert f'    "{name}": "{status}",' in builder
 
 
 def test_operator_all_container_creation_paths_are_statically_no_build() -> None:
@@ -1545,6 +1613,45 @@ def _source_builder_shell(body: str) -> subprocess.CompletedProcess[str]:
         text=True,
         capture_output=True,
     )
+
+
+def test_builder_complete_diff_accepts_only_the_reviewed_release_tool_mode_changes(
+    tmp_path: Path,
+) -> None:
+    stage = tmp_path / "stage"
+    scratch = tmp_path / "scratch"
+    stage.mkdir()
+    scratch.mkdir()
+    fixture = tmp_path / "complete-diff.tsv"
+    rows = {
+        **VALIDATOR.RUNTIME_DIFF,
+        **VALIDATOR.AUDIT_EXACT,
+        f"{VALIDATOR.AUDIT_TASK_PREFIX}prd.md": "A",
+    }
+    fixture.write_text(
+        "".join(f"{status}\t{name}\n" for name, status in sorted(rows.items())),
+        encoding="utf-8",
+    )
+
+    result = _source_builder_shell(
+        "\n".join(
+            (
+                f"stage={stage!s}",
+                f"scratch={scratch!s}",
+                f"fixture={fixture!s}",
+                'git_clean() { command cat "$fixture"; }',
+                "capture_complete_diff",
+            )
+        )
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert VALIDATOR.diff_rows(stage / "runtime-diff.tsv", runtime=True) == (
+        VALIDATOR.RUNTIME_DIFF
+    )
+    audit = VALIDATOR.diff_rows(stage / "audit-diff.tsv", runtime=False)
+    assert audit["deploy/release/deploy.py"] == "M"
+    assert audit["deploy/release/release_tool.py"] == "M"
 
 
 @pytest.mark.parametrize("baseline_is_valid", [True, False])
@@ -2711,6 +2818,7 @@ require_physical_operator() {{ printf 'physical\n' >>"$EVENTS"; }}
 validate_stage() {{ printf 'stage\n' >>"$EVENTS"; }}
 require_safe_window() {{ printf 'window\n' >>"$EVENTS"; }}
 verify_baseline() {{ printf 'baseline\n' >>"$EVENTS"; }}
+verify_candidate_source_compatibility() {{ printf 'source-compatible\n' >>"$EVENTS"; }}
 load_and_verify_candidate() {{
   printf 'source-mismatch\n' >>"$EVENTS"
   die 'loaded image source differs from the complete manifest'
@@ -2730,6 +2838,7 @@ main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight
         "stage",
         "window",
         "baseline",
+        "source-compatible",
         "source-mismatch",
     ]
 
@@ -2747,6 +2856,7 @@ require_physical_operator() {{ printf 'physical\n' >>"$EVENTS"; }}
 validate_stage() {{ printf 'stage\n' >>"$EVENTS"; }}
 require_safe_window() {{ printf 'window\n' >>"$EVENTS"; }}
 verify_baseline() {{ printf 'baseline\n' >>"$EVENTS"; }}
+verify_candidate_source_compatibility() {{ printf 'source-compatible\n' >>"$EVENTS"; }}
 load_and_verify_candidate() {{ printf 'candidate\n' >>"$EVENTS"; }}
 verify_candidate_compose() {{
   printf 'compose-mismatch\n' >>"$EVENTS"
@@ -2766,8 +2876,72 @@ main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight
         "stage",
         "window",
         "baseline",
+        "source-compatible",
         "candidate",
         "compose-mismatch",
+    ]
+
+
+def test_operator_preflight_source_mode_mismatch_exits_before_candidate_load(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "events"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+EVENTS={events!s}
+parse_args() {{ preflight_only=1; printf 'parse\n' >>"$EVENTS"; }}
+require_physical_operator() {{ printf 'physical\n' >>"$EVENTS"; }}
+validate_stage() {{ printf 'stage\n' >>"$EVENTS"; }}
+require_safe_window() {{ printf 'window\n' >>"$EVENTS"; }}
+verify_baseline() {{ printf 'baseline\n' >>"$EVENTS"; }}
+verify_candidate_source_compatibility() {{
+  printf 'source-mode-mismatch\n' >>"$EVENTS"
+  die 'candidate source compatibility validation failed'
+}}
+load_and_verify_candidate() {{ printf 'candidate\n' >>"$EVENTS"; }}
+verify_candidate_compose() {{ printf 'compose\n' >>"$EVENTS"; }}
+reject_repeat() {{ printf 'repeat\n' >>"$EVENTS"; }}
+run_activation() {{ printf 'quiesce\n' >>"$EVENTS"; }}
+main --stage-dir /unused --scheduler-cutoff-utc 2099-01-01T00:00:00Z --preflight-only
+""",
+    )
+
+    assert result.returncode != 0
+    assert "candidate source compatibility validation failed" in result.stderr
+    assert events.read_text(encoding="utf-8").splitlines() == [
+        "parse",
+        "physical",
+        "stage",
+        "window",
+        "baseline",
+        "source-mode-mismatch",
+    ]
+
+
+def test_operator_locked_source_mode_recheck_precedes_attempt_marker(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "events"
+    result = _source_operator_shell(
+        tmp_path,
+        f"""
+EVENTS={events!s}
+verify_baseline() {{ printf 'locked-baseline\n' >>"$EVENTS"; }}
+verify_candidate_source_compatibility() {{
+  printf 'source-mode-mismatch\n' >>"$EVENTS"
+  die 'candidate source compatibility validation failed'
+}}
+prepare_roots_and_attempt() {{ printf 'attempt-marker\n' >>"$EVENTS"; }}
+run_activation
+""",
+    )
+
+    assert result.returncode != 0
+    assert "candidate source compatibility validation failed" in result.stderr
+    assert events.read_text(encoding="utf-8").splitlines() == [
+        "locked-baseline",
+        "source-mode-mismatch",
     ]
 
 
@@ -3115,29 +3289,68 @@ copy_state_matches_baseline
     assert (result.returncode == 0) is accepted
 
 
-def test_candidate_source_cannot_omit_a_captured_production_path(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("production_mode", "accepted"), [(0o600, True), (0o700, False)]
+)
+def test_operator_preflight_compares_candidate_and_production_executable_classes(
+    tmp_path: Path, production_mode: int, accepted: bool
 ) -> None:
     stage = tmp_path / "stage"
     stage.mkdir()
     _write_source(stage)
     baseline = tmp_path / "baseline.json"
-    baseline.write_bytes(
-        _json_bytes(
-            {
-                "source_manifest": [
-                    {
-                        "kind": "f",
-                        "path": "legacy-only.txt",
-                        "mode": 0o600,
-                        "uid": 0,
-                        "gid": 0,
-                        "sha256": "1" * 64,
-                    }
-                ]
-            }
-        )
+    payload = _baseline()
+    source_manifest = payload["source_manifest"]
+    assert isinstance(source_manifest, list)
+    row = source_manifest[0]
+    assert isinstance(row, dict)
+    row["mode"] = production_mode
+    baseline.write_bytes(_json_bytes(payload))
+
+    result = _source_operator_shell(
+        tmp_path,
+        "\n".join(
+            (
+                f"stage_dir={stage!s}",
+                f"baseline_json={baseline!s}",
+                "verify_candidate_source_compatibility",
+            )
+        ),
     )
+
+    assert (result.returncode == 0) is accepted
+    if not accepted:
+        assert "candidate executable class differs from production" in result.stderr
+        assert "candidate source compatibility validation failed" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("executable", "candidate executable class differs from production"),
+        ("type", "candidate source type differs from production"),
+        ("missing", "candidate source omits a captured production path"),
+    ],
+)
+def test_candidate_source_rechecks_compatibility_after_extraction(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    _write_source(stage)
+    baseline = tmp_path / "baseline.json"
+    payload = _baseline()
+    source_manifest = payload["source_manifest"]
+    assert isinstance(source_manifest, list)
+    row = source_manifest[0]
+    assert isinstance(row, dict)
+    if mutation == "executable":
+        row["mode"] = 0o700
+    elif mutation == "type":
+        row.update({"kind": "d", "mode": 0o700, "sha256": None})
+    else:
+        row["path"] = "production-only.txt"
+    baseline.write_bytes(_json_bytes(payload))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
 
@@ -3154,7 +3367,7 @@ def test_candidate_source_cannot_omit_a_captured_production_path(
     )
 
     assert result.returncode != 0
-    assert "candidate source omits a captured production path" in result.stderr
+    assert message in result.stderr
 
 
 def test_operator_rejects_repeat_and_expired_cutoff(tmp_path: Path) -> None:
@@ -3433,6 +3646,7 @@ candidate_config_digest=sha256:{"a" * 64}
 candidate_reference={REPOSITORY}@sha256:{"b" * 64}
 baseline_json=/unused
 verify_baseline() {{ printf 'locked-baseline\\n' >>"$EVENTS"; }}
+verify_candidate_source_compatibility() {{ printf 'source-compatible\\n' >>"$EVENTS"; }}
 prepare_roots_and_attempt() {{
   mkdir -p "$BACKUP_ROOT"
   chmod 700 "$BACKUP_ROOT"

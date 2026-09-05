@@ -170,6 +170,14 @@ metadata，拒绝会改变默认决策的 `pull_policy`，并保证任何创建�
 回归测试既执行 wrapper 的接受/拒绝分支，也静态枚举全部 create/up 路径并绑定唯一 migration run，因此不删除
 本地 build 支持、不宽泛忽略 Compose 字段，也不允许未来新 phase 绕过审核镜像。
 
+正式 activation 随后在 `prepare_candidate_source`、quiesce 前发现两个 executable-class 漂移：生产中的
+`deploy/release/deploy.py` 与 `deploy/release/release_tool.py` 为 root-owned `0600`，candidate Git mode 却为
+`100755`。仓库全量调用审计确认前者只由可执行 Bash wrapper 通过 `exec python3` 启动，后者在 Makefile、流水线、
+发布脚本和运维入口中均显式经 `python` 调用，因此二者的 Git mode 规范化为 `100644`，不放宽 overlay 对任意
+重叠文件 executable-class 漂移的拒绝。相同 kind/mode-class 比较同时进入纯 stage validator，在本地 build 与
+服务器纯校验、镜像加载之前失败；operator 仍在只读 preflight 以及持锁后的 activation 中复核，并保证持锁复核
+发生在创建 one-shot attempt marker 之前。这样同类 source mode 漂移既不会再次消耗候选 identity，也不会停写。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一

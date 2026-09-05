@@ -250,6 +250,8 @@ audit_exact = {
     ".trellis/spec/backend/official-account-weekly-dag.md": "M",
     ".trellis/spec/backend/quality-guidelines.md": "M",
     "backend/tests/unit/test_brand_embedding_zhipu.py": "A",
+    "deploy/release/deploy.py": "M",
+    "deploy/release/release_tool.py": "M",
     "deploy/release/tests/test_brand_embedding_hotfix_contract.py": "A",
     "deploy/release/tests/test_local_release.py": "M",
     "scripts/release-prod.sh": "M",
