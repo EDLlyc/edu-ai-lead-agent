@@ -515,6 +515,49 @@ bind_candidate_reference_ownership() {
   fi
 }
 
+loaded_image_id_matches_candidate() {
+  local loaded_id=$1
+  [[ "$loaded_id" =~ ^sha256:[0-9a-f]{64}$ \
+      && ( "$loaded_id" == "$candidate_manifest_digest" \
+      || "$loaded_id" == "$candidate_config_digest" ) ]]
+}
+
+validate_candidate_image_graph() {
+  python3 - "$stage/$VALIDATOR_NAME" "$stage" "$release_sha" \
+    "$transport_tag" "$candidate_repository" "$candidate_reference" \
+    "$candidate_config_digest" "$candidate_manifest_digest" <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+(
+    validator_path,
+    raw_stage,
+    release_commit,
+    transport_tag,
+    candidate_repository,
+    candidate_reference,
+    candidate_config_digest,
+    candidate_manifest_digest,
+) = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("brand_hotfix_validator", validator_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("validator import failed")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+metadata = {
+    "release_commit": release_commit,
+    "transport_tag": transport_tag,
+    "candidate_repository": candidate_repository,
+    "candidate_reference": candidate_reference,
+    "candidate_config_digest": candidate_config_digest,
+}
+observed_manifest = module.validate_image_archive(pathlib.Path(raw_stage), metadata)
+if observed_manifest != candidate_manifest_digest:
+    raise SystemExit("strict OCI manifest identity changed")
+PY
+}
+
 run_buildx_image() {
   local created=$1 raw_archive=$2
   env -i PATH="$SAFE_PATH" HOME="$scratch" LC_ALL=C DOCKER_BUILDKIT=1 \
@@ -566,11 +609,13 @@ build_and_probe_image() {
   esac
   gzip -n -c "$raw_archive" >"$stage/backend-image.oci.tar.gz"
   derive_oci_identity
+  validate_candidate_image_graph \
+    || { die 'candidate image failed strict OCI graph validation'; return 1; }
   bind_candidate_reference_ownership
-  docker image load -i "$raw_archive" </dev/null >/dev/null
+  gzip -dc "$stage/backend-image.oci.tar.gz" | docker image load >/dev/null
   loaded_id=$(docker image inspect --format '{{.Id}}' "$transport_tag")
-  [[ "$loaded_id" == "$candidate_config_digest" ]] \
-    || die 'loaded image ID differs from the archive config digest'
+  loaded_image_id_matches_candidate "$loaded_id" \
+    || die 'loaded image ID differs from the archive manifest and config digests'
   repo_digests=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$transport_tag")
   grep -Fxq "$candidate_reference" <<<"$repo_digests" \
     || die 'loaded archive did not produce the derived candidate RepoDigest'

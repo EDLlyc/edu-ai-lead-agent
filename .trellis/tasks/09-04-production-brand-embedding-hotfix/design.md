@@ -100,6 +100,12 @@ blob digest、标准化 name annotation 和短 ref annotation；它把 Docker gz
 和本次新建的 candidate tag/reference 在成功与失败路径都清理；构建前记录已有 RepoDigest，清理不得移除
 先存引用。
 
+`docker image inspect .Id` 不是跨 image store 固定为 config digest：classic store 返回 config digest，而审核构建
+机的 Docker 29.1.3/containerd image store 对单 manifest OCI 返回 manifest digest。builder 与 operator 因此只
+接受严格 validator 已绑定 graph 中的 manifest/config digest 二选一，再要求 transport tag 的 RepoDigests 包含
+精确 manifest reference、该 reference inspect 返回相同运行时 ID。operator 保存这次实际加载 ID，并用它核验
+12 个应用容器的 `.Image`；不把任意第三个 digest 当作兼容值，也不放宽 OCI validator。
+
 生产 `.env` 属于 release 事务之外的受保护 secret/config 状态。只读现场核验确认它是 physical regular file，
 身份为 `0600 / uid=1000 / gid=1001`；capture 只接受并把这一已审核身份与 bytes checksum 一起写入 baseline，
 不允许从任意现场 owner 动态放宽契约。capture 首尾以及 operator 每次复核均通过 `O_NOFOLLOW` 打开的单一
