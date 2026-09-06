@@ -36,6 +36,7 @@ tests.
 | [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled adapter plus durable three-role worker for legacy and prepared weekly inputs, without publish/send semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
+| [Substantive Topic Qualification](./substantive-topic-scope.md) | Selection-only .12/v4 subject evidence, immutable historical replay, and no-replay activation |
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |
 | [Controlled Visual Diversity](./visual-diversity.md) | Versioned 3D-brand visual planning, seven-day reservation, one perceptual repair, warning acceptance, API, and tests |
 | [Brand Multimodal Visual Retrieval](./visual-retrieval.md) | Approved-catalog image indexing, text/image query, semantic-primary selection, and deterministic fallback |

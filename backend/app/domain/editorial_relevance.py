@@ -9,9 +9,13 @@ SCIENCE_AI_EDUCATION_RULE_VERSION = "science-ai-education-v1"
 PRODUCT_MATRIX_FIT_RULE_VERSION = "product-matrix-fit-v1"
 SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION = "science-tech-editorial-v2"
 SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v3-broad"
+SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION = "science-tech-editorial-v4-substantive-topic"
 SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS = frozenset(
     {SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION, SCIENCE_TECH_EDITORIAL_RULE_VERSION}
 )
+_SUPPORTED_EDITORIAL_EVALUATION_RULE_VERSIONS = SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS | {
+    SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
+}
 PRODUCT_MATRIX_FIT_V2_RULE_VERSION = "product-matrix-fit-v2-science-pathways"
 EDITORIAL_CONTENT_CHARACTER_LIMIT = 6_000
 
@@ -1032,6 +1036,193 @@ def _evaluate_science_tech_editorial_relevance_v3(
     )
 
 
+# V4 is selection-only. The v3 alias above deliberately remains the acquisition default.
+# Concrete predicates authenticate a topic-bearing clause, not arbitrary "research", "require",
+# "cooperate" or repeated keywords. These are relevance signals, never provider-safety labels.
+_SUBSTANTIVE_ACTION_PATTERN = re.compile(
+    r"发布|推出|研制|研发|开发|开源|部署|实现|突破|发现|观测|验证|测试|评测|"
+    r"评估|训练|推理|计算|测量|探测|发射|回收|搭载|揭示|表明|证实|证明|"
+    r"制定|实施|开设|开课|授课|教学|培养|培训|建设|建成|量产|投产|"
+    r"(?:launch|releas|develop|demonstrat|measur|observ|evaluat|regulat|implement|teach|train)\w*"
+)
+_SUBSTANTIVE_RELATION_ONLY_PATTERN = re.compile(
+    r"合作|交流|对话|倡议|共识|愿景|伙伴关系|"
+    r"cooperat\w*|dialogue|partnership|initiative"
+)
+_SUBSTANTIVE_PUBLICATION_ACTION_PATTERN = re.compile(r"(?:发布|推出|releas\w*)")
+_SUBSTANTIVE_CONTINUATION_PATTERN = re.compile(
+    r"^(?:其|该|这一|这种|这项|该项|其中|实验|试验|测试|结果|测量|数据显示|"
+    r"办法|标准|课程|师生|学生|教师|规范|明确|采用|支持|提出|建立|降低|提高|优化|"
+    r"it\b|the (?:result|experiment|measurement|system|method))"
+)
+_SUBSTANTIVE_DETAIL_PATTERN = re.compile(
+    r"准确率|精度|误差|延迟|吞吐|参数|能耗|功耗|效率|性能|温度|速度|分辨率|"
+    r"风险评估|评测|测试|算法|模型|实验|课堂|课程|教学|师资|探究|"
+    r"\d\s*(?:%|毫秒|纳米|微米|开尔文|摄氏度|公里|千米|兆瓦|倍|ms\b|nm\b|kelvin\b)|"
+    r"accuracy|latency|throughput|precision|parameters?|curriculum|risk assessment"
+)
+_SUBSTANTIVE_MEASUREMENT_PATTERN = re.compile(
+    r"(?:准确率|误差率|精度|延迟|吞吐|能耗|功耗|效率|温度|速度|分辨率)"
+    r".{0,6}(?:为|达到|低于|降至|降低|减少|提升|提高).{0,3}"
+    r"(?:\d|[零一二三四五六七八九十百千])"
+)
+_SUBSTANTIVE_TECHNOLOGY_PATTERNS = (
+    ("semiconductor_computing", re.compile(r"芯片|半导体|集成电路")),
+    ("semiconductor_computing", _ascii_term(r"chips?|semiconductors?|integrated circuits?")),
+)
+_SUBSTANTIVE_TOPIC_PATTERNS = (
+    *_BROAD_HARD_TECH_TOPIC_PATTERNS,
+    *_EXPLICIT_PATTERNS,
+    *_SCIENCE_TALENT_PATHWAY_PATTERNS,
+    *_SUBSTANTIVE_TECHNOLOGY_PATTERNS,
+    ("science_teaching", re.compile(r"科学课程|科学教师|科学实验课|科学课堂")),
+    ("compound_technical_noun", re.compile(r"量子计算|模型训练|模型推理")),
+)
+
+
+def _substantive_topic_clause(clause: str) -> bool:
+    # Matching within one bounded clause prevents an incidental topic from authenticating an
+    # entire comma-separated meeting report. A bare category list has no concrete predicate.
+    topics = tuple(
+        topic for _, pattern in _SUBSTANTIVE_TOPIC_PATTERNS for topic in pattern.finditer(clause)
+    )
+    actions = tuple(
+        action
+        for action in (
+            *_SUBSTANTIVE_ACTION_PATTERN.finditer(clause),
+            *_SUBSTANTIVE_MEASUREMENT_PATTERN.finditer(clause),
+        )
+        if not any(
+            topic.start() <= action.start() and action.end() <= topic.end() for topic in topics
+        )
+    )
+    if (
+        _SUBSTANTIVE_RELATION_ONLY_PATTERN.search(clause)
+        and actions
+        and all(
+            _SUBSTANTIVE_PUBLICATION_ACTION_PATTERN.fullmatch(action.group()) for action in actions
+        )
+    ):
+        # Publishing a cooperation statement remains diplomacy/current affairs unless this same
+        # clause also contains an independently concrete technical, research or policy predicate.
+        return False
+    return any(
+        max(topic.start(), action.start()) - min(topic.end(), action.end()) <= 24
+        for topic in topics
+        for action in actions
+    )
+
+
+def _substantive_body_evidence(body: str) -> tuple[tuple[str, ...], int, int]:
+    """Return unique authenticated clauses and their share of bounded content.
+
+    At most two immediate detail clauses may inherit an established technical subject. A new
+    nontechnical clause or paragraph resets continuity; measurements and pronouns need not repeat
+    the original topic. Exact repetition contributes neither extra evidence nor extra denominator.
+    """
+
+    evidence: list[str] = []
+    seen: set[str] = set()
+    total_characters = 0
+    evidence_characters = 0
+    for paragraph in body.splitlines():
+        continuity_remaining = 0
+        for raw_clause in re.split(r"[。!?;,]|(?<!\d)\.(?!\d)", paragraph):
+            clause = normalize_editorial_text(raw_clause).strip(" :、")
+            if len(clause) < 4:
+                continue
+            anchor = _substantive_topic_clause(clause)
+            continuation = bool(
+                continuity_remaining
+                and _SUBSTANTIVE_CONTINUATION_PATTERN.search(clause)
+                and _SUBSTANTIVE_DETAIL_PATTERN.search(clause)
+            )
+            if clause in seen:
+                # Repeated anchors do not replenish an inherited-subject allowance.
+                continuity_remaining = 0
+                continue
+            seen.add(clause)
+            total_characters += len(clause)
+            if anchor or continuation:
+                evidence.append(clause)
+                evidence_characters += len(clause)
+            continuity_remaining = 2 if anchor else continuity_remaining - 1 if continuation else 0
+    return tuple(evidence), evidence_characters, total_characters
+
+
+def _evaluate_science_tech_editorial_relevance_v4(
+    title: str | None,
+    body: str | None,
+    *,
+    body_limit: int,
+) -> ScienceTechEditorialResult:
+    if body_limit < 1:
+        raise ValueError("editorial relevance body limit must be positive")
+    # Slice before either normalization or the historical evaluator. Literal v2/v3 callers retain
+    # their historical behavior; v4 cannot spend unbounded work on an oversized raw input.
+    capped_title = (title or "")[:body_limit]
+    capped_body = (body or "")[:body_limit]
+    historical = _evaluate_science_tech_editorial_relevance_v3(
+        capped_title, capped_body, body_limit=body_limit
+    )
+    historical = replace(
+        historical, body_truncated=len(body or "") > body_limit or historical.body_truncated
+    )
+    # Preserve paragraph boundaries for subject continuity; normalization and all matching remain
+    # bounded. Title-only acquisition is intentionally still v3, never implicitly routed here.
+    bounded_body = unicodedata.normalize("NFKC", capped_body)[:body_limit]
+    evidence, evidence_characters, total_characters = _substantive_body_evidence(bounded_body)
+    if total_characters < 12:
+        reason = "substantive_topic_insufficient_body"
+    elif evidence_characters < 12 or evidence_characters * 2 < total_characters:
+        reason = "substantive_topic_not_primary"
+    elif not historical.is_candidate and historical.reason_codes != (
+        "missing_science_technology_topic",
+    ):
+        return replace(historical, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION)
+    else:
+        # Re-evaluate the *local* evidence so distant AI and education mentions cannot manufacture
+        # an education-priority cohort. Unauthenticated title/body context retains no such power.
+        qualified = _evaluate_science_tech_editorial_relevance_v3(
+            "", "。".join(evidence), body_limit=body_limit
+        )
+        if (
+            not qualified.is_candidate
+            and qualified.reason_codes == ("missing_science_technology_topic",)
+            and _matches("。".join(evidence), _SUBSTANTIVE_TECHNOLOGY_PATTERNS)
+        ):
+            # V4 covers substantive semiconductor reports without requiring synthetic AI taxonomy.
+            # Use the existing conservative general-tech value, not an invented progress bonus.
+            qualified = replace(
+                qualified,
+                is_candidate=True,
+                cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+                editorial_priority_score=0.50,
+                frontier_significance_score=0.50,
+                reason_codes=("substantive_semiconductor_computing_subject",),
+            )
+        return replace(
+            historical,
+            rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
+            cohort=qualified.cohort,
+            is_candidate=qualified.is_candidate,
+            editorial_priority_score=qualified.editorial_priority_score,
+            education_relevance_score=qualified.education_relevance_score,
+            frontier_significance_score=qualified.frontier_significance_score,
+            reason_codes=("substantive_topic_primary", *qualified.reason_codes),
+        )
+    return replace(
+        historical,
+        rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
+        is_candidate=False,
+        cohort=ScienceTechEditorialCohort.OUT_OF_SCOPE,
+        editorial_priority_score=0.0,
+        education_relevance_score=0.0,
+        frontier_significance_score=0.0,
+        reason_codes=(reason,),
+    )
+
+
 def evaluate_science_tech_editorial_relevance(
     title: str | None,
     body: str | None = None,
@@ -1041,7 +1232,7 @@ def evaluate_science_tech_editorial_relevance(
 ) -> ScienceTechEditorialResult:
     """Classify content with an explicit immutable editorial rule identity."""
 
-    if rule_version not in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS:
+    if rule_version not in _SUPPORTED_EDITORIAL_EVALUATION_RULE_VERSIONS:
         raise ValueError("unsupported science-tech editorial rule version")
     if rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION:
         return _evaluate_science_tech_editorial_relevance_v2(
@@ -1049,6 +1240,8 @@ def evaluate_science_tech_editorial_relevance(
             body,
             body_limit=body_limit,
         )
+    if rule_version == SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION:
+        return _evaluate_science_tech_editorial_relevance_v4(title, body, body_limit=body_limit)
     return _evaluate_science_tech_editorial_relevance_v3(
         title,
         body,

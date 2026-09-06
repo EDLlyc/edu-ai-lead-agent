@@ -1,0 +1,14 @@
+{
+  "observed_cst": "2026-09-05T20:38:09.561378",
+  "copy_attempts": 479,
+  "delivery_attempts": 191,
+  "packages": 112,
+  "copy_runs": 196,
+  "copy_jobs": 196,
+  "delivered": 95,
+  "latest_delivered": "2026-09-02T12:30:02.19372+08:00",
+  "alembic": "20260901_0042",
+  "frozen_sha256": "657797a7d4b8d51c8355c07c62343610529fc85753ecb7b489dcd2ef3c5dc74c",
+  "target_status": "review_required",
+  "target_error": "copy_provider_unavailable"
+}

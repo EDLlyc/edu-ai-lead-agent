@@ -10,7 +10,13 @@ produces at most one locked topic for a business date and scoring profile. It do
 re-summarize, retrieve brand knowledge, call a model for the numeric score, generate copy/images,
 or publish content.
 
-The current implemented preview is
+The current selection-only upgrade is `scoring-v1-preview.12-substantive-topic-scope`, pinned to
+`science-tech-editorial-v4-substantive-topic`. Its substantive-content and historical-replay
+contract is in [Substantive Topic Qualification](./substantive-topic-scope.md). It preserves the
+downstream weights, threshold, veto and source-priority policies of the `.11` baseline below;
+acquisition remains literal v3. Deployment requires an explicit scoring-only configuration switch.
+
+The preserved baseline preview is
 `scoring-v1-preview.11-qualified-authoritative-priority`, with an ordinary numeric threshold
 of 0.59, an audited governed-hard-tech pool path, substantive Ministry science-education priority,
 and qualified China Government yaowen priority. Its weights and threshold

@@ -34,6 +34,7 @@ from app.domain.topic_selection import (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
     TopicScoringConfig,
     select_daily_topic,
@@ -44,7 +45,10 @@ logger = structlog.get_logger()
 
 
 def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
-    if settings.content_scoring_version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION:
+    if settings.content_scoring_version in {
+        QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+        SUBSTANTIVE_TOPIC_SCORING_VERSION,
+    }:
         priority_rule_version = (
             settings.content_selection_priority_rule_version
             or QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION

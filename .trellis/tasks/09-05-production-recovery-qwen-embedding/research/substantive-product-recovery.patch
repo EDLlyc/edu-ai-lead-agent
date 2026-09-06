@@ -1,0 +1,1219 @@
+diff --git a/.env.example b/.env.example
+index 5ae88a1..a04ba5e 100644
+--- a/.env.example
++++ b/.env.example
+@@ -87,7 +87,7 @@ CONTENT_LEASE_SECONDS=120
+ CONTENT_HEARTBEAT_SECONDS=30
+ CONTENT_MAX_ATTEMPTS=3
+ CONTENT_FRESHNESS_WINDOW_DAYS=10
+-CONTENT_SCORING_VERSION=scoring-v1-preview.11-qualified-authoritative-priority
++CONTENT_SCORING_VERSION=scoring-v1-preview.12-substantive-topic-scope
+ CONTENT_SCORING_PROFILE=preview
+ CONTENT_SELECTION_PRIORITY_RULE_VERSION=qualified-authoritative-priority-v1
+ # Bounded LLM ordering is automatic whenever the content pipeline is enabled.
+diff --git a/backend/app/application/services/topic_selection.py b/backend/app/application/services/topic_selection.py
+index 8d1b45b..cfee6a1 100644
+--- a/backend/app/application/services/topic_selection.py
++++ b/backend/app/application/services/topic_selection.py
+@@ -34,6 +34,7 @@ from app.domain.topic_selection import (
+     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+     SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS,
+     TopicScoringConfig,
+     select_daily_topic,
+@@ -44,7 +45,10 @@ logger = structlog.get_logger()
+
+
+ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
+-    if settings.content_scoring_version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION:
++    if settings.content_scoring_version in {
++        QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++        SUBSTANTIVE_TOPIC_SCORING_VERSION,
++    }:
+         priority_rule_version = (
+             settings.content_selection_priority_rule_version
+             or QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+diff --git a/backend/app/core/config.py b/backend/app/core/config.py
+index a6f4969..328c756 100644
+--- a/backend/app/core/config.py
++++ b/backend/app/core/config.py
+@@ -133,7 +133,7 @@ class Settings(BaseSettings):
+     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
+     content_max_attempts: int = Field(default=3, ge=1, le=10)
+     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
+-    content_scoring_version: str = "scoring-v1-preview.11-qualified-authoritative-priority"
++    content_scoring_version: str = "scoring-v1-preview.12-substantive-topic-scope"
+     content_scoring_profile: str = "preview"
+     content_selection_priority_rule_version: str | None = "qualified-authoritative-priority-v1"
+     content_llm_rerank_enabled: bool = True
+diff --git a/backend/app/domain/editorial_relevance.py b/backend/app/domain/editorial_relevance.py
+index 8447842..a0e589a 100644
+--- a/backend/app/domain/editorial_relevance.py
++++ b/backend/app/domain/editorial_relevance.py
+@@ -9,9 +9,13 @@ SCIENCE_AI_EDUCATION_RULE_VERSION = "science-ai-education-v1"
+ PRODUCT_MATRIX_FIT_RULE_VERSION = "product-matrix-fit-v1"
+ SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION = "science-tech-editorial-v2"
+ SCIENCE_TECH_EDITORIAL_RULE_VERSION = "science-tech-editorial-v3-broad"
++SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION = "science-tech-editorial-v4-substantive-topic"
+ SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS = frozenset(
+     {SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION, SCIENCE_TECH_EDITORIAL_RULE_VERSION}
+ )
++_SUPPORTED_EDITORIAL_EVALUATION_RULE_VERSIONS = SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS | {
++    SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++}
+ PRODUCT_MATRIX_FIT_V2_RULE_VERSION = "product-matrix-fit-v2-science-pathways"
+ EDITORIAL_CONTENT_CHARACTER_LIMIT = 6_000
+
+@@ -1032,6 +1036,193 @@ def _evaluate_science_tech_editorial_relevance_v3(
+     )
+
+
++# V4 is selection-only. The v3 alias above deliberately remains the acquisition default.
++# Concrete predicates authenticate a topic-bearing clause, not arbitrary "research", "require",
++# "cooperate" or repeated keywords. These are relevance signals, never provider-safety labels.
++_SUBSTANTIVE_ACTION_PATTERN = re.compile(
++    r"发布|推出|研制|研发|开发|开源|部署|实现|突破|发现|观测|验证|测试|评测|"
++    r"评估|训练|推理|计算|测量|探测|发射|回收|搭载|揭示|表明|证实|证明|"
++    r"制定|实施|开设|开课|授课|教学|培养|培训|建设|建成|量产|投产|"
++    r"(?:launch|releas|develop|demonstrat|measur|observ|evaluat|regulat|implement|teach|train)\w*"
++)
++_SUBSTANTIVE_RELATION_ONLY_PATTERN = re.compile(
++    r"合作|交流|对话|倡议|共识|愿景|伙伴关系|"
++    r"cooperat\w*|dialogue|partnership|initiative"
++)
++_SUBSTANTIVE_PUBLICATION_ACTION_PATTERN = re.compile(r"(?:发布|推出|releas\w*)")
++_SUBSTANTIVE_CONTINUATION_PATTERN = re.compile(
++    r"^(?:其|该|这一|这种|这项|该项|其中|实验|试验|测试|结果|测量|数据显示|"
++    r"办法|标准|课程|师生|学生|教师|规范|明确|采用|支持|提出|建立|降低|提高|优化|"
++    r"it\b|the (?:result|experiment|measurement|system|method))"
++)
++_SUBSTANTIVE_DETAIL_PATTERN = re.compile(
++    r"准确率|精度|误差|延迟|吞吐|参数|能耗|功耗|效率|性能|温度|速度|分辨率|"
++    r"风险评估|评测|测试|算法|模型|实验|课堂|课程|教学|师资|探究|"
++    r"\d\s*(?:%|毫秒|纳米|微米|开尔文|摄氏度|公里|千米|兆瓦|倍|ms\b|nm\b|kelvin\b)|"
++    r"accuracy|latency|throughput|precision|parameters?|curriculum|risk assessment"
++)
++_SUBSTANTIVE_MEASUREMENT_PATTERN = re.compile(
++    r"(?:准确率|误差率|精度|延迟|吞吐|能耗|功耗|效率|温度|速度|分辨率)"
++    r".{0,6}(?:为|达到|低于|降至|降低|减少|提升|提高).{0,3}"
++    r"(?:\d|[零一二三四五六七八九十百千])"
++)
++_SUBSTANTIVE_TECHNOLOGY_PATTERNS = (
++    ("semiconductor_computing", re.compile(r"芯片|半导体|集成电路")),
++    ("semiconductor_computing", _ascii_term(r"chips?|semiconductors?|integrated circuits?")),
++)
++_SUBSTANTIVE_TOPIC_PATTERNS = (
++    *_BROAD_HARD_TECH_TOPIC_PATTERNS,
++    *_EXPLICIT_PATTERNS,
++    *_SCIENCE_TALENT_PATHWAY_PATTERNS,
++    *_SUBSTANTIVE_TECHNOLOGY_PATTERNS,
++    ("science_teaching", re.compile(r"科学课程|科学教师|科学实验课|科学课堂")),
++    ("compound_technical_noun", re.compile(r"量子计算|模型训练|模型推理")),
++)
++
++
++def _substantive_topic_clause(clause: str) -> bool:
++    # Matching within one bounded clause prevents an incidental topic from authenticating an
++    # entire comma-separated meeting report. A bare category list has no concrete predicate.
++    topics = tuple(
++        topic for _, pattern in _SUBSTANTIVE_TOPIC_PATTERNS for topic in pattern.finditer(clause)
++    )
++    actions = tuple(
++        action
++        for action in (
++            *_SUBSTANTIVE_ACTION_PATTERN.finditer(clause),
++            *_SUBSTANTIVE_MEASUREMENT_PATTERN.finditer(clause),
++        )
++        if not any(
++            topic.start() <= action.start() and action.end() <= topic.end() for topic in topics
++        )
++    )
++    if (
++        _SUBSTANTIVE_RELATION_ONLY_PATTERN.search(clause)
++        and actions
++        and all(
++            _SUBSTANTIVE_PUBLICATION_ACTION_PATTERN.fullmatch(action.group()) for action in actions
++        )
++    ):
++        # Publishing a cooperation statement remains diplomacy/current affairs unless this same
++        # clause also contains an independently concrete technical, research or policy predicate.
++        return False
++    return any(
++        max(topic.start(), action.start()) - min(topic.end(), action.end()) <= 24
++        for topic in topics
++        for action in actions
++    )
++
++
++def _substantive_body_evidence(body: str) -> tuple[tuple[str, ...], int, int]:
++    """Return unique authenticated clauses and their share of bounded content.
++
++    At most two immediate detail clauses may inherit an established technical subject. A new
++    nontechnical clause or paragraph resets continuity; measurements and pronouns need not repeat
++    the original topic. Exact repetition contributes neither extra evidence nor extra denominator.
++    """
++
++    evidence: list[str] = []
++    seen: set[str] = set()
++    total_characters = 0
++    evidence_characters = 0
++    for paragraph in body.splitlines():
++        continuity_remaining = 0
++        for raw_clause in re.split(r"[。!?;,]|(?<!\d)\.(?!\d)", paragraph):
++            clause = normalize_editorial_text(raw_clause).strip(" :、")
++            if len(clause) < 4:
++                continue
++            anchor = _substantive_topic_clause(clause)
++            continuation = bool(
++                continuity_remaining
++                and _SUBSTANTIVE_CONTINUATION_PATTERN.search(clause)
++                and _SUBSTANTIVE_DETAIL_PATTERN.search(clause)
++            )
++            if clause in seen:
++                # Repeated anchors do not replenish an inherited-subject allowance.
++                continuity_remaining = 0
++                continue
++            seen.add(clause)
++            total_characters += len(clause)
++            if anchor or continuation:
++                evidence.append(clause)
++                evidence_characters += len(clause)
++            continuity_remaining = 2 if anchor else continuity_remaining - 1 if continuation else 0
++    return tuple(evidence), evidence_characters, total_characters
++
++
++def _evaluate_science_tech_editorial_relevance_v4(
++    title: str | None,
++    body: str | None,
++    *,
++    body_limit: int,
++) -> ScienceTechEditorialResult:
++    if body_limit < 1:
++        raise ValueError("editorial relevance body limit must be positive")
++    # Slice before either normalization or the historical evaluator. Literal v2/v3 callers retain
++    # their historical behavior; v4 cannot spend unbounded work on an oversized raw input.
++    capped_title = (title or "")[:body_limit]
++    capped_body = (body or "")[:body_limit]
++    historical = _evaluate_science_tech_editorial_relevance_v3(
++        capped_title, capped_body, body_limit=body_limit
++    )
++    historical = replace(
++        historical, body_truncated=len(body or "") > body_limit or historical.body_truncated
++    )
++    # Preserve paragraph boundaries for subject continuity; normalization and all matching remain
++    # bounded. Title-only acquisition is intentionally still v3, never implicitly routed here.
++    bounded_body = unicodedata.normalize("NFKC", capped_body)[:body_limit]
++    evidence, evidence_characters, total_characters = _substantive_body_evidence(bounded_body)
++    if total_characters < 12:
++        reason = "substantive_topic_insufficient_body"
++    elif evidence_characters < 12 or evidence_characters * 2 < total_characters:
++        reason = "substantive_topic_not_primary"
++    elif not historical.is_candidate and historical.reason_codes != (
++        "missing_science_technology_topic",
++    ):
++        return replace(historical, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION)
++    else:
++        # Re-evaluate the *local* evidence so distant AI and education mentions cannot manufacture
++        # an education-priority cohort. Unauthenticated title/body context retains no such power.
++        qualified = _evaluate_science_tech_editorial_relevance_v3(
++            "", "。".join(evidence), body_limit=body_limit
++        )
++        if (
++            not qualified.is_candidate
++            and qualified.reason_codes == ("missing_science_technology_topic",)
++            and _matches("。".join(evidence), _SUBSTANTIVE_TECHNOLOGY_PATTERNS)
++        ):
++            # V4 covers substantive semiconductor reports without requiring synthetic AI taxonomy.
++            # Use the existing conservative general-tech value, not an invented progress bonus.
++            qualified = replace(
++                qualified,
++                is_candidate=True,
++                cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
++                editorial_priority_score=0.50,
++                frontier_significance_score=0.50,
++                reason_codes=("substantive_semiconductor_computing_subject",),
++            )
++        return replace(
++            historical,
++            rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++            cohort=qualified.cohort,
++            is_candidate=qualified.is_candidate,
++            editorial_priority_score=qualified.editorial_priority_score,
++            education_relevance_score=qualified.education_relevance_score,
++            frontier_significance_score=qualified.frontier_significance_score,
++            reason_codes=("substantive_topic_primary", *qualified.reason_codes),
++        )
++    return replace(
++        historical,
++        rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++        is_candidate=False,
++        cohort=ScienceTechEditorialCohort.OUT_OF_SCOPE,
++        editorial_priority_score=0.0,
++        education_relevance_score=0.0,
++        frontier_significance_score=0.0,
++        reason_codes=(reason,),
++    )
++
++
+ def evaluate_science_tech_editorial_relevance(
+     title: str | None,
+     body: str | None = None,
+@@ -1041,7 +1232,7 @@ def evaluate_science_tech_editorial_relevance(
+ ) -> ScienceTechEditorialResult:
+     """Classify content with an explicit immutable editorial rule identity."""
+
+-    if rule_version not in SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS:
++    if rule_version not in _SUPPORTED_EDITORIAL_EVALUATION_RULE_VERSIONS:
+         raise ValueError("unsupported science-tech editorial rule version")
+     if rule_version == SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION:
+         return _evaluate_science_tech_editorial_relevance_v2(
+@@ -1049,6 +1240,8 @@ def evaluate_science_tech_editorial_relevance(
+             body,
+             body_limit=body_limit,
+         )
++    if rule_version == SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION:
++        return _evaluate_science_tech_editorial_relevance_v4(title, body, body_limit=body_limit)
+     return _evaluate_science_tech_editorial_relevance_v3(
+         title,
+         body,
+diff --git a/backend/app/domain/topic_selection.py b/backend/app/domain/topic_selection.py
+index 337d1d2..1be56dc 100644
+--- a/backend/app/domain/topic_selection.py
++++ b/backend/app/domain/topic_selection.py
+@@ -15,6 +15,7 @@ from app.domain.editorial_relevance import (
+     SCIENCE_AI_EDUCATION_RULE_VERSION,
+     SCIENCE_TECH_EDITORIAL_RULE_VERSION,
+     SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
++    SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
+     ScienceTechContentSignal,
+     ScienceTechEditorialCohort,
+ )
+@@ -42,7 +43,8 @@ SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = (
+ QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION = (
+     "scoring-v1-preview.11-qualified-authoritative-priority"
+ )
+-DEFAULT_TOPIC_SCORING_VERSION = QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
++SUBSTANTIVE_TOPIC_SCORING_VERSION = "scoring-v1-preview.12-substantive-topic-scope"
++DEFAULT_TOPIC_SCORING_VERSION = SUBSTANTIVE_TOPIC_SCORING_VERSION
+ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
+     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
+     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+@@ -50,6 +52,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
+     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+ )
+ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
+     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+@@ -57,12 +60,14 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
+     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+ )
+ LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
+     THRESHOLD_059_TOPIC_SCORING_VERSION,
+     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+ )
+ DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
+ HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
+@@ -266,6 +271,8 @@ class TopicScoringConfig:
+             return None
+         if self.science_tech_editorial_rule_version is not None:
+             return self.science_tech_editorial_rule_version
++        if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION:
++            return SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
+         if self.version in {
+             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+@@ -282,6 +289,7 @@ class TopicScoringConfig:
+             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++            SUBSTANTIVE_TOPIC_SCORING_VERSION,
+         }:
+             return BROAD_HARD_TECH_POOL_POLICY_VERSION
+         return None
+@@ -320,13 +328,13 @@ class TopicScoringConfig:
+             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION: (
+                 DELIVERED_CONTENT_VETO_RULE_VERSION
+             ),
+-            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (
+-                DELIVERED_CONTENT_VETO_RULE_VERSION
+-            ),
++            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (DELIVERED_CONTENT_VETO_RULE_VERSION),
++            SUBSTANTIVE_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+         }.get(self.version)
+         expected_priority_rule = (
+             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+-            if self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
++            if self.version
++            in {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, SUBSTANTIVE_TOPIC_SCORING_VERSION}
+             else MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+             if self.version == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
+             else MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
+@@ -337,7 +345,9 @@ class TopicScoringConfig:
+             and self.uses_tiered_editorial_features
+             and self.effective_science_tech_editorial_rule_version
+             == (
+-                SCIENCE_TECH_EDITORIAL_RULE_VERSION
++                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
++                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                 if self.version
+                 in {
+                     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+@@ -357,20 +367,30 @@ class TopicScoringConfig:
+                 BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+                 SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+                 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++                SUBSTANTIVE_TOPIC_SCORING_VERSION,
+             }
+             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
+             and self.effective_science_tech_editorial_rule_version
+-            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
++            == (
++                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
++                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
++            )
+             and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
+         )
+
+     @property
+     def has_qualified_authoritative_priority(self) -> bool:
+         return (
+-            self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
++            self.version
++            in {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, SUBSTANTIVE_TOPIC_SCORING_VERSION}
+             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
+             and self.effective_science_tech_editorial_rule_version
+-            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
++            == (
++                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
++                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
++            )
+             and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
+             and self.selection_priority_rule_version
+             == QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+diff --git a/backend/app/infrastructure/db/topic_selection.py b/backend/app/infrastructure/db/topic_selection.py
+index 955c2f2..e8c69c6 100644
+--- a/backend/app/infrastructure/db/topic_selection.py
++++ b/backend/app/infrastructure/db/topic_selection.py
+@@ -32,6 +32,7 @@ from app.domain.topic_selection import (
+     DELIVERED_CONTENT_VETO_RULE_VERSION,
+     GOV_CN_YAOWEN_PRIORITY_POLICY,
+     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+     DailyTopicDecision,
+     TopicCandidate,
+     TopicScoringConfig,
+@@ -838,9 +839,16 @@ async def load_governed_topic_candidates(
+             version.representative_title,
+             editorial_body,
+         )
++        # Only the new selection identity authenticates subject matter from content alone.
++        # Taxonomy remains available to historical replay and its independent scoring features.
++        subject_body = (
++            "。".join((summary, *(fact for fact in facts_value if isinstance(fact, str))))
++            if scoring_config.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
++            else editorial_body
++        )
+         science_tech_editorial = evaluate_science_tech_editorial_relevance(
+             version.representative_title,
+-            editorial_body,
++            subject_body,
+             rule_version=science_tech_editorial_rule_version,
+         )
+         product_fit_v2 = evaluate_product_matrix_fit_v2(
+diff --git a/backend/tests/integration/test_topic_selection_repositories.py b/backend/tests/integration/test_topic_selection_repositories.py
+index b7bd3f7..1efa603 100644
+--- a/backend/tests/integration/test_topic_selection_repositories.py
++++ b/backend/tests/integration/test_topic_selection_repositories.py
+@@ -16,7 +16,7 @@ from app.domain.content_slots import (
+     SlotRankingPolicy,
+     select_slot_topics,
+ )
+-from app.domain.editorial_relevance import ScienceTechContentSignal
++from app.domain.editorial_relevance import ScienceTechContentSignal, ScienceTechEditorialCohort
+ from app.domain.governance_enums import FactualCategory
+ from app.domain.ministry_education_priority import (
+     MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
+@@ -40,6 +40,7 @@ from app.domain.topic_selection import (
+     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+     SOURCE_PRIORITY_RULE_VERSION,
+     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
+     THRESHOLD_059_TOPIC_SCORING_VERSION,
+     NoTopicCode,
+     TopicScoringConfig,
+@@ -56,6 +57,7 @@ from app.infrastructure.db.governance_repositories import create_governance_run_
+ from app.infrastructure.db.models import (
+     AcquisitionJobModel,
+     AcquisitionRunModel,
++    ContentSlotRunModel,
+     EventClusterModel,
+     EventClusterVersionModel,
+     EvidenceCandidateModel,
+@@ -85,6 +87,14 @@ from .test_event_organization import _build_graph, _claim
+ from .test_governance_repositories import _create_acquisition_fixture
+
+
++def _fixture_embedding(candidate_id: UUID) -> FakeEmbeddingModel:
++    """Keep independent synthetic stories out of the semantic-duplicate event path."""
++
++    return FakeEmbeddingModel(
++        vector=tuple(1.0 if candidate_id.int & (1 << index) else -1.0 for index in range(128)) * 16
++    )
++
++
+ @pytest.mark.integration
+ @pytest.mark.asyncio(loop_scope="session")
+ async def test_topic_selection_no_topic_flow_is_idempotent_and_durable(
+@@ -421,7 +431,7 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
+             category=FactualCategory.AI_EDUCATION_POLICY,
+             entity_name="教育部",
+         ),
+-        embedding_model=FakeEmbeddingModel(),
++        embedding_model=_fixture_embedding(candidate_id),
+         now=now,
+     )
+     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+@@ -643,7 +653,7 @@ async def test_government_yaowen_policy_authenticates_from_a_real_source_occurre
+             category=FactualCategory.AI_INDUSTRY_APPLICATION,
+             entity_name="国务院有关部门",
+         ),
+-        embedding_model=FakeEmbeddingModel(),
++        embedding_model=_fixture_embedding(candidate_id),
+         now=now,
+     )
+     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+@@ -732,7 +742,7 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
+             category=FactualCategory.AI_INDUSTRY_APPLICATION,
+             entity_name="硬科技教育项目",
+         ),
+-        embedding_model=FakeEmbeddingModel(),
++        embedding_model=_fixture_embedding(candidate_ids[0]),
+         now=now,
+     )
+     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
+@@ -740,7 +750,10 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
+     assert isinstance(event_id, UUID)
+
+     suffix = uuid4().hex[:12]
+-    scoring_config = TopicScoringConfig(profile=f"rerank-v3-atomic-{suffix}")
++    scoring_config = TopicScoringConfig(
++        version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++        profile=f"rerank-v3-atomic-{suffix}",
++    )
+     rerank_config = TopicRerankConfig(
+         enabled=True,
+         provider="fake",
+@@ -989,3 +1002,249 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
+     assert slot_record.policy_version == rerank_config.policy_version
+     assert slot_record.failure_code is None
+     assert len(slot_record.reasons) == 2
++
++
++async def _substantive_governed_fixture(
++    context: IntegrationContext,
++) -> tuple[UUID, UUID, UUID, datetime]:
++    acquisition_id, candidate_ids = await _create_acquisition_fixture(context, candidate_count=1)
++    now = datetime.now(UTC)
++    async with context.session_factory() as session:
++        candidate = await session.get(EvidenceCandidateModel, candidate_ids[0])
++        assert candidate is not None
++        candidate.title = f"研究团队公布新结果-{uuid4().hex[:8]}"
++        candidate.clean_text = f"研究团队研制新型量子计算芯片并完成测试。批次 {uuid4().hex}。"
++        candidate.published_at = now
++        candidate.first_fetched_at = now
++        await session.commit()
++    bundle = build_governance_version_bundle(context.settings)
++    async with context.session_factory() as session:
++        await create_governance_run_for_acquisition(
++            session, acquisition_run_id=acquisition_id, bundle=bundle, timezone="Asia/Shanghai"
++        )
++    claimed = await _claim(context, worker_id="substantive-topic-fixture")
++    graph = _build_graph(
++        context,
++        bundle=bundle,
++        analysis_model=FakeFactualAnalysisModel(
++            category=FactualCategory.AI_GOVERNANCE_SAFETY,
++            entity_name=f"研究团队-{uuid4().hex[:8]}",
++        ),
++        # Distinct synthetic stories must not all have the same exact semantic vector, which
++        # would make earlier fixture event assignments contaminate the next projection case.
++        embedding_model=_fixture_embedding(candidate_ids[0]),
++        now=now,
++    )
++    result = await graph.ainvoke(governance_graph_input(claimed))
++    event_id = result["event_id"]
++    assert isinstance(event_id, UUID)
++    return acquisition_id, claimed.run_id, event_id, now + timedelta(minutes=1)
++
++
++@pytest.mark.integration
++@pytest.mark.asyncio(loop_scope="session")
++@pytest.mark.parametrize(
++    ("title", "summary", "facts", "expected"),
++    (
++        (
++            "经贸会议举行",
++            "会议讨论港口贸易和运输便利化安排。",
++            ("代表协商旅游航线与文化交流。",),
++            False,
++        ),
++        ("经贸会议举行", "会议讨论港口贸易和运输便利化安排。", ("会议提及人工智能合作。",), False),
++        (
++            "最新实验结果公布",
++            "团队研制新型量子计算芯片。",
++            (
++                "其工作温度达到二十毫开尔文。",
++                "实验测得误差率下降三成。",
++                "该器件在持续测试中表现稳定。",
++            ),
++            True,
++        ),
++        (
++            "实施方案发布",
++            "有关部门发布人工智能治理办法。",
++            ("办法明确模型风险评估和测试标准。",),
++            True,
++        ),
++        (
++            "学校推进科学教育",
++            "学校开设科学课程并培训科学教师。",
++            ("学生通过实验开展科学探究。",),
++            True,
++        ),
++    ),
++)
++async def test_substantive_projection_uses_content_not_category_rescue(
++    integration_context: IntegrationContext,
++    title: str,
++    summary: str,
++    facts: tuple[str, ...],
++    expected: bool,
++) -> None:
++    _, _, event_id, cutoff = await _substantive_governed_fixture(integration_context)
++    # This is a synthetic fixture projection, not mutation/reinterpretation of a production event.
++    async with integration_context.session_factory() as session:
++        event = await session.get(EventClusterModel, event_id)
++        assert event is not None and event.current_version_id is not None
++        version = await session.get(EventClusterVersionModel, event.current_version_id)
++        assert version is not None
++        version.representative_title = title
++        version.summary_projection = {
++            **version.summary_projection,
++            "summary": summary,
++            "facts": list(facts),
++        }
++        version.category_projection = ["ai_governance_safety", "youth_science_education"]
++        await session.commit()
++        projections = {}
++        for scoring_version in (
++            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++            SUBSTANTIVE_TOPIC_SCORING_VERSION,
++        ):
++            config = TopicScoringConfig(
++                version=scoring_version,
++                profile=f"substantive-{uuid4().hex[:12]}",
++                selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
++            )
++            candidates = await load_governed_topic_candidates(
++                session,
++                business_date=cutoff.date(),
++                timezone="Asia/Shanghai",
++                scoring_profile=config.profile,
++                governed_event_cutoff=cutoff,
++                config_snapshot=config.as_metadata(),
++            )
++            candidate = next(item for item in candidates if item.event_id == event_id)
++            projections[scoring_version] = candidate
++            if scoring_version == SUBSTANTIVE_TOPIC_SCORING_VERSION:
++                decision = select_daily_topic((candidate,), as_of=cutoff, config=config)
++                assert decision.scores[0].eligible is expected, (
++                    decision.scores[0].veto_codes,
++                    decision.scores[0].science_tech_editorial_reason_codes,
++                    decision.scores[0].science_tech_editorial_cohort,
++                    decision.scores[0].total,
++                )
++                if not expected:
++                    assert not decision.scores[0].priority_applied
++                    assert not decision.scores[0].threshold_bypass_applied
++        old = projections[QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION]
++        new = projections[SUBSTANTIVE_TOPIC_SCORING_VERSION]
++        assert old.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
++        assert (
++            new.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
++        ) is expected
++        # Taxonomy still supplies product fit; it simply cannot admit a subject.
++        assert new.product_matrix_fit_v2 == old.product_matrix_fit_v2
++
++
++@pytest.mark.integration
++@pytest.mark.asyncio(loop_scope="session")
++async def test_substantive_slot_keeps_expired_old_snapshot_and_pins_new_fresh_snapshot(
++    integration_context: IntegrationContext,
++) -> None:
++    old_acquisition, old_governance, _, cutoff = await _substantive_governed_fixture(
++        integration_context
++    )
++    new_acquisition, new_governance, _, _ = await _substantive_governed_fixture(integration_context)
++    profile = f"substantive-slot-{uuid4().hex[:12]}"
++    old_config = TopicScoringConfig(
++        version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++        profile=profile,
++        selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
++    )
++    new_config = replace(old_config, version=SUBSTANTIVE_TOPIC_SCORING_VERSION)
++    schedule = ContentSlotSchedule(
++        slot=ContentSlot.MORNING, enabled=True, target_hour=7, target_minute=30
++    )
++    policy = SlotRankingPolicy()
++    expired_date, fresh_date = date(2000, 1, 1), date(2100, 1, 1)
++    old_lineage = GovernedSlotLineage(
++        acquisition_run_id=old_acquisition,
++        governance_run_id=old_governance,
++        governed_event_cutoff=cutoff,
++    )
++    async with integration_context.session_factory() as session:
++        for acquisition_id, business_date in (
++            (old_acquisition, expired_date),
++            (new_acquisition, fresh_date),
++        ):
++            acquisition = await session.get(AcquisitionRunModel, acquisition_id)
++            assert acquisition is not None
++            acquisition.business_date = business_date
++            acquisition.content_slot = ContentSlot.MORNING.value
++        await session.commit()
++        old, created = await enqueue_content_slot_run(
++            session,
++            business_date=expired_date,
++            timezone="Asia/Shanghai",
++            schedule=schedule,
++            config=old_config,
++            policy=policy,
++            lineage=old_lineage,
++            trigger="scheduled",
++        )
++        assert created and old.expires_at < cutoff
++        old_id, old_snapshot, old_fingerprint = (
++            old.id,
++            dict(old.config_snapshot),
++            old.config_fingerprint,
++        )
++        with pytest.raises(ConflictError, match="immutable"):
++            await enqueue_content_slot_run(
++                session,
++                business_date=expired_date,
++                timezone="Asia/Shanghai",
++                schedule=schedule,
++                config=new_config,
++                policy=policy,
++                lineage=old_lineage,
++                trigger="scheduled",
++            )
++        stored_old = await session.get(ContentSlotRunModel, old_id)
++        assert stored_old is not None
++        assert stored_old.config_snapshot == old_snapshot
++        assert stored_old.config_fingerprint == old_fingerprint
++        replay, replay_created = await enqueue_content_slot_run(
++            session,
++            business_date=expired_date,
++            timezone="Asia/Shanghai",
++            schedule=schedule,
++            config=old_config,
++            policy=policy,
++            lineage=old_lineage,
++            trigger="scheduled",
++        )
++        assert replay.id == old_id and not replay_created
++        fresh_lineage = GovernedSlotLineage(
++            acquisition_run_id=new_acquisition,
++            governance_run_id=new_governance,
++            governed_event_cutoff=cutoff,
++        )
++        fresh, fresh_created = await enqueue_content_slot_run(
++            session,
++            business_date=fresh_date,
++            timezone="Asia/Shanghai",
++            schedule=schedule,
++            config=new_config,
++            policy=policy,
++            lineage=fresh_lineage,
++            trigger="scheduled",
++        )
++        fresh_id = fresh.id
++        assert fresh_created and fresh.config_snapshot == new_config.as_metadata()
++        assert fresh.slot_policy_snapshot == old.slot_policy_snapshot
++        assert fresh.rerank_config_snapshot == old.rerank_config_snapshot
++        fresh_replay, fresh_replay_created = await enqueue_content_slot_run(
++            session,
++            business_date=fresh_date,
++            timezone="Asia/Shanghai",
++            schedule=schedule,
++            config=new_config,
++            policy=policy,
++            lineage=fresh_lineage,
++            trigger="scheduled",
++        )
++        assert fresh_replay.id == fresh_id and not fresh_replay_created
+diff --git a/backend/tests/unit/test_topic_selection.py b/backend/tests/unit/test_topic_selection.py
+index d070146..18578f6 100644
+--- a/backend/tests/unit/test_topic_selection.py
++++ b/backend/tests/unit/test_topic_selection.py
+@@ -11,7 +11,6 @@ from app.domain.topic_selection import (
+     BROAD_HARD_TECH_POOL_POLICY_VERSION,
+     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
+     DEFAULT_TOPIC_SCORING_THRESHOLD,
+-    DEFAULT_TOPIC_SCORING_VERSION,
+     DELIVERED_CONTENT_VETO_RULE_VERSION,
+     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
+     GOV_CN_YAOWEN_PRIORITY_POLICY,
+@@ -43,7 +42,8 @@ CONFIG = TopicScoringConfig(
+     threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
+ )
+ TIERED_CONFIG = TopicScoringConfig(
+-    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
++    version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+ )
+ HISTORICAL_SUBSTANTIVE_CONFIG = TopicScoringConfig(
+     version=SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+@@ -134,10 +134,9 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
+     assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+
+
+-def test_current_config_exposes_broad_hard_tech_and_qualified_authoritative_rules() -> None:
++def test_point_eleven_config_retains_broad_pool_and_qualified_authoritative_rules() -> None:
+     metadata = TIERED_CONFIG.as_metadata()
+
+-    assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
+     assert metadata["version"] == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+     assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
+     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION
+diff --git a/backend/tests/unit/test_topic_selection_delivery.py b/backend/tests/unit/test_topic_selection_delivery.py
+index 893fb82..91268b4 100644
+--- a/backend/tests/unit/test_topic_selection_delivery.py
++++ b/backend/tests/unit/test_topic_selection_delivery.py
+@@ -178,8 +178,9 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
+     assert config.version == DEFAULT_TOPIC_SCORING_VERSION
+     assert config.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
+     assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
+-    assert config.selection_priority_rule_version == (
+-        "ministry-education-priority-v4-substantive-science-education"
++    assert config.selection_priority_rule_version == ("qualified-authoritative-priority-v1")
++    assert config.effective_science_tech_editorial_rule_version == (
++        "science-tech-editorial-v4-substantive-topic"
+     )
+
+
+diff --git a/compose.yaml b/compose.yaml
+index 3280e25..5407b3b 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -137,7 +137,7 @@ services:
+       CONTENT_HEARTBEAT_SECONDS: ${CONTENT_HEARTBEAT_SECONDS:-30}
+       CONTENT_MAX_ATTEMPTS: ${CONTENT_MAX_ATTEMPTS:-3}
+       CONTENT_FRESHNESS_WINDOW_DAYS: ${CONTENT_FRESHNESS_WINDOW_DAYS:-10}
+-      CONTENT_SCORING_VERSION: ${CONTENT_SCORING_VERSION:-scoring-v1-preview.11-qualified-authoritative-priority}
++      CONTENT_SCORING_VERSION: ${CONTENT_SCORING_VERSION:-scoring-v1-preview.12-substantive-topic-scope}
+       CONTENT_SCORING_PROFILE: ${CONTENT_SCORING_PROFILE:-preview}
+       CONTENT_SELECTION_PRIORITY_RULE_VERSION: ${CONTENT_SELECTION_PRIORITY_RULE_VERSION:-qualified-authoritative-priority-v1}
+       CONTENT_LLM_RERANK_ENABLED: ${CONTENT_LLM_RERANK_ENABLED:-true}
+diff --git a/scripts/doctor.sh b/scripts/doctor.sh
+index 3d05706..973ca79 100755
+--- a/scripts/doctor.sh
++++ b/scripts/doctor.sh
+@@ -404,7 +404,7 @@ def compose_bool(value):
+     raise SystemExit("topic rerank flags must be valid boolean values")
+
+ environment = services["content-worker"]["environment"]
+-if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.11-qualified-authoritative-priority":
++if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.12-substantive-topic-scope":
+     raise SystemExit("content selection must pin the qualified-authoritative scoring policy")
+ if environment["CONTENT_SELECTION_PRIORITY_RULE_VERSION"] != "qualified-authoritative-priority-v1":
+     raise SystemExit("content selection must pin the qualified-authoritative priority policy")
+diff --git a/backend/tests/unit/test_substantive_topic_scope.py b/backend/tests/unit/test_substantive_topic_scope.py
+new file mode 100644
+index 0000000..1e1e657
+--- /dev/null
++++ b/backend/tests/unit/test_substantive_topic_scope.py
+@@ -0,0 +1,369 @@
++"""Synthetic policy regressions, not measured human precision/recall or a safety classifier."""
++
++import json
++from dataclasses import asdict, replace
++from datetime import UTC, datetime, timedelta
++from hashlib import sha256
++from itertools import product
++from pathlib import Path
++from uuid import UUID
++
++import pytest
++from app.application.services.topic_selection import build_topic_scoring_config
++from app.core.config import Settings
++from app.domain.editorial_relevance import (
++    SCIENCE_TECH_EDITORIAL_RULE_VERSION,
++    SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
++    SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++    SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS,
++    ScienceTechEditorialCohort,
++    evaluate_science_tech_editorial_relevance,
++)
++from app.domain.topic_selection import (
++    GOV_CN_YAOWEN_PRIORITY_POLICY,
++    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
++    QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
++    SUBSTANTIVE_TOPIC_SCORING_VERSION,
++    TopicCandidate,
++    TopicScoringConfig,
++    score_topic_candidate,
++)
++from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
++
++NOW = datetime(2026, 9, 5, 8, tzinfo=UTC)
++HISTORICAL_VERSIONS = (
++    "scoring-v1-preview.6-tiered-science-tech-priority",
++    "scoring-v1-preview.7-delivered-repeat-history",
++    "scoring-v1-preview.8-threshold-059",
++    "scoring-v1-preview.9-broad-hard-tech-pool",
++    "scoring-v1-preview.10-substantive-science-education-priority",
++    "scoring-v1-preview.11-qualified-authoritative-priority",
++)
++HISTORICAL_POSITIVE_CASES = (
++    ("人工智能治理办法公布", "有关部门发布人工智能治理办法。办法明确模型风险评估和测试标准。"),
++    ("学校推进科学教育", "学校开设科学课程并培训科学教师。学生通过实验开展科学探究。"),
++    ("科研团队发布新模型", "团队发布新一代人工智能模型。该模型支持多模态输入并降低推理延迟。"),
++    ("量子计算取得进展", "研究团队研制量子计算芯片。实验测量精度达到新水平。其能耗降低30%。"),
++    ("研究取得新结果", "团队研制新型量子计算芯片。实验测量误差降至0.1%。其功耗降低30%。"),
++    ("有关部门发布新规范", "有关部门制定人工智能评测标准。标准明确风险评估与测试要求。"),
++    ("新成果发布", "研究团队开发人工智能算法并开源测试代码。"),
++    ("机器人产品上市", "企业发布新一代人形机器人并完成性能测试。"),
++)
++POSITIVE_CASES = (
++    *HISTORICAL_POSITIVE_CASES,
++    ("研究结果公布", "研究表明新材料能够降低电池能耗。实验测量效率提升20%。"),
++    ("科研团队公布发现", "团队证实新发现的蛋白质参与细胞修复机制。"),
++    ("芯片进入量产", "工厂量产新型半导体芯片。该芯片功耗降低30%。"),
++)
++HISTORICAL_NEGATIVE_CASES = (
++    ("经贸论坛举行", "与会代表讨论贸易投资和区域合作。会议还提及人工智能合作。"),
++    ("经济合作取得成果", "会议就基础设施投资和双边贸易达成共识\uff0c并提及人工智能治理。"),
++    ("经济合作取得成果", "会议研究区域发展贸易投资旅游文化和教育并要求推进人工智能合作。"),
++    ("双边会谈举行", "双方研究贸易金融港口公路等领域合作并要求推动人工智能交流。"),
++    ("人工智能发展新进展", "两地代表讨论货物运输便利化。港口贸易额增长。会议安排文艺演出。"),
++    ("会议通报", "人工智能、机器人、量子计算、人工智能、机器人、量子计算。"),
++    ("会议通报", "人工智能 机器人 量子计算。人工智能 机器人 量子计算。"),
++    ("会议通报", "会上提及人工智能。两地港口货物运输保持稳定。后续还将开展教育交流。"),
++    ("人工智能模型发布", None),
++    ("人工智能模型发布", "AI"),
++    ("会议通报", "人工智能科技教育"),
++)
++NEGATIVE_CASES = (
++    *HISTORICAL_NEGATIVE_CASES,
++    ("合作论坛举行", "代表讨论贸易投资。会议明确人工智能合作方向。"),
++    ("经贸会议举行", "双方就港口贸易达成共识。代表支持人工智能交流。"),
++    ("联合声明发布", "双方发布人工智能合作倡议。"),
++)
++
++
++@pytest.mark.parametrize(("title", "body"), POSITIVE_CASES)
++def test_substantive_subject_is_qualified(title: str, body: str) -> None:
++    result = evaluate_science_tech_editorial_relevance(
++        title, body, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    )
++    assert result.is_candidate
++    assert result.rule_version == SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    assert result.reason_codes[0] == "substantive_topic_primary"
++
++
++@pytest.mark.parametrize(("title", "body"), NEGATIVE_CASES)
++def test_incidental_or_unsupported_subject_is_not_qualified(title: str, body: str | None) -> None:
++    result = evaluate_science_tech_editorial_relevance(
++        title, body, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    )
++    assert not result.is_candidate
++    assert result.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
++    assert result.editorial_priority_score == 0
++    assert result.reason_codes[0].startswith("substantive_topic_")
++
++
++def test_repetition_does_not_manufacture_primary_subject() -> None:
++    background = "大会讨论双边经贸关系和港口基础设施建设。双方就货物运输便利化达成共识。"
++    incidental = "团队发布人工智能模型。"
++    for count in (1, 4, 100):
++        result = evaluate_science_tech_editorial_relevance(
++            "双边经贸会谈",
++            background + incidental * count,
++            rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++        )
++        assert not result.is_candidate
++
++
++@pytest.mark.parametrize(
++    ("title", "body"),
++    (
++        (
++            "测试数据公布",
++            "新型人工智能模型的准确率为92%。该系统的推理延迟为15毫秒,功耗比此前方案低三成。",
++        ),
++        (
++            "量子测试结果",
++            "新型量子芯片的误差率为0.1%。其工作温度为二十毫开尔文,持续运行时间为十小时。",
++        ),
++        ("新产品发布", "企业研制新型半导体芯片。该芯片功耗降低30%。"),
++        (
++            "政策发布",
++            "各国代表发布人工智能风险评估标准,规范模型能力测试和训练数据审查。该标准提出统一评测方法并明确技术报告要求。",
++        ),
++    ),
++)
++def test_explicit_measurement_or_technical_object_can_authenticate_subject(
++    title: str, body: str
++) -> None:
++    assert evaluate_science_tech_editorial_relevance(
++        title, body, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    ).is_candidate
++
++
++@pytest.mark.parametrize(
++    "body",
++    (
++        "人工智能 92% 机器人 30% 量子计算 0.1%。",
++        "量子计算 量子计算 量子计算 量子计算。",
++        "可回收火箭 可回收火箭 可回收火箭 可回收火箭。",
++        "半导体 芯片 半导体 芯片 集成电路 集成电路。",
++    ),
++)
++def test_bare_numbers_and_compound_nouns_are_not_predicates(body: str) -> None:
++    assert not evaluate_science_tech_editorial_relevance(
++        "关键词通报", body, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    ).is_candidate
++
++
++def test_continuity_is_bounded_and_resets_on_new_subject_or_paragraph() -> None:
++    anchor = "团队研制新型量子计算芯片。"
++    details = "实验测量误差降至0.1%。其功耗降低30%。"
++    assert evaluate_science_tech_editorial_relevance(
++        "最新研究", anchor + details, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    ).is_candidate
++    for separator in ("\n", "双方讨论港口投资和区域贸易。"):
++        result = evaluate_science_tech_editorial_relevance(
++            "最新研究",
++            anchor + separator + details * 2,
++            rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++        )
++        assert not result.is_candidate
++
++
++def test_body_bound_prevents_late_topic_rescue() -> None:
++    result = evaluate_science_tech_editorial_relevance(
++        "最新研究",
++        "双方讨论经贸合作。" * 100 + POSITIVE_CASES[2][1],
++        body_limit=120,
++        rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
++    )
++    assert not result.is_candidate
++    assert result.body_truncated
++    with pytest.raises(ValueError):
++        evaluate_science_tech_editorial_relevance(
++            "", "", body_limit=0, rule_version=SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++        )
++
++
++def _candidate(**changes: object) -> TopicCandidate:
++    candidate = TopicCandidate(
++        event_id=UUID(int=1),
++        event_version_id=UUID(int=2),
++        event_time=NOW,
++        source_trust=1,
++        source_diversity=4,
++        ai_relevance=1,
++        parent_relevance=1,
++        communication_potential=1,
++        product_matrix_fit_v2=1,
++        editorial_priority=1,
++        priority_title="教育部印发科学教育课程实施办法",
++        priority_summary="学校实施科学教育课程并培训教师。",
++    )
++    return replace(candidate, **changes)
++
++
++@pytest.mark.parametrize(
++    "policy", (None, GOV_CN_YAOWEN_PRIORITY_POLICY, MOE_SCIENCE_TOP1_PRIORITY_POLICY)
++)
++@pytest.mark.parametrize("trust", (0.1, 1.0))
++def test_scope_precedes_numeric_pool_and_source_priority(policy: str | None, trust: float) -> None:
++    config = build_topic_scoring_config(Settings(_env_file=None))
++    score = score_topic_candidate(
++        _candidate(topic_priority_policy=policy, source_trust=trust), as_of=NOW, config=config
++    )
++    assert not score.eligible
++    assert not score.priority_applied
++    assert not score.threshold_bypass_applied
++
++
++@pytest.mark.parametrize(
++    "changes",
++    (
++        {"unverified": True},
++        {"tier_c_only": True},
++        {"unsuitable_negative_incident": True},
++        {"privacy_legal_safety_uncertain": True},
++        {"prohibited_marketing_risk": True},
++        {"governance_resolved": False},
++        {"has_eligible_evidence": False},
++        {"days_since_last_selection": 3},
++        {"event_time": NOW - timedelta(days=11)},
++    ),
++)
++@pytest.mark.parametrize(
++    ("cohort", "policy"),
++    (
++        (ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY, GOV_CN_YAOWEN_PRIORITY_POLICY),
++        (
++            ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY,
++            MOE_SCIENCE_TOP1_PRIORITY_POLICY,
++        ),
++    ),
++)
++def test_genuine_vetoes_remain_authoritative(
++    changes: dict[str, object], cohort: ScienceTechEditorialCohort, policy: str
++) -> None:
++    config = build_topic_scoring_config(Settings(_env_file=None))
++    candidate = _candidate(
++        science_tech_editorial_cohort=cohort,
++        topic_priority_policy=policy,
++        **changes,
++    )
++    score = score_topic_candidate(candidate, as_of=NOW, config=config)
++    assert not score.eligible and not score.priority_applied and not score.threshold_bypass_applied
++
++
++def _hash(value: object) -> str:
++    return sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
++
++
++def _historical_score_digest() -> str:
++    rows = []
++    for version, cohort, policy, veto, feature, evidence in product(
++        HISTORICAL_VERSIONS,
++        tuple(ScienceTechEditorialCohort),
++        (None, GOV_CN_YAOWEN_PRIORITY_POLICY, MOE_SCIENCE_TOP1_PRIORITY_POLICY),
++        (False, True),
++        (0.0, 0.2, 0.5, 0.8, 1.0),
++        (False, True),
++    ):
++        config = build_topic_scoring_config(
++            Settings(
++                _env_file=None,
++                content_scoring_version=version,
++                content_selection_priority_rule_version=(
++                    "qualified-authoritative-priority-v1"
++                    if version == HISTORICAL_VERSIONS[5]
++                    else "ministry-education-priority-v4-substantive-science-education"
++                    if version == HISTORICAL_VERSIONS[4]
++                    else "ministry-education-priority-v3"
++                ),
++            )
++        )
++        candidate = _candidate(
++            science_tech_editorial_cohort=cohort,
++            topic_priority_policy=policy,
++            unverified=veto,
++            has_eligible_evidence=evidence,
++            editorial_priority=feature,
++            product_matrix_fit_v2=feature,
++            source_trust=feature,
++        )
++        rows.append(score_topic_candidate(candidate, as_of=NOW, config=config).as_metadata())
++    assert len(rows) == 1080
++    return _hash(rows)
++
++
++def test_historical_1080_scoring_explanations_are_byte_equivalent() -> None:
++    assert (
++        _historical_score_digest()
++        == "d23d658665caf062b45cc3fde01bf4fec758e860e691bab754f21804770eda3a"
++    )
++
++
++def _historical_editorial_digest() -> str:
++    return _hash(
++        [
++            asdict(evaluate_science_tech_editorial_relevance(title, body, rule_version=version))
++            for version in (
++                SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
++                SCIENCE_TECH_EDITORIAL_RULE_VERSION,
++            )
++            for title, body in (*HISTORICAL_POSITIVE_CASES, *HISTORICAL_NEGATIVE_CASES)
++        ]
++    )
++
++
++def test_literal_v2_v3_editorial_results_remain_unchanged() -> None:
++    assert SCIENCE_TECH_EDITORIAL_RULE_VERSION == "science-tech-editorial-v3-broad"
++    assert (
++        _historical_editorial_digest()
++        == "ace540bbbd8b4ace842c14209aa79450702105d3d90ac872eaf24cff4f631575"
++    )
++    assert evaluate_science_tech_editorial_relevance("人工智能模型发布").is_candidate
++
++
++def test_all_eleven_acquisition_fingerprints_are_frozen() -> None:
++    assert len(SOURCE_SEEDS) == 11
++    assert SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION not in (
++        SUPPORTED_SCIENCE_TECH_EDITORIAL_RULE_VERSIONS
++    )
++    assert {seed.relevance_rule_version for seed in SOURCE_SEEDS} == {
++        SCIENCE_TECH_EDITORIAL_RULE_VERSION
++    }
++    assert (
++        _hash([(seed.slug, seed.config_fingerprint) for seed in SOURCE_SEEDS])
++        == "75a72ee79df27a0108cf122acf99a869a7cae9db60b7f788f89fe4ee984fd71c"
++    )
++
++
++def test_config_defaults_and_new_snapshot_are_coherent() -> None:
++    new = build_topic_scoring_config(Settings(_env_file=None))
++    old = build_topic_scoring_config(
++        Settings(
++            _env_file=None, content_scoring_version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
++        )
++    )
++    assert new.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
++    assert (
++        new.effective_science_tech_editorial_rule_version == SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
++    )
++    assert TopicScoringConfig.from_metadata(new.as_metadata()).as_metadata() == new.as_metadata()
++    before, after = old.as_metadata(), new.as_metadata()
++    for key in ("version", "science_tech_editorial_rule_version"):
++        before.pop(key)
++        after.pop(key)
++    assert before == after
++    assert new.has_authenticated_ministry_priority
++    assert new.has_broad_hard_tech_pool and new.has_qualified_authoritative_priority
++    root = Path(__file__).resolve().parents[3]
++    for path in (".env.example", "compose.yaml", "scripts/doctor.sh"):
++        assert SUBSTANTIVE_TOPIC_SCORING_VERSION in (root / path).read_text()
++
++
++def test_mismatched_new_editorial_identity_cannot_enable_bypasses() -> None:
++    new = build_topic_scoring_config(Settings(_env_file=None))
++    mismatched = replace(
++        new,
++        science_tech_editorial_rule_version=SCIENCE_TECH_EDITORIAL_RULE_VERSION,
++        product_matrix_fit_rule_version=new.effective_product_matrix_fit_rule_version,
++    )
++    assert not mismatched.has_broad_hard_tech_pool
++    assert not mismatched.has_qualified_authoritative_priority
++    assert not mismatched.has_authenticated_ministry_priority

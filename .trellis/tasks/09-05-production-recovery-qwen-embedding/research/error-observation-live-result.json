@@ -1,0 +1,45 @@
+{
+  "active_brand_vector_count": 57,
+  "audit_accepted": null,
+  "audit_issue_counts": {},
+  "auditor_prompt_characters": 0,
+  "brand_hit_count": 6,
+  "capture_provider_error_codes": true,
+  "config_sha256": "e4bfb0206647266eac96b0218fe78fec5a4fbda1a8ad08ee3d2d7746f7d07d11",
+  "copy_version_sha256": "dd37d5bcdb5a10718a8bd4577782df15f13568d3e4309b6739cea13e240d9b94",
+  "database_writes": 0,
+  "delivery_verified": false,
+  "deterministic_error_count": 0,
+  "deterministic_issue_counts": {},
+  "deterministic_warning_count": 0,
+  "embedding_query_characters": 172,
+  "error_code": "provider_request_rejected",
+  "evidence_count": 10,
+  "generator_prompt_characters": 24238,
+  "generator_prompt_min_characters": 16833,
+  "http_calls": {
+    "audit": 0,
+    "embedding": 1,
+    "generation": 1
+  },
+  "http_status_codes": {
+    "embedding": 200,
+    "generation": 400
+  },
+  "input_character_limit": 40000,
+  "latency_ms": 1762,
+  "mode": "live_no_send_error_codes",
+  "outcome": "failed",
+  "packages_created": 0,
+  "provider_business_error_codes": {
+    "generation": "1301"
+  },
+  "release": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+  "repair_issue_count": 0,
+  "run_id": "1929a4fa-43f3-4636-816a-7cde3175e24c",
+  "schema": "production-recovery-no-send-v2-error-observation",
+  "selection_id": "249c02f0-9389-44ea-b571-2a1676b943a4",
+  "send_calls": 0,
+  "stage": "generation",
+  "transport_errors": {}
+}

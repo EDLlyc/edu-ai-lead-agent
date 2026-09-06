@@ -1,0 +1,98 @@
+# Production recovery before staged Qwen embedding migration
+
+## Goal
+
+Prove that the deployed acquisition -> governance -> selection -> generation -> Enterprise
+WeChat delivery workflow works again. The user's priority is operating production. Qwen
+unification remains the follow-on direction, not a prerequisite for the first recovery release.
+
+## Background and Confirmed Facts
+
+- User approved task creation/planning and then approved the final recovery-first summary with
+  "继续" on 2026-09-05. Implementation is authorized within this scope.
+- The initial September 5 observations at 19:13-19:17 CST are in
+  `research/production-baseline.md`: all 14 services ran, but the latest successful delivery was
+  still September 2 at 12:30. Natural production then supplied the missing post-hotfix evidence
+  on September 6: three accepted morning copy runs produced validated, audit-accepted packages
+  and three formal text+image deliveries at 07:30-07:32 CST. More than two hours of subsequent
+  two-second scheduler/dispatcher polling created no duplicate. Safe lineage and protected-state
+  evidence are in `research/production-recovery-observation-2026-09-06.json`.
+- Same-version terminal runs are not automatically recreated
+  (`backend/app/infrastructure/db/copy_generation.py:168`).
+- Production uses Zhipu brand embeddings. Qwen endpoint/key are absent from the protected
+  environment, the content worker has no Qwen key, and both visual embedding tables are empty.
+- Previous release/rollback evidence is in
+  `.trellis/tasks/archive/2026-09/09-04-production-brand-embedding-hotfix/result.md`.
+
+## Requirements
+
+- R1 [P0]: Trace one fresh legitimate production run through all actual services. Separate
+  process health, provider success, content acceptance, and terminal message delivery.
+- R2 [P0]: Preserve configured recipient, review/quality gates, time windows, idempotency,
+  delivered/unknown-outcome records and the seven historic queued copy jobs. Do not reopen
+  terminal jobs, extend expired windows, or bump a version merely to force replay.
+  Window source: `backend/app/domain/content_slots.py:74`; delivery authority:
+  `.trellis/spec/backend/wecom-delivery.md`.
+- R3 [P0]: Diagnose with bounded no-delivery checks, then correct only evidenced blockers.
+  Keep current embedding/chat/image/reviewer providers for the first recovery release.
+  Release only task-scoped changes; preserve the 59 pre-existing dirty worktree entries.
+- R4 [P1]: Keep brand queries in the active index's identity. Any explicit provider pin must
+  belong to a reversible config/image release. The auto resolver prefers Alibaba visual mode
+  (`backend/app/core/config.py:554`); enabling it without migration can empty brand retrieval.
+- R5 [P1]: Defer Qwen live cutover until authorized credentials, complete replacement indexes,
+  relevance checks and rollback are available. The brand reindex tool is development-only
+  (`backend/app/brand_embedding_reindex_main.py:277`); governance directly builds Zhipu
+  embeddings (`backend/app/infrastructure/ai/factory.py:355`). This is not config-only work.
+- R6 [P0]: Use only authorized configured accounts and bounded calls. Never expose private
+  content, secrets, provider bodies or private object locations in task evidence.
+- R7 [P0]: For future selection, require technology, AI or science education to be the
+  substantive subject. General current affairs, diplomacy and trade cannot qualify solely from
+  incidental technology/education keywords. Preserve genuinely substantive AI governance,
+  scientific research, technology progress/products and science-education practice. Introduce
+  an immutable new rule/config identity; preserve historical editorial/scoring replay. Do not
+  blacklist names, countries or government sources, or reinterpret this relevance policy as
+  a provider-safety classifier. The user explicitly approved this proposed boundary with
+  "好的，请你处理" after the content review on September 5.
+
+## Acceptance Criteria
+
+- AC1 (R1, R6): Timestamped baseline/post-change evidence identifies release, service health,
+  exact pipeline stage, and safe error codes.
+- AC2 (R1, R3): A newly eligible selection yields accepted copy, a validated package and a formal
+  `wecom_delivery_jobs.status=delivered` through the configured dispatcher. Record safe lineage
+  IDs/timestamps. Until observed, recovery remains unverified, not complete.
+- AC3 (R2): A repeat scheduler/dispatcher pass creates no duplicate delivery; protected historic
+  jobs and already-delivered/unknown-outcome records remain unchanged.
+- AC4 (R3, R4): Relevant unit/contract/integration tests, lint/type/format checks and applicable
+  immutable-release gates pass. Verify coherent source/image/config rollback before activation.
+- AC5 (R5): Handoff clearly separates delivered recovery from deferred Qwen work, partial-source
+  failures and official-account paths with no actual execution evidence.
+- AC6 (R7): Provider-free positive/negative/boundary cases prove substantive relevance before
+  numeric eligibility, broad-pool admission or authoritative-source ordering. Cover incidental
+  mentions in diplomatic/trade meetings, genuine AI governance, school science education,
+  research/product news, title/body disagreement and title-only acquisition. Old literal
+  editorial v2/v3 and scoring .6-.11 configurations retain their original semantics and hashes.
+  New-version rollout must not replay expired selections or mutate frozen historical records.
+
+## Out of Scope for the First Recovery Release
+
+Qwen credential provisioning/live cutover; wholesale indexing or event reclustering; broad replay,
+manual SQL queue resets, schedule extensions, new recipients, public WeChat publishing; unrelated
+Reviewer, evaluation, resume or local WIP changes. Do not enable unused workflows just to report
+all services green.
+
+## Decisions and Deferred Items
+
+- Retain working Zhipu wiring until production delivery is proven. Investigate source errors,
+  but expand connector fixes only if they block a qualifying run.
+- The September 6 natural morning preparation/target completed without manual replay and now
+  satisfies AC2/AC3. A separate `.12` release must not reuse the expired September 5 release
+  baseline. Its reviewed one-shot transaction is fenced to the September 6 afternoon safe period,
+  after the noon delivery window closes and before the evening preparation margin expires.
+- No unresolved product question blocks this bounded recovery plan. Qwen deployment is deferred;
+  the final planning summary has been approved for implementation.
+- The subsequent substantive-topic proposal is now approved. Earlier content-review records
+  correctly describe the decision as pending at their observation time; this approval supersedes
+  that pending status without rewriting those historical records. Existing HTTP-400 handling
+  already isolates a refused job, so no provider/retry change or repeat refused-input call is
+  included. A narrower candidate policy does not itself prove production delivery recovery.
