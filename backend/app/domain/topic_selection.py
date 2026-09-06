@@ -15,6 +15,7 @@ from app.domain.editorial_relevance import (
     SCIENCE_AI_EDUCATION_RULE_VERSION,
     SCIENCE_TECH_EDITORIAL_RULE_VERSION,
     SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION,
+    SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION,
     ScienceTechContentSignal,
     ScienceTechEditorialCohort,
 )
@@ -42,7 +43,8 @@ SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = (
 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION = (
     "scoring-v1-preview.11-qualified-authoritative-priority"
 )
-DEFAULT_TOPIC_SCORING_VERSION = QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+SUBSTANTIVE_TOPIC_SCORING_VERSION = "scoring-v1-preview.12-substantive-topic-scope"
+DEFAULT_TOPIC_SCORING_VERSION = SUBSTANTIVE_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -50,6 +52,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -57,12 +60,14 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -266,6 +271,8 @@ class TopicScoringConfig:
             return None
         if self.science_tech_editorial_rule_version is not None:
             return self.science_tech_editorial_rule_version
+        if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION:
+            return SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
         if self.version in {
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
@@ -282,6 +289,7 @@ class TopicScoringConfig:
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+            SUBSTANTIVE_TOPIC_SCORING_VERSION,
         }:
             return BROAD_HARD_TECH_POOL_POLICY_VERSION
         return None
@@ -320,13 +328,13 @@ class TopicScoringConfig:
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION: (
                 DELIVERED_CONTENT_VETO_RULE_VERSION
             ),
-            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (
-                DELIVERED_CONTENT_VETO_RULE_VERSION
-            ),
+            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (DELIVERED_CONTENT_VETO_RULE_VERSION),
+            SUBSTANTIVE_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         expected_priority_rule = (
             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
-            if self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+            if self.version
+            in {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, SUBSTANTIVE_TOPIC_SCORING_VERSION}
             else MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
             if self.version == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
             else MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
@@ -337,7 +345,9 @@ class TopicScoringConfig:
             and self.uses_tiered_editorial_features
             and self.effective_science_tech_editorial_rule_version
             == (
-                SCIENCE_TECH_EDITORIAL_RULE_VERSION
+                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
+                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
+                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
                 if self.version
                 in {
                     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
@@ -357,20 +367,30 @@ class TopicScoringConfig:
                 BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
                 SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
                 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+                SUBSTANTIVE_TOPIC_SCORING_VERSION,
             }
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
-            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            == (
+                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
+                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
+                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            )
             and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
         )
 
     @property
     def has_qualified_authoritative_priority(self) -> bool:
         return (
-            self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+            self.version
+            in {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, SUBSTANTIVE_TOPIC_SCORING_VERSION}
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
-            == SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            == (
+                SCIENCE_TECH_EDITORIAL_V4_RULE_VERSION
+                if self.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
+                else SCIENCE_TECH_EDITORIAL_RULE_VERSION
+            )
             and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
             and self.selection_priority_rule_version
             == QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION

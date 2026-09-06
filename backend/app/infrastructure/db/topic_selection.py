@@ -32,6 +32,7 @@ from app.domain.topic_selection import (
     DELIVERED_CONTENT_VETO_RULE_VERSION,
     GOV_CN_YAOWEN_PRIORITY_POLICY,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
     DailyTopicDecision,
     TopicCandidate,
     TopicScoringConfig,
@@ -838,9 +839,16 @@ async def load_governed_topic_candidates(
             version.representative_title,
             editorial_body,
         )
+        # Only the new selection identity authenticates subject matter from content alone.
+        # Taxonomy remains available to historical replay and its independent scoring features.
+        subject_body = (
+            "。".join((summary, *(fact for fact in facts_value if isinstance(fact, str))))
+            if scoring_config.version == SUBSTANTIVE_TOPIC_SCORING_VERSION
+            else editorial_body
+        )
         science_tech_editorial = evaluate_science_tech_editorial_relevance(
             version.representative_title,
-            editorial_body,
+            subject_body,
             rule_version=science_tech_editorial_rule_version,
         )
         product_fit_v2 = evaluate_product_matrix_fit_v2(

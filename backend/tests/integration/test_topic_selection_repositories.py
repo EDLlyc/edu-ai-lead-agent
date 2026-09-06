@@ -16,7 +16,7 @@ from app.domain.content_slots import (
     SlotRankingPolicy,
     select_slot_topics,
 )
-from app.domain.editorial_relevance import ScienceTechContentSignal
+from app.domain.editorial_relevance import ScienceTechContentSignal, ScienceTechEditorialCohort
 from app.domain.governance_enums import FactualCategory
 from app.domain.ministry_education_priority import (
     MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
@@ -40,6 +40,7 @@ from app.domain.topic_selection import (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SOURCE_PRIORITY_RULE_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
+    SUBSTANTIVE_TOPIC_SCORING_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     NoTopicCode,
     TopicScoringConfig,
@@ -56,6 +57,7 @@ from app.infrastructure.db.governance_repositories import create_governance_run_
 from app.infrastructure.db.models import (
     AcquisitionJobModel,
     AcquisitionRunModel,
+    ContentSlotRunModel,
     EventClusterModel,
     EventClusterVersionModel,
     EvidenceCandidateModel,
@@ -83,6 +85,14 @@ from .conftest import IntegrationContext
 from .governance_graph_support import FakeEmbeddingModel, FakeFactualAnalysisModel
 from .test_event_organization import _build_graph, _claim
 from .test_governance_repositories import _create_acquisition_fixture
+
+
+def _fixture_embedding(candidate_id: UUID) -> FakeEmbeddingModel:
+    """Keep independent synthetic stories out of the semantic-duplicate event path."""
+
+    return FakeEmbeddingModel(
+        vector=tuple(1.0 if candidate_id.int & (1 << index) else -1.0 for index in range(128)) * 16
+    )
 
 
 @pytest.mark.integration
@@ -421,7 +431,7 @@ async def test_ministry_policy_authenticates_from_source_version_and_round_trips
             category=FactualCategory.AI_EDUCATION_POLICY,
             entity_name="教育部",
         ),
-        embedding_model=FakeEmbeddingModel(),
+        embedding_model=_fixture_embedding(candidate_id),
         now=now,
     )
     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
@@ -643,7 +653,7 @@ async def test_government_yaowen_policy_authenticates_from_a_real_source_occurre
             category=FactualCategory.AI_INDUSTRY_APPLICATION,
             entity_name="国务院有关部门",
         ),
-        embedding_model=FakeEmbeddingModel(),
+        embedding_model=_fixture_embedding(candidate_id),
         now=now,
     )
     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
@@ -732,7 +742,7 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
             category=FactualCategory.AI_INDUSTRY_APPLICATION,
             entity_name="硬科技教育项目",
         ),
-        embedding_model=FakeEmbeddingModel(),
+        embedding_model=_fixture_embedding(candidate_ids[0]),
         now=now,
     )
     graph_result = await graph.ainvoke(governance_graph_input(claimed_governance))
@@ -740,7 +750,10 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
     assert isinstance(event_id, UUID)
 
     suffix = uuid4().hex[:12]
-    scoring_config = TopicScoringConfig(profile=f"rerank-v3-atomic-{suffix}")
+    scoring_config = TopicScoringConfig(
+        version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+        profile=f"rerank-v3-atomic-{suffix}",
+    )
     rerank_config = TopicRerankConfig(
         enabled=True,
         provider="fake",
@@ -989,3 +1002,249 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
     assert slot_record.policy_version == rerank_config.policy_version
     assert slot_record.failure_code is None
     assert len(slot_record.reasons) == 2
+
+
+async def _substantive_governed_fixture(
+    context: IntegrationContext,
+) -> tuple[UUID, UUID, UUID, datetime]:
+    acquisition_id, candidate_ids = await _create_acquisition_fixture(context, candidate_count=1)
+    now = datetime.now(UTC)
+    async with context.session_factory() as session:
+        candidate = await session.get(EvidenceCandidateModel, candidate_ids[0])
+        assert candidate is not None
+        candidate.title = f"研究团队公布新结果-{uuid4().hex[:8]}"
+        candidate.clean_text = f"研究团队研制新型量子计算芯片并完成测试。批次 {uuid4().hex}。"
+        candidate.published_at = now
+        candidate.first_fetched_at = now
+        await session.commit()
+    bundle = build_governance_version_bundle(context.settings)
+    async with context.session_factory() as session:
+        await create_governance_run_for_acquisition(
+            session, acquisition_run_id=acquisition_id, bundle=bundle, timezone="Asia/Shanghai"
+        )
+    claimed = await _claim(context, worker_id="substantive-topic-fixture")
+    graph = _build_graph(
+        context,
+        bundle=bundle,
+        analysis_model=FakeFactualAnalysisModel(
+            category=FactualCategory.AI_GOVERNANCE_SAFETY,
+            entity_name=f"研究团队-{uuid4().hex[:8]}",
+        ),
+        # Distinct synthetic stories must not all have the same exact semantic vector, which
+        # would make earlier fixture event assignments contaminate the next projection case.
+        embedding_model=_fixture_embedding(candidate_ids[0]),
+        now=now,
+    )
+    result = await graph.ainvoke(governance_graph_input(claimed))
+    event_id = result["event_id"]
+    assert isinstance(event_id, UUID)
+    return acquisition_id, claimed.run_id, event_id, now + timedelta(minutes=1)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("title", "summary", "facts", "expected"),
+    (
+        (
+            "经贸会议举行",
+            "会议讨论港口贸易和运输便利化安排。",
+            ("代表协商旅游航线与文化交流。",),
+            False,
+        ),
+        ("经贸会议举行", "会议讨论港口贸易和运输便利化安排。", ("会议提及人工智能合作。",), False),
+        (
+            "最新实验结果公布",
+            "团队研制新型量子计算芯片。",
+            (
+                "其工作温度达到二十毫开尔文。",
+                "实验测得误差率下降三成。",
+                "该器件在持续测试中表现稳定。",
+            ),
+            True,
+        ),
+        (
+            "实施方案发布",
+            "有关部门发布人工智能治理办法。",
+            ("办法明确模型风险评估和测试标准。",),
+            True,
+        ),
+        (
+            "学校推进科学教育",
+            "学校开设科学课程并培训科学教师。",
+            ("学生通过实验开展科学探究。",),
+            True,
+        ),
+    ),
+)
+async def test_substantive_projection_uses_content_not_category_rescue(
+    integration_context: IntegrationContext,
+    title: str,
+    summary: str,
+    facts: tuple[str, ...],
+    expected: bool,
+) -> None:
+    _, _, event_id, cutoff = await _substantive_governed_fixture(integration_context)
+    # This is a synthetic fixture projection, not mutation/reinterpretation of a production event.
+    async with integration_context.session_factory() as session:
+        event = await session.get(EventClusterModel, event_id)
+        assert event is not None and event.current_version_id is not None
+        version = await session.get(EventClusterVersionModel, event.current_version_id)
+        assert version is not None
+        version.representative_title = title
+        version.summary_projection = {
+            **version.summary_projection,
+            "summary": summary,
+            "facts": list(facts),
+        }
+        version.category_projection = ["ai_governance_safety", "youth_science_education"]
+        await session.commit()
+        projections = {}
+        for scoring_version in (
+            QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+            SUBSTANTIVE_TOPIC_SCORING_VERSION,
+        ):
+            config = TopicScoringConfig(
+                version=scoring_version,
+                profile=f"substantive-{uuid4().hex[:12]}",
+                selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+            )
+            candidates = await load_governed_topic_candidates(
+                session,
+                business_date=cutoff.date(),
+                timezone="Asia/Shanghai",
+                scoring_profile=config.profile,
+                governed_event_cutoff=cutoff,
+                config_snapshot=config.as_metadata(),
+            )
+            candidate = next(item for item in candidates if item.event_id == event_id)
+            projections[scoring_version] = candidate
+            if scoring_version == SUBSTANTIVE_TOPIC_SCORING_VERSION:
+                decision = select_daily_topic((candidate,), as_of=cutoff, config=config)
+                assert decision.scores[0].eligible is expected, (
+                    decision.scores[0].veto_codes,
+                    decision.scores[0].science_tech_editorial_reason_codes,
+                    decision.scores[0].science_tech_editorial_cohort,
+                    decision.scores[0].total,
+                )
+                if not expected:
+                    assert not decision.scores[0].priority_applied
+                    assert not decision.scores[0].threshold_bypass_applied
+        old = projections[QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION]
+        new = projections[SUBSTANTIVE_TOPIC_SCORING_VERSION]
+        assert old.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
+        assert (
+            new.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
+        ) is expected
+        # Taxonomy still supplies product fit; it simply cannot admit a subject.
+        assert new.product_matrix_fit_v2 == old.product_matrix_fit_v2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_substantive_slot_keeps_expired_old_snapshot_and_pins_new_fresh_snapshot(
+    integration_context: IntegrationContext,
+) -> None:
+    old_acquisition, old_governance, _, cutoff = await _substantive_governed_fixture(
+        integration_context
+    )
+    new_acquisition, new_governance, _, _ = await _substantive_governed_fixture(integration_context)
+    profile = f"substantive-slot-{uuid4().hex[:12]}"
+    old_config = TopicScoringConfig(
+        version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+        profile=profile,
+        selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+    )
+    new_config = replace(old_config, version=SUBSTANTIVE_TOPIC_SCORING_VERSION)
+    schedule = ContentSlotSchedule(
+        slot=ContentSlot.MORNING, enabled=True, target_hour=7, target_minute=30
+    )
+    policy = SlotRankingPolicy()
+    expired_date, fresh_date = date(2000, 1, 1), date(2100, 1, 1)
+    old_lineage = GovernedSlotLineage(
+        acquisition_run_id=old_acquisition,
+        governance_run_id=old_governance,
+        governed_event_cutoff=cutoff,
+    )
+    async with integration_context.session_factory() as session:
+        for acquisition_id, business_date in (
+            (old_acquisition, expired_date),
+            (new_acquisition, fresh_date),
+        ):
+            acquisition = await session.get(AcquisitionRunModel, acquisition_id)
+            assert acquisition is not None
+            acquisition.business_date = business_date
+            acquisition.content_slot = ContentSlot.MORNING.value
+        await session.commit()
+        old, created = await enqueue_content_slot_run(
+            session,
+            business_date=expired_date,
+            timezone="Asia/Shanghai",
+            schedule=schedule,
+            config=old_config,
+            policy=policy,
+            lineage=old_lineage,
+            trigger="scheduled",
+        )
+        assert created and old.expires_at < cutoff
+        old_id, old_snapshot, old_fingerprint = (
+            old.id,
+            dict(old.config_snapshot),
+            old.config_fingerprint,
+        )
+        with pytest.raises(ConflictError, match="immutable"):
+            await enqueue_content_slot_run(
+                session,
+                business_date=expired_date,
+                timezone="Asia/Shanghai",
+                schedule=schedule,
+                config=new_config,
+                policy=policy,
+                lineage=old_lineage,
+                trigger="scheduled",
+            )
+        stored_old = await session.get(ContentSlotRunModel, old_id)
+        assert stored_old is not None
+        assert stored_old.config_snapshot == old_snapshot
+        assert stored_old.config_fingerprint == old_fingerprint
+        replay, replay_created = await enqueue_content_slot_run(
+            session,
+            business_date=expired_date,
+            timezone="Asia/Shanghai",
+            schedule=schedule,
+            config=old_config,
+            policy=policy,
+            lineage=old_lineage,
+            trigger="scheduled",
+        )
+        assert replay.id == old_id and not replay_created
+        fresh_lineage = GovernedSlotLineage(
+            acquisition_run_id=new_acquisition,
+            governance_run_id=new_governance,
+            governed_event_cutoff=cutoff,
+        )
+        fresh, fresh_created = await enqueue_content_slot_run(
+            session,
+            business_date=fresh_date,
+            timezone="Asia/Shanghai",
+            schedule=schedule,
+            config=new_config,
+            policy=policy,
+            lineage=fresh_lineage,
+            trigger="scheduled",
+        )
+        fresh_id = fresh.id
+        assert fresh_created and fresh.config_snapshot == new_config.as_metadata()
+        assert fresh.slot_policy_snapshot == old.slot_policy_snapshot
+        assert fresh.rerank_config_snapshot == old.rerank_config_snapshot
+        fresh_replay, fresh_replay_created = await enqueue_content_slot_run(
+            session,
+            business_date=fresh_date,
+            timezone="Asia/Shanghai",
+            schedule=schedule,
+            config=new_config,
+            policy=policy,
+            lineage=fresh_lineage,
+            trigger="scheduled",
+        )
+        assert fresh_replay.id == fresh_id and not fresh_replay_created

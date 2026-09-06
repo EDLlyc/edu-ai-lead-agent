@@ -390,7 +390,7 @@ def compose_bool(value):
     raise SystemExit("topic rerank flags must be valid boolean values")
 
 environment = services["content-worker"]["environment"]
-if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.11-qualified-authoritative-priority":
+if environment["CONTENT_SCORING_VERSION"] != "scoring-v1-preview.12-substantive-topic-scope":
     raise SystemExit("content selection must pin the qualified-authoritative scoring policy")
 if environment["CONTENT_SELECTION_PRIORITY_RULE_VERSION"] != "qualified-authoritative-priority-v1":
     raise SystemExit("content selection must pin the qualified-authoritative priority policy")

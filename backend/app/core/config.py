@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.11-qualified-authoritative-priority"
+    content_scoring_version: str = "scoring-v1-preview.12-substantive-topic-scope"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = (
         "qualified-authoritative-priority-v1"
