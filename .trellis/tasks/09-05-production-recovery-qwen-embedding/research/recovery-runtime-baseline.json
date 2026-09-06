@@ -1,0 +1,178 @@
+{
+  "application_repo_digests": [
+    "edu-ai-lead-agent-backend@sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454"
+  ],
+  "application_revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+  "env_fingerprint": {
+    "gid": 1001,
+    "mode": "0o600",
+    "sha256": "bff0015eeabd72fbcf34f48aaeb5f6a077c9752a3afd7953d0ae67b934898b84",
+    "uid": 1000
+  },
+  "markers": {
+    ".release-commit": {
+      "mode": "0o600",
+      "sha256": "30ccb8f915eba2e15a256d76e17c4814d9da6a604a188c8d47c00d019769e9e7",
+      "uid": 0,
+      "values": {
+        "commit": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1"
+      }
+    },
+    ".release.env": {
+      "mode": "0o600",
+      "sha256": "37b940c6e6df6a65ae12bc372c381e78ac0b2866cf439c3552bebfddbac57467",
+      "uid": 0,
+      "values": {
+        "APP_IMAGE": "edu-ai-lead-agent-backend@sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454"
+      }
+    }
+  },
+  "services": [
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "wechat-official-account-draft-worker",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "official-account-weekly-dag-worker",
+      "status": "running"
+    },
+    {
+      "health": "healthy",
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "acquisition-api",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "official-account-weekly-scheduler",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "official-account-local-worker",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "content-worker",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "wecom-dispatcher",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "content-scheduler",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "acquisition-worker",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "governance-worker",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "governance-scheduler",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:35e4405a5dfa06e70a45c360d8838021e00c05938ac7f7e818378c6454d48454",
+      "oom": false,
+      "restarts": 0,
+      "revision": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+      "service": "acquisition-scheduler",
+      "status": "running"
+    },
+    {
+      "health": null,
+      "image": "sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3",
+      "oom": false,
+      "restarts": 0,
+      "revision": null,
+      "service": "minio-init",
+      "status": "exited"
+    },
+    {
+      "health": "healthy",
+      "image": "sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337",
+      "oom": false,
+      "restarts": 0,
+      "revision": null,
+      "service": "postgres",
+      "status": "running"
+    },
+    {
+      "health": "healthy",
+      "image": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
+      "oom": false,
+      "restarts": 0,
+      "revision": null,
+      "service": "minio",
+      "status": "running"
+    }
+  ],
+  "recorded_at_utc": "2026-09-05 12:17:04 UTC",
+  "database_baseline": {
+    "copy_attempts": 479,
+    "delivery_attempts": 191,
+    "material_packages": 112,
+    "delivered": 95,
+    "latest_delivered_cst": "2026-09-02T12:30:02.193720+08:00",
+    "alembic_version": "20260901_0042",
+    "historical_queued_count": 7,
+    "historical_queued_md5": "f47f1f6394b8dfaa7638906b11059b2e"
+  }
+}

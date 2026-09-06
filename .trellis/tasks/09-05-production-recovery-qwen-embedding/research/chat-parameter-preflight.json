@@ -1,0 +1,15 @@
+{
+  "business_error_code": null,
+  "config_sha256": "0a9fedc03077ae929676c2f125cc4080b121875722c621007ff8caaff2148d34",
+  "error_code": null,
+  "http_calls": 0,
+  "http_status": null,
+  "latency_ms": 67,
+  "mode": "dry_run",
+  "outcome": "preflight_passed_live_unverified",
+  "release": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+  "response_bytes": 0,
+  "schema": "zhipu-chat-parameter-probe-v1",
+  "source_sha256": "70105e3d9fcbc4db75a879d1e44af357f3d182b2cbdbcebbddcae6bbbe51ec86",
+  "strict_ok": null
+}

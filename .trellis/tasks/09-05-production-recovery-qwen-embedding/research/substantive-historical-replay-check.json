@@ -1,0 +1,85 @@
+{
+  "baseline_commit": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+  "network": "unshare --net; env -i; provider-free imports",
+  "scope": "Six historical config metadata/round-trips/fingerprints; 1080 score/explanation combinations; twelve literal v2/v3 outputs; eleven active source IDs/fingerprints",
+  "status": "pass",
+  "baseline": {
+    "config_count": 6,
+    "configs": [
+      [
+        "scoring-v1-preview.6-tiered-science-tech-priority",
+        "3bacfdc19f070f9c2412e0313fff02338fd8dc3fbee074af7840061e2a56a9eb",
+        "3bacfdc19f070f9c2412e0313fff02338fd8dc3fbee074af7840061e2a56a9eb"
+      ],
+      [
+        "scoring-v1-preview.7-delivered-repeat-history",
+        "f4c2e68fd3288e82d0a5e587c48f5e78b03cbee047fde9c54a6f18f75e5a69bf",
+        "f4c2e68fd3288e82d0a5e587c48f5e78b03cbee047fde9c54a6f18f75e5a69bf"
+      ],
+      [
+        "scoring-v1-preview.8-threshold-059",
+        "4176b3276c87c086018a55e54012994560bfa4908316fdadd1fced2210cb42f5",
+        "4176b3276c87c086018a55e54012994560bfa4908316fdadd1fced2210cb42f5"
+      ],
+      [
+        "scoring-v1-preview.9-broad-hard-tech-pool",
+        "a9fcf88070354a0a80d2fb39da5dbc3ef5557f9d530ca283bfe1af05a7be71e1",
+        "a9fcf88070354a0a80d2fb39da5dbc3ef5557f9d530ca283bfe1af05a7be71e1"
+      ],
+      [
+        "scoring-v1-preview.10-substantive-science-education-priority",
+        "89adecae458c27f0f8cd665725299ffd3d2fc36c82cf204e4f2e9b46b9509add",
+        "89adecae458c27f0f8cd665725299ffd3d2fc36c82cf204e4f2e9b46b9509add"
+      ],
+      [
+        "scoring-v1-preview.11-qualified-authoritative-priority",
+        "753c2e15057018579ab7e12035a496aa2fb5b55501154196d460df3cdc8b7618",
+        "753c2e15057018579ab7e12035a496aa2fb5b55501154196d460df3cdc8b7618"
+      ]
+    ],
+    "editorial_count": 12,
+    "score_count": 1080,
+    "seed_count": 11,
+    "sha256": "a9f785d62edb60860ae14a483ad79c432be82a8a04bf51313841d611b34ff56d"
+  },
+  "candidate": {
+    "config_count": 6,
+    "configs": [
+      [
+        "scoring-v1-preview.6-tiered-science-tech-priority",
+        "3bacfdc19f070f9c2412e0313fff02338fd8dc3fbee074af7840061e2a56a9eb",
+        "3bacfdc19f070f9c2412e0313fff02338fd8dc3fbee074af7840061e2a56a9eb"
+      ],
+      [
+        "scoring-v1-preview.7-delivered-repeat-history",
+        "f4c2e68fd3288e82d0a5e587c48f5e78b03cbee047fde9c54a6f18f75e5a69bf",
+        "f4c2e68fd3288e82d0a5e587c48f5e78b03cbee047fde9c54a6f18f75e5a69bf"
+      ],
+      [
+        "scoring-v1-preview.8-threshold-059",
+        "4176b3276c87c086018a55e54012994560bfa4908316fdadd1fced2210cb42f5",
+        "4176b3276c87c086018a55e54012994560bfa4908316fdadd1fced2210cb42f5"
+      ],
+      [
+        "scoring-v1-preview.9-broad-hard-tech-pool",
+        "a9fcf88070354a0a80d2fb39da5dbc3ef5557f9d530ca283bfe1af05a7be71e1",
+        "a9fcf88070354a0a80d2fb39da5dbc3ef5557f9d530ca283bfe1af05a7be71e1"
+      ],
+      [
+        "scoring-v1-preview.10-substantive-science-education-priority",
+        "89adecae458c27f0f8cd665725299ffd3d2fc36c82cf204e4f2e9b46b9509add",
+        "89adecae458c27f0f8cd665725299ffd3d2fc36c82cf204e4f2e9b46b9509add"
+      ],
+      [
+        "scoring-v1-preview.11-qualified-authoritative-priority",
+        "753c2e15057018579ab7e12035a496aa2fb5b55501154196d460df3cdc8b7618",
+        "753c2e15057018579ab7e12035a496aa2fb5b55501154196d460df3cdc8b7618"
+      ]
+    ],
+    "editorial_count": 12,
+    "score_count": 1080,
+    "seed_count": 11,
+    "sha256": "a9f785d62edb60860ae14a483ad79c432be82a8a04bf51313841d611b34ff56d"
+  },
+  "limits": "Synthetic compatibility check only; no provider or production acceptance. Rerun after relevant source changes."
+}

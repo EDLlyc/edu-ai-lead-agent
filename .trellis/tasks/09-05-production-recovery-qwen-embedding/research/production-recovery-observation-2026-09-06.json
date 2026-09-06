@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-06T09:55:44+08:00",
+  "business_timezone": "Asia/Shanghai",
+  "business_date": "2026-09-06",
+  "production_release": "5c560da71bcbb61b765d3fe82c742cf2d5e676e1",
+  "production_scoring_version": "scoring-v1-preview.11-qualified-authoritative-priority",
+  "service_health": {
+    "long_running_services_up": 14,
+    "application_services_up": 12,
+    "infrastructure_services_healthy": 2,
+    "acquisition_api_healthy": true
+  },
+  "fresh_pipeline": {
+    "copy_runs_accepted": 3,
+    "material_packages": 3,
+    "deterministic_validation_passed": 3,
+    "copy_audit_accepted": 3,
+    "formal_delivery_jobs_delivered": 3,
+    "text_delivered": 3,
+    "image_delivered": 3
+  },
+  "lineage": [
+    {
+      "ordinal": 1,
+      "copy_run_id": "7ca5ebeb-abe7-41f9-99bb-de965adc6d23",
+      "material_package_id": "fa7357a7-3bb5-4d6c-8c58-139293b17f12",
+      "delivery_job_id": "ecdda7d9-885a-4f47-a409-7539704f00dd",
+      "content_slot_selection_id": "52825491-f729-4d34-b798-296182de6244",
+      "delivery_created_at": "2026-09-06T06:03:38.963966+08:00",
+      "delivered_at": "2026-09-06T07:30:01.882354+08:00"
+    },
+    {
+      "ordinal": 2,
+      "copy_run_id": "659776d5-342e-4a77-ac10-e31572fda8cf",
+      "material_package_id": "f94703b4-8e57-4b58-a5b3-8cf91cf729c4",
+      "delivery_job_id": "feb7cbae-f363-46ee-9c3e-8bd2d568d378",
+      "content_slot_selection_id": "871639f7-4e14-48b7-85a4-335bba7f2fbc",
+      "delivery_created_at": "2026-09-06T06:05:07.614973+08:00",
+      "delivered_at": "2026-09-06T07:31:03.663910+08:00"
+    },
+    {
+      "ordinal": 3,
+      "copy_run_id": "28ac4f96-586c-477b-93f4-3e6b14f5b114",
+      "material_package_id": "9354e736-e4f2-4ee0-9280-f307f39d9179",
+      "delivery_job_id": "fd8bef2e-efc4-4752-97e9-d20e5a1b7cd0",
+      "content_slot_selection_id": "a10c1015-489d-4218-8535-953d2fdc2e6c",
+      "delivery_created_at": "2026-09-06T06:06:26.148163+08:00",
+      "delivered_at": "2026-09-06T07:32:05.343835+08:00"
+    }
+  ],
+  "repeat_pass": {
+    "content_scheduler_poll_seconds": 2,
+    "wecom_dispatcher_poll_seconds": 2,
+    "observed_more_than_two_hours_after_last_delivery": true,
+    "delivery_jobs_for_business_date": 3,
+    "duplicate_slot_selection_ordinal_groups": 0,
+    "running_copy_jobs": 0,
+    "pending_or_uncertain_delivery_jobs": 0
+  },
+  "protected_state": {
+    "historic_queued_copy_jobs": 7,
+    "historic_queued_copy_jobs_sha256": "657797a7d4b8d51c8355c07c62343610529fc85753ecb7b489dcd2ef3c5dc74c",
+    "copy_generation_attempts": 488,
+    "wecom_delivery_attempts": 197,
+    "material_packages_total": 115,
+    "copy_generation_runs_total": 199,
+    "copy_generation_jobs_total": 199,
+    "wecom_delivery_jobs_total": 99,
+    "wecom_delivery_jobs_delivered_total": 98
+  },
+  "claim": "Recovery AC2 and AC3 are satisfied by natural production execution on the unchanged .11 release. This evidence does not claim the new .12 substantive-topic policy is deployed."
+}

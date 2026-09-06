@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend boundaries and provider/send ownership"}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"New substantive policy and exact historic replay/non-bypass review"}
+{"file":".trellis/spec/backend/substantive-topic-scope.md","reason":"Selection-only .12/v4 bounded subject and historical compatibility contract"}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Acquisition title/body stages and governed content projections"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Immutable config persistence and no expired-slot replay"}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Provider-scoped brand lookup and production client availability"}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Existing schedule, slot lineage and delivery-window contracts"}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Terminal success, quality gates, idempotency and unknown outcomes"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/production-baseline.md","reason":"Fresh production evidence and protected historical state"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Risk-proportionate quality and release verification"}

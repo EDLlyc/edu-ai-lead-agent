@@ -115,6 +115,58 @@ credential. Provider-output failures retain the generic durable `invalid_provide
 rather than the internal diagnostic stage; v3 finalization keeps only its allowlisted typed
 mismatch code and safe identities.
 
+## Bounded production provider-error diagnostics
+
+### 1. Scope / trigger
+
+When a deployed client discards failure bodies and exposes only a generic HTTP/provider error,
+do not infer that credentials, model configuration or all business inputs are broken. Separate
+process health, fixed-request success, content acceptance and durable delivery evidence.
+
+### 2. Signatures
+
+The task-local `production-recovery-canary.py` under
+`.trellis/tasks/09-05-production-recovery-qwen-embedding/research/` adds the explicit
+`--capture-provider-error-codes` flag. `official_error_code(body: bytes) -> str` projects only a
+reviewed numeric code; the result uses `provider_business_error_codes[stage]` and the distinct
+`production-recovery-no-send-v2-error-observation` schema. This is not a production API change.
+
+### 3. Contracts
+
+Default preflight makes zero calls. Live diagnostics require independent source/image/config
+identity gates and reviewed physical call caps. Only opted-in non-2xx bodies are read, with both
+raw and gzip-decoded bytes bounded to 32,768; close and discard them after projection. Never emit
+messages, arbitrary fields, request IDs, private prompts, vectors or credentials. Preserve normal
+HTTP error classification, request bytes and the no-write/no-send authority boundary.
+
+### 4. Validation / error matrix
+
+Known `error.code` in the frozen official allowlist maps to that numeric string. Unknown codes,
+duplicate keys, malformed JSON and boolean/nested values map to `other_code`. Oversized or invalid
+compressed responses fail closed without another physical request. HTTP 400 alone is ambiguous;
+1301 identifies content-safety rejection, not a specific offending fragment or all-topic outage.
+
+### 5. Good / base / bad cases
+
+Good: preserve one observed 1301 while leaving historical terminal errors unchanged. Base: a
+fixed nonprivate control succeeds, but content-bearing generation remains unverified. Bad: label
+all old failures 1301, replay terminal jobs, or rewrite inputs to circumvent the provider filter.
+
+### 6. Tests required
+
+Use synthetic sentinel data to prove code-only output, allowlist parity, duplicate/type rejection,
+raw/chunked/gzip limits, closure on every path, unchanged request bytes, default zero calls and
+charged-before-forward per-stage limits. Reconcile durable counters separately; report constants
+are not proof that concurrent workers made no writes. See `test_production_recovery_canary.py`
+and `test_zhipu_chat_parameter_probe.py` beside the diagnostic.
+
+### 7. Wrong vs correct
+
+Wrong: "The fixed request returned 200, so news delivery recovered." Correct: "The model accepted
+the control; recovery still needs fresh accepted copy, a validated package, formal terminal
+delivery and a subsequent duplicate check." A failed bounded invocation never grants an automatic
+repeat; any new measurement needs a recorded purpose, reviewed limits and independent gates.
+
 ## Avoid
 
 - `print()` in application code.

@@ -1,0 +1,18 @@
+{
+  "observed_cst": "2026-09-05T21:07:09.051292",
+  "selection_id": "249c02f0-9389-44ea-b571-2a1676b943a4",
+  "score_id": "f20fee5f-eb41-470f-8926-82bde5cffe7c",
+  "rank": 1,
+  "eligible": true,
+  "total": 0.33723653,
+  "threshold": 0.59,
+  "passes_threshold": false,
+  "veto_count": 0,
+  "education_priority_cohort": false,
+  "frontier_cohort": true,
+  "education_context_reason": false,
+  "education_relevance": 0,
+  "editorial_v3": true,
+  "priority_applied": true,
+  "threshold_bypass_applied": true
+}
