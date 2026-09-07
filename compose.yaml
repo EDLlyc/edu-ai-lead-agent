@@ -479,7 +479,7 @@ services:
       WECHAT_MP_DRAFT_HEARTBEAT_SECONDS: ${WECHAT_MP_DRAFT_HEARTBEAT_SECONDS:-60}
       WECHAT_MP_DRAFT_MAX_ATTEMPTS: ${WECHAT_MP_DRAFT_MAX_ATTEMPTS:-3}
       WECHAT_MP_DRAFT_RETRY_BASE_SECONDS: ${WECHAT_MP_DRAFT_RETRY_BASE_SECONDS:-30}
-      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/input/weekly-inbox
+      WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT: /app/input/official-account-weekly-editions/weekly-inbox
       WECHAT_MP_DRAFT_ARTIFACT_ROOT: /app/output/wechat-mp-draft-artifacts
     volumes:
       - official_account_weekly_dag_output:/app/input/official-account-weekly-editions:ro

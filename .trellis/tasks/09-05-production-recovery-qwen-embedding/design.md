@@ -19,6 +19,26 @@ Keep all providers, scoring .11, schedules, credentials and public-publish bound
 Use the existing immutable release mechanism where compatible, with a current backup and a
 reviewed scoped artifact. Do not run either expired incident operator unchanged.
 
+### Prepared-inbox consumer correction
+
+Actual producer volume mount `/app/output` writes `weekly-inbox`; the same volume is mounted
+read-only at `/app/input/official-account-weekly-editions` in the draft consumer. Its old setting
+`/app/input/weekly-inbox` is outside that mount. Change only the consumer setting to
+`/app/input/official-account-weekly-editions/weekly-inbox` and test volume-relative equivalence.
+
+Before immutable activation, a separately reviewed bounded handoff may quiesce only the idle draft
+consumer and use the same immutable Compose service with this one inbox override and auto-enqueue
+disabled. The ordinary prepared-aware reconcile command stages the exact batch into the shared
+draft-artifact store; the ordinary worker processes each role under existing durable leases and
+unknown-outcome handling. No source/config file changes or direct provider clients belong in this
+handoff. Enforce exact batch identity, no-clobber audit, bounded role calls and observed results;
+restore the ordinary consumer only under the reviewed failure/success-state policy.
+
+The immutable release now permits exactly two Python runtime files plus this one Compose inbox
+value. Full rendered Compose comparison must reject every other environment, mount or command
+change. Existing database/history/config release fences remain intact; do not weaken them to hide
+unobserved draft delivery. An `inbox_ready` recovery receipt alone is not WeChat draft success.
+
 ## Boundaries
 
 Keep the deployed independent acquisition/governance/content/dispatcher processes, PostgreSQL

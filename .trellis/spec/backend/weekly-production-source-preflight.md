@@ -38,6 +38,14 @@ selection version, schema, model, or publication policy.
   article repository. Prepared-artifact validation and the existing independent draft worker stay
   authoritative. Record recovery separately; never label the original failed DAG ready.
 - Draft staging creates three independent unpublished drafts, not a public article or mass send.
+- Producer and consumer inboxes must identify the same volume-relative directory, not merely
+  similarly named absolute paths: producer `/app/output/weekly-inbox` on the weekly output volume
+  maps to consumer `/app/input/official-account-weekly-editions/weekly-inbox`. Keep the consumer
+  volume read-only. An absent configured path outside its actual mount is a wiring defect, not an
+  empty valid queue or proof of completed delivery.
+- Prepared batches use prepared-aware reconciliation before ordinary worker processing. A single
+  worker `--once` handles one role, not the complete three-article job. Inspect durable per-role
+  status; a successful CLI exit or local aggregate alone never proves all three drafts succeeded.
 - A first-ever inbox may be absent if its parent is an existing physical directory. Read-only
   planning must not create it; the existing aggregate owner creates it only during execution.
 - Read-only sessions that return loaded ORM rows to the planner must detach them before rollback
@@ -86,6 +94,8 @@ selection version, schema, model, or publication policy.
 - Real PostgreSQL: loaded ORM rows remain readable after read-only rollback; `FOR SHARE` blocks
   material/image updates while permitting ordinary article insertion. A missing first inbox stays
   absent throughout planning, and a symlink or missing parent is rejected.
+- Compose contract: resolve both inboxes against their actual mounts and assert the same named
+  volume and `weekly-inbox` suffix; require read-only consumer access and reject unrelated deltas.
 - Production acceptance requires observed article readiness and actual draft-worker success;
   passing offline tests alone is not evidence of staging or publication.
 

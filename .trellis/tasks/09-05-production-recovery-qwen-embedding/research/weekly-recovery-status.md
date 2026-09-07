@@ -1,7 +1,8 @@
 # September 7 weekly recovery status
 
-Status at 2026-09-07 09:38 Asia/Shanghai: prevention fix implemented and under independent review;
-production recovery has not executed. Existing production services remain running.
+Status at 2026-09-07 10:14 Asia/Shanghai: source compensation completed; three articles are ready
+and a prepared batch is validated. Actual draft staging remains blocked by the confirmed consumer
+inbox/mount mismatch. A narrowly scoped wiring correction and ordinary-CLI handoff are under review.
 
 ## Incident evidence
 
@@ -25,8 +26,22 @@ production recovery has not executed. Existing production services remain runnin
 - Expanded candidate suite: 98/104 unit and 9/10 PostgreSQL passed. Exact production baseline
   has the same six unit and one PostgreSQL failures caused by absent ignored private PNG fixtures.
   There are no new failures in that comparison; the broad suite is not fully green.
-- Independent check and recovery operator verification are still in progress.
-- No production source, config, schema, image, article, or draft changes executed as of this record.
+- Independent product/recovery check: 92/92 focused tests passed, including three real PostgreSQL
+  regressions; Ruff, format and strict mypy passed. Initial read-only production rehearsals found
+  and fixed absent-first-inbox and ORM rollback expiration compatibility issues before any enqueue.
+- Read-only sealed plan `d935acffe5a45e9389264de7043de20cd65f9b1cd8ed9d5110a008daeba59615`
+  succeeded. Reviewed recovery script SHA `7320dca2df6eef091f2263ab754c8f49264718b11840df537accddfbca6ab8d6`.
+- Source/recovery work committed as `117e59b` and pushed to Codeup and GitHub on the incident branch.
+- One replacement article `1c8a0cc8-b960-4b33-82ff-e7204def40f6` started at 09:52:14 and became
+  ready at 09:53:23 on its first attempt. Both original ready article identities and protected hashes
+  were preserved, as were the original failed governed run and attempts.
+- Recovery batch `abb680a1b8e52df9395a033199c1844b6cb2d919eaeef72a9fe196b9e8864bea`, aggregate
+  `4d25b6c7c81055c101101100d18682d3aedf61d52228d662710b397b422248c5` is validated in the inbox.
+  The audit truth is `inbox_ready`, not delivered or published.
+- Actual draft consumer used `/app/input/weekly-inbox`, while the shared volume is mounted at
+  `/app/input/official-account-weekly-editions`. Correct inbox is that mount plus `weekly-inbox`.
+  No draft job had been created when this second defect was confirmed. No production source,
+  config, schema, or image change has executed yet.
 
 ## Bug analysis
 
@@ -64,5 +79,6 @@ This application repository has no `src/templates/markdown/spec/` template tree 
 
 The release worktree is `.trellis/worktrees/weekly-source-preflight`, branch
 `release/weekly-source-preflight-20260907`, based on exact deployed 5c560da.
-Only two runtime files change. No Qwen migration, .12 scoring activation, URL weakening, new model,
+Two runtime Python files and one exact Compose consumer inbox value change. No Qwen migration,
+.12 scoring activation, URL weakening, new model,
 schema migration, public publishing, or original terminal-run reset is included.

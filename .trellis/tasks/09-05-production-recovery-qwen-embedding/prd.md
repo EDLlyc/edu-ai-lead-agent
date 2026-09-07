@@ -96,18 +96,27 @@ official-account draft workflow. It does not authorize public publishing or unre
   all original terminal attempts/checkpoints. A terminal run cannot be resumed through ordinary
   retry; use a reviewed explicit recovery identity/path if necessary. Complete three validated
   articles through the existing draft-only worker without duplicate drafts or public publishing.
+- R10 [P0]: The weekly producer and draft consumer must resolve the same inbox on their shared
+  volume. Correct the evidenced consumer path mismatch without changing credentials, mounts,
+  read-only access, model providers, schedules, or publication permissions.
 - AC7: Tests reproduce HTTP-source admission followed by article-input failure, prove selection
   excludes incompatible materials and supports eligible replacements, and classify deterministic
   input conflicts without exhausting transient retries.
 - AC8: Production evidence identifies the recovered edition and draft job/items, retained original
   failed run and successful articles, with repeat-pass idempotency. If upstream generation or
   draft staging remains unsuccessful, report its actual state rather than marking recovery done.
+- AC9: A mount-relative path regression proves producer/consumer inbox equivalence. Actual normal
+  draft reconciliation discovers the exact recovered prepared batch and stages its three roles;
+  later service polling or restart does not create another job or draft attempt.
 
 Observed production run `0ae1c882-4254-561f-bdac-17d254c0c166` was scheduled at September 7
 09:00 CST and became terminal at 09:02:11. Its `application_case:build_article` exhausted three
 attempts because package `b290e00b-1e00-43a3-a69f-8f3bdb05137f` contains two HTTP source URLs.
-No article run or model request was created for that material. Two sibling articles are ready;
-there are no WeChat draft jobs/items/attempts. Production remains exact `5c560da` and Alembic 0042.
+No article run or model request was created for that material. At initial diagnosis two sibling
+articles were ready with no WeChat draft jobs/items/attempts. The authorized compensation completed
+the third article and prepared aggregate at 09:53 CST, preserving both siblings. The next actual
+consumer check exposed a second defect: its inbox setting lies outside the shared volume mount.
+Production remains exact `5c560da` and Alembic 0042 pending the scoped release.
 The September 6 substantive-topic rollout is still pending; its dated operator is now expired.
 Implement this repair on a separate exact-production worktree without mixing that policy change.
 
