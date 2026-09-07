@@ -21,8 +21,10 @@ from app.domain.entities import SnapshotDescriptor
 from app.infrastructure.db.models import (
     ImageArtifactModel,
     OfficialAccountArticleContextImageModel,
+    OfficialAccountArticleRunModel,
     OfficialAccountGeneratedVisualModel,
     OfficialAccountLocalMediaModel,
+    OfficialAccountStrictVisualAuditModel,
     SourceArticleImageModel,
     SourceSnapshotModel,
 )
@@ -198,6 +200,8 @@ class OfficialAccountLocalMediaResolver:
         session: AsyncSession,
         media: OfficialAccountPersistedMedia,
     ) -> bytes:
+        if media.descriptor.get("upload_derivative") is not None:
+            return await self._read_strict_generated_derivative(session=session, media=media)
         if (
             media.generated_visual_id is None
             or media.run_id is None
@@ -232,6 +236,83 @@ class OfficialAccountLocalMediaResolver:
                 "generated visual source image is unavailable"
             ) from error
         _assert_bytes_match(media, body, "generated visual metadata does not match")
+        return body
+
+    async def _read_strict_generated_derivative(
+        self, *, session: AsyncSession, media: OfficialAccountPersistedMedia
+    ) -> bytes:
+        from app.application.ports.official_account_strict_visual import (
+            strict_visual_derivative_descriptor,
+        )
+        from app.domain.official_account_upload_media import (
+            normalize_official_account_upload_body,
+            normalize_official_account_upload_cover,
+        )
+        from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
+        from app.infrastructure.db.official_account_strict_visual import _stored, _validate_subject
+
+        if (
+            media.generated_visual_id is None
+            or media.run_id is None
+            or self._image_store is None
+            or media.source_image_artifact_id is not None
+            or media.fixture_id is not None
+            or media.source_article_image_id is not None
+            or media.role not in {"body", "cover"}
+        ):
+            raise OfficialAccountMediaIntegrityError("strict derivative lineage is invalid")
+        run = await session.get(OfficialAccountArticleRunModel, media.run_id)
+        audit_row = await session.scalar(
+            select(OfficialAccountStrictVisualAuditModel).where(
+                OfficialAccountStrictVisualAuditModel.run_id == media.run_id,
+                OfficialAccountStrictVisualAuditModel.role == media.role,
+                OfficialAccountStrictVisualAuditModel.ordinal == media.ordinal,
+            )
+        )
+        if (
+            run is None
+            or run.version_bundle.get("visual_pipeline_version") != STRICT_VISUAL_PIPELINE_VERSION
+            or audit_row is None
+        ):
+            raise OfficialAccountMediaIntegrityError("strict derivative audit is missing")
+        audit = _stored(audit_row)
+        visual = await _validate_subject(session, run, audit.subject)
+        if (
+            audit.status != "accepted"
+            or audit.issue_codes
+            or visual.id != media.generated_visual_id
+            or visual.render_version_id != media.render_version_id
+            or audit.subject.upload_sha256 != media.sha256
+            or audit.subject.byte_size != media.byte_size
+            or audit.subject.media_type != media.media_type
+            or media.descriptor["upload_derivative"]
+            != strict_visual_derivative_descriptor(audit.subject)
+        ):
+            raise OfficialAccountMediaIntegrityError("strict derivative audit binding changed")
+        publication_type, publication_size, publication_sha = (
+            visual.media_type,
+            visual.byte_size,
+            visual.sha256,
+        )
+        if publication_type is None or publication_size is None or publication_sha is None:
+            raise OfficialAccountMediaIntegrityError("strict derivative parent is unavailable")
+        await _release_read_transaction(session)
+        publication = await self._image_store.get_content_addressed_bytes(
+            media_type=publication_type, byte_size=publication_size, sha256=publication_sha
+        )
+        derivative = (
+            normalize_official_account_upload_cover(publication)
+            if media.role == "cover"
+            else normalize_official_account_upload_body(publication)
+        )
+        if derivative.sha256 != media.sha256:
+            raise OfficialAccountMediaIntegrityError("strict derivative transformation changed")
+        body = await self._image_store.get_content_addressed_bytes(
+            media_type=media.media_type, byte_size=media.byte_size, sha256=media.sha256
+        )
+        _assert_bytes_match(media, body, "strict derivative bytes changed")
+        if body != derivative.content:
+            raise OfficialAccountMediaIntegrityError("strict derivative bytes are not reproducible")
         return body
 
     async def _read_news_context_bytes(

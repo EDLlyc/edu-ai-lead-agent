@@ -1499,6 +1499,8 @@ export interface components {
              * @default []
              */
             query_fingerprints: string[];
+            /** Reference Policy Version */
+            reference_policy_version?: "official-account-reference-scenes-v1-native-strict" | null;
             /**
              * Status
              * @enum {string}
@@ -2558,9 +2560,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            llm_dimension_scores: components["schemas"]["LlmDimensionScoresResponse"] | null;
-            /** Llm Total */
-            llm_total: number | null;
             /** Passes Threshold */
             passes_threshold: boolean;
             /** Rank */
@@ -4482,21 +4481,6 @@ export interface components {
             /** Asset Refs */
             asset_refs: string[];
         };
-        /** LlmDimensionScoresResponse */
-        LlmDimensionScoresResponse: {
-            /** Audience Relevance */
-            audience_relevance: number;
-            /** Breakthrough Significance */
-            breakthrough_significance: number;
-            /** Communication Value */
-            communication_value: number;
-            /** Insight Potential */
-            insight_potential: number;
-            /** News Value */
-            news_value: number;
-            /** Science Education Relevance */
-            science_education_relevance: number;
-        };
         /** MaterialPackageCreateRequest */
         MaterialPackageCreateRequest: {
             /**
@@ -5795,9 +5779,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            llm_dimension_scores: components["schemas"]["LlmDimensionScoresResponse"] | null;
-            /** Llm Total */
-            llm_total: number | null;
             /** Normalized Features */
             normalized_features: {
                 [key: string]: number;

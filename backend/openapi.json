@@ -533,6 +533,18 @@
             "title": "Query Fingerprints",
             "type": "array"
           },
+          "reference_policy_version": {
+            "anyOf": [
+              {
+                "const": "official-account-reference-scenes-v1-native-strict",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Policy Version"
+          },
           "status": {
             "enum": [
               "semantic_ready",
@@ -3401,29 +3413,6 @@
             "title": "Id",
             "type": "string"
           },
-          "llm_dimension_scores": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LlmDimensionScoresResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "llm_total": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Llm Total"
-          },
           "passes_threshold": {
             "title": "Passes Threshold",
             "type": "boolean"
@@ -3533,8 +3522,6 @@
           "final_rank",
           "rerank_reason_codes",
           "rerank_explanation",
-          "llm_dimension_scores",
-          "llm_total",
           "explanation"
         ],
         "title": "ContentSlotScoreResponse",
@@ -8568,57 +8555,6 @@
         "title": "IpAssetZipRequest",
         "type": "object"
       },
-      "LlmDimensionScoresResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "audience_relevance": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Audience Relevance",
-            "type": "integer"
-          },
-          "breakthrough_significance": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Breakthrough Significance",
-            "type": "integer"
-          },
-          "communication_value": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Communication Value",
-            "type": "integer"
-          },
-          "insight_potential": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Insight Potential",
-            "type": "integer"
-          },
-          "news_value": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "News Value",
-            "type": "integer"
-          },
-          "science_education_relevance": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Science Education Relevance",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "news_value",
-          "breakthrough_significance",
-          "science_education_relevance",
-          "audience_relevance",
-          "communication_value",
-          "insight_potential"
-        ],
-        "title": "LlmDimensionScoresResponse",
-        "type": "object"
-      },
       "MaterialPackageCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -12269,29 +12205,6 @@
             "title": "Id",
             "type": "string"
           },
-          "llm_dimension_scores": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LlmDimensionScoresResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "llm_total": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Llm Total"
-          },
           "normalized_features": {
             "additionalProperties": {
               "type": "number"
@@ -12414,9 +12327,7 @@
           "deterministic_rank",
           "final_rank",
           "rerank_reason_codes",
-          "rerank_explanation",
-          "llm_dimension_scores",
-          "llm_total"
+          "rerank_explanation"
         ],
         "title": "TopicScoreResponse",
         "type": "object"

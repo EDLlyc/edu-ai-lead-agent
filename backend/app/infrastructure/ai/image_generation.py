@@ -11,10 +11,12 @@ import time
 import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from PIL import Image
 from pydantic import SecretStr
 
 from app.application.ports.image_generation import (
@@ -66,7 +68,6 @@ _GPT_IMAGE_MODEL = "gpt-image-2"
 _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
 _SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
-_COMFLY_IMAGE_SIZE = "1024x1024"
 _COMFLY_RESPONSE_FORMAT = "url"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
@@ -79,6 +80,18 @@ class _ComflyResponse:
     too_large: bool
     retry_after_seconds: float | None
     content_type: str
+
+
+def _request_output_dimensions(
+    request: ImageGenerationRequest, *, square_only: bool = False
+) -> tuple[int, int]:
+    """Resolve only supported native sizes before any provider work."""
+
+    if request.output_size == "1024x1024":
+        return IMAGE_WIDTH, IMAGE_HEIGHT
+    if request.output_size == "1536x1024" and not square_only:
+        return 1536, 1024
+    raise ImageOutputValidationError("image_dimensions_invalid")
 
 
 def _request_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
@@ -185,6 +198,7 @@ class DeterministicFakeImageGenerator:
         self._model = model
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        _request_output_dimensions(request, square_only=True)
         prompt = validate_image_generation_request_prompt(request)
         body = _solid_png(request.request_fingerprint, prompt)
         return ImageGenerationResult(
@@ -252,6 +266,7 @@ class ToApisImageGenerator:
         self._sleep = sleep
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        _request_output_dimensions(request, square_only=True)
         # Upload, polling, and the expiring result download share one provider deadline. This
         # prevents a sequence of per-request retries from outliving the durable worker lease.
         try:
@@ -525,6 +540,7 @@ class OpenAICompatibleImageGenerator:
         self._sleep = sleep
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        expected_dimensions = _request_output_dimensions(request)
         task_id: str | None = None
         try:
             async with asyncio.timeout(self._provider_window_seconds):
@@ -541,7 +557,9 @@ class OpenAICompatibleImageGenerator:
                     ),
                     json=payload,
                 )
-                direct_image = self._direct_image(created_response)
+                direct_image = self._direct_image(
+                    created_response, expected_dimensions=expected_dimensions
+                )
                 if direct_image is not None:
                     body, media_type, width, height = direct_image
                 else:
@@ -561,7 +579,9 @@ class OpenAICompatibleImageGenerator:
                         representation = _extract_compatible_image(completed)
                         if representation is None:
                             raise ImageProviderRejectedError()
-                    body, media_type, width, height = await self._normalize_image(representation)
+                    body, media_type, width, height = await self._normalize_image(
+                        representation, expected_dimensions=expected_dimensions
+                    )
         except TimeoutError:
             raise ImageProviderTimeoutError() from None
         except ImageProviderTimeoutError:
@@ -583,7 +603,7 @@ class OpenAICompatibleImageGenerator:
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
-            "size": _COMFLY_IMAGE_SIZE,
+            "size": request.output_size,
             # GPT-Image-2 documents URL output as its current primary contract. The response
             # decoder remains compatible with valid Base64, direct raster, and task results.
             "response_format": _COMFLY_RESPONSE_FORMAT,
@@ -634,13 +654,16 @@ class OpenAICompatibleImageGenerator:
             await self._sleep(min(self._poll_interval_seconds, max(0.1, remaining)))
         raise ImageProviderTimeoutError()
 
-    def _direct_image(self, response: _ComflyResponse) -> tuple[bytes, str, int, int] | None:
+    def _direct_image(
+        self, response: _ComflyResponse, *, expected_dimensions: tuple[int, int]
+    ) -> tuple[bytes, str, int, int] | None:
         if response.content_type not in _ALLOWED_MEDIA_TYPES:
             return None
         if response.too_large:
             raise ImageOutputValidationError("image_download_too_large")
         return self._normalize_image_bytes(
             response.body,
+            expected_dimensions=expected_dimensions,
             declared_media_type=response.content_type,
         )
 
@@ -753,23 +776,24 @@ class OpenAICompatibleImageGenerator:
         raise ProviderUnavailableError()
 
     async def _normalize_image(
-        self, representation: tuple[str, str]
+        self, representation: tuple[str, str], *, expected_dimensions: tuple[int, int]
     ) -> tuple[bytes, str, int, int]:
         kind, value = representation
         if kind == "url":
-            return await self._download_image(value)
+            return await self._download_image(value, expected_dimensions=expected_dimensions)
         try:
             if len(value) > 4 * ((self._max_download_bytes + 2) // 3) + 4:
                 raise ImageOutputValidationError()
             body = base64.b64decode(value, validate=True)
         except (binascii.Error, ValueError, TypeError):
             raise ImageOutputValidationError("image_output_representation_invalid") from None
-        return self._normalize_image_bytes(body)
+        return self._normalize_image_bytes(body, expected_dimensions=expected_dimensions)
 
     def _normalize_image_bytes(
         self,
         body: bytes,
         *,
+        expected_dimensions: tuple[int, int],
         declared_media_type: str | None = None,
     ) -> tuple[bytes, str, int, int]:
         if not body or len(body) > self._max_download_bytes:
@@ -778,11 +802,22 @@ class OpenAICompatibleImageGenerator:
         if declared_media_type in _ALLOWED_MEDIA_TYPES and media_type != declared_media_type:
             raise ImageOutputValidationError("image_raster_signature_invalid")
         width, height = _image_dimensions(body, media_type)
-        if width != IMAGE_WIDTH or height != IMAGE_HEIGHT:
+        if (width, height) != expected_dimensions:
             raise ImageOutputValidationError("image_dimensions_invalid")
+        # Check geometry before loading pixels, then verify the raster really decodes at that
+        # size. The closed request sizes retain a bounded pixel count without any resizing.
+        try:
+            with Image.open(BytesIO(body), formats=["PNG", "JPEG", "WEBP"]) as image:
+                if image.size != expected_dimensions:
+                    raise ImageOutputValidationError("image_dimensions_invalid")
+                image.load()
+        except (OSError, ValueError, Image.DecompressionBombError):
+            raise ImageOutputValidationError("image_raster_signature_invalid") from None
         return body, media_type, width, height
 
-    async def _download_image(self, url: str) -> tuple[bytes, str, int, int]:
+    async def _download_image(
+        self, url: str, *, expected_dimensions: tuple[int, int]
+    ) -> tuple[bytes, str, int, int]:
         try:
             parsed = urlsplit(url)
             hostname = parsed.hostname
@@ -867,6 +902,7 @@ class OpenAICompatibleImageGenerator:
                 continue
             return self._normalize_image_bytes(
                 body,
+                expected_dimensions=expected_dimensions,
                 declared_media_type=content_type,
             )
         raise ProviderUnavailableError()

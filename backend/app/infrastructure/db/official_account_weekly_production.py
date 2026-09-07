@@ -13,7 +13,10 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.application.ports.official_account_weekly_production import (
+    WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
+    WEEKLY_PRODUCTION_INPUT_VERSION,
     WeeklyProductionInput,
     WeeklyProductionInputItem,
 )
@@ -61,8 +64,14 @@ class _MaterialCandidate:
 class PostgresWeeklyProductionInputPlanner:
     """Select real delivered packages through stored scoring and source authority."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        article_identity: OfficialAccountVersionIdentity | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._article_identity = article_identity
 
     async def plan(
         self,
@@ -135,6 +144,12 @@ class PostgresWeeklyProductionInputPlanner:
             for selected in selection.selected
         )
         return WeeklyProductionInput(
+            version=(
+                WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION
+                if self._article_identity is not None
+                else WEEKLY_PRODUCTION_INPUT_VERSION
+            ),
+            article_identity=self._article_identity,
             week_start=week_start,
             cutoff=cutoff,
             selection=selection,

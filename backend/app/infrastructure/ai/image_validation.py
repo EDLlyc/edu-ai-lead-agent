@@ -6,6 +6,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Awaitable, Callable, Mapping
+from enum import StrEnum
 from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
@@ -34,6 +35,7 @@ from app.domain.image_validation import (
     ImageQualityAuditIssue,
     validate_exact_visual_text,
 )
+from app.infrastructure.ai.provider_json import extract_provider_json_object
 from app.infrastructure.ai.zhipu import _post_json_with_retries
 
 _Sleep = Callable[[float], Awaitable[None]]
@@ -45,6 +47,11 @@ _MAX_REFERENCE_METADATA_LENGTH: Final[int] = 240
 _SAFE_REFERENCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SAFE_SHA256 = re.compile(r"^[A-Fa-f0-9]{64}$")
 _CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f]")
+
+
+class _VisionRequestProfile(StrEnum):
+    JSON_OBJECT = "json-object-v1"
+    ZHIPU_VISION = "zhipu-vision-v1"
 
 
 class _ProviderMessage(BaseModel):
@@ -191,11 +198,22 @@ class _OpenAICompatibleVisionAdapter:
             max_response_bytes=self._max_response_bytes,
         )
         try:
-            raw_payload = response.json()
+            raw_payload = json.loads(
+                response.content,
+                object_pairs_hook=_unique_audit_json_object,
+                parse_constant=_reject_nonfinite_provider_number,
+            )
             if not isinstance(raw_payload, dict):
                 raise ValueError("provider response must be an object")
             completion = _ProviderCompletion.model_validate(raw_payload)
-        except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValidationError, ValueError):
+        except (
+            json.JSONDecodeError,
+            RecursionError,
+            TypeError,
+            UnicodeDecodeError,
+            ValidationError,
+            ValueError,
+        ):
             raise InvalidProviderOutputError(("invalid_schema",)) from None
         if completion.model != self._model:
             raise ProviderIdentityMismatchError()
@@ -209,6 +227,7 @@ class _OpenAICompatibleVisionAdapter:
         user_prompt: str,
         image_parts: tuple[str, ...],
         max_output_tokens: int,
+        request_profile: _VisionRequestProfile,
     ) -> dict[str, Any]:
         content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
         content.extend(
@@ -220,10 +239,14 @@ class _OpenAICompatibleVisionAdapter:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content},
             ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
             "max_tokens": max_output_tokens,
         }
+        if request_profile is _VisionRequestProfile.JSON_OBJECT:
+            payload.update({"response_format": {"type": "json_object"}, "temperature": 0.0})
+        elif request_profile is _VisionRequestProfile.ZHIPU_VISION:
+            payload.update({"thinking": {"type": "disabled"}, "do_sample": False})
+        else:  # pragma: no cover - callers select a closed request profile.
+            raise ValueError("unsupported vision request profile")
         try:
             request_size = len(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -294,6 +317,7 @@ class OpenAICompatibleImageTextRecognizer(_OpenAICompatibleVisionAdapter):
             user_prompt=user_prompt,
             image_parts=(image_data_url,),
             max_output_tokens=_OCR_MAX_OUTPUT_TOKENS,
+            request_profile=_VisionRequestProfile.JSON_OBJECT,
         )
         completion = await self._complete(payload, request_fingerprint=request.request_fingerprint)
         output = _parse_ocr_output(completion.choices[0].message.content)
@@ -370,6 +394,7 @@ class OpenAICompatibleImageQualityAuditor(_OpenAICompatibleVisionAdapter):
             user_prompt=_audit_prompt(request, reference_metadata),
             image_parts=tuple(image_parts),
             max_output_tokens=_AUDIT_MAX_OUTPUT_TOKENS,
+            request_profile=_VisionRequestProfile.ZHIPU_VISION,
         )
         completion = await self._complete(payload, request_fingerprint=request.request_fingerprint)
         output = _parse_audit_output(completion.choices[0].message.content)
@@ -553,9 +578,29 @@ def _parse_ocr_output(content: str) -> _OcrOutput:
 
 def _parse_audit_output(content: str) -> _AuditOutput:
     try:
-        return _AuditOutput.model_validate_json(content)
-    except (TypeError, UnicodeDecodeError, ValidationError, ValueError):
+        # Only the vision audit accepts one standalone lowercase JSON fence. Do not
+        # inherit the shared extractor's prose compatibility or change OCR parsing.
+        stripped = content.strip()
+        if stripped.startswith("```") and stripped.splitlines()[0] != "```json":
+            raise ValueError("invalid audit JSON fence")
+        candidate = extract_provider_json_object(content, max_affix_characters=0)
+        payload = json.loads(candidate, object_pairs_hook=_unique_audit_json_object)
+        return _AuditOutput.model_validate(payload)
+    except (RecursionError, TypeError, UnicodeDecodeError, ValidationError, ValueError):
         raise InvalidProviderOutputError(("invalid_schema",)) from None
+
+
+def _unique_audit_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate audit JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_provider_number(_value: str) -> None:
+    raise ValueError("invalid provider JSON number")
 
 
 def _validate_optional_response_fingerprint(

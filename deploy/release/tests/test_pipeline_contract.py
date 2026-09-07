@@ -204,6 +204,10 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     assert json.loads(declaration)["alembic_head"] == head
     assert reviewed is True
     assert compatible is False
+    reason = json.loads(declaration)["reason"]
+    assert "weekly v2 or governance inputs" in reason
+    assert "including inputs with no Article rows yet" in reason
+    assert "not deployment authorization" in reason
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
     for schema_identity in (
         "brand_visual_index_jobs",

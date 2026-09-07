@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
+from app.application.ports.official_account_strict_visual import StrictVisualRepository
 from app.domain.image_quality_eval import (
     IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
     ImageEvalBatchDecision,
@@ -26,6 +27,11 @@ from app.domain.official_account_local import (
     RenderedOfficialAccountHtml,
     SemanticMediaAssignment,
     fingerprint,
+)
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
 )
 
 
@@ -57,6 +63,26 @@ class OfficialAccountVersionIdentity:
     generated_visual_plan_version: str | None = None
     generated_visual_prompt_version: str | None = None
     context_media_plan_version: str | None = None
+    visual_pipeline_version: str | None = None
+
+    def __post_init__(self) -> None:
+        has_native = (
+            self.generated_visual_plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+            or self.generated_visual_prompt_version
+            == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+        )
+        if self.visual_pipeline_version is None:
+            if has_native:
+                raise ValueError("native visual identity requires its strict pipeline policy")
+        elif (
+            self.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION
+            or self.provider != "zhipu"
+            or self.generated_visual_plan_version
+            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+            or self.generated_visual_prompt_version
+            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+        ):
+            raise ValueError("strict visual pipeline identity is unsupported or mixed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +210,7 @@ class OfficialAccountGeneratedVisualPlan:
     reference_input_version: str | None = None
     reference_input_checksum: str | None = None
     output_profile_version: str | None = None
+    output_size: Literal["1536x1024"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,6 +390,8 @@ class OfficialAccountSourceMedia:
     width: int | None = None
     height: int | None = None
 
+    upload_derivative: dict[str, object] | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class OfficialAccountMediaRequest:
@@ -461,6 +490,10 @@ class OfficialAccountMediaAdapter(Protocol):
 class OfficialAccountGeneratedVisualStore(Protocol):
     async def put_immutable(self, body: bytes, *, media_type: str = "image/png") -> Any: ...
 
+    async def get_content_addressed_bytes(
+        self, *, media_type: str, byte_size: int, sha256: str
+    ) -> bytes: ...
+
 
 class OfficialAccountDraftAdapter(Protocol):
     async def create(
@@ -504,7 +537,7 @@ class OfficialAccountMediaSemanticRanker(Protocol):
     ) -> OfficialAccountMediaSelectionResult: ...
 
 
-class OfficialAccountRunRepository(Protocol):
+class OfficialAccountRunRepository(StrictVisualRepository, Protocol):
     async def claim(
         self,
         *,

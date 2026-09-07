@@ -10,24 +10,32 @@ from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import Final, cast
+from typing import Final, Literal, cast
 from uuid import UUID
 
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.ports.official_account_local import StoredOfficialAccountArticle
 from app.application.ports.wechat_official_account import WeChatDraftRole
 from app.application.ports.wechat_official_account_draft_artifacts import (
     WECHAT_DRAFT_PREPARED_ARTIFACT_REF_VERSION,
     WeChatDraftArtifactBatch,
     WeChatDraftArtifactSource,
 )
+from app.application.services.official_account_strict_prepared import (
+    build_strict_prepared_projection,
+)
 from app.application.services.wechat_official_account_draft import (
     WeChatDraftLocalSource,
     WeChatOfficialAccountDraftPreparer,
     WeChatPreparedDraft,
 )
+from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
+from app.domain.official_account_local import ArticleImageBlock
+from app.domain.official_account_upload_media import normalize_official_account_upload_context
+from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
 from app.domain.official_account_weekly_dag import WeeklyDagArtifact
 from app.domain.official_account_weekly_edition import WeeklyArticleRole
 from app.infrastructure.db.models import OfficialAccountLocalMediaModel
@@ -144,6 +152,11 @@ class PreparedWeeklyDraftArtifactOwner:
             or draft.simulation is not True
         ):
             raise ValueError("official-account run is not automatically draft-ready")
+        policy = run.version_bundle.get("visual_pipeline_version")
+        if policy is not None:
+            if policy != STRICT_VISUAL_PIPELINE_VERSION:
+                raise ValueError("official-account prepared visual policy is unsupported")
+            return await self._build_strict_child(run_id=run_id, role=role, article=article)
         media_rows = await self._load_media_rows(run_id)
         if not media_rows:
             raise ValueError("official-account run has no ready media")
@@ -231,6 +244,150 @@ class PreparedWeeklyDraftArtifactOwner:
             byte_size=_directory_size(target),
         )
 
+    async def _build_strict_child(
+        self,
+        *,
+        run_id: UUID,
+        role: WeeklyArticleRole,
+        article: StoredOfficialAccountArticle,
+    ) -> WeeklyDagArtifact:
+        # This repository projection is the durable six-audit readiness authority.
+        evidence = await self._repository.load_strict_visual_evidence(run_id)
+        render = await self._repository.get_render(run_id)
+        if render is None or render.article_version_id != article.id:
+            raise ValueError("strict prepared render identity changed")
+        rows = await self._load_media_rows(run_id)
+        snapshots = tuple(persisted_media_snapshot(row) for row in rows)
+        body_shape = {
+            int(block.slot_key.removeprefix("body-")): (index, block.alt_text)
+            for index, section in enumerate(article.article.sections)
+            for block in section.blocks
+            if isinstance(block, ArticleImageBlock)
+        }
+        contexts = {
+            item.ordinal: item
+            for item in (
+                article.article.news_context_media.items
+                if article.article.news_context_media
+                else ()
+            )
+        }
+        proof_by_slot = {(str(item.role), item.ordinal): item for item in evidence}
+        assets: list[EditorHandoffMediaAsset] = []
+        files: dict[str, bytes] = {}
+        originals: dict[int, bytes] = {}
+        async with self._session_factory() as session:
+            for snapshot in sorted(
+                snapshots,
+                key=lambda item: (
+                    {"body": 0, "context": 1, "cover": 2}.get(item.role, 3),
+                    item.ordinal,
+                ),
+            ):
+                if snapshot.run_id != run_id or snapshot.render_version_id != render.id:
+                    raise ValueError("strict prepared media render binding changed")
+                content = await self._resolver.read_verified_bytes(session=session, media=snapshot)
+                extra: dict[str, object] = {}
+                media_type: str
+                section: int | None
+                if snapshot.role == "context":
+                    source = contexts.get(snapshot.ordinal)
+                    if (
+                        source is None
+                        or snapshot.source_article_image_id != source.source_article_image_id
+                        or snapshot.sha256 != source.sha256
+                    ):
+                        raise ValueError("strict prepared source image binding changed")
+                    descriptor = snapshot.descriptor
+                    for key, expected in {
+                        "assigned_section_index": source.section_index,
+                        "alt_text": source.alt_text,
+                        "source_page_url": source.source_page_url,
+                        "caption": source.caption,
+                        "credit": source.credit,
+                        "rights_status": source.rights_status,
+                        "context_only_not_evidence": True,
+                    }.items():
+                        if descriptor.get(key) != expected:
+                            raise ValueError("strict prepared persisted context metadata changed")
+                    originals[snapshot.ordinal] = content
+                    derivative = normalize_official_account_upload_context(content)
+                    content, media_type = derivative.content, derivative.mime_type
+                    section, alt = source.section_index, source.alt_text
+                    extra = {
+                        "source_page_url": source.source_page_url,
+                        "caption": source.caption,
+                        "credit": source.credit,
+                        "rights_status": source.rights_status,
+                        "context_only_not_evidence": True,
+                    }
+                elif snapshot.role in {"body", "cover"}:
+                    proof = proof_by_slot.get((snapshot.role, snapshot.ordinal))
+                    if (
+                        proof is None
+                        or snapshot.generated_visual_id != proof.generated_visual_id
+                        or snapshot.sha256 != proof.upload_sha256
+                    ):
+                        raise ValueError("strict prepared generated media audit binding changed")
+                    media_type = snapshot.media_type
+                    # The generated descriptor describes the scene independently. Display
+                    # alt/section remain frozen Article block fields, not a text rewrite.
+                    section, alt = (
+                        body_shape[snapshot.ordinal]
+                        if snapshot.role == "body"
+                        else (None, article.article.title)
+                    )
+                else:
+                    raise ValueError("strict prepared media role is unsupported")
+                path = media_asset_path(
+                    cast(Literal["body", "context", "cover"], snapshot.role),
+                    snapshot.ordinal,
+                    media_type,
+                )
+                width, height = _image_dimensions(content, media_type)
+                asset = EditorHandoffMediaAsset.model_validate(
+                    {
+                        "path": path,
+                        "role": snapshot.role,
+                        "ordinal": snapshot.ordinal,
+                        "media_type": media_type,
+                        "byte_size": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                        "width": width,
+                        "height": height,
+                        "assigned_section_index": section,
+                        "alt_text": alt,
+                        **extra,
+                    }
+                )
+                assets.append(asset)
+                if path in files:
+                    raise ValueError("strict prepared media slot is duplicated")
+                files[path] = content
+        projection = build_strict_prepared_projection(
+            run_id=run_id,
+            article_version_id=article.id,
+            render_version_id=render.id,
+            role=role.value,
+            article=article.article,
+            media=tuple(assets),
+            evidence=evidence,
+            files=files,
+            context_originals=originals,
+        )
+        target = self._child_path(projection.child_fingerprint)
+        _write_directory(
+            target,
+            files={**projection.files, "prepared-manifest.json": _json_bytes(projection.manifest)},
+        )
+        self._preparer.prepare(WeChatDraftLocalSource(directory=target, role=role.value))
+        return WeeklyDagArtifact(
+            opaque_ref=f"{PREPARED_DRAFT_CHILD_REF_VERSION}:{projection.child_fingerprint}",
+            fingerprint=projection.child_fingerprint,
+            media_type="application/vnd.wechat.prepared-draft-child+directory",
+            byte_size=_directory_size(target),
+        )
+
     def validate_child(
         self,
         artifact: WeeklyDagArtifact,
@@ -261,8 +418,10 @@ class PreparedWeeklyDraftArtifactOwner:
             raise ValueError("prepared weekly batch must start on Monday")
         projections: list[dict[str, object]] = []
         child_paths: list[Path] = []
+        policies: set[str | None] = set()
         for role, artifact in zip(WeeklyArticleRole, children, strict=True):
             prepared = self.validate_child(artifact, role=role)
+            policies.add(prepared.visual_pipeline_version)
             child_fingerprint = artifact.fingerprint
             directory_name = f"{role.ordinal:02d}-{role.value}"
             projections.append(
@@ -276,6 +435,8 @@ class PreparedWeeklyDraftArtifactOwner:
                 }
             )
             child_paths.append(self._child_path(child_fingerprint))
+        if len(policies) != 1:
+            raise ValueError("prepared weekly visual policies cannot be mixed")
         batch_fingerprint = _fingerprint(
             {
                 "version": PREPARED_DRAFT_BATCH_VERSION,

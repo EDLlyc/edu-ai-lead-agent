@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -10,16 +10,24 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.application.ports.official_account_weekly_dag import WeeklyDagNodeFailure
 from app.application.ports.official_account_weekly_production import (
+    WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
     WeeklyProductionInput,
     WeeklyProductionInputItem,
+    weekly_article_identity_from_snapshot,
 )
 from app.application.services.official_account_weekly_production import (
     ProductionWeeklyDagHandlers,
 )
 from app.core.config import Settings
 from app.core.errors import ConflictError, NotFoundError
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
+)
 from app.domain.official_account_weekly_dag import (
     WEEKLY_DAG_NODES,
     WEEKLY_DAG_VERSION,
@@ -207,6 +215,11 @@ def _claim(
 
 
 class _ArticleRepository:
+    async def resolve_legacy_weekly_identity(
+        self, **_kwargs: object
+    ) -> OfficialAccountVersionIdentity | None:
+        return None
+
     def __init__(self, *, created: bool) -> None:
         self._created = created
         self.run = SimpleNamespace(id=UUID(int=90), status="ready")
@@ -404,11 +417,180 @@ def test_weekly_production_checkpoint_owner_is_content_addressed(tmp_path: Path)
     assert owner.get_json_by_fingerprint(first.fingerprint) == payload
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("frozen", [False, True])
+async def test_weekly_retry_uses_frozen_or_proven_legacy_identity_not_current_config(
+    tmp_path: Path,
+    frozen: bool,
+) -> None:
+    legacy = official_account_identity_from_settings(
+        Settings.model_validate({}),
+        provider="zhipu",
+        model="frozen-model",
+    )
+    current = replace(
+        legacy,
+        model="current-model",
+        visual_pipeline_version=STRICT_VISUAL_PIPELINE_VERSION,
+        generated_visual_plan_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+        generated_visual_prompt_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    )
+
+    class Repository(_ArticleRepository):
+        received: OfficialAccountVersionIdentity | None = None
+
+        async def resolve_legacy_weekly_identity(
+            self, **_kwargs: object
+        ) -> OfficialAccountVersionIdentity | None:
+            assert not frozen
+            return legacy
+
+        async def enqueue_material_package(self, **kwargs: object) -> tuple[SimpleNamespace, bool]:
+            self.received = kwargs["identity"]  # type: ignore[assignment]
+            return self.run, False
+
+    planned = _production_input()
+    if frozen:
+        planned = replace(
+            planned, version=WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION, article_identity=legacy
+        )
+    owner = LocalWeeklyProductionArtifactOwner(tmp_path / "weekly")
+    owner.put_json(planned.as_dict())
+    repository = Repository(created=False)
+    handlers = ProductionWeeklyDagHandlers(
+        checkpoints=owner,
+        article_repository=repository,
+        prepared_artifacts=_UnusedPreparedArtifacts(),  # type: ignore[arg-type]
+        article_identity=current,
+    )
+    await handlers.execute(_application_build_claim(planned, owner))
+    assert repository.received == legacy
+
+
+@pytest.mark.asyncio
+async def test_unproven_legacy_weekly_retry_after_strict_activation_never_enqueues(
+    tmp_path: Path,
+) -> None:
+    legacy = official_account_identity_from_settings(
+        Settings.model_validate({}),
+        provider="zhipu",
+        model="frozen-model",
+    )
+    current = replace(
+        legacy,
+        visual_pipeline_version=STRICT_VISUAL_PIPELINE_VERSION,
+        generated_visual_plan_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+        generated_visual_prompt_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    )
+    planned = _production_input()
+    owner = LocalWeeklyProductionArtifactOwner(tmp_path / "weekly")
+    owner.put_json(planned.as_dict())
+    repository = _RejectedMaterialRepository(AssertionError("must not enqueue"))
+    handlers = ProductionWeeklyDagHandlers(
+        checkpoints=owner,
+        article_repository=repository,
+        prepared_artifacts=_UnusedPreparedArtifacts(),  # type: ignore[arg-type]
+        article_identity=current,
+    )
+    with pytest.raises(WeeklyDagNodeFailure) as error:
+        await handlers.execute(_application_build_claim(planned, owner))
+    assert error.value.error_code == "invalid_selection"
+    assert repository.enqueue_calls == 0
+
+
+def test_full_weekly_identity_snapshot_is_closed_and_legacy_bytes_unchanged() -> None:
+    legacy = official_account_identity_from_settings(
+        Settings.model_validate({}),
+        provider="zhipu",
+        model="frozen-model",
+    )
+    payload = asdict(legacy)
+    assert weekly_article_identity_from_snapshot(payload) == legacy
+    for changed in (
+        {**payload, "extra": True},
+        {key: value for key, value in payload.items() if key != "model"},
+        {**payload, "visual_pipeline_version": "unknown"},
+    ):
+        with pytest.raises(ValueError):
+            weekly_article_identity_from_snapshot(changed)
+    planned = _production_input()
+    assert set(planned.as_dict()) == {
+        "version",
+        "week_start",
+        "cutoff",
+        "selection_fingerprint",
+        "items",
+    }
+    assert planned.fingerprint == _fingerprint(planned.as_dict())
+
+
 def test_weekly_dag_long_article_wait_remains_hard_bounded() -> None:
     assert weekly_dag_node_limits().elapsed_ms == 900_000
     assert {
         definition.timeout_ms for definition in weekly_dag_capability_registry().definitions
     } == {900_000}
+
+
+@pytest.mark.asyncio
+async def test_strict_weekly_timeout_reuses_frozen_run_and_unknown_stops_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.application.services import official_account_weekly_production as service_module
+
+    strict = replace(
+        official_account_identity_from_settings(
+            Settings.model_validate({}), provider="zhipu", model="frozen-model"
+        ),
+        visual_pipeline_version=STRICT_VISUAL_PIPELINE_VERSION,
+        generated_visual_plan_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+        generated_visual_prompt_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    )
+    planned = replace(
+        _production_input(),
+        version=WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
+        article_identity=strict,
+    )
+    owner = LocalWeeklyProductionArtifactOwner(tmp_path / "weekly")
+    owner.put_json(planned.as_dict())
+
+    class Repository(_ArticleRepository):
+        enqueue_calls = 0
+
+        async def enqueue_material_package(self, **kwargs: object) -> tuple[SimpleNamespace, bool]:
+            assert kwargs["identity"] == strict
+            self.enqueue_calls += 1
+            return self.run, self.enqueue_calls == 1
+
+    repository = Repository(created=True)
+    repository.run.status = "queued"
+    handlers = ProductionWeeklyDagHandlers(
+        checkpoints=owner,
+        article_repository=repository,
+        prepared_artifacts=_UnusedPreparedArtifacts(),
+        article_identity=replace(strict, model="changed-current-model"),
+        article_wait_seconds=30,
+    )
+    ticks = iter((0.0, 31.0, 32.0, 33.0))
+    monkeypatch.setattr(
+        service_module,
+        "asyncio",
+        SimpleNamespace(get_running_loop=lambda: SimpleNamespace(time=lambda: next(ticks))),
+    )
+    claim = _application_build_claim(planned, owner)
+    with pytest.raises(WeeklyDagNodeFailure) as timeout:
+        await handlers.execute(claim)
+    assert timeout.value.error_code == "capability_timeout"
+    assert timeout.value.retryable is True
+
+    repository.run.status = "ready"
+    result = await handlers.execute(claim)
+    assert owner.get_json(result.artifact)["official_account_run_id"] == str(repository.run.id)
+    repository.run.status = "result_unknown"
+    with pytest.raises(WeeklyDagNodeFailure) as unknown:
+        await handlers.execute(claim)
+    assert unknown.value.error_code == "provider_terminal"
+    assert unknown.value.retryable is False
+    assert repository.enqueue_calls == 3
 
 
 def test_weekly_production_settings_are_default_off_and_require_activation_monday() -> None:

@@ -34,6 +34,10 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
     OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
 )
+from app.domain.official_account_visual_pipeline import (
+    STRICT_VISUAL_POLICY,
+    StrictVisualPipelineVersion,
+)
 from app.domain.topic_rerank import (
     DEFAULT_TOPIC_RERANK_POLICY_VERSION,
     SUPPORTED_TOPIC_RERANK_POLICY_VERSIONS,
@@ -295,6 +299,7 @@ class Settings(BaseSettings):
     )
     official_account_local_visual_semantic_enabled: bool = False
     official_account_local_generated_visuals_enabled: bool = False
+    official_account_local_visual_pipeline_version: StrictVisualPipelineVersion | None = None
     official_account_local_generated_visual_plan_version: str = (
         OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
     )
@@ -424,6 +429,7 @@ class Settings(BaseSettings):
     ai_platform_base_url: str | None = None
     ai_platform_api_key: SecretStr | None = None
     ai_chat_model: str = "glm-5.2"
+    image_quality_audit_model: str = Field(default="glm-5v-turbo", min_length=1, max_length=120)
     ai_embedding_model: str = "embedding-3"
     ai_embedding_dimensions: int = 2048
     ai_connect_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
@@ -752,7 +758,10 @@ class Settings(BaseSettings):
                     "generated official-account visuals require enabled local worker and image "
                     "provider"
                 )
-            if self.image_max_attempts != 1:
+            if (
+                self.image_max_attempts != 1
+                and self.official_account_local_visual_pipeline_version is None
+            ):
                 raise ValueError(
                     "generated official-account visuals require exactly one provider attempt"
                 )
@@ -763,6 +772,19 @@ class Settings(BaseSettings):
                 != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
             ):
                 raise ValueError("official-account generated visual version bundle is unsupported")
+        if self.official_account_local_visual_pipeline_version is not None:
+            if (
+                not self.official_account_local_generated_visuals_enabled
+                or self.ai_provider_mode != "zhipu"
+                or self.image_provider_mode != STRICT_VISUAL_POLICY.generation_provider
+                or self.image_model != STRICT_VISUAL_POLICY.generation_model
+                or self.image_quality_audit_model != STRICT_VISUAL_POLICY.audit_model
+                or self.ai_platform_base_url != STRICT_VISUAL_POLICY.audit_base_url
+                or self.official_account_local_visual_semantic_enabled
+            ):
+                raise ValueError(
+                    "strict official-account visuals require the frozen direct provider policy"
+                )
         if (
             self.image_quality_eval_mode == "observe"
             and not self.official_account_local_generated_visuals_enabled
@@ -1081,6 +1103,8 @@ class Settings(BaseSettings):
             )
         if not self.ai_chat_model.strip() or not self.ai_embedding_model.strip():
             raise ValueError("AI model identifiers must be non-blank")
+        if any(character.isspace() for character in self.image_quality_audit_model):
+            raise ValueError("image quality audit model identifier must contain no whitespace")
         brand_derivation_versions = (
             self.brand_parser_version,
             self.brand_chunk_version,

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260901_0042",
+  "alembic_head": "20260907_0043",
   "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "The additive migration chain through 20260901_0042 is reviewed for forward activation; the previous application remains conservatively incompatible after migration."
+  "reason": "The additive chain through 20260907_0043 has been reviewed for implementation compatibility, not deployment authorization. Previous applications are incompatible with strict visual Article/generation/audit state and new weekly v2 or governance inputs, including inputs with no Article rows yet. Rollback requires proving all such new state absent; otherwise retain compatible consumers or use a forward fix. Historical operator authorizations are not renewed."
 }

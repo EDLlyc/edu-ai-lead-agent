@@ -44,12 +44,17 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountGeneratedVisual,
     StoredOfficialAccountRender,
 )
+from app.application.services.official_account_strict_visual import (
+    execute_strict_visuals,
+    strict_catalog_candidates,
+)
 from app.application.services.official_account_visual_generation import (
     build_generated_visual_prompt,
     generated_visual_alt_text,
     plan_generated_body_visual,
     prepare_generated_visual_result,
     select_generated_visual_block_anchor,
+    strict_visual_media_selection,
 )
 from app.core.errors import (
     AppError,
@@ -126,6 +131,11 @@ from app.domain.official_account_local import (
     resolve_context_media_placeholders,
     validate_article_package,
 )
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
+)
 
 logger = structlog.get_logger()
 
@@ -155,6 +165,8 @@ def run_request_fingerprint(
     identity: OfficialAccountVersionIdentity,
 ) -> str:
     identity_payload = asdict(identity)
+    if identity_payload.get("visual_pipeline_version") is None:
+        identity_payload.pop("visual_pipeline_version", None)
     if identity_payload.get("media_plan_version") is None:
         identity_payload.pop("media_plan_version", None)
     if identity_payload.get("visual_query_version") is None:
@@ -774,6 +786,8 @@ class OfficialAccountLocalExecutor:
         generated_visual_model: str | None = None,
         image_quality_eval_mode: Literal["off", "observe"] = "off",
         image_quality_auditor: ImageQualityAuditor | None = None,
+        strict_image_generator: ImageGenerator | None = None,
+        strict_image_quality_auditor: ImageQualityAuditor | None = None,
     ) -> None:
         if image_quality_eval_mode not in {"off", "observe"}:
             raise ValueError("image quality eval mode must be off or observe")
@@ -801,6 +815,8 @@ class OfficialAccountLocalExecutor:
         self._generated_visual_model = generated_visual_model
         self._image_quality_eval_mode = image_quality_eval_mode
         self._image_quality_auditor = image_quality_auditor
+        self._strict_image_generator = strict_image_generator
+        self._strict_image_quality_auditor = strict_image_quality_auditor
 
     async def execute_next(self, worker_id: str) -> bool:
         claimed = await self._repository.claim(
@@ -811,9 +827,10 @@ class OfficialAccountLocalExecutor:
         if claimed is None:
             return False
         stop_heartbeat = asyncio.Event()
-        heartbeat = asyncio.create_task(self._heartbeat_loop(claimed, stop_heartbeat))
+        lease_lost = asyncio.Event()
+        heartbeat = asyncio.create_task(self._heartbeat_loop(claimed, stop_heartbeat, lease_lost))
         try:
-            await self._execute_claimed(claimed)
+            await self._execute_claimed(claimed, lease_lost=lease_lost)
         except LocalDraftResultUnknownError as error:
             await self._repository.fail(
                 claimed=claimed,
@@ -861,9 +878,31 @@ class OfficialAccountLocalExecutor:
             await heartbeat
         return True
 
-    async def _execute_claimed(self, claimed: ClaimedOfficialAccountRun) -> None:
+    async def _execute_claimed(
+        self, claimed: ClaimedOfficialAccountRun, *, lease_lost: asyncio.Event | None = None
+    ) -> None:
         source = await self._repository.load_source(claimed)
         identity = claimed.identity
+        is_strict_visual = identity.visual_pipeline_version is not None
+        if is_strict_visual and (
+            identity.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION
+            or identity.generated_visual_plan_version
+            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+            or identity.generated_visual_prompt_version
+            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+            or claimed.generation_mode != "live"
+            or identity.provider != "zhipu"
+            or self._strict_image_generator is None
+            or self._strict_image_quality_auditor is None
+            or self._generated_visual_store is None
+            or self._catalog_media_provider is None
+        ):
+            raise AppError(
+                "strict_visual_configuration_changed",
+                "strict visual configuration unavailable",
+                503,
+                False,
+            )
         is_historical_multi_image = (
             identity.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V2_VERSION
             and identity.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION
@@ -912,6 +951,12 @@ class OfficialAccountLocalExecutor:
                 raise ValueError("official-account multi-image article has no eligible body image")
         if is_news_context_media and claimed.generation_mode == "live":
             news_context_candidates = await self._repository.load_news_context_candidates(claimed)
+        if is_strict_visual:
+            if self._catalog_media_provider is None:
+                raise ValueError("strict visual catalog is unavailable")
+            source_media_candidates = await strict_catalog_candidates(
+                self._catalog_media_provider, source_media_candidates
+            )
         run_fingerprint = run_request_fingerprint(
             source_fingerprint=source.source_fingerprint,
             generation_mode=claimed.generation_mode,
@@ -949,7 +994,11 @@ class OfficialAccountLocalExecutor:
             )
             selection: OfficialAccountMediaSelectionResult | None = None
             if is_multimodal_media:
-                if self._media_semantic_ranker is not None:
+                if is_strict_visual:
+                    selection = strict_visual_media_selection(
+                        sections=result.draft.sections, candidates=source_media_candidates
+                    )
+                elif self._media_semantic_ranker is not None:
                     selection = await self._media_semantic_ranker.select(
                         topic_title=source.topic_title,
                         sections=result.draft.sections,
@@ -984,7 +1033,9 @@ class OfficialAccountLocalExecutor:
                 source=source,
                 versions=article_version_bundle(identity),
                 default_author=identity.default_author,
-                body_media_candidate_count=(len(source_media_candidates) if is_multi_image else 1),
+                body_media_candidate_count=(
+                    5 if is_strict_visual else len(source_media_candidates) if is_multi_image else 1
+                ),
                 semantic_media_assignments=semantic_assignments,
                 media_selection=selection.snapshot if selection is not None else None,
                 news_context_media=(
@@ -1073,9 +1124,15 @@ class OfficialAccountLocalExecutor:
         expected_body_slots = tuple(
             slot for slot in article.article.media_slots if slot.role == "body"
         )
+        if (
+            article.article.media_selection is not None
+            and (article.article.media_selection.reference_policy_version is not None)
+            != is_strict_visual
+        ):
+            raise ValueError("article reference policy does not match frozen run")
         if not is_multi_image:
             source_media_candidates = (await self._repository.load_source_media(claimed),)
-        if len(source_media_candidates) < len(expected_body_slots):
+        if not is_strict_visual and len(source_media_candidates) < len(expected_body_slots):
             raise ValueError("official-account media candidates do not satisfy the article plan")
         selected_source_media = (
             _select_v7_source_media(
@@ -1090,7 +1147,32 @@ class OfficialAccountLocalExecutor:
             if is_current_semantic_media
             else source_media_candidates[: len(expected_body_slots)]
         )
-        if self._should_generate_body_visuals(claimed=claimed):
+        strict_cover_source: OfficialAccountSourceMedia | None = None
+        if is_strict_visual:
+            if (
+                self._catalog_media_provider is None
+                or self._generated_visual_store is None
+                or self._strict_image_generator is None
+                or self._strict_image_quality_auditor is None
+            ):
+                raise ValueError("strict visual dependencies are unavailable")
+            strict_result = await execute_strict_visuals(
+                repository=self._repository,
+                claimed=claimed,
+                article=article,
+                rendered=rendered,
+                references=selected_source_media,
+                catalog_candidates=source_media_candidates,
+                catalog=self._catalog_media_provider,
+                store=self._generated_visual_store,
+                generator=self._strict_image_generator,
+                auditor=self._strict_image_quality_auditor,
+                lease_lost=lease_lost,
+            )
+            if strict_result is None:
+                return
+            selected_source_media, strict_cover_source = strict_result
+        elif self._should_generate_body_visuals(claimed=claimed):
             generated_source_media = await self._generate_body_visuals(
                 claimed=claimed,
                 article=article,
@@ -1246,7 +1328,9 @@ class OfficialAccountLocalExecutor:
         cover = await self._repository.get_media(claimed.run_id, "cover", 0)
         if cover is None:
             cover_source = (
-                await self._repository.load_source_media(claimed)
+                strict_cover_source
+                if strict_cover_source is not None
+                else await self._repository.load_source_media(claimed)
                 if is_multimodal_media
                 else selected_source_media[0]
             )
@@ -1699,16 +1783,24 @@ class OfficialAccountLocalExecutor:
         self,
         claimed: ClaimedOfficialAccountRun,
         stop: asyncio.Event,
+        lease_lost: asyncio.Event | None = None,
     ) -> None:
         while not stop.is_set():
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self._heartbeat_seconds)
                 return
             except TimeoutError:
-                if not await self._repository.heartbeat(
-                    claimed=claimed,
-                    lease_seconds=self._lease_seconds,
-                ):
+                try:
+                    owned = await self._repository.heartbeat(
+                        claimed=claimed, lease_seconds=self._lease_seconds
+                    )
+                except Exception:
+                    if claimed.identity.visual_pipeline_version is None:
+                        raise
+                    owned = False
+                if not owned:
+                    if lease_lost is not None:
+                        lease_lost.set()
                     return
 
 

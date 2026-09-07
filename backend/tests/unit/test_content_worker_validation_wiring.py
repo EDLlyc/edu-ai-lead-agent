@@ -4,7 +4,7 @@ import httpx
 import pytest
 from app.core.config import Settings
 from app.infrastructure.ai import factory
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 
 def test_validation_adapters_are_absent_by_default_and_in_fake_mode() -> None:
@@ -12,6 +12,8 @@ def test_validation_adapters_are_absent_by_default_and_in_fake_mode() -> None:
 
     try:
         defaults = Settings(_env_file=None)
+        assert defaults.image_quality_audit_model == "glm-5v-turbo"
+        assert defaults.image_quality_eval_mode == "off"
         assert factory.create_image_text_recognizer(defaults, client=client) is None
         assert factory.create_image_quality_auditor(defaults, client=client) is None
         assert (
@@ -146,5 +148,28 @@ def test_validation_adapters_share_the_supplied_ai_client(
     assert calls[0][1]["model"] == "glm-ocr"
     assert calls[0][1]["max_input_bytes"] == 10 * 1024 * 1024
     assert calls[0][1]["max_response_bytes"] == 1024 * 1024
-    assert calls[1][1]["model"] == "glm-5.2"
+    assert calls[1][1]["model"] == "glm-5v-turbo"
     assert calls[1][1]["max_request_bytes"] == settings.image_max_request_bytes
+
+    observer_settings = settings.model_copy(
+        update={
+            "image_quality_eval_mode": "observe",
+            "image_quality_audit_enabled": False,
+            "image_quality_audit_model": "independent-vision-model",
+        }
+    )
+    observer = factory.create_official_account_image_quality_auditor(
+        observer_settings,
+        client=client,  # type: ignore[arg-type]
+    )
+    assert isinstance(observer, OpenAICompatibleImageQualityAuditor)
+    assert calls[2][1]["client"] is client
+    assert calls[2][1]["model"] == "independent-vision-model"
+    assert observer_settings.ai_chat_model == "glm-5.2"
+    assert observer_settings.image_ocr_model == "glm-ocr"
+
+
+@pytest.mark.parametrize("model", ("", " ", "glm 5v", "glm-5v\n", "x" * 121))
+def test_image_quality_audit_model_rejects_invalid_identifiers(model: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, image_quality_audit_model=model)

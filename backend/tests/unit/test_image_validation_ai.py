@@ -14,6 +14,7 @@ from app.application.ports.image_validation import (
 )
 from app.core.errors import (
     InvalidProviderOutputError,
+    ProviderError,
     ProviderIdentityMismatchError,
     ProviderInputLimitError,
 )
@@ -66,17 +67,20 @@ def _auditor(
     handler: Callable[[httpx.Request], httpx.Response],
     *,
     max_request_bytes: int = 128 * 1024,
+    model: str = "vision-model",
+    base_url: str = "https://vision.provider.test/v1",
 ) -> tuple[OpenAICompatibleImageQualityAuditor, httpx.AsyncClient]:
     client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         follow_redirects=False,
+        trust_env=False,
     )
     return (
         OpenAICompatibleImageQualityAuditor(
             client=client,
-            base_url="https://vision.provider.test/v1",
+            base_url=base_url,
             api_key=SecretStr("test-only-key"),
-            model="vision-model",
+            model=model,
             connect_timeout_seconds=1,
             read_timeout_seconds=2,
             total_timeout_seconds=3,
@@ -176,6 +180,7 @@ async def test_vision_ocr_rejects_malformed_or_free_form_json() -> None:
         (
             _completion("not-json"),
             _completion('Here is the answer: {"recognized_lines":["科学"]}'),
+            _completion('```json\n{"recognized_lines":["科学"]}\n```'),
         )
     )
 
@@ -190,6 +195,8 @@ async def test_vision_ocr_rejects_malformed_or_free_form_json() -> None:
     )
     async with client:
         with pytest.raises(InvalidProviderOutputError) as malformed:
+            await adapter.recognize(request)
+        with pytest.raises(InvalidProviderOutputError):
             await adapter.recognize(request)
         with pytest.raises(InvalidProviderOutputError):
             await adapter.recognize(request)
@@ -263,6 +270,9 @@ async def test_vision_audit_accepts_typed_reference_inputs_in_order() -> None:
         result = await adapter.audit(_audit_request())
 
     payload = captured["payload"]
+    assert set(payload) == {"model", "messages", "max_tokens", "thinking", "do_sample"}
+    assert payload["thinking"] == {"type": "disabled"}
+    assert payload["do_sample"] is False
     content = payload["messages"][1]["content"]
     assert len(content) == 4
     assert _data_url_bytes(content[1]["image_url"]["url"]) == IMAGE_BYTES
@@ -292,6 +302,232 @@ async def test_vision_audit_accepts_typed_reference_inputs_in_order() -> None:
     assert result.issues == ()
     assert result.provider == "openai-compatible"
     assert result.request_fingerprint == "audit-fingerprint"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    (
+        '{"accepted":true,"issues":[]}',
+        ' \n{"accepted":true,"issues":[]}\n ',
+        '```json\n{"accepted":true,"issues":[]}\n```',
+    ),
+)
+async def test_glm_vision_audit_exact_route_model_and_json_framing(content: str) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert request.url == "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        payload = json.loads(request.content)
+        assert payload["model"] == "glm-5v-turbo"
+        image_url = payload["messages"][1]["content"][1]["image_url"]["url"]
+        assert image_url.startswith("data:image/jpeg;base64,")
+        assert _data_url_bytes(image_url) == IMAGE_BYTES
+        return httpx.Response(200, json=_completion(content, model="glm-5v-turbo"))
+
+    adapter, client = _auditor(
+        handler, model="glm-5v-turbo", base_url="https://open.bigmodel.cn/api/paas/v4"
+    )
+    async with client:
+        result = await adapter.audit(
+            ImageQualityAuditRequest(
+                image_bytes=IMAGE_BYTES,
+                media_type="image/jpeg",
+                request_fingerprint="final-jpeg-fingerprint",
+                criteria=("Review the final publication crop.",),
+            )
+        )
+    assert calls == 1
+    assert result.model == "glm-5v-turbo"
+    assert result.accepted is True
+    assert result.issues == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    (
+        'private sentinel {"accepted":true,"issues":[]}',
+        '{"accepted":true,"issues":[]} private sentinel',
+        '{"accepted":true,"issues":[]} {}',
+        '[{"accepted":true,"issues":[]}]',
+        '```JSON\n{"accepted":true,"issues":[]}\n```',
+        '```\n{"accepted":true,"issues":[]}\n```',
+        '```json\n{"accepted":true,"issues":[]}',
+        '```json\n{"accepted":true,"issues":[]}\n```\n```json\n{}\n```',
+        '{"accepted":false,"accepted":true,"issues":[]}',
+        '{"accepted":false,"issues":[{"code":"a","code":"b","severity":"error"}]}',
+        '{"accepted":true,"issues":[],"reason":"private sentinel"}',
+        '{"accepted":"true","issues":[]}',
+        '{"accepted":true,"issues":null}',
+        '{"accepted":NaN,"issues":[]}',
+        '{"accepted":true,"issues":[{"code":"a","severity":"error"}]}',
+        '{"accepted":false,"issues":[{"code":"a","severity":"warning","extra":1}]}',
+        "[" * 2_000 + "]" * 2_000,
+    ),
+)
+async def test_vision_audit_rejects_ambiguous_or_invalid_output_once(content: str) -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_completion(content))
+
+    adapter, client = _auditor(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.audit(_audit_request())
+    assert calls == 1
+    assert raised.value.issue_codes == ("invalid_schema",)
+    assert "private sentinel" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("returned_model", ("glm-5.2", "glm-5v-turbo-alias", "GLM-5V-TURBO", ""))
+async def test_glm_audit_rejects_returned_model_mismatch_once(returned_model: str) -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200, json=_completion('{"accepted":true,"issues":[]}', model=returned_model)
+        )
+
+    adapter, client = _auditor(handler, model="glm-5v-turbo")
+    async with client:
+        with pytest.raises(ProviderIdentityMismatchError):
+            await adapter.audit(_audit_request())
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "envelope",
+    (
+        '{"model":"glm-5.2","model":"glm-5v-turbo","choices":%s}',
+        '{"model":"glm-5v-turbo","choices":[],"choices":%s}',
+        '{"model":"glm-5v-turbo","usage":{"total_tokens":NaN},"choices":%s}',
+        '{"model":"glm-5v-turbo","usage":{"total_tokens":Infinity},"choices":%s}',
+    ),
+)
+async def test_glm_audit_rejects_ambiguous_or_non_json_completion_envelopes(
+    envelope: str,
+) -> None:
+    calls = 0
+    choices = json.dumps([{"message": {"content": '{"accepted":true,"issues":[]}'}}])
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=(envelope % choices).encode())
+
+    adapter, client = _auditor(handler, model="glm-5v-turbo")
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.audit(_audit_request())
+    assert calls == 1
+    assert raised.value.issue_codes == ("invalid_schema",)
+
+
+@pytest.mark.asyncio
+async def test_glm_audit_rejects_duplicate_nested_completion_content() -> None:
+    rejected = json.dumps('{"accepted":false,"issues":[]}')
+    accepted = json.dumps('{"accepted":true,"issues":[]}')
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            content=(
+                '{"model":"glm-5v-turbo","choices":[{"message":{'
+                f'"content":{rejected},"content":{accepted}'
+                "}}]}"
+            ).encode(),
+        )
+
+    adapter, client = _auditor(handler, model="glm-5v-turbo")
+    async with client:
+        with pytest.raises(InvalidProviderOutputError):
+            await adapter.audit(_audit_request())
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "expected_code"),
+    (
+        ("timeout", "provider_timeout"),
+        ("unavailable", "provider_unavailable"),
+        ("missing_model", "invalid_provider_output"),
+        ("oversized", "invalid_provider_output"),
+    ),
+)
+async def test_glm_audit_projects_safe_failure_without_retry(
+    failure: str, expected_code: str
+) -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if failure == "timeout":
+            raise httpx.ReadTimeout("private sentinel")
+        if failure == "unavailable":
+            return httpx.Response(503, text="private sentinel")
+        if failure == "oversized":
+            return httpx.Response(200, text="private sentinel" * 2_000)
+        completion = _completion('{"accepted":true,"issues":[]}')
+        del completion["model"]
+        return httpx.Response(200, json=completion)
+
+    adapter, client = _auditor(handler, model="glm-5v-turbo")
+    async with client:
+        with pytest.raises(ProviderError) as raised:
+            await adapter.audit(_audit_request())
+    assert calls == 1
+    assert raised.value.code == expected_code
+    assert "private sentinel" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_vision_audit_preserves_warnings_for_the_callers_policy() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_completion(
+                '{"accepted":true,"issues":[{"code":"ip_identity_borderline",'
+                '"severity":"warning"}]}'
+            ),
+        )
+
+    adapter, client = _auditor(handler)
+    async with client:
+        result = await adapter.audit(_audit_request())
+    assert result.accepted is True
+    assert result.issue_codes == ("ip_identity_borderline",)
+    assert result.issues[0].severity == "warning"
+
+
+@pytest.mark.asyncio
+async def test_vision_audit_request_limit_prevents_provider_call() -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500)
+
+    adapter, client = _auditor(handler, max_request_bytes=100)
+    async with client:
+        with pytest.raises(ProviderInputLimitError):
+            await adapter.audit(_audit_request())
+    assert calls == 0
 
 
 @pytest.mark.asyncio

@@ -33,6 +33,10 @@ from app.infrastructure.ai.factory import (
     create_official_account_image_quality_auditor,
 )
 from app.infrastructure.ai.official_account_local import create_zhipu_official_account_models
+from app.infrastructure.ai.official_account_visual_strict import (
+    LazyStrictOfficialAccountImageGenerator,
+    LazyStrictOfficialAccountImageQualityAuditor,
+)
 from app.infrastructure.ai.visual_embedding import (
     AlibabaVisualEmbeddingAdapter,
     DeterministicFakeVisualEmbedding,
@@ -106,7 +110,10 @@ class _LazyOfficialAccountImageGenerator(ImageGenerator):
                 raise RuntimeError("official-account image provider is disabled")
             if self._settings.image_provider_mode != "fake":
                 self._client = httpx.AsyncClient(follow_redirects=False)
-            self._adapter = create_image_generator(self._settings, client=self._client)
+            # Historical generated intents were already one-shot. A prospective strict setting
+            # may leave the unrelated general IMAGE_MAX_ATTEMPTS untouched; keep this path fenced.
+            bounded = self._settings.model_copy(update={"image_max_attempts": 1})
+            self._adapter = create_image_generator(bounded, client=self._client)
         return await self._adapter.generate(request)
 
     async def close(self) -> None:
@@ -213,6 +220,8 @@ async def run_worker() -> None:
             ),
             image_quality_eval_mode=settings.image_quality_eval_mode,
             image_quality_auditor=image_quality_auditor,
+            strict_image_generator=LazyStrictOfficialAccountImageGenerator(settings),
+            strict_image_quality_auditor=LazyStrictOfficialAccountImageQualityAuditor(settings),
         )
         worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
         logger.info(

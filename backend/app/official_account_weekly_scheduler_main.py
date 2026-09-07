@@ -41,6 +41,7 @@ from app.infrastructure.db.official_account_weekly_production import (
     PostgresWeeklyProductionInputPlanner,
 )
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.official_account_runtime import official_account_identity_from_settings
 from app.infrastructure.official_account_weekly_dag_governance import (
     PostgresOfficialAccountWeeklyDagGovernance,
 )
@@ -87,7 +88,14 @@ async def run_weekly_scheduler() -> None:
         governance=governance,
         handlers=registry,
     )
-    planner = PostgresWeeklyProductionInputPlanner(session_factory)
+    planner = PostgresWeeklyProductionInputPlanner(
+        session_factory,
+        article_identity=official_account_identity_from_settings(
+            settings,
+            provider="zhipu",
+            model=settings.ai_chat_model,
+        ),
+    )
     checkpoints = LocalWeeklyProductionArtifactOwner(
         Path(settings.official_account_weekly_artifact_root)
     )

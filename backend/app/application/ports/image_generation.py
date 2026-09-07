@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from app.domain.image_generation import validate_image_prompt
@@ -34,6 +34,7 @@ class ImageGenerationRequest:
     reference_mode: str = "legacy_single"
     provider_request_fingerprint: str | None = None
     unrestricted_prompt_length: bool = False
+    output_size: Literal["1024x1024", "1536x1024"] = "1024x1024"
 
 
 def validate_image_generation_request_prompt(request: ImageGenerationRequest) -> str:

@@ -33,9 +33,19 @@ from app.application.ports.wechat_official_account import (
     WeChatDraftReceipt,
     WeChatDraftRole,
     WeChatMpDraftPreparationError,
+    WeChatMpInvalidResponseError,
     WeChatOfficialAccountDraftClient,
 )
+from app.application.services.official_account_strict_prepared import (
+    STRICT_PREPARED_CHILD_VERSION,
+    validate_strict_prepared_projection,
+)
 from app.application.services.official_account_weekly_edition import load_finalized_v2_child
+from app.domain.official_account_strict_layout import (
+    strict_escaped_upload_url,
+    validate_strict_upload_html_headroom,
+)
+from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER, WeeklyArticleRole
 
 _SHA256_LENGTH: Final = 64
@@ -94,6 +104,7 @@ class WeChatPreparedDraft:
     cover: WeChatPreparedMedia = field(repr=False)
     need_open_comment: bool
     only_fans_can_comment: bool
+    visual_pipeline_version: str | None = None
 
 
 class WeChatOfficialAccountDraftPreparer:
@@ -122,6 +133,7 @@ class WeChatOfficialAccountDraftPreparer:
         if (
             len({item.article_fingerprint for item in prepared}) != 3
             or len({item.content_fingerprint for item in prepared}) != 3
+            or len({item.visual_pipeline_version for item in prepared}) != 1
         ):
             raise WeChatMpDraftPreparationError()
         return prepared
@@ -193,6 +205,13 @@ class WeChatOfficialAccountDraftOnlyService:
         created_at: datetime,
     ) -> WeChatDraftReceipt:
         rewritten = prepared.body_html
+        if prepared.visual_pipeline_version is not None:
+            if prepared.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION:
+                raise WeChatMpDraftPreparationError()
+            validate_strict_upload_html_headroom(
+                rewritten,
+                tuple(item.path for item in prepared.body_media),
+            )
         for media in prepared.body_media:
             uploaded = await self._client.upload_inline_image(
                 media.body,
@@ -202,9 +221,17 @@ class WeChatOfficialAccountDraftOnlyService:
             needle = f'src="{media.path}"'
             if rewritten.count(needle) != 1:
                 raise WeChatMpDraftPreparationError()
+            try:
+                upload_url = (
+                    strict_escaped_upload_url(uploaded.url)
+                    if prepared.visual_pipeline_version is not None
+                    else escape(uploaded.url, quote=True)
+                )
+            except ValueError:
+                raise WeChatMpInvalidResponseError(endpoint="media_uploadimg") from None
             rewritten = rewritten.replace(
                 needle,
-                f'src="{escape(uploaded.url, quote=True)}"',
+                f'src="{upload_url}"',
                 1,
             )
         if any(f'src="{item.path}"' in rewritten for item in prepared.body_media):
@@ -344,8 +371,19 @@ def _prepare_persisted_draft_source(
     if not manifest_body or len(manifest_body) > 256 * 1024:
         raise ValueError("prepared draft manifest size is invalid")
     manifest = _json_object(manifest_body)
+    strict = manifest.get("version") == STRICT_PREPARED_CHILD_VERSION
+    if strict:
+        lexical = source.directory.expanduser().absolute()
+        if any(path.is_symlink() for path in (lexical, *lexical.parents)):
+            raise ValueError("strict prepared path contains a symlink")
+        if any(
+            path.relative_to(root).as_posix() != "assets"
+            for path in root.rglob("*")
+            if path.is_dir()
+        ):
+            raise ValueError("strict prepared directory set changed")
     if (
-        manifest.get("version") != _PREPARED_CHILD_VERSION
+        manifest.get("version") not in {_PREPARED_CHILD_VERSION, STRICT_PREPARED_CHILD_VERSION}
         or manifest.get("role") != source.role
         or manifest.get("published") is not False
         or manifest.get("draft_only") is not True
@@ -354,6 +392,8 @@ def _prepare_persisted_draft_source(
     projections = manifest.get("files")
     if not isinstance(projections, list) or not projections:
         raise ValueError("prepared draft file projection is missing")
+    if strict and not 7 <= len(projections) <= 11:
+        raise ValueError("strict prepared file count is invalid")
     files: dict[str, bytes] = {}
     projected_paths: set[str] = set()
     for raw_projection in projections:
@@ -366,6 +406,8 @@ def _prepare_persisted_draft_source(
         target = root.joinpath(*PurePosixPath(path).parts)
         if not target.is_file() or target.is_symlink():
             raise ValueError("prepared draft file is unavailable")
+        if strict and not 1 <= target.stat().st_size <= max_image_bytes:
+            raise ValueError("strict prepared file byte bound is invalid")
         body = target.read_bytes()
         if (
             raw_projection.get("byte_size") != len(body)
@@ -376,7 +418,8 @@ def _prepare_persisted_draft_source(
     actual_paths = {
         path.relative_to(root).as_posix()
         for path in root.rglob("*")
-        if path.is_file() and path.name != "prepared-manifest.json"
+        if path.is_file()
+        and (path != manifest_path if strict else path.name != "prepared-manifest.json")
     }
     if actual_paths != projected_paths or "article-body.html" not in files:
         raise ValueError("prepared draft file set changed")
@@ -413,16 +456,22 @@ def _prepare_persisted_draft_source(
         maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
     )
     body_html = files["article-body.html"].decode("utf-8")
+    strict = manifest.get("version") == STRICT_PREPARED_CHILD_VERSION
+    if strict:
+        validate_strict_prepared_projection(manifest, files)
     _validate_draft_html_size(body_html)
     parser = _DraftHtmlValidator()
     parser.feed(body_html)
     parser.close()
     image_paths = parser.finish()
+    if strict:
+        validate_strict_upload_html_headroom(body_html, image_paths)
     body_media, cover = _prepare_media(
         manifest=manifest,
         files=files,
         image_paths=image_paths,
         max_image_bytes=max_image_bytes,
+        preserve_upload_bytes=strict,
     )
     content_source_url = _optional_https_url(source.content_source_url)
     if source.only_fans_can_comment and not source.need_open_comment:
@@ -445,6 +494,7 @@ def _prepare_persisted_draft_source(
         cover=cover,
         need_open_comment=source.need_open_comment,
         only_fans_can_comment=source.only_fans_can_comment,
+        visual_pipeline_version=STRICT_VISUAL_PIPELINE_VERSION if strict else None,
     )
 
 
@@ -470,6 +520,7 @@ def _prepare_media(
     files: Mapping[str, bytes],
     image_paths: tuple[str, ...],
     max_image_bytes: int,
+    preserve_upload_bytes: bool = False,
 ) -> tuple[tuple[WeChatPreparedMedia, ...], WeChatPreparedMedia]:
     raw_media = manifest.get("media")
     if not isinstance(raw_media, list) or not raw_media:
@@ -518,7 +569,17 @@ def _prepare_media(
                 media_type=media_type,
             ),
         )
-        if role == "cover":
+        if preserve_upload_bytes:
+            if role == "cover":
+                if (
+                    media_type != "image/jpeg"
+                    or (width, height) != (1175, 500)
+                    or len(body) > WECHAT_MP_MAX_THUMB_BYTES
+                ):
+                    raise ValueError("strict upload thumb identity is invalid")
+            elif len(body) > WECHAT_MP_MAX_INLINE_IMAGE_BYTES:
+                raise ValueError("strict inline upload bytes exceed the bound")
+        elif role == "cover":
             normalized_thumb = _normalize_cover_thumb(body)
             _validate_image_bytes(
                 normalized_thumb,

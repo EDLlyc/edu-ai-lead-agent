@@ -79,6 +79,12 @@ from app.domain.official_account_local import (
     article_version_bundle_kind,
     fingerprint,
 )
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
+)
 from app.infrastructure.db.models import (
     ImageArtifactModel,
     MaterialPackageModel,
@@ -96,6 +102,10 @@ from app.infrastructure.db.models import (
     OfficialAccountRenderVersionModel,
     SourceArticleImageModel,
     SourceSnapshotModel,
+)
+from app.infrastructure.db.official_account_strict_visual import (
+    PostgresStrictVisualRepositoryMixin,
+    validate_strict_visual_ready,
 )
 from app.infrastructure.official_account_local import (
     FIXTURE_BODY_ALT_TEXTS,
@@ -157,7 +167,32 @@ def _article_artifact_version(article: ArticlePackage) -> int:
     return _ARTICLE_ARTIFACT_VERSION_BY_FAMILY[family]
 
 
-class PostgresOfficialAccountRepository:
+class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
+    async def resolve_legacy_weekly_identity(
+        self, material_package_id: UUID
+    ) -> OfficialAccountVersionIdentity | None:
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(OfficialAccountArticleRunModel.version_bundle)
+                    .where(
+                        OfficialAccountArticleRunModel.material_package_id == material_package_id,
+                        OfficialAccountArticleRunModel.generation_mode == "live",
+                    )
+                    .distinct()
+                    .limit(2)
+                )
+            ).all()
+            identities = tuple(_identity_from_bundle(bundle) for bundle in rows)
+            if not identities:
+                return None
+            if (
+                any(identity.visual_pipeline_version is not None for identity in identities)
+                or len(rows) != 1
+            ):
+                raise ConflictError("historical weekly article identity is ambiguous")
+            return identities[0]
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
@@ -387,6 +422,7 @@ class PostgresOfficialAccountRepository:
                 plan_version=plan.plan_version,
                 prompt_version=plan.prompt_version,
                 output_profile_version=plan.output_profile_version,
+                output_size=plan.output_size,
                 provider=plan.provider,
                 model=plan.model,
                 status="generating",
@@ -437,6 +473,13 @@ class PostgresOfficialAccountRepository:
             if row is None:
                 raise RuntimeError("generated visual intent is missing")
             _assert_generated_visual_plan(row, plan)
+            if plan.output_size is not None and (
+                row.intent_lease_token != claimed.lease_token
+                or row.intent_attempt_number != claimed.attempt_number
+                or run.lease_expires_at is None
+                or run.lease_expires_at <= datetime.now(UTC)
+            ):
+                return None
             if eval_result is not None:
                 if plan.reference_input_checksum is None:
                     raise ValueError("generated visual eval requires a normalized reference hash")
@@ -1128,6 +1171,12 @@ class PostgresOfficialAccountRepository:
         result: OfficialAccountGenerationResult,
         validation_issues: tuple[ArticleValidationIssue, ...],
     ) -> StoredOfficialAccountArticle | None:
+        strict_snapshot = (
+            article.media_selection is not None
+            and article.media_selection.reference_policy_version is not None
+        )
+        if strict_snapshot != (claimed.identity.visual_pipeline_version is not None):
+            raise ValueError("article reference policy does not match frozen run")
         async with self._session_factory() as session:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
@@ -1379,12 +1428,47 @@ class PostgresOfficialAccountRepository:
                     OfficialAccountGeneratedVisualModel, source_media.generated_visual_id
                 )
                 if (
-                    result.role != "body"
-                    or generated is None
+                    generated is None
                     or generated.run_id != run.id
                     or generated.render_version_id != render.id
-                    or generated.ordinal != result.ordinal
                     or generated.status != "ready"
+                ):
+                    raise RuntimeError("generated visual media lineage is invalid")
+                if source_media.upload_derivative is not None:
+                    from app.application.ports.official_account_strict_visual import (
+                        strict_visual_derivative_descriptor as derivative_descriptor,
+                    )
+                    from app.infrastructure.db.models import OfficialAccountStrictVisualAuditModel
+                    from app.infrastructure.db.official_account_strict_visual import (
+                        _stored as stored_strict_audit,
+                    )
+
+                    audit_row = await session.scalar(
+                        select(OfficialAccountStrictVisualAuditModel).where(
+                            OfficialAccountStrictVisualAuditModel.run_id == run.id,
+                            OfficialAccountStrictVisualAuditModel.role == result.role,
+                            OfficialAccountStrictVisualAuditModel.ordinal == result.ordinal,
+                        )
+                    )
+                    if audit_row is None:
+                        raise RuntimeError("strict generated derivative audit is missing")
+                    audit = stored_strict_audit(audit_row)
+                    if (
+                        run.version_bundle.get("visual_pipeline_version")
+                        != STRICT_VISUAL_PIPELINE_VERSION
+                        or audit.status != "accepted"
+                        or audit.issue_codes
+                        or audit.subject.generated_visual_id != generated.id
+                        or audit.subject.publication_sha256 != generated.sha256
+                        or audit.subject.upload_sha256 != result.sha256
+                        or audit.subject.media_type != result.media_type
+                        or audit.subject.byte_size != result.byte_size
+                        or source_media.upload_derivative != derivative_descriptor(audit.subject)
+                    ):
+                        raise RuntimeError("strict generated derivative lineage is invalid")
+                elif (
+                    result.role != "body"
+                    or generated.ordinal != result.ordinal
                     or generated.media_type != result.media_type
                     or generated.byte_size != result.byte_size
                     or generated.sha256 != result.sha256
@@ -1443,6 +1527,11 @@ class PostgresOfficialAccountRepository:
                     "access": "controlled_local_api",
                     "role": result.role,
                     "ordinal": result.ordinal,
+                    **(
+                        {"upload_derivative": source_media.upload_derivative}
+                        if source_media.upload_derivative is not None
+                        else {}
+                    ),
                     "source_kind": "fixture"
                     if source_media.fixture_id == OFFICIAL_ACCOUNT_FIXTURE_ID
                     else "approved_catalog"
@@ -1595,6 +1684,10 @@ class PostgresOfficialAccountRepository:
                 or cover_row.status != "ready"
             ):
                 raise RuntimeError("official-account draft media roles or ordinals are incomplete")
+            if run.version_bundle.get("visual_pipeline_version") is not None:
+                if run.lease_expires_at is None or run.lease_expires_at <= datetime.now(UTC):
+                    return None
+                await validate_strict_visual_ready(session, run)
             resolved_fingerprint = fingerprint(
                 render.render_fingerprint,
                 request_fingerprint,
@@ -1980,6 +2073,11 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
                 if bundle.get("context_media_plan_version") is not None
                 else None
             ),
+            visual_pipeline_version=(
+                str(bundle["visual_pipeline_version"])
+                if bundle.get("visual_pipeline_version") is not None
+                else None
+            ),
         )
     except (KeyError, TypeError, ValueError):
         raise RuntimeError("official-account run version bundle is invalid") from None
@@ -1987,6 +2085,8 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
 
 def _identity_payload(identity: OfficialAccountVersionIdentity) -> dict[str, object]:
     payload = asdict(identity)
+    if payload.get("visual_pipeline_version") is None:
+        payload.pop("visual_pipeline_version", None)
     if payload.get("context_media_plan_version") is None:
         payload.pop("context_media_plan_version", None)
     return payload
@@ -2096,6 +2196,7 @@ def _stored_generated_visual(
             plan_version=row.plan_version,
             prompt_version=row.prompt_version,
             output_profile_version=row.output_profile_version,
+            output_size=cast(Literal["1536x1024"] | None, row.output_size),
             provider=cast(Literal["fake", "toapis", "comfly"], row.provider),
             model=row.model,
         )
@@ -2218,11 +2319,21 @@ def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) ->
         and plan.reference_input_checksum is None
         and plan.output_profile_version is None
     )
+    is_strict = (
+        plan.plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+        and plan.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+        and plan.output_profile_version
+        == OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION
+        and plan.output_size == "1536x1024"
+        and plan.provider == "comfly"
+        and plan.model == "gpt-image-2"
+    )
     is_publication = (
         (
             plan.plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V2_VERSION
             and plan.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V2_VERSION
         )
+        or is_strict
         or (
             plan.plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
             and plan.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
@@ -2238,7 +2349,10 @@ def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) ->
         and plan.reference_input_checksum is not None
         and len(plan.reference_input_checksum) == 64
         and all(character in "0123456789abcdef" for character in plan.reference_input_checksum)
-        and plan.output_profile_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_VERSION
+        and (
+            plan.output_profile_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_VERSION
+            or is_strict
+        )
     )
     if (
         not 0 <= plan.ordinal <= 4
@@ -2258,6 +2372,7 @@ def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) ->
         or len(plan.request_fingerprint) != 64
         or any(character not in "0123456789abcdef" for character in plan.request_fingerprint)
         or not (is_v1 or is_publication)
+        or (not is_strict and plan.output_size is not None)
         or plan.provider not in {"fake", "toapis", "comfly"}
         or not plan.model
     ):

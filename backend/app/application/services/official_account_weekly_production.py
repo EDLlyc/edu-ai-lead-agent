@@ -15,6 +15,11 @@ from app.application.ports.official_account_weekly_dag import (
     WeeklyDagNodeFailure,
     WeeklyDagNodeResult,
 )
+from app.application.ports.official_account_weekly_production import (
+    WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
+    WEEKLY_PRODUCTION_INPUT_VERSION,
+    weekly_article_identity_from_snapshot,
+)
 from app.application.services.official_account_weekly_dag import (
     StaticWeeklyDagHandlerRegistry,
 )
@@ -42,6 +47,12 @@ class WeeklyProductionCheckpointOwner(Protocol):
 
 
 class WeeklyProductionArticleRepository(Protocol):
+    async def resolve_legacy_weekly_identity(
+        self,
+        *,
+        material_package_id: UUID,
+    ) -> OfficialAccountVersionIdentity | None: ...
+
     async def enqueue_material_package(
         self,
         *,
@@ -190,11 +201,24 @@ class ProductionWeeklyDagHandlers:
 
     async def _build_article(self, claim: WeeklyDagClaim) -> WeeklyDagNodeResult:
         role = _role(claim)
-        item = _item_for_role(self._input(claim), role)
+        payload = self._input(claim)
+        item = _item_for_role(payload, role)
+        package_id = UUID(_text(item.get("material_package_id")))
         try:
+            identity: OfficialAccountVersionIdentity | None
+            if payload["version"] == WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION:
+                identity = weekly_article_identity_from_snapshot(payload.get("article_identity"))
+            else:
+                identity = await self._article_repository.resolve_legacy_weekly_identity(
+                    material_package_id=package_id,
+                )
+                if identity is None:
+                    if self._article_identity.visual_pipeline_version is not None:
+                        raise ConflictError("legacy weekly article identity cannot be proven")
+                    identity = self._article_identity
             run, _created = await self._article_repository.enqueue_material_package(
-                material_package_id=UUID(_text(item.get("material_package_id"))),
-                identity=self._article_identity,
+                material_package_id=package_id,
+                identity=identity,
             )
         except (ConflictError, NotFoundError, ValidationError):
             # A frozen material cannot become valid by repeating the same build attempt.
@@ -228,8 +252,8 @@ class ProductionWeeklyDagHandlers:
                 "material_package_id": _text(item.get("material_package_id")),
                 "event_id": _text(item.get("event_id")),
                 "event_version_id": _text(item.get("event_version_id")),
-                "provider": self._article_identity.provider,
-                "model": self._article_identity.model,
+                "provider": identity.provider,
+                "model": identity.model,
                 "status": "ready",
             }
         )
@@ -316,11 +340,19 @@ class ProductionWeeklyDagHandlers:
     def _input(self, claim: WeeklyDagClaim) -> dict[str, object]:
         payload = self._checkpoints.get_json_by_fingerprint(claim.run.input_fingerprint)
         if (
-            payload.get("version") != "official-account-weekly-production-input-v1"
+            payload.get("version")
+            not in {
+                WEEKLY_PRODUCTION_INPUT_VERSION,
+                WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
+            }
             or payload.get("week_start") != claim.run.week_start.isoformat()
             or len(_items(payload)) != 3
         ):
             raise ValueError("weekly production input snapshot changed")
+        if payload.get("version") == WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION:
+            weekly_article_identity_from_snapshot(payload.get("article_identity"))
+        elif "article_identity" in payload:
+            raise ValueError("legacy weekly input cannot carry a new article identity")
         return payload
 
     def _dependency_json(self, claim: WeeklyDagClaim, *, expected: str) -> dict[str, object]:

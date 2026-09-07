@@ -6,6 +6,10 @@ from typing import Literal
 
 from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.core.config import Settings
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+)
 
 
 def official_account_identity_from_settings(
@@ -14,6 +18,9 @@ def official_account_identity_from_settings(
     provider: Literal["fake", "zhipu"],
     model: str,
 ) -> OfficialAccountVersionIdentity:
+    strict_version = (
+        settings.official_account_local_visual_pipeline_version if provider == "zhipu" else None
+    )
     return OfficialAccountVersionIdentity(
         provider=provider,
         model=model,
@@ -36,15 +43,24 @@ def official_account_identity_from_settings(
         visual_selector_version=settings.official_account_local_visual_selector_version,
         context_media_plan_version=settings.official_account_local_context_media_plan_version,
         generated_visual_plan_version=(
-            settings.official_account_local_generated_visual_plan_version
+            (
+                OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+                if strict_version
+                else settings.official_account_local_generated_visual_plan_version
+            )
             if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
             else None
         ),
         generated_visual_prompt_version=(
-            settings.official_account_local_generated_visual_prompt_version
+            (
+                OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+                if strict_version
+                else settings.official_account_local_generated_visual_prompt_version
+            )
             if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
             else None
         ),
+        visual_pipeline_version=strict_version,
     )
 
 

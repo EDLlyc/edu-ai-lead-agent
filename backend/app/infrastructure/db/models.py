@@ -4231,6 +4231,75 @@ class OfficialAccountRenderVersionModel(Base):
     )
 
 
+class OfficialAccountStrictVisualAuditModel(Base):
+    """One committed external-call intent for each of six final upload subjects."""
+
+    __tablename__ = "official_account_strict_visual_audits"
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("official_account_article_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    article_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("official_account_article_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    render_version_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("official_account_render_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    generated_visual_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("official_account_generated_visuals.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    upload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    lease_token: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    issue_codes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    record_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "role", "ordinal", name="uq_official_strict_audit_slot"),
+        UniqueConstraint("request_fingerprint", name="uq_official_strict_audit_request"),
+        CheckConstraint(
+            "(role = 'body' AND ordinal BETWEEN 0 AND 4) OR (role = 'cover' AND ordinal = 0)",
+            name="ck_official_strict_audit_slot",
+        ),
+        CheckConstraint("attempt_number > 0", name="ck_official_strict_audit_attempt"),
+        CheckConstraint(
+            "request_fingerprint ~ '^[0-9a-f]{64}$' AND upload_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_official_strict_audit_hash",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(subject) = 'object' AND jsonb_typeof(issue_codes) = 'array' "
+            "AND jsonb_array_length(issue_codes) <= 16",
+            name="ck_official_strict_audit_json",
+        ),
+        CheckConstraint(
+            "(status = 'calling' AND completed_at IS NULL AND "
+            "record_fingerprint IS NULL AND issue_codes = '[]'::jsonb) OR "
+            "(status IN ('accepted','rejected','unavailable','result_unknown') "
+            "AND completed_at IS NOT NULL AND record_fingerprint IS NOT NULL "
+            "AND record_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND (status <> 'accepted' OR issue_codes = '[]'::jsonb))",
+            name="ck_official_strict_audit_result",
+        ),
+    )
+
+
 class OfficialAccountGeneratedVisualModel(Base):
     """One immutable generated-body-visual intent/result per article render slot.
 
@@ -4286,6 +4355,9 @@ class OfficialAccountGeneratedVisualModel(Base):
     plan_version: Mapped[str] = mapped_column(String(80), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
     output_profile_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    output_size: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    intent_lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    intent_attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -4331,8 +4403,33 @@ class OfficialAccountGeneratedVisualModel(Base):
             "'image-reference-input-v2-png-preserve-jpeg-normalize' "
             "AND reference_input_checksum ~ '^[0-9a-f]{64}$' "
             "AND output_profile_version = "
-            "'official-account-generated-body-publication-v2-3x2-jpeg')",
+            "'official-account-generated-body-publication-v2-3x2-jpeg') OR "
+            "(plan_version = 'official-account-generated-visual-plan-v4-native-strict' "
+            "AND prompt_version = 'official-account-generated-visual-prompt-v4-native-strict' "
+            "AND block_index BETWEEN 0 AND 12 "
+            "AND block_kind IN ('paragraph', 'bullet_list', 'quote', 'callout') "
+            "AND block_fingerprint ~ '^[0-9a-f]{64}$' "
+            "AND reference_input_version = 'image-reference-input-v2-png-preserve-jpeg-normalize' "
+            "AND reference_input_checksum ~ '^[0-9a-f]{64}$' "
+            "AND output_profile_version = 'official-account-generated-body-jpeg-v2-native-strict')",
             name="ck_official_generated_visuals_plan_shape",
+        ),
+        CheckConstraint(
+            "(plan_version = 'official-account-generated-visual-plan-v4-native-strict' "
+            "AND output_size IS NOT NULL AND output_size = '1536x1024' "
+            "AND intent_lease_token IS NOT NULL AND intent_attempt_number IS NOT NULL "
+            "AND intent_attempt_number > 0 AND provider = 'comfly' AND model = 'gpt-image-2' "
+            "AND block_index IS NOT NULL AND block_kind IS NOT NULL "
+            "AND block_fingerprint IS NOT NULL "
+            "AND reference_input_version IS NOT NULL AND reference_input_checksum IS NOT NULL "
+            "AND output_profile_version IS NOT NULL "
+            "AND (status <> 'ready' OR (width IS NOT NULL AND height IS NOT NULL "
+            "AND media_type IS NOT NULL AND width = 1536 AND height = 1024 "
+            "AND media_type = 'image/jpeg'))) OR "
+            "(plan_version <> 'official-account-generated-visual-plan-v4-native-strict' "
+            "AND output_size IS NULL AND intent_lease_token IS NULL "
+            "AND intent_attempt_number IS NULL)",
+            name="ck_official_generated_visuals_native_intent",
         ),
         CheckConstraint(
             "reference_asset_ref ~ '^[0-9a-f]{16}$'",

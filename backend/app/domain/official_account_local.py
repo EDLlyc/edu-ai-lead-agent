@@ -29,6 +29,9 @@ OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION: Literal["official-account-media-plan-v3-mul
 OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION: Literal["official-account-media-plan-v4-five-blocks"] = (
     "official-account-media-plan-v4-five-blocks"
 )
+STRICT_VISUAL_REFERENCE_POLICY_VERSION: Literal[
+    "official-account-reference-scenes-v1-native-strict"
+] = "official-account-reference-scenes-v1-native-strict"
 OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION: Literal["official-account-visual-query-v1"] = (
     "official-account-visual-query-v1"
 )
@@ -391,6 +394,9 @@ class ArticleMediaSelectionItem(_FrozenModel):
 
 
 class ArticleMediaSelectionSnapshot(_FrozenModel):
+    reference_policy_version: (
+        Literal["official-account-reference-scenes-v1-native-strict"] | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
     media_plan_version: Literal[
         "official-account-media-plan-v3-multimodal-hybrid",
         "official-account-media-plan-v4-five-blocks",
@@ -441,6 +447,22 @@ class ArticleMediaSelectionSnapshot(_FrozenModel):
             raise ValueError("media selection ordinals must be contiguous")
         if len({item.section_index for item in self.assignments}) != len(self.assignments):
             raise ValueError("media selection section indexes must be distinct")
+        if self.reference_policy_version == STRICT_VISUAL_REFERENCE_POLICY_VERSION:
+            if (
+                len(self.assignments) != 5
+                or self.media_plan_version != OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
+                or self.status != "semantic_unavailable"
+                or self.closed_reason != "disabled"
+                or any(item.selection_method != "deterministic_tag" for item in self.assignments)
+            ):
+                raise ValueError("strict reference selection requires five deterministic scenes")
+            identities: dict[str, tuple[str, str]] = {}
+            for item in self.assignments:
+                pair = (item.source_checksum, item.publication_checksum)
+                if item.candidate_ref in identities and identities[item.candidate_ref] != pair:
+                    raise ValueError("repeated strict reference identity must be exact")
+                identities[item.candidate_ref] = pair
+            return self
         if len({item.candidate_ref for item in self.assignments}) != len(self.assignments):
             raise ValueError("media selection candidate references must be distinct")
         if len({item.source_checksum for item in self.assignments}) != len(self.assignments):

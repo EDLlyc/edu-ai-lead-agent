@@ -5,11 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import date, datetime
-from typing import Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
+from app.application.ports.official_account_local import OfficialAccountVersionIdentity
+from app.domain.official_account_visual_pipeline import (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
+)
 from app.domain.official_account_weekly_edition import (
     WEEKLY_EDITION_ROLE_ORDER,
     WeeklyArticleRole,
@@ -17,6 +23,52 @@ from app.domain.official_account_weekly_edition import (
 )
 
 WEEKLY_PRODUCTION_INPUT_VERSION = "official-account-weekly-production-input-v1"
+WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION = (
+    "official-account-weekly-production-input-v2-frozen-article"
+)
+
+
+def weekly_article_identity_from_snapshot(value: object) -> OfficialAccountVersionIdentity:
+    """Decode the complete frozen identity, never fill absent fields from current config."""
+    if not isinstance(value, dict) or set(value) != {
+        item.name for item in fields(OfficialAccountVersionIdentity)
+    }:
+        raise ValueError("weekly frozen article identity field set changed")
+    integer_fields = {
+        "min_characters",
+        "target_min_characters",
+        "target_max_characters",
+        "max_characters",
+    }
+    optional_fields = {
+        "media_plan_version",
+        "visual_query_version",
+        "visual_selector_version",
+        "generated_visual_plan_version",
+        "generated_visual_prompt_version",
+        "context_media_plan_version",
+        "visual_pipeline_version",
+    }
+    for key, item in value.items():
+        if key in integer_fields:
+            if type(item) is not int or not 1 <= item <= 100_000:
+                raise ValueError("weekly frozen article numeric identity is invalid")
+        elif item is None and key in optional_fields:
+            continue
+        elif not isinstance(item, str) or not item.strip() or len(item) > 200:
+            raise ValueError("weekly frozen article text identity is invalid")
+    if value.get("provider") != "zhipu":
+        raise ValueError("weekly frozen article provider is invalid")
+    policy = value.get("visual_pipeline_version")
+    if policy is not None and (
+        policy != STRICT_VISUAL_PIPELINE_VERSION
+        or value.get("generated_visual_plan_version")
+        != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+        or value.get("generated_visual_prompt_version")
+        != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+    ):
+        raise ValueError("weekly frozen strict visual identity is invalid")
+    return OfficialAccountVersionIdentity(**cast(dict[str, Any], value))
 
 
 def _fingerprint(payload: object) -> str:
@@ -106,10 +158,18 @@ class WeeklyProductionInput:
         WeeklyProductionInputItem,
     ]
     version: str = WEEKLY_PRODUCTION_INPUT_VERSION
+    article_identity: OfficialAccountVersionIdentity | None = None
 
     def __post_init__(self) -> None:
-        if self.version != WEEKLY_PRODUCTION_INPUT_VERSION:
+        if self.version not in {
+            WEEKLY_PRODUCTION_INPUT_VERSION,
+            WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION,
+        }:
             raise ValueError("weekly production input version is unsupported")
+        if (self.version == WEEKLY_PRODUCTION_INPUT_VERSION) != (self.article_identity is None):
+            raise ValueError("weekly production frozen article identity is missing or unexpected")
+        if self.article_identity is not None:
+            weekly_article_identity_from_snapshot(asdict(self.article_identity))
         if self.week_start.weekday() != 0:
             raise ValueError("weekly production week start must be a Monday")
         if self.cutoff.tzinfo is None or self.cutoff.utcoffset() is None:
@@ -138,13 +198,16 @@ class WeeklyProductionInput:
                 raise ValueError("weekly production material binding changed")
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "version": self.version,
             "week_start": self.week_start.isoformat(),
             "cutoff": self.cutoff.isoformat(),
             "selection_fingerprint": self.selection.fingerprint,
             "items": [item.as_dict() for item in self.items],
         }
+        if self.article_identity is not None:
+            result["article_identity"] = asdict(self.article_identity)
+        return result
 
     @property
     def fingerprint(self) -> str:
