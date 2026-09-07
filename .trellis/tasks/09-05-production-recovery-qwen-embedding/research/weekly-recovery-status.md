@@ -1,8 +1,9 @@
 # September 7 weekly recovery status
 
-Status at 2026-09-07 10:14 Asia/Shanghai: source compensation completed; three articles are ready
-and a prepared batch is validated. Actual draft staging remains blocked by the confirmed consumer
-inbox/mount mismatch. A narrowly scoped wiring correction and ordinary-CLI handoff are under review.
+Status at 2026-09-07 10:26 Asia/Shanghai: the recovered edition has one ready draft job and three
+succeeded WeChat drafts, with one attempt per role. A repeated reconcile returned the same ready
+job with zero new enqueue. Prevention code and the Compose correction are committed and pushed;
+immutable release checks are still finishing. Original failed DAG history remains unchanged.
 
 ## Incident evidence
 
@@ -42,6 +43,32 @@ inbox/mount mismatch. A narrowly scoped wiring correction and ordinary-CLI hando
   `/app/input/official-account-weekly-editions`. Correct inbox is that mount plus `weekly-inbox`.
   No draft job had been created when this second defect was confirmed. No production source,
   config, schema, or image change has executed yet.
+
+## Actual draft completion
+
+- A further first-use installation check found the empty draft-artifact volume root owned by
+  `0:0` with mode `0755`, while the existing app process uses `999:999`. The exact named volume
+  `edu-ai-lead-agent_wechat_mp_draft_artifacts` was checked against its current container mount,
+  physical inode, empty contents and permissions. Only that directory's owner was changed to
+  `999:999`; mode/inode were preserved, no recursive change or inbox write was made. Actual
+  app-user write access then passed. Future fresh installations must provision this same writable
+  artifact-root ownership; do not run the worker as root or loosen the read-only inbox mount.
+- A single normal `reconcile --once --maximum 1` ran in the existing draft container with only
+  its inbox path overridden for that invocation. No service was stopped and no additional provider
+  executor was started. The existing daemon processed the immutable staged copies normally.
+- Job `a13a7121-3f3e-57b0-a091-2d55741d55fb` enqueued at 10:24:24; `ready` at 10:24:49.
+  Official/industry/application roles all `succeeded`, one attempt each, endpoint `draft_add`,
+  with 5/5/6 images uploaded respectively. Three distinct safe draft-media fingerprints prove
+  three independent accepted draft results; no raw media IDs or credentials are in evidence.
+- At 10:25:43 a repeated corrected-path reconcile reported `discovered=1, enqueued=0, existing=1`
+  and the same ready job. At 10:26 the ledger remained exactly one job, three items, three succeeded
+  attempts, three distinct draft fingerprints, zero active draft leases or runnable draft jobs.
+- All 14 production containers were running; API, PostgreSQL and MinIO health checks passed.
+  Both original article completion timestamps and the original ten successful/two retryable/one
+  terminal DAG attempts were unchanged. These are unpublished drafts, not public articles or sends.
+- An additional backup using the checksum-verified deployed-source backup entrypoint completed
+  at `20260907T021845Z` with its release evidence manifest. The legacy installed sbin entrypoint
+  lacks that manifest; the prevention release must use the verified source entrypoint instead.
 
 ## Bug analysis
 

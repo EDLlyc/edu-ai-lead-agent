@@ -26,13 +26,13 @@ read-only at `/app/input/official-account-weekly-editions` in the draft consumer
 `/app/input/weekly-inbox` is outside that mount. Change only the consumer setting to
 `/app/input/official-account-weekly-editions/weekly-inbox` and test volume-relative equivalence.
 
-Before immutable activation, a separately reviewed bounded handoff may quiesce only the idle draft
-consumer and use the same immutable Compose service with this one inbox override and auto-enqueue
-disabled. The ordinary prepared-aware reconcile command stages the exact batch into the shared
-draft-artifact store; the ordinary worker processes each role under existing durable leases and
-unknown-outcome handling. No source/config file changes or direct provider clients belong in this
-handoff. Enforce exact batch identity, no-clobber audit, bounded role calls and observed results;
-restore the ordinary consumer only under the reviewed failure/success-state policy.
+Before immutable activation, use one prepared-aware reconcile invocation in the existing draft
+container with only its inbox path overridden. After validating the exact batch and writable
+staging store, reconciliation stages all children immutably before enqueue. The existing daemon
+resolves staged artifacts independently of discovery and processes each role under ordinary leases
+and unknown-outcome handling. No service stop, extra provider executor, source/config file change,
+or direct provider client is needed. Verify the real three-role terminal states and repeated
+reconciliation idempotency; preserve the original compensation audit and ready article identities.
 
 The immutable release now permits exactly two Python runtime files plus this one Compose inbox
 value. Full rendered Compose comparison must reject every other environment, mount or command

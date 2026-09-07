@@ -53,3 +53,45 @@ PYTHONPATH=backend conda run --name edu-ai pytest .trellis/tasks/09-05-productio
 Tests are provider-free and use temporary local audit directories. Main additionally performs the
 real read-only plan against deployed state before any execute. Production status and credentials
 are never embedded in fixtures; stdout/errors contain only fixed codes, IDs, counts and hashes.
+
+## Prepared batch discovery and existing daemon handoff
+
+The September 7 recovery produced aggregate
+`4d25b6c7c81055c101101100d18682d3aedf61d52228d662710b397b422248c5`
+and batch `abb680a1b8e52df9395a033199c1844b6cb2d919eaeef72a9fe196b9e8864bea`.
+The producer writes `weekly-inbox` relative to the shared weekly named volume. Its consumer
+mounts that volume read-only at `/app/input/official-account-weekly-editions`, so its process-local
+inbox must be `/app/input/official-account-weekly-editions/weekly-inbox`. The previous
+`/app/input/weekly-inbox` path is outside that mount. The Compose fix changes only this consumer
+environment field and retains the read-only mount, existing credentials and draft-only mode.
+
+The empty writable staging volume also requires installation-time ownership matching the existing
+worker UID/GID. The observed initial root was `root:root`, mode `0755`, empty, while the worker ran
+as UID/GID `999:999`. Before initializing that exact root, bind its named-volume identity and
+destination from the captured worker mounts; use `O_DIRECTORY|O_NOFOLLOW`, verify the descriptor
+and path inode, require mode `0755`, ownership `0:0` and an empty directory, then `fchown` only that
+descriptor to the verified worker UID/GID. Preserve the mode and read-only weekly source volume.
+Reject a nonempty root, symlink, identity drift or unexpected ownership. Never recursively chown
+an existing staging tree. Main owns this independently reviewed installation repair and its receipt.
+
+After verifying the exact prepared batch, zero draft jobs/items/attempts, the matching staging
+mount and writable root, main may run the existing CLI once in the captured running draft-worker
+container, with only its discovery path overridden:
+
+```text
+docker exec -e WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT=/app/input/official-account-weekly-editions/weekly-inbox CAPTURED_DRAFT_CONTAINER_ID python -m app.wechat_official_account_draft_main reconcile --once --maximum 1
+```
+
+Reconciliation uses the prepared loader, stages all three children immutably in the shared draft
+artifact volume, and enqueues one three-item job. It constructs no WeChat client. The existing
+daemon resolves claimed items from that staging volume independently of its discovery inbox;
+therefore it can finish all three drafts without a stop/restart, an extra worker or further model
+generation. `enqueue-weekly` is not interchangeable here: its manual path still invokes the
+legacy finalized-weekly loader after staging and cannot accept this prepared aggregate end to end.
+
+Observe the existing database/CLI status until one job is `ready` and the canonical three items
+are `succeeded` with draft receipt fingerprints, no running/unknown attempts, then observe a repeat
+pass for nonduplication. Preserve the original terminal DAG and successful article identities.
+CLI exit zero or reconciliation enqueue alone is not success evidence. If the outcome is unknown,
+do not enqueue again, start another worker or reset rows; retain the actual durable state for
+inspection. The permanent Compose fix makes future automatic discovery read the correct inbox.
