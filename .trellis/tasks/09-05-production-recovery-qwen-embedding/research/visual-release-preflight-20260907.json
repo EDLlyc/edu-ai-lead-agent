@@ -1,0 +1,813 @@
+{
+  "document_version": "strict-visual-release-readonly-preflight-v1",
+  "verdict": "NO_GO_FOR_DEPLOYMENT",
+  "scope": "Read-only preparation; not a sealed release baseline, activation authorization or completed restore test.",
+  "candidate": {
+    "commit": "4c353b2d924403efda91a5ad1967a6f8c50eaa79",
+    "product_commit": "69c12c51747c1b80568f64a8e1f36848fd5f6a8d",
+    "branch": "release/visual-quality-preview-20260907",
+    "base": "218015e44cc07221bdefeb449da8a8371354712e",
+    "runtime_digest": "6ad46cc5924318ba56a33240184b780b970196b6386b8030bbaeea48d2cc1441"
+  },
+  "host": {
+    "app_filesystem": {
+      "free_bytes": 48286752768,
+      "total_bytes": 84423806976,
+      "used_bytes": 32577249280
+    },
+    "captured_at": "2026-09-07T05:23:20.900677+00:00",
+    "containers": [
+      {
+        "container_id": "c7de461dd71416e007b7163e705569c05f78c86bcf87d8716b1ec6c9d473fa73",
+        "health": "healthy",
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "acquisition-api",
+        "started_at": "2026-09-07T02:37:34.369087017Z",
+        "status": "running"
+      },
+      {
+        "container_id": "a1bfe1b5b83c879049d12c12adf7e46a717582f9aa0b54df523699f57fd17eb6",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "acquisition-scheduler",
+        "started_at": "2026-09-07T02:37:34.343027409Z",
+        "status": "running"
+      },
+      {
+        "container_id": "0be98e2a0f70c0bace3b6734069b1f1866d1c76199c368907e78be61d58a074a",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "acquisition-worker",
+        "started_at": "2026-09-07T02:37:34.329260169Z",
+        "status": "running"
+      },
+      {
+        "container_id": "d83555501af2cc5ce288a22f633b51d7fbfa353818cea60eaeacbd65d50fafaf",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "content-scheduler",
+        "started_at": "2026-09-07T02:37:34.373707793Z",
+        "status": "running"
+      },
+      {
+        "container_id": "0a3c5ec7c85f5c2cf64ed75d7121798b21195a5f35f0211dccf7f1d5bf406426",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "content-worker",
+        "started_at": "2026-09-07T02:37:34.347559547Z",
+        "status": "running"
+      },
+      {
+        "container_id": "1a2eb7a954697f85cf48d1210eb50bf19caf8db025a7a5513d4ddbb333a14a63",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "governance-scheduler",
+        "started_at": "2026-09-07T02:37:34.309988089Z",
+        "status": "running"
+      },
+      {
+        "container_id": "65e732dbfd04d3847a5b18cf983e29c0c68b546e54cacc62671e9c3afa26cacd",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "governance-worker",
+        "started_at": "2026-09-07T02:37:34.362569677Z",
+        "status": "running"
+      },
+      {
+        "container_id": "e0173df536f90a4cffcb89ff3a5cbf22c68ddf94df49916bb484b1746d556c4b",
+        "health": "healthy",
+        "image_id": "sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
+        "restart_count": 0,
+        "running": true,
+        "service": "minio",
+        "started_at": "2026-08-11T02:06:20.182667536Z",
+        "status": "running"
+      },
+      {
+        "container_id": "0d54dce067e971151f9be1cbaf16c613a24fe9fc4679553904500c253168bc4f",
+        "health": null,
+        "image_id": "sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3",
+        "restart_count": 0,
+        "running": false,
+        "service": "minio-init",
+        "started_at": "2026-08-16T00:49:52.038126592Z",
+        "status": "exited"
+      },
+      {
+        "container_id": "b0362240b6927585003ba495f017ec6be297475ae8d3e47f240dc8bcceef7ff1",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "official-account-local-worker",
+        "started_at": "2026-09-07T02:37:34.32911208Z",
+        "status": "running"
+      },
+      {
+        "container_id": "0ac2c8d85d53152ea6b29472024fdab20dac4e4e26d994844ce16bf53f5385ea",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "official-account-weekly-dag-worker",
+        "started_at": "2026-09-07T02:37:34.365387306Z",
+        "status": "running"
+      },
+      {
+        "container_id": "07f2143b4a386f6ef0b016860f63a42e2e21beed0648bc19a084a1bcd4ddca96",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "official-account-weekly-scheduler",
+        "started_at": "2026-09-07T02:37:34.381148722Z",
+        "status": "running"
+      },
+      {
+        "container_id": "9042746f426f47242d496b859601ba78f500cf8d75b32e4ca329188d92c4a321",
+        "health": "healthy",
+        "image_id": "sha256:33198da2828a14c30348d2ccb4750833d5ed9a44c88d840a0e523d7417120337",
+        "restart_count": 0,
+        "running": true,
+        "service": "postgres",
+        "started_at": "2026-08-07T05:39:00.218857192Z",
+        "status": "running"
+      },
+      {
+        "container_id": "f82154f540f291cf7d28622ddc135c618bc5e377e51ccc72a3e5d6aba19930a3",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "wechat-official-account-draft-worker",
+        "started_at": "2026-09-07T02:37:34.30725515Z",
+        "status": "running"
+      },
+      {
+        "container_id": "f0edd84de7e6f246a88308d798b9f754c7d7332136f48f7b8a1a1b9226e5ff97",
+        "health": null,
+        "image_id": "sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78",
+        "restart_count": 0,
+        "running": true,
+        "service": "wecom-dispatcher",
+        "started_at": "2026-09-07T02:37:34.288062629Z",
+        "status": "running"
+      }
+    ],
+    "discovered_project_container_count": 15,
+    "protected_files": {
+      ".env": {
+        "bytes": 3859,
+        "gid": 1001,
+        "mode": "0o600",
+        "sha256": "bff0015eeabd72fbcf34f48aaeb5f6a077c9752a3afd7953d0ae67b934898b84",
+        "uid": 1000
+      },
+      ".release-commit": {
+        "bytes": 41,
+        "commit": "6154c78f1c5f19cb0650f75df730e5d9c854647b",
+        "gid": 0,
+        "mode": "0o600",
+        "sha256": "d7d3be0e80b10b6f9d8f47e8db7d86c49b97628626bc4262d11cd7a9ed600938",
+        "uid": 0
+      },
+      ".release.env": {
+        "bytes": 108,
+        "gid": 0,
+        "mode": "0o600",
+        "sha256": "dca6201a9b7648eb76921378d3fe81182d65bfa2a75e2665b3930567073e6ca1",
+        "uid": 0
+      },
+      "RELEASE_COMMIT": {
+        "bytes": 41,
+        "commit": "6154c78f1c5f19cb0650f75df730e5d9c854647b",
+        "gid": 0,
+        "mode": "0o600",
+        "sha256": "d7d3be0e80b10b6f9d8f47e8db7d86c49b97628626bc4262d11cd7a9ed600938",
+        "uid": 0
+      }
+    },
+    "recent_backup_evidence": [
+      {
+        "backup_id": "20260905T100525Z",
+        "bytes": 574,
+        "sha256": "999ebbcd44c6c9482d28d25edfe116bc4be40a69654b7ed4ad7f69016ef4bf4e"
+      },
+      {
+        "backup_id": "20260907T021845Z",
+        "bytes": 574,
+        "sha256": "d230ab95b2b7f0d61d82da05d90df8feddc7fbe70c7ccc728071e0b84624d736"
+      },
+      {
+        "backup_id": "20260907T023705Z",
+        "bytes": 574,
+        "sha256": "19234a9385bffa98a77be88ec2bc9614b7714f40f480c0ab6f0bdb83bf0c68b5"
+      }
+    ]
+  },
+  "database": {
+    "articles": [
+      {
+        "active_article_version_id": "bd743cc6-6bab-4779-a562-dfab5f624d49",
+        "active_render_version_id": "d74da7be-afb5-4f90-83bc-31dd7e32856a",
+        "attempt_count": 1,
+        "completed_at": "2026-09-07 01:53:23.858910+00:00",
+        "id": "1c8a0cc8-b960-4b33-82ff-e7204def40f6",
+        "status": "ready"
+      },
+      {
+        "active_article_version_id": "d2c4c568-3682-4181-a0a5-d34020034f4e",
+        "active_render_version_id": "d33a51e6-f667-447c-af6c-e49d74df31e1",
+        "attempt_count": 1,
+        "completed_at": "2026-09-07 01:02:04.552920+00:00",
+        "id": "24ad4ddc-7c1e-46e3-a787-acff86a1f102",
+        "status": "ready"
+      },
+      {
+        "active_article_version_id": "e739e589-206d-44da-86a0-283ca4a17676",
+        "active_render_version_id": "9d814bdf-ffef-4091-908f-8f55b5142eec",
+        "attempt_count": 1,
+        "completed_at": "2026-09-07 01:01:10.926202+00:00",
+        "id": "85f62fb9-0e96-4a9e-95c0-48a99043fdd3",
+        "status": "ready"
+      }
+    ],
+    "captured_at": "2026-09-07T05:21:49.326425+00:00",
+    "draft_jobs": [
+      {
+        "attempt_count": 3,
+        "completed_at": "2026-09-07 02:24:49.174459+00:00",
+        "id": "a13a7121-3f3e-57b0-a091-2d55741d55fb",
+        "status": "ready"
+      }
+    ],
+    "frozen_legacy_copy_jobs": 7,
+    "generated_visual_count": 0,
+    "official_account_weekly_dag_attempts": [
+      {
+        "count": 2,
+        "status": "retryable_failed"
+      },
+      {
+        "count": 10,
+        "status": "succeeded"
+      },
+      {
+        "count": 1,
+        "status": "terminal_failed"
+      }
+    ],
+    "protected_tables": {
+      "official_account_article_runs": {
+        "count": 3,
+        "sha256": "b6f6b978e9eea6cbf1461ca6ed70f8aa833a5c01daba2bceac0ef8b810a2d292"
+      },
+      "official_account_article_versions": {
+        "count": 3,
+        "sha256": "dfffdfebe0cfbf1110f3a1a5e00271473b1463aa9ea768b9ad749d26c6a780ab"
+      },
+      "official_account_generated_visuals": {
+        "count": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "official_account_local_media": {
+        "count": 19,
+        "sha256": "01d73b4a36bce10825db76b49d765f721966fe2a731c6aee2f0488e5634d03a0"
+      },
+      "official_account_render_versions": {
+        "count": 3,
+        "sha256": "c8e55fe81f8415becdb4664854c553747df660beb3c3b665eb5de0302c14e68b"
+      },
+      "official_account_weekly_dag_attempts": {
+        "count": 13,
+        "sha256": "bda2ba88380a8422747e2aebdd3856fa5c83111abc7477789d73d0037d9cc791"
+      },
+      "official_account_weekly_dag_nodes": {
+        "count": 16,
+        "sha256": "caaee77069fd10b496a93f78f0cfbd55d0e738e96b352dff3ac3ce54cd7a5d09"
+      },
+      "official_account_weekly_dag_runs": {
+        "count": 1,
+        "sha256": "9f0a4835272ea02cb726dd3f9d2fa6749a483862abd58bdde363f9eadf3f18b5"
+      },
+      "wechat_mp_draft_attempts": {
+        "count": 3,
+        "sha256": "49484c5aeeb830c3c8588e1ad37fbf6c70e93169feab5b72515e26259f9e228d"
+      },
+      "wechat_mp_draft_items": {
+        "count": 3,
+        "sha256": "e46d25c33a8772a3501c18b779d3ec4db098584eb29238a4028256698108a8c4"
+      },
+      "wechat_mp_draft_jobs": {
+        "count": 1,
+        "sha256": "4c820df9d07f1ee35dd75f36f284e1c2351e0903a2a60263ae9387eda3a58e35"
+      }
+    },
+    "queues": {
+      "acquisition_jobs": [
+        {
+          "count": 8,
+          "live_leases": 0,
+          "status": "cancelled"
+        },
+        {
+          "count": 90,
+          "live_leases": 0,
+          "status": "failed"
+        },
+        {
+          "count": 879,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "brand_ingestion_jobs": [
+        {
+          "count": 1,
+          "live_leases": 0,
+          "status": "failed"
+        },
+        {
+          "count": 9,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "brand_visual_index_jobs": [],
+      "content_slot_jobs": [
+        {
+          "count": 70,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "copy_generation_jobs": [
+        {
+          "count": 37,
+          "live_leases": 0,
+          "status": "failed"
+        },
+        {
+          "count": 7,
+          "live_leases": 0,
+          "status": "queued"
+        },
+        {
+          "count": 167,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "governance_jobs": [
+        {
+          "count": 384,
+          "live_leases": 0,
+          "status": "review_required"
+        },
+        {
+          "count": 2094,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "image_artifacts": [
+        {
+          "count": 6,
+          "live_leases": 0,
+          "status": "failed"
+        },
+        {
+          "count": 1,
+          "live_leases": 0,
+          "status": "review_required"
+        },
+        {
+          "count": 116,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "ip_asset_embedding_jobs": [],
+      "ip_asset_generation_jobs": [],
+      "official_account_article_runs": [
+        {
+          "count": 3,
+          "live_leases": 0,
+          "status": "ready"
+        }
+      ],
+      "official_account_weekly_dag_nodes": [
+        {
+          "count": 5,
+          "live_leases": 0,
+          "status": "pending"
+        },
+        {
+          "count": 10,
+          "live_leases": 0,
+          "status": "succeeded"
+        },
+        {
+          "count": 1,
+          "live_leases": 0,
+          "status": "terminal_failed"
+        }
+      ],
+      "topic_selection_jobs": [
+        {
+          "count": 13,
+          "live_leases": 0,
+          "status": "succeeded"
+        }
+      ],
+      "wechat_mp_draft_jobs": [
+        {
+          "count": 1,
+          "live_leases": 0,
+          "status": "ready"
+        }
+      ],
+      "wecom_delivery_jobs": [
+        {
+          "count": 106,
+          "live_leases": 0,
+          "status": "delivered"
+        },
+        {
+          "count": 1,
+          "live_leases": 0,
+          "status": "failed"
+        }
+      ]
+    },
+    "read_only": "on",
+    "routes": {
+      "comfly_gpt_image_2": true,
+      "direct_zhipu_base": true,
+      "zhipu_provider": true
+    },
+    "schema": "20260901_0042",
+    "settings": {
+      "content_evening_enabled": true,
+      "content_evening_target_hour": 18,
+      "content_evening_target_minute": 30,
+      "content_morning_enabled": true,
+      "content_morning_target_hour": 7,
+      "content_morning_target_minute": 30,
+      "content_noon_enabled": true,
+      "content_noon_target_hour": 12,
+      "content_noon_target_minute": 30,
+      "content_slot_delivery_late_minutes": 60,
+      "content_slot_prepare_lead_minutes": 90,
+      "image_max_attempts": 3,
+      "image_provider_timeout_seconds": 300,
+      "image_provider_window_seconds": 300,
+      "image_quality_audit_enabled": false,
+      "image_quality_audit_model": null,
+      "image_quality_eval_mode": "off",
+      "official_account_local_generated_visuals_enabled": false,
+      "official_account_local_heartbeat_seconds": 60,
+      "official_account_local_lease_seconds": 300,
+      "official_account_local_max_attempts": 3,
+      "official_account_local_visual_pipeline_version": null,
+      "official_account_local_visual_semantic_enabled": false,
+      "official_account_local_worker_concurrency": 1,
+      "official_account_local_worker_enabled": true,
+      "official_account_weekly_article_wait_seconds": 720,
+      "official_account_weekly_worker_lease_seconds": 900
+    },
+    "strict_audit_table_exists": false,
+    "wechat_mp_draft_attempts": [
+      {
+        "count": 3,
+        "status": "succeeded"
+      }
+    ],
+    "wechat_mp_draft_items": [
+      {
+        "count": 3,
+        "status": "succeeded"
+      }
+    ],
+    "weekly_runs": [
+      {
+        "completed_at": "2026-09-07 01:02:11.599777+00:00",
+        "id": "0ae1c882-4254-561f-bdac-17d254c0c166",
+        "status": "terminal_failed",
+        "week_start": "2026-09-07"
+      }
+    ]
+  },
+  "service_environment": {
+    "captured_at": "2026-09-07T05:24:39.206398+00:00",
+    "services": {
+      "acquisition-api": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": "true",
+          "IMAGE_PROVIDER_MODE": "comfly",
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": true,
+          "COMFLY_API_KEY": true
+        }
+      },
+      "acquisition-scheduler": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "acquisition-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "content-scheduler": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "content-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": "true",
+          "IMAGE_PROVIDER_MODE": "comfly",
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": true,
+          "COMFLY_API_KEY": true
+        }
+      },
+      "governance-scheduler": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "governance-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": true,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "official-account-local-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": "true",
+          "IMAGE_PROVIDER_MODE": "comfly",
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": true,
+          "COMFLY_API_KEY": true
+        }
+      },
+      "official-account-weekly-dag-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": "true",
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": true,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "official-account-weekly-scheduler": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": "false",
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "wechat-official-account-draft-worker": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": "true",
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": "true",
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": "true"
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      },
+      "wecom-dispatcher": {
+        "allowlisted_env": {
+          "AI_PROVIDER_MODE": "zhipu",
+          "IMAGE_ENABLED": null,
+          "IMAGE_PROVIDER_MODE": null,
+          "IMAGE_QUALITY_AUDIT_MODEL": null,
+          "OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED": "false",
+          "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": null,
+          "OFFICIAL_ACCOUNT_LOCAL_WORKER_ENABLED": "true",
+          "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": null,
+          "OFFICIAL_ACCOUNT_WEEKLY_WORKER_ENABLED": null,
+          "WECHAT_MP_DRAFT_AUTO_ENQUEUE_ENABLED": null,
+          "WECHAT_MP_DRAFT_MODE": null,
+          "WECHAT_MP_DRAFT_PRODUCTION_ENABLED": null,
+          "WECHAT_MP_DRAFT_WORKER_ENABLED": null
+        },
+        "credential_present": {
+          "AI_PLATFORM_API_KEY": false,
+          "COMFLY_API_KEY": false
+        }
+      }
+    }
+  },
+  "remote_refs": [
+    {
+      "remote": "github-backup",
+      "host": "github.com",
+      "ref": "refs/heads/release/visual-quality-preview-20260907",
+      "status": 2,
+      "commit": null,
+      "absent": true,
+      "stderrBytes": 0
+    },
+    {
+      "remote": "origin",
+      "host": "codeup-edu-ai",
+      "ref": "refs/heads/release/visual-quality-preview-20260907",
+      "status": 2,
+      "commit": null,
+      "absent": true,
+      "stderrBytes": 0
+    }
+  ],
+  "limitations": [
+    "No push, image build, production migration, service restart, model call, queue creation, draft write or public send was performed.",
+    "Live service health is a timestamped observation, not comprehensive future task success.",
+    "Seven queued historical copy jobs remain preserved; inactive weekly pending nodes belong to the existing terminal run. This is not an authorization to drain or replay them.",
+    "Backup manifest presence is not fresh quiesced backup or independently verified restore evidence.",
+    "Source/config/queue state must be recaptured and sealed after a new reviewed release transaction exists.",
+    "Global strict activation is blocked by missing Compose injection and Settings capability/policy coupling; spreading model credentials to non-generating services is not an acceptable workaround.",
+    "Two diagnostic-only attempts failed before producing complete evidence: missing Settings field names before DB connection; host container-count check included a historical exited minio-init. Corrected readonly probes succeeded without mutation."
+  ]
+}

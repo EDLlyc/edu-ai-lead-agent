@@ -136,6 +136,12 @@ async def run_worker() -> None:
         await stop.wait()
         return
 
+    if (
+        settings.official_account_local_visual_pipeline_version is not None
+        and not settings.official_account_local_generated_visuals_enabled
+    ):
+        raise RuntimeError("strict official-account worker requires generated visual execution")
+
     engine = create_engine(settings)
     provider_client: httpx.AsyncClient | None = None
     lazy_visual_model: _LazyVisualEmbeddingModel | None = None

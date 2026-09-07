@@ -38,11 +38,30 @@ original meaning. Existing completed weekly editions and drafts are never replay
 
 ### Configuration and immutable identities
 
-`OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION` defaults absent/null. Enabling strict requires
-local generated visuals, the existing Comfly `gpt-image-2` image route, Zhipu text/provider
-configuration, exact vision base `https://open.bigmodel.cn/api/paas/v4`, and
-`IMAGE_QUALITY_AUDIT_MODEL=glm-5v-turbo`. Semantic reference retrieval stays disabled for this
-initial version; deterministic selection must not claim embedding retrieval.
+`OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION` defaults absent/null and selects identity,
+not execution capability. Compose supplies it only to API, weekly scheduler/DAG and Article
+worker. These four owners must select the same full V4 identity even where image credentials
+are absent. Strict policy requires local Zhipu Articles with semantic reference retrieval off;
+deterministic selection must not claim embedding retrieval.
+
+Only the Article worker receives the global `OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED`
+value as execution permission. Shared service defaults pin it false and image quality mode off.
+Strict execution additionally requires enabled images, the existing Comfly `gpt-image-2` route,
+exact vision base `https://open.bigmodel.cn/api/paas/v4`, nonblank direct Zhipu credentials and
+`IMAGE_QUALITY_AUDIT_MODEL=glm-5v-turbo`; Compose injects the audit model only into that worker.
+A running strict worker without generated execution rejects before engine construction/claim.
+Do not distribute new provider secrets to make policy-only processes pass validation.
+
+For absent-marker legacy compatibility, Compose maps the same global generated opt-in into
+`OFFICIAL_ACCOUNT_LOCAL_LEGACY_GENERATED_VISUAL_POLICY_ENABLED` for the three policy-only
+owners. This internal default-false alias grants no execution and is not another user-facing
+switch. The pure identity builder selects generated policy from strict marker OR executor flag
+OR legacy alias (Zhipu only), with strict precedence. Existing direct Settings legacy behavior,
+literal V3 bundles and one-attempt legacy execution validation remain intact.
+
+Changing future policy does not remove already-frozen strict runs: retain compatible execution
+capability until they drain. Otherwise fail explicitly with `strict_visual_configuration_changed`, never
+silently run the legacy path or create a replacement paid Article.
 
 The new immutable planning literals are:
 
@@ -128,6 +147,10 @@ A sample fitting this budget does not prove every future article fits.
 | Condition | Required behavior |
 | --- | --- |
 | Policy absent/null | Exact legacy decoding, identity and execution |
+| Strict policy-only API/weekly process, no image credentials | Same full V4 identity; no image client construction |
+| Active strict Article worker, execution disabled | Reject before database engine or queue claim |
+| Strict executor missing key or wrong pinned model/route | Settings rejects before provider work |
+| Frozen strict run, execution capability subsequently disabled | Explicit strict_visual_configuration_changed; no legacy/text/image fallback |
 | Unknown/mixed policy or V4 without strict marker | Reject before provider dispatch |
 | No eligible complete reference | Fail preflight; zero image-generation calls |
 | Native result has wrong dimensions | Reject; never upscale and label it native |
@@ -160,6 +183,11 @@ Articles; or a reviewed 1536×654 preview cover is subsequently cropped to a dif
 
 ## 6. Required tests and release evidence
 
+- `test_official_account_strict_compose.py`: render actual full-profile Compose with synthetic
+  production values, then parse every Python role with cleared environment and
+  `Settings(_env_file=None)`. Disabled, strict and legacy-generated matrices cover all 15
+  roles, exact credential-key projection, four equal identities and actual worker startup
+  through one idle claim. Include policy-only scheduler/DAG construction and early rejection.
 - Policy/reference/native planner tests preserve old fingerprints, reject mixed identities,
   allow genuine repeated references only in strict snapshots, and enforce scene diversity.
 - A normal strict material-package enqueue must execute through the real repository and worker
@@ -188,6 +216,14 @@ Articles; or a reviewed 1536×654 preview cover is subsequently cropped to a dif
 - Five sequential generation windows plus six audit windows may exceed one weekly wait/node
   budget. Verify total worker/queue/root timing before activation; frozen retry identity alone
   is not proof that the weekly edition reaches a terminal draft within its envelope.
+- `test_official_account_weekly_queue_timing.py` uses real handlers, governance and retry
+  seams with a serial fake producer and controlled clock. Keep concurrency 1, Article wait
+  720 seconds, node allocation 900 seconds and root budget 3600 seconds. Queue time counts:
+  three simulated 288.249-second Articles finish by observation at 866 seconds, with the third
+  reusing its identity after the first timeout; accumulated root elapsed is 1732 seconds,
+  not merely wall time. A 1000-second-per-Article case must expose root delegation denial
+  while independent Articles complete; `result_unknown` never triggers regeneration.
+  These are timing/identity regressions, not real model latency or whole-DAG completion claims.
 
 ## 7. Wrong vs correct
 
@@ -196,3 +232,9 @@ Wrong: `if audit.accepted: ready = True`, then legacy upload normalizes the cove
 Correct: normalize upload bytes first; commit a lease-owned audit subject containing their SHA;
 accept only identity-matched zero-issue completion; independently verify all six subjects in the
 repository; revalidate the prepared projection; upload the exact bytes without transformation.
+
+Wrong: propagate generated execution to every service, then add image keys everywhere to
+silence Settings errors.
+
+Correct: propagate only immutable policy to its four identity owners; restrict execution and
+strict model prerequisites to the Article worker, preserving existing secret ownership.

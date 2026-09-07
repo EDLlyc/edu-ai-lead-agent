@@ -1,6 +1,69 @@
 # Execution plan
 
-## Current checkpoint: 2026-09-07 strict integration
+## Current checkpoint: minimal startup and queue repair complete locally
+
+R18–R19 / AC16–AC17 implementation and independent incremental review are complete on the
+isolated candidate above `4c353b2`. Real full-profile Compose/Settings tests cover 15 Python
+roles in disabled, strict and legacy-generated modes; four policy owners agree without added
+credentials. Actual worker startup and pre-claim capability rejection pass. Three controlled-clock
+queue tests preserve one execution per Article, same-identity retry and bounded denial.
+
+Independent joint gate: 151 passed; Ruff/format pass for six changed Python files; strict mypy
+passes for three runtime files. Implementer broader startup checks also passed (161 tests),
+and queue-related checks passed (71); overlapping suites are not additive. See
+`research/visual-startup-check-20260907.md` for commands and exact scope. Tests use the observed
+live image window 300 seconds, not the unrelated Compose fallback 900. This is local
+change-relative acceptance, not whole-DAG/provider latency or production activation.
+
+Specific spec and root-cause updates are complete. Root's 51 pre-existing non-Trellis dirty
+files/deletions match the prior hash/state snapshot. Next is the single exact local commit
+batch confirmation; no new commit, push, build, provider call or production write this stage.
+The separate deployment and broader recovery/Qwen acceptance remain open.
+
+## Approved scope: minimal startup and queue repair
+
+The user approved R18–R19 and asked to focus on running software, not wider hardening. Do only:
+
+1. In the clean `4c353b2` visual candidate, one implementer owns Compose/.env.example,
+   Settings, the pure Article identity composition, necessary worker startup wiring and their
+   focused tests. Keep legacy mode, existing secrets and exact strict execution checks.
+2. A second implementer owns only a new three-role queue timing regression test module, using
+   existing production handlers and governance behavior with controlled time/fake ports. No
+   runtime edits unless main separately assigns a confirmed required correction.
+3. Independent check verifies the combined bounded diff and actual full-profile default/strict
+   configuration startup, identity equality, provider isolation and queue/retry behavior. Run
+   affected existing tests and lint/type checks; retain prior baseline exceptions transparently
+   without fixing unrelated work or rebuilding unchanged visuals/frontend.
+4. Main updates the specific executable config/queue contract, records measured synthetic results
+   and presents the next exact local commit batch once. The prior 78-file batch is already
+   committed; do not amend it or add unrelated root work.
+
+No SSH, model calls, production writes, pushes, migration, release operator implementation,
+schedule/budget changes or old-draft replacement belongs to this implementation step.
+
+## Historical checkpoint: 2026-09-07 release preparation before startup repair
+
+The user confirmed the exact local commit batch. Candidate branch
+`release/visual-quality-preview-20260907` now contains product commit `69c12c5` and evidence
+commit `4c353b2`; all 78 approved paths and their bytes match the reviewed manifest. Candidate
+is clean; root's other work is preserved. Neither remote has this release branch yet; no push.
+
+The user's next request continues release preparation, not production activation. Read-only
+server checks at 13:21–13:24 Asia/Shanghai show the unchanged live `6154c78` / schema 0042,
+14 running services, three original ready Articles and three succeeded draft items. The
+13-role synthetic rendered-Compose check found a deployment blocker: new strict keys are not
+injected; the existing shared generated flag incorrectly applies executor requirements to
+provider-isolated services. Changing protected .env alone cannot safely activate the candidate.
+
+See `research/visual-release-preflight-20260907.json` for safe live observations and
+`research/visual-release-readiness-review-20260907.md` for the independent deployment research.
+The next bounded implementation proposal must separate policy identity from model execution,
+scope Compose flags to their owners, preserve credential isolation and add full-profile startup
+regressions. It remained pending then; no runtime/Compose/provider configuration was changed during
+this preparation turn. A new reviewed schema/config-aware release transaction, fresh safe
+window/backup and actual future-run acceptance are still required. Do not reuse dated operators.
+
+## Implementation checkpoint before commits: 2026-09-07 strict integration
 
 Implementation and independent change-relative review are complete in the isolated
 `visual-quality-preview` worktree. All 81 strict tests, including 16 real PostgreSQL tests,

@@ -1,5 +1,40 @@
 # Recovery design
 
+## Approved minimal activation wiring repair (R18–R19)
+
+Start from committed `4c353b2` in the existing isolated visual worktree. Separate the pure strict
+policy discriminator from generated execution enablement; do not add a new generic feature or
+permissions framework. The marker alone determines the complete V4 Article identity for policy
+owners. Keep legacy absent-marker identity and validation semantics, and keep strict executor
+startup/provider/client validation intact where execution actually occurs.
+
+For legacy compatibility, one default-false selection-only field
+`official_account_local_legacy_generated_visual_policy_enabled` preserves absent-marker V3
+identity in API/weekly owners whose executor flag is now false. Compose derives that field from
+the existing generated-visual activation value; it does not require an additional operator switch
+or grant execution capability. Strict marker takes precedence; the Article worker keeps its
+existing execution flag. Retain direct legacy Settings/executor behavior and literal hashes.
+
+
+Compose explicitly distributes the marker to Article enqueue API, weekly scheduler/DAG and local
+Article worker. Only the actual Article worker needs strict generated execution enabled. Other
+services, including migration and draft consumer, retain generated=false and absent policy.
+The draft consumer reads stored strict v2 proof/bytes without model capability. Preserve existing
+credentials for unrelated content/API functions; never distribute new Comfly/vision credentials
+to scheduler, draft consumer or unrelated services. Explicitly pin the worker audit model while
+retaining general image attempts 3, strict one-POST behavior and the existing default-off switch.
+
+Use actual rendered Compose maps with synthetic env, real Settings and provider-free identity /
+startup seams. Cover all optional application profiles for startup leakage, not actual container
+creation. A compact three-role test uses controlled time and existing handler/governance seams to
+exercise concurrent waits behind one serial producer; no wall-clock minutes, real DB/provider or
+schedule/concurrency/budget increases. If a real runtime queue bug is found, report the exact
+minimal change before extending file ownership. Avoid rewriting working orchestration for tests.
+
+The approved release-readiness research qualifies the earlier activation paragraph until the
+executable strict spec is updated after implementation. No old operator is renewed. This stage
+fixes local startup and validates queue behavior, not production activation.
+
 ## Approved next scope: prospective production visual integration (R15–R17)
 
 The sample style and final new-run-only implementation summary are now accepted in conversation.

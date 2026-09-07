@@ -21,6 +21,11 @@ def official_account_identity_from_settings(
     strict_version = (
         settings.official_account_local_visual_pipeline_version if provider == "zhipu" else None
     )
+    generated_policy = provider == "zhipu" and (
+        strict_version is not None
+        or settings.official_account_local_generated_visuals_enabled
+        or settings.official_account_local_legacy_generated_visual_policy_enabled
+    )
     return OfficialAccountVersionIdentity(
         provider=provider,
         model=model,
@@ -48,7 +53,7 @@ def official_account_identity_from_settings(
                 if strict_version
                 else settings.official_account_local_generated_visual_plan_version
             )
-            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
+            if generated_policy
             else None
         ),
         generated_visual_prompt_version=(
@@ -57,7 +62,7 @@ def official_account_identity_from_settings(
                 if strict_version
                 else settings.official_account_local_generated_visual_prompt_version
             )
-            if provider == "zhipu" and settings.official_account_local_generated_visuals_enabled
+            if generated_policy
             else None
         ),
         visual_pipeline_version=strict_version,

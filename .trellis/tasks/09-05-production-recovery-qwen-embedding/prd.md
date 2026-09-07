@@ -222,3 +222,26 @@ The user subsequently confirmed the final new-run-only summary with "好的，�
 and AC13–AC15 are approved for implementation. Existing drafts remain unchanged; no publication,
 mass send, historical replay or new provider is authorized. Commit and production activation must
 still satisfy their executable quality/release gates; approval does not imply those steps are done.
+
+### Approved minimal startup and queue repair
+
+The user accepted the release-preflight findings and requested: "好的，请你处理，也不需要这么严格，
+能跑起来就行。" Prioritize the concrete startup/wiring blockers and a useful queue regression;
+do not expand this stage into unrelated historic-test cleanup or a release-framework rewrite.
+
+- R18 [P0]: Make the strict feature start correctly through the real per-service Compose topology.
+  Policy-only API/scheduler/DAG processes can freeze the same strict Article identity without
+  acquiring model execution capability. Keep the actual Article worker's provider checks.
+- R19 [P0]: Demonstrate how three concurrent weekly Article waits complete or fail visibly behind
+  the existing single generator. A timed-out wait must reuse the same Article on retry, without
+  extra generation or changing old drafts. Keep current schedule, concurrency and budget values.
+- AC16: Actual full-profile Compose environment projections construct real Settings in both
+  default-off and strict configurations; exact policy identity agrees across its owners and
+  secret presence does not expand. Missing/wrong executor credentials/model/base remain rejected.
+- AC17: Fast provider-free three-role queue/retry tests show completion within the existing budget
+  for a representative controlled duration, correct timeout/unknown outcomes and no duplicate
+  Article generation. Synthetic timing evidence is not a live latency guarantee.
+
+No new provider calls, production configuration change, push, migration, old-week replay or
+publication is included in this local repair approval. Preserve the implemented exact-byte audit
+and durable idempotency protections; "make it run" is not permission to forge accepted results.

@@ -440,13 +440,62 @@ def test_settings_pin_strict_route_but_never_change_general_retry_configuration(
         {"image_quality_audit_model": "glm-5.2"},
         {"image_model": "different"},
         {"image_provider_mode": "fake"},
-        {"official_account_local_generated_visuals_enabled": False},
+        {"ai_platform_api_key": None},
+        {"ai_platform_api_key": SecretStr(" ")},
+        {"comfly_api_key": None},
+        {"official_account_local_visual_semantic_enabled": True},
+        {"official_account_local_enabled": False},
+        {"official_account_local_worker_enabled": False},
         {"official_account_local_visual_pipeline_version": "unknown"},
     ],
 )
 def test_invalid_strict_configuration_fails_before_transport(mutation: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         _settings(**mutation)
+
+
+def test_strict_policy_selects_complete_identity_without_execution_or_credentials() -> None:
+    policy = _settings(
+        official_account_local_worker_enabled=False,
+        official_account_local_generated_visuals_enabled=False,
+        image_enabled=False,
+        image_provider_mode="disabled",
+        comfly_api_key=None,
+        ai_platform_api_key=None,
+    )
+    assert official_account_identity_from_settings(
+        policy, provider="zhipu", model="glm-5.2"
+    ) == official_account_identity_from_settings(_settings(), provider="zhipu", model="glm-5.2")
+    assert not policy.official_account_local_legacy_generated_visual_policy_enabled
+
+
+def test_legacy_policy_alias_has_no_executor_requirements_and_strict_takes_precedence() -> None:
+    defaults = Settings(_env_file=None)
+    assert not defaults.official_account_local_legacy_generated_visual_policy_enabled
+    policy = Settings(
+        _env_file=None,
+        official_account_local_enabled=True,
+        official_account_local_legacy_generated_visual_policy_enabled=True,
+    )
+    legacy = official_account_identity_from_settings(policy, provider="zhipu", model="glm-5.2")
+    assert legacy.visual_pipeline_version is None
+    assert legacy.generated_visual_plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
+    assert (
+        legacy.generated_visual_prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION
+    )
+    strict = _settings(official_account_local_legacy_generated_visual_policy_enabled=True)
+    assert official_account_identity_from_settings(
+        strict, provider="zhipu", model="glm-5.2"
+    ) == official_account_identity_from_settings(_settings(), provider="zhipu", model="glm-5.2")
+    with pytest.raises(ValidationError, match="requires the local feature"):
+        Settings(_env_file=None, official_account_local_legacy_generated_visual_policy_enabled=True)
+    with pytest.raises(ValidationError, match="version bundle"):
+        Settings(
+            _env_file=None,
+            official_account_local_enabled=True,
+            official_account_local_legacy_generated_visual_policy_enabled=True,
+            official_account_local_generated_visual_plan_version="unknown",
+        )
 
 
 @pytest.mark.asyncio

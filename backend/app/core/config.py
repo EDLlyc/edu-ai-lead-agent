@@ -299,6 +299,8 @@ class Settings(BaseSettings):
     )
     official_account_local_visual_semantic_enabled: bool = False
     official_account_local_generated_visuals_enabled: bool = False
+    # Policy-only compatibility for enqueue processes; grants no model execution capability.
+    official_account_local_legacy_generated_visual_policy_enabled: bool = False
     official_account_local_visual_pipeline_version: StrictVisualPipelineVersion | None = None
     official_account_local_generated_visual_plan_version: str = (
         OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
@@ -765,6 +767,12 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "generated official-account visuals require exactly one provider attempt"
                 )
+        if (
+            self.official_account_local_generated_visuals_enabled
+            or self.official_account_local_legacy_generated_visual_policy_enabled
+        ):
+            if not self.official_account_local_enabled:
+                raise ValueError("generated official-account policy requires the local feature")
             if (
                 self.official_account_local_generated_visual_plan_version
                 != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
@@ -774,13 +782,18 @@ class Settings(BaseSettings):
                 raise ValueError("official-account generated visual version bundle is unsupported")
         if self.official_account_local_visual_pipeline_version is not None:
             if (
-                not self.official_account_local_generated_visuals_enabled
+                not self.official_account_local_enabled
                 or self.ai_provider_mode != "zhipu"
-                or self.image_provider_mode != STRICT_VISUAL_POLICY.generation_provider
+                or self.official_account_local_visual_semantic_enabled
+            ):
+                raise ValueError("strict official-account policy requires local Zhipu articles")
+            if self.official_account_local_generated_visuals_enabled and (
+                self.image_provider_mode != STRICT_VISUAL_POLICY.generation_provider
                 or self.image_model != STRICT_VISUAL_POLICY.generation_model
                 or self.image_quality_audit_model != STRICT_VISUAL_POLICY.audit_model
                 or self.ai_platform_base_url != STRICT_VISUAL_POLICY.audit_base_url
-                or self.official_account_local_visual_semantic_enabled
+                or self.ai_platform_api_key is None
+                or not self.ai_platform_api_key.get_secret_value().strip()
             ):
                 raise ValueError(
                     "strict official-account visuals require the frozen direct provider policy"
