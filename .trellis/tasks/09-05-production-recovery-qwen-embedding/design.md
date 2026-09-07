@@ -1,5 +1,44 @@
 # Recovery design
 
+## September 7 weekly material preflight repair
+
+Worktree `.trellis/worktrees/weekly-source-preflight` starts at exact production `5c560da`.
+The weekly planner currently duplicates a subset of `material_package_source_snapshot` eligibility.
+Reuse the complete pure snapshot conversion before weekly ranking, including evidence URL and
+brand-field validation. Skip incompatible candidates with bounded safe metadata; retain all hard
+quality rules and original source bytes. Convert deterministic material conflicts in a build node
+to an explicit terminal input/checkpoint failure, not a transient capability exception.
+
+The existing terminal run and successful checkpoints are immutable. Recovery design must account
+for the finalized governance root and exhausted node attempts; ordinary retry is not applicable.
+Prefer a distinct, explicitly authorized recovery execution that reuses ready article identities
+and prepared artifacts, supplements only the failed role, and hands the completed batch to the
+existing draft worker. Main will bind the exact recovery plan before any production mutation.
+
+Keep all providers, scoring .11, schedules, credentials and public-publish boundaries as deployed.
+Use the existing immutable release mechanism where compatible, with a current backup and a
+reviewed scoped artifact. Do not run either expired incident operator unchanged.
+
+### Prepared-inbox consumer correction
+
+Actual producer volume mount `/app/output` writes `weekly-inbox`; the same volume is mounted
+read-only at `/app/input/official-account-weekly-editions` in the draft consumer. Its old setting
+`/app/input/weekly-inbox` is outside that mount. Change only the consumer setting to
+`/app/input/official-account-weekly-editions/weekly-inbox` and test volume-relative equivalence.
+
+Before immutable activation, use one prepared-aware reconcile invocation in the existing draft
+container with only its inbox path overridden. After validating the exact batch and writable
+staging store, reconciliation stages all children immutably before enqueue. The existing daemon
+resolves staged artifacts independently of discovery and processes each role under ordinary leases
+and unknown-outcome handling. No service stop, extra provider executor, source/config file change,
+or direct provider client is needed. Verify the real three-role terminal states and repeated
+reconciliation idempotency; preserve the original compensation audit and ready article identities.
+
+The immutable release now permits exactly two Python runtime files plus this one Compose inbox
+value. Full rendered Compose comparison must reject every other environment, mount or command
+change. Existing database/history/config release fences remain intact; do not weaken them to hide
+unobserved draft delivery. An `inbox_ready` recovery receipt alone is not WeChat draft success.
+
 ## Boundaries
 
 Keep the deployed independent acquisition/governance/content/dispatcher processes, PostgreSQL

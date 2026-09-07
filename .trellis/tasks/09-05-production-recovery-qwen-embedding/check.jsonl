@@ -8,3 +8,6 @@
 {"file":".trellis/spec/backend/wecom-delivery.md","reason":"Terminal success, quality gates, idempotency and unknown outcomes"}
 {"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/production-baseline.md","reason":"Fresh production evidence and protected historical state"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Risk-proportionate quality and release verification"}
+{"file":".trellis/spec/backend/weekly-production-source-preflight.md","reason":"September 7 complete source preflight and audited sibling-preserving recovery"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/weekly-recovery-design.md","reason":"Exact original terminal run, replacement route and immutable audit"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/weekly-recovery-status.md","reason":"September 7 fresh production backup and focused verification evidence"}

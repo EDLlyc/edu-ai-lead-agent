@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "Natural .11 production satisfied AC2/AC3 on 2026-09-06 with three independent validated formal deliveries and subsequent no-duplicate polling. User-approved .12/v4 substantive-topic scope remains in final independent code/release review on exact deployed source; it is not yet deployed. Qwen cutover remains deferred.",
+  "notes": "September 7 weekly recovery and prevention rollout completed: production 6154c78, three actual WeChat drafts succeeded, repeat reconcile/new-image polling produced no duplicates. Evidence: research/weekly-recovery-status.md; release branch/worktree weekly-source-preflight. Original terminal DAG and two ready siblings preserved. Natural .11 news production previously satisfied AC2/AC3 on September 6. Separate .12/v4 substantive scope is not deployed and now requires a new reviewed base retaining 6154c78 fixes; Qwen credential/index cutover remains deferred. Keep this parent task open for those separate items.",
   "meta": {}
 }

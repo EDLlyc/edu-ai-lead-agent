@@ -1,5 +1,19 @@
 # Execution plan
 
+## September 7 weekly failure follow-up
+
+1. Confirm deployed source, terminal run, immutable input and existing ready article identities.
+2. Implement complete material source preflight and deterministic input-error classification on
+   `.trellis/worktrees/weekly-source-preflight`; add focused unit and isolated database regressions.
+3. Research and bind an explicit recovery route that preserves original terminal history and
+   reuses successful article generation. Implement and review only the needed bounded mechanism.
+4. Independently check the product and recovery operator; execute the authorized recovery once
+   against the compatible current runtime after backup and a fresh sealed read-only plan. Verify
+   three accepted prepared articles, actual draft staging success, no duplicate processing, and
+   unchanged original completed article identities.
+5. Commit scoped code/spec/evidence and deploy the prevention patch through a current separately
+   reviewed immutable release transaction with rollback. Do not bundle the expired .12 rollout.
+
 ## Phase gate and ownership
 
 - User approved the final recovery-first planning summary with "继续" on 2026-09-05.
