@@ -1,9 +1,10 @@
 # September 7 weekly recovery status
 
-Status at 2026-09-07 10:26 Asia/Shanghai: the recovered edition has one ready draft job and three
+Status at 2026-09-07 10:39 Asia/Shanghai: the recovered edition has one ready draft job and three
 succeeded WeChat drafts, with one attempt per role. A repeated reconcile returned the same ready
-job with zero new enqueue. Prevention code and the Compose correction are committed and pushed;
-immutable release checks are still finishing. Original failed DAG history remains unchanged.
+job with zero new enqueue. Prevention code and the Compose correction are deployed as immutable
+release `6154c78`; post-restart automatic reconciliation preserves those counts. Original failed
+DAG history remains unchanged. All fourteen services are running with healthy API/PG/MinIO.
 
 ## Incident evidence
 
@@ -101,6 +102,34 @@ A recovered edition and its original failed governed run are separate truths.
 The executable contract is recorded in
 `.trellis/spec/backend/weekly-production-source-preflight.md` and indexed from the backend index.
 This application repository has no `src/templates/markdown/spec/` template tree to synchronize.
+
+## Immutable prevention rollout
+
+- Deployed full commit: `6154c78f1c5f19cb0650f75df730e5d9c854647b`, on Codeup and GitHub branch
+  `release/weekly-source-preflight-20260907`; fixes also recorded in `117e59b` and `8f512ee`.
+- Image: `edu-ai-lead-agent-backend@sha256:67a650de85409d9d0ada260aa2354bd32b5e9d5f83e61f2231f18cf24503ea78`.
+- Stage SHA: `eddc4cbf35574f59d252b5f6896529431effff0e15489acee6b12f59facf79ed`.
+  Fresh baseline SHA: `aba453ce156e5a20e1f92c6de0bdc06cc7ebec4805a781147d20329e677c1770`.
+- Offline build verified the complete source/OCI graph, all twelve entrypoint imports, dependency
+  consistency and Alembic head. Independent release checks: 74 weekly tests plus 134 inherited
+  validator tests passed, including actual migrated PostgreSQL capture queries and real-file
+  source/environment rollback failure injection. Ruff, format and strict mypy passed.
+- Activation completed before the 10:45 safety margin, with a fresh quiesced backup
+  `20260907T023705Z`. The durable receipt at
+  `/opt/edu-ai-release-backups/weekly-release-6154c78f1c5f19cb0650f75df730e5d9c854647b/success.json`
+  reports `activated`. All twelve application services share the verified immutable image;
+  PostgreSQL/MinIO container identities and the exact primary environment were preserved.
+- Post-deployment consumer inspection: corrected inbox exists and is readable/read-only,
+  staging is writable, automatic enqueue is enabled, and mode remains `draft_only`.
+  Database head remains `20260901_0042`, with one ready job, three succeeded items and three
+  succeeded attempts; all three article runs remain ready on their original single attempts.
+
+## Remaining separate work
+
+The old `.12` substantive-topic release is not activated by this transaction; its old 5c-based
+operator is now additionally stale relative to production and requires a new reviewed base that
+retains these fixes. Qwen credential/index migration remains explicitly deferred. Keep the parent
+task open for those separate items; this weekly repair and actual draft acceptance are complete.
 
 ## Scope fences
 
