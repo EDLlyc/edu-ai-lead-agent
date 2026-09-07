@@ -330,3 +330,27 @@ Performed a strictly read-only production diagnosis. Confirmed healthy services 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 101: Weekly WeChat drafts recovered and prevention deployed
+
+**Date**: 2026-09-07
+**Task**: Weekly WeChat drafts recovered and prevention deployed
+**Branch**: `release/substantive-news-scope-20260905`
+
+### Summary
+
+Recovered September 7 edition with one replacement article and two unchanged siblings; three real WeChat drafts succeeded once each, duplicate reconciliation and post-deploy polling stayed at 1 job/3 items/3 attempts. Fixed full source preflight, terminal input classification, shared-volume inbox path and exact empty draft-volume ownership. Deployed immutable 6154c78 with backup 20260907T023705Z, 14 services healthy, unchanged primary env/schema. Independent product/PG, mount contract, 74 release and 134 validator tests passed. Parent stays open only for separate .12 and deferred Qwen work; unrelated dirty files preserved.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `117e59b` | (see git log) |
+| `8f512ee` | (see git log) |
+| `6154c78` | (see git log) |
+| `218015e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
