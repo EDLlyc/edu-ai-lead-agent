@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from app.application.ports.official_account_weekly_dag import WeeklyDagNodeFailure
 from app.application.ports.official_account_weekly_production import (
     WeeklyProductionInput,
     WeeklyProductionInputItem,
@@ -18,6 +19,7 @@ from app.application.services.official_account_weekly_production import (
     ProductionWeeklyDagHandlers,
 )
 from app.core.config import Settings
+from app.core.errors import ConflictError, NotFoundError
 from app.domain.official_account_weekly_dag import (
     WEEKLY_DAG_NODES,
     WEEKLY_DAG_VERSION,
@@ -218,6 +220,111 @@ class _ArticleRepository:
 
 class _UnusedPreparedArtifacts:
     pass
+
+
+class _RejectedMaterialRepository(_ArticleRepository):
+    def __init__(self, error: Exception) -> None:
+        super().__init__(created=False)
+        self.error = error
+        self.enqueue_calls = 0
+        self.get_run_calls = 0
+
+    async def enqueue_material_package(self, **_kwargs: object) -> tuple[SimpleNamespace, bool]:
+        self.enqueue_calls += 1
+        raise self.error
+
+    async def get_run(self, _run_id: UUID) -> SimpleNamespace:
+        self.get_run_calls += 1
+        return await super().get_run(_run_id)
+
+
+def _application_build_claim(
+    planned: WeeklyProductionInput, owner: LocalWeeklyProductionArtifactOwner
+) -> WeeklyDagClaim:
+    selection_node = replace(
+        _claim(planned=planned, ordinal=0).node,
+        definition=WEEKLY_DAG_NODES[1],
+        status=WeeklyDagNodeStatus.SUCCEEDED,
+        output_artifact=owner.put_json({"items": planned.as_dict()["items"]}),
+        execution_artifact_id=UUID(int=203),
+        trace_event_id=UUID(int=204),
+        completed_at=datetime(2026, 8, 31, 1, tzinfo=UTC),
+    )
+    return _claim(planned=planned, ordinal=10, dependencies=(selection_node,))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (ConflictError("private source http://example.org/?token=sentinel"), "invalid_selection"),
+        (NotFoundError("private-material-sentinel"), "invalid_selection"),
+        (
+            ValidationError.from_exception_data(
+                "OfficialAccountSourceSnapshot",
+                [
+                    {
+                        "type": "string_too_long",
+                        "loc": ("topic_title",),
+                        "input": "private-source-sentinel" * 100,
+                        "ctx": {"max_length": 300},
+                    }
+                ],
+            ),
+            "invalid_selection",
+        ),
+        (ValueError("private-source-bound-sentinel"), "invalid_checkpoint"),
+    ],
+)
+async def test_deterministic_material_failure_is_terminal_without_polling_or_raw_error(
+    tmp_path: Path, error: Exception, code: str
+) -> None:
+    planned = _production_input()
+    owner = LocalWeeklyProductionArtifactOwner(tmp_path / "weekly")
+    owner.put_json(planned.as_dict())
+    repository = _RejectedMaterialRepository(error)
+    handlers = ProductionWeeklyDagHandlers(
+        checkpoints=owner,
+        article_repository=repository,
+        prepared_artifacts=_UnusedPreparedArtifacts(),  # type: ignore[arg-type]
+        article_identity=official_account_identity_from_settings(
+            Settings.model_validate({}), provider="zhipu", model="glm-test"
+        ),
+    )
+
+    with pytest.raises(WeeklyDagNodeFailure) as raised:
+        await handlers.execute(_application_build_claim(planned, owner))
+
+    assert raised.value.error_code == code
+    assert raised.value.retryable is False
+    assert str(raised.value) == code
+    assert "sentinel" not in str(raised.value)
+    assert raised.value.__suppress_context__ is True
+    assert repository.enqueue_calls == 1
+    assert repository.get_run_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_unexpected_material_repository_failure_retains_generic_retry_path(
+    tmp_path: Path,
+) -> None:
+    planned = _production_input()
+    owner = LocalWeeklyProductionArtifactOwner(tmp_path / "weekly")
+    owner.put_json(planned.as_dict())
+    repository = _RejectedMaterialRepository(RuntimeError("database unavailable"))
+    handlers = ProductionWeeklyDagHandlers(
+        checkpoints=owner,
+        article_repository=repository,
+        prepared_artifacts=_UnusedPreparedArtifacts(),  # type: ignore[arg-type]
+        article_identity=official_account_identity_from_settings(
+            Settings.model_validate({}), provider="zhipu", model="glm-test"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await handlers.execute(_application_build_claim(planned, owner))
+    assert repository.enqueue_calls == 1
+    assert repository.get_run_calls == 0
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -16,6 +17,7 @@ from app.application.ports.official_account_weekly_production import (
     WeeklyProductionInput,
     WeeklyProductionInputItem,
 )
+from app.core.errors import ConflictError
 from app.domain.editorial_relevance import (
     ScienceTechContentSignal,
     ScienceTechEditorialCohort,
@@ -41,6 +43,9 @@ from app.infrastructure.db.models import (
     SourceVersionModel,
     TopicScoreModel,
 )
+from app.infrastructure.db.official_account_local import material_package_source_snapshot
+
+logger = structlog.get_logger()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +84,7 @@ class PostgresWeeklyProductionInputPlanner:
             )
 
         candidates: dict[UUID, _MaterialCandidate] = {}
+        incompatible_count = 0
         for package, run, event_version, image in rows:
             event_id = run.selected_event_id
             event_version_id = run.selected_event_version_id
@@ -86,7 +92,10 @@ class PostgresWeeklyProductionInputPlanner:
                 continue
             score = score_by_package.get(package.id)
             source_rows = authority.get(event_id, ())
-            if score is None or not source_rows or not _material_is_eligible(package, image):
+            if score is None or not source_rows:
+                continue
+            if not _material_is_eligible(package, image):
+                incompatible_count += 1
                 continue
             governed, score_fingerprint = _governed_candidate(
                 run=run,
@@ -107,6 +116,13 @@ class PostgresWeeklyProductionInputPlanner:
                     governed=governed,
                     score_fingerprint=score_fingerprint,
                 )
+        if incompatible_count:
+            logger.info(
+                "official_account_weekly_materials_skipped",
+                week_start=week_start.isoformat(),
+                reason_code="material_source_incompatible",
+                skipped_count=incompatible_count,
+            )
         selection = select_weekly_articles(
             tuple(item.governed for item in candidates.values()),
             week_start=week_start,
@@ -296,24 +312,13 @@ class PostgresWeeklyProductionInputPlanner:
 
 
 def _material_is_eligible(package: MaterialPackageModel, image: ImageArtifactModel) -> bool:
-    image_audit = image.audit_snapshot if isinstance(image.audit_snapshot, dict) else {}
-    return bool(
-        package.status in {"ready", "awaiting_manual_use", "completed"}
-        and package.review_status != "rejected"
-        and package.validation_snapshot.get("passed") is True
-        and package.audit_snapshot.get("accepted") is True
-        and package.source_snapshot
-        and package.brand_snapshot
-        and image.status == "succeeded"
-        and image.validation_snapshot.get("passed") is True
-        and (
-            image_audit.get("configured") is not True
-            or image_audit.get("status") in {"accepted", "not_applicable"}
-        )
-        and image.media_type is not None
-        and image.byte_size is not None
-        and image.sha256 is not None
-    )
+    # Use exactly the enqueue contract, including URL, evidence, brand and field bounds.
+    # This pure projection has no database writes or provider calls.
+    try:
+        material_package_source_snapshot(package, image)
+    except (ConflictError, AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return True
 
 
 def _governed_candidate(

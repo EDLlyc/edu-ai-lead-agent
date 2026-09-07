@@ -8,6 +8,8 @@ from datetime import date
 from typing import Protocol, cast
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.application.ports.official_account_weekly_dag import (
     WeeklyDagNodeFailure,
@@ -16,6 +18,7 @@ from app.application.ports.official_account_weekly_dag import (
 from app.application.services.official_account_weekly_dag import (
     StaticWeeklyDagHandlerRegistry,
 )
+from app.core.errors import ConflictError, NotFoundError
 from app.domain.official_account_weekly_dag import (
     WEEKLY_DAG_NODES,
     WeeklyDagArtifact,
@@ -188,10 +191,17 @@ class ProductionWeeklyDagHandlers:
     async def _build_article(self, claim: WeeklyDagClaim) -> WeeklyDagNodeResult:
         role = _role(claim)
         item = _item_for_role(self._input(claim), role)
-        run, _created = await self._article_repository.enqueue_material_package(
-            material_package_id=UUID(_text(item.get("material_package_id"))),
-            identity=self._article_identity,
-        )
+        try:
+            run, _created = await self._article_repository.enqueue_material_package(
+                material_package_id=UUID(_text(item.get("material_package_id"))),
+                identity=self._article_identity,
+            )
+        except (ConflictError, NotFoundError, ValidationError):
+            # A frozen material cannot become valid by repeating the same build attempt.
+            raise WeeklyDagNodeFailure(
+                WeeklyDagErrorCode.INVALID_SELECTION.value,
+                retryable=False,
+            ) from None
         run_id = UUID(str(run.id))
         deadline = asyncio.get_running_loop().time() + self._article_wait_seconds
         while True:

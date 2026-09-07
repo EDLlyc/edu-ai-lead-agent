@@ -33,6 +33,7 @@ tests.
 | [Official-Account Editor Handoff V2](./official-account-editor-handoff-v2.md) | Development-only automatic release, block-bound news media, semantic Xiaosai rendering, exact mobile identity, and permanent no-publish truth |
 | [Official-Account Weekly Three-Article Edition](./official-account-weekly-edition.md) | One weekly local batch containing independent official, industry, and application V2 handoffs with governed selection and deterministic aggregate integrity |
 | [Official-Account Weekly Three-Article DAG](./official-account-weekly-dag.md) | Static 16-node orchestration with development fixtures plus explicit production scheduling, frozen real inputs, durable recovery, and prepared draft-only handoff |
+| [Weekly Production Source Preflight](./weekly-production-source-preflight.md) | Complete pre-selection material validation, deterministic terminal input errors, and audited sibling-preserving recovery |
 | [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled adapter plus durable three-role worker for legacy and prepared weekly inputs, without publish/send semantics |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
