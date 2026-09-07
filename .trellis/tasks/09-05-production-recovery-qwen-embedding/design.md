@@ -1,5 +1,139 @@
 # Recovery design
 
+## Approved next scope: prospective production visual integration (R15–R17)
+
+The sample style and final new-run-only implementation summary are now accepted in conversation.
+The production runtime is still unchanged; implementation and release checks follow below.
+
+- Freeze a new visual-pipeline policy in both new Article run and weekly input identities.
+  Legacy absent policy retains exact old behavior even after config changes or restart. Do not
+  alter old V10 meanings or bump a weekly identity to recreate the delivered edition.
+- Reuse the current durable generated-visual intent/ready/result-unknown mechanism; introduce
+  the necessary new versioned native-size and strict audit contracts. Audit has its own durable
+  intent/result and readiness gate; existing `observe` remains observational.
+- Move deterministic upload-derivative preparation before final-image audit. Bind publication
+  source SHA, final upload SHA, role, dimensions and transform-policy identity. Five generated
+  inline outputs plus the final thumbnail are audited by exact direct GLM-5V-Turbo; the consumer
+  must preserve those approved bytes, not crop/compress the cover again. Original news pixels
+  remain separately preserved with explicit lineage if upload conversion is necessary.
+- Add a versioned prepared-child projection around the unchanged pure V2 Xiaosai renderer.
+  Do not enable its development-only release API or fabricate local preview data as durable
+  rows. Share the frozen policy with the producer and consumer; preserve literal v1 decoding,
+  fingerprints and normalization. Keep generic batch/ref semantics only if proven unchanged.
+- Project exact source rights, context placement, reference provenance and audit identities into
+  bounded hash-bound data. Runtime uses the already-vendored theme; it must never depend on a
+  personal `/root/.codex/skills` path. Main uses the actual installed gzh validator independently.
+- Before draft writes, ensure rendered HTML has enough bounded room for local-image-to-WeChat-URL
+  expansion. Do not truncate substantive content or modify old V2 output to meet a new limit.
+- Preserve existing draft first-write fences and successful/unknown outcomes. No old input is
+  re-exported into a new aggregate, since content-addressed dedup would otherwise create extra
+  drafts. Replacement is not supported and is outside this proposal.
+
+Deployment remains a separate checked stage: seal exact candidate/source/config identities,
+review any additive schema and rollback compatibility, capture a fresh protected-state baseline
+and backup, and activate within an actual safe window. Old incident operators are expired and
+cannot be rerun. Do not describe a passing sample or scoped tests as a green full release gate.
+
+Evidence: `research/visual-production-export-route.md` and the upstream integration-route research.
+The existing 33 baseline test failures and two baseline format/type files remain explicit and are
+not silently repaired or treated as newly passing by this integration.
+
+### Frozen implementation coordination contract
+
+- New strict run marker: `visual_pipeline_version` with the only initial non-null value
+  `official-account-visual-pipeline-v1-native-strict`. Null/absent remains byte-identical legacy.
+  Settings field `official_account_local_visual_pipeline_version` defaults null; the immutable
+  policy maps to Comfly/gpt-image-2, native 1536x1024, minimum reference short-edge 512, five scene
+  slots (references may repeat), direct Zhipu/glm-5v-turbo, six audit subjects and no auto-repair.
+- Policy/planning owner provides `app/domain/official_account_visual_pipeline.py`, new literal
+  V4 generated plan/prompt/profile dispatch, pure final-byte audit criteria/gate and batch checks,
+  strict isolated provider construction, settings and runtime/API/worker wiring. Existing V3
+  aliases and preview execution remain historically interpretable.
+- Durable owner alone edits `ports/official_account_local.py`, DB models/migrations/repository,
+  local executor/resolver and a new strict visual service/audit port. It adds the optional identity
+  marker, new plan SQL support, typed durable audit ownership, artifact retention and a repository
+  verified six-subject readiness gate. Audit state and generated success are separate facts.
+- Downstream owner supplies a pure, typed upload-derivative seam in
+  `app/domain/official_account_upload_media.py` for use BEFORE strict audit; it has no provider,
+  DB or social capability. Publication source hash and final-upload hash stay distinct. Legacy
+  normalizers preserve their exact output; new prepared children preserve frozen upload bytes.
+- Downstream owner freezes the full Article identity in versioned new weekly input. A legacy
+  input must use a proven legacy identity/link after settings drift, never new current defaults.
+  It also owns new prepared child schema/export, consumer dispatch and pre-upload HTML URL budget.
+- Owners must exchange actual typed public interfaces before dependent code lands. No two owners
+  edit a shared file; changes to ownership require a main-coordinated handoff. New helper modules
+  should keep the existing large executor/repository integration narrow. The independently
+  reviewed producer-to-consumer contract, not per-owner tests alone, controls activation.
+
+### Implementation boundary decisions (September 7)
+
+- Strict five-scene selection may reuse genuine registered references when fewer than five
+  eligible references exist. The policy owner also owns the narrow snapshot discriminator in
+  `domain/official_account_local.py`; only the strict discriminator relaxes reference uniqueness.
+  Legacy snapshot output and uniqueness stay unchanged. Scene outputs must still be distinct;
+  fabricated reference IDs or cloned catalog records are not valid workarounds.
+- The new prepared consumer may adopt a bounded accepted **escaped rendered URL** contract
+  (256 characters for the initial immutable version) instead of applying the legacy generic
+  2,048-character raw URL
+  maximum to a new compact projection. It must reserve the same bound for every image before
+  the first upload, and reject any upload result exceeding that bound before HTML rewrite or
+  `add_draft`. Preserve all existing durable first-write/unknown-outcome records; an oversized
+  response cannot cause an implicit retry. External response validation is not a guarantee of
+  provider success. Legacy URL and HTML behavior stays unchanged.
+- Strict-only lossless inline-CSS compaction can provide that headroom; it must preserve article
+  text, source/rights annotations, image positions and theme appearance, with actual mobile and
+  gzh-validator checks. Do not ship an always-rejecting branch, truncate content, or raise the
+  final HTML limit to claim compatibility.
+- The accepted sample measures 18,936 characters before strict compaction and 18,495 after it.
+  Reserving 256 escaped URL characters for each of its six inline images yields 19,920 characters,
+  leaving 79 characters under the 19,999 limit. This verifies that one sample can fit, not that
+  every future article fits; each actual article must pass its own pre-upload budget. A 512 bound
+  would yield 21,456 and fail this sample, so it is not the initial contract.
+
+## Approved visual-quality preview (R11–R14)
+
+Current implementation base is `.trellis/worktrees/visual-quality-preview`, branch
+`release/visual-quality-preview-20260907`, from `218015e` (runtime identical to live `6154c78`).
+Do not use dirty main as a build input. One reference-conditioned preview is the next deliverable;
+production activation and draft replacement remain behind user acceptance of that preview.
+
+Use an isolated preview-only entrypoint with no scheduler, enqueue, WeChat client or DB write
+capability. Capture the exact ready application-case Article, source projections, current media
+and approved reference bytes read-only. Bound input paths, member set, hashes and dimensions.
+Re-use current generated-visual block planning, prompt construction and publication normalization;
+new local metadata must truthfully say preview-only rather than claim persisted generated rows.
+Render through the existing pure V2 Xiaosai body renderer and context placement, using a new
+preview manifest rather than the V2 release builder's database/manual release identities.
+
+Generate five scenes through the existing Comfly `gpt-image-2` adapter, one physical generation
+attempt per scene intent, with journal-before-call and no repeat on ambiguous outcomes. Derive a
+landscape cover from the most relevant new scene and audit the final crop separately. Keep original
+news media unchanged with its rights/source annotations. Use deterministic reference selection
+truthfully while Qwen indexes remain unavailable; final scene relevance is checked by vision.
+
+The Comfly adapter historically requests and requires 1024×1024 pixels. Add a narrowly typed
+per-request `output_size` whose default preserves that behavior; only the new preview requests
+1536×1024. Verify raw decoded dimensions against the request in every output path, without mutable
+client-wide size state or permissive arbitrary-size acceptance. Bind geometry into the new preview
+request identity and preserve the base production-plan fingerprint separately. Record native and
+publication dimensions; do not describe upscaling as native-resolution generation.
+
+Separate the Zhipu vision model setting from the text model and port only the existing reviewed
+vision request profile from main (omit response_format/temperature, disable thinking and sampling).
+The preview requires an accepted, warning-free final-byte body/cover audit from exact
+`glm-5v-turbo`; maintain production observe's non-blocking compatibility. A separate deterministic
+preview gate rejects low resolution, direct catalog substitutions, exact/perceptual repeats and
+invalid bindings. Do not invent continuous numerical ratings from boolean audit output.
+
+Initial live envelope: one article, five generation intents and six vision-audit intents, every
+transport configured for one attempt; no automatic provider retry/fallback. Failures remain
+visible. Any known-quality repair must get a distinct bounded reviewed intent and must not replay
+an unknown outcome. The initial execution uses a standalone process, separate output and only the
+existing credentials it needs; it does not alter the running production image/configuration.
+No credential appears in argv, logs, manifests or artifacts. Final screenshot inspection and
+before/after production counters complete acceptance. Preview output is local-only/unpublished;
+reviewer acceptance is machine judgment, not human gold or source-photo publication permission.
+
 ## September 7 weekly material preflight repair
 
 Worktree `.trellis/worktrees/weekly-source-preflight` starts at exact production `5c560da`.

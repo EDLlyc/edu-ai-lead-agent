@@ -116,7 +116,8 @@ No article run or model request was created for that material. At initial diagno
 articles were ready with no WeChat draft jobs/items/attempts. The authorized compensation completed
 the third article and prepared aggregate at 09:53 CST, preserving both siblings. The next actual
 consumer check exposed a second defect: its inbox setting lies outside the shared volume mount.
-Production remains exact `5c560da` and Alembic 0042 pending the scoped release.
+At that diagnosis production was `5c560da` with Alembic 0042. The prevention release
+`6154c78` subsequently completed; current evidence is in `research/weekly-recovery-status.md`.
 The September 6 substantive-topic rollout is still pending; its dated operator is now expired.
 Implement this repair on a separate exact-production worktree without mixing that policy change.
 
@@ -133,3 +134,91 @@ Implement this repair on a separate exact-production worktree without mixing tha
   that pending status without rewriting those historical records. Existing HTTP-400 handling
   already isolates a refused job, so no provider/retry change or repeat refused-input call is
   included. A narrower candidate policy does not itself prove production delivery recovery.
+
+### September 7 approved visual-quality repair and one-preview gate
+
+After the image diagnosis and proposed fix/one-preview summary, the user approved with
+"好的，请你处理". This authorizes implementation and bounded existing-provider generation
+for one new preview, not replacement of the three existing drafts or public publishing.
+
+- R11 [P0]: Produce one fresh scene-illustrated preview from the existing application-case
+  article, preserving its text, factual/source bindings and actual news-image bytes. Use the
+  existing configured image-generation channel and approved brand references. Do not place
+  catalog avatars directly as new body illustrations or fabricate news photographs.
+- R12 [P0]: Separate vision-review identity from text generation. Image review uses direct
+  Zhipu `glm-5v-turbo` only. Generation and judging remain separate capabilities; do not enable
+  another judge, import unrelated local evaluation WIP or migrate Qwen indexes.
+- R13 [P0]: Check final body/cover resolution, integrity, repetitions and article/section
+  relevance before declaring the preview accepted. Preserve strict unavailability/unknown
+  outcomes; no invented scores, human labels, database records or publication-ready claims.
+- R14 [P0]: Use a fresh private preview directory and actual before-call intent/result ledger;
+  keep existing production configuration, workers, drafts, article runs and source packages
+  unchanged. A subsequent preview approval is required before any draft replacement or live
+  automatic-pipeline activation.
+- AC10 (R11, R13): One preview contains five distinct reference-conditioned 1536×1024 JPEG
+  scenes, an article-relevant landscape cover and the original acquired context image; article
+  and source hashes match the captured baseline. Exact 320/430 px checks prove images load,
+  no horizontal overflow and no external browser requests.
+- AC11 (R12, R13): Tests and real bounded call evidence identify `glm-5v-turbo`, not
+  `AI_CHAT_MODEL`, and bind each body/cover verdict to the final delivered bytes and required
+  criteria. Unavailable, rejected, malformed or model-mismatched results cannot pass the new
+  preview gate. Existing production `observe` remains non-blocking and default-off.
+- AC12 (R14): Repeat invocation cannot repeat billed generation for an existing intent or
+  unknown outcome; bounded input/path/hash and no-clobber tests pass. Live evidence proves
+  the three existing article/draft identities and attempt counts remain unchanged. Handoff
+  explicitly separates the accepted preview from the not-yet-activated production fix.
+
+Scope and diagnosis: `research/visual-production-evidence-20260907.md`,
+`research/visual-baseline-audit.md`, and `research/visual-preview-route.md`. No unresolved
+product decision blocks this one-preview implementation; the later activation gate is retained.
+
+September 7, 11:49 Asia/Shanghai: isolated-preview AC10-AC12 are now evidenced in
+`research/visual-preview-live-evidence-20260907.md`: five actual native landscape generations,
+six accepted GLM final-image audits, original source/media preserved, gzh and exact mobile checks
+passed, unchanged production article/draft identities. The preview is machine-accepted only;
+user sample approval, commit-plan confirmation and production integration remain pending.
+
+### Accepted sample and proposed prospective production integration
+
+The subsequent user message, "好的，我感觉没有什么大问题，请你处理吧", accepts the visible
+sample and requests continuing the production integration. This is conversational acceptance;
+the original machine evidence and `human_approved=false` creation record stay immutable. No
+database manual-review row is fabricated. The user also explicitly asks to keep using `gzh-design`.
+
+Confirmed downstream facts are in `research/visual-production-export-route.md`: normal export
+does not use the sample's V2 renderer; current draft preparation changes final cover bytes; and
+re-exporting old Articles creates new draft jobs, not replacements. Existing code has no safe
+draft-update/replacement capability. The following implementation/activation scope is proposed
+for a single final confirmation, not represented as already deployed:
+
+- R15 [P0]: Apply the accepted visual style to future legitimate weekly runs through a new
+  frozen per-run/per-week policy; retain original ready, queued, terminal and unknown-outcome
+  identities and literal legacy processing. Do not replay or re-export the delivered September 7
+  edition or alter its three existing drafts.
+- R16 [P0]: Use five native landscape reference-conditioned generations and six strict direct-GLM
+  audits with durable pre-call intents and no ambiguous paid replay. Audit the exact final
+  generated upload images and cover derivative, not only a larger publication image. No catalog
+  fallback, old unrelated cover, invented score or unavailable-as-pass outcome.
+- R17 [P0]: Use the project-owned `gzh-design` Xiaosai renderer for new prepared children;
+  retain original news images and rights/source metadata, with explicit derivative provenance
+  where upload conversion is necessary. Preserve old prepared formats and final audited bytes
+  through the draft consumer. Reject invalid/over-budget HTML before social writes.
+- AC13 (R15): Restart and config-change tests prove old runs keep old policy; new weekly branches
+  share their frozen policy. Before/after activation preserves all original Article/render/draft
+  IDs and successful/unknown attempt counts; repeated reconciliation creates no duplicate.
+- AC14 (R16): New durable execution proves exact native source dimensions, final upload byte SHA
+  and six issue-free accepted GLM results; a missing/rejected/unknown audit prevents ready export
+  before any social side effect. New cover bytes are not transformed again after audit.
+- AC15 (R17): Representative new artifacts with zero/one/two source images pass gzh compliance,
+  320/430 mobile checks, source/rights parity, prospective prepared-format integrity and URL-size
+  budgets. Legacy fixtures/identities remain literal. Production success requires actual normal
+  new-run/draft evidence, not the already-completed local sample.
+
+Out of scope: replacing/deleting existing drafts, public publish/mass send, historical catch-up,
+Qwen migration, new providers, schedule/recipient changes, redefinition of production observe,
+and importing unrelated dirty main work. Strict failures stay visible for review.
+
+The user subsequently confirmed the final new-run-only summary with "好的，请你处理". R15–R17
+and AC13–AC15 are approved for implementation. Existing drafts remain unchanged; no publication,
+mass send, historical replay or new provider is authorized. Commit and production activation must
+still satisfy their executable quality/release gates; approval does not imply those steps are done.

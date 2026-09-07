@@ -1,6 +1,17 @@
-{"file":".trellis/spec/backend/index.md","reason":"Backend contract boundaries"}
-{"file":".trellis/spec/backend/official-account-weekly-dag.md","reason":"Production frozen source and immutable terminal DAG contracts"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Read complete release and cross-layer verification guidance"}
+{"file":".trellis/spec/backend/index.md","reason":"Backend boundaries and provider/send ownership"}
+{"file":".trellis/spec/backend/topic-selection.md","reason":"Immutable editorial/scoring replay, eligibility before priority and rerank"}
+{"file":".trellis/spec/backend/governance-event-organization.md","reason":"Acquisition title/body stages and governed content projections"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Immutable config persistence and scheduler/idempotency boundaries"}
+{"file":".trellis/spec/backend/brand-knowledge-rag.md","reason":"Provider-scoped brand lookup and production client availability"}
+{"file":".trellis/spec/backend/content-slot-production.md","reason":"Existing schedule, slot lineage and delivery-window contracts"}
+{"file":".trellis/spec/backend/wecom-delivery.md","reason":"Terminal success, quality gates, idempotency and unknown outcomes"}
 {"file":".trellis/spec/backend/weekly-production-source-preflight.md","reason":"September 7 complete source preflight and audited sibling-preserving recovery"}
 {"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/weekly-recovery-design.md","reason":"Exact original terminal run, replacement route and immutable audit"}
 {"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/weekly-recovery-status.md","reason":"September 7 fresh production backup and focused verification evidence"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-preview-route.md", "reason": "Approved next one-preview route and reusable boundaries"}
+{"file": ".trellis/spec/backend/image-quality-evaluation.md", "reason": "Independent GLM vision profile and truthful non-blocking observer"}
+{"file": ".trellis/spec/backend/official-account-editor-handoff-v2.md", "reason": "Reuse pure rendering without fabricating release or durable rows"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-production-integration-route.md","reason":"Approved prospective native generation, durable final-image audits, frozen legacy replay and readiness gate"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-production-export-route.md","reason":"Final upload-byte identity, frozen weekly policy, new prepared child, legacy compatibility and no duplicate old drafts"}
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Upload derivative limits, HTML budgets, immutable staging and no public publication"}
+{"file":".trellis/spec/backend/official-account-strict-visual-pipeline.md","reason":"Combined strict pipeline executable contract, ownership, final-byte readiness, compatibility and release gates"}

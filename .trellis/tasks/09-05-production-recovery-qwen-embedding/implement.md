@@ -1,5 +1,72 @@
 # Execution plan
 
+## Current checkpoint: 2026-09-07 strict integration
+
+Implementation and independent change-relative review are complete in the isolated
+`visual-quality-preview` worktree. All 81 strict tests, including 16 real PostgreSQL tests,
+pass. Full backend reports 2,124 passed / 34 failed: 33 independently confirmed baseline
+failures plus one baseline-reproduced integration-credential/default-test interaction.
+Frontend and release baseline exceptions remain explicit in
+`research/visual-production-check-20260907.md`; this is not a clean general release gate.
+
+Main's actual gzh/Chromium checks and executable spec capture are complete. Task-only
+PostgreSQL/MinIO containers were removed after verification; no production service was touched.
+The candidate context manifests intentionally omit two unavailable historical parent-scope
+references instead of importing the unrelated substantive-topic branch. Root manifests retain
+their broader existing context. Current visual implementation and check evidence are preserved.
+
+Remaining: exact Phase 3.4 commit-batch confirmation, scoped commits, fresh immutable release /
+backup / safe-window / rollback review, and a future legitimate production-run acceptance.
+No commit, push, deployment, old-draft replacement, public publication or additional paid model
+call has been performed in this integration stage. The broader recovery/Qwen task stays open.
+
+## Approved production integration (R15–R17)
+
+1. User confirmed new legitimate runs only, existing three drafts unchanged, same generation/
+   judge/theme and no public publishing. Proceed under the frozen coordination contract in design.
+2. Use the isolated visual worktree, never dirty main. Curate new upstream/downstream research
+   in implement/check context. Agree the frozen run/week policy and upload-derivative contracts
+   before dispatching implementations; preserve the already sealed sample bytes and ledger.
+3. Durable visual implementer owns new identity/version/persistence, native generation,
+   complete approved references, exact final-output preparation and pre-call audit/ready gate.
+   Prepared/export implementer owns the new child schema, pure Xiaosai rendering and compatible
+   consumer byte preservation. Assign shared identity/normalizer files to one explicit owner.
+4. Add prospective/legacy restart tests, crash/unknown call-accounting tests, exact final-byte
+   audit tests, complete source/rights projections, HTML URL-expansion budgets, no-clobber and
+   end-to-end producer/consumer/draft-idempotency tests. Never test on production databases.
+5. Independent check agent reviews the combined contract and all affected packages, runs full
+   relevant gates and explicitly classifies baseline failures. Main reruns gzh validator and
+   actual mobile checks; neither research nor sample approval proves production execution.
+6. Update executable specs, present the scoped commit batch and obtain Phase 3.4 confirmation.
+   Main prepares a fresh immutable release with bounded settings/schema/rollback plan and
+   preserves all protected old runs/drafts. No old operator/window or arbitrary replay.
+7. After safe activation, verify actual normal future-run generation/audit/prepared/draft lineage
+   and repeat-pass idempotency. Report activation separately from unobserved future-run success.
+   No public publication, old-draft replacement, Qwen migration or unrelated WIP included.
+
+## Approved next deliverable: one visual-quality preview (AC10–AC12)
+
+1. Preserve live `6154c78` and use the isolated visual-quality worktree from `218015e`.
+   Research complete: `visual-production-evidence-20260907.md`, `visual-baseline-audit.md`,
+   `visual-preview-route.md`. User approved the proposed one-preview scope before this update.
+2. Adapter implementer owns independent GLM vision setting/factory/request dialect and focused
+   contracts in that worktree; preview implementer owns new preview runner/domain gate and tests.
+   A separate geometry implementer owns the image-generation port/Comfly adapter and its focused
+   tests for explicit native landscape requests with unchanged square-default behavior.
+   Both implement directly and do not spawn nested implement/check agents. No SSH/provider calls.
+3. Main owns read-only article/source/reference capture, task/spec records, optional isolated
+   execution and final artifact inspection. Independent check reviews the entire diff and runs
+   no-provider tests before live requests; check the no-write/no-send and intent-before-call path.
+4. Run five one-shot image generations and six one-shot GLM-5V-Turbo audits only after that gate.
+   Do not run the existing live article CLI, mutate `.env`, place output in the watched inbox,
+   reset a run, modify existing drafts or import unrelated dirty evaluation changes.
+5. Render the same frozen article with five generated scenes, a reviewed cover and unchanged
+   news original. Browser-test exact 320/430 viewports and inspect representative final images.
+   Record truthful new-call ledger, byte identities, verdicts, screenshots and old-state parity.
+6. Run focused Ruff/format/strict mypy, affected unit/contract tests and final quality checks;
+   report baseline/environment failures accurately. Update executable spec, commit scoped work
+   and hand off the preview. Do not activate the production fix before preview approval.
+
 ## September 7 weekly failure follow-up
 
 1. Confirm deployed source, terminal run, immutable input and existing ready article identities.
