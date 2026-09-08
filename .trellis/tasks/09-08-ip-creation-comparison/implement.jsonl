@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend conventions"}
+{"file":".trellis/spec/frontend/ip-asset-hub.md","reason":"Studio, safe media, profile, idempotency, accessible modal contracts"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Components, styling, accessibility"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Immutable local snapshot vs authoritative query state"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Generated API types and strict TypeScript"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Focused behavior tests and quality gates"}

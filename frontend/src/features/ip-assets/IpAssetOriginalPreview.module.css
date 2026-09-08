@@ -1,0 +1,131 @@
+.preview {
+  min-width: 0;
+}
+
+.imageButton {
+  display: grid;
+  width: 100%;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgb(24 92 85 / 20%);
+  border-radius: 3px;
+  background: var(--paper-deep);
+  color: var(--ink);
+  cursor: zoom-in;
+}
+
+.imageButton img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 720px;
+  object-fit: contain;
+}
+
+.zoomHint {
+  display: flex;
+  min-height: 44px;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  color: var(--teal);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.imageButton:hover .zoomHint {
+  background: var(--paper-deep);
+}
+
+.message {
+  display: grid;
+  min-height: 90px;
+  place-items: center;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  padding: clamp(12px, 3vw, 36px);
+  place-items: center;
+  background: rgb(9 29 27 / 82%);
+}
+
+.dialog {
+  width: min(1320px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: clamp(16px, 2.2vw, 30px);
+  border: 1px solid rgb(255 255 255 / 32%);
+  border-radius: 4px 24px 4px 24px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 24%);
+}
+
+.dialog header {
+  display: flex;
+  gap: 20px;
+  align-items: start;
+  justify-content: space-between;
+  margin-block-end: 18px;
+}
+
+.dialog header > div {
+  min-width: 0;
+}
+
+.dialog header p {
+  margin: 0 0 8px;
+  color: var(--teal);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  overflow-wrap: anywhere;
+}
+
+.dialog button {
+  min-width: 84px;
+  min-height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--teal);
+  border-radius: 4px;
+  background: var(--teal);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.dialogImage {
+  min-height: 90px;
+  background: var(--paper-deep);
+}
+
+.dialogImage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 72dvh;
+  object-fit: contain;
+}
+
+.dialogNote {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.7;
+}

@@ -25,6 +25,10 @@ import {
 import { ProfileSetupDialog } from "./ProfileSetupDialog";
 import { IpAssetLogoutButton } from "./IpAssetLogoutButton";
 import {
+  IpAssetCreationComparison,
+  type IpAssetCreationSnapshot,
+} from "./IpAssetCreationComparison";
+import {
   clearLocalIpAssetProfile,
   loadLocalIpAssetProfile,
   type LocalIpAssetProfile,
@@ -119,6 +123,10 @@ export function IpAssetCreationPage() {
   const [assetType, setAssetType] = useState<IpAssetType>("scene_illustration");
   const [prompt, setPrompt] = useState("");
   const [jobRef, setJobRef] = useState<string | null>(null);
+  const [submission, setSubmission] = useState<Readonly<{
+    jobRef: string;
+    snapshot: IpAssetCreationSnapshot;
+  }> | null>(null);
   const [personalSource, setPersonalSource] =
     useState<IpAssetPersonalSource>("all");
   const [announcement, setAnnouncement] = useState("");
@@ -127,11 +135,42 @@ export function IpAssetCreationPage() {
     readonly idempotencyKey: string;
   } | null>(null);
   const generation = useCreateIpAssetGeneration();
-  const generationStatus = useIpAssetGeneration(jobRef, activeProfile);
+  const currentJobRef =
+    submission?.snapshot.profileRef === activeProfile?.profileRef
+      ? jobRef
+      : null;
+  const generationStatus = useIpAssetGeneration(currentJobRef, activeProfile);
+  const currentStatus =
+    currentJobRef !== null && generationStatus.data?.job_ref === currentJobRef
+      ? generationStatus.data
+      : undefined;
   const output = useIpAssetDetail(
-    generationStatus.data?.output_asset_ref ?? null,
+    !generation.isPending &&
+      !generationStatus.isError &&
+      currentStatus?.status === "succeeded"
+      ? (currentStatus.output_asset_ref ?? null)
+      : null,
     activeProfile,
   );
+  const readyOutput =
+    !generation.isPending &&
+    !generationStatus.isError &&
+    !output.isError &&
+    currentStatus?.status === "succeeded" &&
+    output.data?.status === "ready" &&
+    output.data.asset_ref === currentStatus.output_asset_ref
+      ? output.data
+      : undefined;
+  const comparisonSnapshot =
+    submission !== null &&
+    submission.jobRef === currentJobRef &&
+    currentStatus?.reference_asset_refs.length ===
+      submission.snapshot.references.length &&
+    currentStatus.reference_asset_refs.every(
+      (ref, index) => ref === submission.snapshot.references[index]?.asset_ref,
+    )
+      ? submission.snapshot
+      : null;
   const favorites = useSetIpAssetFavorite();
   const share = useShareIpAsset();
   const pickerFilters = useMemo(
@@ -396,6 +435,7 @@ export function IpAssetCreationPage() {
                 return;
               }
               const signature = JSON.stringify({
+                profileRef: activeProfile.profileRef,
                 prompt,
                 character,
                 assetType,
@@ -408,6 +448,25 @@ export function IpAssetCreationPage() {
                   ? generationAttempt.current.idempotencyKey
                   : createIdempotencyKey();
               generationAttempt.current = { signature, idempotencyKey };
+              const snapshot: IpAssetCreationSnapshot = {
+                prompt,
+                character,
+                characterLabel:
+                  characterOptions.find((option) => option.value === character)
+                    ?.label ?? character,
+                assetType,
+                assetTypeLabel:
+                  assetTypeOptions.find((option) => option.value === assetType)
+                    ?.label ?? assetType,
+                profileRef: activeProfile.profileRef,
+                references: references.map((asset) => ({
+                  ...asset,
+                  tags: [...asset.tags],
+                })),
+              };
+              // An unacknowledged/rejected next attempt must not inherit a previous result.
+              setSubmission(null);
+              setJobRef(null);
               setAnnouncement("正在保存创作任务，请勿重复提交。");
               generation.mutate(
                 {
@@ -423,6 +482,7 @@ export function IpAssetCreationPage() {
                 {
                   onSuccess: (job) => {
                     setJobRef(job.job_ref);
+                    setSubmission({ jobRef: job.job_ref, snapshot });
                     setAnnouncement(
                       "创作任务已保存，正在等待独立后台生成服务领取。",
                     );
@@ -538,10 +598,10 @@ export function IpAssetCreationPage() {
         </form>
 
         <OutputStage
-          status={generationStatus.data}
+          status={currentStatus}
           statusError={generationStatus.isError}
           submitting={generation.isPending}
-          output={output.data}
+          output={readyOutput}
           profile={activeProfile}
           sharing={share.isPending}
           onShare={(assetRef) => {
@@ -570,6 +630,17 @@ export function IpAssetCreationPage() {
           }}
         />
       </section>
+
+      {comparisonSnapshot !== null &&
+      readyOutput !== undefined &&
+      activeProfile !== null ? (
+        <IpAssetCreationComparison
+          key={`${currentJobRef}:${activeProfile.profileRef}`}
+          snapshot={comparisonSnapshot}
+          output={readyOutput}
+          profile={activeProfile}
+        />
+      ) : null}
 
       <section
         className={styles.picker}

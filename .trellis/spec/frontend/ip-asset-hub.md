@@ -186,6 +186,20 @@ resources.
 - Generation submission keeps one idempotency key for the same normalized profile/prompt/taxonomy/
   ordered-reference signature across transport or server retries. It creates a new key only when
   that signature changes, so a retry cannot accidentally enqueue a second provider job.
+- The studio's `IpAssetCreationComparison` shows a current-session submission receipt: copy the
+  ordered reference cards, prompt, taxonomy labels and `profileRef` when submitting, then associate
+  them with the returned `job_ref`. Render only when that same profile/job has succeeded, its
+  ordered `reference_asset_refs` match the receipt, and its exact output is `ready`. Editing the
+  next form never rewrites the receipt. A new submission clears previous result linkage immediately,
+  including after transport failure; a profile change or status/detail error cannot expose an old
+  comparison. Do not reconstruct historical prompts from current form values or browser storage.
+- Comparison images use the controlled original `preview_url`, never thumbnail or counted download
+  routes, and preserve the complete image with `contain`. `IpAssetOriginalPreview` reuses one owned
+  private blob URL for inline and enlarged views, sends the token only in its transport header,
+  suppresses late responses and revokes the URL on cleanup. Its named large-view dialog closes on
+  Escape/backdrop/close, traps and restores keyboard focus, and exposes image-loading/failure text.
+  Opening it never enqueues, shares, downloads or records a download. Desktop columns read reference,
+  submitted brief, result; narrow screens stack in that order without truncating the actual brief.
 - Generation polls only `queued`/`running` jobs and stops on success/failure. Terminal success
   invalidates shared-list and personal-shelf queries from an effect; `refetchInterval` must never invalidate its own
   generation-query family. A successful job exposes an action that opens the output asset. Disabled
@@ -397,6 +411,11 @@ wildcard. A production static/reverse-proxy host must rewrite the `/ip-assets` d
   more than 2000 characters reach the mutation unchanged; normalized blank still fails at the
   backend; return link exposes both context and destination; section/output/frame labels use
   tabular numerals, remain AA-readable, and do not overflow at desktop or 390px.
+- Studio comparison: completed receipt survives subsequent prompt/reference edits unchanged;
+  wrong job/output/ref order, rejected next submission and profile changes cannot show stale
+  provenance. Test safe original media, private header/blob cleanup, image failure, zoom keyboard
+  trap/restoration and no extra mutation. Browser verification must label historical replay as
+  replay, preserve actual persisted source/brief/output linkage, and send no real generation request.
 - Hook: terminal generation status stops polling and invalidates only list/personal prefixes without
   recursively refetching the generation query.
 - Accessibility: axe, keyboard focus order, drawer trap/restore/Escape/backdrop behavior, closed

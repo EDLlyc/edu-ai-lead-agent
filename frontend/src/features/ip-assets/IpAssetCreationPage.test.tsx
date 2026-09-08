@@ -1,12 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { IpAsset } from "./api";
+import type { IpAsset, IpAssetGeneration } from "./api";
 import creationStylesheet from "./IpAssetCreationPage.module.css?inline";
+import comparisonStylesheet from "./IpAssetCreationComparison.module.css?inline";
+import { ipAssetKeys } from "./hooks";
 import { saveLocalIpAssetProfile } from "./profile";
 
 const apiMocks = vi.hoisted(() => ({
@@ -76,6 +85,38 @@ function Providers({ children }: PropsWithChildren) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+function succeededJob(
+  overrides: Partial<IpAssetGeneration> = {},
+): IpAssetGeneration {
+  return {
+    completed_at: "2026-08-24T08:01:00Z",
+    created: true,
+    created_at: "2026-08-24T08:00:00Z",
+    error_code: null,
+    generation_available: true,
+    job_ref: "ipg_comparison",
+    output_asset_ref: "ipa_result",
+    reference_asset_ref: "ipa_one",
+    reference_asset_refs: ["ipa_one"],
+    status: "succeeded",
+    status_url: "/api/v1/ip-assets/generations/ipg_comparison",
+    ...overrides,
+  };
+}
+
+async function submitComparison() {
+  const user = userEvent.setup();
+  const picker = screen.getByRole("region", { name: "选择创作素材" });
+  await user.click(
+    (await within(picker).findAllByRole("button", { name: "加入参考" }))[0]!,
+  );
+  fireEvent.change(screen.getByLabelText("画面描述"), {
+    target: { value: "小赛在明亮的科学课堂里演示实验。" },
+  });
+  await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+  return user;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -124,6 +165,199 @@ beforeEach(() => {
 });
 
 describe("IpAssetCreationPage", () => {
+  it("freezes the actual submitted prompt, ordered cards and taxonomy while the form changes", async () => {
+    const user = userEvent.setup();
+    let resolveSubmission: ((job: IpAssetGeneration) => void) | undefined;
+    const job = succeededJob({ reference_asset_refs: ["ipa_one", "ipa_two"] });
+    apiMocks.createIpAssetGeneration.mockImplementation(
+      () =>
+        new Promise<IpAssetGeneration>((resolve) => {
+          resolveSubmission = resolve;
+        }),
+    );
+    apiMocks.getIpAssetGeneration.mockResolvedValue(job);
+    apiMocks.getIpAsset.mockResolvedValue(asset("result"));
+    const { container } = render(<IpAssetCreationPage />, {
+      wrapper: Providers,
+    });
+    const picker = screen.getByRole("region", { name: "选择创作素材" });
+    const add = await within(picker).findAllByRole("button", {
+      name: "加入参考",
+    });
+    await user.click(add[0]!);
+    await user.click(add[1]!);
+    const originalPrompt =
+      "保留小赛原有配色。\n在明亮的科学课堂演示火箭实验，不添加文字。";
+    fireEvent.change(screen.getByLabelText("画面描述"), {
+      target: { value: originalPrompt },
+    });
+    await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+    fireEvent.change(screen.getByLabelText("画面描述"), {
+      target: { value: "这是下一次创作，不属于已提交的结果。" },
+    });
+    await user.selectOptions(screen.getByLabelText("IP 角色"), "duo");
+    await user.selectOptions(screen.getByLabelText("资产类型"), "expression");
+    await user.click(
+      screen.getByRole("button", { name: "将 小赛-参考-one.png 后移" }),
+    );
+    await act(() => Promise.resolve(resolveSubmission?.(job)));
+
+    const comparison = await screen.findByRole("region", {
+      name: "从参考，到新画面",
+    });
+    expect(
+      within(comparison).getByText(originalPrompt, {
+        collapseWhitespace: false,
+      }),
+    ).toBeVisible();
+    expect(within(comparison).queryByText(/这是下一次创作/)).toBeNull();
+    expect(within(comparison).getByText("小赛")).toBeVisible();
+    expect(within(comparison).getByText("场景插画")).toBeVisible();
+    const references = within(comparison).getByRole("region", {
+      name: /参考图/,
+    });
+    expect(
+      within(references)
+        .getAllByRole("img")
+        .map((image) => image.getAttribute("alt")),
+    ).toEqual([asset("one").canonical_name, asset("two").canonical_name]);
+    expect(within(references).getAllByRole("img")[0]).toHaveAttribute(
+      "src",
+      expect.stringContaining(asset("one").preview_url),
+    );
+    const result = within(comparison).getByRole("region", { name: /生成画面/ });
+    expect(within(result).getByRole("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining(asset("result").preview_url),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "移除 小赛-参考-one.png" }),
+    );
+    expect(within(references).getAllByRole("listitem")).toHaveLength(2);
+    expect((await axe(container)).violations).toEqual([]);
+  });
+
+  it.each(["pending", "rejected", "queued"] as const)(
+    "removes the previous comparison when the next submission is %s",
+    async (nextState) => {
+      apiMocks.createIpAssetGeneration.mockResolvedValue(succeededJob());
+      apiMocks.getIpAssetGeneration.mockResolvedValue(succeededJob());
+      apiMocks.getIpAsset.mockResolvedValue(asset("result"));
+      render(<IpAssetCreationPage />, { wrapper: Providers });
+      const user = await submitComparison();
+      await screen.findByRole("region", { name: "从参考，到新画面" });
+      if (nextState === "pending")
+        apiMocks.createIpAssetGeneration.mockImplementation(
+          () => new Promise(() => {}),
+        );
+      if (nextState === "rejected")
+        apiMocks.createIpAssetGeneration.mockRejectedValue(
+          new Error("rejected"),
+        );
+      if (nextState === "queued") {
+        const next = succeededJob({
+          job_ref: "ipg_next",
+          status: "queued",
+          output_asset_ref: null,
+        });
+        apiMocks.createIpAssetGeneration.mockResolvedValue(next);
+        apiMocks.getIpAssetGeneration.mockResolvedValue(next);
+      }
+      fireEvent.change(screen.getByLabelText("画面描述"), {
+        target: { value: "下一次创作的简报" },
+      });
+      await user.click(screen.getByRole("button", { name: "生成 1:1 图片" }));
+      if (nextState === "rejected") await screen.findByRole("alert");
+      if (nextState === "queued") await screen.findByText(/后台服务未启动时/);
+      expect(
+        screen.queryByRole("region", { name: "从参考，到新画面" }),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: "下载原图" })).toBeNull();
+    },
+  );
+
+  it.each([
+    ["another job", { job_ref: "ipg_other" }, {}],
+    ["different references", { reference_asset_refs: ["ipa_two"] }, {}],
+    ["an unready output", {}, { status: "processing" }],
+    ["another output", {}, { asset_ref: "ipa_other" }],
+    ["a running job with an output ref", { status: "running" }, {}],
+    ["a failed job with an output ref", { status: "failed" }, {}],
+  ] satisfies readonly (readonly [
+    string,
+    Partial<IpAssetGeneration>,
+    Partial<IpAsset>,
+  ])[])(
+    "does not fabricate a comparison for %s",
+    async (_name, jobOverride, outputOverride) => {
+      apiMocks.createIpAssetGeneration.mockResolvedValue(succeededJob());
+      apiMocks.getIpAssetGeneration.mockResolvedValue(
+        succeededJob(jobOverride),
+      );
+      apiMocks.getIpAsset.mockResolvedValue({
+        ...asset("result"),
+        ...outputOverride,
+      });
+      render(<IpAssetCreationPage />, { wrapper: Providers });
+      await submitComparison();
+      await waitFor(() =>
+        expect(apiMocks.getIpAssetGeneration).toHaveBeenCalled(),
+      );
+      expect(
+        screen.queryByRole("region", { name: "从参考，到新画面" }),
+      ).toBeNull();
+    },
+  );
+
+  it("hides a ready comparison when the submitting profile is rejected", async () => {
+    apiMocks.createIpAssetGeneration.mockResolvedValue(succeededJob());
+    apiMocks.getIpAssetGeneration.mockResolvedValue(succeededJob());
+    apiMocks.getIpAsset.mockResolvedValue(asset("result"));
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <IpAssetCreationPage />
+      </QueryClientProvider>,
+    );
+    await submitComparison();
+    await screen.findByRole("region", { name: "从参考，到新画面" });
+    apiMocks.restoreIpAssetProfile.mockRejectedValue(
+      new Error("profile_rejected"),
+    );
+    await act(async () => {
+      await client.invalidateQueries({
+        queryKey: ipAssetKeys.profile(profile.profileRef),
+      });
+    });
+    expect(
+      await screen.findByText(/这台浏览器保存的素材名片已失效/),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "从参考，到新画面" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "下载原图" })).toBeNull();
+  });
+
+  it("does not reconstruct historical comparisons without a current-session submission", async () => {
+    apiMocks.getIpAssetGeneration.mockResolvedValue(succeededJob());
+    apiMocks.getIpAsset.mockResolvedValue(asset("result"));
+    render(<IpAssetCreationPage />, { wrapper: Providers });
+    await screen.findByText(asset("one").canonical_name);
+    expect(
+      screen.queryByRole("region", { name: "从参考，到新画面" }),
+    ).toBeNull();
+    expect(apiMocks.getIpAssetGeneration).not.toHaveBeenCalled();
+    expect(comparisonStylesheet).toMatch(/@media\s*\(max-width:\s*900px\)/);
+    expect(comparisonStylesheet).toMatch(
+      /grid-template-columns:\s*minmax\(0, 1fr\)/,
+    );
+  });
+
   it("loads a demo brief without submitting a generation", async () => {
     const user = userEvent.setup();
     render(<IpAssetCreationPage />, { wrapper: Providers });
