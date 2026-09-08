@@ -29,9 +29,9 @@ from app.domain.official_account_local import (
     fingerprint,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
-    STRICT_VISUAL_PIPELINE_VERSION,
 )
 
 
@@ -75,7 +75,7 @@ class OfficialAccountVersionIdentity:
             if has_native:
                 raise ValueError("native visual identity requires its strict pipeline policy")
         elif (
-            self.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION
+            self.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS
             or self.provider != "zhipu"
             or self.generated_visual_plan_version
             != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION

@@ -100,6 +100,27 @@ class StrictVisualAuditSubject:
         return fingerprint("official-account-strict-visual-audit-request-v1", asdict(self))
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObserveVisualAuditSubject(StrictVisualAuditSubject):
+    """Additional exact-copy proof; the frozen strict subject is not reserialized."""
+
+    catalog_publication_sha256s: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        StrictVisualAuditSubject.__post_init__(self)
+        values = self.catalog_publication_sha256s
+        if (
+            not 1 <= len(values) <= 41
+            or tuple(sorted(set(values))) != values
+            or self.reference_publication_sha256 not in values
+            or any(
+                len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+                for value in values
+            )
+        ):
+            raise ValueError("observe catalog checksum set is invalid")
+
+
 @dataclass(frozen=True, slots=True)
 class StoredStrictVisualAudit:
     id: UUID
@@ -144,6 +165,36 @@ class StrictVisualMediaEvidence:
     plan_version: str
     prompt_version: str
     native_output_size: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObserveVisualMediaEvidence(StrictVisualMediaEvidence):
+    audit_status: Literal["accepted", "rejected", "unavailable", "result_unknown"]
+    audit_issue_codes: tuple[str, ...]
+    audit_subject: ObserveVisualAuditSubject
+    quality_issue_codes: tuple[str, ...]
+
+
+def observe_quality_issue_codes(
+    subject: ObserveVisualAuditSubject, bodies: tuple[StrictVisualAuditSubject, ...]
+) -> tuple[str, ...]:
+    """Recompute observations from immutable subjects, never an accepted flag."""
+    if subject.role == "cover":
+        return ()
+    threshold = 6
+    codes = []
+    if any(
+        (int(subject.perceptual_hash, 16) ^ int(other, 16)).bit_count() <= threshold
+        for other in subject.catalog_perceptual_hashes
+    ):
+        codes.append("strict_visual_catalog_reuse")
+    if any(
+        (int(subject.perceptual_hash, 16) ^ int(other.perceptual_hash, 16)).bit_count() <= threshold
+        for other in bodies
+        if other.ordinal < subject.ordinal
+    ):
+        codes.append("strict_visual_perceptual_repetition")
+    return tuple(codes)
 
 
 def strict_audit_record_fingerprint(

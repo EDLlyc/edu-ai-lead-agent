@@ -248,7 +248,10 @@ class OfficialAccountLocalMediaResolver:
             normalize_official_account_upload_body,
             normalize_official_account_upload_cover,
         )
-        from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
+        from app.domain.official_account_visual_pipeline import (
+            NATIVE_VISUAL_PIPELINE_VERSIONS,
+            native_visual_audit_releases,
+        )
         from app.infrastructure.db.official_account_strict_visual import _stored, _validate_subject
 
         if (
@@ -271,15 +274,17 @@ class OfficialAccountLocalMediaResolver:
         )
         if (
             run is None
-            or run.version_bundle.get("visual_pipeline_version") != STRICT_VISUAL_PIPELINE_VERSION
+            or run.version_bundle.get("visual_pipeline_version")
+            not in NATIVE_VISUAL_PIPELINE_VERSIONS
             or audit_row is None
         ):
             raise OfficialAccountMediaIntegrityError("strict derivative audit is missing")
         audit = _stored(audit_row)
         visual = await _validate_subject(session, run, audit.subject)
         if (
-            audit.status != "accepted"
-            or audit.issue_codes
+            not native_visual_audit_releases(
+                run.version_bundle.get("visual_pipeline_version"), audit.status, audit.issue_codes
+            )
             or visual.id != media.generated_visual_id
             or visual.render_version_id != media.render_version_id
             or audit.subject.upload_sha256 != media.sha256

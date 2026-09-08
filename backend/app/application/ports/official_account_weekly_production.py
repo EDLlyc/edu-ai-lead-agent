@@ -12,9 +12,9 @@ from uuid import UUID
 
 from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
-    STRICT_VISUAL_PIPELINE_VERSION,
 )
 from app.domain.official_account_weekly_edition import (
     WEEKLY_EDITION_ROLE_ORDER,
@@ -61,7 +61,7 @@ def weekly_article_identity_from_snapshot(value: object) -> OfficialAccountVersi
         raise ValueError("weekly frozen article provider is invalid")
     policy = value.get("visual_pipeline_version")
     if policy is not None and (
-        policy != STRICT_VISUAL_PIPELINE_VERSION
+        policy not in NATIVE_VISUAL_PIPELINE_VERSIONS
         or value.get("generated_visual_plan_version")
         != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
         or value.get("generated_visual_prompt_version")

@@ -500,8 +500,34 @@ async def test_schema_upgrade_and_populated_downgrade_fence(integration_context)
         )
 
 
+@pytest_asyncio.fixture(loop_scope="session")
+async def native_path_context():
+    # Each case executes the same frozen synthetic text; render fingerprints are globally
+    # unique in production. Isolate cases instead of changing that production constraint.
+    from .conftest import integration_context as context_fixture
+
+    iterator = context_fixture.__wrapped__()
+    context = await anext(iterator)
+    try:
+        yield context
+    finally:
+        with pytest.raises(StopAsyncIteration):
+            await anext(iterator)
+
+
+@pytest.mark.parametrize(
+    "visual_case",
+    [
+        "strict",
+        "observe",
+        "observe_mixed",
+        "observe_perceptual",
+        "observe_orphan",
+        "observe_exact_echo",
+    ],
+)
 async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consumer(
-    integration_context, tmp_path, monkeypatch
+    native_path_context, tmp_path, monkeypatch, visual_case
 ):
     """Real PG/MinIO normal path; synthetic models, no historical Article row mutation."""
     from hashlib import sha256
@@ -511,11 +537,14 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
     # Reuse the synthetic adapters without copying them into this integration suite.
     monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "unit"))
 
+    from app.application.ports.official_account_strict_visual import ObserveVisualMediaEvidence
     from app.application.services.official_account_local import OfficialAccountLocalExecutor
     from app.application.services.wechat_official_account_draft import (
         WeChatDraftLocalSource,
         WeChatOfficialAccountDraftPreparer,
     )
+    from app.core.errors import ProviderUnavailableError
+    from app.domain.official_account_visual_pipeline import OBSERVE_VISUAL_PIPELINE_VERSION
     from app.domain.official_account_weekly_edition import WeeklyArticleRole
     from app.infrastructure.db.models import MaterialPackageModel, WeComDeliveryJobModel
     from app.infrastructure.db.official_account_strict_visual import _stored
@@ -541,7 +570,7 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
 
     from .test_wecom_slot_delivery_concurrency import _seed_slot_delivery_lane
 
-    context = integration_context
+    context = native_path_context
     _, job_ids, _, _ = await _seed_slot_delivery_lane(context, target_at=datetime.now(UTC))
     fixture_source = fixture_source_snapshot(multi_image=True, semantic_media=True)
     async with context.session_factory() as session:
@@ -573,9 +602,14 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         ]
         package_id = package.id
         await session.commit()
-    identity = official_account_identity_from_settings(
-        _settings(), provider="zhipu", model="glm-5.2"
-    )
+    settings = _settings()
+    if visual_case != "strict":
+        settings = settings.model_copy(
+            update={
+                "official_account_local_visual_pipeline_version": OBSERVE_VISUAL_PIPELINE_VERSION,
+            }
+        )
+    identity = official_account_identity_from_settings(settings, provider="zhipu", model="glm-5.2")
     repository = PostgresOfficialAccountRepository(context.session_factory)
     run, created = await repository.enqueue_material_package(
         material_package_id=package_id, identity=identity
@@ -585,6 +619,16 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         await repository.enqueue_material_package(material_package_id=package_id, identity=identity)
     )[0].id == run.id
     proxy = SimpleNamespace(generated={}, audits={})
+    claims = []
+    original_claim = repository.claim
+
+    async def capture_claim(**kwargs):
+        claimed = await original_claim(**kwargs)
+        if claimed is not None:
+            claims.append(claimed)
+        return claimed
+
+    monkeypatch.setattr(repository, "claim", capture_claim)
 
     class Generator(_Generator):
         async def generate(self, request):
@@ -602,7 +646,18 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
                     and row.request_fingerprint == request.request_fingerprint
                     for row in rows
                 )
-            return await super().generate(request)
+            result = await super().generate(request)
+            if visual_case == "observe_exact_echo" and len(self.calls) == 3:
+                return replace(result, image_bytes=request.references[0].image_bytes)
+            if visual_case == "observe_perceptual":
+                from io import BytesIO
+
+                from PIL import Image
+
+                output = BytesIO()
+                Image.new("RGB", (1536, 1024), (len(self.calls) * 40, 20, 30)).save(output, "JPEG")
+                return replace(result, image_bytes=output.getvalue())
+            return result
 
     class Auditor(_Auditor):
         async def audit(self, request):
@@ -625,7 +680,17 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
                 self.repository.audits = {
                     (row.role, row.ordinal): _stored(row) for row in audit_rows
                 }
-            return await super().audit(request)
+            result = await super().audit(request)
+            if visual_case == "observe_orphan" and len(self.calls) == 3:
+                raise asyncio.CancelledError()
+            if visual_case == "observe_mixed":
+                if len(self.calls) == 2:
+                    return replace(result, accepted=False)
+                if len(self.calls) == 3:
+                    raise ProviderUnavailableError()
+                if len(self.calls) == 4:
+                    raise TimeoutError("synthetic unknown audit")
+            return result
 
     catalog = _ApprovedCatalog()
     catalog.candidates = catalog.candidates[:3]
@@ -650,8 +715,58 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         strict_image_generator=generator,
         strict_image_quality_auditor=auditor,
     )
+    if visual_case == "observe_orphan":
+        with pytest.raises(asyncio.CancelledError):
+            await executor.execute_next("normal-observe-interrupted")
+        assert len(generator.calls) == 5 and len(auditor.calls) == 3
+        assert (await repository.get_run(run.id)).status == "running"
+        async with context.session_factory() as session:
+            row = await session.scalar(
+                select(OfficialAccountStrictVisualAuditModel).where(
+                    OfficialAccountStrictVisualAuditModel.run_id == run.id,
+                    OfficialAccountStrictVisualAuditModel.role == "body",
+                    OfficialAccountStrictVisualAuditModel.ordinal == 2,
+                )
+            )
+            orphan = _stored(row)
+            assert orphan.status == "calling" and orphan.record_fingerprint is None
+            await session.execute(
+                update(OfficialAccountArticleRunModel)
+                .where(OfficialAccountArticleRunModel.id == run.id)
+                .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+            )
+            await session.commit()
+        assert (
+            await repository.complete_strict_visual_audit(
+                claimed=claims[0],
+                subject=orphan.subject,
+                status="rejected",
+                issue_codes=("strict_visual_audit_rejected",),
+            )
+            is None
+        )
     assert await executor.execute_next("normal-strict-pg")
     completed = await repository.get_run(run.id)
+    if visual_case == "observe_exact_echo":
+        assert completed.status == "failed"
+        assert completed.error_code == "strict_visual_catalog_exact_reuse"
+        assert len(generator.calls) == 3 and not auditor.calls
+        retained = tuple(
+            [
+                await repository.get_generated_visual(run_id=run.id, ordinal=index)
+                for index in range(3)
+            ]
+        )
+        assert [item.status for item in retained] == ["ready", "ready", "failed"]
+        assert retained[2].error_code == "strict_visual_catalog_exact_reuse"
+        for item in retained[:2]:
+            body = await store.get_content_addressed_bytes(
+                media_type=item.media_type, byte_size=item.byte_size, sha256=item.sha256
+            )
+            assert sha256(body).hexdigest() == item.sha256
+        assert await executor.execute_next("known-exact-echo-no-replay") is False
+        assert len(generator.calls) == 3 and not auditor.calls
+        return
     assert completed.status == "ready", completed.error_code
     assert len(generator.calls) == 5 and len(auditor.calls) == 6
     proofs = await repository.load_strict_visual_evidence(run.id)
@@ -668,7 +783,45 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
     prepared = WeChatOfficialAccountDraftPreparer(max_image_bytes=10 * 1024 * 1024).prepare(
         WeChatDraftLocalSource(directory=child, role="application_case")
     )
-    assert prepared.visual_pipeline_version == STRICT_VISUAL_PIPELINE_VERSION
+    assert prepared.visual_pipeline_version == identity.visual_pipeline_version
+    if visual_case != "strict":
+        assert all(isinstance(item, ObserveVisualMediaEvidence) for item in proofs)
+    if visual_case == "observe_mixed":
+        assert [item.audit_status for item in proofs] == [
+            "accepted",
+            "rejected",
+            "unavailable",
+            "result_unknown",
+            "accepted",
+            "accepted",
+        ]
+    if visual_case == "observe_orphan":
+        assert [item.audit_status for item in proofs] == [
+            "accepted",
+            "accepted",
+            "result_unknown",
+            "accepted",
+            "accepted",
+            "accepted",
+        ]
+        assert proofs[2].audit_issue_codes == ("strict_visual_orphaned_call",)
+        assert claims[1].attempt_number == claims[0].attempt_number + 1
+        assert claims[1].lease_token != claims[0].lease_token
+        assert len({item.request_fingerprint for item in auditor.calls}) == 6
+        assert (
+            await repository.complete_strict_visual_audit(
+                claimed=claims[0],
+                subject=orphan.subject,
+                status="rejected",
+                issue_codes=("strict_visual_audit_rejected",),
+            )
+            is None
+        )
+    if visual_case == "observe_perceptual":
+        assert all(
+            "strict_visual_perceptual_repetition" in item.quality_issue_codes
+            for item in proofs[1:5]
+        )
     assert sha256(prepared.cover.body).hexdigest() == proofs[-1].upload_sha256
     assert (
         await owner.build_child(run_id=run.id, role=WeeklyArticleRole.APPLICATION_CASE) == artifact

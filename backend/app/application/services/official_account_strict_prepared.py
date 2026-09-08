@@ -13,7 +13,14 @@ from uuid import UUID
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from app.application.ports.official_account_strict_visual import StrictVisualMediaEvidence
+from app.application.ports.official_account_strict_visual import (
+    ObserveVisualAuditSubject,
+    ObserveVisualMediaEvidence,
+    StrictVisualMediaEvidence,
+    observe_quality_issue_codes,
+    strict_audit_record_fingerprint,
+)
+from app.domain.image_similarity import perceptual_dhash
 from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
 from app.domain.official_account_editor_handoff_v2 import (
     EditorHandoffV2Identity,
@@ -41,12 +48,18 @@ from app.domain.official_account_upload_media import (
     normalize_official_account_upload_context,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
+    OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
+    StrictVisualPipelineVersion,
+    native_visual_audit_releases,
 )
 
 STRICT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v2-native-strict"
+OBSERVE_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v3-native-observe"
+NATIVE_PREPARED_CHILD_VERSIONS = (STRICT_PREPARED_CHILD_VERSION, OBSERVE_PREPARED_CHILD_VERSION)
 
 
 class _Frozen(BaseModel):
@@ -95,6 +108,8 @@ def _hash(value: object) -> str:
 def validate_strict_visual_evidence(
     evidence: tuple[StrictVisualMediaEvidence, ...],
     media: tuple[EditorHandoffMediaAsset, ...],
+    *,
+    policy_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
 ) -> None:
     """Consumer verifies the complete closed accepted projection; exporter owns DB proof."""
     expected = (("body", 0), ("body", 1), ("body", 2), ("body", 3), ("body", 4), ("cover", 0))
@@ -104,6 +119,36 @@ def validate_strict_visual_evidence(
     if len(by_slot) != len(media):
         raise ValueError("strict prepared media slots are duplicated")
     for item in evidence:
+        observe = policy_version == OBSERVE_VISUAL_PIPELINE_VERSION
+        if observe != isinstance(item, ObserveVisualMediaEvidence):
+            raise ValueError("native prepared evidence policy changed")
+        if isinstance(item, ObserveVisualMediaEvidence):
+            subject = item.audit_subject
+            if (
+                not native_visual_audit_releases(
+                    policy_version, item.audit_status, item.audit_issue_codes
+                )
+                or tuple(sorted(set(item.audit_issue_codes))) != item.audit_issue_codes
+                or len(item.audit_issue_codes) > 16
+                or any(
+                    not code.startswith("strict_visual_") or len(code) > 80
+                    for code in item.audit_issue_codes
+                )
+                or (item.audit_status == "accepted" and item.audit_issue_codes)
+                or subject.request_fingerprint != item.audit_request_fingerprint
+                or strict_audit_record_fingerprint(
+                    subject, item.audit_status, item.audit_issue_codes
+                )
+                != item.audit_record_fingerprint
+                or any(
+                    getattr(item, field.name) != getattr(subject, field.name)
+                    for field in fields(StrictVisualMediaEvidence)
+                    if hasattr(subject, field.name) and field.name != "prompt_version"
+                )
+                or subject.publication_sha256 in subject.catalog_publication_sha256s
+                or subject.upload_sha256 in subject.catalog_publication_sha256s
+            ):
+                raise ValueError("observe prepared audit identity changed")
         asset = by_slot.get((item.role, item.ordinal))
         if asset is None:
             raise ValueError("strict prepared audit asset is missing")
@@ -125,8 +170,8 @@ def validate_strict_visual_evidence(
             != fingerprint(
                 "official-account-strict-visual-audit-record-v1",
                 item.audit_request_fingerprint,
-                "accepted",
-                (),
+                item.audit_status if isinstance(item, ObserveVisualMediaEvidence) else "accepted",
+                item.audit_issue_codes if isinstance(item, ObserveVisualMediaEvidence) else (),
             )
         ):
             raise ValueError("strict prepared final-byte audit identity changed")
@@ -152,6 +197,23 @@ def validate_strict_visual_evidence(
         ):
             raise ValueError("strict prepared upload byte bound changed")
     bodies = evidence[:5]
+    if policy_version == OBSERVE_VISUAL_PIPELINE_VERSION:
+        observations = tuple(
+            item for item in evidence if isinstance(item, ObserveVisualMediaEvidence)
+        )
+        subjects = tuple(item.audit_subject for item in observations)
+        if len(observations) != 6 or len({item.publication_sha256 for item in bodies}) != 5:
+            raise ValueError("observe prepared subjects are incomplete or repeated")
+        for item in observations:
+            if (
+                item.audit_subject.catalog_publication_sha256s
+                != subjects[0].catalog_publication_sha256s
+                or item.audit_subject.catalog_perceptual_hashes
+                != subjects[0].catalog_perceptual_hashes
+                or item.quality_issue_codes
+                != observe_quality_issue_codes(item.audit_subject, subjects[:5])
+            ):
+                raise ValueError("observe prepared quality observations changed")
     if (
         len({item.upload_sha256 for item in bodies}) != 5
         or len({item.generated_visual_id for item in bodies}) != 5
@@ -175,6 +237,7 @@ def build_strict_prepared_projection(
     files: Mapping[str, bytes],
     context_originals: Mapping[int, bytes],
     layout_projection_version: StrictLayoutProjectionVersion = STRICT_LAYOUT_PROJECTION_VERSION,
+    visual_pipeline_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -185,7 +248,19 @@ def build_strict_prepared_projection(
         article.media_selection.reference_policy_version != STRICT_VISUAL_REFERENCE_POLICY_VERSION
     ):
         raise ValueError("strict prepared reference selection policy changed")
-    validate_strict_visual_evidence(evidence, media)
+    if visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
+        raise ValueError("native prepared visual policy is unsupported")
+    validate_strict_visual_evidence(evidence, media, policy_version=visual_pipeline_version)
+    for proof in evidence:
+        if isinstance(proof, ObserveVisualMediaEvidence) and (
+            (
+                proof.audit_subject.run_id,
+                proof.audit_subject.article_version_id,
+                proof.audit_subject.render_version_id,
+            )
+            != (run_id, article_version_id, render_version_id)
+        ):
+            raise ValueError("observe prepared relational identity changed")
     if len(article.media_selection.assignments) != 5:
         raise ValueError("strict prepared reference assignments are incomplete")
     for assignment, proof in zip(article.media_selection.assignments, evidence[:5], strict=True):
@@ -226,6 +301,14 @@ def build_strict_prepared_projection(
             if opened.size != (asset.width, asset.height):
                 raise ValueError("strict prepared decoded media geometry changed")
             opened.load()
+        media_proof = next(
+            (item for item in evidence if (item.role, item.ordinal) == (asset.role, asset.ordinal)),
+            None,
+        )
+        if isinstance(media_proof, ObserveVisualMediaEvidence) and (
+            media_proof.audit_subject.perceptual_hash != perceptual_dhash(body)
+        ):
+            raise ValueError("observe prepared perceptual subject changed")
     derivatives: list[dict[str, object]] = []
     for source, asset in zip(original_context, contexts, strict=True):
         original = context_originals[source.ordinal]
@@ -275,8 +358,12 @@ def build_strict_prepared_projection(
     )
     output_files["article-body.html"] = body_html.encode("utf-8")
     identity: dict[str, object] = {
-        "version": STRICT_PREPARED_CHILD_VERSION,
-        "visual_pipeline_version": STRICT_VISUAL_PIPELINE_VERSION,
+        "version": (
+            OBSERVE_PREPARED_CHILD_VERSION
+            if visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
+            else STRICT_PREPARED_CHILD_VERSION
+        ),
+        "visual_pipeline_version": visual_pipeline_version,
         "role": role,
         "run_id": str(run_id),
         "article_version_id": str(article_version_id),
@@ -320,6 +407,10 @@ def validate_strict_prepared_projection(
     raw_media = manifest.get("media")
     raw_evidence = manifest.get("visual_evidence")
     raw_derivatives = manifest.get("context_derivatives")
+    observe = manifest.get("version") == OBSERVE_PREPARED_CHILD_VERSION
+    policy = OBSERVE_VISUAL_PIPELINE_VERSION if observe else STRICT_VISUAL_PIPELINE_VERSION
+    if manifest.get("visual_pipeline_version") != policy:
+        raise ValueError("native prepared policy/envelope mismatch")
     if (
         not isinstance(raw_media, list)
         or not isinstance(raw_evidence, list)
@@ -327,18 +418,31 @@ def validate_strict_prepared_projection(
     ):
         raise ValueError("strict prepared typed projections are missing")
     media = tuple(EditorHandoffMediaAsset.model_validate(item) for item in raw_media)
-    evidence_fields = {item.name for item in fields(StrictVisualMediaEvidence)}
+    evidence_fields = {
+        item.name
+        for item in fields(ObserveVisualMediaEvidence if observe else StrictVisualMediaEvidence)
+    }
     if any(not isinstance(item, dict) or set(item) != evidence_fields for item in raw_evidence):
         raise ValueError("strict prepared audit field set changed")
     for item in raw_evidence:
         for name, value in item.items():
-            if name in {"ordinal", "byte_size", "width", "height"}:
+            if observe and name in {"audit_issue_codes", "quality_issue_codes"}:
+                if not isinstance(value, list) or any(not isinstance(code, str) for code in value):
+                    raise ValueError("observe prepared issue code type changed")
+            elif observe and name == "audit_subject":
+                if not isinstance(value, dict) or set(value) != {
+                    field.name for field in fields(ObserveVisualAuditSubject)
+                }:
+                    raise ValueError("observe prepared subject field set changed")
+            elif name in {"ordinal", "byte_size", "width", "height"}:
                 if type(value) is not int:
                     raise ValueError("strict prepared audit numeric type changed")
             elif not isinstance(value, str):
                 raise ValueError("strict prepared audit text type changed")
-    evidence = tuple(
-        TypeAdapter(StrictVisualMediaEvidence).validate_json(_canonical(item))
+    evidence: tuple[StrictVisualMediaEvidence, ...] = tuple(
+        TypeAdapter(ObserveVisualMediaEvidence).validate_json(_canonical(item), strict=True)
+        if observe
+        else TypeAdapter(StrictVisualMediaEvidence).validate_json(_canonical(item))
         for item in raw_evidence
     )
     derivatives = tuple(StrictContextDerivative.model_validate(item) for item in raw_derivatives)
@@ -355,6 +459,7 @@ def validate_strict_prepared_projection(
         layout_projection_version=strict_layout_projection_version(
             manifest.get("layout_projection_version")
         ),
+        visual_pipeline_version=policy,
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):
         raise ValueError("strict prepared canonical projection changed")

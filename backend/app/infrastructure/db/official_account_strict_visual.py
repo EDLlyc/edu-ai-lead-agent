@@ -18,11 +18,14 @@ from app.application.ports.official_account_local import (
     OfficialAccountGeneratedVisualPlan,
 )
 from app.application.ports.official_account_strict_visual import (
+    ObserveVisualAuditSubject,
+    ObserveVisualMediaEvidence,
     StoredStrictVisualAudit,
     StrictGeneratedVisualClaim,
     StrictVisualAuditClaim,
     StrictVisualAuditSubject,
     StrictVisualMediaEvidence,
+    observe_quality_issue_codes,
     strict_audit_record_fingerprint,
 )
 from app.application.ports.official_account_strict_visual import (
@@ -37,9 +40,12 @@ from app.domain.official_account_upload_media import (
     OFFICIAL_ACCOUNT_UPLOAD_COVER_POLICY_VERSION,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
+    OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
+    native_visual_audit_releases,
+    observe_visual_audit_codes_valid,
     strict_visual_audit_criteria,
     strict_visual_audit_passes,
 )
@@ -66,6 +72,12 @@ def _subject_payload(subject: StrictVisualAuditSubject) -> dict[str, object]:
 
 
 def _subject_from_payload(payload: dict[str, object]) -> StrictVisualAuditSubject:
+    if "catalog_publication_sha256s" in payload:
+        if set(payload) != {field.name for field in fields(ObserveVisualAuditSubject)}:
+            raise ValueError("observe audit subject fields changed")
+        return TypeAdapter(ObserveVisualAuditSubject).validate_json(
+            json.dumps(payload, allow_nan=False, ensure_ascii=False), strict=True
+        )
     if set(payload) != {field.name for field in fields(StrictVisualAuditSubject)}:
         raise ValueError("strict audit subject fields changed")
     return _SUBJECT_ADAPTER.validate_json(
@@ -75,6 +87,10 @@ def _subject_from_payload(payload: dict[str, object]) -> StrictVisualAuditSubjec
 
 def _stored(row: OfficialAccountStrictVisualAuditModel) -> StoredStrictVisualAudit:
     subject = _subject_from_payload(row.subject)
+    if isinstance(subject, ObserveVisualAuditSubject) and not observe_visual_audit_codes_valid(
+        row.status, tuple(row.issue_codes)
+    ):
+        raise ValueError("observe audit issue codes are unsupported")
     if (
         (
             subject.run_id,
@@ -126,7 +142,7 @@ async def _strict_fence(
     run = await _locked_fenced_run(session, claimed)
     if run is None or run.lease_expires_at is None or run.lease_expires_at <= datetime.now(UTC):
         return None
-    if run.version_bundle.get("visual_pipeline_version") != STRICT_VISUAL_PIPELINE_VERSION:
+    if run.version_bundle.get("visual_pipeline_version") not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("strict audit requires frozen strict run")
     return run
 
@@ -134,6 +150,14 @@ async def _strict_fence(
 async def _validate_subject(
     session: AsyncSession, run: OfficialAccountArticleRunModel, subject: StrictVisualAuditSubject
 ) -> OfficialAccountGeneratedVisualModel:
+    observe = run.version_bundle.get("visual_pipeline_version") == OBSERVE_VISUAL_PIPELINE_VERSION
+    if observe != isinstance(subject, ObserveVisualAuditSubject):
+        raise ValueError("native visual subject policy changed")
+    if isinstance(subject, ObserveVisualAuditSubject) and (
+        subject.publication_sha256 in subject.catalog_publication_sha256s
+        or subject.upload_sha256 in subject.catalog_publication_sha256s
+    ):
+        raise ValueError("observe output is an exact catalog copy")
     visual = await session.get(OfficialAccountGeneratedVisualModel, subject.generated_visual_id)
     article_row = await session.get(OfficialAccountArticleVersionModel, subject.article_version_id)
     if (
@@ -342,6 +366,10 @@ class PostgresStrictVisualRepositoryMixin:
         issue_codes: tuple[str, ...],
         result: ImageQualityAuditResult | None = None,
     ) -> StoredStrictVisualAudit | None:
+        if isinstance(subject, ObserveVisualAuditSubject) and not observe_visual_audit_codes_valid(
+            status, issue_codes
+        ):
+            raise ValueError("observe audit issue codes are unsupported")
         if (
             status not in {"accepted", "rejected", "unavailable", "result_unknown"}
             or tuple(sorted(set(issue_codes))) != issue_codes
@@ -401,7 +429,9 @@ class PostgresStrictVisualRepositoryMixin:
 async def validate_strict_visual_ready(
     session: AsyncSession, run: OfficialAccountArticleRunModel
 ) -> tuple[StrictVisualMediaEvidence, ...]:
-    if run.version_bundle.get("visual_pipeline_version") != STRICT_VISUAL_PIPELINE_VERSION:
+    policy = run.version_bundle.get("visual_pipeline_version")
+    observe = policy == OBSERVE_VISUAL_PIPELINE_VERSION
+    if policy not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("strict visual policy is absent")
     rows = tuple(
         (
@@ -443,8 +473,7 @@ async def validate_strict_visual_ready(
         subject = audit.subject
         visual = await _validate_subject(session, run, subject)
         if (
-            audit.status != "accepted"
-            or audit.issue_codes
+            not native_visual_audit_releases(policy, audit.status, audit.issue_codes)
             or audit.record_fingerprint is None
             or (
                 final_media.role,
@@ -470,43 +499,63 @@ async def validate_strict_visual_ready(
         ):
             raise ValueError("strict visual final audit gate rejected")
         subjects.append(subject)
-        evidence.append(
-            StrictVisualMediaEvidence(
-                **{
-                    key: getattr(subject, key)
-                    for key in (
-                        "role",
-                        "ordinal",
-                        "generated_visual_id",
-                        "generated_plan_request_fingerprint",
-                        "reference_asset_ref",
-                        "reference_publication_sha256",
-                        "publication_sha256",
-                        "upload_sha256",
-                        "upload_policy_version",
-                        "media_type",
-                        "byte_size",
-                        "width",
-                        "height",
-                        "provider",
-                        "model",
-                    )
-                },
-                audit_id=audit.id,
-                audit_request_fingerprint=subject.request_fingerprint,
-                audit_record_fingerprint=audit.record_fingerprint,
-                plan_version=visual.plan_version,
-                prompt_version=visual.prompt_version,
-                native_output_size=visual.output_size or "",
-            )
+        proof = StrictVisualMediaEvidence(
+            **{
+                key: getattr(subject, key)
+                for key in (
+                    "role",
+                    "ordinal",
+                    "generated_visual_id",
+                    "generated_plan_request_fingerprint",
+                    "reference_asset_ref",
+                    "reference_publication_sha256",
+                    "publication_sha256",
+                    "upload_sha256",
+                    "upload_policy_version",
+                    "media_type",
+                    "byte_size",
+                    "width",
+                    "height",
+                    "provider",
+                    "model",
+                )
+            },
+            audit_id=audit.id,
+            audit_request_fingerprint=subject.request_fingerprint,
+            audit_record_fingerprint=audit.record_fingerprint,
+            plan_version=visual.plan_version,
+            prompt_version=visual.prompt_version,
+            native_output_size=visual.output_size or "",
         )
+        if observe:
+            if not isinstance(subject, ObserveVisualAuditSubject) or audit.status == "calling":
+                raise ValueError("observe evidence is incomplete")
+            proof = ObserveVisualMediaEvidence(
+                **asdict(proof),
+                audit_status=audit.status,
+                audit_issue_codes=audit.issue_codes,
+                audit_subject=subject,
+                quality_issue_codes=(),
+            )
+        evidence.append(proof)
     # Deterministic batch gate is recomputed here, never an executor-supplied 'passed' flag.
     bodies = subjects[:5]
-    if len({item.upload_sha256 for item in bodies}) != 5:
+    if len({item.upload_sha256 for item in bodies}) != 5 or (
+        observe and len({item.publication_sha256 for item in bodies}) != 5
+    ):
         raise ValueError("strict visual exact repeats rejected")
     for index, subject in enumerate(bodies):
         if subject.catalog_perceptual_hashes != bodies[0].catalog_perceptual_hashes:
             raise ValueError("strict visual catalog batch changed")
+        if observe:
+            first = bodies[0]
+            if (
+                not isinstance(subject, ObserveVisualAuditSubject)
+                or not isinstance(first, ObserveVisualAuditSubject)
+                or subject.catalog_publication_sha256s != first.catalog_publication_sha256s
+            ):
+                raise ValueError("observe catalog byte set changed")
+            continue
         comparisons = (
             *subject.catalog_perceptual_hashes,
             *(other.perceptual_hash for other in bodies[:index]),
@@ -517,4 +566,16 @@ async def validate_strict_visual_ready(
             for other in comparisons
         ):
             raise ValueError("strict visual perceptual repeats rejected")
+    if observe:
+        from dataclasses import replace
+
+        evidence = [
+            replace(
+                item,
+                quality_issue_codes=observe_quality_issue_codes(item.audit_subject, tuple(bodies)),
+            )
+            if isinstance(item, ObserveVisualMediaEvidence)
+            else item
+            for item in evidence
+        ]
     return tuple(evidence)

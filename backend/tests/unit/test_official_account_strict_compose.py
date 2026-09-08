@@ -19,6 +19,7 @@ from app.api.v1.routes.official_account_local import _identity as api_identity
 from app.core.config import Settings
 from app.domain.official_account_local import OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION
 from app.domain.official_account_visual_pipeline import (
+    OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
@@ -70,7 +71,7 @@ _ROLE_SECRETS = {
 }
 
 
-@pytest.fixture(scope="module", params=("disabled", "strict", "legacy"))
+@pytest.fixture(scope="module", params=("disabled", "strict", "observe", "legacy"))
 def rendered(request: pytest.FixtureRequest) -> tuple[str, dict[str, dict[str, str]]]:
     return _rendered(request.param)
 
@@ -80,7 +81,7 @@ def strict_rendered() -> dict[str, dict[str, str]]:
     return _rendered("strict")[1]
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def _rendered(mode: str) -> tuple[str, dict[str, dict[str, str]]]:
     env = {
         "PATH": "/usr/bin:/bin",
@@ -98,7 +99,11 @@ def _rendered(mode: str) -> tuple[str, dict[str, dict[str, str]]]:
             "false" if mode == "disabled" else "true"
         ),
         "OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION": (
-            STRICT_VISUAL_PIPELINE_VERSION if mode == "strict" else ""
+            STRICT_VISUAL_PIPELINE_VERSION
+            if mode == "strict"
+            else OBSERVE_VISUAL_PIPELINE_VERSION
+            if mode == "observe"
+            else ""
         ),
         "OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED": "true",
         "OFFICIAL_ACCOUNT_WEEKLY_SCHEDULER_ENABLED": "true",
@@ -209,8 +214,12 @@ def test_all_python_roles_start_and_keep_exact_secret_and_policy_projection(rend
             name in _POLICY_ONLY and mode != "disabled"
         )
         assert settings.official_account_local_visual_pipeline_version == (
-            STRICT_VISUAL_PIPELINE_VERSION
-            if name in _IDENTITY_OWNERS and mode == "strict"
+            (
+                STRICT_VISUAL_PIPELINE_VERSION
+                if mode == "strict"
+                else OBSERVE_VISUAL_PIPELINE_VERSION
+            )
+            if name in _IDENTITY_OWNERS and mode in {"strict", "observe"}
             else None
         )
         assert settings.image_quality_eval_mode == (
@@ -230,6 +239,7 @@ def test_all_python_roles_start_and_keep_exact_secret_and_policy_projection(rend
         == {
             "disabled": None,
             "strict": OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+            "observe": OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
             "legacy": OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
         }[mode]
     )

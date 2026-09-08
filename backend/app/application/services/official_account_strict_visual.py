@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from hashlib import sha256
+from typing import Literal
 
 from app.application.ports.image_generation import (
     ImageGenerationRequest,
@@ -23,7 +24,9 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountRender,
 )
 from app.application.ports.official_account_strict_visual import (
+    ObserveVisualAuditSubject,
     StrictVisualAuditSubject,
+    strict_audit_record_fingerprint,
     strict_visual_derivative_descriptor,
 )
 from app.application.services.official_account_visual_generation import (
@@ -35,7 +38,15 @@ from app.application.services.official_account_visual_generation import (
     select_generated_visual_block_anchor,
     validate_strict_visual_reference,
 )
-from app.core.errors import AppError, OfficialAccountGeneratedVisualResultUnknownError
+from app.core.errors import (
+    AppError,
+    OfficialAccountGeneratedVisualResultUnknownError,
+    ProviderAuthenticationError,
+    ProviderIdentityMismatchError,
+    ProviderRateLimitError,
+    ProviderRejectedError,
+    ProviderUnavailableError,
+)
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
     normalize_image_provider_reference,
@@ -47,7 +58,10 @@ from app.domain.official_account_upload_media import (
     normalize_official_account_upload_cover,
 )
 from app.domain.official_account_visual_pipeline import (
+    OBSERVE_VISUAL_PIPELINE_VERSION,
+    STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
+    native_visual_audit_releases,
     strict_visual_audit_criteria,
     strict_visual_audit_passes,
     strict_visual_batch_checks,
@@ -109,12 +123,16 @@ async def execute_strict_visuals(
     lease_lost: asyncio.Event | None = None,
 ) -> tuple[tuple[OfficialAccountSourceMedia, ...], OfficialAccountSourceMedia] | None:
     """Only newly_claimed can cross a paid boundary; successful artifacts never roll back."""
+    observe = claimed.identity.visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
     reference_bytes = tuple([await _read_reference(catalog, ref) for ref in references])
     preflight_strict_generated_visuals(
         article=article, references=references, reference_bytes=reference_bytes
     )
     catalog_bytes = tuple([await _read_reference(catalog, ref) for ref in catalog_candidates])
     catalog_hashes = tuple(sorted({perceptual_dhash(content) for content in catalog_bytes}))
+    catalog_publication_hashes = (
+        tuple(sorted({sha256(content).hexdigest() for content in catalog_bytes})) if observe else ()
+    )
     generated: list[tuple[StoredOfficialAccountGeneratedVisual, bytes]] = []
     for ordinal, (reference, content) in enumerate(zip(references, reference_bytes, strict=True)):
         if lease_lost is not None and lease_lost.is_set():
@@ -181,6 +199,16 @@ async def execute_strict_visuals(
                     result_unknown=True,
                 )
                 raise OfficialAccountGeneratedVisualResultUnknownError() from error
+            # Publication JPEG normalization changes byte identity. Preserve the exact-copy
+            # integrity veto on the returned bytes before it can become only a dHash warning.
+            if observe and sha256(result.image_bytes).hexdigest() in catalog_publication_hashes:
+                if not await repository.fail_generated_visual(
+                    claimed=claimed,
+                    plan=plan,
+                    error_code="strict_visual_catalog_exact_reuse",
+                ):
+                    return None
+                raise _blocked("strict_visual_catalog_exact_reuse")
             # Keep the intent ambiguous on storage/DB failure; no misleading 'generation failed'.
             try:
                 prepared = prepare_generated_visual_result(
@@ -210,10 +238,24 @@ async def execute_strict_visuals(
             raise ValueError("strict generated publication checksum changed")
         generated.append((stored, publication))
     batch_issues = strict_visual_batch_checks(
-        tuple(body for _, body in generated), catalog_images=catalog_bytes
+        tuple(body for _, body in generated),
+        catalog_images=catalog_bytes,
+        policy_version=OBSERVE_VISUAL_PIPELINE_VERSION
+        if observe
+        else STRICT_VISUAL_PIPELINE_VERSION,
     )
-    if batch_issues:
-        raise _blocked(batch_issues[0])
+    blocking_issues = tuple(
+        code
+        for code in batch_issues
+        if not observe
+        or code
+        not in {
+            "strict_visual_perceptual_repetition",
+            "strict_visual_catalog_reuse",
+        }
+    )
+    if blocking_issues:
+        raise _blocked(blocking_issues[0])
 
     subjects: list[
         tuple[StrictVisualAuditSubject, bytes, bytes, StoredOfficialAccountGeneratedVisual]
@@ -257,6 +299,13 @@ async def execute_strict_visuals(
             perceptual_hash=perceptual_dhash(derivative.content),
             catalog_perceptual_hashes=catalog_hashes,
         )
+        if observe:
+            from dataclasses import asdict
+
+            subject = ObserveVisualAuditSubject(
+                **asdict(subject),
+                catalog_publication_sha256s=catalog_publication_hashes,
+            )
         subjects.append(
             (subject, derivative.content, reference_bytes[0 if cover else index], stored)
         )
@@ -267,7 +316,7 @@ async def execute_strict_visuals(
         claim_audit = await repository.claim_strict_visual_audit(claimed=claimed, subject=subject)
         if claim_audit.outcome in {"lease_lost", "in_flight"}:
             return None
-        if claim_audit.outcome == "result_unknown":
+        if claim_audit.outcome == "result_unknown" and not observe:
             raise OfficialAccountGeneratedVisualResultUnknownError()
         audit = claim_audit.audit
         if claim_audit.outcome == "newly_claimed":
@@ -308,35 +357,69 @@ async def execute_strict_visuals(
             try:
                 audit_result = await auditor.audit(request)
             except Exception as error:
-                await repository.complete_strict_visual_audit(
-                    claimed=claimed,
-                    subject=subject,
-                    status="result_unknown",
-                    issue_codes=("strict_visual_audit_result_unknown",),
+                code = "strict_visual_audit_result_unknown"
+                status: Literal["accepted", "rejected", "unavailable", "result_unknown"] = (
+                    "result_unknown"
                 )
-                raise OfficialAccountGeneratedVisualResultUnknownError() from error
-            accepted = strict_visual_audit_passes(
-                accepted=audit_result.accepted,
-                issues_present=bool(audit_result.issues),
-                provider=audit_result.provider,
-                model=audit_result.model,
-                request_fingerprint=audit_result.request_fingerprint,
-                expected_request_fingerprint=subject.request_fingerprint,
-            )
-            try:
+                if observe and isinstance(
+                    error,
+                    (
+                        ProviderAuthenticationError,
+                        ProviderRejectedError,
+                        ProviderRateLimitError,
+                        ProviderUnavailableError,
+                    ),
+                ):
+                    status, code = "unavailable", "strict_visual_audit_unavailable"
+                if observe and isinstance(error, ProviderIdentityMismatchError):
+                    status, code = "rejected", "strict_visual_audit_identity_mismatch"
                 audit = await repository.complete_strict_visual_audit(
                     claimed=claimed,
                     subject=subject,
-                    status="accepted" if accepted else "rejected",
-                    issue_codes=() if accepted else ("strict_visual_audit_rejected",),
-                    result=audit_result,
+                    status=status,
+                    issue_codes=(code,),
                 )
-            except Exception as error:
-                raise OfficialAccountGeneratedVisualResultUnknownError() from error
+                if not observe:
+                    raise OfficialAccountGeneratedVisualResultUnknownError() from error
+            else:
+                accepted = strict_visual_audit_passes(
+                    accepted=audit_result.accepted,
+                    issues_present=bool(audit_result.issues),
+                    provider=audit_result.provider,
+                    model=audit_result.model,
+                    request_fingerprint=audit_result.request_fingerprint,
+                    expected_request_fingerprint=subject.request_fingerprint,
+                )
+                codes = () if accepted else ("strict_visual_audit_rejected",)
+                if observe and not accepted:
+                    if (
+                        audit_result.provider,
+                        audit_result.model,
+                        audit_result.request_fingerprint,
+                    ) != ("openai-compatible", subject.model, subject.request_fingerprint):
+                        codes = ("strict_visual_audit_identity_mismatch",)
+                try:
+                    audit = await repository.complete_strict_visual_audit(
+                        claimed=claimed,
+                        subject=subject,
+                        status="accepted" if accepted else "rejected",
+                        issue_codes=codes,
+                        result=audit_result,
+                    )
+                except Exception as error:
+                    raise OfficialAccountGeneratedVisualResultUnknownError() from error
             if audit is None:
                 return None
-        if audit is None or audit.status != "accepted" or audit.issue_codes:
+        if audit is None or not native_visual_audit_releases(
+            claimed.identity.visual_pipeline_version, audit.status, audit.issue_codes
+        ):
             raise _blocked("strict_visual_audit_rejected")
+        if observe and (
+            audit.subject != subject
+            or audit.record_fingerprint
+            != strict_audit_record_fingerprint(subject, audit.status, audit.issue_codes)
+        ):
+            raise _blocked("strict_visual_audit_identity_mismatch")
         result_sources.append(
             OfficialAccountSourceMedia(
                 source_image_artifact_id=None,
@@ -349,7 +432,11 @@ async def execute_strict_visuals(
                 height=subject.height,
                 ordinal=subject.ordinal,
                 semantic_label="按正文语义生成的插画",
-                selection_reason="原生横版生成及最终上传字节审图通过",
+                selection_reason=(
+                    "原生横版生成及最终上传字节审图观察"
+                    if observe
+                    else "原生横版生成及最终上传字节审图通过"
+                ),
                 alt_text=generated_visual_alt_text(article=article, plan=stored.plan),
                 candidate_id=stored.plan.reference_asset_ref,
                 assigned_section_index=stored.plan.section_index,

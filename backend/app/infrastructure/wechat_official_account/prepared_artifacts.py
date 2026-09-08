@@ -36,7 +36,10 @@ from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, 
 from app.domain.official_account_local import ArticleImageBlock
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import normalize_official_account_upload_context
-from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
+from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
+    StrictVisualPipelineVersion,
+)
 from app.domain.official_account_weekly_dag import WeeklyDagArtifact
 from app.domain.official_account_weekly_edition import WeeklyArticleRole
 from app.infrastructure.db.models import OfficialAccountLocalMediaModel
@@ -155,9 +158,14 @@ class PreparedWeeklyDraftArtifactOwner:
             raise ValueError("official-account run is not automatically draft-ready")
         policy = run.version_bundle.get("visual_pipeline_version")
         if policy is not None:
-            if policy != STRICT_VISUAL_PIPELINE_VERSION:
+            if policy not in NATIVE_VISUAL_PIPELINE_VERSIONS:
                 raise ValueError("official-account prepared visual policy is unsupported")
-            return await self._build_strict_child(run_id=run_id, role=role, article=article)
+            return await self._build_strict_child(
+                run_id=run_id,
+                role=role,
+                article=article,
+                visual_pipeline_version=cast(StrictVisualPipelineVersion, policy),
+            )
         media_rows = await self._load_media_rows(run_id)
         if not media_rows:
             raise ValueError("official-account run has no ready media")
@@ -251,6 +259,7 @@ class PreparedWeeklyDraftArtifactOwner:
         run_id: UUID,
         role: WeeklyArticleRole,
         article: StoredOfficialAccountArticle,
+        visual_pipeline_version: StrictVisualPipelineVersion,
     ) -> WeeklyDagArtifact:
         # This repository projection is the durable six-audit readiness authority.
         evidence = await self._repository.load_strict_visual_evidence(run_id)
@@ -376,6 +385,7 @@ class PreparedWeeklyDraftArtifactOwner:
             files=files,
             context_originals=originals,
             layout_projection_version=STRICT_LAYOUT_PROJECTION_V2_VERSION,
+            visual_pipeline_version=visual_pipeline_version,
         )
         target = self._child_path(projection.child_fingerprint)
         _write_directory(

@@ -132,9 +132,9 @@ from app.domain.official_account_local import (
     validate_article_package,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
-    STRICT_VISUAL_PIPELINE_VERSION,
 )
 
 logger = structlog.get_logger()
@@ -885,7 +885,7 @@ class OfficialAccountLocalExecutor:
         identity = claimed.identity
         is_strict_visual = identity.visual_pipeline_version is not None
         if is_strict_visual and (
-            identity.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION
+            identity.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS
             or identity.generated_visual_plan_version
             != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
             or identity.generated_visual_prompt_version

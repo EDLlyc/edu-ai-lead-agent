@@ -37,7 +37,7 @@ from app.application.ports.wechat_official_account import (
     WeChatOfficialAccountDraftClient,
 )
 from app.application.services.official_account_strict_prepared import (
-    STRICT_PREPARED_CHILD_VERSION,
+    NATIVE_PREPARED_CHILD_VERSIONS,
     validate_strict_prepared_projection,
 )
 from app.application.services.official_account_weekly_edition import load_finalized_v2_child
@@ -46,7 +46,7 @@ from app.domain.official_account_strict_layout import (
     strict_escaped_upload_url,
     validate_strict_upload_html_headroom,
 )
-from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
+from app.domain.official_account_visual_pipeline import NATIVE_VISUAL_PIPELINE_VERSIONS
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER, WeeklyArticleRole
 
 _SHA256_LENGTH: Final = 64
@@ -207,7 +207,7 @@ class WeChatOfficialAccountDraftOnlyService:
     ) -> WeChatDraftReceipt:
         rewritten = prepared.body_html
         if prepared.visual_pipeline_version is not None:
-            if prepared.visual_pipeline_version != STRICT_VISUAL_PIPELINE_VERSION:
+            if prepared.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
                 raise WeChatMpDraftPreparationError()
             validate_strict_upload_html_headroom(
                 rewritten,
@@ -372,7 +372,7 @@ def _prepare_persisted_draft_source(
     if not manifest_body or len(manifest_body) > 256 * 1024:
         raise ValueError("prepared draft manifest size is invalid")
     manifest = _json_object(manifest_body)
-    strict = manifest.get("version") == STRICT_PREPARED_CHILD_VERSION
+    strict = manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
     if strict:
         lexical = source.directory.expanduser().absolute()
         if any(path.is_symlink() for path in (lexical, *lexical.parents)):
@@ -384,7 +384,7 @@ def _prepare_persisted_draft_source(
         ):
             raise ValueError("strict prepared directory set changed")
     if (
-        manifest.get("version") not in {_PREPARED_CHILD_VERSION, STRICT_PREPARED_CHILD_VERSION}
+        manifest.get("version") not in {_PREPARED_CHILD_VERSION, *NATIVE_PREPARED_CHILD_VERSIONS}
         or manifest.get("role") != source.role
         or manifest.get("published") is not False
         or manifest.get("draft_only") is not True
@@ -457,7 +457,7 @@ def _prepare_persisted_draft_source(
         maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
     )
     body_html = files["article-body.html"].decode("utf-8")
-    strict = manifest.get("version") == STRICT_PREPARED_CHILD_VERSION
+    strict = manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
     if strict:
         validate_strict_prepared_projection(manifest, files)
     _validate_draft_html_size(body_html)
@@ -498,7 +498,7 @@ def _prepare_persisted_draft_source(
         cover=cover,
         need_open_comment=source.need_open_comment,
         only_fans_can_comment=source.only_fans_can_comment,
-        visual_pipeline_version=STRICT_VISUAL_PIPELINE_VERSION if strict else None,
+        visual_pipeline_version=str(manifest["visual_pipeline_version"]) if strict else None,
     )
 
 

@@ -80,10 +80,11 @@ from app.domain.official_account_local import (
     fingerprint,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
-    STRICT_VISUAL_PIPELINE_VERSION,
+    native_visual_audit_releases,
 )
 from app.infrastructure.db.models import (
     ImageArtifactModel,
@@ -1455,9 +1456,12 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     audit = stored_strict_audit(audit_row)
                     if (
                         run.version_bundle.get("visual_pipeline_version")
-                        != STRICT_VISUAL_PIPELINE_VERSION
-                        or audit.status != "accepted"
-                        or audit.issue_codes
+                        not in NATIVE_VISUAL_PIPELINE_VERSIONS
+                        or not native_visual_audit_releases(
+                            run.version_bundle.get("visual_pipeline_version"),
+                            audit.status,
+                            audit.issue_codes,
+                        )
                         or audit.subject.generated_visual_id != generated.id
                         or audit.subject.publication_sha256 != generated.sha256
                         or audit.subject.upload_sha256 != result.sha256

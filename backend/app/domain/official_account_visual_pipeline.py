@@ -14,10 +14,56 @@ from app.domain.image_similarity import perceptual_dhash, perceptual_hash_distan
 from app.domain.image_validation import validate_image_output
 from app.domain.official_account_local import ArticlePackage
 
-StrictVisualPipelineVersion = Literal["official-account-visual-pipeline-v1-native-strict"]
+StrictVisualPipelineVersion = Literal[
+    "official-account-visual-pipeline-v1-native-strict",
+    "official-account-visual-pipeline-v2-native-observe",
+]
 STRICT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
     "official-account-visual-pipeline-v1-native-strict"
 )
+OBSERVE_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
+    "official-account-visual-pipeline-v2-native-observe"
+)
+NATIVE_VISUAL_PIPELINE_VERSIONS = (
+    STRICT_VISUAL_PIPELINE_VERSION,
+    OBSERVE_VISUAL_PIPELINE_VERSION,
+)
+
+
+def observe_visual_audit_codes_valid(status: str, issue_codes: tuple[str, ...]) -> bool:
+    """Closed new-policy vocabulary; never accept arbitrary model prose as a safe code."""
+    allowed = {
+        "calling": frozenset(),
+        "accepted": frozenset(),
+        "rejected": frozenset(
+            {"strict_visual_audit_rejected", "strict_visual_audit_identity_mismatch"}
+        ),
+        "unavailable": frozenset({"strict_visual_audit_unavailable"}),
+        "result_unknown": frozenset(
+            {"strict_visual_audit_result_unknown", "strict_visual_orphaned_call"}
+        ),
+    }
+    return (
+        status in allowed
+        and tuple(sorted(set(issue_codes))) == issue_codes
+        and all(code in allowed[status] for code in issue_codes)
+        and bool(issue_codes) == (status not in {"calling", "accepted"})
+    )
+
+
+def native_visual_audit_releases(policy: object, status: str, issue_codes: tuple[str, ...]) -> bool:
+    """Readiness only; callers must independently verify subject/record/byte integrity."""
+    if policy == STRICT_VISUAL_PIPELINE_VERSION:
+        return status == "accepted" and not issue_codes
+    if policy == OBSERVE_VISUAL_PIPELINE_VERSION:
+        return (
+            status in {"accepted", "rejected", "unavailable", "result_unknown"}
+            and observe_visual_audit_codes_valid(status, issue_codes)
+            and "strict_visual_audit_identity_mismatch" not in issue_codes
+        )
+    return False
+
+
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION = (
     "official-account-generated-visual-plan-v4-native-strict"
 )
@@ -113,7 +159,10 @@ def strict_visual_audit_passes(
 
 
 def strict_visual_batch_checks(
-    body_images: tuple[bytes, ...], *, catalog_images: tuple[bytes, ...]
+    body_images: tuple[bytes, ...],
+    *,
+    catalog_images: tuple[bytes, ...],
+    policy_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
 ) -> tuple[str, ...]:
     """Validate all native publication scenes; return only bounded issue codes."""
     codes: set[str] = set()
@@ -157,10 +206,13 @@ def strict_visual_batch_checks(
             for other in perceptual
         ):
             codes.add("strict_visual_perceptual_repetition")
-        if digest in catalog_hashes or any(
+        catalog_similar = any(
             perceptual_hash_distance(dhash, other) <= policy.maximum_duplicate_distance
             for other in catalog_perceptual
-        ):
+        )
+        if policy_version == OBSERVE_VISUAL_PIPELINE_VERSION and digest in catalog_hashes:
+            codes.add("strict_visual_catalog_exact_reuse")
+        if digest in catalog_hashes or catalog_similar:
             codes.add("strict_visual_catalog_reuse")
         hashes.add(digest)
         perceptual.append(dhash)

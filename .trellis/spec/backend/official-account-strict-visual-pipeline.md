@@ -1,5 +1,96 @@
 # Prospective strict official-account visuals
 
+## R30 extension: prospective native-observe draft readiness
+
+### 1. Scope / trigger
+
+The September 8 user explicitly cancelled future image-quality rejection. New
+Articles may opt into `official-account-visual-pipeline-v2-native-observe`.
+The strict-v1 contracts below remain unchanged for historical/frozen strict runs.
+Implementation and live activation status are separate recovery-task evidence.
+
+### 2. Signatures
+
+The existing `OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION` and frozen
+`OfficialAccountVersionIdentity.visual_pipeline_version` select the new policy.
+`NATIVE_VISUAL_PIPELINE_VERSIONS` and
+`native_visual_audit_releases(policy, status, issue_codes)` centralize recognized
+native policy and policy-dependent readiness. `ObserveVisualAuditSubject` extends
+only the new subject; `ObserveVisualMediaEvidence` carries `audit_status`,
+`audit_issue_codes`, `audit_subject` and `quality_issue_codes`. The new closed
+envelope is `wechat-draft-prepared-child-v3-native-observe`; strict-v1 evidence and
+its v2 envelope must not acquire serialized default fields.
+
+### 3. Contracts
+
+Observe means the model verdict is not draft eligibility. Keep five native V4
+images, normalized cover, direct Zhipu `glm-5v-turbo`, one durable attempt per
+audit, real terminal results and exact upload-byte fingerprints. Rejected,
+unavailable or result_unknown audit records and perceptual resemblance warnings
+do not block. Never set `accepted=true` merely to continue; no numeric score or
+human review is implied. Missing audits still require their one legitimate
+attempt; dispatched unknowns must not be paid-retried. Cancellation and lost
+ownership remain fenced rather than treated as an audit outage.
+
+Generation uncertainty, missing/invalid files, geometry/byte/subject/lineage
+mismatch, exact-copy/duplicate output integrity, source/HTML rules and no-public-
+publishing remain enforced. New prepared reconstruction binds six real audit
+records, actual statuses/codes, stored policy, exact assets and canonical HTML.
+Consumer validation must not reconstruct an observe audit as accepted/empty issues.
+Keep literal V4 planning/prompt/output versions and old prepared bytes stable.
+
+Observe-only audit codes use `observe_visual_audit_codes_valid` and its shared
+closed vocabulary, not merely
+the `strict_visual_` prefix; arbitrary text/control characters cannot cross DB or
+prepared-evidence boundaries. Compare provider-returned raw bytes to catalogue
+publications before any JPEG re-encoding: a transform changes SHA and must not
+disguise an exact reference echo as a new generated scene. Complete the generated
+intent as `failed/strict_visual_catalog_exact_reuse`, preserve prior ready images
+and make no retry; perceptual similarity alone remains allowed.
+
+Activation changes the one future policy key after compatible consumers are
+deployed, preserves other provider/environment/schedule settings and never resets
+old failed runs. Changing today's settings must not reinterpret an old strict
+Article or weekly input. Retain compatible observe consumers after any observe
+state exists; unchanged SQL schema is not unconditional rollback permission.
+
+### 4. Validation & error matrix
+
+| Condition | Observe behavior |
+| --- | --- |
+| Audit rejected / unavailable / result_unknown with valid subject | Record truth, continue other audits and allow unpublished draft |
+| Same result under frozen strict-v1 | Preserve existing rejection |
+| Perceptual resemblance only | Record warning, no regeneration or draft veto |
+| Audit identity tampered or a required subject absent | Reject projection/readiness |
+| Generation unknown / missing / invalid bytes / lost lease | Preserve hard failure/fence, no blind paid retry |
+| Future config changes after old run frozen | Old identity and result remain unchanged |
+
+### 5. Good / base / bad cases
+
+Good: a valid five-image Article with one rejected visual audit enters the draft
+path with that rejection visible in its evidence. Base: an old strict prepared
+child still reconstructs exactly and rejects missing/failed proofs. Bad: catching
+the executor exception while the independent repository/consumer still rejects,
+or falsifying accepted audit rows to bypass those gates.
+
+### 6. Tests required
+
+Exercise ordinary observe enqueue/worker/repository/export/consumer with real
+isolated PostgreSQL and fake providers: rejected, outage, unknown, all six audit
+attempts, one-post ownership, idempotent resume, exact thumbnail bytes, policy and
+subject tampering. Pair every relaxed case with an unchanged strict negative.
+Test four equal settings-derived identities, weekly frozen replay, old JSON/schema
+stability and regenerated API contracts. No live provider/upload is part of tests.
+Include actual native-size catalogue echoes before normalization, separately
+resealed arbitrary issue strings, cancellation/orphan resume with no repeated
+paid audit and retained successful siblings.
+
+### 7. Wrong vs correct
+
+Wrong: `audit.accepted = True` or a global `skip_validation` toggle.
+Correct: preserve the audit result and independently compute draft readiness from
+the run's frozen observe policy plus complete, valid media/subject evidence.
+
 ## 1. Scope / trigger
 
 This contract covers only Article identities opting into
