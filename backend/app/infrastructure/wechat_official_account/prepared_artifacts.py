@@ -34,6 +34,7 @@ from app.application.services.wechat_official_account_draft import (
 )
 from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
 from app.domain.official_account_local import ArticleImageBlock
+from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import normalize_official_account_upload_context
 from app.domain.official_account_visual_pipeline import STRICT_VISUAL_PIPELINE_VERSION
 from app.domain.official_account_weekly_dag import WeeklyDagArtifact
@@ -374,6 +375,7 @@ class PreparedWeeklyDraftArtifactOwner:
             evidence=evidence,
             files=files,
             context_originals=originals,
+            layout_projection_version=STRICT_LAYOUT_PROJECTION_V2_VERSION,
         )
         target = self._child_path(projection.child_fingerprint)
         _write_directory(

@@ -42,6 +42,7 @@ from app.application.services.official_account_strict_prepared import (
 )
 from app.application.services.official_account_weekly_edition import load_finalized_v2_child
 from app.domain.official_account_strict_layout import (
+    STRICT_LAYOUT_PROJECTION_V2_VERSION,
     strict_escaped_upload_url,
     validate_strict_upload_html_headroom,
 )
@@ -460,7 +461,10 @@ def _prepare_persisted_draft_source(
     if strict:
         validate_strict_prepared_projection(manifest, files)
     _validate_draft_html_size(body_html)
-    parser = _DraftHtmlValidator()
+    parser = _DraftHtmlValidator(
+        allow_bare_leaf=strict
+        and manifest.get("layout_projection_version") == STRICT_LAYOUT_PROJECTION_V2_VERSION
+    )
     parser.feed(body_html)
     parser.close()
     image_paths = parser.finish()
@@ -620,8 +624,9 @@ def _prepare_media(
 
 
 class _DraftHtmlValidator(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, allow_bare_leaf: bool = False) -> None:
         super().__init__(convert_charrefs=True)
+        self._allow_bare_leaf = allow_bare_leaf
         self._stack: list[str] = []
         self._image_paths: list[str] = []
         self._failed = False
@@ -641,6 +646,9 @@ class _DraftHtmlValidator(HTMLParser):
             self._failed = True
             return
         values = {name.casefold(): value for name, value in attrs}
+        if self._allow_bare_leaf and normalized == "span" and "leaf" in values:
+            if values["leaf"] is None:
+                values["leaf"] = ""
         if any(value is None or len(value) > 4096 for value in values.values()):
             self._failed = True
             return

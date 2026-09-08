@@ -43,6 +43,9 @@ from app.domain.official_account_local import (
 )
 from app.domain.official_account_strict_layout import (
     STRICT_ESCAPED_UPLOAD_URL_MAX_CHARACTERS,
+    STRICT_LAYOUT_PROJECTION_V2_VERSION,
+    STRICT_LAYOUT_PROJECTION_VERSION,
+    StrictLayoutProjectionVersion,
     compact_strict_xiaosai_html,
     strict_escaped_upload_url,
     validate_strict_upload_html_headroom,
@@ -74,6 +77,23 @@ def strict_projection(captured: tuple[Path, str]) -> StrictPreparedProjection:  
     root, _manifest_sha = captured
     article = ArticlePackage.model_validate_json((root / "article.json").read_bytes())
     assert article.media_selection is not None
+    assert article.news_context_media is not None
+    # The borrowed preview fixture uses random UUIDs; strict projection replay needs
+    # a fully deterministic synthetic source identity for its literal manifest golden.
+    article = article.model_copy(
+        update={
+            "news_context_media": article.news_context_media.model_copy(
+                update={
+                    "items": tuple(
+                        item.model_copy(
+                            update={"source_article_image_id": UUID(int=800 + item.ordinal)}
+                        )
+                        for item in article.news_context_media.items
+                    )
+                }
+            )
+        }
+    )
     article = article.model_copy(
         update={
             "media_selection": article.media_selection.model_copy(
@@ -252,6 +272,125 @@ def _write(projection: StrictPreparedProjection, directory: Path) -> WeChatDraft
     return WeChatDraftLocalSource(directory=directory, role="application_case")
 
 
+def _reproject_layout(
+    projection: StrictPreparedProjection, version: StrictLayoutProjectionVersion
+) -> StrictPreparedProjection:
+    manifest = projection.manifest
+    media = tuple(
+        EditorHandoffMediaAsset.model_validate(item)
+        for item in manifest["media"]  # type: ignore[union-attr]
+    )
+    evidence = tuple(
+        TypeAdapter(StrictVisualMediaEvidence).validate_python(item)
+        for item in manifest["visual_evidence"]  # type: ignore[union-attr]
+    )
+    return build_strict_prepared_projection(
+        run_id=UUID(str(manifest["run_id"])),
+        article_version_id=UUID(str(manifest["article_version_id"])),
+        render_version_id=UUID(str(manifest["render_version_id"])),
+        role=str(manifest["role"]),
+        article=ArticlePackage.model_validate(manifest["article"]),
+        media=media,
+        evidence=evidence,
+        files={asset.path: projection.files[asset.path] for asset in media},
+        context_originals={
+            item["ordinal"]: projection.files[item["source_path"]]
+            for item in manifest["context_derivatives"]  # type: ignore[union-attr]
+        },
+        layout_projection_version=version,
+    )
+
+
+def test_versioned_layout_roundtrip_preserves_article_audits_and_v1_replay(
+    strict_projection: StrictPreparedProjection, tmp_path: Path
+) -> None:
+    old = strict_projection
+    # Literal projection generated independently at immutable d272805, not a golden
+    # regenerated from this new implementation. It binds the entire old manifest.
+    assert (
+        old.child_fingerprint == "73747a84d39552e7eaebc28bb914b1b9eb11c74ad7ac9c9d55feeb0ceccf6107"
+    )
+    assert sha256(old.files["article-body.html"]).hexdigest() == (
+        "567c7623f89ad2c26e682aa7f77d67daa9503f8ec588ad31dc678ae3a05e1868"
+    )
+    assert sha256(
+        json.dumps(old.manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest() == ("9cf39f12b95626ddbedfc33ac4b695a870a98e05dc7baf51c920594d3501a862")
+    new = _reproject_layout(old, STRICT_LAYOUT_PROJECTION_V2_VERSION)
+    assert new.manifest["version"] == old.manifest["version"]
+    assert new.manifest["layout_projection_version"] == STRICT_LAYOUT_PROJECTION_V2_VERSION
+    assert old.manifest["layout_projection_version"] == STRICT_LAYOUT_PROJECTION_VERSION
+    assert new.child_fingerprint != old.child_fingerprint
+    assert new.manifest["content_fingerprint"] != old.manifest["content_fingerprint"]
+    for name in (
+        "article",
+        "article_fingerprint",
+        "run_id",
+        "article_version_id",
+        "render_version_id",
+        "media",
+        "visual_evidence",
+        "context_derivatives",
+        "renderer",
+        "recipe",
+        "placements",
+        "escaped_upload_url_max_characters",
+    ):
+        assert new.manifest[name] == old.manifest[name]
+    assert {path: body for path, body in new.files.items() if path != "article-body.html"} == {
+        path: body for path, body in old.files.items() if path != "article-body.html"
+    }
+    for projection, directory in ((new, "new-layout"), (old, "old-layout")):
+        validate_strict_prepared_projection(projection.manifest, projection.files)
+        prepared = WeChatOfficialAccountDraftPreparer().prepare(
+            _write(projection, tmp_path / directory)
+        )
+        assert prepared.body_html.encode() == projection.files["article-body.html"]
+        assert prepared.cover.body == old.files["assets/cover-wide.jpg"]
+    assert _reproject_layout(new, STRICT_LAYOUT_PROJECTION_VERSION) == old
+
+
+@pytest.mark.parametrize("change", ["missing", "unknown", "old_version", "body", "leaf"])
+def test_v2_full_consumer_rebuild_rejects_tamper_despite_resealed_superficial_hashes(
+    strict_projection: StrictPreparedProjection, tmp_path: Path, change: str
+) -> None:
+    projection = _reproject_layout(strict_projection, STRICT_LAYOUT_PROJECTION_V2_VERSION)
+    manifest: dict[str, Any] = json.loads(json.dumps(projection.manifest))
+    files = dict(projection.files)
+    if change == "missing":
+        del manifest["layout_projection_version"]
+    elif change == "unknown":
+        manifest["layout_projection_version"] = "xiaosai-strict-inline-compact-v999"
+    elif change == "old_version":
+        manifest["layout_projection_version"] = STRICT_LAYOUT_PROJECTION_VERSION
+    else:
+        html = files["article-body.html"].decode()
+        if change == "body":
+            html = html.replace("<span leaf>", "<span leaf>Unapproved", 1)
+        else:
+            html = html.replace(" leaf", ' leaf="invalid"', 1)
+        assert html.encode() != files["article-body.html"]
+        files["article-body.html"] = html.encode()
+        descriptor = next(item for item in manifest["files"] if item["path"] == "article-body.html")
+        descriptor.update(sha256=sha256(html.encode()).hexdigest(), byte_size=len(html.encode()))
+    # An attacker can recompute these public hashes; only exact independent projection
+    # rebuilding detects a changed frozen version, removed text/leaf or altered HTML.
+    del manifest["child_fingerprint"]
+    del manifest["content_fingerprint"]
+
+    def canonical(item: object) -> bytes:
+        return json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+
+    manifest["content_fingerprint"] = sha256(canonical(manifest)).hexdigest()
+    manifest["child_fingerprint"] = sha256(canonical(manifest)).hexdigest()
+    with pytest.raises(ValueError):
+        validate_strict_prepared_projection(manifest, files)
+    with pytest.raises(WeChatMpDraftPreparationError):
+        WeChatOfficialAccountDraftPreparer().prepare(
+            _write(replace(projection, manifest=manifest, files=files), tmp_path / change)
+        )
+
+
 def test_upload_normalizers_have_fixed_geometry_and_bounds() -> None:
     body = _image(92, (1536, 1024))
     normalized = normalize_official_account_upload_body(body)
@@ -286,9 +425,13 @@ def test_oversized_news_original_has_explicit_non_cropping_upload_derivative() -
 
 
 @pytest.mark.parametrize("context_count", [0, 2])
+@pytest.mark.parametrize(
+    "layout_version", [STRICT_LAYOUT_PROJECTION_VERSION, STRICT_LAYOUT_PROJECTION_V2_VERSION]
+)
 def test_strict_context_count_and_provenance_roundtrip(
     strict_projection: StrictPreparedProjection,
     context_count: int,
+    layout_version: StrictLayoutProjectionVersion,
 ) -> None:
     manifest = strict_projection.manifest
     article = ArticlePackage.model_validate(manifest["article"])
@@ -374,6 +517,7 @@ def test_strict_context_count_and_provenance_roundtrip(
         evidence=proofs,
         files=files,
         context_originals=originals,
+        layout_projection_version=layout_version,
     )
     validate_strict_prepared_projection(result.manifest, result.files)
     assert len(result.manifest["context_derivatives"]) == context_count  # type: ignore[arg-type]
@@ -676,6 +820,7 @@ async def test_real_prepared_owner_to_http_draft_uses_six_audited_uploads(
         == artifact
     )
     prepared = owner.validate_child(artifact, role=WeeklyArticleRole.APPLICATION_CASE)
+    assert " leaf>" in prepared.body_html
     calls: list[str] = []
     uploaded_bodies: list[bytes] = []
 

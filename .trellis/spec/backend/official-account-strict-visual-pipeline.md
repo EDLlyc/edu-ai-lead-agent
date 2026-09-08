@@ -30,6 +30,11 @@ original meaning. Existing completed weekly editions and drafts are never replay
 - `build_strict_prepared_projection(...)` and `validate_strict_prepared_projection(...)` share
   the exact pure child projection; `PreparedWeeklyDraftArtifactOwner.build_child` dispatches
   from the stored run policy, not the current global toggle.
+- `compact_strict_xiaosai_html(body_html, *, version=STRICT_LAYOUT_PROJECTION_VERSION)`
+  retains literal compact-v1 as its default. The prepared builder accepts a typed
+  `layout_projection_version`; the current strict owner explicitly chooses
+  `STRICT_LAYOUT_PROJECTION_V2_VERSION`. The validator dispatches from the saved manifest
+  value through `strict_layout_projection_version(value)`, never today's producer default.
 - Candidate migration `20260907_0043` extends actual production head `20260901_0042`; it adds
   generated-intent ownership/geometry columns and `official_account_strict_visual_audits`.
   Do not mix later unrelated Reviewer migration branches into this release.
@@ -131,9 +136,24 @@ and canonical hashes. All three children must have the same frozen visual policy
 no model/provider capability; it must not fabricate DB review records or enable development-only
 handoff release APIs.
 
-Use the unchanged pure V2 renderer and project-owned theme `xiaosai-moyu-layout-v1`, then the
-new `xiaosai-strict-inline-compact-v1` lossless projection. Runtime never reads personal skill
+Use the unchanged pure V2 renderer and project-owned theme `xiaosai-moyu-layout-v1`. Preserve
+literal `xiaosai-strict-inline-compact-v1` byte-for-byte for existing artifacts; new strict
+exports explicitly use `xiaosai-strict-inline-compact-v2`. Runtime never reads personal skill
 paths. Main's independent gzh-design validation remains a release artifact check.
+
+Compact-v2 may consolidate narrowly recognized neutral wrappers, group adjacent canonical body
+paragraphs and factor equivalent inherited typography within the bounded frozen-renderer tree.
+Preserve every leaf/text node, emphasis effect, paragraph spacing, image, source/rights/caption
+and final media byte. Unknown relative metrics are not equivalent absolute values. Account for
+browser default style boundaries (notably source-link color); equal leaf text alone does not
+prove equal link decoration or layout. This is not a general arbitrary HTML/CSS optimizer.
+
+An empty `leaf` attribute may use its equivalent bare spelling only in validated compact-v2
+strict children. The draft HTML validator keeps its legacy default strict and permits this
+normalization only after exact version-bound canonical projection validation. The strict child
+envelope remains v2 because its closed fields are unchanged; the saved layout version participates
+in the child fingerprint. Changing only the version field or rehashing modified HTML must fail
+independent reconstruction, before upload. Do not edit a prepared artifact in place.
 
 The initial strict accepted **escaped rendered upload URL** limit is 256 characters. Reserve
 that exact bound per inline image before any upload; enforce the same bound on each returned
@@ -161,6 +181,9 @@ A sample fitting this budget does not prove every future article fits.
 | Five bodies/cover/six proofs incomplete or bytes changed | Repository and prepared consumer reject |
 | News upload conversion | Preserve original and exact derivative/rights binding |
 | HTML reserve exceeds bound | Reject before the first social upload |
+| Saved compact-v1 child under a compact-v2 producer | Rebuild exact v1 bytes; never silently upgrade |
+| Unknown layout version, version-only swap, rehashed HTML/style/media edit | Reject canonical projection before upload |
+| Bare leaf in legacy/v1 input | Preserve the original HTML allowlist rejection |
 | Returned escaped URL exceeds 256 | Reject before rewrite/add_draft; retain write history |
 | Old weekly retry after config changes | Proven legacy identity, never new current strict identity |
 | Populated strict migration downgrade | Refuse; never erase audit or sent/draft history |
@@ -203,7 +226,10 @@ Articles; or a reviewed 1536×654 preview cover is subsequently cropped to a dif
   escaped URL 256/257 boundaries and repeated-pass draft idempotency.
 - Actual gzh validator: zero errors/warnings. Actual Chromium 320/430: no broken images or
   overflow, exact final body identity, and no external requests. Compaction must preserve
-  text and computed styles/geometry, including inherited relative CSS edge cases.
+  text and visible computed styles/text-Range geometry, including inherited relative CSS and
+  browser-default anchor-color edge cases. Compare complete screenshots and source/media
+  bindings; anonymous wrapper counts are not an invariant. Test all actual replacement roles,
+  not just the first over-budget article, and retain the unmodified baseline assets.
 - Full relevant lint/type/tests with baseline failures explicitly classified. Scoped success
   is not an all-green general release gate.
 - Fresh immutable source/image/config identity, backup, protected history, real safe window,
@@ -238,3 +264,8 @@ silence Settings errors.
 
 Correct: propagate only immutable policy to its four identity owners; restrict execution and
 strict model prerequisites to the Article worker, preserving existing secret ownership.
+
+Wrong: change compact-v1's implementation or raise the upload bound to fit a long article.
+
+Correct: explicitly select a new version for new exports, retain v1 replay, reserve the same
+256 characters per uploaded URL, and prove actual three-role visual parity and final size.

@@ -29,7 +29,9 @@ from app.domain.official_account_local import (
 from app.domain.official_account_strict_layout import (
     STRICT_ESCAPED_UPLOAD_URL_MAX_CHARACTERS,
     STRICT_LAYOUT_PROJECTION_VERSION,
+    StrictLayoutProjectionVersion,
     compact_strict_xiaosai_html,
+    strict_layout_projection_version,
     validate_strict_upload_html_headroom,
 )
 from app.domain.official_account_upload_media import (
@@ -172,6 +174,7 @@ def build_strict_prepared_projection(
     evidence: tuple[StrictVisualMediaEvidence, ...],
     files: Mapping[str, bytes],
     context_originals: Mapping[int, bytes],
+    layout_projection_version: StrictLayoutProjectionVersion = STRICT_LAYOUT_PROJECTION_VERSION,
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -266,7 +269,7 @@ def build_strict_prepared_projection(
             ).model_dump(mode="json")
         )
     rendered = render_editor_handoff_v2_body(article=article, media=media)
-    body_html = compact_strict_xiaosai_html(rendered.body_html)
+    body_html = compact_strict_xiaosai_html(rendered.body_html, version=layout_projection_version)
     validate_strict_upload_html_headroom(
         body_html, tuple(item.path for item in media if item.role != "cover")
     )
@@ -287,7 +290,7 @@ def build_strict_prepared_projection(
         "visual_evidence": [json.loads(_canonical(asdict(item))) for item in evidence],
         "context_derivatives": derivatives,
         "renderer": EditorHandoffV2Identity().model_dump(mode="json"),
-        "layout_projection_version": STRICT_LAYOUT_PROJECTION_VERSION,
+        "layout_projection_version": layout_projection_version,
         "escaped_upload_url_max_characters": STRICT_ESCAPED_UPLOAD_URL_MAX_CHARACTERS,
         "recipe": rendered.recipe.model_dump(mode="json"),
         "placements": [item.model_dump(mode="json") for item in rendered.placements],
@@ -349,6 +352,9 @@ def validate_strict_prepared_projection(
         evidence=evidence,
         files={asset.path: files[asset.path] for asset in media},
         context_originals={item.ordinal: files[item.source_path] for item in derivatives},
+        layout_projection_version=strict_layout_projection_version(
+            manifest.get("layout_projection_version")
+        ),
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):
         raise ValueError("strict prepared canonical projection changed")
