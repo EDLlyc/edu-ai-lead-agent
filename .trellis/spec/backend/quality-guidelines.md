@@ -621,6 +621,19 @@ release artifacts, or production deployment automation change.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
+- Adding an Alembic head is a release-contract propagation, not only a migration edit. In the same
+  committed candidate, update `deploy/release/migration-compatibility.json`, the exact head check in
+  `scripts/doctor.sh`, and every repository-head regression named by the database guidelines. Run
+  manifest creation/verification before building or transferring the final image; focused feature
+  tests alone do not prove that a candidate is releasable.
+- `verify-bundle --extract-to` validates the embedded `RELEASE-MEMBERS.sha256` but deliberately does
+  not install that control member into the extracted runtime tree. An offline overlay that updates
+  the active `RELEASE-MEMBERS.sha256` must use the separately transferred member-manifest file,
+  verify its digest against `bundle.member_manifest_sha256`, and never assume it exists below the
+  extraction root.
+- `make doctor` is the local full-stack gate and requires the frontend Node toolchain. A production
+  activation must use production-specific service/image/schema/evidence checks; absence of Node on
+  a backend-only host is not a service-health failure and must not replace those checks.
 - A builder that imports or executes its staged Python validator before sealing an exact-member
   artifact runs every such interpreter boundary with bytecode writes disabled (for example
   `python3 -B`). Audit and test the complete invocation set rather than fixing only the first import.
