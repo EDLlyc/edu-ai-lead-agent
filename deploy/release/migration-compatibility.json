@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260907_0043",
+  "alembic_head": "20260909_0045",
   "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "The additive chain through 20260907_0043 has been reviewed for implementation compatibility, not deployment authorization. Previous applications are incompatible with strict visual Article/generation/audit state and new weekly v2 or governance inputs, including inputs with no Article rows yet. Rollback requires proving all such new state absent; otherwise retain compatible consumers or use a forward fix. Historical operator authorizations are not renewed."
+  "reason": "The forward-only 20260909_0045 chain is reviewed for implementation compatibility, not deployment authorization. Previous apps cannot safely consume strict visual Article/generation/audit state, weekly v2 or governance inputs, or frozen V5 Chinese-family prompt state, including inputs with no Article rows yet. After migration, keep V5-compatible consumers or use a forward fix; do not restore the previous app or downgrade Alembic. Historical operator authorizations are not renewed."
 }
