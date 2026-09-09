@@ -47,6 +47,8 @@ from app.application.ports.official_account_local import (
 from app.application.services.official_account_strict_visual import (
     execute_strict_visuals,
     strict_catalog_candidates,
+    validate_xiaosai_references,
+    xiaosai_catalog_candidates,
 )
 from app.application.services.official_account_visual_generation import (
     build_generated_visual_prompt,
@@ -133,8 +135,8 @@ from app.domain.official_account_local import (
 )
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+    native_visual_plan_prompt_valid,
 )
 
 logger = structlog.get_logger()
@@ -886,10 +888,9 @@ class OfficialAccountLocalExecutor:
         is_strict_visual = identity.visual_pipeline_version is not None
         if is_strict_visual and (
             identity.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS
-            or identity.generated_visual_plan_version
-            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-            or identity.generated_visual_prompt_version
-            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+            or not native_visual_plan_prompt_valid(
+                identity.generated_visual_plan_version, identity.generated_visual_prompt_version
+            )
             or claimed.generation_mode != "live"
             or identity.provider != "zhipu"
             or self._strict_image_generator is None
@@ -927,6 +928,7 @@ class OfficialAccountLocalExecutor:
             is_historical_multi_image or is_current_semantic_media or is_multimodal_media
         )
         source_media_candidates: tuple[OfficialAccountSourceMedia, ...] = ()
+        strict_comparison_candidates: tuple[OfficialAccountSourceMedia, ...] = ()
         news_context_candidates: tuple[OfficialAccountSourceMedia, ...] = ()
         if is_multi_image:
             if (
@@ -957,6 +959,14 @@ class OfficialAccountLocalExecutor:
             source_media_candidates = await strict_catalog_candidates(
                 self._catalog_media_provider, source_media_candidates
             )
+            strict_comparison_candidates = source_media_candidates
+            if (
+                identity.generated_visual_prompt_version
+                == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+            ):
+                source_media_candidates = await xiaosai_catalog_candidates(
+                    self._catalog_media_provider, source_media_candidates
+                )
         run_fingerprint = run_request_fingerprint(
             source_fingerprint=source.source_fingerprint,
             generation_mode=claimed.generation_mode,
@@ -1067,6 +1077,19 @@ class OfficialAccountLocalExecutor:
                 return
         if not article.validation_passed:
             return
+        if (
+            identity.generated_visual_prompt_version
+            == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+        ):
+            if self._catalog_media_provider is None or article.article.media_selection is None:
+                raise ValueError("Xiaosai reference selection is unavailable")
+            await validate_xiaosai_references(
+                self._catalog_media_provider,
+                _select_v7_source_media(
+                    snapshot=article.article.media_selection,
+                    candidates=source_media_candidates,
+                ),
+            )
         if article.audit is None:
             auditor = (
                 self._fixture_auditor
@@ -1162,7 +1185,7 @@ class OfficialAccountLocalExecutor:
                 article=article,
                 rendered=rendered,
                 references=selected_source_media,
-                catalog_candidates=source_media_candidates,
+                catalog_candidates=strict_comparison_candidates,
                 catalog=self._catalog_media_provider,
                 store=self._generated_visual_store,
                 generator=self._strict_image_generator,

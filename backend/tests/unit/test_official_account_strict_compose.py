@@ -21,11 +21,13 @@ from app.domain.official_account_local import OFFICIAL_ACCOUNT_GENERATED_VISUAL_
 from app.domain.official_account_visual_pipeline import (
     OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
 )
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.official_account_runtime import official_account_identity_from_settings
+from app.official_account_local_cli import _identity as cli_identity
 from app.official_account_weekly_dag_main import _handler_registry
 from app.official_account_weekly_scheduler_main import _require_scheduler_dependencies
 from pydantic import ValidationError
@@ -226,11 +228,25 @@ def test_all_python_roles_start_and_keep_exact_secret_and_policy_projection(rend
             "observe" if name == _ARTICLE_WORKER and mode == "legacy" else "off"
         )
         if name in _IDENTITY_OWNERS:
+            settings = settings.model_copy(
+                update={"official_account_local_default_author": "赛先生"}
+            )
             identity = official_account_identity_from_settings(
                 settings, provider="zhipu", model=settings.ai_chat_model
             )
+            if mode in {"strict", "observe"}:
+                assert (
+                    identity.generated_visual_prompt_version
+                    == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+                )
+            assert identity.default_author == (
+                "程岳" if mode in {"strict", "observe"} else "赛先生"
+            )
             assert (
                 api_identity(settings, provider="zhipu", model=settings.ai_chat_model) == identity
+            )
+            assert (
+                cli_identity(settings, provider="zhipu", model=settings.ai_chat_model) == identity
             )
             identities.append(identity)
     assert len(identities) == 4 and all(item == identities[0] for item in identities)

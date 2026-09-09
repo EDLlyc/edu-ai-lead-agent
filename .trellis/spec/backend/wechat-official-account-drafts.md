@@ -171,6 +171,16 @@ cover is deterministically center-cropped to exact 47:20, converted to metadata-
 downscaled/quality-stepped below 64 KiB. Upload filenames and the aware receipt clock are validated
 for all articles before any write.
 
+A canonical native V5 prepared child has exactly one additional typed media item:
+`role=footer`, `ordinal=0`, `path=assets/xiaosai-footer.jpg`. It is accepted only
+when all six visual-evidence entries carry the V5 prompt and canonical prepared
+reconstruction succeeds. It is an inline image, keeps its frozen approved
+publication bytes, appears last in HTML/upload order and consumes one additional
+escaped upload-URL reserve. It does not change the five body images, cover or six
+audit subjects. V4/legacy children cannot add this role. The neighboring
+`二维码待补` reserve is HTML only and therefore has no manifest file, upload,
+provider URL, QR payload or functional scan claim.
+
 ### Immutable weekly handoff and durable execution
 
 Enqueue accepts only a strict live weekly aggregate with the canonical three roles, finalized
@@ -221,6 +231,8 @@ atomically installs the production acknowledgement, minimum Monday, and worker/a
 | Adapter disabled, wrong mode/environment, or credentials incomplete | Fail closed before HTTP client use |
 | Base URL differs from the exact official HTTPS origin | Settings/client construction fails |
 | Child is not finalized V2, passed, local-only, or identity-consistent | `wechat_mp_draft_preparation_invalid`; zero calls |
+| V5 footer role/path/ordinal/evidence/file/HTML binding changes, or V4 carries a footer | Preparation fails before the first provider call |
+| A QR image, URL or undeclared media is inserted into the blank reserve | HTML/media correspondence fails; zero provider calls |
 | Third weekly child, its ZIP, filename, clock, HTML, or media is invalid | Reject all three before article 1 upload |
 | Inline image cannot normalize below 1 MiB or thumb below 64 KiB JPEG | Preparation failure; zero calls |
 | Provider image URL is off-host or syntactically unsafe | `wechat_mp_invalid_response` |
@@ -246,6 +258,8 @@ atomically installs the production acknowledgement, minimum Monday, and worker/a
 - Good: all three finalized children preflight locally, each body image is uploaded and rewritten,
   each independent thumb is uploaded, and three separate one-article draft payloads return three
   safe receipts without changing local artifacts or publication state.
+- Good: a V5 child additionally uploads its one frozen Xiaosai footer image last;
+  the visible `二维码待补` reserve causes no extra upload.
 - Base: `WECHAT_MP_ENABLED=false`; local fixtures, exporters, API, workers, and tests construct no
   client and make zero WeChat requests.
 - Good: simultaneous requests observe the same invalid cached token and produce only one forced
@@ -269,6 +283,10 @@ atomically installs the production acknowledgement, minimum Monday, and worker/a
   rewriting, five media uploads per article where present, three independent drafts, safe receipts,
   deterministic inline/thumb normalization, metadata removal, 47:20 thumb ratio, and original tree
   byte immutability.
+- V5 application tests run real prepared-owner/catalog resolution through canonical
+  consumer and `httpx.MockTransport`; assert the exact footer request body and last
+  rewrite, one extra inline upload, no QR upload/link/payload, and zero calls for
+  footer/evidence/bytes/HTML tampering. Preserve V4 and legacy upload counts.
 - Tamper tests cover the third child, ZIP corruption, symlinks, hash/size/dimension drift,
   external/data/duplicate images, unsafe HTML/style/filenames, invalid clock, wrong role order, and
   duplicate identities with zero fake-client calls.

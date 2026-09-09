@@ -70,6 +70,23 @@ OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION = (
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION = (
     "official-account-generated-visual-prompt-v4-native-strict"
 )
+OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION = (
+    "official-account-generated-visual-prompt-v5-chinese-family"
+)
+NATIVE_VISUAL_PROMPT_VERSIONS = (
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+)
+
+
+def native_visual_plan_prompt_valid(plan_version: object, prompt_version: object) -> bool:
+    """Closed native bundle; frozen V4 and prospective V5 share the same plan geometry."""
+    return (
+        plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+        and prompt_version in NATIVE_VISUAL_PROMPT_VERSIONS
+    )
+
+
 OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION = (
     "official-account-generated-body-jpeg-v2-native-strict"
 )

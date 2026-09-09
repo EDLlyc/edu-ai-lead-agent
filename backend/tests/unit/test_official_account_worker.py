@@ -733,6 +733,10 @@ class _ApprovedCatalog:
     async def load_candidates(self) -> tuple[OfficialAccountSourceMedia, ...]:
         return self.candidates
 
+    async def reference_characters(self, candidate: OfficialAccountSourceMedia) -> tuple[str, ...]:
+        await self.revalidate_candidate(candidate)
+        return ("xiao-sai",)
+
     async def revalidate_candidate(
         self,
         candidate: OfficialAccountSourceMedia,

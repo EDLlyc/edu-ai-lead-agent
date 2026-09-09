@@ -262,15 +262,16 @@ async def _accept(repository, claimed, subject):
     return result
 
 
-async def test_empty_schema_downgrade_and_reupgrade(integration_context):
+async def test_forward_only_head_refuses_even_empty_database_downgrade(integration_context):
     from alembic import command
     from alembic.config import Config
 
     config = Config("backend/alembic.ini")
-    await asyncio.to_thread(command.downgrade, config, "20260901_0042")
+    with pytest.raises(RuntimeError, match="cannot downgrade Chinese-family visual prompt"):
+        await asyncio.to_thread(command.downgrade, config, "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260901_0042"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260909_0045"
         )
     await asyncio.to_thread(command.upgrade, config, "head")
 
@@ -492,11 +493,11 @@ async def test_schema_upgrade_and_populated_downgrade_fence(integration_context)
     from alembic.config import Config
 
     await _prime(integration_context)
-    with pytest.raises(Exception, match="cannot downgrade populated strict visual pipeline"):
+    with pytest.raises(RuntimeError, match="cannot downgrade Chinese-family visual prompt"):
         await asyncio.to_thread(command.downgrade, Config("backend/alembic.ini"), "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260907_0043"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260909_0045"
         )
 
 

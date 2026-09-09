@@ -18,6 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import SnapshotDescriptor
+from app.domain.official_account_local import ArticlePackage
+from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset
 from app.infrastructure.db.models import (
     ImageArtifactModel,
     OfficialAccountArticleContextImageModel,
@@ -109,6 +111,17 @@ class OfficialAccountLocalMediaResolver:
         self._image_asset_manifest = image_asset_manifest
         self._image_store = image_store
         self._snapshot_store = snapshot_store
+
+    async def read_xiaosai_footer(
+        self, article: ArticlePackage
+    ) -> tuple[XiaosaiFooterAsset, bytes]:
+        if not self._image_asset_manifest:
+            raise OfficialAccountMediaIntegrityError(
+                "Xiaosai footer approved catalog is unavailable"
+            )
+        return await LocalOfficialAccountCatalogMediaProvider(
+            self._image_asset_manifest
+        ).load_xiaosai_footer(article)
 
     async def read_verified_bytes(
         self,

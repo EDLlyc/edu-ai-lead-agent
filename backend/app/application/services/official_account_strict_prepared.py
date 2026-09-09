@@ -50,12 +50,13 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     StrictVisualPipelineVersion,
     native_visual_audit_releases,
+    native_visual_plan_prompt_valid,
 )
+from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset, validate_xiaosai_footer
 
 STRICT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v2-native-strict"
 OBSERVE_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v3-native-observe"
@@ -115,6 +116,8 @@ def validate_strict_visual_evidence(
     expected = (("body", 0), ("body", 1), ("body", 2), ("body", 3), ("body", 4), ("cover", 0))
     if tuple((item.role, item.ordinal) for item in evidence) != expected:
         raise ValueError("strict prepared audit subjects are incomplete")
+    if len({(item.plan_version, item.prompt_version) for item in evidence}) != 1:
+        raise ValueError("native prepared generation prompt bundle is mixed")
     by_slot = {(item.role, item.ordinal): item for item in media}
     if len(by_slot) != len(media):
         raise ValueError("strict prepared media slots are duplicated")
@@ -160,8 +163,7 @@ def validate_strict_visual_evidence(
         if (
             item.provider != "zhipu"
             or item.model != "glm-5v-turbo"
-            or item.plan_version != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-            or item.prompt_version != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+            or not native_visual_plan_prompt_valid(item.plan_version, item.prompt_version)
             or item.native_output_size != "1536x1024"
             or item.upload_policy_version != policy
             or (item.upload_sha256, item.media_type, item.byte_size, item.width, item.height)
@@ -238,6 +240,7 @@ def build_strict_prepared_projection(
     context_originals: Mapping[int, bytes],
     layout_projection_version: StrictLayoutProjectionVersion = STRICT_LAYOUT_PROJECTION_VERSION,
     visual_pipeline_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
+    footer: XiaosaiFooterAsset | None = None,
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -251,6 +254,11 @@ def build_strict_prepared_projection(
     if visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("native prepared visual policy is unsupported")
     validate_strict_visual_evidence(evidence, media, policy_version=visual_pipeline_version)
+    v5_presentation = (
+        evidence[0].prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+    )
+    if v5_presentation != (footer is not None):
+        raise ValueError("native prepared footer does not match frozen V5 policy")
     for proof in evidence:
         if isinstance(proof, ObserveVisualMediaEvidence) and (
             (
@@ -289,8 +297,13 @@ def build_strict_prepared_projection(
     }:
         raise ValueError("strict prepared source image count changed")
     output_files = dict(files)
-    if set(output_files) != {item.path for item in media}:
+    expected_paths = {item.path for item in media}
+    if footer is not None:
+        expected_paths.add(footer.path)
+    if set(output_files) != expected_paths:
         raise ValueError("strict prepared media file set changed")
+    if footer is not None:
+        validate_xiaosai_footer(footer, article=article, content=output_files[footer.path])
     for asset in media:
         body = output_files[asset.path]
         if asset.path != media_asset_path(asset.role, asset.ordinal, asset.media_type):
@@ -351,10 +364,20 @@ def build_strict_prepared_projection(
                 upload_sha256=asset.sha256,
             ).model_dump(mode="json")
         )
-    rendered = render_editor_handoff_v2_body(article=article, media=media)
+    rendered = render_editor_handoff_v2_body(
+        article=article,
+        media=media,
+        hide_body_captions=v5_presentation,
+        hide_context_rights_notice=v5_presentation,
+        footer=footer,
+    )
     body_html = compact_strict_xiaosai_html(rendered.body_html, version=layout_projection_version)
     validate_strict_upload_html_headroom(
-        body_html, tuple(item.path for item in media if item.role != "cover")
+        body_html,
+        (
+            *tuple(item.path for item in media if item.role != "cover"),
+            *((footer.path,) if footer is not None else ()),
+        ),
     )
     output_files["article-body.html"] = body_html.encode("utf-8")
     identity: dict[str, object] = {
@@ -373,7 +396,10 @@ def build_strict_prepared_projection(
         "title": article.title,
         "author": article.author,
         "digest": article.digest,
-        "media": [item.model_dump(mode="json") for item in media],
+        "media": [
+            *(item.model_dump(mode="json") for item in media),
+            *((footer.model_dump(mode="json"),) if footer is not None else ()),
+        ],
         "visual_evidence": [json.loads(_canonical(asdict(item))) for item in evidence],
         "context_derivatives": derivatives,
         "renderer": EditorHandoffV2Identity().model_dump(mode="json"),
@@ -417,7 +443,17 @@ def validate_strict_prepared_projection(
         or not isinstance(raw_derivatives, list)
     ):
         raise ValueError("strict prepared typed projections are missing")
-    media = tuple(EditorHandoffMediaAsset.model_validate(item) for item in raw_media)
+    footer_items = [
+        item for item in raw_media if isinstance(item, dict) and item.get("role") == "footer"
+    ]
+    if len(footer_items) > 1:
+        raise ValueError("strict prepared footer media is duplicated")
+    footer = XiaosaiFooterAsset.model_validate(footer_items[0]) if footer_items else None
+    media = tuple(
+        EditorHandoffMediaAsset.model_validate(item)
+        for item in raw_media
+        if not isinstance(item, dict) or item.get("role") != "footer"
+    )
     evidence_fields = {
         item.name
         for item in fields(ObserveVisualMediaEvidence if observe else StrictVisualMediaEvidence)
@@ -454,12 +490,16 @@ def validate_strict_prepared_projection(
         article=ArticlePackage.model_validate(manifest.get("article")),
         media=media,
         evidence=evidence,
-        files={asset.path: files[asset.path] for asset in media},
+        files={
+            **{asset.path: files[asset.path] for asset in media},
+            **({footer.path: files[footer.path]} if footer is not None else {}),
+        },
         context_originals={item.ordinal: files[item.source_path] for item in derivatives},
         layout_projection_version=strict_layout_projection_version(
             manifest.get("layout_projection_version")
         ),
         visual_pipeline_version=policy,
+        footer=footer,
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):
         raise ValueError("strict prepared canonical projection changed")

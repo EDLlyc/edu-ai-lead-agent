@@ -33,6 +33,7 @@ from app.domain.official_account_local import (
     ArticleQuoteBlock,
     fingerprint,
 )
+from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset, render_xiaosai_footer
 
 EDITOR_HANDOFF_V2_RENDERER_VERSION: Final = "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic"
 EDITOR_HANDOFF_V2_STYLE_VERSION: Final = "wechat-editor-handoff-style-v2-xiaosai-adaptive"
@@ -506,7 +507,12 @@ def plan_context_placements(
 
 
 def render_editor_handoff_v2_body(
-    *, article: ArticlePackage, media: tuple[EditorHandoffMediaAsset, ...]
+    *,
+    article: ArticlePackage,
+    media: tuple[EditorHandoffMediaAsset, ...],
+    hide_body_captions: bool = False,
+    hide_context_rights_notice: bool = False,
+    footer: XiaosaiFooterAsset | None = None,
 ) -> RenderedEditorHandoffV2:
     recipe = select_layout_recipe(article, media)
     placements = plan_context_placements(article=article, media=media)
@@ -572,12 +578,14 @@ def render_editor_handoff_v2_body(
                 asset = body_by_ordinal.get(ordinal)
                 if asset is None:
                     raise ValueError("article image block has no verified V2 handoff asset")
-                sections.append(v1._image(asset, disclose_rights=False))
+                sections.append(
+                    v1._image(asset, disclose_rights=False, hide_caption=hide_body_captions)
+                )
             else:  # pragma: no cover - ArticleBlock is discriminated
                 raise TypeError("unsupported article block")
             context = context_by_target.get((section_index, block_index))
             if context is not None:
-                sections.append(v1._image(context, disclose_rights=True))
+                sections.append(v1._image(context, disclose_rights=not hide_context_rights_notice))
     conclusion_spans = select_semantic_emphasis(article.conclusion, context_terms=global_terms)
     emphasis.append(
         SemanticEmphasisBlock(
@@ -588,7 +596,9 @@ def render_editor_handoff_v2_body(
         (
             _conclusion(article.conclusion, conclusion_spans),
             v1._sources(article),
-            v1._signature(article.author),
+            render_xiaosai_footer(author=article.author, footer=footer)
+            if footer is not None
+            else v1._signature(article.author),
             "</section>",
         )
     )

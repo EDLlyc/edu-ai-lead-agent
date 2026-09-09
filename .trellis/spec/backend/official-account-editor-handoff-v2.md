@@ -82,6 +82,30 @@ PYTHONPATH=backend conda run --no-capture-output --name edu-ai \
 - Context source URL, credit, rights and section/block placement must agree across `article.md`,
   `article.json`, manifest, generated API and workbench; no projection may silently omit or relabel
   those fields.
+- The sole author signature consumes `Article.author`, never a renderer-specific
+  fixed name. New native V5 identities choose `程岳` at the shared identity factory;
+  historical Articles keep their saved author. News reporter/photographer credits
+  remain separate attribution and must not be replaced by the composed author.
+
+- The pure `render_editor_handoff_v2_body(..., hide_body_captions: bool = False,
+  hide_context_rights_notice: bool = False)` can omit the body illustration caption
+  and, independently, the generated internal context-image notice. Both defaults
+  and V1 rendering remain byte-exact. Original-news caption/credit and all stored
+  rights/context-only/source metadata remain unchanged even when the notice is hidden;
+  hiding it is not evidence of publication permission.
+  Preserve img src/alt/style and every underlying Article/media value. The unpublished
+  native V5 prepared owner selects both options from already-validated homogeneous
+  visual evidence, never current global settings or an inferred Article field. See
+  [native V5 presentation](./official-account-strict-visual-pipeline.md) for canonical
+  producer/consumer dispatch and the separately labeled local-derivative boundary.
+- The optional `footer: XiaosaiFooterAsset | None = None` renderer input preserves
+  historical output by default. A validated native V5 prepared owner must provide
+  exactly one footer after the unchanged sources; it replaces, rather than duplicates,
+  `_signature`. The combined region renders `Article.author` once, one verified
+  Xiaosai image, brief follow copy and one styled `二维码待补` non-image reserve.
+  It contains no QR `img`, URL, payload or working-scan claim. See the standardized
+  V5 final CTA scenario in the strict visual pipeline spec for its frozen media and
+  upload contracts.
 
 ## 4. Validation and error matrix
 
@@ -94,6 +118,7 @@ PYTHONPATH=backend conda run --no-capture-output --name edu-ai \
 | Context media cannot bind a safe visible block or remain separated from images | Fail placement preflight without dropping or replacing media |
 | Any body slot lacks a current ready V3 result, exact block anchor, approved reference input or matching generated-media row | Fail with `generated_visuals_ready` or V2 integrity failure; never fall back to direct catalog bytes |
 | Frozen visual-map has duplicate keys, any symlinked path component, JPEG metadata, or changed field/path/hash/input/output/character truth | Reject the demo before Article/media export and perform no external call |
+| V5 footer is absent/duplicated/tampered, or non-V5 input supplies one | Reject canonical construction; never fall back to a signature-only V5 or alter historical output |
 | Emphasis rewrites text, overlaps, uses a generic fragment or exceeds three spans | Fail deterministic emphasis checks/tests |
 | Browser report does not bind exact hashes and exact 320/430 observations | Reject finalization and keep runtime `not_run` truthful |
 | Output target exists, a path is unsafe, or archive verification fails | Preserve the existing target and do not install a partial bundle |
@@ -120,6 +145,9 @@ PYTHONPATH=backend conda run --no-capture-output --name edu-ai \
   fields, directory symlinks and JPEG comment metadata must fail closed.
 - Assert Markdown, JSON, manifest and API/UI project identical source/credit/rights/placement values,
   then hash-match the named final directory against an in-memory current-code rebuild.
+- Assert the V5 final region follows sources, contains the exact Article author once,
+  uploads one frozen exact-Xiaosai footer image last, and contains exactly one non-image
+  `二维码待补` with no QR source, destination, bytes or scan claim. Retain V1/V2/V4 goldens.
 - Generate OpenAPI/TypeScript from the backend contract. Run the independent gzh validator to zero
   errors/warnings and Playwright at exact 320/430 with all images loaded, plan-derived order, no
   overflow and zero external requests.

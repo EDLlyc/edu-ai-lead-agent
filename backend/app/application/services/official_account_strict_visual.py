@@ -59,6 +59,7 @@ from app.domain.official_account_upload_media import (
 )
 from app.domain.official_account_visual_pipeline import (
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
     native_visual_audit_releases,
@@ -93,6 +94,55 @@ async def strict_catalog_candidates(
     return tuple(eligible)
 
 
+async def _reference_characters(
+    catalog: OfficialAccountCatalogMediaProvider, reference: OfficialAccountSourceMedia
+) -> tuple[str, ...]:
+    if not callable(getattr(catalog, "reference_characters", None)):
+        raise _missing_xiaosai_reference()
+    try:
+        return await catalog.reference_characters(reference)
+    except ValueError as error:
+        raise _missing_xiaosai_reference() from error
+
+
+def _missing_xiaosai_reference() -> AppError:
+    return AppError(
+        "official_account_xiaosai_reference_unavailable",
+        "a current approved Xiaosai-only reference is required",
+        422,
+        False,
+    )
+
+
+async def xiaosai_catalog_candidates(
+    catalog: OfficialAccountCatalogMediaProvider,
+    candidates: tuple[OfficialAccountSourceMedia, ...],
+) -> tuple[OfficialAccountSourceMedia, ...]:
+    """Filter only the V5 selection pool; callers retain the full comparison pool."""
+    eligible = tuple(
+        [
+            candidate
+            for candidate in candidates
+            if set(await _reference_characters(catalog, candidate)) == {"xiao-sai"}
+        ]
+    )
+    if not eligible:
+        raise _missing_xiaosai_reference()
+    return eligible
+
+
+async def validate_xiaosai_references(
+    catalog: OfficialAccountCatalogMediaProvider,
+    references: tuple[OfficialAccountSourceMedia, ...],
+) -> None:
+    """Recheck the complete persisted/new five-reference batch before any paid intent."""
+    if len(references) != 5:
+        raise _missing_xiaosai_reference()
+    for reference in references:
+        if set(await _reference_characters(catalog, reference)) != {"xiao-sai"}:
+            raise _missing_xiaosai_reference()
+
+
 async def _read_reference(
     catalog: OfficialAccountCatalogMediaProvider, reference: OfficialAccountSourceMedia
 ) -> bytes:
@@ -124,6 +174,11 @@ async def execute_strict_visuals(
 ) -> tuple[tuple[OfficialAccountSourceMedia, ...], OfficialAccountSourceMedia] | None:
     """Only newly_claimed can cross a paid boundary; successful artifacts never roll back."""
     observe = claimed.identity.visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
+    if (
+        claimed.identity.generated_visual_prompt_version
+        == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+    ):
+        await validate_xiaosai_references(catalog, references)
     reference_bytes = tuple([await _read_reference(catalog, ref) for ref in references])
     preflight_strict_generated_visuals(
         article=article, references=references, reference_bytes=reference_bytes

@@ -13,8 +13,7 @@ from uuid import UUID
 from app.application.ports.official_account_local import OfficialAccountVersionIdentity
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    native_visual_plan_prompt_valid,
 )
 from app.domain.official_account_weekly_edition import (
     WEEKLY_EDITION_ROLE_ORDER,
@@ -62,10 +61,9 @@ def weekly_article_identity_from_snapshot(value: object) -> OfficialAccountVersi
     policy = value.get("visual_pipeline_version")
     if policy is not None and (
         policy not in NATIVE_VISUAL_PIPELINE_VERSIONS
-        or value.get("generated_visual_plan_version")
-        != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-        or value.get("generated_visual_prompt_version")
-        != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+        or not native_visual_plan_prompt_valid(
+            value.get("generated_visual_plan_version"), value.get("generated_visual_prompt_version")
+        )
     ):
         raise ValueError("weekly frozen strict visual identity is invalid")
     return OfficialAccountVersionIdentity(**cast(dict[str, Any], value))

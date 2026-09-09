@@ -42,9 +42,9 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     STRICT_VISUAL_POLICY,
     native_visual_audit_releases,
+    native_visual_plan_prompt_valid,
     observe_visual_audit_codes_valid,
     strict_visual_audit_criteria,
     strict_visual_audit_passes,
@@ -144,6 +144,17 @@ async def _strict_fence(
         return None
     if run.version_bundle.get("visual_pipeline_version") not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("strict audit requires frozen strict run")
+    if not native_visual_plan_prompt_valid(
+        run.version_bundle.get("generated_visual_plan_version"),
+        run.version_bundle.get("generated_visual_prompt_version"),
+    ) or (
+        claimed.identity.generated_visual_plan_version,
+        claimed.identity.generated_visual_prompt_version,
+    ) != (
+        run.version_bundle.get("generated_visual_plan_version"),
+        run.version_bundle.get("generated_visual_prompt_version"),
+    ):
+        raise ValueError("strict frozen generation prompt changed")
     return run
 
 
@@ -170,7 +181,12 @@ async def _validate_subject(
         or visual.article_version_id != subject.article_version_id
         or visual.render_version_id != subject.render_version_id
         or visual.status != "ready"
-        or visual.plan_version != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
+        or not native_visual_plan_prompt_valid(visual.plan_version, visual.prompt_version)
+        or (visual.plan_version, visual.prompt_version)
+        != (
+            run.version_bundle.get("generated_visual_plan_version"),
+            run.version_bundle.get("generated_visual_prompt_version"),
+        )
         or visual.output_size != "1536x1024"
         or (visual.width, visual.height) != (1536, 1024)
         or visual.provider != "comfly"
@@ -259,7 +275,10 @@ class PostgresStrictVisualRepositoryMixin:
                 run.id,
                 run.active_article_version_id,
                 run.active_render_version_id,
-            ) or plan.plan_version != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION:
+            ) or (plan.plan_version, plan.prompt_version) != (
+                run.version_bundle.get("generated_visual_plan_version"),
+                run.version_bundle.get("generated_visual_prompt_version"),
+            ):
                 raise ValueError("strict generation plan changed")
             row = await session.scalar(
                 select(OfficialAccountGeneratedVisualModel)

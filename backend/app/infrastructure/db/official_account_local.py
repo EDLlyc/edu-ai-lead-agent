@@ -82,9 +82,8 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
     native_visual_audit_releases,
+    native_visual_plan_prompt_valid,
 )
 from app.infrastructure.db.models import (
     ImageArtifactModel,
@@ -2324,8 +2323,7 @@ def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) ->
         and plan.output_profile_version is None
     )
     is_strict = (
-        plan.plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-        and plan.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+        native_visual_plan_prompt_valid(plan.plan_version, plan.prompt_version)
         and plan.output_profile_version
         == OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION
         and plan.output_size == "1536x1024"

@@ -46,8 +46,12 @@ from app.domain.official_account_strict_layout import (
     strict_escaped_upload_url,
     validate_strict_upload_html_headroom,
 )
-from app.domain.official_account_visual_pipeline import NATIVE_VISUAL_PIPELINE_VERSIONS
+from app.domain.official_account_visual_pipeline import (
+    NATIVE_VISUAL_PIPELINE_VERSIONS,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+)
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER, WeeklyArticleRole
+from app.domain.official_account_xiaosai_footer import XIAOSAI_FOOTER_PATH
 
 _SHA256_LENGTH: Final = 64
 _ALLOWED_TAG_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
@@ -393,7 +397,8 @@ def _prepare_persisted_draft_source(
     projections = manifest.get("files")
     if not isinstance(projections, list) or not projections:
         raise ValueError("prepared draft file projection is missing")
-    if strict and not 7 <= len(projections) <= 11:
+    footer_extra = 1 if strict and _has_v5_footer(manifest) else 0
+    if strict and not 7 + footer_extra <= len(projections) <= 11 + footer_extra:
         raise ValueError("strict prepared file count is invalid")
     files: dict[str, bytes] = {}
     projected_paths: set[str] = set()
@@ -508,6 +513,29 @@ def _prepared_file_path(value: object) -> str:
     return _safe_media_path(value)
 
 
+def _has_v5_footer(manifest: dict[str, object]) -> bool:
+    """Only one fixed V5 footer can add one file/inline slot; canonical validation follows."""
+    evidence, media = manifest.get("visual_evidence"), manifest.get("media")
+    return (
+        manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
+        and isinstance(evidence, list)
+        and len(evidence) == 6
+        and all(
+            isinstance(item, dict)
+            and item.get("prompt_version") == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+            for item in evidence
+        )
+        and isinstance(media, list)
+        and sum(
+            isinstance(item, dict)
+            and item.get("role") == "footer"
+            and item.get("path") == XIAOSAI_FOOTER_PATH
+            for item in media
+        )
+        == 1
+    )
+
+
 def _sha_text(value: object) -> str:
     if (
         not isinstance(value, str)
@@ -538,7 +566,13 @@ def _prepare_media(
         if path in media_by_path:
             raise ValueError("media path is duplicated")
         role = raw.get("role")
-        if role not in {"body", "context", "cover"}:
+        if role not in {"body", "context", "cover"} and not (
+            role == "footer"
+            and preserve_upload_bytes
+            and _has_v5_footer(manifest)
+            and path == XIAOSAI_FOOTER_PATH
+            and raw.get("ordinal") == 0
+        ):
             raise ValueError("media role is invalid")
         media_type = raw.get("media_type")
         if media_type not in {"image/jpeg", "image/png"}:

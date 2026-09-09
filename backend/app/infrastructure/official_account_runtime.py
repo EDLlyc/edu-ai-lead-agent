@@ -8,7 +8,7 @@ from app.application.ports.official_account_local import OfficialAccountVersionI
 from app.core.config import Settings
 from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
 )
 
 
@@ -39,7 +39,7 @@ def official_account_identity_from_settings(
         style_version=settings.official_account_local_style_version,
         template_version=settings.official_account_local_template_version,
         local_adapter_version=settings.official_account_local_adapter_version,
-        default_author=settings.official_account_local_default_author,
+        default_author="程岳" if strict_version else settings.official_account_local_default_author,
         min_characters=settings.official_account_local_min_characters,
         target_min_characters=settings.official_account_local_target_min_characters,
         target_max_characters=settings.official_account_local_target_max_characters,
@@ -58,7 +58,7 @@ def official_account_identity_from_settings(
         ),
         generated_visual_prompt_version=(
             (
-                OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+                OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
                 if strict_version
                 else settings.official_account_local_generated_visual_prompt_version
             )

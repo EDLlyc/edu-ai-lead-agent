@@ -517,9 +517,18 @@ def _quote(text: str) -> str:
     )
 
 
-def _image(asset: EditorHandoffMediaAsset, *, disclose_rights: bool) -> str:
+def _image(
+    asset: EditorHandoffMediaAsset, *, disclose_rights: bool, hide_caption: bool = False
+) -> str:
     caption = asset.caption or asset.alt_text
     credit = f" · {asset.credit}" if asset.credit else ""
+    visible_caption = (
+        '<p style="font-size:11px;color:#607086;text-align:center;line-height:1.7;'
+        'margin:8px 0 0;">'
+        f"{_leaf(caption + credit)}</p>"
+        if not hide_caption or asset.role != "body" or disclose_rights
+        else ""
+    )
     warning = (
         '<p style="font-size:11px;color:#B85A00;line-height:1.7;margin:6px 0 0;">'
         f"{_leaf('按当前本地策略直接使用，发布权未验证；仅作上下文参考，不是事实证据。')}</p>"
@@ -531,9 +540,7 @@ def _image(asset: EditorHandoffMediaAsset, *, disclose_rights: bool) -> str:
         f'<img src="{escape(asset.path, quote=True)}" '
         f'alt="{escape(_typography(asset.alt_text), quote=True)}" '
         'style="max-width:100%;height:auto;display:block;margin:0 auto;border-radius:14px;">'
-        '<p style="font-size:11px;color:#607086;text-align:center;line-height:1.7;'
-        'margin:8px 0 0;">'
-        f"{_leaf(caption + credit)}</p>{warning}</section>"
+        f"{visible_caption}{warning}</section>"
     )
 
 

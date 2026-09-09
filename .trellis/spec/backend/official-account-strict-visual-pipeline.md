@@ -1,5 +1,273 @@
 # Prospective strict official-account visuals
 
+## Prospective V5 Chinese-family illustration requirements
+
+### 1. Scope / trigger
+
+The September 9 user requests Chinese families, elementary-/middle-school children
+and Xiaosai IP for future generated Official Account illustrations. This is a
+local candidate on deployed base65064b, not a deployed rule or a visual-quality
+measurement. Original news photographs and historical generated articles are
+outside the change.
+
+### 2. Signatures
+
+`OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION` is
+`official-account-generated-visual-prompt-v5-chinese-family`.
+`build_generated_visual_prompt(..., prompt_version=...)` retains literal V4 and
+adds V5. Shared `official_account_identity_from_settings(...)` selects V5 for new
+native identities; stored Article and weekly identities keep their saved version.
+PlanV4, output profile, reference byte formats, native geometry and audit versions
+stay fixed. V5 now selects Xiaosai-only references per the explicit user correction;
+oldV4selection remains unchanged. V5is unpublished local work and has no live runs.
+Candidate migration `20260909_0045` extends deployed `20260907_0043`, not the
+separate unshipped R32 branch.
+
+For the unpublished V5 presentation, `render_editor_handoff_v2_body(...,
+hide_body_captions: bool = False, hide_context_rights_notice: bool = False)`
+keeps historical output as its default.
+`build_strict_prepared_projection` opts in only after validating homogeneous
+native visual evidence whose `prompt_version` is V5. The saved evidence already
+binds this choice for canonical consumer reconstruction; no new serialized flag,
+layout version or migration is introduced for caption/notice display.
+
+### 3. Contracts
+
+New native V5 identities created by `official_account_identity_from_settings`
+use `default_author="程岳"` for both strict and observe routes, even when the
+configured legacy author is `赛先生`. Non-native construction keeps its existing
+configured author. Freeze the choice before generation: the author-bearing prompt,
+Article composition and mismatch validation, visible signature, prepared manifest,
+and WeChat request must all carry that same author. No downstream renderer/client
+may relabel a historical Article. Existing weekly snapshots, prepared artifacts
+and manual derivatives retain their source author; new derivatives inherit their
+new source's author. Original-news reporter/photographer credits, source metadata,
+IP character identity and reviewer labels are not the composed author and must not
+be renamed. Author is already part of the identity/fingerprints; no new version,
+configuration or schema is needed for this unpublished default.
+
+V5 requires contemporary Chinese-family learning context and clearly school-aged
+children. Elementary or middle-school age follows article context; a generic topic
+may use either, without requiring both in every picture. Child proportions,
+clothing and learning props must be age-appropriate, not toddlers or adultized
+children. Parents/caregivers appear where useful to the scene, not as mandatory
+stock family portraits. Xiaosai remains the recognizable reference-bound
+protagonist actively observing, comparing, testing, recording or reflecting with
+the child. Xiaosai and Sai Xiansheng are distinct characters, never aliases. Only
+approved assets with exact character set `{'xiao-sai'}` may supply V5references;
+exclude Sai Xiansheng-only, mixed-character and unknown-character references.
+Use trusted `VisualAsset.characters` from the approved manifest, not display names,
+filenames, semantic tags or a model guess. Never relabel the other IP as Xiaosai.
+
+Keep the existing full41catalog admission/byte checks and the full native-eligible
+catalog for duplicate/copy comparisons; filter only the V5selection pool. Resolve
+character identity through async `OfficialAccountCatalogMediaProvider.reference_characters`
+`(candidate) -> tuple[str, ...]`, whose local owner reloads the approved manifest
+and binds the real asset/master/publication/catalog identity. Preserve existing SourceMedia
+DTO shape and frozen PreviewSnapshot serialization. V5filters before selection and
+revalidates all five chosen references before its first paid generation, including
+resume. Missing required Xiaosai input fails before paid work, never falls back to
+Sai Xiansheng or a mixed image. This is input identity, not a new model quality gate.
+
+Preserve article-specific action, scene variety, premium gouache/palette, no-text
+and native1536x1024 requirements. Complete prompt must pass the existing2000-character
+boundary. Treat article text as untrusted context. V4 prompt bytes and historical
+fingerprints remain literal. Recognize only the closed planV4 plus promptV4/V5
+bundle consistently in identities, worker, repository, weekly replay and prepared
+consumers through `native_visual_plan_prompt_valid`; do not accept arbitrary future
+strings. All six prepared evidence entries must share one generated prompt version.
+Generation claim, audit claim and evidence load must bind the plan/prompt pair to
+the stored run identity, not merely a currently supported pair. Audit-subject
+`prompt_version` names the audit prompt, not the generated-image prompt; do not
+compare these unrelated fields.
+
+The migration only extends the native prompt allowlist in the plan-shape CHECK;
+keep all old branches, SQL NOTNULL, geometry, lease, provider and result guards.
+Never edit0043 or backfill historical content. This revision is forward-only:
+its downgrade refuses without writes because frozen weekly inputs live in local
+checkpoint files written before DAG enqueue, not a PostgreSQL JSON column. Empty
+V5 generated/run tables cannot prove those files absent. Any later rollback needs
+its own quiesced artifact/identity review; do not build a new scanner in this slice.
+Deploy schema and compatible
+consumers together before creating V5 runs; no activation happens during offline
+development. Native-observe records real audit outcomes without a new rejection
+gate; strict historical policy remains strict. No extra model calls are added.
+
+V5 prepared HTML omits the visible caption paragraph under body/IP illustrations,
+including fallback descriptions taken from catalogue alt text. Do not replace it
+with another character description. Preserve the img element's src, alt, style,
+placement and bytes, all article prose, and all original-news/context captions,
+credits and source cards. The later explicit user request also removes the
+generated context-image notice “按当前本地策略直接使用，发布权未验证；仅作上下文参考，
+不是事实证据。” from future V5 HTML. Only the context-image renderer call omits
+that notice node; matching text in actual article prose is not globally deleted.
+Preserve stored `rights_status`, `context_only_not_evidence`, source/credit fields,
+context derivatives and provenance validation exactly. Hiding an internal notice
+does not establish publication permission or promote a photo to factual evidence.
+The V1/V2 renderer defaults and V4
+prepared reconstruction retain exact historical output. Suppression belongs in
+the body-image renderer call, not a global paragraph/text replacement or CSS hide
+rule; compaction continues to preserve the input it receives. Never clear frozen
+Article/media metadata to make a description disappear. Existing samples can have
+separately identified local derivatives, never in-place edits to accepted children
+or upload receipts; a local preview is not a remote draft update.
+
+### 4. Validation and error matrix
+
+- V5 new native request: bounded Chinese-family/school-age/Xiaosai prompt.
+- New native V5 with stale configured author: composed author is exactly `程岳`.
+- Non-native or frozen historical identity: retain configured or saved author.
+- Different nonempty model author: existing `article_author_mismatch` error.
+- Validated V5 prepared evidence: no visible body captions; news attribution remains.
+- Validated V5 context media: internal notice omitted; original caption/credit and
+  unchanged rights/context-only metadata remain required.
+- V4/default renderer: historical captions and exact bytes remain unchanged.
+- V5 Sai-only/mixed/unknown reference: excluded before selection, rejected at preflight.
+- No valid Xiaosai-only references: no paid work and no different-character fallback.
+- Frozen V4 or legacy request: exact old prompt, fingerprint and policy.
+- Unknown or mixed native bundle: reject before generation or prepared upload.
+- Long normal article context: valid bounded prompt, no unrestricted escape hatch.
+- Original news media: unchanged bytes, source/rights and placement contracts.
+- Any downgrade of0045: explicit refusal without deleting/relabeling data.
+
+### 5. Good / base / bad cases
+
+Good: an elementary-school science topic shows Xiaosai and a school-age Chinese
+child conducting the relevant observation, with a caregiver if useful. Base: an
+older V4 Article resumes with its original prompt. Bad: every image forces two age
+groups and parents into an unrelated posed portrait, or prompt text is silently
+changed under V4.
+
+### 6. Tests required
+
+Cover elementary, middle-school and generic context; reference identity and
+exact trusted Xiaosai-only/Sai-only/mixed/unknown selection, revalidation drift,
+all-five-before-first-call and preserved full-catalog comparisons; unchanged DTO
+and oldV4reference behavior. Cover
+topic-specific action wording; normal/full-bound prompt lengths; literal V4 golden
+hash and V5 deterministic distinct identity. Exercise four shared runtime identity
+owners, frozen weekly replay, real native generation input and prepared consumer,
+plus retained observe/strict behavior. Real isolated PostgreSQL must prove upgrade,
+V4/V5 acceptance, invalid bundle rejection and unconditional downgrade refusal.
+Offline prompt tests are not proof that a live generated raster realizes the rule.
+
+Verify author selection with an explicit stale configuration for strict/observe
+and the actual API/CLI/weekly callers. Exercise the real prompt/composition,
+prepared/signature and outbound HTTP serialization owners without network:
+`程岳` must agree throughout, incorrect model authors must still fail validation,
+and original-news credit plus historical author reconstruction must remain intact.
+
+Renderer/prepared tests must prove all five V5 body captions are absent while image
+src/alt/order and original-news caption/credit/rights survive. Reconstruct the real
+V5 projection through the consumer; retain mixed-evidence and rehashed-tampering
+rejection plus V1/V2/V4 golden bytes. A matching phrase in article prose must not
+be removed. New local sample derivatives require exact preservation outside the
+five caption removals, unchanged media bytes, and actual gzh/mobile checks.
+For the later prospective notice change, cover zero/multiple context images,
+retained actual captions/credits and identical rights/source fields, same-notice
+text in prose, and default/V4 notice retention. Producer/consumer reconstruction
+must agree on both V5 display options without relaxing provenance or mixed-proof
+checks. Earlier delivered samples/derivatives are not rewritten by this rule.
+
+### 7. Wrong vs correct
+
+Wrong: append Chinese-family instructions to the existing V4 builder, or allow
+V5 only in Python while SQL still rejects it. Correct: add V5, freeze it for new
+native runs, extend compatible consumers and the one exact SQL allowlist, and
+retain unchanged old prompt reconstruction.
+
+Wrong: clear `asset.alt_text`, remove every paragraph after every image, or infer
+caption policy from today's settings. Correct: after the existing complete evidence
+validation, pass `hide_body_captions=(evidence[0].prompt_version == V5)` to the
+shared renderer. The separate `hide_context_rights_notice` option is selected by
+the same validated V5 identity; it removes only the generated internal notice,
+never the actual context caption/credit or stored rights/source fields. Wrong:
+mark unverified rights as approved simply because a notice is no longer visible.
+
+## Scenario: standardized V5 Xiaosai final CTA with an unassigned QR reserve
+
+### 1. Scope / trigger
+
+Future native V5 prepared Articles replace the legacy signature-only ending with
+one deterministic final region after the unchanged source cards. Historical V1,
+default V2, V4 and already-prepared artifacts retain their exact ending. The QR
+destination and image are not yet assigned, so this revision reserves layout only;
+it does not create, upload or claim a working QR code.
+
+### 2. Signatures
+
+- `XiaosaiFooterAsset` is a frozen typed projection with
+  `version=official-account-xiaosai-final-cta-v1`, `role=footer`, `ordinal=0`,
+  `path=assets/xiaosai-footer.jpg`, approved exact `characters=("xiao-sai",)`,
+  catalog/ref/master/publication identity, decoded geometry and byte identity.
+- `LocalOfficialAccountCatalogMediaProvider.load_xiaosai_footer(article)` and
+  `OfficialAccountLocalMediaResolver.read_xiaosai_footer(article)` return the typed
+  footer plus its verified publication bytes.
+- `render_editor_handoff_v2_body(..., footer: XiaosaiFooterAsset | None = None)`
+  and `build_strict_prepared_projection(..., footer: XiaosaiFooterAsset | None = None)`
+  preserve their historical default; V5 prepared ownership supplies the footer.
+
+### 3. Contracts
+
+The footer reuses the Article's already-frozen assignment zero approved reference,
+not a generated body image or a news/context image. The real producer reloads the
+catalog, verifies approval and exact character set `{'xiao-sai'}` before and after
+the byte read, and binds catalog version, public ref, master SHA, publication SHA,
+size and dimensions. The pure consumer reconstructs from the frozen Article,
+evidence, descriptor and bytes without selecting from current settings. This local
+hash/projection boundary proves consistency with the frozen producer inputs; it is
+not a cryptographic signature against wholesale replacement of every trusted input.
+
+Validated V5 evidence requires exactly one footer; non-V5 evidence forbids it.
+Keep it outside the five generated body assets and six model-audit subjects. Its
+manifest role/path is distinct from `body`, `context` and `cover`, but it participates
+in the canonical file set, child fingerprint, HTML image correspondence, escaped
+upload-URL reserve and actual WeChat inline upload order.
+
+The final visible order is conclusion, unchanged sources, then one combined region:
+the exact `Article.author` signature, one Xiaosai image, restrained Xiaosai/family
+science-learning copy, one follow prompt and one labeled `二维码待补` reserve. The
+reserve is a styled non-image element: it has no `img`, `src`, URL, encoded payload,
+generated QR bytes or claim that scanning currently works. Do not emit the legacy
+likes/在看/转发 CTA in addition to this region. A future real QR needs a separate
+typed purpose/destination/byte contract and must not be smuggled into this placeholder.
+
+### 4. Validation and error matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Homogeneous V5 evidence plus exact approved Xiaosai assignment zero | Require and render one footer media item and one blank QR reserve |
+| V5 footer absent, duplicated or on another role/path/ordinal | Reject canonical prepared construction before upload |
+| V4/default renderer carries a footer | Reject prepared construction; historical renderer output remains exact |
+| Sai Xiansheng, mixed/empty characters, catalog drift or changed publication bytes | Reject at the real catalog/resolver boundary |
+| Descriptor, Article assignment, evidence, geometry or bytes disagree | Reject producer/consumer reconstruction and make zero provider calls |
+| QR image/link/payload or functional scan promise appears | Reject acceptance; no QR media exists in this revision |
+
+### 5. Good / base / bad cases
+
+Good: a new V5 Article ends once with `程岳`, its frozen Xiaosai reference image,
+brief follow copy and a visibly empty `二维码待补` box; the image is the final inline
+upload. Base: a V4 prepared child retains the prior signature-only bytes. Bad: append
+a local footer image in HTML without manifest bytes, relabel Sai Xiansheng as Xiaosai,
+or use an empty/fake QR `src` and tell readers to scan it.
+
+### 6. Tests required
+
+Exercise the real catalog and resolver, actual prepared owner, canonical consumer,
+draft preparer and `httpx.MockTransport`. Assert one author/signature, unchanged
+news sources and credits, exact final footer upload/order, one non-image
+`二维码待补`, and zero QR URL/bytes/scan claim. Cover V5-required/V4-forbidden,
+Sai-only/mixed/empty roles, catalog drift during read, every footer descriptor and
+byte tamper with zero HTTP calls, stable historical goldens, gzh validator with zero
+warnings/errors, and 320/430 rendering without overflow or broken images.
+
+### 7. Wrong vs correct
+
+Wrong: concatenate `<img src="">` and marketing prose after rendering, leaving the
+manifest and uploader unaware. Correct: carry one exact Xiaosai `footer` asset through
+catalog resolution, frozen prepared projection, canonical validation and upload;
+render the QR reserve as ordinary labeled HTML with no media or destination.
+
 ## R30 extension: prospective native-observe draft readiness
 
 ### 1. Scope / trigger

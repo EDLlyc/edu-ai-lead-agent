@@ -38,6 +38,7 @@ from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V
 from app.domain.official_account_upload_media import normalize_official_account_upload_context
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
+    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
     StrictVisualPipelineVersion,
 )
 from app.domain.official_account_weekly_dag import WeeklyDagArtifact
@@ -374,6 +375,15 @@ class PreparedWeeklyDraftArtifactOwner:
                 if path in files:
                     raise ValueError("strict prepared media slot is duplicated")
                 files[path] = content
+        footer = None
+        if evidence and all(
+            item.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
+            for item in evidence
+        ):
+            footer, footer_content = await self._resolver.read_xiaosai_footer(article.article)
+            if footer.path in files:
+                raise ValueError("strict prepared footer path is duplicated")
+            files[footer.path] = footer_content
         projection = build_strict_prepared_projection(
             run_id=run_id,
             article_version_id=article.id,
@@ -386,6 +396,7 @@ class PreparedWeeklyDraftArtifactOwner:
             context_originals=originals,
             layout_projection_version=STRICT_LAYOUT_PROJECTION_V2_VERSION,
             visual_pipeline_version=visual_pipeline_version,
+            footer=footer,
         )
         target = self._child_path(projection.child_fingerprint)
         _write_directory(

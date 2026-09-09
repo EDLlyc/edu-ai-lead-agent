@@ -30,8 +30,9 @@ from app.domain.official_account_local import (
 )
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
+    NATIVE_VISUAL_PROMPT_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
-    OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    native_visual_plan_prompt_valid,
 )
 
 
@@ -68,8 +69,7 @@ class OfficialAccountVersionIdentity:
     def __post_init__(self) -> None:
         has_native = (
             self.generated_visual_plan_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-            or self.generated_visual_prompt_version
-            == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+            or self.generated_visual_prompt_version in NATIVE_VISUAL_PROMPT_VERSIONS
         )
         if self.visual_pipeline_version is None:
             if has_native:
@@ -77,10 +77,9 @@ class OfficialAccountVersionIdentity:
         elif (
             self.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS
             or self.provider != "zhipu"
-            or self.generated_visual_plan_version
-            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
-            or self.generated_visual_prompt_version
-            != OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION
+            or not native_visual_plan_prompt_valid(
+                self.generated_visual_plan_version, self.generated_visual_prompt_version
+            )
         ):
             raise ValueError("strict visual pipeline identity is unsupported or mixed")
 
@@ -504,6 +503,13 @@ class OfficialAccountDraftAdapter(Protocol):
 
 class OfficialAccountCatalogMediaProvider(Protocol):
     async def load_candidates(self) -> tuple[OfficialAccountSourceMedia, ...]: ...
+
+    async def reference_characters(
+        self,
+        candidate: OfficialAccountSourceMedia,
+    ) -> tuple[str, ...]:
+        """Return trusted manifest characters after current asset/byte identity validation."""
+        ...
 
     async def revalidate_candidate(
         self,

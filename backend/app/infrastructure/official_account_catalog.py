@@ -10,7 +10,8 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from app.application.ports.official_account_local import OfficialAccountSourceMedia
-from app.domain.official_account_local import fingerprint
+from app.domain.official_account_local import ArticlePackage, fingerprint
+from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset, validate_xiaosai_footer
 from app.domain.visual_assets import VisualAsset, VisualAssetKind, VisualAssetRole
 from app.infrastructure.brand.visual_catalog import (
     LoadedVisualCatalog,
@@ -130,6 +131,76 @@ class LocalOfficialAccountCatalogMediaProvider:
 
     async def load_candidates(self) -> tuple[OfficialAccountSourceMedia, ...]:
         return await asyncio.to_thread(self._load_candidates)
+
+    async def load_xiaosai_footer(
+        self, article: ArticlePackage
+    ) -> tuple[XiaosaiFooterAsset, bytes]:
+        """Reuse frozen assignment zero; never select from mutable current configuration."""
+        if article.media_selection is None:
+            raise ValueError("Xiaosai footer reference selection is unavailable")
+        first = article.media_selection.assignments[0]
+        candidate = await asyncio.to_thread(self._load_one_candidate, first.candidate_ref)
+        if (
+            candidate.catalog_version,
+            candidate.source_master_sha256,
+            candidate.sha256,
+        ) != (
+            article.media_selection.catalog_version,
+            first.source_checksum,
+            first.publication_checksum,
+        ) or set(await self.reference_characters(candidate)) != {"xiao-sai"}:
+            raise ValueError("Xiaosai footer approved reference changed")
+        content = await self.read_publication_bytes(
+            catalog_asset_ref=first.candidate_ref,
+            catalog_version=article.media_selection.catalog_version,
+            source_master_sha256=first.source_checksum,
+            publication_sha256=first.publication_checksum,
+        )
+        # Metadata may have changed during the byte read; recheck at the handoff boundary.
+        if set(await self.reference_characters(candidate)) != {"xiao-sai"}:
+            raise ValueError("Xiaosai footer character identity changed")
+        with Image.open(BytesIO(content)) as image:
+            width, height = image.size
+        footer = XiaosaiFooterAsset(
+            byte_size=len(content),
+            sha256=first.publication_checksum,
+            width=width,
+            height=height,
+            catalog_version=article.media_selection.catalog_version,
+            catalog_asset_ref=first.candidate_ref,
+            source_master_sha256=first.source_checksum,
+        )
+        validate_xiaosai_footer(footer, article=article, content=content)
+        return footer, content
+
+    async def reference_characters(
+        self,
+        candidate: OfficialAccountSourceMedia,
+    ) -> tuple[str, ...]:
+        return await asyncio.to_thread(self._reference_characters, candidate)
+
+    def _reference_characters(self, candidate: OfficialAccountSourceMedia) -> tuple[str, ...]:
+        loaded = load_visual_catalog(self._manifest_path)
+        asset = loaded.catalog.asset_by_id.get(candidate.catalog_asset_id or "")
+        if asset is None:
+            raise ValueError("official-account catalog character identity is unavailable")
+        refreshed = _candidate_from_asset(loaded, asset)
+        if candidate.source_image_artifact_id is not None or any(
+            left != right
+            for left, right in (
+                (refreshed.fixture_id, candidate.fixture_id),
+                (refreshed.candidate_id, candidate.candidate_id),
+                (refreshed.catalog_asset_id, candidate.catalog_asset_id),
+                (refreshed.catalog_asset_ref, candidate.catalog_asset_ref),
+                (refreshed.catalog_version, candidate.catalog_version),
+                (refreshed.source_master_sha256, candidate.source_master_sha256),
+                (refreshed.sha256, candidate.sha256),
+                (refreshed.byte_size, candidate.byte_size),
+                (refreshed.media_type, candidate.media_type),
+            )
+        ):
+            raise ValueError("official-account catalog character identity changed")
+        return asset.characters
 
     def _load_candidates(self) -> tuple[OfficialAccountSourceMedia, ...]:
         loaded = load_visual_catalog(self._manifest_path)
