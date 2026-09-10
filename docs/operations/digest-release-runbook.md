@@ -93,10 +93,11 @@ docker compose up -d --build
 ```
 
 The shared default image is `edu-ai-lead-agent-backend:local`. A production release writes a
-root-owned mode-600 `.release.env` containing one digest-only `APP_IMAGE`. All nine application
-and migration services must render that exact value, and production commands always use
-`--no-build`. The pinned Python base digest and the runtime hash lock make the application image
-independent of production PyPI access.
+root-owned mode-600 `.release.env` containing one digest-only `APP_IMAGE`. All 13 managed
+application/migration services (one migration plus 12 long-running roles) must render that exact
+value, and long-running production commands always use `--no-build --no-deps`. The pinned Python
+base digest and the runtime hash lock make the application image independent of production PyPI
+access.
 
 ## Developer-PC one-command release
 
@@ -138,7 +139,7 @@ gates, reuses a repository-scoped `build-cache` image when available, and builds
 The local candidate passes migration and doctor before any push. After pushing the readable commit
 tag, the entrypoint resolves and pulls the registry's full digest, verifies OCI
 source/commit/created labels, and repeats migration plus doctor with that digest as the shared
-nine-service `APP_IMAGE`; only then is the optional cache tag updated.
+13-service `APP_IMAGE`; only then is the optional cache tag updated.
 
 Only then does it use the existing release tool to build and verify exactly three non-secret
 artifacts: bundle, member-checksum file, and manifest. The external member file is cross-checked
@@ -233,7 +234,19 @@ the active host must already have a verified digest-based rollback baseline with
 - `/var/lib/edu-ai/releases/current.json` equal to the active release manifest;
 - the prior digest locally pullable, a healthy backup timer, at least 5 GiB free, and no running or
   ambiguous durable jobs;
-- the shared nine-service `APP_IMAGE` Compose contract in the active runtime.
+- the shared 13-service `APP_IMAGE` Compose contract and exact 12-service long-running topology in
+  the active runtime.
+
+For a point-in-time backend-only runtime check, without writing deployment evidence or requiring
+the frontend Node toolchain, run:
+
+```bash
+sudo /opt/edu-ai-lead-agent/scripts/edu-ai-production-check.sh
+```
+
+`runtime_health=ok` proves current service/image/schema/API/queue alignment only. An offline host
+without the standard manifest/current-state record reports `standard_release_provenance=incomplete`;
+do not present this command as release-bundle, backup, rollback, or source-provenance validation.
 
 Install the small root-owned deploy wrapper once; it always executes the checksum-verified
 deployer in the active runtime. Install the tracked systemd unit with its active-runtime backup
@@ -345,7 +358,7 @@ is active. Do not guess a package or service name.
   manifest and root-owned deployment baseline remain mandatory; `make release-prod` does not
   create or guess them.
 - Only then may an administrator execute the real `make release-prod` and verify safe evidence for
-  the nine backend services. Frontend remains local/CI-only.
+  the 12 long-running backend services. Frontend remains local/CI-only.
 - If Flow automation is later resumed, independently obtain a green branch-safe run, strict
   GitHub exact-SHA backup proof, scoped Runner proof, and Codeup protected-main binding before
   enabling any corresponding flag. Production activation remains last.

@@ -96,7 +96,7 @@ pass "Frontend dependencies and Vite build tool are installed"
 docker compose config --quiet || fail "Compose configuration is invalid"
 pass "Compose configuration renders"
 
-docker compose --profile governance --profile content --profile wecom --profile ip-assets --profile official-account-weekly-dag --profile wechat-official-account-draft config --format json | \
+docker compose --profile governance --profile content --profile official-account-weekly-dag --profile official-account-local --profile wechat-official-account-draft --profile wecom config --format json | \
   "${python_command[@]}" -c '
 import json
 import re
@@ -110,12 +110,12 @@ names = (
     "acquisition-worker",
     "governance-scheduler",
     "governance-worker",
-    "official-account-weekly-scheduler",
-    "official-account-weekly-dag-worker",
-    "wechat-official-account-draft-worker",
     "content-scheduler",
     "content-worker",
-    "ip-asset-worker",
+    "official-account-weekly-dag-worker",
+    "official-account-weekly-scheduler",
+    "official-account-local-worker",
+    "wechat-official-account-draft-worker",
     "wecom-dispatcher",
 )
 images = [services[name].get("image") for name in names]
@@ -209,6 +209,8 @@ import sys
 
 services = json.load(sys.stdin)["services"]
 worker = services["ip-asset-worker"]
+if worker.get("image") != services["acquisition-api"].get("image"):
+    raise SystemExit("IP asset worker must share the application APP_IMAGE")
 environment = worker.get("environment", {})
 if environment.get("IP_ASSET_HUB_ENABLED") != "true":
     raise SystemExit("IP asset worker profile must explicitly enable the hub")

@@ -391,7 +391,14 @@ run_quality_gates() {
     make PY_RUN="${worktree}/scripts/ci-python.sh" backend-check
     make PY_RUN="${worktree}/scripts/ci-python.sh" release-tool-check
     make PY_RUN="${worktree}/scripts/ci-python.sh" frontend-check
-    docker compose --profile governance --profile content --profile wecom config --quiet
+    docker compose \
+        --profile governance \
+        --profile content \
+        --profile official-account-weekly-dag \
+        --profile official-account-local \
+        --profile wechat-official-account-draft \
+        --profile wecom \
+        config --quiet
     bash -n scripts/*.sh
     git diff --check
     python deploy/release/release_tool.py scan-committed-secrets \

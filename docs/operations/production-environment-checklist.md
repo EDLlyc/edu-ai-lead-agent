@@ -17,10 +17,14 @@ values into task logs.
 - [ ] Firewall allows only required HTTPS and restricted administrator access.
 - [ ] `docker compose config --quiet` passes for the exact release configuration.
 - [ ] No floating image tags are used.
-- [ ] All nine application/migration services render the same `APP_IMAGE` digest.
+- [ ] All 13 managed application/migration services render the same `APP_IMAGE` digest, and the
+      exact 12 long-running roles are present once.
 - [ ] `.env`, `.release.env`, release markers, and current manifest agree and have root-only modes.
 - [ ] The host's project ACR identity is pull-only and a previous successful digest remains
       available for compatibility-gated application rollback.
+- [ ] `sudo /opt/edu-ai-lead-agent/scripts/edu-ai-production-check.sh` reports
+      `runtime_health=ok`; any `standard_release_provenance=incomplete` result remains an explicit
+      release-bootstrap gap rather than being treated as complete provenance.
 
 ## Production configuration
 

@@ -613,11 +613,11 @@ release artifacts, or production deployment automation change.
   `--require-hashes`, records OCI created/revision/source/base metadata, and runs as non-root.
 - `.dockerignore` excludes Git/Trellis state, tests, reports, local environments, credentials,
   private materials, and secret-shaped paths from the backend context.
-- Exactly nine production application/migration Compose services and two development-only
-  `official-account-local` profile services inherit one shared `APP_IMAGE`. The release service
-  set remains the original nine; the local article worker/fixture never enter the default or
-  production topology. Local development retains `build:`; production sets a digest and always
-  uses `--no-build`.
+- Exactly 13 managed application/migration Compose services inherit one shared `APP_IMAGE`: one
+  migration service plus 12 long-running services, including the Official Account weekly DAG
+  worker/scheduler, local article worker, and WeChat draft worker. Fixture, frontend, and IP-asset
+  profile roles remain outside this managed release set. Local development retains `build:`;
+  production sets a digest and all long-running creation paths use `--no-build --no-deps`.
 - Release bundles contain committed, regular, allowlisted runtime files only. The manifest binds
   the exact Codeup commit, image digest, input/bundle hashes, required gate IDs, Alembic graph, and
   reviewed migration compatibility.
@@ -886,7 +886,7 @@ release artifacts, or production deployment automation change.
 | Registry returns no matching full digest or immutable labels differ | Stop before manifest creation, SSH transfer, or deployment |
 | SSH host verification, batch auth, timeout, or root-deployer preflight fails | Stop before fetch/build/push; never prompt for a password or change SSH configuration |
 | Candidate push succeeds but transfer/deploy later fails | Keep the verified local artifact attempt for audit/retry; if SSH status is unknown, also retain the remote inbox until reconciled |
-| Production image is a tag or the nine services differ | Manifest/Compose/doctor gate fails before mutation |
+| Production image is a tag or the 13 managed application/migration services differ | Manifest/Compose/doctor gate fails before mutation |
 | Bundle has unknown keys, checksum drift, traversal, symlink, secret shape, or migration mismatch | Typed contract failure; nothing is extracted/activated |
 | Pre-seal staged-validator execution creates `__pycache__`/pyc or otherwise changes the exact member set | Fail artifact validation; disable bytecode generation at the import boundary rather than deleting or allowlisting the extra member |
 | OCI validation occurs after image load, load consumes a different raw archive, the engine image ID is outside the validated config/manifest pair, or any index annotation, manifest/config/layer digest, size, media type, diff ID, tag, path, or order conflicts | Fail before active-tag mutation; retain the prior image and source |
@@ -921,7 +921,7 @@ release artifacts, or production deployment automation change.
 
 - Good: the local entrypoint fetches one Codeup `main` commit into an isolated worktree, reuses
   cache, resolves one verified digest and checksum-bound bundle, and the root deployer recreates
-  all nine production services without production PyPI access.
+  all 12 long-running production services without production PyPI access.
 - Good: an offline candidate is transported by an isolated tag, but activation writes its verified
   local RepoDigest and a later backup binds that exact digest.
 - Good: on a reviewed Docker host without `buildx`, the builder selects the legacy route before the
@@ -945,7 +945,7 @@ release artifacts, or production deployment automation change.
 
 - `deploy/release/tests` covers strict manifests, tag rejection, bundle checksum/traversal and
   migration cross-checks, phase order, pre/post activation failures, lock exclusion, rollback
-  eligibility/failure, redaction, inactive Flow gates, the nine-service Compose anchor, pinned CI
+  eligibility/failure, redaction, inactive Flow gates, the 13/12-service Compose anchor, pinned CI
   images, command wrappers, environment isolation, infra-before-backend ordering, the local release
   Make contract, source isolation, immutable migration/doctor ordering, strict SSH options,
   forbidden secret inputs, and dry-run non-mutation in a fake-command sandbox.
@@ -1021,11 +1021,12 @@ release artifacts, or production deployment automation change.
   production build from mutable source.
 - Full post-load tests execute `assert_candidate_image` itself with strict fake-Docker arguments
   and against the exact local inactive candidate. They cover image identity/labels, the full source
-  manifest, API plus all seven Compose module imports, non-root/default-off Settings, `pip check`,
+  manifest, every managed application/migration Compose module import, non-root/default-off
+  Settings, `pip check`,
   OCR route construction, package shadowing, OpenAPI and Alembic. Every fake assertion returns
   failure explicitly rather than relying on `errexit` inside command substitution or a conditional.
-  The static gate derives all eight Compose `*app-runtime` application services and compares them
-  with `APP_SERVICES` and the driver's entrypoint constants. Alembic checks consume the expected
+  The static gate compares the exact 13 managed Compose service commands with
+  `APPLICATION_SERVICES` and the deployer's entrypoint constants. Alembic checks consume the expected
   head constant, require one exact revision declaration and reject any additional head by comparing
   the complete output with one expected line.
 - A release probe must never assert a non-default `Settings` value while constructing `Settings()`
@@ -1105,9 +1106,10 @@ release artifacts, or production deployment automation change.
   ownership/mode distribution that the read-only audit disproves, and do not ignore metadata drift.
   Newly installed candidate source and protected release stages remain root-owned with restrictive
   reviewed modes.
-- Optional production workers share the candidate application image but remain outside the
-  ordinary start/restore service tuple. Compose/Doctor tests must prove their exact command,
-  profiles, portlessness, mount permissions, and default-off settings.
+- Optional non-release roles that use the backend image, such as the IP-asset worker and local
+  fixture, remain outside the ordinary start/restore service tuple. Compose/Doctor tests must
+  still prove their image equality, exact command, profiles, portlessness, mount permissions, and
+  default-off settings.
 
 ### 7. Wrong vs Correct
 
@@ -1224,6 +1226,135 @@ RELEASE_SSH_HOST=edu-ai-production make release-prod
 Docker and SSH credentials remain in their existing local stores. The entrypoint fetches Codeup
 `main`, verifies the registry digest and fixed artifacts, and delegates all production mutation to
 the root-owned deployer.
+
+## Scenario: Maintained 12-service production runtime verification
+
+### 1. Scope / Trigger
+
+Use this contract whenever a managed Compose service, release phase/profile, production rollback,
+or backend-only production health check changes. It separates two claims: the standard deployer
+proves release provenance and rollback state, while the Node-free runtime checker proves only the
+currently installed source/image/schema/service/queue alignment.
+
+### 2. Signatures
+
+- Managed topology:
+  `APPLICATION_SERVICES = ("backend-migrate", *LONG_RUNNING_SERVICES)` where
+  `LONG_RUNNING_SERVICES` is derived from `START_PHASES: tuple[StartPhase, ...]`.
+- Startup phases, in order: `start-api-acquisition`, `start-governance`, `start-content`,
+  `start-official-account`, and `start-wecom`.
+- Production profiles: `governance`, `content`, `official-account-weekly-dag`,
+  `official-account-local`, `wechat-official-account-draft`, and `wecom`.
+- Runtime command: `sudo /opt/edu-ai-lead-agent/scripts/edu-ai-production-check.sh`; positional
+  arguments are forbidden. Tests alone may set a validated absolute
+  `EDU_AI_PRODUCTION_CHECK_APP_DIR`.
+- Runtime output is stable `key=value` records ending in `runtime_health=ok`, or one bounded
+  `runtime_health=failed check=<safe-check> reason=<safe-reason>` diagnostic.
+
+### 3. Contracts
+
+The 12 long-running services are exactly acquisition API/scheduler/worker, governance
+scheduler/worker, content scheduler/worker, Official Account weekly DAG worker/scheduler, Official
+Account local worker, WeChat draft worker, and WeCom dispatcher. Each appears once in a typed start
+phase and once in the explicit quiesce plan. Normal quiesce and incident `stop_writers` use the
+same plan; stop order remains explicit because safe writer shutdown is not startup order reversed.
+
+After the single explicit migration, long-running startup and previous-release restart pass
+`--no-build --no-deps`. Previous restart verifies the previous manifest image; candidate image
+verification is never reused for that assertion. Quiescence counts running Official Account
+Article/weekly/draft roots and WeCom work, and blocks ambiguous WeChat `outcome_unknown` or WeCom
+overall/child unknown state.
+
+The runtime checker requires root, fixed local files, Bash, Docker/Compose, curl, Python stdlib, and
+the shared release helper. It reads `APP_IMAGE` without sourcing environment files, reads only the
+declared Alembic head, inspects exact containers/images, calls only the fixed localhost health URL,
+and executes fixed aggregate `SELECT` statements. It performs no create/up/run/stop/restart,
+migration, queue transition, provider request, evidence write, or non-loopback HTTP request. It
+prints no credentials, environment values other than the digest reference, row IDs, recipients,
+titles, URLs, bodies, prompts, provider responses, or errors.
+
+Missing standard `.release-manifest.json` or current release state yields
+`standard_release_provenance=incomplete` but is not itself a runtime failure. Even when both exist,
+this command reports only `metadata_present_not_validated`; strict bundle/deployer evidence remains
+the sole provenance proof. Node/npm/Make/Conda are never runtime-check prerequisites.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| A managed or dependency service is missing, duplicated, stopped, unhealthy, or has restarted | Exit 1 with a stable service/dependency reason; perform no mutation |
+| Configured image, common image ID, local digest identity, or OCI revision label differs | Exit 1 before reporting runtime health |
+| Database head differs from the checked-in migration declaration | Exit 1 with `schema_head_mismatch` |
+| Loopback API fails, is oversized/malformed, or is not production/ok | Exit 1 without echoing its body |
+| WeCom has stale running lease or overall/child ambiguous state | Report only aggregate counts, then exit 1 |
+| Queue contains ordinary queued or live lease-valid work | Report `queue_state=active`; exit 0 when other checks pass |
+| Standard manifest/current state is absent | Report incomplete provenance; continue runtime verification |
+| Node is absent | No effect; Node is not inspected |
+| Non-root, unsafe app directory, positional argument, or required command missing | Exit 2 before runtime inspection |
+
+### 5. Good / Base / Bad Cases
+
+- Good: all 12 services resolve to one revision-bound digest/image ID with zero restarts, both
+  dependencies and API are healthy, schema matches, queue is idle, and runtime health is `ok`.
+- Base: strict release metadata is absent on a reviewed offline installation, or queued/live-valid
+  work exists. Runtime health can remain `ok` while provenance is explicitly incomplete or queue
+  state is active.
+- Bad: treating `make doctor` failure from a missing Node binary as production outage, tolerating an
+  omitted Official Account writer during backup, restarting dependencies during a phase, accepting
+  stale/unknown external delivery, or describing runtime alignment as release provenance.
+
+### 6. Tests Required
+
+- `deploy/release/tests/test_deploy.py` proves typed phase order, unique exact start/quiesce sets,
+  all six profiles, Official Account phase failure rollback, complete running/ambiguity queries,
+  dependency-free start/restart, and previous-image verification.
+- `deploy/release/tests/test_production_health.py` executes the real shell script with a fake PATH
+  containing no Node. It covers healthy incomplete provenance, queued/live-valid activity, schema,
+  API, service count/state/restart, image/reference/ID/revision, stale/ambiguous queue failures,
+  fixed aggregate SQL, output privacy, and absence of mutation commands.
+- Bundle tests require the runtime checker as an allowlisted regular member. Pipeline tests compare
+  the exact managed service/module/profile sets with Compose and retain optional IP-worker Doctor
+  coverage.
+- Final gates: full `deploy/release/tests`, `bash -n scripts/*.sh`, six-profile
+  `docker compose config --quiet`, scoped Ruff/format/strict mypy, and `git diff --check`.
+- A real host check is read-only external acceptance; it cannot replace artifact, backup, rollback,
+  or provenance validation.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+~~~python
+for index, services in enumerate(start_phases):
+    phase = fixed_four_phase_tuple[index]
+~~~
+
+This fails when a fifth phase is added and allows service/profile/quiesce ownership to drift.
+
+#### Correct
+
+~~~python
+for start_phase in START_PHASES:
+    step(start_phase.phase, start_phase.name, start_phase.services)
+~~~
+
+Derive the managed service set from typed records, compare it with the explicit quiesce set, and
+verify every production profile and Compose command in tests.
+
+#### Wrong
+
+~~~bash
+make doctor || echo "production seems fine"
+~~~
+
+#### Correct
+
+~~~bash
+sudo /opt/edu-ai-lead-agent/scripts/edu-ai-production-check.sh
+~~~
+
+The first command conflates a Node-dependent developer gate with server health. The second performs
+the bounded read-only runtime check and reports provenance separately.
 
 ## Review checklist
 

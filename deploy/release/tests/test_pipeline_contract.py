@@ -14,7 +14,14 @@ from contract import (
     load_compatibility_declaration,
 )
 
-from deploy import APPLICATION_SERVICES
+from deploy import (
+    APPLICATION_ENTRYPOINT_MODULES,
+    APPLICATION_SERVICES,
+    LONG_RUNNING_SERVICES,
+    PRODUCTION_COMPOSE_PROFILES,
+    QUIESCE_PHASES,
+    START_PHASES,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_MASK_PATHS = (
@@ -186,8 +193,120 @@ def test_compose_uses_one_application_image_variable() -> None:
         "${WECHAT_MP_DRAFT_MIN_WEEK_START:-}"
     )
     assert draft_worker["environment"]["WECHAT_MP_DRAFT_WEEKLY_INBOX_ROOT"] == (
-        "/app/input/weekly-inbox"
+        "/app/input/official-account-weekly-editions/weekly-inbox"
     )
+
+
+def test_release_topology_matches_exact_reviewed_compose_services() -> None:
+    services = yaml.safe_load(Path("compose.yaml").read_text(encoding="utf-8"))[
+        "services"
+    ]
+    start_services = tuple(
+        service for start_phase in START_PHASES for service in start_phase.services
+    )
+    quiesce_services = tuple(
+        service for phase_services in QUIESCE_PHASES for service in phase_services
+    )
+    assert APPLICATION_SERVICES == ("backend-migrate", *start_services)
+    assert start_services == LONG_RUNNING_SERVICES
+    assert len(set(start_services)) == len(start_services) == 12
+    assert set(quiesce_services) == set(start_services)
+    assert len(set(quiesce_services)) == len(quiesce_services) == 12
+    assert PRODUCTION_COMPOSE_PROFILES == (
+        "governance",
+        "content",
+        "official-account-weekly-dag",
+        "official-account-local",
+        "wechat-official-account-draft",
+        "wecom",
+    )
+
+    excluded = {
+        "ip-asset-worker",
+        "official-account-local-fixture",
+        "official-account-local-frontend",
+    }
+    assert excluded.isdisjoint(APPLICATION_SERVICES)
+    for service_name in APPLICATION_SERVICES:
+        service = services[service_name]
+        assert service["image"] == "${APP_IMAGE:-edu-ai-lead-agent-backend:local}"
+        assert service["build"] == {"context": "./backend"}
+        assert "pull_policy" not in service
+        if service_name == "acquisition-api":
+            assert service.get("ports") == ["127.0.0.1:${APP_PORT:-8000}:8000"]
+        else:
+            assert service.get("ports") is None
+
+    expected_profiles = {
+        profile
+        for service_name in APPLICATION_SERVICES
+        for profile in services[service_name].get("profiles", [])
+    }
+    assert expected_profiles == set(PRODUCTION_COMPOSE_PROFILES)
+    assert services["official-account-weekly-dag-worker"]["command"][:3] == [
+        "python",
+        "-m",
+        "app.official_account_weekly_dag_main",
+    ]
+    assert services["official-account-weekly-scheduler"]["command"] == [
+        "python",
+        "-m",
+        "app.official_account_weekly_scheduler_main",
+    ]
+    assert services["official-account-local-worker"]["command"] == [
+        "python",
+        "-m",
+        "app.official_account_worker_main",
+    ]
+    assert services["wechat-official-account-draft-worker"]["command"] == [
+        "python",
+        "-m",
+        "app.wechat_official_account_draft_main",
+        "worker",
+    ]
+
+    compose_modules: set[str] = set()
+    for service_name in APPLICATION_SERVICES:
+        command = services[service_name]["command"]
+        if service_name == "backend-migrate":
+            assert "python -m app.seed_sources" in command[-1]
+            compose_modules.add("app.seed_sources")
+            continue
+        if service_name == "acquisition-api":
+            assert command[:3] == ["python", "-m", "uvicorn"]
+            compose_modules.add(command[3].split(":", 1)[0])
+            continue
+        module_index = command.index("-m") + 1
+        compose_modules.add(command[module_index].split(":", 1)[0])
+    assert compose_modules == set(APPLICATION_ENTRYPOINT_MODULES)
+
+
+def test_release_entrypoints_enable_the_exact_six_production_profiles() -> None:
+    expected = tuple(
+        item
+        for profile in PRODUCTION_COMPOSE_PROFILES
+        for item in ("--profile", profile)
+    )
+    release_script = Path("scripts/release-prod.sh").read_text(encoding="utf-8")
+    release_block = release_script.split("run_quality_gates()", 1)[1].split(
+        "build_push_and_resolve_image()", 1
+    )[0]
+    positions = [
+        release_block.index(f"--profile {profile}") for profile in expected[1::2]
+    ]
+    assert positions == sorted(positions)
+    assert release_block.count("--profile ") == len(PRODUCTION_COMPOSE_PROFILES)
+
+    doctor = Path("scripts/doctor.sh").read_text(encoding="utf-8")
+    image_contract_command = next(
+        line
+        for line in doctor.splitlines()
+        if line.startswith("docker compose --profile governance --profile content")
+    )
+    for index in range(0, len(expected), 2):
+        assert f"{expected[index]} {expected[index + 1]}" in image_contract_command
+    assert "--profile ip-assets" not in image_contract_command
+    assert "IP asset worker must share the application APP_IMAGE" in doctor
 
 
 def test_repository_migration_declaration_and_doctor_match_the_single_head() -> None:
@@ -231,9 +350,12 @@ def test_frontend_is_a_ci_gate_only() -> None:
     assert '--gate "frontend=$gate_id"' in publish_job
     assert "frontend" not in deploy_job.lower()
     assert all(not path.startswith("frontend") for path in BUNDLE_ALLOWED_PREFIXES)
-    assert len(APPLICATION_SERVICES) == 9
+    assert len(APPLICATION_SERVICES) == 13
     assert all("frontend" not in service for service in APPLICATION_SERVICES)
-    assert "wechat-official-account-draft-worker" not in APPLICATION_SERVICES
+    assert "wechat-official-account-draft-worker" in APPLICATION_SERVICES
+    assert "official-account-local-fixture" not in APPLICATION_SERVICES
+    assert "official-account-local-frontend" not in APPLICATION_SERVICES
+    assert "ip-asset-worker" not in APPLICATION_SERVICES
 
 
 def test_production_evidence_queries_the_bounded_diversity_warning_code() -> None:

@@ -31,29 +31,6 @@ from contract import (
     verify_release_bundle,
 )
 
-APPLICATION_SERVICES = (
-    "backend-migrate",
-    "acquisition-api",
-    "acquisition-scheduler",
-    "acquisition-worker",
-    "governance-scheduler",
-    "governance-worker",
-    "content-scheduler",
-    "content-worker",
-    "wecom-dispatcher",
-)
-LONG_RUNNING_SERVICES = tuple(
-    service for service in APPLICATION_SERVICES if service != "backend-migrate"
-)
-START_PHASES = (
-    (
-        "api-acquisition",
-        ("acquisition-api", "acquisition-scheduler", "acquisition-worker"),
-    ),
-    ("governance", ("governance-scheduler", "governance-worker")),
-    ("content", ("content-scheduler", "content-worker")),
-    ("wecom", ("wecom-dispatcher",)),
-)
 SECRET_RE = re.compile(
     r"(?i)(?:password|passwd|secret|token|authorization|api[_-]?key)\s*[=:]\s*[^\s,;]+"
 )
@@ -71,10 +48,101 @@ class Phase(StrEnum):
     START_API = "start-api-acquisition"
     START_GOVERNANCE = "start-governance"
     START_CONTENT = "start-content"
+    START_OFFICIAL_ACCOUNT = "start-official-account"
     START_WECOM = "start-wecom"
     EVIDENCE = "evidence"
     PERSIST = "persist-success"
     ROLLBACK = "rollback"
+
+
+@dataclass(frozen=True, slots=True)
+class StartPhase:
+    phase: Phase
+    name: str
+    services: tuple[str, ...]
+
+
+START_PHASES = (
+    StartPhase(
+        Phase.START_API,
+        "api-acquisition",
+        ("acquisition-api", "acquisition-scheduler", "acquisition-worker"),
+    ),
+    StartPhase(
+        Phase.START_GOVERNANCE,
+        "governance",
+        ("governance-scheduler", "governance-worker"),
+    ),
+    StartPhase(
+        Phase.START_CONTENT,
+        "content",
+        ("content-scheduler", "content-worker"),
+    ),
+    StartPhase(
+        Phase.START_OFFICIAL_ACCOUNT,
+        "official-account",
+        (
+            "official-account-weekly-dag-worker",
+            "official-account-weekly-scheduler",
+            "official-account-local-worker",
+            "wechat-official-account-draft-worker",
+        ),
+    ),
+    StartPhase(Phase.START_WECOM, "wecom", ("wecom-dispatcher",)),
+)
+LONG_RUNNING_SERVICES = tuple(
+    service for start_phase in START_PHASES for service in start_phase.services
+)
+APPLICATION_SERVICES = ("backend-migrate", *LONG_RUNNING_SERVICES)
+QUIESCE_PHASES = (
+    ("wechat-official-account-draft-worker", "official-account-weekly-scheduler"),
+    ("official-account-weekly-dag-worker", "official-account-local-worker"),
+    ("wecom-dispatcher",),
+    ("content-scheduler", "content-worker"),
+    ("governance-scheduler", "governance-worker"),
+    ("acquisition-scheduler", "acquisition-worker"),
+    ("acquisition-api",),
+)
+PRODUCTION_COMPOSE_PROFILES = (
+    "governance",
+    "content",
+    "official-account-weekly-dag",
+    "official-account-local",
+    "wechat-official-account-draft",
+    "wecom",
+)
+APPLICATION_ENTRYPOINT_MODULES = (
+    "app.seed_sources",
+    "app.api_main",
+    "app.scheduler_main",
+    "app.worker_main",
+    "app.governance_scheduler_main",
+    "app.governance_worker_main",
+    "app.content_scheduler_main",
+    "app.content_worker_main",
+    "app.official_account_weekly_dag_main",
+    "app.official_account_weekly_scheduler_main",
+    "app.official_account_worker_main",
+    "app.wechat_official_account_draft_main",
+    "app.wecom_dispatcher_main",
+)
+
+
+def _validate_service_topology() -> None:
+    quiesced_services = tuple(
+        service for services in QUIESCE_PHASES for service in services
+    )
+    if len(LONG_RUNNING_SERVICES) != len(set(LONG_RUNNING_SERVICES)):
+        raise RuntimeError("start_phase_services_must_be_unique")
+    if len(quiesced_services) != len(set(quiesced_services)):
+        raise RuntimeError("quiesce_services_must_be_unique")
+    if set(quiesced_services) != set(LONG_RUNNING_SERVICES):
+        raise RuntimeError("start_and_quiesce_service_sets_must_match")
+    if len(APPLICATION_SERVICES) != len(set(APPLICATION_SERVICES)):
+        raise RuntimeError("application_services_must_be_unique")
+
+
+_validate_service_topology()
 
 
 class PhaseFailure(RuntimeError):
@@ -244,16 +312,14 @@ class DeploymentEngine:
             if migrated_head != self.manifest.database.alembic_head:
                 raise PhaseFailure(Phase.MIGRATE, "unexpected_alembic_head")
             migration_completed = True
-            for index, (name, services) in enumerate(START_PHASES):
-                phase = (
-                    Phase.START_API,
-                    Phase.START_GOVERNANCE,
-                    Phase.START_CONTENT,
-                    Phase.START_WECOM,
-                )[index]
+            for start_phase in START_PHASES:
                 self._step(
-                    phase,
-                    partial(self.actions.start_phase, name, services),
+                    start_phase.phase,
+                    partial(
+                        self.actions.start_phase,
+                        start_phase.name,
+                        start_phase.services,
+                    ),
                 )
             self._step(Phase.EVIDENCE, self.actions.collect_evidence)
             self._step(Phase.PERSIST, self.actions.mark_success)
@@ -355,14 +421,10 @@ class ProductionActions:
             str(self.paths.active / ".env"),
             "--env-file",
             str(env_path),
-            "--profile",
-            "governance",
-            "--profile",
-            "content",
-            "--profile",
-            "wecom",
-            *arguments,
         ]
+        for profile in PRODUCTION_COMPOSE_PROFILES:
+            command.extend(("--profile", profile))
+        command.extend(arguments)
         return self.runner.run(command, cwd=workdir, timeout=timeout)
 
     def _psql_scalar(self, query: str) -> str:
@@ -460,7 +522,13 @@ SELECT
   (SELECT count(*) FROM brand_ingestion_jobs WHERE status = 'running') +
   (SELECT count(*) FROM copy_generation_jobs WHERE status = 'running') +
   (SELECT count(*) FROM image_artifacts WHERE status = 'running') +
-  (SELECT count(*) FROM wecom_delivery_jobs WHERE status IN ('running', 'partial', 'delivery_unknown'))
+  (SELECT count(*) FROM official_account_article_runs WHERE status = 'running') +
+  (SELECT count(*) FROM official_account_weekly_dag_runs WHERE status = 'running') +
+  (SELECT count(*) FROM wechat_mp_draft_jobs WHERE status IN ('running', 'outcome_unknown')) +
+  (SELECT count(*) FROM wecom_delivery_jobs
+   WHERE status IN ('running', 'partial', 'delivery_unknown')
+      OR text_status = 'unknown'
+      OR image_status = 'unknown')
 """.strip()
         value = self._psql_scalar(query)
         if not value.isdigit():
@@ -562,24 +630,24 @@ SELECT
             "app",
             image,
         ]
+        module_literals = ",".join(
+            repr(module) for module in APPLICATION_ENTRYPOINT_MODULES
+        )
         self.runner.run(
             [
                 *probe_prefix,
                 "python",
                 "-c",
-                "import alembic, fastapi, minio, sqlalchemy; import app.api_main",
+                (
+                    "import importlib; import alembic, fastapi, minio, sqlalchemy; "
+                    f"[importlib.import_module(module) for module in ({module_literals},)]"
+                ),
             ]
         )
         self.runner.run([*probe_prefix, "python", "-m", "pip", "check"])
 
     def quiesce(self) -> None:
-        for services in (
-            ("wecom-dispatcher",),
-            ("content-scheduler", "content-worker"),
-            ("governance-scheduler", "governance-worker"),
-            ("acquisition-scheduler", "acquisition-worker"),
-            ("acquisition-api",),
-        ):
+        for services in QUIESCE_PHASES:
             self._compose("stop", "--timeout", "60", *services, timeout=180)
         if self._queue_running_count() != 0:
             raise RuntimeError("durable_jobs_remain_after_quiesce")
@@ -824,7 +892,13 @@ SELECT
     def start_phase(self, name: str, services: Sequence[str]) -> None:
         del name
         self._compose(
-            "up", "-d", "--no-build", "--force-recreate", *services, timeout=600
+            "up",
+            "-d",
+            "--no-build",
+            "--no-deps",
+            "--force-recreate",
+            *services,
+            timeout=600,
         )
         self._verify_services(services)
 
@@ -832,8 +906,12 @@ SELECT
         if sha256_file(self.paths.active / ".env") != self.env_sha256:
             raise RuntimeError("production_env_checksum_changed")
         ambiguous = self._psql_scalar(
-            "SELECT count(*) FROM wecom_delivery_jobs "
-            "WHERE status IN ('partial', 'delivery_unknown')"
+            "SELECT "
+            "(SELECT count(*) FROM wecom_delivery_jobs "
+            " WHERE status IN ('partial', 'delivery_unknown') "
+            "    OR text_status = 'unknown' OR image_status = 'unknown') + "
+            "(SELECT count(*) FROM wechat_mp_draft_jobs "
+            " WHERE status = 'outcome_unknown')"
         )
         if ambiguous != "0":
             raise RuntimeError("ambiguous_delivery_state_detected")
@@ -862,6 +940,8 @@ SELECT
             "bundle_sha256": self.manifest.bundle.sha256,
             "backup_id": self.backup_id,
             "runner_id": self.runner_id,
+            "service_count": len(LONG_RUNNING_SERVICES),
+            "services": list(LONG_RUNNING_SERVICES),
             "completed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
         evidence_path = (
@@ -873,15 +953,21 @@ SELECT
         evidence_path.chmod(0o600)
 
     def restart_previous(self) -> None:
+        if self.previous_manifest is None:
+            raise RuntimeError("previous_release_manifest_missing")
         self._compose(
             "up",
             "-d",
             "--no-build",
+            "--no-deps",
             "--force-recreate",
             *LONG_RUNNING_SERVICES,
             timeout=900,
         )
-        self._verify_services(LONG_RUNNING_SERVICES)
+        self._verify_services(
+            LONG_RUNNING_SERVICES,
+            expected_image=self.previous_manifest.image.reference,
+        )
 
     def rollback(self) -> None:
         if self.previous_snapshot is None or self.previous_manifest is None:
@@ -927,13 +1013,7 @@ SELECT
         rollback_path.chmod(0o600)
 
     def stop_writers(self) -> None:
-        for services in (
-            ("wecom-dispatcher",),
-            ("content-scheduler", "content-worker"),
-            ("governance-scheduler", "governance-worker"),
-            ("acquisition-scheduler", "acquisition-worker"),
-            ("acquisition-api",),
-        ):
+        for services in QUIESCE_PHASES:
             try:
                 self._compose("stop", "--timeout", "30", *services, timeout=120)
             except RuntimeError:
