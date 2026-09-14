@@ -1,4 +1,4 @@
-"""Independent checks for the frozen Xiaosai footer and explicitly blank QR reserve."""
+"""Independent checks for the fixed Xiaosai marketing footer and legacy replay."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import re
 from dataclasses import replace
 from hashlib import sha256
 from html import unescape
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -24,6 +25,10 @@ from app.application.services.wechat_official_account_draft import (
 )
 from app.domain.official_account_local import ArticlePackage, article_package_fingerprint
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
+from app.domain.official_account_upload_media import (
+    normalize_official_account_upload_footer,
+    normalize_official_account_upload_header,
+)
 from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION as V4,
 )
@@ -31,8 +36,25 @@ from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION as V5,
 )
 from app.domain.official_account_weekly_edition import WeeklyArticleRole
-from app.domain.official_account_xiaosai_footer import XIAOSAI_FOOTER_PATH
+from app.domain.official_account_xiaosai_footer import (
+    CHENGYUE_HEADER_MASTER_SHA256,
+    CHENGYUE_HEADER_PATH,
+    CHENGYUE_HEADER_PUBLICATION_SHA256,
+    LEGACY_XIAOSAI_FOOTER_PATH,
+    XIAOSAI_FOOTER_MASTER_SHA256,
+    XIAOSAI_FOOTER_PATH,
+    XIAOSAI_FOOTER_PUBLICATION_SHA256,
+    ChengyueIntroductionHeaderAsset,
+    XiaosaiFooterAsset,
+    XiaosaiMarketingFooterAsset,
+)
+from app.infrastructure import official_account_marketing_footer as marketing_footer_module
 from app.infrastructure.official_account_catalog import LocalOfficialAccountCatalogMediaProvider
+from app.infrastructure.official_account_marketing_footer import (
+    load_chengyue_introduction_header,
+    load_official_account_marketing_framing,
+    load_xiaosai_marketing_footer,
+)
 from app.infrastructure.official_account_media import OfficialAccountLocalMediaResolver
 from app.infrastructure.wechat_official_account.client import WeChatOfficialAccountApiClient
 from app.infrastructure.wechat_official_account.prepared_artifacts import (
@@ -90,25 +112,31 @@ def _catalog_bound_article(projection, candidate):
     return article.model_copy(update={"content_fingerprint": article_package_fingerprint(article)})
 
 
+def _without_current_header(html: str) -> str:
+    image_start = html.index(f'<img src="{CHENGYUE_HEADER_PATH}"')
+    section_start = html.rfind("<section", 0, image_start)
+    section_end = html.index("</section>", image_start) + len("</section>")
+    return html[:section_start] + html[section_end:]
+
+
 @pytest.mark.parametrize(
     "characters", [("xiao-sai",), ("sai-xiansheng",), ("xiao-sai", "sai-xiansheng"), ()]
 )
-async def test_actual_footer_resolver_requires_frozen_exact_xiaosai_catalog(
+async def test_legacy_footer_provider_requires_frozen_exact_xiaosai_catalog(
     strict_projection,  # noqa: F811
     tmp_path,
     characters,
 ):
     catalog, manifest, _entries, candidates = make_catalog(tmp_path, [characters])
     article = _catalog_bound_article(strict_projection, candidates[0])
-    resolver = OfficialAccountLocalMediaResolver(
-        image_asset_manifest=str(manifest), image_store=None
-    )
+    provider = LocalOfficialAccountCatalogMediaProvider(manifest)
     if characters != ("xiao-sai",):
         with pytest.raises(ValueError, match="approved reference changed"):
-            await resolver.read_xiaosai_footer(article)
+            await provider.load_xiaosai_footer(article)
         return
-    footer, body = await resolver.read_xiaosai_footer(article)
-    assert footer.role == "footer" and footer.path == XIAOSAI_FOOTER_PATH
+    footer, body = await provider.load_xiaosai_footer(article)
+    assert isinstance(footer, XiaosaiFooterAsset)
+    assert footer.role == "footer" and footer.path == LEGACY_XIAOSAI_FOOTER_PATH
     assert footer.characters == ("xiao-sai",) and footer.approved
     assert footer.qr_state == "pending"
     assert footer.sha256 == candidates[0].sha256 == sha256(body).hexdigest()
@@ -141,53 +169,143 @@ async def test_footer_catalog_metadata_drift_during_byte_read_is_rejected(
         return body
 
     monkeypatch.setattr(LocalOfficialAccountCatalogMediaProvider, "read_publication_bytes", changed)
-    resolver = OfficialAccountLocalMediaResolver(
-        image_asset_manifest=str(manifest), image_store=None
-    )
+    provider = LocalOfficialAccountCatalogMediaProvider(manifest)
     with pytest.raises(ValueError, match="character identity changed"):
-        await resolver.read_xiaosai_footer(article)
+        await provider.load_xiaosai_footer(article)
+
+
+async def test_current_framing_resolver_uses_sealed_repo_assets_not_article_assignment(
+    strict_projection,  # noqa: F811
+):
+    article = ArticlePackage.model_validate(strict_projection.manifest["article"])
+    resolver = OfficialAccountLocalMediaResolver(image_asset_manifest=None, image_store=None)
+    header, header_body, footer, body = await resolver.read_official_account_marketing_framing(
+        article
+    )
+    direct_header, direct_header_body, direct_footer, direct_body = (
+        load_official_account_marketing_framing()
+    )
+    assert header == direct_header == ChengyueIntroductionHeaderAsset()
+    assert header_body == direct_header_body
+    assert len(header_body) == header.byte_size == 716_140 < 1024 * 1024
+    assert sha256(header_body).hexdigest() == CHENGYUE_HEADER_PUBLICATION_SHA256
+    assert header.source_master_sha256 == CHENGYUE_HEADER_MASTER_SHA256
+    assert footer == direct_footer == XiaosaiMarketingFooterAsset()
+    assert body == direct_body
+    assert len(body) == footer.byte_size == 383_664 < 1024 * 1024
+    assert sha256(body).hexdigest() == XIAOSAI_FOOTER_PUBLICATION_SHA256
+    assert footer.source_master_sha256 == XIAOSAI_FOOTER_MASTER_SHA256
+
+
+def test_packaged_master_reproduces_the_sealed_publication_without_crop() -> None:
+    header, header_body = load_chengyue_introduction_header()
+    footer, body = load_xiaosai_marketing_footer()
+    module_path = marketing_footer_module.__file__
+    assert module_path is not None
+    asset_root = Path(module_path).resolve().parents[1] / "assets"
+    header_master = (asset_root / "chengyue-top-intro-master.png").read_bytes()
+    header_derivative = normalize_official_account_upload_header(header_master)
+    assert header_derivative.content == header_body
+    assert header_derivative.source_sha256 == header.source_master_sha256
+    assert header_derivative.sha256 == header.sha256
+    assert header_derivative.policy_version == header.derivative_policy_version
+    assert (header_derivative.width, header_derivative.height) == (
+        header.width,
+        header.height,
+    )
+    master = (asset_root / "xiaosai-marketing-footer-master.png").read_bytes()
+    derivative = normalize_official_account_upload_footer(master)
+    assert derivative.content == body
+    assert derivative.source_sha256 == footer.source_master_sha256
+    assert derivative.sha256 == footer.sha256
+    assert derivative.policy_version == footer.derivative_policy_version
+    assert (derivative.width, derivative.height) == (footer.width, footer.height)
+
+
+def test_backend_runtime_image_context_includes_the_four_framing_assets() -> None:
+    module_path = marketing_footer_module.__file__
+    assert module_path is not None
+    backend_root = Path(module_path).resolve().parents[2]
+    dockerfile = (backend_root / "Dockerfile").read_text(encoding="utf-8")
+    dockerignore = (backend_root / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "COPY app ./app" in dockerfile
+    assert not any(
+        line.strip().removeprefix("/").startswith("app/assets")
+        for line in dockerignore
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    assert {path.name for path in (backend_root / "app/assets").iterdir() if path.is_file()} >= {
+        "chengyue-top-intro-master.png",
+        "chengyue-top-intro.jpg",
+        "xiaosai-marketing-footer-master.png",
+        "xiaosai-marketing-footer.jpg",
+    }
+
+
+@pytest.mark.parametrize("target_name", ["master", "publication"])
+def test_packaged_footer_byte_tamper_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_name: str
+) -> None:
+    original_master = marketing_footer_module._MASTER_FILE
+    original_publication = marketing_footer_module._PUBLICATION_FILE
+    master = tmp_path / "master.png"
+    publication = tmp_path / "publication.jpg"
+    master.write_bytes(original_master.read_bytes())
+    publication.write_bytes(original_publication.read_bytes())
+    target = master if target_name == "master" else publication
+    target.write_bytes(target.read_bytes() + b"tampered")
+    monkeypatch.setattr(marketing_footer_module, "_MASTER_FILE", master)
+    monkeypatch.setattr(marketing_footer_module, "_PUBLICATION_FILE", publication)
+    with pytest.raises(ValueError, match="packaged bytes changed"):
+        load_xiaosai_marketing_footer()
+
+
+@pytest.mark.parametrize("target_name", ["master", "publication"])
+def test_packaged_header_byte_tamper_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_name: str
+) -> None:
+    original_master = marketing_footer_module._HEADER_MASTER_FILE
+    original_publication = marketing_footer_module._HEADER_PUBLICATION_FILE
+    master = tmp_path / "header-master.png"
+    publication = tmp_path / "header-publication.jpg"
+    master.write_bytes(original_master.read_bytes())
+    publication.write_bytes(original_publication.read_bytes())
+    target = master if target_name == "master" else publication
+    target.write_bytes(target.read_bytes() + b"tampered")
+    monkeypatch.setattr(marketing_footer_module, "_HEADER_MASTER_FILE", master)
+    monkeypatch.setattr(marketing_footer_module, "_HEADER_PUBLICATION_FILE", publication)
+    with pytest.raises(ValueError, match="packaged bytes changed"):
+        load_chengyue_introduction_header()
 
 
 @pytest.fixture
-async def final_cta(strict_projection, tmp_path):  # noqa: F811
-    """Existing six audited fixtures plus one real synthetic approved catalog reference."""
-    _catalog, manifest, _entries, candidates = make_catalog(tmp_path / "brand", [("xiao-sai",)])
+async def final_cta(strict_projection):  # noqa: F811
+    """Existing six audited fixtures plus the sealed approved framing bundle."""
     inputs = _inputs(strict_projection)
-    article = _catalog_bound_article(strict_projection, candidates[0]).model_copy(
-        update={"author": "程岳"}
-    )
+    article = inputs["article"].model_copy(update={"author": "程岳"})
     inputs["article"] = article.model_copy(
         update={"content_fingerprint": article_package_fingerprint(article)}
     )
-    inputs["evidence"] = tuple(
-        replace(
-            proof,
-            prompt_version=V5,
-            **(
-                {
-                    "reference_asset_ref": candidates[0].catalog_asset_ref,
-                    "reference_publication_sha256": candidates[0].sha256,
-                }
-                if proof.ordinal == 0
-                else {}
-            ),
-        )
-        for proof in inputs["evidence"]
-    )
+    inputs["evidence"] = tuple(replace(proof, prompt_version=V5) for proof in inputs["evidence"])
     inputs["layout_projection_version"] = STRICT_LAYOUT_PROJECTION_V2_VERSION
-    resolver = OfficialAccountLocalMediaResolver(
-        image_asset_manifest=str(manifest), image_store=None
-    )
-    footer, content = await resolver.read_xiaosai_footer(inputs["article"])
+    resolver = OfficialAccountLocalMediaResolver(image_asset_manifest=None, image_store=None)
+    (
+        header,
+        header_content,
+        footer,
+        footer_content,
+    ) = await resolver.read_official_account_marketing_framing(inputs["article"])
+    inputs["header"] = header
     inputs["footer"] = footer
-    inputs["files"][footer.path] = content
-    return inputs, manifest, build_strict_prepared_projection(**inputs)
+    inputs["files"][header.path] = header_content
+    inputs["files"][footer.path] = footer_content
+    return inputs, build_strict_prepared_projection(**inputs)
 
 
-async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
+async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_framing(
     final_cta, tmp_path
 ):
-    inputs, catalog_manifest, projection = final_cta
+    inputs, projection = final_cta
     validate_strict_prepared_projection(projection.manifest, projection.files)
     article = inputs["article"]
     # Fake persistence only; exercise the real production owner and real footer resolver.
@@ -245,7 +363,7 @@ async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
             )
             return inputs["files"][asset.path]
 
-    resolver = Resolver(image_asset_manifest=str(catalog_manifest), image_store=None)
+    resolver = Resolver(image_asset_manifest=None, image_store=None)
     owner = PreparedWeeklyDraftArtifactOwner(
         session_factory=Session,
         resolver=resolver,
@@ -273,18 +391,37 @@ async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
     prepared = owner.validate_child(artifact, role=WeeklyArticleRole.APPLICATION_CASE)
     assert prepared.body_html.encode() == projection.files["article-body.html"]
     html = prepared.body_html
-    assert html.count("我是程岳") == html.count("二维码待补") == html.count("认识小赛") == 1
-    assert html.count("欢迎关注") == 1 and "扫码" not in html
+    assert html.count("我是程岳") == 1
+    assert "二维码待补" not in html and "认识小赛" not in html and "欢迎关注" not in html
+    assert "扫码" not in html
     tail = html[len(_before_signature(html, "程岳")) :]
     assert len(re.findall(r"<img\b", tail)) == 1
     assert "href=" not in tail and "http" not in tail and "<svg" not in tail
-    reserve = re.search(r'<section style="[^"]*dashed[^>]*>(.*?)</section>', tail)[1]
-    assert re.sub(r"<[^>]*>", "", reserve) == "二维码待补" and "<img" not in reserve
+    assert '<section style="margin:0"><img ' in tail
+    assert re.search(r"(?<!max-)width:100%", tail) is None
+    assert tail.endswith("</section></section>")
+    assert tail.rfind("<img ") > tail.rfind("我是程岳")
+    assert re.fullmatch(r"<img [^>]+></section></section>", tail[tail.index("<img ") :])
+    first_image = re.search(r"<img\b[^>]*>", html)
+    assert first_image is not None and f'src="{CHENGYUE_HEADER_PATH}"' in first_image[0]
+    assert re.sub(r"<[^>]+>", "", html[: first_image.start()]) == ""
+    header_section_start = html.rfind("<section", 0, first_image.start())
+    header_section_end = html.index("</section>", first_image.end()) + len("</section>")
+    assert re.fullmatch(
+        r'<section style="margin:0"><img [^>]+></section>',
+        html[header_section_start:header_section_end],
+    )
     assert all("qr" not in path.lower() for path in projection.files)
     assert prepared.author == projection.manifest["author"] == "程岳"
     assert len(projection.manifest["visual_evidence"]) == 6
+    assert projection.manifest["media"][0] == inputs["header"].model_dump(mode="json")
     assert projection.manifest["media"][-1] == inputs["footer"].model_dump(mode="json")
-    assert [m.path for m in prepared.body_media] == re.findall(r'<img src="([^"]+)"', html)
+    assert projection.manifest["media"][-1]["version"].endswith("-v2")
+    assert projection.manifest["media"][-1]["qr_state"] == "ready"
+    local_image_paths = re.findall(r'<img src="([^"]+)"', html)
+    assert [m.path for m in prepared.body_media] == local_image_paths
+    assert local_image_paths[0] == CHENGYUE_HEADER_PATH
+    assert prepared.body_media[0].body == inputs["files"][CHENGYUE_HEADER_PATH]
     assert prepared.body_media[-1].path == XIAOSAI_FOOTER_PATH
     assert prepared.body_media[-1].body == inputs["files"][XIAOSAI_FOOTER_PATH]
     assert prepared.body_media[-1].body not in [
@@ -293,14 +430,19 @@ async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
 
     historical_inputs = {
         **inputs,
+        "header": None,
         "footer": None,
-        "files": {k: v for k, v in inputs["files"].items() if k != XIAOSAI_FOOTER_PATH},
+        "files": {
+            k: v
+            for k, v in inputs["files"].items()
+            if k not in {CHENGYUE_HEADER_PATH, XIAOSAI_FOOTER_PATH}
+        },
         "evidence": tuple(replace(p, prompt_version=V4) for p in inputs["evidence"]),
     }
-    old_html = (
-        build_strict_prepared_projection(**historical_inputs).files["article-body.html"].decode()
-    )
-    assert _before_signature(html, "程岳") == _before_signature(
+    historical_projection = build_strict_prepared_projection(**historical_inputs)
+    old_html = historical_projection.files["article-body.html"].decode()
+    assert len(projection.manifest["files"]) == len(historical_projection.manifest["files"]) + 2
+    assert _before_signature(_without_current_header(html), "程岳") == _before_signature(
         _without_context_notices(_without_body_captions(old_html)), "程岳"
     )
     assert CONTEXT_NOTICE not in html
@@ -341,11 +483,11 @@ async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
             prepared
         )
     assert receipt.not_published and calls.count("/cgi-bin/draft/add") == 1
-    assert uploaded == [m.body for m in prepared.body_media] and len(uploaded) == 7
+    assert uploaded == [m.body for m in prepared.body_media] and len(uploaded) == 8
     payload = payloads[0]
-    assert payload["author"] == "程岳" and payload["content"].count("二维码待补") == 1
+    assert payload["author"] == "程岳" and "二维码待补" not in payload["content"]
     assert re.findall(r'<img src="([^"]+)"', payload["content"]) == [
-        f"https://mmbiz.qpic.cn/inline-{i}.jpg" for i in range(1, 8)
+        f"https://mmbiz.qpic.cn/inline-{i}.jpg" for i in range(1, 9)
     ]
     replacement_urls = {
         media.path: f"https://mmbiz.qpic.cn/inline-{index}.jpg"
@@ -369,15 +511,17 @@ async def test_actual_prepared_owner_consumer_and_http_keep_one_blank_qr_footer(
         {"path": "assets/qr.jpg"},
         {"characters": ["sai-xiansheng"]},
         {"characters": ["xiao-sai", "sai-xiansheng"]},
-        {"qr_state": "ready"},
+        {"qr_state": "pending"},
         {"purpose": "add-contact"},
+        {"source_master_byte_size": 1},
+        {"derivative_policy_version": "unversioned"},
         {"sha256": "f" * 64},
     ],
 )
 async def test_tampered_footer_descriptor_rejects_before_any_client_call(
     final_cta, tmp_path, mutation
 ):
-    _arguments, _manifest, projection = final_cta
+    _arguments, projection = final_cta
     manifest = copy.deepcopy(projection.manifest)
     manifest["media"][-1].update(mutation)
     with pytest.raises(ValueError):
@@ -389,9 +533,36 @@ async def test_tampered_footer_descriptor_rejects_before_any_client_call(
     assert not fake.inline_uploads and not fake.thumb_uploads and not fake.drafts
 
 
-async def test_footer_bytes_and_required_v5_pair_are_not_optional(final_cta, tmp_path):
-    inputs, _catalog, projection = final_cta
-    changed = {**projection.files, XIAOSAI_FOOTER_PATH: b"not the frozen publication"}
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"role": "context"},
+        {"path": "assets/unrelated.jpg"},
+        {"purpose": "article-cover"},
+        {"source_master_byte_size": 1},
+        {"derivative_policy_version": "unversioned"},
+        {"sha256": "f" * 64},
+    ],
+)
+async def test_tampered_header_descriptor_rejects_before_any_client_call(
+    final_cta, tmp_path, mutation
+):
+    _arguments, projection = final_cta
+    manifest = copy.deepcopy(projection.manifest)
+    manifest["media"][0].update(mutation)
+    with pytest.raises(ValueError):
+        validate_strict_prepared_projection(manifest, projection.files)
+    fake = _FakeDraftClient()
+    source = _write(replace(projection, manifest=manifest), tmp_path / "tampered-header")
+    with pytest.raises(WeChatMpDraftPreparationError):
+        await WeChatOfficialAccountDraftOnlyService(client=fake).create_draft(source)
+    assert not fake.inline_uploads and not fake.thumb_uploads and not fake.drafts
+
+
+@pytest.mark.parametrize("path", [CHENGYUE_HEADER_PATH, XIAOSAI_FOOTER_PATH])
+async def test_framing_bytes_are_not_optional(final_cta, tmp_path, path):
+    _inputs_value, projection = final_cta
+    changed = {**projection.files, path: b"not the frozen publication"}
     with pytest.raises(ValueError):
         validate_strict_prepared_projection(projection.manifest, changed)
     fake = _FakeDraftClient()
@@ -399,9 +570,71 @@ async def test_footer_bytes_and_required_v5_pair_are_not_optional(final_cta, tmp
     with pytest.raises(WeChatMpDraftPreparationError):
         await WeChatOfficialAccountDraftOnlyService(client=fake).create_draft(source)
     assert not fake.inline_uploads and not fake.thumb_uploads and not fake.drafts
+
+
+@pytest.mark.parametrize("missing", ["header", "footer", "both"])
+def test_current_v5_framing_pair_is_required(final_cta, missing):
+    inputs, _projection = final_cta
+    changed = {**inputs}
+    changed["files"] = dict(inputs["files"])
+    if missing in {"header", "both"}:
+        changed["header"] = None
+        changed["files"].pop(CHENGYUE_HEADER_PATH)
+    if missing in {"footer", "both"}:
+        changed["footer"] = None
+        changed["files"].pop(XIAOSAI_FOOTER_PATH)
+    with pytest.raises(ValueError, match="framing"):
+        build_strict_prepared_projection(**changed)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_header",
+        "missing_footer",
+        "duplicate_header",
+        "duplicate_footer",
+        "reordered_header",
+        "reordered_footer",
+    ],
+)
+async def test_missing_duplicate_or_reordered_framing_rejects_before_client_call(
+    final_cta, tmp_path, mutation
+):
+    _inputs_value, projection = final_cta
+    manifest = copy.deepcopy(projection.manifest)
+    if mutation == "missing_header":
+        manifest["media"].pop(0)
+    elif mutation == "missing_footer":
+        manifest["media"].pop()
+    elif mutation == "duplicate_header":
+        manifest["media"].insert(0, copy.deepcopy(manifest["media"][0]))
+    elif mutation == "duplicate_footer":
+        manifest["media"].append(copy.deepcopy(manifest["media"][-1]))
+    elif mutation == "reordered_header":
+        manifest["media"][0], manifest["media"][1] = (
+            manifest["media"][1],
+            manifest["media"][0],
+        )
+    else:
+        manifest["media"][-1], manifest["media"][-2] = (
+            manifest["media"][-2],
+            manifest["media"][-1],
+        )
+    with pytest.raises(ValueError):
+        validate_strict_prepared_projection(manifest, projection.files)
+    fake = _FakeDraftClient()
+    source = _write(replace(projection, manifest=manifest), tmp_path / f"framing-{mutation}")
+    with pytest.raises(WeChatMpDraftPreparationError):
+        await WeChatOfficialAccountDraftOnlyService(client=fake).create_draft(source)
+    assert not fake.inline_uploads and not fake.thumb_uploads and not fake.drafts
+
+
+async def test_footer_bytes_and_required_legacy_v5_pair_are_not_optional(final_cta):
+    inputs, _projection = final_cta
     without_footer = {**inputs, "footer": None}
     without_footer["files"] = {k: v for k, v in inputs["files"].items() if k != XIAOSAI_FOOTER_PATH}
-    with pytest.raises(ValueError, match="footer"):
+    with pytest.raises(ValueError, match="framing"):
         build_strict_prepared_projection(**without_footer)
     for evidence in (
         tuple(replace(p, prompt_version=V4) for p in inputs["evidence"]),

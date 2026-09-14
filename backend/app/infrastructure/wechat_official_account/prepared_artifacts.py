@@ -375,14 +375,21 @@ class PreparedWeeklyDraftArtifactOwner:
                 if path in files:
                     raise ValueError("strict prepared media slot is duplicated")
                 files[path] = content
+        header = None
         footer = None
         if evidence and all(
             item.prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
             for item in evidence
         ):
-            footer, footer_content = await self._resolver.read_xiaosai_footer(article.article)
-            if footer.path in files:
-                raise ValueError("strict prepared footer path is duplicated")
+            (
+                header,
+                header_content,
+                footer,
+                footer_content,
+            ) = await self._resolver.read_official_account_marketing_framing(article.article)
+            if header.path in files or footer.path in files or header.path == footer.path:
+                raise ValueError("strict prepared framing path is duplicated")
+            files[header.path] = header_content
             files[footer.path] = footer_content
         projection = build_strict_prepared_projection(
             run_id=run_id,
@@ -396,6 +403,7 @@ class PreparedWeeklyDraftArtifactOwner:
             context_originals=originals,
             layout_projection_version=STRICT_LAYOUT_PROJECTION_V2_VERSION,
             visual_pipeline_version=visual_pipeline_version,
+            header=header,
             footer=footer,
         )
         target = self._child_path(projection.child_fingerprint)

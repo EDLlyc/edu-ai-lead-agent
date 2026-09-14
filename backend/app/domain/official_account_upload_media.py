@@ -16,6 +16,8 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 OFFICIAL_ACCOUNT_UPLOAD_BODY_POLICY_VERSION: Final = "official-account-upload-body-v1"
 OFFICIAL_ACCOUNT_UPLOAD_COVER_POLICY_VERSION: Final = "official-account-upload-cover-v1"
 OFFICIAL_ACCOUNT_UPLOAD_CONTEXT_POLICY_VERSION: Final = "official-account-upload-context-v1"
+OFFICIAL_ACCOUNT_UPLOAD_HEADER_POLICY_VERSION: Final = "official-account-upload-header-v1"
+OFFICIAL_ACCOUNT_UPLOAD_FOOTER_POLICY_VERSION: Final = "official-account-upload-footer-v1"
 _MAX_SOURCE_BYTES: Final = 10 * 1024 * 1024
 _MAX_INLINE_BYTES: Final = 1024 * 1024 - 1
 _MAX_THUMB_BYTES: Final = 64 * 1024 - 1
@@ -133,4 +135,45 @@ def normalize_official_account_upload_context(content: bytes) -> OfficialAccount
         mime_type="image/png" if preserve and image_format == "PNG" else "image/jpeg",
         size=image.size,
         policy_version=OFFICIAL_ACCOUNT_UPLOAD_CONTEXT_POLICY_VERSION,
+    )
+
+
+def normalize_official_account_upload_header(content: bytes) -> OfficialAccountUploadDerivative:
+    """Reproduce the approved full-composition Cheng Yue introduction banner exactly."""
+    image, _image_format, _clean = _decode(content)
+    if image.size != (3840, 1920):
+        raise ValueError("official-account header source geometry changed")
+    output = BytesIO()
+    image.save(
+        output,
+        format="JPEG",
+        quality=88,
+        optimize=True,
+        subsampling=0,
+    )
+    final = output.getvalue()
+    if len(final) > _MAX_INLINE_BYTES:
+        raise ValueError("official-account header derivative exceeds the inline bound")
+    return _result(
+        content,
+        final,
+        mime_type="image/jpeg",
+        size=image.size,
+        policy_version=OFFICIAL_ACCOUNT_UPLOAD_HEADER_POLICY_VERSION,
+    )
+
+
+def normalize_official_account_upload_footer(content: bytes) -> OfficialAccountUploadDerivative:
+    """Preserve the approved banner composition; convert only to meet the inline bound."""
+    image, image_format, clean = _decode(content)
+    if image.size != (2048, 1152):
+        raise ValueError("official-account footer source geometry changed")
+    preserve = image_format in {"JPEG", "PNG"} and clean and len(content) <= _MAX_INLINE_BYTES
+    final = content if preserve else _jpeg(image, maximum=_MAX_INLINE_BYTES)
+    return _result(
+        content,
+        final,
+        mime_type="image/png" if preserve and image_format == "PNG" else "image/jpeg",
+        size=image.size,
+        policy_version=OFFICIAL_ACCOUNT_UPLOAD_FOOTER_POLICY_VERSION,
     )

@@ -328,3 +328,44 @@ indexes distinct. Same embedding identity does not make brand text valid factual
 
 Each deferred phase needs executable rollback and its own migration acceptance before live
 writes. Better recall/visual relevance must be measured, not inferred from vendor unification.
+
+## September 11 fixed marketing-footer design
+
+Store the exact approved PNG at `app/assets/xiaosai-marketing-footer-master.png` so
+the existing backend image build (`COPY app ./app`) owns it. A pure versioned footer
+normalizer keeps 2048x1152 composition, performs no crop/downscale, and emits the
+sealed JPEG at `app/assets/xiaosai-marketing-footer.jpg`; the packaged loader verifies
+both files and recomputes the derivative before returning bytes.
+
+Use a new literal `official-account-xiaosai-final-cta-v2` descriptor containing the
+source-master and publication paths, MIME, byte sizes, hashes, geometry, derivative
+policy, `characters=("xiao-sai",)`, `qr_state=ready` and follow-account purpose.
+`OfficialAccountLocalMediaResolver.read_xiaosai_footer` becomes the future v2 owner
+and no longer consults `image_asset_manifest` or assignment zero. Retain the old
+`XiaosaiFooterAsset` and catalog validation branch plus a version-dispatch parser so
+persisted footer-v1 manifests reconstruct without migration or byte changes.
+
+The V2 renderer branches only on the typed descriptor. Footer-v1 output stays literal.
+Footer-v2 emits one inset author-signature section followed by a zero-margin banner
+wrapper; the image has `max-width:100%;height:auto;display:block;margin:0 auto` and
+is the last visible content. Prepared identity, HTML correspondence, URL headroom and
+draft upload reuse the existing single `footer` role, accepting both paths for replay
+while new owners emit only v2. No DB/schema/provider/prompt/audit changes are needed.
+
+## September 14 permanent two-banner framing design
+
+Treat the two user-supplied banners as one versioned framing bundle owned by the backend runtime,
+but keep separate typed `header` and `footer` descriptors and publication paths. The header master
+is the exact 3840x1920 PNG; its fixed JPEG derivative uses RGB, quality 88, `optimize=True`,
+`subsampling=0`, with no crop or resize. The footer retains its reviewed source/derivative policy.
+The packaged loader validates non-symlink files, exact byte identities, geometry, MIME and
+deterministic reproduction for both assets before returning either.
+
+Pass both descriptors through strict projection creation and validation. The V5 renderer emits
+the header wrapper immediately after the global root opens and before the cover; it emits the
+existing author signature followed by the footer immediately before the global root closes.
+Both image elements use the registered gzh-safe responsive style and no visible caption. Prepared
+identity includes both assets, the HTML/media correspondence check requires both exactly once,
+and the consumer preserves the HTML order for inline uploads and CDN URL rewriting. File-count and
+escaped-URL headroom reserve two framing slots. Legacy projection/version dispatch remains literal;
+no DB migration, image-generation call, audit call or historical draft update is introduced.

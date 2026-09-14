@@ -184,89 +184,120 @@ the same validated V5 identity; it removes only the generated internal notice,
 never the actual context caption/credit or stored rights/source fields. Wrong:
 mark unverified rights as approved simply because a notice is no longer visible.
 
-## Scenario: standardized V5 Xiaosai final CTA with an unassigned QR reserve
+## Scenario: standardized V5 fixed Cheng Yue/Xiaosai framing
 
 ### 1. Scope / trigger
 
-Future native V5 prepared Articles replace the legacy signature-only ending with
-one deterministic final region after the unchanged source cards. Historical V1,
-default V2, V4 and already-prepared artifacts retain their exact ending. The QR
-destination and image are not yet assigned, so this revision reserves layout only;
-it does not create, upload or claim a working QR code.
+Future native V5 prepared Articles add one deterministic Cheng Yue introduction
+banner before the existing cover and replace the legacy signature-only ending with
+one deterministic Xiaosai final region after the unchanged source cards. Historical V1,
+default V2, V4 and already-prepared footer-v1 artifacts retain their exact ending
+and remain reconstructable. On September 11 the user supplied and approved one
+fixed `小赛AI星球` banner containing its QR code; that asset supersedes the temporary
+blank-QR decision for newly built V5 artifacts only. On September 14 the user
+required the already-approved `程岳` introduction banner and that footer to frame
+every future automatically prepared Article; this does not rewrite old children.
 
 ### 2. Signatures
 
-- `XiaosaiFooterAsset` is a frozen typed projection with
+- Legacy `XiaosaiFooterAsset` remains a frozen typed projection with
   `version=official-account-xiaosai-final-cta-v1`, `role=footer`, `ordinal=0`,
   `path=assets/xiaosai-footer.jpg`, approved exact `characters=("xiao-sai",)`,
   catalog/ref/master/publication identity, decoded geometry and byte identity.
-- `LocalOfficialAccountCatalogMediaProvider.load_xiaosai_footer(article)` and
-  `OfficialAccountLocalMediaResolver.read_xiaosai_footer(article)` return the typed
-  footer plus its verified publication bytes.
-- `render_editor_handoff_v2_body(..., footer: XiaosaiFooterAsset | None = None)`
-  and `build_strict_prepared_projection(..., footer: XiaosaiFooterAsset | None = None)`
-  preserve their historical default; V5 prepared ownership supplies the footer.
+- New `XiaosaiMarketingFooterAsset` uses
+  `version=official-account-xiaosai-final-cta-v2`, `role=footer`, `ordinal=0`,
+  `path=assets/xiaosai-marketing-footer.jpg`, `qr_state=ready`, and purpose
+  `follow-xiaosai-official-account`. It binds the exact packaged 2,092,946-byte
+  2048x1152 PNG master SHA-256
+  `f4026a63229b6239997e2b8d0bac540d9a06c1ead8a933ff8dd0365333556996`
+  and the deterministic 383,664-byte JPEG publication SHA-256
+  `9040f474f43e20289e26a0de52c385e7c86f7f2ea3aa1e287525160bf355c3b4`.
+- `ChengyueIntroductionHeaderAsset` uses
+  `version=official-account-chengyue-intro-header-v1`, `role=header`, `ordinal=0`,
+  `path=assets/chengyue-top-intro.jpg`, and purpose
+  `introduce-chengyue-xiaosai-guide`. It binds the exact 5,882,944-byte 3840x1920
+  PNG master SHA-256
+  `8821b4f367ea2aac7309a38171794c6dc4b3f90ee5a62a75510a3508d28169ee`
+  to the 716,140-byte JPEG publication SHA-256
+  `bf3a505a4f61738132c869901f889a5f172d1291509b8963a6ce2d4785988223`.
+- `normalize_official_account_upload_header` owns
+  `official-account-upload-header-v1`: convert the RGB master with JPEG quality 88,
+  `optimize=True` and 4:4:4 (`subsampling=0`), without crop or resize.
+- `normalize_official_account_upload_footer` owns
+  `official-account-upload-footer-v1`. It retains 2048x1152 geometry and the full
+  composition, performs no crop/downscale/repaint, and converts the oversized PNG
+  only because the WeChat inline byte limit is `1024*1024-1`.
+- `OfficialAccountLocalMediaResolver.read_official_account_marketing_framing(article)`
+  atomically returns header/publication and footer/publication independently of
+  Article assignment zero or the mutable private catalog. The legacy
+  `read_xiaosai_footer`/catalog behavior remains for exact persisted replay.
+- Renderer and prepared-projection inputs accept the typed v1/v2 union while their
+  `None` defaults remain historical. New V5 ownership always supplies the current
+  header plus footer-v2.
 
 ### 3. Contracts
 
-The footer reuses the Article's already-frozen assignment zero approved reference,
-not a generated body image or a news/context image. The real producer reloads the
-catalog, verifies approval and exact character set `{'xiao-sai'}` before and after
-the byte read, and binds catalog version, public ref, master SHA, publication SHA,
-size and dimensions. The pure consumer reconstructs from the frozen Article,
-evidence, descriptor and bytes without selecting from current settings. This local
-hash/projection boundary proves consistency with the frozen producer inputs; it is
-not a cryptographic signature against wholesale replacement of every trusted input.
+Both source masters and both publication derivatives are repo-owned runtime assets
+included by `COPY app ./app`. The loader verifies exact paths, no symlinks, hashes,
+sizes and deterministic master-to-publication output for the complete pair before
+the owner packages either publication. The pure consumer validates each literal
+descriptor, publication hash, size, MIME and dimensions. Neither current settings
+nor Article reference selection can substitute another framing asset. Footer-v1
+keeps its old assignment-zero catalog validation path for persisted-artifact replay.
 
-Validated V5 evidence requires exactly one footer; non-V5 evidence forbids it.
-Keep it outside the five generated body assets and six model-audit subjects. Its
-manifest role/path is distinct from `body`, `context` and `cover`, but it participates
-in the canonical file set, child fingerprint, HTML image correspondence, escaped
-upload-URL reserve and actual WeChat inline upload order.
+New validated V5 ownership requires exactly one header and one footer; non-V5
+evidence forbids both. Keep them outside the five generated body assets and six
+model-audit subjects. Their manifest roles/paths are distinct from `body`, `context`
+and `cover`, but both participate in the canonical file set, child fingerprint,
+HTML image correspondence, escaped upload-URL reserve and actual WeChat inline order.
+Canonical current manifests place the header descriptor first and footer descriptor
+last; historical V5 footer-v1 children without the new header remain reconstructable.
 
-The final visible order is conclusion, unchanged sources, then one combined region:
-the exact `Article.author` signature, one Xiaosai image, restrained Xiaosai/family
-science-learning copy, one follow prompt and one labeled `二维码待补` reserve. The
-reserve is a styled non-image element: it has no `img`, `src`, URL, encoded payload,
-generated QR bytes or claim that scanning currently works. Do not emit the legacy
-likes/在看/转发 CTA in addition to this region. A future real QR needs a separate
-typed purpose/destination/byte contract and must not be smuggled into this placeholder.
+The first visible block and first `<img>` are the header banner, before the existing
+generated cover. The final visible order is conclusion, unchanged sources, the exact
+`Article.author` signature once, then the footer banner as the last visible content.
+Both wrappers have `margin:0`; both images use
+`max-width:100%;height:auto;display:block;margin:0 auto`, with no forced
+`width:100%`, crop or rounded-corner treatment and no visible caption. Remove
+footer-v1's separate portrait, duplicated marketing prose and `二维码待补` block from
+new artifacts. Do not emit the legacy likes/在看/转发 CTA in addition to this region.
 
 ### 4. Validation and error matrix
 
 | Condition | Required behavior |
 | --- | --- |
-| Homogeneous V5 evidence plus exact approved Xiaosai assignment zero | Require and render one footer media item and one blank QR reserve |
-| V5 footer absent, duplicated or on another role/path/ordinal | Reject canonical prepared construction before upload |
-| V4/default renderer carries a footer | Reject prepared construction; historical renderer output remains exact |
-| Sai Xiansheng, mixed/empty characters, catalog drift or changed publication bytes | Reject at the real catalog/resolver boundary |
-| Descriptor, Article assignment, evidence, geometry or bytes disagree | Reject producer/consumer reconstruction and make zero provider calls |
-| QR image/link/payload or functional scan promise appears | Reject acceptance; no QR media exists in this revision |
+| Homogeneous V5 evidence plus exact packaged framing | Render header first and footer last, each exactly once |
+| Current V5 header/footer absent, duplicated, reordered or on another role/path/ordinal | Reject canonical prepared construction before upload |
+| V4/default renderer carries framing | Reject prepared construction; historical renderer output remains exact |
+| Either packaged master, deterministic derivative, descriptor, geometry or publication bytes disagree | Reject producer/consumer reconstruction and make zero provider/social calls |
+| A caller tries to substitute the mutable catalog/Article assignment for v2 | Ignore it and resolve only the sealed packaged asset |
 
 ### 5. Good / base / bad cases
 
-Good: a new V5 Article ends once with `程岳`, its frozen Xiaosai reference image,
-brief follow copy and a visibly empty `二维码待补` box; the image is the final inline
-upload. Base: a V4 prepared child retains the prior signature-only bytes. Bad: append
-a local footer image in HTML without manifest bytes, relabel Sai Xiansheng as Xiaosai,
-or use an empty/fake QR `src` and tell readers to scan it.
+Good: a new V5 Article begins with the sealed Cheng Yue banner and ends once with
+`程岳`, followed by the sealed Xiaosai banner; uploads preserve that first/last order.
+Base: a V4 child retains signature-only bytes and an existing
+footer-v1 child rebuilds with its old portrait/blank reserve bytes. Bad: upload the
+masters despite the inline limit, regenerate/repaint the supplied designs, bind v2
+to assignment zero, or append an image without manifest bytes.
 
 ### 6. Tests required
 
-Exercise the real catalog and resolver, actual prepared owner, canonical consumer,
-draft preparer and `httpx.MockTransport`. Assert one author/signature, unchanged
-news sources and credits, exact final footer upload/order, one non-image
-`二维码待补`, and zero QR URL/bytes/scan claim. Cover V5-required/V4-forbidden,
-Sai-only/mixed/empty roles, catalog drift during read, every footer descriptor and
-byte tamper with zero HTTP calls, stable historical goldens, gzh validator with zero
-warnings/errors, and 320/430 rendering without overflow or broken images.
+Exercise both deterministic master conversions, packaged atomic loader, resolver,
+actual prepared owner, canonical consumer, draft preparer and `httpx.MockTransport`.
+Assert one author/signature, unchanged news sources/credits, exact first/last
+publication uploads and CDN rewrites, no duplicate copy/placeholder or banner
+captions, mobile-safe styling and two extra inline uploads. Cover either
+master/publication/descriptor/order tamper with zero HTTP calls,
+V5-required/V4-forbidden, footer-v1 replay, stable goldens, gzh zero warnings/errors,
+and 320/430 rendering without overflow or broken images.
 
 ### 7. Wrong vs correct
 
-Wrong: concatenate `<img src="">` and marketing prose after rendering, leaving the
-manifest and uploader unaware. Correct: carry one exact Xiaosai `footer` asset through
-catalog resolution, frozen prepared projection, canonical validation and upload;
-render the QR reserve as ordinary labeled HTML with no media or destination.
+Wrong: copy image URLs into HTML without typed media or recreate either design through
+a model. Correct: bind each exact master to its deterministic byte-bounded derivative,
+carry typed `header`/`footer` through prepared projection/canonical validation, and
+upload the same bytes first/last without changing either supplied composition.
 
 ## R30 extension: prospective native-observe draft readiness
 

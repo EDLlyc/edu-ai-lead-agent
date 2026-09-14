@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import SnapshotDescriptor
 from app.domain.official_account_local import ArticlePackage
-from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset
+from app.domain.official_account_xiaosai_footer import (
+    ChengyueIntroductionHeaderAsset,
+    OfficialAccountXiaosaiFooterAsset,
+    XiaosaiMarketingFooterAsset,
+)
 from app.infrastructure.db.models import (
     ImageArtifactModel,
     OfficialAccountArticleContextImageModel,
@@ -47,6 +51,10 @@ from app.infrastructure.official_account_local import (
     FIXTURE_IMAGE_MEDIA_TYPE,
     FIXTURE_IMAGE_SHA256,
     fixture_media_path,
+)
+from app.infrastructure.official_account_marketing_footer import (
+    load_official_account_marketing_framing,
+    load_xiaosai_marketing_footer,
 )
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor, MinioImageStore
 from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
@@ -114,14 +122,32 @@ class OfficialAccountLocalMediaResolver:
 
     async def read_xiaosai_footer(
         self, article: ArticlePackage
-    ) -> tuple[XiaosaiFooterAsset, bytes]:
-        if not self._image_asset_manifest:
+    ) -> tuple[OfficialAccountXiaosaiFooterAsset, bytes]:
+        """Load the current packaged footer; Article is retained for API compatibility."""
+        del article
+        try:
+            return await asyncio.to_thread(load_xiaosai_marketing_footer)
+        except ValueError as error:
             raise OfficialAccountMediaIntegrityError(
-                "Xiaosai footer approved catalog is unavailable"
-            )
-        return await LocalOfficialAccountCatalogMediaProvider(
-            self._image_asset_manifest
-        ).load_xiaosai_footer(article)
+                "Xiaosai marketing footer integrity check failed"
+            ) from error
+
+    async def read_official_account_marketing_framing(
+        self, article: ArticlePackage
+    ) -> tuple[
+        ChengyueIntroductionHeaderAsset,
+        bytes,
+        XiaosaiMarketingFooterAsset,
+        bytes,
+    ]:
+        """Resolve both approved V5 boundaries atomically from the runtime package."""
+        del article
+        try:
+            return await asyncio.to_thread(load_official_account_marketing_framing)
+        except ValueError as error:
+            raise OfficialAccountMediaIntegrityError(
+                "Official Account marketing framing integrity check failed"
+            ) from error
 
     async def read_verified_bytes(
         self,

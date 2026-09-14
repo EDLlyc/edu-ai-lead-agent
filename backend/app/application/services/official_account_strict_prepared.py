@@ -56,7 +56,16 @@ from app.domain.official_account_visual_pipeline import (
     native_visual_audit_releases,
     native_visual_plan_prompt_valid,
 )
-from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset, validate_xiaosai_footer
+from app.domain.official_account_xiaosai_footer import (
+    ChengyueIntroductionHeaderAsset,
+    OfficialAccountXiaosaiFooterAsset,
+    XiaosaiFooterAsset,
+    XiaosaiMarketingFooterAsset,
+    parse_chengyue_header_asset,
+    parse_xiaosai_footer_asset,
+    validate_chengyue_header,
+    validate_xiaosai_footer,
+)
 
 STRICT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v2-native-strict"
 OBSERVE_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v3-native-observe"
@@ -240,7 +249,8 @@ def build_strict_prepared_projection(
     context_originals: Mapping[int, bytes],
     layout_projection_version: StrictLayoutProjectionVersion = STRICT_LAYOUT_PROJECTION_VERSION,
     visual_pipeline_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
-    footer: XiaosaiFooterAsset | None = None,
+    header: ChengyueIntroductionHeaderAsset | None = None,
+    footer: OfficialAccountXiaosaiFooterAsset | None = None,
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -257,8 +267,14 @@ def build_strict_prepared_projection(
     v5_presentation = (
         evidence[0].prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
     )
-    if v5_presentation != (footer is not None):
-        raise ValueError("native prepared footer does not match frozen V5 policy")
+    if v5_presentation:
+        if header is None:
+            if not isinstance(footer, XiaosaiFooterAsset):
+                raise ValueError("native prepared framing does not match frozen V5 policy")
+        elif not isinstance(footer, XiaosaiMarketingFooterAsset):
+            raise ValueError("native prepared framing does not match frozen V5 policy")
+    elif header is not None or footer is not None:
+        raise ValueError("native prepared framing does not match frozen V5 policy")
     for proof in evidence:
         if isinstance(proof, ObserveVisualMediaEvidence) and (
             (
@@ -298,10 +314,14 @@ def build_strict_prepared_projection(
         raise ValueError("strict prepared source image count changed")
     output_files = dict(files)
     expected_paths = {item.path for item in media}
+    if header is not None:
+        expected_paths.add(header.path)
     if footer is not None:
         expected_paths.add(footer.path)
     if set(output_files) != expected_paths:
         raise ValueError("strict prepared media file set changed")
+    if header is not None:
+        validate_chengyue_header(header, content=output_files[header.path])
     if footer is not None:
         validate_xiaosai_footer(footer, article=article, content=output_files[footer.path])
     for asset in media:
@@ -369,12 +389,14 @@ def build_strict_prepared_projection(
         media=media,
         hide_body_captions=v5_presentation,
         hide_context_rights_notice=v5_presentation,
+        header=header,
         footer=footer,
     )
     body_html = compact_strict_xiaosai_html(rendered.body_html, version=layout_projection_version)
     validate_strict_upload_html_headroom(
         body_html,
         (
+            *((header.path,) if header is not None else ()),
             *tuple(item.path for item in media if item.role != "cover"),
             *((footer.path,) if footer is not None else ()),
         ),
@@ -397,6 +419,7 @@ def build_strict_prepared_projection(
         "author": article.author,
         "digest": article.digest,
         "media": [
+            *((header.model_dump(mode="json"),) if header is not None else ()),
             *(item.model_dump(mode="json") for item in media),
             *((footer.model_dump(mode="json"),) if footer is not None else ()),
         ],
@@ -443,16 +466,27 @@ def validate_strict_prepared_projection(
         or not isinstance(raw_derivatives, list)
     ):
         raise ValueError("strict prepared typed projections are missing")
+    header_items = [
+        item for item in raw_media if isinstance(item, dict) and item.get("role") == "header"
+    ]
     footer_items = [
         item for item in raw_media if isinstance(item, dict) and item.get("role") == "footer"
     ]
+    if len(header_items) > 1:
+        raise ValueError("strict prepared header media is duplicated")
     if len(footer_items) > 1:
         raise ValueError("strict prepared footer media is duplicated")
-    footer = XiaosaiFooterAsset.model_validate(footer_items[0]) if footer_items else None
+    header = parse_chengyue_header_asset(header_items[0]) if header_items else None
+    footer = parse_xiaosai_footer_asset(footer_items[0]) if footer_items else None
+    if header is not None:
+        if len(footer_items) != 1 or (
+            raw_media[0] is not header_items[0] or raw_media[-1] is not footer_items[0]
+        ):
+            raise ValueError("strict prepared framing media order changed")
     media = tuple(
         EditorHandoffMediaAsset.model_validate(item)
         for item in raw_media
-        if not isinstance(item, dict) or item.get("role") != "footer"
+        if not isinstance(item, dict) or item.get("role") not in {"header", "footer"}
     )
     evidence_fields = {
         item.name
@@ -492,6 +526,7 @@ def validate_strict_prepared_projection(
         evidence=evidence,
         files={
             **{asset.path: files[asset.path] for asset in media},
+            **({header.path: files[header.path]} if header is not None else {}),
             **({footer.path: files[footer.path]} if footer is not None else {}),
         },
         context_originals={item.ordinal: files[item.source_path] for item in derivatives},
@@ -499,6 +534,7 @@ def validate_strict_prepared_projection(
             manifest.get("layout_projection_version")
         ),
         visual_pipeline_version=policy,
+        header=header,
         footer=footer,
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):

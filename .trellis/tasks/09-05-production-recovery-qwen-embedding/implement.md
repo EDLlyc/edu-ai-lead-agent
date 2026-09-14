@@ -210,6 +210,49 @@ Context validation passes, but quality-guidelines.md exceeds the native 32 KiB i
 The check agent must detect this warning and read the complete required guidance in bounded
 chunks using child-side loading; a truncated injected prefix is not the complete quality contract.
 
+## September 11 fixed marketing-footer implementation
+
+1. Copy the user-provided PNG byte-for-byte into the backend runtime package and
+   produce its deterministic `official-account-upload-footer-v1` publication file.
+   Seal and test source/publication hashes, sizes, MIME, dimensions and exact replay.
+2. Add footer-v2 descriptor/parser/validation while retaining footer-v1 model,
+   renderer and assignment-zero validation literally. Route future prepared ownership
+   through the packaged loader, independent of mutable catalog configuration.
+3. Render the saved Article author once and the banner last at full available width;
+   remove footer-v1 portrait/copy/blank reserve only from new output. Keep all existing
+   source cards, body/context media, five-generation/six-audit identities and headroom.
+4. Exercise domain conversion/renderer, actual prepared owner, canonical consumer and
+   outbound draft payload with zero-call tamper cases. Re-run legacy V4/footer-v1
+   projections, focused Ruff/format/mypy/pytest and independent gzh/mobile validation.
+5. Commit/push/deployment/current-draft mutation remain main-session operations; this
+   implementation stage performs none of them.
+
+## September 14 permanent two-banner framing implementation
+
+1. Preserve the in-progress reviewed footer-v2 work. Add the exact Cheng Yue PNG master and its
+   already approved deterministic JPEG derivative to `backend/app/assets`; seal and reproduce
+   both identities in the existing pure upload-media boundary.
+2. Extend the framing domain/loader/resolver contract with a distinct typed header asset while
+   retaining all legacy footer decoding. New V5 prepared owners add both files/descriptors exactly
+   once; validation rejects missing, duplicated, reordered or byte-changed assets.
+3. Render the header as the first visible/image block and the footer as the last visible/image
+   block, with no captions and only the registered `max-width:100%;height:auto;display:block;`
+   image style. Update file-count and HTML upload-headroom logic for two extra inline URLs.
+4. Extend focused tests through the actual prepared owner, canonical consumer and outbound draft
+   payload. Assert first/last upload and CDN rewrite ordering, deterministic master replay,
+   runtime packaging and zero WeChat/provider calls on invalid input. Preserve V4/footer-v1 goldens.
+5. The implementation/check agents make no SSH, model, WeChat, git commit, push or deployment
+   calls. Main performs a reviewed scoped commit and production deployment only after gates pass.
+
+Implementation evidence: both agents completed without model, social or server writes. The
+implementer reported 44 focused tests and 53 related regressions passing; the independent checker
+found no scoped code defect and observed 51 passing cases before its broader run was stopped.
+Main then reran the complete focused file: 44 passed, Ruff format/lint passed, strict mypy passed
+for all eight changed source modules, task validation passed and `git diff --check` passed. The
+project gzh validator reported zero fatal errors and one content-only warning caused by existing
+synthetic fixture text using ASCII punctuation; the fixed header/footer markup itself produced no
+warning. Production activation and post-deploy evidence are recorded separately after commit.
+
 ## Operational gates
 
 - Natural September 6 morning execution satisfied recovery AC2/AC3 with three independent formal

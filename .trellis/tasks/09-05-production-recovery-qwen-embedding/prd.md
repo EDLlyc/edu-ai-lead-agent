@@ -245,3 +245,54 @@ do not expand this stage into unrelated historic-test cleanup or a release-frame
 No new provider calls, production configuration change, push, migration, old-week replay or
 publication is included in this local repair approval. Preserve the implemented exact-byte audit
 and durable idempotency protections; "make it run" is not permission to forge accepted results.
+
+### September 11 approved fixed Xiaosai marketing footer
+
+The user supplied `关注小赛.png` and explicitly required it at the bottom of every future
+Official Account article as the fixed marketing image. This supersedes only the temporary
+footer-v1 blank-QR decision; historical V1/V2/V4 and already-produced footer-v1 artifacts
+remain byte-exact and replayable.
+
+- R32 [P0]: Package the exact 2,092,946-byte 2048x1152 PNG master with SHA-256
+  `f4026a63229b6239997e2b8d0bac540d9a06c1ead8a933ff8dd0365333556996`.
+  Do not generate, repaint, crop or otherwise alter this source asset.
+- R33 [P0]: Because the WeChat inline ceiling is `1024*1024-1`, bind the master to
+  one deterministic uncropped, non-downscaled JPEG publication derivative. New V5
+  prepared owners emit a footer-v2 descriptor tied to both hashes, exact sizes,
+  dimensions and transform policy, independently of Article assignment zero or the
+  mutable private catalog. Consumer tamper checks and existing footer-v1 decoding remain.
+- R34 [P0]: Render exactly one `程岳`/saved-Article-author signature, then the banner
+  as the final full-width visible content. Remove the old separate portrait, duplicated
+  marketing prose and `二维码待补` block for new artifacts. Keep sources/credits in
+  their current order and do not add model generation/audit calls.
+- AC29: Focused tests prove deterministic source-to-publication bytes below 1 MiB,
+  runtime packaging, footer-v2 owner/consumer reconstruction, full-width WeChat-safe
+  image style, final upload order/count and zero provider calls on tampering. Historical
+  footer-v1 prepared projections and V4 golden bytes remain accepted unchanged.
+
+### September 14 approved permanent two-banner framing
+
+The user confirmed that the earlier three-draft edit was only a one-off and now explicitly
+requires both supplied images in every future automatically generated Official Account article.
+This extends R32-R34; it does not mutate historical drafts or authorize publication.
+
+- R35 [P0]: Package the exact 5,882,944-byte 3840x1920 Cheng Yue introduction PNG master
+  with SHA-256 `8821b4f367ea2aac7309a38171794c6dc4b3f90ee5a62a75510a3508d28169ee`.
+  Bind it to the already user-approved 716,140-byte JPEG publication derivative with SHA-256
+  `bf3a505a4f61738132c869901f889a5f172d1291509b8963a6ce2d4785988223`, produced without
+  crop or resize by RGB JPEG quality 88, optimize enabled and 4:4:4 subsampling.
+- R36 [P0]: For every newly prepared V5 child, render the Cheng Yue introduction banner as
+  the first visible block and first inline image, before the generated cover/layout; render the
+  fixed Xiaosai QR marketing banner as the final visible block and final inline image. Neither
+  banner has a visible generated caption. The saved Article author remains `程岳` under the
+  existing author contract.
+- R37 [P0]: Represent header and footer as separate typed, hash-bound media assets; package,
+  reconstruct, validate, upload and rewrite both through the canonical prepared-draft pipeline.
+  A missing, duplicated, reordered or tampered framing asset fails before any WeChat API call.
+  Historical footer-v1 and already persisted prepared children remain replayable byte-for-byte.
+- AC30: Focused owner/consumer/outbound-payload tests prove exact source-to-publication replay,
+  first/last HTML and upload order, both WeChat CDN rewrites, upload-count/headroom accounting,
+  no visible banner captions and zero social/provider calls on tampering. Runtime image contents
+  include both packaged masters/publications. Deployment verification must prove the running
+  revision contains both assets and that an offline future-child reconstruction satisfies the
+  same first/last contract; no old draft is edited as part of deployment.

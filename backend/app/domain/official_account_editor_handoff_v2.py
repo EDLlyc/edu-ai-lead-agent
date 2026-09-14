@@ -33,7 +33,12 @@ from app.domain.official_account_local import (
     ArticleQuoteBlock,
     fingerprint,
 )
-from app.domain.official_account_xiaosai_footer import XiaosaiFooterAsset, render_xiaosai_footer
+from app.domain.official_account_xiaosai_footer import (
+    ChengyueIntroductionHeaderAsset,
+    OfficialAccountXiaosaiFooterAsset,
+    render_chengyue_header,
+    render_xiaosai_footer,
+)
 
 EDITOR_HANDOFF_V2_RENDERER_VERSION: Final = "wechat-editor-handoff-renderer-v2-gzh-xiaosai-semantic"
 EDITOR_HANDOFF_V2_STYLE_VERSION: Final = "wechat-editor-handoff-style-v2-xiaosai-adaptive"
@@ -512,7 +517,8 @@ def render_editor_handoff_v2_body(
     media: tuple[EditorHandoffMediaAsset, ...],
     hide_body_captions: bool = False,
     hide_context_rights_notice: bool = False,
-    footer: XiaosaiFooterAsset | None = None,
+    header: ChengyueIntroductionHeaderAsset | None = None,
+    footer: OfficialAccountXiaosaiFooterAsset | None = None,
 ) -> RenderedEditorHandoffV2:
     recipe = select_layout_recipe(article, media)
     placements = plan_context_placements(article=article, media=media)
@@ -533,12 +539,16 @@ def render_editor_handoff_v2_body(
     emphasis.append(
         SemanticEmphasisBlock(block_path="lead", source_text=article.lead, spans=lead_spans)
     )
-    sections: list[str] = [
-        v1._global_open(),
-        _cover(article, recipe),
-        _toc(article, recipe),
-        _lead_card(article.lead, lead_spans),
-    ]
+    sections: list[str] = [v1._global_open()]
+    if header is not None:
+        sections.append(render_chengyue_header(header=header))
+    sections.extend(
+        (
+            _cover(article, recipe),
+            _toc(article, recipe),
+            _lead_card(article.lead, lead_spans),
+        )
+    )
     quote_ordinal = 0
     for section_index, section in enumerate(article.sections):
         sections.append(v1._chapter_heading(section_index, section.heading))

@@ -51,7 +51,11 @@ from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
 )
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER, WeeklyArticleRole
-from app.domain.official_account_xiaosai_footer import XIAOSAI_FOOTER_PATH
+from app.domain.official_account_xiaosai_footer import (
+    CHENGYUE_HEADER_PATH,
+    XIAOSAI_FOOTER_PATH,
+    XIAOSAI_FOOTER_PATHS,
+)
 
 _SHA256_LENGTH: Final = 64
 _ALLOWED_TAG_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
@@ -397,8 +401,14 @@ def _prepare_persisted_draft_source(
     projections = manifest.get("files")
     if not isinstance(projections, list) or not projections:
         raise ValueError("prepared draft file projection is missing")
-    footer_extra = 1 if strict and _has_v5_footer(manifest) else 0
-    if strict and not 7 + footer_extra <= len(projections) <= 11 + footer_extra:
+    framing_extra = (
+        2
+        if strict and _has_v5_framing(manifest)
+        else 1
+        if strict and _has_v5_footer(manifest)
+        else 0
+    )
+    if strict and not 7 + framing_extra <= len(projections) <= 11 + framing_extra:
         raise ValueError("strict prepared file count is invalid")
     files: dict[str, bytes] = {}
     projected_paths: set[str] = set()
@@ -514,7 +524,7 @@ def _prepared_file_path(value: object) -> str:
 
 
 def _has_v5_footer(manifest: dict[str, object]) -> bool:
-    """Only one fixed V5 footer can add one file/inline slot; canonical validation follows."""
+    """Recognize one replayable V5 footer file; canonical validation follows."""
     evidence, media = manifest.get("visual_evidence"), manifest.get("media")
     return (
         manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
@@ -529,7 +539,32 @@ def _has_v5_footer(manifest: dict[str, object]) -> bool:
         and sum(
             isinstance(item, dict)
             and item.get("role") == "footer"
+            and item.get("path") in XIAOSAI_FOOTER_PATHS
+            for item in media
+        )
+        == 1
+    )
+
+
+def _has_v5_framing(manifest: dict[str, object]) -> bool:
+    """Recognize the current two-file V5 framing bundle for count and role bounds."""
+    media = manifest.get("media")
+    return (
+        _has_v5_footer(manifest)
+        and isinstance(media, list)
+        and sum(
+            isinstance(item, dict)
+            and item.get("role") == "header"
+            and item.get("path") == CHENGYUE_HEADER_PATH
+            and item.get("ordinal") == 0
+            for item in media
+        )
+        == 1
+        and sum(
+            isinstance(item, dict)
+            and item.get("role") == "footer"
             and item.get("path") == XIAOSAI_FOOTER_PATH
+            and item.get("ordinal") == 0
             for item in media
         )
         == 1
@@ -567,11 +602,12 @@ def _prepare_media(
             raise ValueError("media path is duplicated")
         role = raw.get("role")
         if role not in {"body", "context", "cover"} and not (
-            role == "footer"
-            and preserve_upload_bytes
-            and _has_v5_footer(manifest)
-            and path == XIAOSAI_FOOTER_PATH
+            preserve_upload_bytes
             and raw.get("ordinal") == 0
+            and (
+                (role == "header" and _has_v5_framing(manifest) and path == CHENGYUE_HEADER_PATH)
+                or (role == "footer" and _has_v5_footer(manifest) and path in XIAOSAI_FOOTER_PATHS)
+            )
         ):
             raise ValueError("media role is invalid")
         media_type = raw.get("media_type")
