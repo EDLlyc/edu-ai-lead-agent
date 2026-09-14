@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 84
-- **Last Active**: 2026-09-02
+- **Total Sessions**: 85
+- **Last Active**: 2026-09-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1924 | Active |
+| `journal-1.md` | ~1953 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 85 | 2026-09-14 | Activate MWF single WeChat draft editions | `d2e709c0b6a5e47d1b91d2ec623de734aa3c0eb2` | `release/wechat-two-banner-framing-20260914` |
 | 84 | 2026-09-02 | Grounded IP retrieval evaluation | `4949d49` | `main` |
 | 83 | 2026-09-01 | Complete image evaluation and durable WeChat draft automation | `867ee4c`, `755050b` | `main` |
 | 82 | 2026-09-01 | 公众号周刊 V2 与持久化 DAG | `f79d846`, `f41a032` | `main` |

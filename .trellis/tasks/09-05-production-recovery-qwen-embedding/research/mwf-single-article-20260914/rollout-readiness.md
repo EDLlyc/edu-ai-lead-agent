@@ -94,5 +94,6 @@ with no symlinks. This does not replace under-lock verification at activation.
   exclusive mode flags, old-history hashes, new-edition count and private-history
   import outcome separately. No live model or draft call is needed for activation.
 
-Status: read-only baseline complete; product implementation/check/operator work
-in progress. No production activation or mutation in this slice yet.
+Final status: this captured baseline was revalidated under the deployment lock;
+the reviewed candidate was backed up, migrated and activated successfully. See
+`activation.md` for actual 0047 runtime/owner proof and the prospective first date.

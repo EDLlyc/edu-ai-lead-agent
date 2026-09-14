@@ -1922,3 +1922,32 @@ Added a backend-only grounded IP asset retrieval Seed Eval V1 with 41 assets, 10
 ### Status
 
 [OK] **Completed**
+
+
+## Session 85: Activate MWF single WeChat draft editions
+
+**Date**: 2026-09-14
+**Task**: Activate MWF single WeChat draft editions
+**Branch**: `release/wechat-two-banner-framing-20260914`
+
+### Summary
+
+Prospective MWF 09:00 prepare/10:00 single unpublished draft activated from 2026-09-16. Additive0047; history barrier and dedupe; 12 services+2 dependencies healthy; no historical replay or model/social test calls. Broad recovery task remains in progress.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d2e709c0b6a5e47d1b91d2ec623de734aa3c0eb2` | (see git log) |
+
+### Testing
+
+- [OK] 41 new unit + 8 isolated PostgreSQL + 42 operator tests; changed-scope lint/type pass; full mypy has two unrelated existing baseline errors.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Observe the next scheduled September16 edition and require its persisted WeChat draft acknowledgement before reporting actual delivery.

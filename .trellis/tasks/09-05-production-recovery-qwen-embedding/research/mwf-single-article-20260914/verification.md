@@ -58,5 +58,8 @@ production preflight, not evidence that activation has already occurred.
 
 ## Activation evidence
 
-Pending candidate commit, immutable image verification and checked server
-activation. No production state has been changed by this slice at this checkpoint.
+Completed: commit `d2e709c`, immutable image/archive and exact-base source proof,
+reviewed under-lock full backup/migration/activation, and fresh runtime verification.
+See `activation.md` for pinned hashes and evidence: 12 services plus two dependencies
+healthy, schema 0047, zero new editions, 14 history-owner rows with one ready barrier,
+old route disabled. Future draft acknowledgement is not yet observed or claimed.
