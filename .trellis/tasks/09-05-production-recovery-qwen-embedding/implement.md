@@ -253,6 +253,23 @@ project gzh validator reported zero fatal errors and one content-only warning ca
 synthetic fixture text using ASCII punctuation; the fixed header/footer markup itself produced no
 warning. Production activation and post-deploy evidence are recorded separately after commit.
 
+Production activation evidence, 2026-09-14 Asia/Shanghai: commits `45398ba`, `d408389` and
+`7170ba7` were pushed on `release/wechat-two-banner-framing-20260914`. The active backend image is
+`sha256:21c61eb62ffa8dd382a383a5c86fd1f78131eb35c4dcb7855fe6f3444b187c24`; both packaged banner
+smokes and the weekly/draft runtime loaders passed. The Comfly relay default is
+`gpt-image-2.5-sunburst`, ToAPIs retains `gpt-image-2`, and PostgreSQL upgraded transactionally from
+`20260909_0045` to `20260914_0046`. All 58 legacy strict generated-visual rows retained their old
+model identity; no production row was rewritten and no provider or WeChat call was made.
+
+The pre-migration custom-format backup is
+`/opt/edu-ai-release-backups/two-banner-model-20260914/backup/postgres-before-0046.dump`, SHA-256
+`f573f1c91d25d49d261576094d19d1516a6b126ba0dc7fe3b73132e2c17261cd`, 55,715,108 bytes. The
+protected environment identity remained
+`73acd704d32269faa453ba121bacbf32355d79f6bcc37d48d588329549b0e547`. Twelve application services
+were running; API health was `ok`; the recreated official-account local worker stayed running with
+restart count zero and logged its normal startup event. The active image retains both banner and
+model-compatibility archive labels.
+
 ## Operational gates
 
 - Natural September 6 morning execution satisfied recovery AC2/AC3 with three independent formal
