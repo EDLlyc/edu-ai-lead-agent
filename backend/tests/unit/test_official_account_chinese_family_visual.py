@@ -27,7 +27,9 @@ from app.domain.official_account_local import (
     ArticleSection,
 )
 from app.domain.official_account_visual_pipeline import (
+    LEGACY_STRICT_VISUAL_GENERATION_MODEL,
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    STRICT_VISUAL_POLICY,
     native_visual_plan_prompt_valid,
 )
 from app.domain.official_account_visual_pipeline import (
@@ -159,7 +161,7 @@ def test_literal_v4_prompt_and_request_golden_are_unchanged():
         == "268cd0d375038ca4a10c1612f0c5c044c48de2183834400a56f7620ec2f4f8e3"
     )
     assert (
-        _plan().request_fingerprint
+        _plan(model=LEGACY_STRICT_VISUAL_GENERATION_MODEL).request_fingerprint
         == "e93aef3b34284243fc06aa38479edb62e26d469ff7843bcc7f673899b7fd3d3f"
     )
     assert prompt(_article()) != historical
@@ -201,7 +203,7 @@ def test_v5_actual_planner_native_result_and_repository_validation():
         reference=_source(),
         reference_bytes=_jpeg(),
         provider="comfly",
-        model="gpt-image-2",
+        model=STRICT_VISUAL_POLICY.generation_model,
         plan_version=PLAN,
         prompt_version=V5,
     )
@@ -212,7 +214,7 @@ def test_v5_actual_planner_native_result_and_repository_validation():
     result = prepare_generated_visual_result(
         result=ImageGenerationResult(
             provider="comfly",
-            model="gpt-image-2",
+            model=STRICT_VISUAL_POLICY.generation_model,
             request_fingerprint=plan.request_fingerprint,
             provider_task_id=None,
             provider_upload_id=None,
@@ -226,6 +228,7 @@ def test_v5_actual_planner_native_result_and_repository_validation():
         max_bytes=12 * 1024 * 1024,
     )
     assert (result.result.width, result.result.height) == (1536, 1024)
+    _validate_generated_visual_plan(replace(plan, model=LEGACY_STRICT_VISUAL_GENERATION_MODEL))
     with pytest.raises(ValueError):
         _validate_generated_visual_plan(replace(plan, prompt_version="unknown"))
 

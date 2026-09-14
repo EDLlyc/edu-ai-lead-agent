@@ -59,6 +59,7 @@ from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+    STRICT_VISUAL_GENERATION_MODELS,
     STRICT_VISUAL_POLICY,
     native_visual_plan_prompt_valid,
 )
@@ -308,8 +309,9 @@ def plan_generated_body_visual(
     ):
         raise ValueError("generated visual publication identity is incomplete")
     if native:
-        if provider != STRICT_VISUAL_POLICY.generation_provider or model != (
-            STRICT_VISUAL_POLICY.generation_model
+        if (
+            provider != STRICT_VISUAL_POLICY.generation_provider
+            or model not in STRICT_VISUAL_GENERATION_MODELS
         ):
             raise ValueError("strict visual generation provider identity is invalid")
         validate_strict_visual_reference(reference, reference_bytes)

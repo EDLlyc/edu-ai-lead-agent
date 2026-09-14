@@ -9,7 +9,7 @@ Account draft-job schema is defined in
 the acquisition and governance repositories under
 [`infrastructure/db`](../../../backend/app/infrastructure/db), and migrated by
 [`backend/alembic/versions`](../../../backend/alembic/versions). The current unique head is
-`20260901_0042`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
+`20260914_0046`. PostgreSQL/pgvector/MinIO integration tests, not SQLite or `create_all()`, are the
 executable persistence contract.
 
 The database is the durable source of truth for pipeline runs, jobs, source snapshots, evidence,
@@ -180,6 +180,9 @@ audit records and must not be rewritten in place.
 - Acquisition relevance revision: `20260729_0003` in
   [`20260729_0003_title_relevance_handoff.py`](../../../backend/alembic/versions/20260729_0003_title_relevance_handoff.py).
 - Factual-governance foundation revision: `20260729_0004`; the current repository head is
+  `20260914_0046` (accepts legacy and current Comfly strict-visual model identities without row
+  rewrites and fences downgrade when current-model data exists), after `20260909_0045` (adds the
+  Chinese-family prompt), `20260907_0043` (adds the native strict visual pipeline), and
   `20260901_0042` (adds durable default-off WeChat Official Account draft jobs, exact three-role
   items, fenced attempts, and populated-downgrade refusal), after `20260901_0041` (adds immutable,
   final-SHA-bound official-account generated-visual evaluation

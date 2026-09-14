@@ -17,6 +17,7 @@ from app.application.ports.official_account_strict_visual import (
     strict_audit_record_fingerprint,
 )
 from app.application.services.official_account_local import OfficialAccountLocalExecutor
+from app.domain.official_account_visual_pipeline import STRICT_VISUAL_POLICY
 from app.infrastructure.official_account_local import (
     DeterministicFakeOfficialAccountArticleAuditor,
     DeterministicFakeOfficialAccountArticleGenerator,
@@ -133,7 +134,7 @@ class _Generator:
         source.resize((1536, 1024)).save(body, format="JPEG", quality=85)
         return ImageGenerationResult(
             provider="comfly",
-            model="gpt-image-2",
+            model=STRICT_VISUAL_POLICY.generation_model,
             request_fingerprint=request.request_fingerprint,
             provider_task_id=None,
             provider_upload_id=None,

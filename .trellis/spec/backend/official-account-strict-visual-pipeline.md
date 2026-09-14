@@ -425,9 +425,11 @@ original meaning. Existing completed weekly editions and drafts are never replay
   `layout_projection_version`; the current strict owner explicitly chooses
   `STRICT_LAYOUT_PROJECTION_V2_VERSION`. The validator dispatches from the saved manifest
   value through `strict_layout_projection_version(value)`, never today's producer default.
-- Candidate migration `20260907_0043` extends actual production head `20260901_0042`; it adds
-  generated-intent ownership/geometry columns and `official_account_strict_visual_audits`.
-  Do not mix later unrelated Reviewer migration branches into this release.
+- Migration `20260907_0043` adds generated-intent ownership/geometry columns and
+  `official_account_strict_visual_audits`; `20260909_0045` adds the Chinese-family prompt;
+  `20260914_0046` broadens only the native model check to legacy `gpt-image-2` plus current
+  `gpt-image-2.5-sunburst`, without rewriting historical rows. Its downgrade refuses while a
+  current-model strict row exists.
 
 ## 3. Contracts
 
@@ -441,9 +443,12 @@ deterministic selection must not claim embedding retrieval.
 
 Only the Article worker receives the global `OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED`
 value as execution permission. Shared service defaults pin it false and image quality mode off.
-Strict execution additionally requires enabled images, the existing Comfly `gpt-image-2` route,
-exact vision base `https://open.bigmodel.cn/api/paas/v4`, nonblank direct Zhipu credentials and
-`IMAGE_QUALITY_AUDIT_MODEL=glm-5v-turbo`; Compose injects the audit model only into that worker.
+Strict execution additionally requires enabled images, the Comfly relay
+`gpt-image-2.5-sunburst` route, exact vision base `https://open.bigmodel.cn/api/paas/v4`, nonblank
+direct Zhipu credentials and `IMAGE_QUALITY_AUDIT_MODEL=glm-5v-turbo`; Compose injects the audit
+model only into that worker. `IMAGE_MODEL` owns the current Comfly default, while
+`TOAPIS_IMAGE_MODEL="gpt-image-2"` remains the provider-specific ToAPIs default. Strict persistence
+accepts both values so historical rows remain readable, but every other model remains invalid.
 A running strict worker without generated execution rejects before engine construction/claim.
 Do not distribute new provider secrets to make policy-only processes pass validation.
 
@@ -560,6 +565,9 @@ A sample fitting this budget does not prove every future article fits.
 | Strict policy-only API/weekly process, no image credentials | Same full V4 identity; no image client construction |
 | Active strict Article worker, execution disabled | Reject before database engine or queue claim |
 | Strict executor missing key or wrong pinned model/route | Settings rejects before provider work |
+| Strict generated visual uses legacy/current Comfly model | Preserve legacy rows and accept current rows under `20260914_0046` |
+| Strict generated visual uses any other model | Repository and PostgreSQL constraint reject it |
+| Downgrade requested while a current-model strict row exists | Refuse at `20260914_0046`; do not rewrite or delete the row |
 | Frozen strict run, execution capability subsequently disabled | Explicit strict_visual_configuration_changed; no legacy/text/image fallback |
 | Unknown/mixed policy or V4 without strict marker | Reject before provider dispatch |
 | No eligible complete reference | Fail preflight; zero image-generation calls |
@@ -587,12 +595,18 @@ Good: a new frozen strict run reuses three approved references across five disti
 scenes, stores every generated success, audits five upload JPEGs and its upload thumbnail once,
 and creates only its new three-role unpublished draft batch after exact-byte validation.
 
+Good: upgrading from `20260909_0045` retains an existing `gpt-image-2` strict row byte-for-byte,
+then accepts a new `gpt-image-2.5-sunburst` row with the same geometry and lineage constraints.
+
 Base: existing absent-policy ready Articles and their already-successful draft job remain
 unchanged after deploying compatible code. Observe remains observational, not a strict verdict.
 
 Bad: restarting an old weekly input under today's strict settings generates replacement
 Articles; or a reviewed 1536×654 preview cover is subsequently cropped to a different unreviewed
 1175×500 upload. Neither is an acceptable implementation of this contract.
+
+Bad: changing only the Settings default while leaving the strict policy, repository, ORM check or
+database constraint pinned to the old model; the process may start but fail after a paid result.
 
 ## 6. Required tests and release evidence
 
@@ -611,6 +625,9 @@ Articles; or a reviewed 1536×654 preview cover is subsequently cropped to a dif
 - Real isolated PostgreSQL tests cover upgrade from populated legacy 0042, zero-data downgrade,
   populated downgrade refusal, SQL NULL negatives, concurrent claims, stale completion,
   calling/unknown recovery, retained siblings and independent six-audit readiness.
+- `test_official_account_image_model_migration.py` upgrades a populated `20260909_0045` database,
+  verifies both model identities in real PostgreSQL, rejects an unsupported model, preserves the
+  legacy row, and proves current-model data fences downgrade.
 - End-to-end prepared consumer tests cover source/rights parity, byte-identical thumbnail,
   tampering/missing proofs, three-role policy consistency, pre-upload length rejection,
   escaped URL 256/257 boundaries and repeated-pass draft idempotency.
@@ -654,6 +671,13 @@ silence Settings errors.
 
 Correct: propagate only immutable policy to its four identity owners; restrict execution and
 strict model prerequisites to the Article worker, preserving existing secret ownership.
+
+Wrong: update `IMAGE_MODEL` and the worker startup validator but leave the strict database model
+check at `gpt-image-2`.
+
+Correct: update the provider default, strict policy, repository validators, ORM metadata and a
+forward Alembic constraint together; accept the old identity only for compatibility and never
+rewrite its provenance.
 
 Wrong: change compact-v1's implementation or raise the upload bound to fit a long article.
 

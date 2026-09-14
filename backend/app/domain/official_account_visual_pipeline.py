@@ -116,6 +116,10 @@ class StrictVisualPolicy:
 
 
 STRICT_VISUAL_POLICY = StrictVisualPolicy()
+LEGACY_STRICT_VISUAL_GENERATION_MODEL = "gpt-image-2"
+STRICT_VISUAL_GENERATION_MODELS = frozenset(
+    {LEGACY_STRICT_VISUAL_GENERATION_MODEL, STRICT_VISUAL_POLICY.generation_model}
+)
 
 
 def strict_visual_audit_criteria(

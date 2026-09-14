@@ -150,7 +150,7 @@ def _article() -> StoredOfficialAccountArticle:
     )
 
 
-def _plan(*, native: bool = True):
+def _plan(*, native: bool = True, model: str | None = None):
     article = _article()
     return plan_generated_body_visual(
         run_id=UUID(int=2),
@@ -165,7 +165,7 @@ def _plan(*, native: bool = True):
         reference=_source(),
         reference_bytes=_jpeg(),
         provider="comfly",
-        model=STRICT_VISUAL_POLICY.generation_model if native else "gpt-image-2",
+        model=model or (STRICT_VISUAL_POLICY.generation_model if native else "gpt-image-2"),
         plan_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
         if native
         else OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,

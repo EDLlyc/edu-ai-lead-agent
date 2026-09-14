@@ -271,7 +271,7 @@ async def test_forward_only_head_refuses_even_empty_database_downgrade(integrati
         await asyncio.to_thread(command.downgrade, config, "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260909_0045"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260914_0046"
         )
     await asyncio.to_thread(command.upgrade, config, "head")
 
@@ -497,7 +497,7 @@ async def test_schema_upgrade_and_populated_downgrade_fence(integration_context)
         await asyncio.to_thread(command.downgrade, Config("backend/alembic.ini"), "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260909_0045"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260914_0046"
         )
 
 

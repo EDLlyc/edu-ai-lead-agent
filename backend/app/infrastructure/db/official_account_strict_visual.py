@@ -42,6 +42,7 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    STRICT_VISUAL_GENERATION_MODELS,
     STRICT_VISUAL_POLICY,
     native_visual_audit_releases,
     native_visual_plan_prompt_valid,
@@ -190,7 +191,7 @@ async def _validate_subject(
         or visual.output_size != "1536x1024"
         or (visual.width, visual.height) != (1536, 1024)
         or visual.provider != "comfly"
-        or visual.model != "gpt-image-2"
+        or visual.model not in STRICT_VISUAL_GENERATION_MODELS
         or visual.request_fingerprint != subject.generated_plan_request_fingerprint
         or visual.sha256 != subject.publication_sha256
         or visual.reference_asset_ref != subject.reference_asset_ref

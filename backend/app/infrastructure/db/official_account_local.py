@@ -82,6 +82,7 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
+    STRICT_VISUAL_GENERATION_MODELS,
     native_visual_audit_releases,
     native_visual_plan_prompt_valid,
 )
@@ -2328,7 +2329,7 @@ def _validate_generated_visual_plan(plan: OfficialAccountGeneratedVisualPlan) ->
         == OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION
         and plan.output_size == "1536x1024"
         and plan.provider == "comfly"
-        and plan.model == "gpt-image-2"
+        and plan.model in STRICT_VISUAL_GENERATION_MODELS
     )
     is_publication = (
         (

@@ -85,14 +85,17 @@ async def test_additive_migration_preserves_v4_and_native_guards(migration_conte
     await asyncio.to_thread(command.upgrade, config, "head")
     async with context.session_factory() as session:
         assert await session.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260909_0045"
+            "20260914_0046"
         )
-        assert constraint_before == await session.scalar(
+        constraint_after = await session.scalar(
             text(
                 "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
-                "WHERE conname = 'ck_official_generated_visuals_native_intent'"
+                "WHERE conrelid = 'official_account_generated_visuals'::regclass "
+                "AND pg_get_constraintdef(oid) LIKE '%gpt-image-2.5-sunburst%'"
             )
         )
+        assert constraint_before != constraint_after
+        assert constraint_after is not None and "gpt-image-2" in constraint_after
         original = await session.get(OfficialAccountGeneratedVisualModel, old.id)
         assert original.prompt_version == V4 and original.sha256 == old.sha256
         values = {
@@ -143,7 +146,7 @@ async def test_additive_migration_preserves_v4_and_native_guards(migration_conte
         await asyncio.to_thread(command.downgrade, config, "20260907_0043")
     async with context.session_factory() as session:
         assert await session.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260909_0045"
+            "20260914_0046"
         )
         assert (await session.get(OfficialAccountGeneratedVisualModel, old.id)).prompt_version == V4
         assert (await session.get(OfficialAccountGeneratedVisualModel, new_id)).prompt_version == V5
