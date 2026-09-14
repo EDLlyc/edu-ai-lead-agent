@@ -4,7 +4,10 @@
 
 Prospective native V5 prepared drafts with two-banner framing use readable source
 attribution. This fixes duplicate evidence rows and stripped external anchors.
-Implemented locally; separate release evidence must establish deployment.
+Deployed in the scoped 2026-09-14 source-overlay release, application commit
+`47820643219700d8ca7e616bd0205d6baad925d5`. Activation and health evidence:
+`.trellis/tasks/09-05-production-recovery-qwen-embedding/research/readable-source-release-20260914.md`.
+This does not migrate historical drafts or establish standard-release provenance.
 
 ## 2. Signatures
 
