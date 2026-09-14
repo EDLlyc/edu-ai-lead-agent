@@ -149,9 +149,9 @@ class WeChatOfficialAccountDraftJobService:
                     article_fingerprint=source.article_fingerprint,
                     content_fingerprint=source.content_fingerprint,
                     policy_fingerprint=wechat_draft_policy_fingerprint(
-                        content_source_url=None,
-                        need_open_comment=False,
-                        only_fans_can_comment=False,
+                        content_source_url=draft.content_source_url,
+                        need_open_comment=draft.need_open_comment,
+                        only_fans_can_comment=draft.only_fans_can_comment,
                     ),
                 )
             )

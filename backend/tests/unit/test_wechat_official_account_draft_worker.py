@@ -121,10 +121,13 @@ class _HistoricalArtifactStore(_ArtifactStore):
 
 
 class _Preparer:
-    def __init__(self, batch: WeChatDraftArtifactBatch, *, fail: bool = False) -> None:
+    def __init__(
+        self, batch: WeChatDraftArtifactBatch, *, fail: bool = False, source_url: str | None = None
+    ) -> None:
         self.batch = batch
         self.fail = fail
         self.calls = 0
+        self.source_url = source_url
 
     def prepare_weekly(
         self,
@@ -148,7 +151,7 @@ class _Preparer:
                 title=f"title {item.ordinal}",
                 author="赛先生",
                 digest="digest",
-                content_source_url=None,
+                content_source_url=self.source_url,
                 body_html='<p><img src="assets/body.png" alt="body"></p>',
                 body_media=(
                     WeChatPreparedMedia(
@@ -239,7 +242,9 @@ def _projection(
     )
 
 
-def _command(batch: WeChatDraftArtifactBatch) -> WeChatDraftJobEnqueue:
+def _command(
+    batch: WeChatDraftArtifactBatch, *, source_url: str | None = None
+) -> WeChatDraftJobEnqueue:
     from app.domain.wechat_official_account_draft_jobs import WeChatDraftJobItemInput
 
     items = tuple(
@@ -251,7 +256,7 @@ def _command(batch: WeChatDraftArtifactBatch) -> WeChatDraftJobEnqueue:
             article_fingerprint=source.article_fingerprint,
             content_fingerprint=source.content_fingerprint,
             policy_fingerprint=wechat_draft_policy_fingerprint(
-                content_source_url=None,
+                content_source_url=source_url,
                 need_open_comment=False,
                 only_fans_can_comment=False,
             ),
@@ -762,6 +767,32 @@ async def test_reconcile_preserves_discovery_skips_and_is_idempotent() -> None:
     assert first.enqueued == 1 and first.existing == 0
     assert second.enqueued == 0 and second.existing == 1
     assert first.skipped_by_code == {"weekly_edition_live_provenance_required": 2}
+
+
+@pytest.mark.asyncio
+async def test_readable_native_source_policy_survives_enqueue_and_worker_preflight() -> None:
+    batch = _artifact_batch()
+    source_url = "https://education.news.cn/fixture/article.html"
+    repository = _Repository(_command(batch, source_url=source_url))
+    store = _ArtifactStore(batch)
+    preparer = _Preparer(batch, source_url=source_url)
+    service = WeChatOfficialAccountDraftJobService(
+        repository=repository,
+        artifact_store=store,
+        account_fingerprint=_ACCOUNT,
+        max_attempts=3,
+        max_image_bytes=1024,
+        clock=lambda: _NOW,
+        preparer=preparer,
+    )
+    first = await service.reconcile()
+    second = await service.reconcile()
+    assert first.enqueued == 1 and second.existing == 1
+    client = _Client(repository)
+    status = await _executor(repository, store, preparer, client).execute_next("wechat.worker.test")
+    assert status is not None and repository.succeeded_fingerprint is not None
+    assert repository.known_failure is None
+    assert client.calls == ["media_uploadimg", "material_add_thumb", "draft_add"]
 
 
 @pytest.mark.asyncio

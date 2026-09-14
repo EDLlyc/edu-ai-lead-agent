@@ -33,6 +33,10 @@ from app.domain.official_account_local import (
     article_package_fingerprint,
     fingerprint,
 )
+from app.domain.official_account_source_presentation import (
+    SourcePresentationVersion,
+    source_presentation_version,
+)
 from app.domain.official_account_strict_layout import (
     STRICT_ESCAPED_UPLOAD_URL_MAX_CHARACTERS,
     STRICT_LAYOUT_PROJECTION_VERSION,
@@ -251,6 +255,7 @@ def build_strict_prepared_projection(
     visual_pipeline_version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION,
     header: ChengyueIntroductionHeaderAsset | None = None,
     footer: OfficialAccountXiaosaiFooterAsset | None = None,
+    source_presentation: SourcePresentationVersion | None = None,
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -267,6 +272,9 @@ def build_strict_prepared_projection(
     v5_presentation = (
         evidence[0].prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
     )
+    source_presentation = source_presentation_version(source_presentation)
+    if source_presentation is not None and not v5_presentation:
+        raise ValueError("readable sources require prospective V5 presentation")
     if v5_presentation:
         if header is None:
             if not isinstance(footer, XiaosaiFooterAsset):
@@ -391,6 +399,7 @@ def build_strict_prepared_projection(
         hide_context_rights_notice=v5_presentation,
         header=header,
         footer=footer,
+        source_presentation=source_presentation,
     )
     body_html = compact_strict_xiaosai_html(rendered.body_html, version=layout_projection_version)
     validate_strict_upload_html_headroom(
@@ -440,6 +449,9 @@ def build_strict_prepared_projection(
         "draft_only": True,
         "mobile_validation": "not_run",
     }
+    if source_presentation is not None:
+        identity["source_presentation_version"] = source_presentation
+        identity["content_source_url"] = article.sources[0].source_url
     identity["content_fingerprint"] = _hash(identity)
     child_fingerprint = _hash(identity)
     manifest = {**identity, "child_fingerprint": child_fingerprint}
@@ -536,6 +548,9 @@ def validate_strict_prepared_projection(
         visual_pipeline_version=policy,
         header=header,
         footer=footer,
+        source_presentation=source_presentation_version(
+            manifest.get("source_presentation_version")
+        ),
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):
         raise ValueError("strict prepared canonical projection changed")

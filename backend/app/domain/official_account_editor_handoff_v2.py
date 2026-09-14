@@ -33,6 +33,11 @@ from app.domain.official_account_local import (
     ArticleQuoteBlock,
     fingerprint,
 )
+from app.domain.official_account_source_presentation import (
+    SourcePresentationVersion,
+    render_readable_sources,
+    source_presentation_version,
+)
 from app.domain.official_account_xiaosai_footer import (
     ChengyueIntroductionHeaderAsset,
     OfficialAccountXiaosaiFooterAsset,
@@ -519,7 +524,9 @@ def render_editor_handoff_v2_body(
     hide_context_rights_notice: bool = False,
     header: ChengyueIntroductionHeaderAsset | None = None,
     footer: OfficialAccountXiaosaiFooterAsset | None = None,
+    source_presentation: SourcePresentationVersion | None = None,
 ) -> RenderedEditorHandoffV2:
+    source_presentation = source_presentation_version(source_presentation)
     recipe = select_layout_recipe(article, media)
     placements = plan_context_placements(article=article, media=media)
     context_by_target = {
@@ -605,7 +612,7 @@ def render_editor_handoff_v2_body(
     sections.extend(
         (
             _conclusion(article.conclusion, conclusion_spans),
-            v1._sources(article),
+            render_readable_sources(article) if source_presentation else v1._sources(article),
             render_xiaosai_footer(author=article.author, footer=footer)
             if footer is not None
             else v1._signature(article.author),

@@ -37,6 +37,7 @@ tests.
 | [Official-Account Weekly Three-Article DAG](./official-account-weekly-dag.md) | Static 16-node orchestration with development fixtures plus explicit production scheduling, frozen real inputs, durable recovery, and prepared draft-only handoff |
 | [Weekly Production Source Preflight](./weekly-production-source-preflight.md) | Complete pre-selection material validation, deterministic terminal input errors, and audited sibling-preserving recovery |
 | [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled adapter plus durable three-role worker for legacy and prepared weekly inputs, without publish/send semantics |
+| [Readable WeChat Sources](./official-account-readable-sources.md) | Prospective URL-deduplicated attribution, native read-more binding and unchanged historical prepared replay |
 | [Factual Governance and Event Organization](./governance-event-organization.md) | Implemented normalization, LangGraph, provider, duplicate, event, API, and operational contracts |
 | [Daily Topic Selection](./topic-selection.md) | Implemented versioned veto, scoring, Top 1/no-topic, persistence, API, and worker contracts |
 | [Three-Slot Independent Content Production](./content-slot-production.md) | Optional morning/noon/evening acquisition, post-eligibility ranking, independent artifacts, delivery windows, API/UI, and compatibility contracts |

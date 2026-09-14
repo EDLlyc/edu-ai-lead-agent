@@ -24,6 +24,7 @@ from app.application.services.wechat_official_account_draft import (
     WeChatOfficialAccountDraftOnlyService,
 )
 from app.domain.official_account_local import ArticlePackage, article_package_fingerprint
+from app.domain.official_account_source_presentation import READABLE_SOURCE_PRESENTATION_VERSION
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import (
     normalize_official_account_upload_footer,
@@ -65,8 +66,6 @@ from test_official_account_body_caption_visibility import (
     CONTEXT_NOTICE,
     _before_signature,
     _inputs,
-    _without_body_captions,
-    _without_context_notices,
 )
 from test_official_account_strict_prepared import _write, strict_projection  # noqa: F401
 from test_official_account_visual_preview import captured  # noqa: F401
@@ -306,6 +305,9 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     final_cta, tmp_path
 ):
     inputs, projection = final_cta
+    projection = build_strict_prepared_projection(
+        **inputs, source_presentation=READABLE_SOURCE_PRESENTATION_VERSION
+    )
     validate_strict_prepared_projection(projection.manifest, projection.files)
     article = inputs["article"]
     # Fake persistence only; exercise the real production owner and real footer resolver.
@@ -442,8 +444,10 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     historical_projection = build_strict_prepared_projection(**historical_inputs)
     old_html = historical_projection.files["article-body.html"].decode()
     assert len(projection.manifest["files"]) == len(historical_projection.manifest["files"]) + 2
-    assert _before_signature(_without_current_header(html), "程岳") == _before_signature(
-        _without_context_notices(_without_body_captions(old_html)), "程岳"
+    assert "查看权威原文" in old_html and "查看权威原文" not in html
+    assert prepared.content_source_url == article.sources[0].source_url
+    assert (
+        projection.manifest["source_presentation_version"] == READABLE_SOURCE_PRESENTATION_VERSION
     )
     assert CONTEXT_NOTICE not in html
     credits = [m.credit for m in inputs["media"] if m.role == "context"]
@@ -485,6 +489,7 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     assert receipt.not_published and calls.count("/cgi-bin/draft/add") == 1
     assert uploaded == [m.body for m in prepared.body_media] and len(uploaded) == 8
     payload = payloads[0]
+    assert payload["content_source_url"] == article.sources[0].source_url
     assert payload["author"] == "程岳" and "二维码待补" not in payload["content"]
     assert re.findall(r'<img src="([^"]+)"', payload["content"]) == [
         f"https://mmbiz.qpic.cn/inline-{i}.jpg" for i in range(1, 9)
