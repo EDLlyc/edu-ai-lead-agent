@@ -716,6 +716,7 @@ generator_prompt_version = official-account-generator-v7-five-to-seven-sections
 article_schema_version = official-account-article-schema-v5-news-context
 media_plan_version = official-account-media-plan-v4-five-blocks
 context_media_plan_version = official-account-news-context-selection-v1
+rule_version = official-account-rules-v5-editorial-advisory
 renderer/style/template = wechat-*-v8-news-context
 local_adapter_version = official-account-local-adapter-v7-disjoint-attempt-ordinals
 ```
@@ -750,8 +751,9 @@ failure ordinal = attempt_number * 100 + 90
 
 ### 3. Contracts
 
-- `article_version_bundle_kind()` recognizes V10 only for the exact tuple above. V9 remains frozen on generator
-  V5/V6, media plan V3 and adapter V6; current code must not silently route those persisted identities into V10.
+- `article_version_bundle_kind()` recognizes the current V10 tuple above and the historical V10 tuple with
+  `official-account-rules-v4-reader-copy`. V9 remains frozen on generator V5/V6, media plan V3 and adapter V6;
+  current code must not silently route any other mixed identity into V10.
 - Generator V7 emits 5--7 sections and retains the V6 length contract. Media plan V4 selects
   `min(candidate_count, 5, section_count)` distinct section indexes; the current complete catalog and V7 therefore
   yield exactly five body slots. Each slot uses one distinct approved company-IP reference and one one-attempt
@@ -785,7 +787,9 @@ failure ordinal = attempt_number * 100 + 90
 | Condition | Required result |
 |---|---|
 | Version tuple mixes V9 and V10 identities | Reject before generation/render/export |
-| V7 output has fewer than five sections, invalid claims, unsafe markup or hard length drift | Persist validation failure; do not audit, render or generate images |
+| V7 output has fewer than five sections, invalid claims or unsafe markup | Persist validation failure; do not audit, render or generate images |
+| V7 output is outside configured length bounds under historical rule V4 | Persist validation failure; do not audit, render or generate images |
+| V7 output is outside configured length bounds under advisory rule V5 | Persist a warning and continue to the model audit |
 | Complete catalog cannot supply five distinct current references | Fail before image provider work |
 | Embedding or generated-image intent/result is incomplete, timed out or ambiguous | Stop with typed failure or `result_unknown`; no hidden retry |
 | Body/context/failure attempt ordinals overlap | Reject in tests; adapter V7 must use the disjoint namespace |
@@ -797,7 +801,7 @@ failure ordinal = attempt_number * 100 + 90
 
 ### 5. Good / Base / Bad Cases
 
-- Good: a governed ready package produces a 5--7-section accepted Article, five distinct 3:2 company-IP scenes,
+- Good: a governed ready package produces a 5--7-section release-eligible Article, five distinct 3:2 company-IP scenes,
   one stored CAS context image, disjoint staging attempts and a polished local bundle whose cover passes 2.35:1.
 - Base: re-exporting the same ready run reuses persisted bytes, returns the same ZIP hash and performs zero article,
   audit, embedding, image, source, WeChat, WeCom or publish calls.
@@ -877,8 +881,9 @@ image, news, WeChat, or WeCom client.
 
 The endpoint is available only when `APP_ENV=development`, `OFFICIAL_ACCOUNT_LOCAL_ENABLED=true`,
 and `OFFICIAL_ACCOUNT_EDITOR_HANDOFF_ENABLED=true`. Artifact resources require a ready run, a
-supported and fingerprint-valid Article Package, passed deterministic validation, accepted model
-audit, a fixed render, a ready simulated draft whose resolved fingerprint matches its immutable
+supported and fingerprint-valid Article Package, passed deterministic validation, an audit result
+that satisfies the Article's frozen release policy, a fixed render, and a ready simulated draft
+whose resolved fingerprint matches its immutable
 render lineage, and an approved manual review whose request fingerprint matches its immutable
 review input. Pending, rejected, failed, `result_unknown`, incomplete, or tampered state returns a
 stable blocking code and no plausible body/ZIP.
@@ -1113,4 +1118,106 @@ release = EditorHandoffRelease(
     gate_codes=passed_gate_codes,
     manual_review_fingerprint=None,
 )
+```
+
+## Scenario: Prospective advisory editorial review policy
+
+### 1. Scope / trigger
+
+- Use `official-account-rules-v5-editorial-advisory` for newly enqueued V10 Articles when editorial
+  preferences such as total length and brand tone should remain visible without blocking an unpublished draft.
+- Historical Articles frozen on `official-account-rules-v4-reader-copy` retain strict length and literal
+  `audit.accepted` semantics. Do not reinterpret persisted runs when the deployment default changes.
+- This policy changes only Article editorial eligibility. Source, evidence, privacy, safety, media, HTML,
+  fingerprint, author, platform-preflight and no-publish boundaries remain unchanged.
+
+### 2. Signatures
+
+```python
+OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION = (
+    "official-account-rules-v5-editorial-advisory"
+)
+
+official_account_audit_releases(
+    verdict: OfficialAccountAuditVerdict,
+    *,
+    rule_version: str,
+) -> bool
+```
+
+Configuration default:
+
+```text
+OFFICIAL_ACCOUNT_LOCAL_RULE_VERSION=official-account-rules-v5-editorial-advisory
+```
+
+`Settings`, `.env.example` and `compose.yaml` must agree on the prospective default. Enabled settings
+accept complete current V10 tuples with either V4 or V5 so an explicit historical value can start safely;
+mixed or unknown tuples remain unsupported.
+
+### 3. Contracts
+
+- `validate_article_package()` emits `article_length_out_of_bounds` as `warning` only when the
+  Article's frozen rule is V5. The existing target-length warning stays advisory. V4 emits the existing
+  error, while structural field limits and every non-length deterministic error are unchanged.
+- The auditor persists its literal verdict. V5 releases `accepted=true`, or `accepted=false` only when
+  the nonempty issue-code set is exactly a subset of `{brand_tone_mismatch}`. Any combination containing
+  `fact_not_entailed`, `privacy_risk`, `safety_risk` or `improper_distribution_instruction` blocks.
+- Repository transition, worker resume, review export, visual preview, V1/V2 editor handoff and prepared
+  weekly artifacts must call the shared helper with `article.versions.rule_version`. No downstream
+  consumer may reconstruct a soft rejection as accepted or reapply a literal accepted-only gate.
+- Generator V7 keeps schema-first structured output for both rules. Its V5 prompt describes length as a
+  recommendation and forbids adding unsupported filler merely to reach a count. The deterministic fixture
+  supports both complete V10 identities.
+- Changing the deployment default creates only prospective identity. Existing rows, audits, drafts and
+  exports retain their stored rule and replay behavior; no migration or row rewrite is permitted.
+
+### 4. Validation & error matrix
+
+| Condition | Required result |
+|---|---|
+| V5 Article is shorter or longer than configured bounds | Persist a length warning; continue to audit |
+| V4 Article has the same length drift | Persist an error; retain historical blocking behavior |
+| Audit rejects only for `brand_tone_mismatch` under V5 | Preserve `accepted=false` and issue code; permit unpublished draft flow |
+| Brand-tone issue is combined with a factual or safety issue | Preserve the full verdict and block |
+| Audit rejects only for brand tone under V4 | Block under historical literal-acceptance semantics |
+| Source/binding/unsafe markup/author/media/fingerprint/preflight validation fails | Block regardless of V5 |
+| Rule version is unknown or mixed with another artifact family | Reject the version identity |
+
+### 5. Good / base / bad cases
+
+- Good: a concise evidence-bound Article receives a length warning and a brand-tone-only rejection, keeps
+  both observations in stored state, and proceeds to an unpublished prepared draft.
+- Base: an accepted V5 Article follows the ordinary path; a persisted V4 Article remains byte- and
+  decision-compatible with the former strict behavior.
+- Bad: set `audit.accepted=true`, delete issue codes, introduce a global `skip_validation`, or allow a fact,
+  privacy, safety or distribution issue merely because one soft code is also present.
+
+### 6. Tests required
+
+- Unit-test short and long V5 Articles as warnings and the same V4 Article as an error.
+- Unit-test accepted, brand-only, mixed factual, privacy, safety and distribution verdicts under both rules.
+- Contract-test schema-first Zhipu generation and advisory prompt text for V5 without a real provider call.
+- Trace repository, executor, export, preview, V1/V2 handoff and prepared-artifact release through the shared
+  helper; search for stale literal `audit.accepted` gates in the Official Account path.
+- Test Settings default parity across Python, `.env.example` and Compose, historical V4 startup compatibility,
+  unsupported mixed tuples, Ruff, mypy, focused pytest and `git diff --check`.
+
+### 7. Wrong vs correct
+
+Wrong:
+
+```python
+if not verdict.accepted:
+    return
+```
+
+Correct:
+
+```python
+if not official_account_audit_releases(
+    verdict,
+    rule_version=article.versions.rule_version,
+):
+    return
 ```

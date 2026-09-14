@@ -33,6 +33,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V5_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     GeneratedArticleDraft,
     OfficialAccountAuditVerdict,
@@ -203,7 +204,11 @@ class ZhipuOfficialAccountArticleGenerator:
                     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_VERSION,
                     OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
                 }
-                and request.identity.rule_version == OFFICIAL_ACCOUNT_RULE_VERSION
+                and request.identity.rule_version
+                in {
+                    OFFICIAL_ACCOUNT_RULE_VERSION,
+                    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+                }
             ),
         )
         draft = GeneratedArticleDraft.model_validate_json(content)

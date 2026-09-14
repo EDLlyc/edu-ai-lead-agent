@@ -33,6 +33,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V1_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V2_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V4_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V5_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V6_VERSION,
@@ -49,11 +50,13 @@ from app.domain.official_account_local import (
     ArticleParagraphBlock,
     ArticleSection,
     GeneratedArticleClaim,
+    OfficialAccountAuditVerdict,
     SemanticMediaCandidate,
     article_body_character_count,
     article_package_fingerprint,
     assign_semantic_body_media,
     build_article_package,
+    official_account_audit_releases,
     plan_body_media_slots,
     validate_article_package,
 )
@@ -342,6 +345,129 @@ def test_generation_prompt_v7_preserves_length_buffer_and_requires_five_to_seven
     assert "主动留出长度缓冲" in prompt
     assert "文章必须包含5--7个section" in prompt
     assert "五个互不重复的块级配图位置" in prompt
+
+
+def test_relaxed_editorial_prompt_keeps_length_as_advisory() -> None:
+    relaxed = replace(
+        identity(),
+        generator_prompt_version=OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+
+    prompt = build_generation_prompt(_generation_request(relaxed))
+
+    assert "1200--4000仅作为编辑提示" in prompt
+    assert "不得因字数单独拒绝文章" in prompt
+    assert "不足或超出时仍应输出完整JSON" in prompt
+    assert "不得为凑字数添加无依据内容" in prompt
+    assert "不得贴近1200字符硬下限" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_relaxed_editorial_rule_warns_for_short_and_long_articles() -> None:
+    source, configured_identity, article = await fixture_article()
+    relaxed_article = article.model_copy(
+        update={
+            "versions": article.versions.model_copy(
+                update={"rule_version": OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION}
+            )
+        }
+    )
+
+    short_issues = validate_article_package(
+        relaxed_article,
+        source=source,
+        default_author=configured_identity.default_author,
+        min_characters=3_000,
+        target_min_characters=3_200,
+        target_max_characters=3_600,
+        max_characters=4_000,
+    )
+    long_issues = validate_article_package(
+        relaxed_article,
+        source=source,
+        default_author=configured_identity.default_author,
+        min_characters=1,
+        target_min_characters=500,
+        target_max_characters=1_000,
+        max_characters=1_200,
+    )
+    historical_issues = validate_article_package(
+        article,
+        source=source,
+        default_author=configured_identity.default_author,
+        min_characters=3_000,
+        target_min_characters=3_200,
+        target_max_characters=3_600,
+        max_characters=4_000,
+    )
+
+    assert {
+        issue.severity for issue in short_issues if issue.code == "article_length_out_of_bounds"
+    } == {"warning"}
+    assert {
+        issue.severity for issue in long_issues if issue.code == "article_length_out_of_bounds"
+    } == {"warning"}
+    assert {
+        issue.severity
+        for issue in historical_issues
+        if issue.code == "article_length_out_of_bounds"
+    } == {"error"}
+
+
+def test_relaxed_editorial_audit_release_preserves_soft_and_hard_verdicts() -> None:
+    accepted = OfficialAccountAuditVerdict(accepted=True)
+    brand_only = OfficialAccountAuditVerdict(
+        accepted=False,
+        issue_codes=("brand_tone_mismatch",),
+    )
+    fact_risk = OfficialAccountAuditVerdict(
+        accepted=False,
+        issue_codes=("brand_tone_mismatch", "fact_not_entailed"),
+        claim_ids=("fact-1",),
+    )
+    safety_risk = OfficialAccountAuditVerdict(
+        accepted=False,
+        issue_codes=("safety_risk",),
+    )
+    privacy_risk = OfficialAccountAuditVerdict(
+        accepted=False,
+        issue_codes=("privacy_risk",),
+    )
+    distribution_risk = OfficialAccountAuditVerdict(
+        accepted=False,
+        issue_codes=("improper_distribution_instruction",),
+    )
+
+    assert official_account_audit_releases(
+        accepted,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+    assert brand_only.accepted is False
+    assert official_account_audit_releases(
+        brand_only,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+    assert not official_account_audit_releases(
+        brand_only,
+        rule_version=OFFICIAL_ACCOUNT_RULE_VERSION,
+    )
+    assert not official_account_audit_releases(
+        fact_risk,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+    assert not official_account_audit_releases(
+        safety_risk,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+    assert not official_account_audit_releases(
+        privacy_risk,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
+    assert not official_account_audit_releases(
+        distribution_risk,
+        rule_version=OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+    )
 
 
 def test_generation_prompt_v1_remains_byte_compatible() -> None:

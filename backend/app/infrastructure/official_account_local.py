@@ -35,6 +35,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V6_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     OFFICIAL_ACCOUNT_RULE_V1_VERSION,
     OFFICIAL_ACCOUNT_RULE_V2_VERSION,
     OFFICIAL_ACCOUNT_RULE_V3_VERSION,
@@ -365,10 +366,16 @@ class DeterministicFakeOfficialAccountArticleGenerator:
             ),
         }:
             draft = _reader_fixture_draft(draft)
-        elif generation_versions == (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
-            OFFICIAL_ACCOUNT_RULE_VERSION,
-        ):
+        elif generation_versions in {
+            (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                OFFICIAL_ACCOUNT_RULE_VERSION,
+            ),
+            (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+            ),
+        }:
             draft = _five_section_fixture_draft(_reader_fixture_draft(draft))
         elif generation_versions not in {
             (OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V1_VERSION, OFFICIAL_ACCOUNT_RULE_V1_VERSION),

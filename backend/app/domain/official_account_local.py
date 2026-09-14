@@ -54,6 +54,9 @@ OFFICIAL_ACCOUNT_RULE_V1_VERSION = "official-account-rules-v1"
 OFFICIAL_ACCOUNT_RULE_V2_VERSION = "official-account-rules-v2"
 OFFICIAL_ACCOUNT_RULE_V3_VERSION = "official-account-rules-v3-parent-field-guide"
 OFFICIAL_ACCOUNT_RULE_VERSION = "official-account-rules-v4-reader-copy"
+OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION = (
+    "official-account-rules-v5-editorial-advisory"
+)
 OFFICIAL_ACCOUNT_RENDERER_V1_VERSION = "wechat-html-renderer-v1"
 OFFICIAL_ACCOUNT_STYLE_V1_VERSION = "wechat-inline-style-v1"
 OFFICIAL_ACCOUNT_TEMPLATE_V1_VERSION = "wechat-fragment-template-v1"
@@ -737,10 +740,16 @@ def article_version_bundle_kind(versions: ArticleVersionBundle) -> ArticleVersio
     if (
         audit_versions == current_audit_versions
         and generation_versions
-        == (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
-            OFFICIAL_ACCOUNT_RULE_VERSION,
-        )
+        in {
+            (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                OFFICIAL_ACCOUNT_RULE_VERSION,
+            ),
+            (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+            ),
+        }
         and versions.article_schema_version == OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION
         and versions.media_plan_version == OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
         and versions.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
@@ -849,6 +858,21 @@ class OfficialAccountAuditVerdict(_FrozenModel):
         if not self.accepted and not self.issue_codes:
             raise ValueError("rejected article audit requires an issue code")
         return self
+
+
+def official_account_audit_releases(
+    verdict: OfficialAccountAuditVerdict,
+    *,
+    rule_version: str,
+) -> bool:
+    """Keep the model verdict literal while applying one frozen release policy."""
+    if verdict.accepted:
+        return True
+    return (
+        rule_version == OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
+        and bool(verdict.issue_codes)
+        and set(verdict.issue_codes) <= {"brand_tone_mismatch"}
+    )
 
 
 class RenderedOfficialAccountHtml(_FrozenModel):
@@ -1562,7 +1586,12 @@ def validate_article_package(
         issues.append(
             ArticleValidationIssue(
                 code="article_length_out_of_bounds",
-                severity="error",
+                severity=(
+                    "warning"
+                    if article.versions.rule_version
+                    == OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
+                    else "error"
+                ),
                 field="body",
             )
         )

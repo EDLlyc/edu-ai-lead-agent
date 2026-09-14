@@ -67,6 +67,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     ArticleBulletListBlock,
     ArticleImageBlock,
     ArticlePackage,
@@ -75,6 +76,7 @@ from app.domain.official_account_local import (
     article_package_fingerprint,
     article_version_bundle_kind,
     fingerprint,
+    official_account_audit_releases,
     render_wechat_html,
 )
 from app.infrastructure.db.models import OfficialAccountLocalMediaModel
@@ -177,6 +179,10 @@ class OfficialAccountEditorHandoffV2Service:
         gate("article_present", article is not None, "article", "结构化文章必须存在")
         article_version_supported = False
         if article is not None:
+            relaxed_editorial_review = (
+                article.article.versions.rule_version
+                == OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
+            )
             article_version_supported = (
                 article_version_bundle_kind(article.article.versions) is not None
             )
@@ -199,10 +205,22 @@ class OfficialAccountEditorHandoffV2Service:
                 "确定性文章校验必须通过",
             )
             gate(
-                "model_audit_accepted",
-                article.audit is not None and article.audit.accepted,
+                (
+                    "model_audit_release_policy_passed"
+                    if relaxed_editorial_review
+                    else "model_audit_accepted"
+                ),
+                article.audit is not None
+                and official_account_audit_releases(
+                    article.audit,
+                    rule_version=article.article.versions.rule_version,
+                ),
                 "article.audit",
-                "模型审校必须接受文章",
+                (
+                    "模型审校结果必须满足冻结的编辑放行策略"
+                    if relaxed_editorial_review
+                    else "模型审校必须接受文章"
+                ),
             )
             gate(
                 "image_validation_passed",

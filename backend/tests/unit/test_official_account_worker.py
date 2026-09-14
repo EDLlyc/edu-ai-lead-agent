@@ -31,7 +31,10 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountRender,
 )
 from app.application.services import official_account_local as official_account_service
-from app.application.services.official_account_local import OfficialAccountLocalExecutor
+from app.application.services.official_account_local import (
+    OfficialAccountLocalExecutor,
+    article_version_bundle,
+)
 from app.core.config import Settings
 from app.core.errors import (
     ImageProviderTimeoutError,
@@ -53,6 +56,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_VERSION,
     OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     OFFICIAL_ACCOUNT_STYLE_VERSION,
@@ -63,6 +67,7 @@ from app.domain.official_account_local import (
     ArticleValidationIssue,
     OfficialAccountAuditVerdict,
     RenderedOfficialAccountHtml,
+    article_version_bundle_kind,
 )
 from app.domain.official_account_local import (
     render_wechat_html as render_wechat_html_domain,
@@ -173,6 +178,21 @@ def test_settings_allow_a_historical_official_account_bundle_while_disabled() ->
     assert settings.official_account_local_enabled is False
 
 
+def test_settings_default_to_relaxed_editorial_rule_and_accept_strict_current_bundle() -> None:
+    relaxed = Settings(_env_file=None, official_account_local_enabled=True)
+    strict = Settings(
+        _env_file=None,
+        official_account_local_enabled=True,
+        official_account_local_rule_version=OFFICIAL_ACCOUNT_RULE_VERSION,
+    )
+
+    assert (
+        relaxed.official_account_local_rule_version
+        == OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
+    )
+    assert strict.official_account_local_rule_version == OFFICIAL_ACCOUNT_RULE_VERSION
+
+
 def test_image_quality_eval_mode_is_independent_and_observe_requires_generated_visuals() -> None:
     material_only = Settings(
         _env_file=None,
@@ -272,6 +292,8 @@ def test_cli_identity_carries_the_complete_current_visual_version_bundle() -> No
     assert identity.visual_query_version == OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION
     assert identity.visual_selector_version == OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION
     assert identity.context_media_plan_version == OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION
+    assert identity.rule_version == OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
+    assert article_version_bundle_kind(article_version_bundle(identity)) == "v10"
 
 
 class _MemoryRepository:

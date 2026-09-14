@@ -64,6 +64,7 @@ from app.domain.official_account_local import (
     OfficialAccountSourceSnapshot,
     article_package_fingerprint,
     fingerprint,
+    official_account_audit_releases,
     validate_article_package,
 )
 
@@ -292,7 +293,10 @@ def load_preview_input(root: Path, *, manifest_sha256: str) -> PreviewInput:
     )
     if (
         article.content_fingerprint != article_package_fingerprint(article)
-        or not snapshot.audit.accepted
+        or not official_account_audit_releases(
+            snapshot.audit,
+            rule_version=article.versions.rule_version,
+        )
         or any(issue.severity == "error" for issue in snapshot.validation_issues)
         or snapshot.article_created_at.tzinfo is None
         or article.media_selection is None

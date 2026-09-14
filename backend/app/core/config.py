@@ -27,6 +27,7 @@ from app.domain.official_account_local import (
     OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
     OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+    OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
     OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
     OFFICIAL_ACCOUNT_RULE_VERSION,
     OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
@@ -287,7 +288,7 @@ class Settings(BaseSettings):
     official_account_local_media_plan_version: str = OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION
     official_account_local_auditor_prompt_version: str = OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION
     official_account_local_audit_schema_version: str = OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION
-    official_account_local_rule_version: str = OFFICIAL_ACCOUNT_RULE_VERSION
+    official_account_local_rule_version: str = OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION
     official_account_local_renderer_version: str = OFFICIAL_ACCOUNT_RENDERER_V8_VERSION
     official_account_local_style_version: str = OFFICIAL_ACCOUNT_STYLE_V8_VERSION
     official_account_local_template_version: str = OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION
@@ -728,20 +729,30 @@ class Settings(BaseSettings):
             self.official_account_local_visual_selector_version,
             self.official_account_local_context_media_plan_version,
         )
-        if self.official_account_local_enabled and official_account_versions != (
-            OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
-            OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
-            OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
-            OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
-            OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
-            OFFICIAL_ACCOUNT_RULE_VERSION,
-            OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
-            OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
-            OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
-            OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
-            OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
-            OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
-            OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+        supported_official_account_versions = {
+            (
+                OFFICIAL_ACCOUNT_GENERATOR_PROMPT_V7_VERSION,
+                OFFICIAL_ACCOUNT_ARTICLE_SCHEMA_V5_VERSION,
+                OFFICIAL_ACCOUNT_MEDIA_PLAN_V4_VERSION,
+                OFFICIAL_ACCOUNT_AUDITOR_PROMPT_VERSION,
+                OFFICIAL_ACCOUNT_AUDIT_SCHEMA_VERSION,
+                rule_version,
+                OFFICIAL_ACCOUNT_RENDERER_V8_VERSION,
+                OFFICIAL_ACCOUNT_STYLE_V8_VERSION,
+                OFFICIAL_ACCOUNT_TEMPLATE_V8_VERSION,
+                OFFICIAL_ACCOUNT_LOCAL_ADAPTER_V7_VERSION,
+                OFFICIAL_ACCOUNT_VISUAL_QUERY_VERSION,
+                OFFICIAL_ACCOUNT_VISUAL_SELECTOR_VERSION,
+                OFFICIAL_ACCOUNT_NEWS_CONTEXT_SELECTION_VERSION,
+            )
+            for rule_version in {
+                OFFICIAL_ACCOUNT_RULE_VERSION,
+                OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION,
+            }
+        }
+        if (
+            self.official_account_local_enabled
+            and official_account_versions not in supported_official_account_versions
         ):
             raise ValueError("official-account current version bundle is unsupported")
         if (

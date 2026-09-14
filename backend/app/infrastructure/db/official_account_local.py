@@ -78,6 +78,7 @@ from app.domain.official_account_local import (
     RenderedOfficialAccountHtml,
     article_version_bundle_kind,
     fingerprint,
+    official_account_audit_releases,
 )
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
@@ -1343,7 +1344,10 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     completed_at=now,
                 )
             )
-            if result.verdict.accepted:
+            if official_account_audit_releases(
+                result.verdict,
+                rule_version=claimed.identity.rule_version,
+            ):
                 run.current_stage = "rendering"
             else:
                 _finish_terminal(run, status="review_required", error_code="article_audit_rejected")

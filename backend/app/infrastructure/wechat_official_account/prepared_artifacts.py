@@ -33,7 +33,7 @@ from app.application.services.wechat_official_account_draft import (
     WeChatPreparedDraft,
 )
 from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
-from app.domain.official_account_local import ArticleImageBlock
+from app.domain.official_account_local import ArticleImageBlock, official_account_audit_releases
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import normalize_official_account_upload_context
 from app.domain.official_account_visual_pipeline import (
@@ -151,7 +151,10 @@ class PreparedWeeklyDraftArtifactOwner:
             or article is None
             or not article.validation_passed
             or article.audit is None
-            or not article.audit.accepted
+            or not official_account_audit_releases(
+                article.audit,
+                rule_version=article.article.versions.rule_version,
+            )
             or draft is None
             or draft.state != "ready"
             or draft.simulation is not True
@@ -387,7 +390,7 @@ class PreparedWeeklyDraftArtifactOwner:
                 footer,
                 footer_content,
             ) = await self._resolver.read_official_account_marketing_framing(article.article)
-            if header.path in files or footer.path in files or header.path == footer.path:
+            if header.path in files or footer.path in files:
                 raise ValueError("strict prepared framing path is duplicated")
             files[header.path] = header_content
             files[footer.path] = footer_content

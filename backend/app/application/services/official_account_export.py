@@ -40,6 +40,7 @@ from app.domain.official_account_local import (
     body_media_placeholder,
     context_media_placeholder,
     fingerprint,
+    official_account_audit_releases,
 )
 
 WECHAT_DRAFT_PREFLIGHT_RULE_VERSION = "wechat-draft-preflight-v1"
@@ -666,8 +667,11 @@ def _validate_live_local_bundle_input(bundle: ReviewBundleInput) -> None:
 
 
 def _validate_review_bundle_common(bundle: ReviewBundleInput) -> None:
-    if bundle.audit is None or not bundle.audit.accepted:
-        raise ValueError("review bundle requires an accepted model audit")
+    if bundle.audit is None or not official_account_audit_releases(
+        bundle.audit,
+        rule_version=bundle.article.versions.rule_version,
+    ):
+        raise ValueError("review bundle requires a releasable model audit")
     if any(issue.severity == "error" for issue in bundle.validation_issues):
         raise ValueError("review bundle requires deterministic validation to pass")
     if article_version_bundle_kind(bundle.article.versions) is None:
