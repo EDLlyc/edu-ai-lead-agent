@@ -43,6 +43,103 @@ class Base(DeclarativeBase):
     )
 
 
+class OfficialAccountSingleEditionModel(Base):
+    __tablename__ = "official_account_single_editions"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    account_fingerprint: Mapped[str] = mapped_column(String(64))
+    business_date: Mapped[date] = mapped_column(Date)
+    timezone: Mapped[str] = mapped_column(String(40))
+    version: Mapped[str] = mapped_column(String(80))
+    prepare_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deliver_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    article_identity: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    retry_policy: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(24))
+    stage_attempts: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    selection_artifact: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    material_package_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("material_packages.id", ondelete="RESTRICT")
+    )
+    event_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("event_clusters.id", ondelete="RESTRICT")
+    )
+    article_run_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("official_account_article_runs.id", ondelete="RESTRICT")
+    )
+    prepared_artifact: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    role: Mapped[str | None] = mapped_column(String(32))
+    article_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    receipt_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "account_fingerprint", "business_date", name="uq_single_edition_account_date"
+        ),
+        CheckConstraint("account_fingerprint ~ '^[0-9a-f]{64}$'", name="single_edition_account"),
+        CheckConstraint(
+            "timezone = 'Asia/Shanghai' AND EXTRACT(ISODOW FROM business_date) IN (1,3,5) "
+            "AND prepare_at < deliver_at AND deliver_at < expires_at "
+            "AND (deliver_at AT TIME ZONE 'Asia/Shanghai')::date = business_date "
+            "AND (deliver_at AT TIME ZONE 'Asia/Shanghai')::time = '10:00'::time "
+            "AND (expires_at AT TIME ZONE 'Asia/Shanghai')::date = business_date",
+            name="single_edition_window",
+        ),
+        CheckConstraint(
+            "status IN ('admitted','generating','preparing','ready','delivering','delivered',"
+            "'no_topic','failed','outcome_unknown','expired')",
+            name="single_edition_status",
+        ),
+        CheckConstraint(
+            "(lease_token IS NULL) = (lease_expires_at IS NULL)", name="single_edition_lease"
+        ),
+        CheckConstraint(
+            "status NOT IN ('ready','delivering','delivered') OR "
+            "(prepared_artifact IS NOT NULL AND article_fingerprint IS NOT NULL "
+            "AND content_fingerprint IS NOT NULL AND article_run_id IS NOT NULL)",
+            name="single_edition_prepared",
+        ),
+        CheckConstraint(
+            "status <> 'delivered' OR receipt_fingerprint IS NOT NULL",
+            name="single_edition_receipt",
+        ),
+        Index("ix_single_edition_ready", "status", "available_at"),
+    )
+
+
+class OfficialAccountDraftOwnerModel(Base):
+    __tablename__ = "official_account_draft_owners"
+
+    account_fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    key_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    key_value: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(24))
+    provenance_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("key_kind IN ('event','article','history')", name="draft_owner_kind"),
+        CheckConstraint(
+            "account_fingerprint ~ '^[0-9a-f]{64}$' AND provenance_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="draft_owner_fingerprints",
+        ),
+        CheckConstraint(
+            "status IN ('reserved','acknowledged','outcome_unknown','ready','conflict')",
+            name="draft_owner_status",
+        ),
+    )
+
+
 class SourceModel(Base):
     __tablename__ = "sources"
 

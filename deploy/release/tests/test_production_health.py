@@ -84,12 +84,19 @@ if args[: len(compose_base)] == compose_base:
             handle.write(json.dumps(query) + "\\n")
         normalized = " ".join(query.split())
         if normalized == "SELECT version_num FROM alembic_version":
-            print(os.environ.get("FAKE_SCHEMA_HEAD", "20260909_0045"))
+            print(os.environ.get("FAKE_SCHEMA_HEAD", "20260914_0047"))
             raise SystemExit(0)
         if normalized.startswith("SELECT concat_ws('|',") and normalized.endswith(
             ") FROM wecom_delivery_jobs"
         ):
             print(os.environ.get("FAKE_QUEUE_COUNTS", "0|0|0|0"))
+            raise SystemExit(0)
+        if normalized.startswith("SELECT concat_ws('|',") and normalized.endswith(
+            ") FROM official_account_single_editions"
+        ):
+            if os.environ.get("FAKE_SINGLE_QUERY_FAILURE"):
+                raise SystemExit(92)
+            print(os.environ.get("FAKE_SINGLE_COUNTS", "0|0|0|0|0|0|0|0"))
             raise SystemExit(0)
     raise SystemExit(91)
 
@@ -177,7 +184,7 @@ def runtime_fixture(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     (app_dir / ".release-commit").write_text(f"{RELEASE_COMMIT}\n", encoding="utf-8")
     (app_dir / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
     (app_dir / "deploy" / "release" / "migration-compatibility.json").write_text(
-        json.dumps({"alembic_head": "20260909_0045"}) + "\n",
+        json.dumps({"alembic_head": "20260914_0047"}) + "\n",
         encoding="utf-8",
     )
     shutil.copy2(
@@ -244,6 +251,10 @@ def test_healthy_offline_runtime_needs_no_node_and_reports_incomplete_provenance
         result.stdout
     )
     assert "standard_release_provenance=incomplete" in result.stdout
+    assert (
+        "single_queue_state=idle pending=0 live_running=0 stale_running=0 "
+        "delivering=0 outcome_unknown=0 delivered=0 failed=0 expired=0"
+    ) in result.stdout
     assert "node" not in "\n".join(
         json.dumps(call) for call in _json_lines(Path(environment["FAKE_DOCKER_CALLS"]))
     )
@@ -256,7 +267,7 @@ def test_healthy_offline_runtime_needs_no_node_and_reports_incomplete_provenance
     }
     assert observed_services == {*LONG_RUNNING_SERVICES, "postgres", "minio"}
     sql_calls = _json_lines(Path(environment["FAKE_SQL_CALLS"]))
-    assert len(sql_calls) == 2
+    assert len(sql_calls) == 3
     assert all(
         isinstance(query, str) and query.lstrip().startswith("SELECT")
         for query in sql_calls
@@ -282,6 +293,60 @@ def test_queued_or_live_work_is_activity_not_failure(
     assert "queue_state=active queued=2 live_running=1 stale_running=0 ambiguous=0" in (
         result.stdout
     )
+
+
+@pytest.mark.parametrize(
+    "counts", ["1|0|0|0|0|0|0|0", "0|1|0|1|0|0|0|0", "0|0|0|1|0|0|0|0"]
+)
+def test_single_preparation_or_delivery_is_activity_not_idle(
+    runtime_fixture: tuple[Path, dict[str, str]], counts: str
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS=counts)
+    assert result.returncode == 0, result.stderr
+    assert "single_queue_state=active" in result.stdout
+    # Existing queue_state continues to describe only the unchanged WeCom queue.
+    assert "queue_state=idle queued=0" in result.stdout
+
+
+def test_completed_and_failed_single_dates_remain_visible_without_blocking_future_dates(
+    runtime_fixture: tuple[Path, dict[str, str]],
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS="0|0|0|0|0|2|1|3")
+    assert result.returncode == 0, result.stderr
+    assert "single_queue_state=idle" in result.stdout
+    assert "outcome_unknown=0 delivered=2 failed=1 expired=3" in result.stdout
+
+
+@pytest.mark.parametrize("counts", ["0|0|1|0|0|0|0|0", "0|0|0|0|1|0|0|0"])
+def test_single_unknown_or_stale_lease_fails_with_visible_counts(
+    runtime_fixture: tuple[Path, dict[str, str]], counts: str
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS=counts)
+    assert result.returncode == 1
+    assert "single_queue_state=ambiguous" in result.stdout
+    assert "check=single_queue reason=stale_or_ambiguous" in result.stderr
+    assert "runtime_health=ok" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "counts", ["0|0|0", "0|0|0|0|0|0|0|-1", "secret-title", "9" * 19 + "|0|0|0|0|0|0|0"]
+)
+def test_invalid_single_aggregate_is_redacted(
+    runtime_fixture: tuple[Path, dict[str, str]], counts: str
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS=counts)
+    assert result.returncode == 1
+    assert "check=single_queue reason=aggregate_result_invalid" in result.stderr
+    assert counts not in result.stdout + result.stderr
+
+
+def test_missing_single_schema_is_not_silently_reported_idle(
+    runtime_fixture: tuple[Path, dict[str, str]],
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_QUERY_FAILURE="1")
+    assert result.returncode == 1
+    assert "check=single_queue reason=aggregate_query_failed" in result.stderr
+    assert "single_queue_state=idle" not in result.stdout
 
 
 @pytest.mark.parametrize(

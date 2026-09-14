@@ -1,5 +1,14 @@
 name: edu-ai-lead-agent
 
+x-single-edition: &single-edition
+  OFFICIAL_ACCOUNT_SINGLE_ENABLED: ${OFFICIAL_ACCOUNT_SINGLE_ENABLED:-false}
+  OFFICIAL_ACCOUNT_SINGLE_MIN_DATE: ${OFFICIAL_ACCOUNT_SINGLE_MIN_DATE:-}
+  OFFICIAL_ACCOUNT_SINGLE_ACCOUNT_FINGERPRINT: ${OFFICIAL_ACCOUNT_SINGLE_ACCOUNT_FINGERPRINT:-}
+  OFFICIAL_ACCOUNT_SINGLE_PREPARE_MINUTES: ${OFFICIAL_ACCOUNT_SINGLE_PREPARE_MINUTES:-60}
+  OFFICIAL_ACCOUNT_SINGLE_CATCHUP_HOURS: ${OFFICIAL_ACCOUNT_SINGLE_CATCHUP_HOURS:-6}
+  OFFICIAL_ACCOUNT_SINGLE_MAX_ATTEMPTS: ${OFFICIAL_ACCOUNT_SINGLE_MAX_ATTEMPTS:-3}
+  OFFICIAL_ACCOUNT_SINGLE_RETRY_BASE_SECONDS: ${OFFICIAL_ACCOUNT_SINGLE_RETRY_BASE_SECONDS:-60}
+
 x-app-runtime: &app-runtime
   # Local development builds and tags this image. Production sets APP_IMAGE to a validated
   # registry/repository@sha256 digest and always invokes Compose with --no-build.
@@ -400,7 +409,7 @@ services:
       backend-migrate:
         condition: service_completed_successfully
     environment:
-      <<: *backend-environment
+      <<: [*backend-environment, *single-edition]
       OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION: ${OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION:-}
       OFFICIAL_ACCOUNT_LOCAL_LEGACY_GENERATED_VISUAL_POLICY_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED:-false}
       AI_PLATFORM_API_KEY: ${AI_PLATFORM_API_KEY:-}
@@ -444,7 +453,7 @@ services:
       backend-migrate:
         condition: service_completed_successfully
     environment:
-      <<: *backend-environment
+      <<: [*backend-environment, *single-edition]
       OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION: ${OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION:-}
       OFFICIAL_ACCOUNT_LOCAL_LEGACY_GENERATED_VISUAL_POLICY_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_GENERATED_VISUALS_ENABLED:-false}
       OFFICIAL_ACCOUNT_LOCAL_ENABLED: ${OFFICIAL_ACCOUNT_LOCAL_ENABLED:-false}
@@ -468,7 +477,8 @@ services:
       backend-migrate:
         condition: service_completed_successfully
     environment:
-      <<: *backend-environment
+      <<: [*backend-environment, *single-edition]
+      OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED: ${OFFICIAL_ACCOUNT_WEEKLY_PRODUCTION_ENABLED:-false}
       WECHAT_MP_ENABLED: ${WECHAT_MP_ENABLED:-false}
       WECHAT_MP_MODE: draft_only
       WECHAT_MP_API_BASE_URL: https://api.weixin.qq.com

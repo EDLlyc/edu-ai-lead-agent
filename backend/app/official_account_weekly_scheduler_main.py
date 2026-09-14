@@ -60,6 +60,11 @@ async def _scheduler_handler_rejected(claim: WeeklyDagClaim) -> WeeklyDagNodeRes
 async def run_weekly_scheduler() -> None:
     settings = get_settings()
     configure_logging(json_output=settings.app_env != "development")
+    if settings.official_account_single_enabled:
+        from app.infrastructure.official_account_single_runtime import run_single_runtime
+
+        await run_single_runtime(settings, plane="scheduler")
+        return
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGINT, signal.SIGTERM):

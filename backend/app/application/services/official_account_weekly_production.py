@@ -58,6 +58,7 @@ class WeeklyProductionArticleRepository(Protocol):
         *,
         material_package_id: UUID,
         identity: OfficialAccountVersionIdentity,
+        execution_retry_policy: dict[str, object] | None = None,
     ) -> tuple[WeeklyProductionArticleRun, bool]: ...
 
     async def get_run(self, run_id: UUID) -> WeeklyProductionArticleRun: ...

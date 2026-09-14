@@ -1,5 +1,15 @@
 # Production recovery before staged Qwen embedding migration
 
+## September 14 approved M/W/F single-article replacement (current priority)
+
+User approved the final plan with “好的，请你处理”: replace future Monday
+three-article admissions with one draft on M/W/F at 10:00 Asia/Shanghai, prepared
+ahead of time, independently selected/retried/delivered. Current authoritative slice:
+`research/mwf-single-article-20260914/prd.md`, `design.md`, `implement.md`.
+Implementation and checked prospective activation are authorized; no historical
+batch replay, draft deletion, automatic publication or unrelated WeCom change.
+The existing broad task remains active and must not be archived for this slice.
+
 ## Goal
 
 Prove that the deployed acquisition -> governance -> selection -> generation -> Enterprise

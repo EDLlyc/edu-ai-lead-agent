@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260914_0046",
+  "alembic_head": "20260914_0047",
   "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "The forward-only 20260914_0046 chain is reviewed for implementation compatibility, not deployment authorization. Previous apps cannot safely consume strict visual Article/generation/audit state, weekly v2 or governance inputs, or frozen V5 Chinese-family prompt state, including inputs with no Article rows yet. After migration, keep V5-compatible consumers or use a forward fix; do not restore the previous app or downgrade Alembic. Historical operator authorizations are not renewed."
+  "reason": "Reviewed implementation, not deployment authorization. The 0046 chain is not blanket backward compatibility: V5 and weekly v2 or governance inputs, including inputs with no Article rows yet, remain unsafe for older apps. Revision 0047 itself adds only date and owner tables. A single edition or imported history owner requires single-aware recovery: candidate core with both legacy and single admission/consumption disabled; no automatic old-app restore, database restore or Alembic downgrade."
 }

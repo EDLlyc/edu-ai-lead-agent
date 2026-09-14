@@ -25,6 +25,7 @@ from app.domain.editorial_relevance import (
     ScienceTechContentSignal,
     ScienceTechEditorialCohort,
 )
+from app.domain.official_account_single_edition import select_single_article
 from app.domain.official_account_weekly_edition import (
     WeeklyArticleSelection,
     WeeklyEditionSchedule,
@@ -84,6 +85,58 @@ class PostgresWeeklyProductionInputPlanner:
             raise ValueError("weekly production cutoff must be timezone-aware")
         if week_start.weekday() != 0:
             raise ValueError("weekly production week start must be a Monday")
+        candidates = await self._load_candidates(cutoff=cutoff, week_start=week_start)
+        selection = select_weekly_articles(
+            tuple(item.governed for item in candidates.values()),
+            week_start=week_start,
+            cutoff=cutoff,
+            schedule=schedule,
+        )
+        by_event = {item.governed.candidate.event_id: item for item in candidates.values()}
+        items = tuple(
+            _production_item(selected, by_event[selected.event_id])
+            for selected in selection.selected
+        )
+        return WeeklyProductionInput(
+            version=(
+                WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION
+                if self._article_identity is not None
+                else WEEKLY_PRODUCTION_INPUT_VERSION
+            ),
+            article_identity=self._article_identity,
+            week_start=week_start,
+            cutoff=cutoff,
+            selection=selection,
+            items=cast(
+                tuple[
+                    WeeklyProductionInputItem,
+                    WeeklyProductionInputItem,
+                    WeeklyProductionInputItem,
+                ],
+                items,
+            ),
+        )
+
+    async def plan_single(
+        self, *, cutoff: datetime, excluded_events: frozenset[UUID]
+    ) -> WeeklyProductionInputItem | None:
+        candidates = await self._load_candidates(cutoff=cutoff)
+        selected = select_single_article(
+            tuple(item.governed for item in candidates.values()),
+            cutoff=cutoff,
+            excluded_events=excluded_events,
+        )
+        return (
+            _production_item(selected, candidates[selected.event_id])
+            if selected is not None
+            else None
+        )
+
+    async def _load_candidates(
+        self, *, cutoff: datetime, week_start: date | None = None
+    ) -> dict[UUID, _MaterialCandidate]:
+        if cutoff.utcoffset() is None:
+            raise ValueError("production cutoff must be timezone-aware")
         async with self._session_factory() as session:
             rows = await self._load_material_rows(session, cutoff=cutoff)
             score_by_package = await self._load_scores(session, rows)
@@ -128,40 +181,11 @@ class PostgresWeeklyProductionInputPlanner:
         if incompatible_count:
             logger.info(
                 "official_account_weekly_materials_skipped",
-                week_start=week_start.isoformat(),
+                **({"week_start": week_start.isoformat()} if week_start is not None else {}),
                 reason_code="material_source_incompatible",
                 skipped_count=incompatible_count,
             )
-        selection = select_weekly_articles(
-            tuple(item.governed for item in candidates.values()),
-            week_start=week_start,
-            cutoff=cutoff,
-            schedule=schedule,
-        )
-        by_event = {item.governed.candidate.event_id: item for item in candidates.values()}
-        items = tuple(
-            _production_item(selected, by_event[selected.event_id])
-            for selected in selection.selected
-        )
-        return WeeklyProductionInput(
-            version=(
-                WEEKLY_PRODUCTION_FROZEN_INPUT_VERSION
-                if self._article_identity is not None
-                else WEEKLY_PRODUCTION_INPUT_VERSION
-            ),
-            article_identity=self._article_identity,
-            week_start=week_start,
-            cutoff=cutoff,
-            selection=selection,
-            items=cast(
-                tuple[
-                    WeeklyProductionInputItem,
-                    WeeklyProductionInputItem,
-                    WeeklyProductionInputItem,
-                ],
-                items,
-            ),
-        )
+        return candidates
 
     async def _load_material_rows(
         self,

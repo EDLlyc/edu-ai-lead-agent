@@ -327,12 +327,18 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     assert "weekly v2 or governance inputs" in reason
     assert "including inputs with no Article rows yet" in reason
     assert "not deployment authorization" in reason
+    assert "Revision 0047 itself adds only" in reason
+    assert "not blanket backward compatibility" in reason
+    assert "imported history owner" in reason
+    assert "both legacy and single admission/consumption disabled" in reason
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
     for schema_identity in (
         "brand_visual_index_jobs",
         "brand_visual_asset_embeddings",
         "embedding_input_sha256",
         "visual_embedding_vector_type",
+        "official_account_single_editions",
+        "official_account_draft_owners",
     ):
         assert schema_identity in doctor
 

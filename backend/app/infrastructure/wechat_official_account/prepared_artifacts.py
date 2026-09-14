@@ -432,19 +432,9 @@ class PreparedWeeklyDraftArtifactOwner:
         *,
         role: WeeklyArticleRole,
     ) -> WeChatPreparedDraft:
-        fingerprint = _artifact_fingerprint(
-            artifact,
-            ref_version=PREPARED_DRAFT_CHILD_REF_VERSION,
-            media_type="application/vnd.wechat.prepared-draft-child+directory",
+        return load_prepared_draft_child(
+            artifact, work_root=self._work_root, role=role, max_image_bytes=self._max_image_bytes
         )
-        target = self._child_path(fingerprint)
-        if _directory_size(target) != artifact.byte_size:
-            raise ValueError("prepared draft child byte size changed")
-        prepared = self._preparer.prepare(WeChatDraftLocalSource(directory=target, role=role.value))
-        manifest = _json_object((target / "prepared-manifest.json").read_bytes())
-        if manifest.get("child_fingerprint") != fingerprint:
-            raise ValueError("prepared draft child fingerprint changed")
-        return prepared
 
     def aggregate(
         self,
@@ -569,6 +559,31 @@ class PreparedWeeklyDraftArtifactOwner:
     def _batch_path(self, fingerprint: str) -> Path:
         _validate_sha(fingerprint)
         return self._inbox_root / f"official-account-prepared-weekly-{fingerprint}"
+
+
+def load_prepared_draft_child(
+    artifact: WeeklyDagArtifact,
+    *,
+    work_root: Path,
+    role: WeeklyArticleRole,
+    max_image_bytes: int,
+) -> WeChatPreparedDraft:
+    """Read-only single-child consumer: same canonical checks, no repository/resolver."""
+    fingerprint = _artifact_fingerprint(
+        artifact,
+        ref_version=PREPARED_DRAFT_CHILD_REF_VERSION,
+        media_type="application/vnd.wechat.prepared-draft-child+directory",
+    )
+    target = work_root / "children" / f"wechat-draft-prepared-child-{fingerprint}"
+    if _directory_size(target) != artifact.byte_size:
+        raise ValueError("prepared draft child byte size changed")
+    prepared = WeChatOfficialAccountDraftPreparer(max_image_bytes=max_image_bytes).prepare(
+        WeChatDraftLocalSource(directory=target, role=role.value)
+    )
+    manifest = _json_object((target / "prepared-manifest.json").read_bytes())
+    if manifest.get("child_fingerprint") != fingerprint:
+        raise ValueError("prepared draft child fingerprint changed")
+    return prepared
 
 
 def load_prepared_weekly_draft_batch(

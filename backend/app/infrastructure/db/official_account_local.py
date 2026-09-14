@@ -231,6 +231,7 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
         *,
         material_package_id: UUID,
         identity: OfficialAccountVersionIdentity,
+        execution_retry_policy: dict[str, object] | None = None,
     ) -> tuple[OfficialAccountArticleRunModel, bool]:
         async with self._session_factory() as session:
             package = await session.get(MaterialPackageModel, material_package_id)
@@ -246,6 +247,7 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             generation_mode="live",
             source=source,
             identity=identity,
+            execution_retry_policy=execution_retry_policy,
         )
 
     async def _enqueue(
@@ -256,6 +258,7 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
         generation_mode: Literal["fixture", "live"],
         source: OfficialAccountSourceSnapshot,
         identity: OfficialAccountVersionIdentity,
+        execution_retry_policy: dict[str, object] | None = None,
     ) -> tuple[OfficialAccountArticleRunModel, bool]:
         request_fingerprint = run_request_fingerprint(
             source_fingerprint=source.source_fingerprint,
@@ -263,6 +266,10 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             identity=identity,
         )
         run_id = uuid4()
+        bundle = _identity_payload(identity)
+        if execution_retry_policy is not None:
+            _frozen_retry_policy(execution_retry_policy)
+            bundle["execution_retry_policy"] = execution_retry_policy
         statement = (
             insert(OfficialAccountArticleRunModel)
             .values(
@@ -274,7 +281,7 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 request_fingerprint=request_fingerprint,
                 provider=identity.provider,
                 model=identity.model,
-                version_bundle=_identity_payload(identity),
+                version_bundle=bundle,
                 status="queued",
                 current_stage="queued",
                 error_retryable=False,
@@ -298,6 +305,12 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             run = await session.get(OfficialAccountArticleRunModel, stored_id)
             if run is None:
                 raise RuntimeError("official-account enqueued run is unavailable")
+            if (
+                execution_retry_policy is not None
+                and run.status in {"queued", "running"}
+                and run.version_bundle.get("execution_retry_policy") != execution_retry_policy
+            ):
+                raise ConflictError("existing official-account retry policy is frozen")
             return run, created
 
     async def list_runs(self, *, limit: int) -> tuple[OfficialAccountArticleRunModel, ...]:
@@ -802,6 +815,19 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             )
             if run is None:
                 return None
+            frozen = run.version_bundle.get("execution_retry_policy")
+            if frozen is not None:
+                maximum, _delay, expires_at = _frozen_retry_policy(frozen)
+                if run.attempt_count >= maximum or now >= expires_at:
+                    run.status = "result_unknown" if run.status == "running" else "failed"
+                    run.current_stage = run.status
+                    run.error_code = "single_generation_budget_exhausted"
+                    run.error_retryable = False
+                    run.completed_at = now
+                    run.updated_at = now
+                    _clear_lease(run)
+                    await session.commit()
+                    return None
             token = uuid4()
             run.attempt_count += 1
             run.status = "running"
@@ -1768,6 +1794,10 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 return False
             now = datetime.now(UTC)
             stage = run.current_stage
+            frozen = run.version_bundle.get("execution_retry_policy")
+            if frozen is not None:
+                max_attempts, retry_base_seconds, expires_at = _frozen_retry_policy(frozen)
+                retryable = retryable and now < expires_at
             if result_unknown:
                 run.status = "result_unknown"
                 run.current_stage = "result_unknown"
@@ -1849,6 +1879,11 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             if run.status != "failed" or not run.error_retryable:
                 raise ConflictError("official-account run is not retryable")
             now = datetime.now(UTC)
+            frozen = run.version_bundle.get("execution_retry_policy")
+            if frozen is not None:
+                maximum, _delay, expires_at = _frozen_retry_policy(frozen)
+                if run.attempt_count >= maximum or now >= expires_at:
+                    raise ConflictError("single article retry budget or window is exhausted")
             run.status = "queued"
             run.current_stage = _resume_stage(run)
             run.available_at = now
@@ -2089,6 +2124,31 @@ def _identity_from_bundle(bundle: dict[str, object]) -> OfficialAccountVersionId
         )
     except (KeyError, TypeError, ValueError):
         raise RuntimeError("official-account run version bundle is invalid") from None
+
+
+def _frozen_retry_policy(value: object) -> tuple[int, int, datetime]:
+    if not isinstance(value, dict) or set(value) != {
+        "version",
+        "max_attempts",
+        "retry_base_seconds",
+        "expires_at",
+    }:
+        raise ValueError("single article retry policy invalid")
+    maximum, delay = value["max_attempts"], value["retry_base_seconds"]
+    if (
+        value["version"] != "single-edition-article-retry-v1"
+        or type(maximum) is not int
+        or type(delay) is not int
+        or not 1 <= maximum <= 6
+        or not 1 <= delay <= 600
+    ):
+        raise ValueError("single article retry policy invalid")
+    if not isinstance(value["expires_at"], str):
+        raise ValueError("single article retry expiry invalid")
+    expires_at = datetime.fromisoformat(value["expires_at"])
+    if expires_at.utcoffset() is None:
+        raise ValueError("single article retry expiry must be aware")
+    return maximum, delay, expires_at
 
 
 def _identity_payload(identity: OfficialAccountVersionIdentity) -> dict[str, object]:

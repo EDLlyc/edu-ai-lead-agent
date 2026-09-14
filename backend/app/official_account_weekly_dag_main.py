@@ -96,9 +96,22 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
+    if settings.official_account_single_enabled and args.command != "status":
+        if args.command != "worker":
+            raise ValueError("single mode forbids legacy weekly admission/replay")
+        from app.infrastructure.official_account_single_runtime import run_single_runtime
+
+        return await run_single_runtime(settings, plane="producer", once=args.once)
     engine = create_engine(settings)
     session_factory = create_session_factory(engine)
     dag_repository = PostgresOfficialAccountWeeklyDagRepository(session_factory)
+    if settings.official_account_single_enabled and args.command == "status":
+        try:
+            status = await dag_repository.get_status(args.run_id)
+            print(json.dumps(status.as_dict(), ensure_ascii=False, sort_keys=True))
+            return 0
+        finally:
+            await engine.dispose()
     governance_repository = PostgresExecutionGovernanceRepository(session_factory)
     governance = PostgresOfficialAccountWeeklyDagGovernance(
         repository=governance_repository,

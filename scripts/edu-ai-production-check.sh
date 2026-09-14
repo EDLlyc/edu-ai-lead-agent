@@ -354,6 +354,43 @@ SELECT concat_ws('|',
     (( stale_running == 0 && ambiguous == 0 )) \
         || runtime_failure queue stale_or_ambiguous
 
+    local single_counts single_pending single_live single_stale single_delivering
+    local single_unknown single_delivered single_failed single_expired
+    single_counts="$(edu_ai_psql_scalar "
+SELECT concat_ws('|',
+  count(*) FILTER (WHERE status IN ('admitted', 'generating', 'preparing', 'ready')),
+  count(*) FILTER (
+    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering')
+      AND lease_token IS NOT NULL AND lease_expires_at > now()
+  ),
+  count(*) FILTER (
+    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering')
+      AND lease_token IS NOT NULL AND lease_expires_at <= now()
+  ),
+  count(*) FILTER (WHERE status = 'delivering'),
+  count(*) FILTER (WHERE status = 'outcome_unknown'),
+  count(*) FILTER (WHERE status = 'delivered'),
+  count(*) FILTER (WHERE status = 'failed'),
+  count(*) FILTER (WHERE status = 'expired')
+) FROM official_account_single_editions
+" 2>/dev/null)" || runtime_failure single_queue aggregate_query_failed
+    [[ "${single_counts}" =~ ^[0-9]{1,18}(\|[0-9]{1,18}){7}$ ]] \
+        || runtime_failure single_queue aggregate_result_invalid
+    IFS='|' read -r single_pending single_live single_stale single_delivering \
+        single_unknown single_delivered single_failed single_expired <<< "${single_counts}"
+    local single_state=idle
+    if (( single_stale > 0 || single_unknown > 0 )); then
+        single_state=ambiguous
+    elif (( single_pending > 0 || single_live > 0 || single_delivering > 0 )); then
+        single_state=active
+    fi
+    printf 'single_queue_state=%s pending=%s live_running=%s stale_running=%s delivering=%s outcome_unknown=%s delivered=%s failed=%s expired=%s\n' \
+        "${single_state}" "${single_pending}" "${single_live}" "${single_stale}" \
+        "${single_delivering}" "${single_unknown}" "${single_delivered}" \
+        "${single_failed}" "${single_expired}"
+    (( single_stale == 0 && single_unknown == 0 )) \
+        || runtime_failure single_queue stale_or_ambiguous
+
     printf 'runtime_health=ok\n'
 }
 

@@ -262,6 +262,13 @@ class Settings(BaseSettings):
         max_length=4_096,
     )
     official_account_weekly_production_enabled: bool = False
+    official_account_single_enabled: bool = False
+    official_account_single_min_date: date | None = None
+    official_account_single_account_fingerprint: str = ""
+    official_account_single_prepare_minutes: int = Field(default=60, ge=1, le=240)
+    official_account_single_catchup_hours: int = Field(default=6, ge=1, le=12)
+    official_account_single_max_attempts: int = Field(default=3, ge=1, le=6)
+    official_account_single_retry_base_seconds: int = Field(default=60, ge=1, le=600)
     official_account_weekly_scheduler_enabled: bool = False
     official_account_weekly_worker_enabled: bool = False
     official_account_weekly_min_week_start: date | None = None
@@ -560,6 +567,7 @@ class Settings(BaseSettings):
     @field_validator(
         "wechat_mp_draft_min_week_start",
         "official_account_weekly_min_week_start",
+        "official_account_single_min_date",
         mode="before",
     )
     @classmethod
@@ -674,6 +682,23 @@ class Settings(BaseSettings):
             self.official_account_weekly_scheduler_enabled
             or self.official_account_weekly_worker_enabled
         )
+        if self.official_account_single_enabled:
+            if self.app_env not in {"development", "production"}:
+                raise ValueError("single editions require development or production")
+            if self.app_env == "production" and not self.official_account_weekly_production_enabled:
+                raise ValueError("single production requires explicit acknowledgement")
+            if weekly_process_enabled or self.wechat_mp_draft_auto_enqueue_enabled:
+                raise ValueError(
+                    "single editions cannot overlap legacy weekly admissions or delivery"
+                )
+            if (
+                self.official_account_single_min_date is None
+                or self.official_account_single_min_date.weekday() not in {0, 2, 4}
+            ):
+                raise ValueError("single editions require an explicit M/W/F activation date")
+            account = self.official_account_single_account_fingerprint
+            if len(account) != 64 or any(char not in "0123456789abcdef" for char in account):
+                raise ValueError("single editions require a nonsecret account fingerprint")
         if self.official_account_weekly_production_enabled and self.app_env != "production":
             raise ValueError("weekly production acknowledgement is production-only")
         if weekly_process_enabled:

@@ -75,6 +75,13 @@ def _parser() -> argparse.ArgumentParser:
 async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(json_output=settings.app_env != "development")
+    if settings.official_account_single_enabled and args.command != "status":
+        if args.command != "worker":
+            _print_json({"ok": False, "error_code": "single_mode_legacy_enqueue_disabled"})
+            return 3
+        from app.infrastructure.official_account_single_runtime import run_single_runtime
+
+        return await run_single_runtime(settings, plane="consumer", once=args.once)
     gate_error = _command_gate(args.command, settings)
     if gate_error is not None:
         _print_json({"ok": False, "error_code": gate_error})

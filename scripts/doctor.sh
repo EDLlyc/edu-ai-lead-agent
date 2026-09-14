@@ -469,7 +469,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260914_0046" ]] \
+[[ "$migration_revision" == "20260914_0047" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 
@@ -561,6 +561,14 @@ weekly_dag_table_count="$(
 [[ "$weekly_dag_table_count" == "3" ]] \
   || fail "Official-account weekly DAG schema is incomplete; run 'make migrate'"
 pass "Official-account weekly DAG run, node, and attempt tables are installed"
+
+single_edition_table_count="$(
+  docker compose exec -T postgres sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT count(*) FROM unnest(ARRAY['\''official_account_single_editions'\'','\''official_account_draft_owners'\'']) AS required(name) WHERE to_regclass('\''public.'\'' || name) IS NOT NULL;"'
+)"
+[[ "$single_edition_table_count" == "2" ]] \
+  || fail "Official-account single-edition and ownership schema is incomplete; run 'make migrate'"
+pass "Official-account single-edition and shared draft ownership tables are installed"
 
 ip_asset_table_count="$(
   docker compose exec -T postgres sh -c \

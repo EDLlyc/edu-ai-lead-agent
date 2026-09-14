@@ -1,7 +1,12 @@
-{"file":".trellis/spec/backend/index.md","reason":"Current backend capability boundaries; startup repair only"}
-{"file":".trellis/spec/backend/directory-structure.md","reason":"Separate policy producers, executing worker and draft consumer"}
-{"file":".trellis/spec/backend/error-handling.md","reason":"Preserve typed timeout/unknown and provider mismatch behavior"}
-{"file":".trellis/spec/backend/official-account-strict-visual-pipeline.md","reason":"Exact identity, provider/audit ownership and legacy compatibility; R18 design qualifies old activation coupling"}
-{"file":".trellis/spec/backend/official-account-weekly-dag.md","reason":"Concurrent node waits, retry/root accounting and unchanged schedule semantics"}
-{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run relevant configuration/Compose/runtime quality checks; retain unrelated known baseline exceptions"}
-{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-release-readiness-review-20260907.md","reason":"Reproduced startup matrix, exact role isolation and queue-inclusive wait bug context"}
+{"file":".trellis/spec/backend/index.md","reason":"Backend ownership boundaries"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/mwf-single-article-20260914/prd.md","reason":"Current user-approved scope supersedes legacy weekly admissions"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/mwf-single-article-20260914/design.md","reason":"Production-shaped single-edition seams and immutable compatibility"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/mwf-single-article-20260914/implement.md","reason":"Approved implementation/check/activation sequence"}
+{"file":".trellis/tasks/09-05-production-recovery-qwen-embedding/research/monday-morning-diagnosis-20260914.md","reason":"Observed terminal-parent failure and actual frozen V4 length rejection"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Additive migrations and durable transactions"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Retry vs ambiguous external effect contracts"}
+{"file":".trellis/spec/backend/official-account-weekly-dag.md","reason":"Preserve legacy frozen weekly semantics"}
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Prepared single-draft creator and consumer-only effects"}
+{"file":".trellis/spec/backend/official-account-readable-sources.md","reason":"Preserve current prepared source/native read-more binding"}
+{"file":".trellis/spec/backend/official-account-single-edition.md","reason":"Date ownership, exclusive routing, bounded retry and prospective activation contract"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tests, type/lint, migration and release gates"}
