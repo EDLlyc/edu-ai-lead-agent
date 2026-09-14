@@ -113,7 +113,7 @@ def _rendered(mode: str) -> tuple[str, dict[str, dict[str, str]]]:
         "OFFICIAL_ACCOUNT_WEEKLY_MIN_WEEK_START": "2026-09-14",
         "IMAGE_ENABLED": "true",
         "IMAGE_PROVIDER_MODE": "comfly",
-        "IMAGE_MODEL": "gpt-image-2",
+        "IMAGE_MODEL": STRICT_VISUAL_POLICY.generation_model,
         "IMAGE_MAX_ATTEMPTS": "1" if mode == "legacy" else "3",
         # Match the observed live bound; the unrelated Compose 900 fallback is not this task.
         "IMAGE_PROVIDER_WINDOW_SECONDS": "300",

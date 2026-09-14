@@ -97,7 +97,7 @@ STRICT_VISUAL_AUDIT_RUBRIC_VERSION = "official-account-final-upload-audit-v1"
 class StrictVisualPolicy:
     version: StrictVisualPipelineVersion = STRICT_VISUAL_PIPELINE_VERSION
     generation_provider: Literal["comfly"] = "comfly"
-    generation_model: Literal["gpt-image-2"] = "gpt-image-2"
+    generation_model: Literal["gpt-image-2.5-sunburst"] = "gpt-image-2.5-sunburst"
     output_size: Literal["1536x1024"] = "1536x1024"
     native_width: int = 1536
     native_height: int = 1024

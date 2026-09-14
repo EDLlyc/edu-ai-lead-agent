@@ -14,6 +14,7 @@ from app.application.ports.image_generation import ImageGenerator
 from app.application.ports.image_validation import ImageQualityAuditor, ImageTextRecognizer
 from app.application.ports.ip_assets import IpAssetRecognitionModel
 from app.core.config import Settings
+from app.domain.image_generation import IMAGE_MODEL, TOAPIS_IMAGE_MODEL
 from app.infrastructure.ai.brand import (
     AlibabaMultimodalBrandEmbeddingAdapter,
     GovernanceEmbeddingBrandAdapter,
@@ -286,11 +287,16 @@ def create_image_generator(
     if settings.image_provider_mode == "toapis":
         if client is None or settings.toapis_api_key is None:
             raise RuntimeError("ToAPIs image provider requires an owned client and API key")
+        # IMAGE_MODEL is the generic Comfly default. Preserve the frozen ToAPIs default while
+        # retaining explicit ToAPIs alternatives such as Flux and Gemini.
+        toapis_model = (
+            TOAPIS_IMAGE_MODEL if settings.image_model == IMAGE_MODEL else settings.image_model
+        )
         return ToApisImageGenerator(
             client=client,
             base_url=settings.toapis_base_url,
             api_key=SecretStr(settings.toapis_api_key.get_secret_value()),
-            model=settings.image_model,
+            model=toapis_model,
             max_attempts=settings.image_max_attempts,
             initial_poll_seconds=settings.image_poll_initial_seconds,
             poll_interval_seconds=settings.image_poll_interval_seconds,

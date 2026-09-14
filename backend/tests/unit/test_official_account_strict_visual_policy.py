@@ -165,7 +165,7 @@ def _plan(*, native: bool = True):
         reference=_source(),
         reference_bytes=_jpeg(),
         provider="comfly",
-        model="gpt-image-2",
+        model=STRICT_VISUAL_POLICY.generation_model if native else "gpt-image-2",
         plan_version=OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION
         if native
         else OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_VERSION,
@@ -285,7 +285,7 @@ def test_native_plan_never_upscales_wrong_raw_dimensions(size: tuple[int, int]) 
     plan = _plan()
     result = ImageGenerationResult(
         provider="comfly",
-        model="gpt-image-2",
+        model=STRICT_VISUAL_POLICY.generation_model,
         request_fingerprint=plan.request_fingerprint,
         provider_task_id=None,
         provider_upload_id=None,
@@ -303,7 +303,7 @@ def test_native_result_preserves_native_geometry_and_checks_reported_identity() 
     plan = _plan()
     result = ImageGenerationResult(
         provider="comfly",
-        model="gpt-image-2",
+        model=STRICT_VISUAL_POLICY.generation_model,
         request_fingerprint=plan.request_fingerprint,
         provider_task_id=None,
         provider_upload_id=None,

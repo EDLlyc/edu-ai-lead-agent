@@ -14,7 +14,7 @@ from app.domain.brand_knowledge import (
 )
 from app.domain.content_slots import DEFAULT_SLOT_RANKING_VERSION, ContentSlot, ContentSlotSchedule
 from app.domain.copy_generation import ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
-from app.domain.image_generation import IMAGE_REFERENCE_BUDGET_BYTES
+from app.domain.image_generation import IMAGE_MODEL, IMAGE_REFERENCE_BUDGET_BYTES
 from app.domain.image_similarity import DEFAULT_IMAGE_SIMILARITY_THRESHOLD
 from app.domain.ip_assets import IP_ASSET_SEARCH_VERSION
 from app.domain.official_account_local import (
@@ -367,7 +367,7 @@ class Settings(BaseSettings):
     toapis_api_key: SecretStr | None = None
     comfly_base_url: str = "https://ai.comfly.org"
     comfly_api_key: SecretStr | None = None
-    image_model: str = "gpt-image-2"
+    image_model: str = IMAGE_MODEL
     image_prompt_version: str = "image-prompt-v1"
     image_pipeline_version: str = "image-pipeline-v1"
     image_max_attempts: int = Field(default=3, ge=1, le=6)

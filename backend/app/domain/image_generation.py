@@ -5,7 +5,10 @@ from hashlib import sha256
 
 from app.domain.value_objects import stable_key
 
-IMAGE_MODEL = "gpt-image-2"
+# Generic image-generation default used by the Comfly relay path. ToAPIs keeps its
+# provider-specific model allowlist and default at the adapter boundary.
+IMAGE_MODEL = "gpt-image-2.5-sunburst"
+TOAPIS_IMAGE_MODEL = "gpt-image-2"
 IMAGE_SIZE = "1:1"
 IMAGE_RESOLUTION = "1k"
 IMAGE_WIDTH = 1024

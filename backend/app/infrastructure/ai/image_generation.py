@@ -47,6 +47,7 @@ from app.domain.image_generation import (
     IMAGE_RESOLUTION,
     IMAGE_SIZE,
     IMAGE_WIDTH,
+    TOAPIS_IMAGE_MODEL,
     image_checksum,
 )
 from app.domain.image_provider_input import (
@@ -64,10 +65,9 @@ _TOAPIS_HOST = "toapis.com"
 _TOAPIS_FILES_HOST = "files.toapis.com"
 _SAFE_PROVIDER_ID = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 _TOAPIS_QUOTA_CODES = frozenset({"quota_not_enough", "insufficient_quota"})
-_GPT_IMAGE_MODEL = "gpt-image-2"
 _FLUX_IMAGE_MODEL = "flux-2-pro"
 _GEMINI_IMAGE_MODEL = "gemini-3-pro-image-preview-official"
-_SUPPORTED_IMAGE_MODELS = {_GPT_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
+_SUPPORTED_IMAGE_MODELS = {TOAPIS_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_MODEL}
 _COMFLY_RESPONSE_FORMAT = "url"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
@@ -169,7 +169,7 @@ def _generation_payload(
         "client_business_id": fingerprint,
     }
     urls = upload_urls or ((upload_url,) if upload_url is not None else ())
-    if model == _GPT_IMAGE_MODEL:
+    if model == TOAPIS_IMAGE_MODEL:
         payload.update({"resolution": IMAGE_RESOLUTION, "response_format": "url"})
         if urls:
             payload["reference_images"] = list(urls)
@@ -224,7 +224,7 @@ class ToApisImageGenerator:
         client: httpx.AsyncClient,
         base_url: str,
         api_key: SecretStr,
-        model: str = IMAGE_MODEL,
+        model: str = TOAPIS_IMAGE_MODEL,
         max_attempts: int = 3,
         initial_poll_seconds: float = 5.0,
         poll_interval_seconds: float = 7.0,

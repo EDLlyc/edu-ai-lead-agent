@@ -21,12 +21,13 @@ from app.core.errors import (
     ImageProviderRejectedError,
     ProviderAuthenticationError,
 )
-from app.domain.image_generation import validate_image_prompt
+from app.domain.image_generation import IMAGE_MODEL, TOAPIS_IMAGE_MODEL, validate_image_prompt
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
     normalize_image_provider_reference,
 )
 from app.image_live_smoke import _prompt_for_profile
+from app.infrastructure.ai.factory import create_image_generator
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
     OpenAICompatibleImageGenerator,
@@ -674,7 +675,7 @@ async def test_comfly_direct_url_maps_documented_payload_and_downloads_one_image
     assert seen_auth == "Bearer test-key"
     assert seen_idempotency_key == "comfly-fingerprint"
     assert seen_payload is not None
-    assert seen_payload["model"] == "gpt-image-2"
+    assert seen_payload["model"] == "gpt-image-2.5-sunburst"
     assert seen_payload["size"] == "1024x1024"
     assert seen_payload["response_format"] == "url"
     assert "aspect_ratio" not in seen_payload
@@ -1397,9 +1398,36 @@ def test_settings_use_a_provider_friendly_reference_budget_by_default() -> None:
 def test_image_provider_defaults_use_bounded_comfly_timeouts_and_retries() -> None:
     settings = Settings(_env_file=None)
 
+    assert settings.image_model == "gpt-image-2.5-sunburst"
     assert settings.image_provider_timeout_seconds == 300.0
     assert settings.image_provider_window_seconds == 300.0
     assert settings.image_max_attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_image_generator_factory_keeps_provider_specific_model_defaults() -> None:
+    async with httpx.AsyncClient() as client:
+        toapis = create_image_generator(
+            Settings(
+                _env_file=None,
+                image_provider_mode="toapis",
+                toapis_api_key=SecretStr("test-key"),
+            ),
+            client=client,
+        )
+        comfly = create_image_generator(
+            Settings(
+                _env_file=None,
+                image_provider_mode="comfly",
+                comfly_api_key=SecretStr("test-key"),
+            ),
+            client=client,
+        )
+
+    assert isinstance(toapis, ToApisImageGenerator)
+    assert toapis._model == TOAPIS_IMAGE_MODEL
+    assert isinstance(comfly, OpenAICompatibleImageGenerator)
+    assert comfly._model == IMAGE_MODEL
 
 
 def test_settings_accept_the_300_second_comfly_timeout_bounds() -> None:
