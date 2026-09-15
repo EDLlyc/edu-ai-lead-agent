@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
@@ -32,6 +33,9 @@ SCHEMA = "20260914_0047"
 MIN_SINGLE_DATE = "2026-09-16"
 SINGLE_ACCOUNT = "ae3a5056a1c78eddf728060ecc5287b6a93e48d99e496bc9a22292a2b4eb8fd7"
 EXPECTED_OWNER_ROWS = 14
+MAX_FUTURE_WECOM_JOBS = 3
+MIN_WECOM_QUIESCE_LEAD_SECONDS = 10 * 60
+MIN_WECOM_READY_LEAD_SECONDS = 5 * 60
 SERVICES = (
     "acquisition-api",
     "acquisition-scheduler",
@@ -129,6 +133,36 @@ HISTORICAL_COHORT_QUERY = """SELECT COALESCE(jsonb_agg(
 jsonb_build_object('job',to_jsonb(j),'run',to_jsonb(r)) ORDER BY j.id),'[]'::jsonb)::text
 FROM copy_generation_jobs j JOIN copy_generation_runs r ON r.id=j.run_id
 WHERE j.status::text='queued' AND r.scoring_profile::text='preview'"""
+WECOM_ACTIVE_QUERY = """SELECT jsonb_build_object(
+'observed_at_epoch',EXTRACT(EPOCH FROM statement_timestamp())::text,
+'jobs',COALESCE(jsonb_agg(jsonb_build_object(
+'id',j.id::text,
+'delivery_window_id',j.delivery_window_id::text,
+'content_slot_selection_id',j.content_slot_selection_id::text,
+'sequence_ordinal',j.sequence_ordinal,
+'mode',j.mode,
+'status',j.status,
+'text_status',j.text_status,
+'image_status',j.image_status,
+'include_copy',j.include_copy,
+'include_image',j.include_image,
+'attempt_count',j.attempt_count,
+'next_attempt_at_epoch',EXTRACT(EPOCH FROM j.next_attempt_at)::text,
+'not_before_epoch',EXTRACT(EPOCH FROM j.not_before)::text,
+'expires_at_epoch',EXTRACT(EPOCH FROM j.expires_at)::text,
+'lease_owner',j.lease_owner,
+'lease_token',j.lease_token::text,
+'lease_expires_at_epoch',EXTRACT(EPOCH FROM j.lease_expires_at)::text,
+'heartbeat_at_epoch',EXTRACT(EPOCH FROM j.heartbeat_at)::text,
+'last_error_code',j.last_error_code,
+'created_at_epoch',EXTRACT(EPOCH FROM j.created_at)::text,
+'started_at_epoch',EXTRACT(EPOCH FROM j.started_at)::text,
+'completed_at_epoch',EXTRACT(EPOCH FROM j.completed_at)::text,
+'attempt_rows',(SELECT count(*) FROM wecom_delivery_attempts a WHERE a.job_id=j.id)
+) ORDER BY j.id),'[]'::jsonb))::text
+FROM wecom_delivery_jobs j
+WHERE j.status::text IN ('queued','running','partial','delivery_unknown')
+OR j.text_status::text='unknown' OR j.image_status::text='unknown'"""
 BUSINESS_DATE_QUERY = "SELECT (now() AT TIME ZONE 'Asia/Shanghai')::date::text"
 
 SMOKE = r"""
@@ -256,6 +290,140 @@ def validate_historical_cohort(rows: object, business_date: str) -> tuple[str, .
         "historical_cohort_membership",
     )
     return tuple(ids)
+
+
+def _epoch(value: object, code: str) -> Decimal:
+    require(
+        isinstance(value, str)
+        and re.fullmatch(r"[0-9]{10}(?:\.[0-9]{1,6})?", value) is not None,
+        code,
+    )
+    assert isinstance(value, str)
+    return Decimal(value)
+
+
+def validate_future_wecom_jobs(
+    snapshot: object, *, minimum_lead_seconds: int
+) -> tuple[int, str]:
+    """Permit only a bounded, frozen set of future nonclaimable formal jobs."""
+    require(
+        type(minimum_lead_seconds) is int and minimum_lead_seconds >= 0,
+        "wecom_lead_seconds",
+    )
+    require(
+        isinstance(snapshot, dict) and set(snapshot) == {"observed_at_epoch", "jobs"},
+        "wecom_snapshot_shape",
+    )
+    assert isinstance(snapshot, dict)
+    observed_at = _epoch(snapshot["observed_at_epoch"], "wecom_observed_at")
+    rows = snapshot["jobs"]
+    require(
+        isinstance(rows, list) and len(rows) <= MAX_FUTURE_WECOM_JOBS,
+        "wecom_future_count",
+    )
+    assert isinstance(rows, list)
+    expected_fields = {
+        "id",
+        "delivery_window_id",
+        "content_slot_selection_id",
+        "sequence_ordinal",
+        "mode",
+        "status",
+        "text_status",
+        "image_status",
+        "include_copy",
+        "include_image",
+        "attempt_count",
+        "next_attempt_at_epoch",
+        "not_before_epoch",
+        "expires_at_epoch",
+        "lease_owner",
+        "lease_token",
+        "lease_expires_at_epoch",
+        "heartbeat_at_epoch",
+        "last_error_code",
+        "created_at_epoch",
+        "started_at_epoch",
+        "completed_at_epoch",
+        "attempt_rows",
+    }
+    uuid_pattern = re.compile(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    )
+    identities: list[str] = []
+    for row in rows:
+        require(
+            isinstance(row, dict) and set(row) == expected_fields,
+            "wecom_future_shape",
+        )
+        assert isinstance(row, dict)
+        identity = row["id"]
+        window_id = row["delivery_window_id"]
+        selection_id = row["content_slot_selection_id"]
+        ordinal = row["sequence_ordinal"]
+        require(
+            isinstance(identity, str)
+            and uuid_pattern.fullmatch(identity) is not None
+            and isinstance(window_id, str)
+            and uuid_pattern.fullmatch(window_id) is not None
+            and isinstance(selection_id, str)
+            and uuid_pattern.fullmatch(selection_id) is not None
+            and type(ordinal) is int
+            and 1 <= ordinal <= 3,
+            "wecom_future_identity",
+        )
+        assert isinstance(identity, str)
+        assert isinstance(window_id, str)
+        assert isinstance(ordinal, int)
+        require(identity not in identities, "wecom_future_duplicate")
+        identities.append(identity)
+        require(
+            row["mode"] == "formal"
+            and row["status"] == "queued"
+            and row["text_status"] == "pending"
+            and row["image_status"] == "pending"
+            and row["include_copy"] is True
+            and row["include_image"] is True
+            and type(row["attempt_count"]) is int
+            and row["attempt_count"] == 0
+            and type(row["attempt_rows"]) is int
+            and row["attempt_rows"] == 0,
+            "wecom_future_state",
+        )
+        require(
+            all(
+                row[field] is None
+                for field in (
+                    "lease_owner",
+                    "lease_token",
+                    "lease_expires_at_epoch",
+                    "heartbeat_at_epoch",
+                    "last_error_code",
+                    "started_at_epoch",
+                    "completed_at_epoch",
+                )
+            ),
+            "wecom_future_started",
+        )
+        created_at = _epoch(row["created_at_epoch"], "wecom_future_created_at")
+        next_attempt_at = _epoch(
+            row["next_attempt_at_epoch"], "wecom_future_next_attempt_at"
+        )
+        not_before = _epoch(row["not_before_epoch"], "wecom_future_not_before")
+        expires_at = _epoch(row["expires_at_epoch"], "wecom_future_expires_at")
+        require(
+            created_at <= observed_at
+            and next_attempt_at == not_before
+            and not_before > observed_at
+            and not_before - observed_at >= minimum_lead_seconds
+            and expires_at > not_before,
+            "wecom_future_window",
+        )
+    require(identities == sorted(identities), "wecom_future_order")
+    encoded = json.dumps(
+        rows, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode()
+    return len(rows), hashlib.sha256(encoded).hexdigest()
 
 
 def validate_owner_rows(rows: object) -> str:
@@ -525,6 +693,8 @@ class Deployment:
         self.primary_env: tuple[bytes, os.stat_result] | None = None
         self.compose_snapshot: tuple[bytes, os.stat_result] | None = None
         self.owner_sha256: str | None = None
+        self.future_wecom_count: int | None = None
+        self.future_wecom_sha256: str | None = None
         self.base_config: dict[str, object] | None = None
         self.backup_dir = BACKUP_ROOT / ("no-source-links-" + manifest["revision"][:12])
 
@@ -602,23 +772,37 @@ class Deployment:
         )
         return self.inspect(ids[0])
 
-    def idle(self) -> None:
+    def idle(
+        self, *, minimum_wecom_lead_seconds: int = MIN_WECOM_QUIESCE_LEAD_SECONDS
+    ) -> None:
         business_date = self.scalar(BUSINESS_DATE_QUERY)
         before = validate_historical_cohort(
             json.loads(self.scalar(HISTORICAL_COHORT_QUERY)), business_date
         )
+        wecom_before = validate_future_wecom_jobs(
+            json.loads(self.scalar(WECOM_ACTIVE_QUERY)),
+            minimum_lead_seconds=minimum_wecom_lead_seconds,
+        )
         active_count = self.scalar(IDLE_QUERY)
         after = validate_historical_cohort(
             json.loads(self.scalar(HISTORICAL_COHORT_QUERY)), business_date
+        )
+        wecom_after = validate_future_wecom_jobs(
+            json.loads(self.scalar(WECOM_ACTIVE_QUERY)),
+            minimum_lead_seconds=minimum_wecom_lead_seconds,
         )
         single_count = self.scalar(SINGLE_EDITION_QUERY)
         owners_before = validate_owner_rows(json.loads(self.scalar(OWNER_QUERY)))
         owners_after = validate_owner_rows(json.loads(self.scalar(OWNER_QUERY)))
         if self.owner_sha256 is None:
             self.owner_sha256 = owners_before
+        if self.future_wecom_count is None and self.future_wecom_sha256 is None:
+            self.future_wecom_count, self.future_wecom_sha256 = wecom_before
         require(
             before == after
-            and active_count == str(len(before))
+            and wecom_before == wecom_after
+            and wecom_before == (self.future_wecom_count, self.future_wecom_sha256)
+            and active_count == str(len(before) + wecom_before[0])
             and single_count == "0"
             and owners_before == owners_after == self.owner_sha256,
             "queue_or_owner_not_idle",
@@ -649,7 +833,13 @@ class Deployment:
             )
         return cast(dict[str, Any], value)
 
-    def verify(self, reference: str, image_id: str) -> None:
+    def verify(
+        self,
+        reference: str,
+        image_id: str,
+        *,
+        minimum_wecom_lead_seconds: int = MIN_WECOM_READY_LEAD_SECONDS,
+    ) -> None:
         for name in SERVICES:
             item = self.service(name)
             require(
@@ -717,13 +907,23 @@ class Deployment:
                 else (self.manifest["revision"] + "\n").encode()
             )
             require(safe_file(APP / filename) == expected, "active_marker_changed")
-        self.idle()
+        self.idle(minimum_wecom_lead_seconds=minimum_wecom_lead_seconds)
 
-    def wait_ready(self, reference: str, image_id: str) -> None:
+    def wait_ready(
+        self,
+        reference: str,
+        image_id: str,
+        *,
+        minimum_wecom_lead_seconds: int = MIN_WECOM_READY_LEAD_SECONDS,
+    ) -> None:
         deadline = time.monotonic() + 90
         while True:
             try:
-                self.verify(reference, image_id)
+                self.verify(
+                    reference,
+                    image_id,
+                    minimum_wecom_lead_seconds=minimum_wecom_lead_seconds,
+                )
                 return
             except RuntimeError:
                 if time.monotonic() >= deadline:
@@ -790,8 +990,12 @@ class Deployment:
             name: self.service(name)["Id"] for name in ("postgres", "minio")
         }
         self.base_config = self.config(PREVIOUS_REF)
-        self.verify(PREVIOUS_REF, PREVIOUS_ID)
-        self.idle()
+        self.verify(
+            PREVIOUS_REF,
+            PREVIOUS_ID,
+            minimum_wecom_lead_seconds=MIN_WECOM_QUIESCE_LEAD_SECONDS,
+        )
+        self.idle(minimum_wecom_lead_seconds=MIN_WECOM_QUIESCE_LEAD_SECONDS)
 
     def smoke(self, reference: str, current: bool) -> dict[str, Any]:
         return cast(
@@ -918,6 +1122,11 @@ class Deployment:
             self.primary_env is not None and self.compose_snapshot is not None,
             "missing_environment_backup",
         )
+        require(
+            self.future_wecom_count is not None
+            and self.future_wecom_sha256 is not None,
+            "missing_wecom_snapshot",
+        )
         assert self.primary_env is not None
         assert self.compose_snapshot is not None
         snapshots = {
@@ -947,10 +1156,26 @@ class Deployment:
             stream.write(json.dumps(self.manifest, sort_keys=True).encode())
             stream.flush()
             os.fsync(stream.fileno())
+        preflight_state = {
+            "future_nonclaimable_wecom_jobs": self.future_wecom_count,
+            "future_nonclaimable_wecom_sha256": self.future_wecom_sha256,
+            "future_wecom_minimum_lead_seconds": MIN_WECOM_QUIESCE_LEAD_SECONDS,
+        }
+        with (self.backup_dir / "preflight-state.json").open("xb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(json.dumps(preflight_state, sort_keys=True).encode())
+            stream.flush()
+            os.fsync(stream.fileno())
 
     def success_receipt(self) -> None:
         # Primary .env is backed up but never installed/restored by this operator:
         # its only live configuration mutation is APP_IMAGE in .release.env.
+        self.idle(minimum_wecom_lead_seconds=MIN_WECOM_READY_LEAD_SECONDS)
+        require(
+            self.future_wecom_count is not None
+            and self.future_wecom_sha256 is not None,
+            "missing_wecom_snapshot",
+        )
         receipt = {
             "status": "deployed",
             "revision": self.manifest["revision"],
@@ -969,6 +1194,9 @@ class Deployment:
             "single_editions": 0,
             "draft_owner_rows": EXPECTED_OWNER_ROWS,
             "draft_owner_sha256": self.owner_sha256,
+            "future_nonclaimable_wecom_jobs": self.future_wecom_count,
+            "future_nonclaimable_wecom_sha256": self.future_wecom_sha256,
+            "future_wecom_minimum_ready_lead_seconds": MIN_WECOM_READY_LEAD_SECONDS,
             "minimum_single_date": MIN_SINGLE_DATE,
             "standard_release_provenance": "incomplete",
         }
@@ -981,8 +1209,12 @@ class Deployment:
     def fence(self) -> None:
         for filename, (body, _details) in self.before.items():
             require(safe_file(APP / filename) == body, "live_marker_drift")
-        self.verify(PREVIOUS_REF, PREVIOUS_ID)
-        self.idle()
+        self.verify(
+            PREVIOUS_REF,
+            PREVIOUS_ID,
+            minimum_wecom_lead_seconds=MIN_WECOM_QUIESCE_LEAD_SECONDS,
+        )
+        self.idle(minimum_wecom_lead_seconds=MIN_WECOM_QUIESCE_LEAD_SECONDS)
 
     def post_quiescence_fence(self) -> None:
         """Recheck every protected activation input after writers have stopped."""
@@ -1016,7 +1248,7 @@ class Deployment:
             "post_stop_candidate_drift",
         )
         self.config(self.manifest["candidate_ref"])
-        self.idle()
+        self.idle(minimum_wecom_lead_seconds=MIN_WECOM_QUIESCE_LEAD_SECONDS)
 
     def stop(self) -> None:
         self.compose("stop", "-t", "30", *STOP_ORDER, timeout=120)
@@ -1067,7 +1299,11 @@ class Deployment:
                 failures.append("restore")
         try:
             self.start(PREVIOUS_REF)
-            self.wait_ready(PREVIOUS_REF, PREVIOUS_ID)
+            self.wait_ready(
+                PREVIOUS_REF,
+                PREVIOUS_ID,
+                minimum_wecom_lead_seconds=0,
+            )
         except BaseException:  # noqa: BLE001 -- record terminal recovery failure
             failures.append("restart")
             try:

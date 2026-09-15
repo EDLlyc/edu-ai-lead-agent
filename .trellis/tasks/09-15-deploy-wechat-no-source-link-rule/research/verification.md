@@ -26,6 +26,21 @@ publication, database write, or object-storage write occurred in this phase.
   requires the M/W/F edition table to be completely empty, validates exactly 14 history-owner rows
   including one ready `import-v1` barrier, freezes their canonical digest under
   the deployment lock, and rejects reserved/unknown owner state.
+- A fresh production preflight exposed two formal Enterprise WeChat rows whose
+  delivery window had not opened. The operator now permits zero through three
+  such rows only when their complete safe control projection proves they are
+  queued, `pending/pending`, attempt-zero with no attempt records, unleased,
+  unstarted, error-free, formal, and strictly future/nonclaimable. It freezes the
+  ordered canonical row digest and count at preflight, records only those safe
+  values, and repeats the equality check at the pre-stop fence, post-quiescence
+  fence, candidate readiness and receipt. All other active work must still equal
+  exactly the seven sealed copy jobs.
+- Quiescence requires at least ten minutes before the earliest allowed WeCom
+  `not_before`; candidate readiness and receipt require at least five minutes.
+  Running, partial, delivery-unknown, child-unknown, due, expired, malformed,
+  changed, excessive or newly admitted rows fail closed. The operator never
+  claims or mutates the allowed rows and exposes no job, recipient, package or
+  content identity in logs or receipts.
 - It requires the M/W/F minimum date `2026-09-16`, enabled single mode, disabled
   legacy weekly routes, and unchanged rendered Compose except for the immutable
   application image reference. It refuses activation on or after that date.
@@ -41,12 +56,14 @@ publication, database write, or object-storage write occurred in this phase.
   source field through `httpx.MockTransport`.
 - Operator/validator/builder Ruff format and lint: **passed**.
 - Strict mypy over the three release programs: **passed**.
-- Fake operator/validator harness: **21 passed**. It covers strict manifest
+- Fake operator/validator harness: **47 passed**. It covers strict manifest
   fields, exact release-env replacement, owner/barrier drift, the sealed queue,
-  exactly zero editions, pre-quiescence non-mutation, a complete post-quiescence
-  fence, fail-closed rollback, exact service selection, preflight-only behavior,
-  unsafe archive members, the exact five-file overlay layer, and the absence of
-  publish/mass-send/upload/migration surfaces.
+  exactly zero editions, bounded future WeCom acceptance, zero-row compatibility,
+  state/window/drift rejection, safe preflight/receipt evidence, pre-quiescence
+  non-mutation, a complete post-quiescence fence, fail-closed rollback, exact
+  service selection, preflight-only behavior, unsafe archive members, the exact
+  five-file overlay layer, and the absence of publish/mass-send/upload/migration
+  surfaces.
 - Six-profile `docker compose config --quiet`: **passed**.
 - Trellis task validation: **passed**, with only the known context-size warning
   for `quality-guidelines.md`.
@@ -56,8 +73,8 @@ Current task-local tool hashes:
 
 - builder: `8bbf23ba2fc1d8dcdb566063ea5bbcf571a39eb69e5423aa45d8c7ec265703d1`
 - OCI validator: `8f6e169935f9970f0f31c8980783433017d6b836d75651cb61ce1e96225a5e93`
-- deployment operator: `1fab4642bbeca245e4fc66977e408b6e283906c83a5888d3743253a26bce78ea`
-- fake harness: `7d3506698b96111665b4770fc824fd50c2e5e7c23d34b97b68c11073ee685f98`
+- deployment operator: `38452f764f143398358530791792fb523590e510070aecf0e7279260e34b2669`
+- fake harness: `b272f340a314180540f4ba8193a2031e06ae8a4ceba5cec8a7764cc782af2272`
 
 The independent Phase 2.2 review tightened four release gates without changing
 product behavior: the OCI validator now parses the added layer and accepts only
@@ -95,8 +112,14 @@ python3 -B .trellis/tasks/09-15-deploy-wechat-no-source-link-rule/research/build
 
 The output is a mode-0700 directory containing the mode-0600 candidate OCI,
 candidate manifest, validator, operator, and `artifacts.sha256`. Re-run the
-task-local 21-test harness after any operator/builder edit. Transfer only those
+task-local 47-test harness after any operator/builder edit. Transfer only those
 five generated files, verify `sha256sum -c artifacts.sha256`, then invoke the
 operator once without `--execute` and once with `--execute` using the exact
 candidate-manifest SHA-256. The main session owns those commit, push, transfer,
 activation, and final evidence steps.
+
+The existing `01ff75e` OCI image and candidate manifest do not bind queue-policy
+code and do not need rebuilding for this task-local operator adjustment. Before
+the next production preflight, replace the staged operator with the reviewed hash
+above and regenerate the operator line in `artifacts.sha256`; do not use the older
+operator copy emitted by the initial builder run.

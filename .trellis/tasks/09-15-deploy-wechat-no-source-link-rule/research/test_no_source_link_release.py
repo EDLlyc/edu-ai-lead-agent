@@ -168,30 +168,213 @@ def pin_cohort(monkeypatch: pytest.MonkeyPatch, rows: object) -> None:
     )
 
 
+def future_wecom_rows(count: int = 2) -> list[dict[str, object]]:
+    return [
+        {
+            "id": f"10000000-0000-4000-8000-{index:012d}",
+            "delivery_window_id": f"20000000-0000-4000-8000-{index:012d}",
+            "content_slot_selection_id": f"30000000-0000-4000-8000-{index:012d}",
+            "sequence_ordinal": index + 1,
+            "mode": "formal",
+            "status": "queued",
+            "text_status": "pending",
+            "image_status": "pending",
+            "include_copy": True,
+            "include_image": True,
+            "attempt_count": 0,
+            "next_attempt_at_epoch": "1000001200.000000",
+            "not_before_epoch": "1000001200.000000",
+            "expires_at_epoch": "1000004800.000000",
+            "lease_owner": None,
+            "lease_token": None,
+            "lease_expires_at_epoch": None,
+            "heartbeat_at_epoch": None,
+            "last_error_code": None,
+            "created_at_epoch": "0999999000.000000",
+            "started_at_epoch": None,
+            "completed_at_epoch": None,
+            "attempt_rows": 0,
+        }
+        for index in range(count)
+    ]
+
+
+def wecom_snapshot(rows: object, observed: str = "1000000000.000000") -> str:
+    return json.dumps({"observed_at_epoch": observed, "jobs": rows})
+
+
+def test_future_wecom_snapshot_accepts_zero_or_bounded_unclaimable_jobs() -> None:
+    empty = operator.validate_future_wecom_jobs(
+        json.loads(wecom_snapshot([])), minimum_lead_seconds=600
+    )
+    rows = future_wecom_rows()
+    bounded = operator.validate_future_wecom_jobs(
+        json.loads(wecom_snapshot(rows)), minimum_lead_seconds=600
+    )
+    assert empty == (0, hashlib.sha256(b"[]").hexdigest())
+    assert bounded[0] == 2 and len(bounded[1]) == 64
+    with pytest.raises(RuntimeError, match="wecom_future_count"):
+        operator.validate_future_wecom_jobs(
+            json.loads(wecom_snapshot(future_wecom_rows(4))),
+            minimum_lead_seconds=600,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "running"),
+        ("status", "partial"),
+        ("status", "delivery_unknown"),
+        ("text_status", "unknown"),
+        ("image_status", "unknown"),
+        ("image_status", "delivered"),
+        ("mode", "test"),
+        ("include_copy", False),
+        ("attempt_count", 1),
+        ("attempt_rows", 1),
+        ("lease_owner", "worker"),
+        ("lease_token", "40000000-0000-4000-8000-000000000000"),
+        ("lease_expires_at_epoch", "1000000600.000000"),
+        ("heartbeat_at_epoch", "1000000000.000000"),
+        ("last_error_code", "provider_failed"),
+        ("started_at_epoch", "1000000000.000000"),
+        ("completed_at_epoch", "1000000000.000000"),
+        ("next_attempt_at_epoch", "1000001199.000000"),
+        ("created_at_epoch", "1000000001.000000"),
+        ("not_before_epoch", "1000000000.000000"),
+        ("expires_at_epoch", "0999999999.000000"),
+    ],
+)
+def test_future_wecom_snapshot_rejects_due_or_unsafe_state(
+    field: str, value: object
+) -> None:
+    rows = future_wecom_rows()
+    rows[0][field] = value
+    with pytest.raises(RuntimeError):
+        operator.validate_future_wecom_jobs(
+            json.loads(wecom_snapshot(rows)), minimum_lead_seconds=600
+        )
+
+
+def test_future_wecom_snapshot_rejects_malformed_or_short_lead() -> None:
+    rows = future_wecom_rows()
+    del rows[0]["completed_at_epoch"]
+    with pytest.raises(RuntimeError, match="wecom_future_shape"):
+        operator.validate_future_wecom_jobs(
+            json.loads(wecom_snapshot(rows)), minimum_lead_seconds=600
+        )
+    with pytest.raises(RuntimeError, match="wecom_future_window"):
+        operator.validate_future_wecom_jobs(
+            json.loads(wecom_snapshot(future_wecom_rows())),
+            minimum_lead_seconds=1201,
+        )
+
+
 def test_idle_binds_sealed_copy_cohort_zero_editions_and_owner_digest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cohort = cohort_rows()
     owners = owner_rows()
+    wecom = future_wecom_rows()
     pin_cohort(monkeypatch, cohort)
     operation = operator.Deployment(Path("/tmp/candidate.json"), manifest())
     replies = {
         operator.BUSINESS_DATE_QUERY: "2026-09-15",
         operator.HISTORICAL_COHORT_QUERY: json.dumps(cohort),
-        operator.IDLE_QUERY: "7",
+        operator.WECOM_ACTIVE_QUERY: wecom_snapshot(wecom),
+        operator.IDLE_QUERY: "9",
         operator.SINGLE_EDITION_QUERY: "0",
         operator.OWNER_QUERY: json.dumps(owners),
     }
     monkeypatch.setattr(operation, "scalar", lambda query: replies[query])
     operation.idle()
     sealed = operation.owner_sha256
+    wecom_sealed = operation.future_wecom_sha256
     operation.idle()
     assert sealed == operation.owner_sha256
+    assert operation.future_wecom_count == 2
+    assert wecom_sealed == operation.future_wecom_sha256
+    changed = copy.deepcopy(wecom)
+    changed[0]["created_at_epoch"] = "0999999001.000000"
+    replies[operator.WECOM_ACTIVE_QUERY] = wecom_snapshot(changed)
+    with pytest.raises(RuntimeError, match="queue_or_owner_not_idle"):
+        operation.idle()
+    replies[operator.WECOM_ACTIVE_QUERY] = wecom_snapshot(wecom)
     replies[operator.SINGLE_EDITION_QUERY] = "1"
     with pytest.raises(RuntimeError, match="queue_or_owner_not_idle"):
         operation.idle()
     assert operator.SINGLE_EDITION_QUERY == (
         "SELECT count(*) FROM official_account_single_editions"
+    )
+
+
+def test_idle_accepts_zero_future_wecom_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    cohort = cohort_rows()
+    pin_cohort(monkeypatch, cohort)
+    operation = operator.Deployment(Path("/tmp/candidate.json"), manifest())
+    replies = {
+        operator.BUSINESS_DATE_QUERY: "2026-09-15",
+        operator.HISTORICAL_COHORT_QUERY: json.dumps(cohort),
+        operator.WECOM_ACTIVE_QUERY: wecom_snapshot([]),
+        operator.IDLE_QUERY: "7",
+        operator.SINGLE_EDITION_QUERY: "0",
+        operator.OWNER_QUERY: json.dumps(owner_rows()),
+    }
+    monkeypatch.setattr(operation, "scalar", lambda query: replies[query])
+    operation.idle()
+    assert operation.future_wecom_count == 0
+    assert operation.future_wecom_sha256 == hashlib.sha256(b"[]").hexdigest()
+
+
+def test_receipt_references_frozen_wecom_digest_without_private_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operation = operator.Deployment(Path("/tmp/candidate.json"), manifest())
+    operation.backup_dir = tmp_path
+    operation.owner_sha256 = "4" * 64
+    operation.future_wecom_count = 2
+    operation.future_wecom_sha256 = "5" * 64
+    checked: list[int] = []
+    monkeypatch.setattr(
+        operation,
+        "idle",
+        lambda *, minimum_wecom_lead_seconds: checked.append(
+            minimum_wecom_lead_seconds
+        ),
+    )
+    operation.success_receipt()
+    raw = (tmp_path / "result.json").read_text()
+    receipt = json.loads(raw)
+    assert checked == [operator.MIN_WECOM_READY_LEAD_SECONDS]
+    assert receipt["future_nonclaimable_wecom_jobs"] == 2
+    assert receipt["future_nonclaimable_wecom_sha256"] == "5" * 64
+    assert "10000000-0000-4000-8000" not in raw
+
+
+def test_backup_records_only_safe_preflight_wecom_state(tmp_path: Path) -> None:
+    operation = operator.Deployment(Path("/tmp/candidate.json"), manifest())
+    operation.backup_dir = tmp_path / "backup"
+    env = tmp_path / ".env"
+    compose = tmp_path / "compose.yaml"
+    env.write_bytes(b"fixture-env")
+    compose.write_bytes(b"fixture-compose")
+    operation.primary_env = (env.read_bytes(), env.stat())
+    operation.compose_snapshot = (compose.read_bytes(), compose.stat())
+    operation.future_wecom_count = 2
+    operation.future_wecom_sha256 = "5" * 64
+    operation.backup()
+    raw = (operation.backup_dir / "preflight-state.json").read_text()
+    state = json.loads(raw)
+    assert state == {
+        "future_nonclaimable_wecom_jobs": 2,
+        "future_nonclaimable_wecom_sha256": "5" * 64,
+        "future_wecom_minimum_lead_seconds": 600,
+    }
+    assert "10000000-0000-4000-8000" not in raw
+    assert (
+        stat.S_IMODE((operation.backup_dir / "preflight-state.json").stat().st_mode)
+        == 0o600
     )
 
 
@@ -237,7 +420,7 @@ class Fake(operator.Deployment):
     def stop(self) -> None:
         self.step("stop")
 
-    def idle(self) -> None:
+    def idle(self, *, minimum_wecom_lead_seconds: int = 0) -> None:
         self.step("idle")
 
     def post_quiescence_fence(self) -> None:
@@ -256,7 +439,13 @@ class Fake(operator.Deployment):
     def start(self, reference: str) -> None:
         self.step("start_old" if reference == operator.PREVIOUS_REF else "start_new")
 
-    def wait_ready(self, reference: str, image_id: str) -> None:
+    def wait_ready(
+        self,
+        reference: str,
+        image_id: str,
+        *,
+        minimum_wecom_lead_seconds: int = operator.MIN_WECOM_READY_LEAD_SECONDS,
+    ) -> None:
         self.step("ready_old" if reference == operator.PREVIOUS_REF else "ready_new")
 
     def success_receipt(self) -> None:
@@ -309,7 +498,13 @@ def test_failed_rollback_readiness_stops_writers_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class FailedRecovery(Fake):
-        def wait_ready(self, reference: str, image_id: str) -> None:
+        def wait_ready(
+            self,
+            reference: str,
+            image_id: str,
+            *,
+            minimum_wecom_lead_seconds: int = operator.MIN_WECOM_READY_LEAD_SECONDS,
+        ) -> None:
             name = "ready_old" if reference == operator.PREVIOUS_REF else "ready_new"
             self.events.append(name)
             raise RuntimeError(name + "_failed")
