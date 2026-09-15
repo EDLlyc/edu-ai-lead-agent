@@ -1951,3 +1951,27 @@ Prospective MWF 09:00 prepare/10:00 single unpublished draft activated from 2026
 ### Next Steps
 
 - Observe the next scheduled September16 edition and require its persisted WeChat draft acknowledgement before reporting actual delivery.
+
+
+## Session 86: Deploy WeChat no-source-link rule
+
+**Date**: 2026-09-15
+**Task**: Deploy WeChat no-source-link rule
+**Branch**: `release/wechat-two-banner-framing-20260914`
+
+### Summary
+
+Activated the V2 publisher-only WeChat source presentation on the exact production image overlay, preserved historical V1 behavior and future WeCom deliveries, verified 12+2 runtime health with zero model/social calls, and recorded fail-closed deployment evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `01ff75e` | (see git log) |
+| `d0b9e0a` | (see git log) |
+| `69a203d` | (see git log) |
+| `d3e3340` | (see git log) |
+
+### Status
+
+[OK] **Completed**
