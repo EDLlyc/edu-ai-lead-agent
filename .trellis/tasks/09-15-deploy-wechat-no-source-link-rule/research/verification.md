@@ -25,7 +25,13 @@ publication, database write, or object-storage write occurred in this phase.
 - The operator permits only the exact sealed seven-row August preview cohort,
   requires the M/W/F edition table to be completely empty, validates exactly 14 history-owner rows
   including one ready `import-v1` barrier, freezes their canonical digest under
-  the deployment lock, and rejects reserved/unknown owner state.
+  the deployment lock, and rejects reserved/unknown owner state. Production
+  sampling established that the single scheduler intentionally refreshes owner
+  `updated_at` every few seconds, so the safety digest excludes only that field.
+  Every other stored field remains bound, including status, owner, account/key,
+  provenance, `created_at`, and any additional control field. Both timestamps
+  remain required, timezone-aware and ordered even though valid `updated_at`
+  heartbeat churn is excluded from the digest.
 - A fresh production preflight exposed two formal Enterprise WeChat rows whose
   delivery window had not opened. The operator now permits zero through three
   such rows only when their complete safe control projection proves they are
@@ -56,14 +62,17 @@ publication, database write, or object-storage write occurred in this phase.
   source field through `httpx.MockTransport`.
 - Operator/validator/builder Ruff format and lint: **passed**.
 - Strict mypy over the three release programs: **passed**.
-- Fake operator/validator harness: **47 passed**. It covers strict manifest
+- Fake operator/validator harness: **48 passed**. It covers strict manifest
   fields, exact release-env replacement, owner/barrier drift, the sealed queue,
   exactly zero editions, bounded future WeCom acceptance, zero-row compatibility,
   state/window/drift rejection, safe preflight/receipt evidence, pre-quiescence
   non-mutation, a complete post-quiescence fence, fail-closed rollback, exact
   service selection, preflight-only behavior, unsafe archive members, the exact
   five-file overlay layer, and the absence of publish/mass-send/upload/migration
-  surfaces.
+  surfaces. Owner regressions prove `updated_at`-only churn is stable while
+  status, owner, provenance, key, count and `created_at` changes remain rejected
+  or change the frozen digest; missing, malformed, naive, null or time-reversing
+  owner timestamps are rejected.
 - Six-profile `docker compose config --quiet`: **passed**.
 - Trellis task validation: **passed**, with only the known context-size warning
   for `quality-guidelines.md`.
@@ -73,8 +82,8 @@ Current task-local tool hashes:
 
 - builder: `8bbf23ba2fc1d8dcdb566063ea5bbcf571a39eb69e5423aa45d8c7ec265703d1`
 - OCI validator: `8f6e169935f9970f0f31c8980783433017d6b836d75651cb61ce1e96225a5e93`
-- deployment operator: `38452f764f143398358530791792fb523590e510070aecf0e7279260e34b2669`
-- fake harness: `b272f340a314180540f4ba8193a2031e06ae8a4ceba5cec8a7764cc782af2272`
+- deployment operator: `0ead97b4d5abdac7b06247d976abc795050241140188768ac182adf228df39a9`
+- fake harness: `e380adf2cbce19727770e18b224cc3a2db1518b7e416598728153f1129569d1f`
 
 The independent Phase 2.2 review tightened four release gates without changing
 product behavior: the OCI validator now parses the added layer and accepts only
@@ -112,7 +121,7 @@ python3 -B .trellis/tasks/09-15-deploy-wechat-no-source-link-rule/research/build
 
 The output is a mode-0700 directory containing the mode-0600 candidate OCI,
 candidate manifest, validator, operator, and `artifacts.sha256`. Re-run the
-task-local 47-test harness after any operator/builder edit. Transfer only those
+task-local 48-test harness after any operator/builder edit. Transfer only those
 five generated files, verify `sha256sum -c artifacts.sha256`, then invoke the
 operator once without `--execute` and once with `--execute` using the exact
 candidate-manifest SHA-256. The main session owns those commit, push, transfer,

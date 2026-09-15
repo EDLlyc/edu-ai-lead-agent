@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, NoReturn, cast
@@ -448,6 +448,25 @@ def validate_owner_rows(rows: object) -> str:
             "updated_at",
         }
         require(required <= set(row), "owner_row_shape")
+        created_at_value = row["created_at"]
+        updated_at_value = row["updated_at"]
+        require(
+            isinstance(created_at_value, str) and isinstance(updated_at_value, str),
+            "owner_timestamp",
+        )
+        assert isinstance(created_at_value, str)
+        assert isinstance(updated_at_value, str)
+        try:
+            created_at = datetime.fromisoformat(created_at_value)
+            updated_at = datetime.fromisoformat(updated_at_value)
+        except ValueError as exc:
+            raise RuntimeError("owner_timestamp") from exc
+        require(
+            created_at.utcoffset() is not None
+            and updated_at.utcoffset() is not None
+            and updated_at >= created_at,
+            "owner_timestamp",
+        )
         require(row["account_fingerprint"] == SINGLE_ACCOUNT, "owner_account")
         kind, value = row["key_kind"], row["key_value"]
         require(
@@ -481,8 +500,14 @@ def validate_owner_rows(rows: object) -> str:
                 "owner_status",
             )
     require(barrier_count == 1, "owner_barrier")
+    # The single-edition scheduler intentionally refreshes only updated_at.
+    # Freeze every other stored field so control/ownership drift still fails closed.
+    safety_rows = [
+        {key: value for key, value in row.items() if key != "updated_at"}
+        for row in rows
+    ]
     encoded = json.dumps(
-        rows, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        safety_rows, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
 

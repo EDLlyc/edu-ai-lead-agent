@@ -136,6 +136,44 @@ def test_owner_state_requires_exact_barrier_count_and_safe_terminal_rows() -> No
             operator.validate_owner_rows(changed)
 
 
+def test_owner_digest_ignores_only_scheduler_updated_at_churn() -> None:
+    rows = owner_rows()
+    baseline = operator.validate_owner_rows(rows)
+    updated = copy.deepcopy(rows)
+    for index, row in enumerate(updated):
+        row["updated_at"] = f"2026-09-15T00:00:{index:02d}+00:00"
+    assert operator.validate_owner_rows(updated) == baseline
+
+    mutations: tuple[tuple[str, object], ...] = (
+        ("status", "conflict"),
+        ("owner", "replacement-owner"),
+        ("provenance_fingerprint", "f" * 64),
+        ("key_value", "replacement-key"),
+        ("created_at", "2026-09-13T00:00:00+00:00"),
+        ("additional_control_field", "changed"),
+    )
+    for field, value in mutations:
+        changed = copy.deepcopy(rows)
+        changed[1][field] = value
+        assert operator.validate_owner_rows(changed) != baseline
+
+    missing_timestamp = copy.deepcopy(rows)
+    del missing_timestamp[1]["updated_at"]
+    with pytest.raises(RuntimeError, match="owner_row_shape"):
+        operator.validate_owner_rows(missing_timestamp)
+    for field, value in (
+        ("created_at", None),
+        ("updated_at", None),
+        ("updated_at", "not-a-timestamp"),
+        ("updated_at", "2026-09-15T00:00:00"),
+        ("updated_at", "2026-09-13T00:00:00+00:00"),
+    ):
+        invalid_timestamp = copy.deepcopy(rows)
+        invalid_timestamp[1][field] = value
+        with pytest.raises(RuntimeError, match="owner_timestamp"):
+            operator.validate_owner_rows(invalid_timestamp)
+
+
 def cohort_rows() -> list[dict[str, object]]:
     return [
         {
