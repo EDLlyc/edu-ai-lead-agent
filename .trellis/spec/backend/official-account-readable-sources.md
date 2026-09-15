@@ -8,10 +8,12 @@ removes every reader-facing source URL and the native WeChat `阅读原文` targ
 V1 was deployed in the scoped 2026-09-14 source-overlay release, application commit
 `47820643219700d8ca7e616bd0205d6baad925d5`. Activation and health evidence:
 `.trellis/tasks/09-05-production-recovery-qwen-embedding/research/readable-source-release-20260914.md`.
-V2 is the reviewed prospective current-owner rule; its production revision and
-activation evidence belong to the dedicated 2026-09-15 no-source-link release
-task and must be recorded only after activation succeeds. Neither release migrates
-historical drafts or establishes standard-release provenance.
+V2 was activated on 2026-09-15 from application commit
+`01ff75eed1ed82f5951580af994b6c5c750e53ae`; the reviewed release-operator fixes
+are recorded through commit `69a203d`. Activation and health evidence:
+`.trellis/tasks/09-15-deploy-wechat-no-source-link-rule/research/activation.md`.
+Neither release migrates historical drafts or establishes standard-release
+provenance.
 
 ## 2. Signatures
 
