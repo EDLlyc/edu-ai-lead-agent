@@ -202,6 +202,12 @@ files, decoded image properties, HTML/media correspondence, aggregate identity, 
 does not weaken any provider preflight, three-role ordering, activation-week, idempotency, or
 side-effect checkpoint rule.
 
+Current V5 prepared children use `wechat-source-presentation-v2-no-links`: the body keeps
+deduplicated publisher names but contains no source URL or read-original prompt, and the manifest
+binds `content_source_url=null`. The preparer rejects any caller URL override, and the HTTP client
+omits `content_source_url` from `draft/add`. Historical V1 source-presentation children continue to
+reconstruct and deliver their frozen native URL unchanged.
+
 Revision `20260901_0042` adds one job row, exactly three role items, and append-only attempts.
 Request identity includes the staged artifact fingerprint, exact AppID account fingerprint, item
 presentation policy, and versioned draft-job policy. Concurrent enqueue is conflict-safe and
@@ -235,6 +241,7 @@ atomically installs the production acknowledgement, minimum Monday, and worker/a
 | Base URL differs from the exact official HTTPS origin | Settings/client construction fails |
 | Child is not finalized V2, passed, local-only, or identity-consistent | `wechat_mp_draft_preparation_invalid`; zero calls |
 | Current V5 header/footer role/path/ordinal/order/evidence/file/HTML binding changes, or V4 carries framing | Preparation fails before the first provider call |
+| Current no-link child contains a source URL/read-original prompt or receives a caller URL override | Preparation fails before the first provider call |
 | Either framing master/derivative/descriptor/HTML correspondence changes | Canonical preparation fails; zero provider calls |
 | Third weekly child, its ZIP, filename, clock, HTML, or media is invalid | Reject all three before article 1 upload |
 | Inline image cannot normalize below 1 MiB or thumb below 64 KiB JPEG | Preparation failure; zero calls |

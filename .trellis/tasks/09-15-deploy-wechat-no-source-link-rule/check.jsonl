@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend boundary audit."}
+{"file": ".trellis/spec/backend/official-account-readable-sources.md", "reason": "V1 compatibility and V2 no-link acceptance matrix."}
+{"file": ".trellis/spec/backend/wechat-official-account-drafts.md", "reason": "No-social-call, preparation, worker, and production adapter checks."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required final verification gates and baseline reporting."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Safe bounded deployment and provider failure reporting."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Secret-free deployment evidence and observability constraints."}
+{"file": ".trellis/tasks/09-15-deploy-wechat-no-source-link-rule/research/production-baseline.md", "reason": "Baseline identities and runtime preservation assertions."}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/mwf-single-article-20260914/verification.md", "reason": "Current release verification facts and known unrelated baseline failures."}

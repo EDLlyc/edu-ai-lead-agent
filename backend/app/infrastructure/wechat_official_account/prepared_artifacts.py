@@ -34,7 +34,7 @@ from app.application.services.wechat_official_account_draft import (
 )
 from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
 from app.domain.official_account_local import ArticleImageBlock, official_account_audit_releases
-from app.domain.official_account_source_presentation import READABLE_SOURCE_PRESENTATION_VERSION
+from app.domain.official_account_source_presentation import CURRENT_SOURCE_PRESENTATION_VERSION
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import normalize_official_account_upload_context
 from app.domain.official_account_visual_pipeline import (
@@ -409,9 +409,7 @@ class PreparedWeeklyDraftArtifactOwner:
             visual_pipeline_version=visual_pipeline_version,
             header=header,
             footer=footer,
-            source_presentation=READABLE_SOURCE_PRESENTATION_VERSION
-            if header is not None
-            else None,
+            source_presentation=CURRENT_SOURCE_PRESENTATION_VERSION if header is not None else None,
         )
         target = self._child_path(projection.child_fingerprint)
         _write_directory(

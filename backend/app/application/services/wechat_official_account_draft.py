@@ -494,11 +494,14 @@ def _prepare_persisted_draft_source(
     )
     content_source_url = _optional_https_url(source.content_source_url)
     if strict and manifest.get("source_presentation_version") is not None:
-        # The canonical rebuild above binds this target to Article.sources[0].
-        frozen_source_url = manifest.get("content_source_url")
-        if not isinstance(frozen_source_url, str):
+        # The canonical rebuild binds either the historical native target or its
+        # explicit absence for the current no-link policy.
+        if "content_source_url" not in manifest:
             raise ValueError("prepared native source URL is missing")
-        frozen_source_url = _optional_https_url(frozen_source_url)
+        frozen_source_url_value = manifest["content_source_url"]
+        if frozen_source_url_value is not None and not isinstance(frozen_source_url_value, str):
+            raise ValueError("prepared native source URL is invalid")
+        frozen_source_url = _optional_https_url(frozen_source_url_value)
         if content_source_url is not None and content_source_url != frozen_source_url:
             raise ValueError("prepared native source URL override changed")
         content_source_url = frozen_source_url

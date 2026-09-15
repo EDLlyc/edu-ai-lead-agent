@@ -24,7 +24,7 @@ from app.application.services.wechat_official_account_draft import (
     WeChatOfficialAccountDraftOnlyService,
 )
 from app.domain.official_account_local import ArticlePackage, article_package_fingerprint
-from app.domain.official_account_source_presentation import READABLE_SOURCE_PRESENTATION_VERSION
+from app.domain.official_account_source_presentation import CURRENT_SOURCE_PRESENTATION_VERSION
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
 from app.domain.official_account_upload_media import (
     normalize_official_account_upload_footer,
@@ -306,7 +306,7 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
 ):
     inputs, projection = final_cta
     projection = build_strict_prepared_projection(
-        **inputs, source_presentation=READABLE_SOURCE_PRESENTATION_VERSION
+        **inputs, source_presentation=CURRENT_SOURCE_PRESENTATION_VERSION
     )
     validate_strict_prepared_projection(projection.manifest, projection.files)
     article = inputs["article"]
@@ -445,10 +445,10 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     old_html = historical_projection.files["article-body.html"].decode()
     assert len(projection.manifest["files"]) == len(historical_projection.manifest["files"]) + 2
     assert "查看权威原文" in old_html and "查看权威原文" not in html
-    assert prepared.content_source_url == article.sources[0].source_url
-    assert (
-        projection.manifest["source_presentation_version"] == READABLE_SOURCE_PRESENTATION_VERSION
-    )
+    assert all(value not in html for value in ("href=", "http", "阅读原文", "查看原文"))
+    assert prepared.content_source_url is None
+    assert projection.manifest["source_presentation_version"] == CURRENT_SOURCE_PRESENTATION_VERSION
+    assert projection.manifest["content_source_url"] is None
     assert CONTEXT_NOTICE not in html
     credits = [m.credit for m in inputs["media"] if m.role == "context"]
     assert credits and all(credit in unescape(html) for credit in credits)
@@ -489,7 +489,7 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     assert receipt.not_published and calls.count("/cgi-bin/draft/add") == 1
     assert uploaded == [m.body for m in prepared.body_media] and len(uploaded) == 8
     payload = payloads[0]
-    assert payload["content_source_url"] == article.sources[0].source_url
+    assert "content_source_url" not in payload
     assert payload["author"] == "程岳" and "二维码待补" not in payload["content"]
     assert re.findall(r'<img src="([^"]+)"', payload["content"]) == [
         f"https://mmbiz.qpic.cn/inline-{i}.jpg" for i in range(1, 9)

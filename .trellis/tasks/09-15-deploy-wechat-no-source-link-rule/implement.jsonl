@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend scope and non-negotiable WeChat draft boundaries."}
+{"file": ".trellis/spec/backend/official-account-readable-sources.md", "reason": "Versioned V1/V2 source presentation and no-link contracts."}
+{"file": ".trellis/spec/backend/wechat-official-account-drafts.md", "reason": "Draft-only adapter, prepared artifact, retry, and no-publish contracts."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Focused and final backend validation requirements."}
+{"file": ".trellis/tasks/09-15-deploy-wechat-no-source-link-rule/research/production-baseline.md", "reason": "Exact production revision, image, topology, and deployment boundary."}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/readable-source-release-20260914.md", "reason": "Prior safe code-only source overlay and rollback evidence."}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/mwf-single-article-20260914/activation.md", "reason": "Current production M/W/F image, schema, and ownership state."}

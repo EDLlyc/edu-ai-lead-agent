@@ -612,7 +612,9 @@ def render_editor_handoff_v2_body(
     sections.extend(
         (
             _conclusion(article.conclusion, conclusion_spans),
-            render_readable_sources(article) if source_presentation else v1._sources(article),
+            render_readable_sources(article, version=source_presentation)
+            if source_presentation
+            else v1._sources(article),
             render_xiaosai_footer(author=article.author, footer=footer)
             if footer is not None
             else v1._signature(article.author),

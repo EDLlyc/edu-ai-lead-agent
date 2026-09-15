@@ -35,6 +35,7 @@ from app.domain.official_account_local import (
 )
 from app.domain.official_account_source_presentation import (
     SourcePresentationVersion,
+    source_presentation_content_url,
     source_presentation_version,
 )
 from app.domain.official_account_strict_layout import (
@@ -451,7 +452,9 @@ def build_strict_prepared_projection(
     }
     if source_presentation is not None:
         identity["source_presentation_version"] = source_presentation
-        identity["content_source_url"] = article.sources[0].source_url
+        identity["content_source_url"] = source_presentation_content_url(
+            article, source_presentation
+        )
     identity["content_fingerprint"] = _hash(identity)
     child_fingerprint = _hash(identity)
     manifest = {**identity, "child_fingerprint": child_fingerprint}

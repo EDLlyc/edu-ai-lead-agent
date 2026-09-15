@@ -1,4 +1,4 @@
-"""Readable attribution is prospective, immutable and bound to native Read Original."""
+"""Versioned readable attribution keeps provenance while current drafts expose no links."""
 
 # ruff: noqa: RUF001, F811 -- Chinese copy and imported pytest fixture names.
 
@@ -29,8 +29,10 @@ from app.domain.official_account_local import (
     article_package_fingerprint,
 )
 from app.domain.official_account_source_presentation import (
+    NO_LINK_SOURCE_PRESENTATION_VERSION,
     READABLE_SOURCE_PRESENTATION_VERSION,
     render_readable_sources,
+    source_presentation_content_url,
     source_publisher_name,
 )
 from test_official_account_body_caption_visibility import _inputs
@@ -104,6 +106,23 @@ def test_source_name_is_escaped(strict_projection: StrictPreparedProjection):
     assert "科学 &amp; &lt;研究&gt;" in html and "<研究>" not in html
 
 
+def test_current_no_link_presentation_keeps_names_without_urls_or_read_more(
+    strict_projection: StrictPreparedProjection,
+):
+    article = ArticlePackage.model_validate(strict_projection.manifest["article"])
+    other = _URL + "?story=2&view=full"
+    article = article.model_copy(
+        update={"sources": (_source(), _source(ordinal=2), _source(other, ordinal=3))}
+    )
+    html = render_readable_sources(article, version=NO_LINK_SOURCE_PRESENTATION_VERSION)
+    assert html.count("新华网") == 2
+    assert all(
+        value not in html
+        for value in ("<a", "href=", "http", "阅读原文", "查看原文", "查看权威原文")
+    )
+    assert source_presentation_content_url(article, NO_LINK_SOURCE_PRESENTATION_VERSION) is None
+
+
 async def test_new_presentation_rebuild_and_native_target_preserve_legacy(final_cta, tmp_path):
     inputs, legacy = final_cta
     before_files = dict(legacy.files)
@@ -151,6 +170,29 @@ async def test_new_presentation_rebuild_and_native_target_preserve_legacy(final_
         .content_source_url
         is None
     )
+
+
+async def test_no_link_presentation_binds_absent_native_target(final_cta, tmp_path):
+    inputs, _legacy = final_cta
+    current = build_strict_prepared_projection(
+        **inputs, source_presentation=NO_LINK_SOURCE_PRESENTATION_VERSION
+    )
+    validate_strict_prepared_projection(current.manifest, current.files)
+    source = _write(current, tmp_path / "no-link")
+    prepared = WeChatOfficialAccountDraftPreparer().prepare(source)
+    assert current.manifest["content_source_url"] is None
+    assert prepared.content_source_url is None
+    assert all(
+        value not in prepared.body_html
+        for value in ("href=", "http", "阅读原文", "查看原文", "查看权威原文")
+    )
+
+    client = _FakeDraftClient()
+    with pytest.raises(WeChatMpDraftPreparationError):
+        await WeChatOfficialAccountDraftOnlyService(client=client).create_draft(
+            replace(source, content_source_url=_URL)
+        )
+    assert not client.inline_uploads and not client.thumb_uploads and not client.drafts
 
 
 @pytest.mark.parametrize("mutation", ["version", "missing_version", "url", "missing_url", "body"])
