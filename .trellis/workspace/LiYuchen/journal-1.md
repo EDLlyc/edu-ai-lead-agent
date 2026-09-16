@@ -1975,3 +1975,25 @@ Activated the V2 publisher-only WeChat source presentation on the exact producti
 ### Status
 
 [OK] **Completed**
+
+
+## Session 87: Activate resilient Official Account visuals
+
+**Date**: 2026-09-16
+**Task**: Activate resilient Official Account visuals
+**Branch**: `release/wechat-two-banner-framing-20260914`
+
+### Summary
+
+Implemented and deployed V3 per-slot generated-image retries with advisory image review, preserved hard integrity gates and V1/V2 behavior, migrated production from 0047 to 0048 with verified backup and no replay/model/WeChat calls, and recorded the successful activation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee5ff70f7b91fa3da21906ed7dc18c591ff92898` | (see git log) |
+| `af137ca` | (see git log) |
+
+### Status
+
+[OK] **Completed**
