@@ -7,8 +7,12 @@ from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import UUID
 
 from app.application.ports.image_validation import ImageQualityAuditResult
+from app.core.errors import ImageGenerationFailure
 from app.domain.official_account_local import fingerprint
-from app.domain.official_account_visual_pipeline import STRICT_VISUAL_AUDIT_RUBRIC_VERSION
+from app.domain.official_account_visual_pipeline import (
+    RESILIENT_VISUAL_PIPELINE_VERSION,
+    STRICT_VISUAL_AUDIT_RUBRIC_VERSION,
+)
 
 if TYPE_CHECKING:
     from app.application.ports.official_account_local import (
@@ -20,6 +24,46 @@ if TYPE_CHECKING:
 STRICT_AUDIT_PROMPT_VERSION = "official-account-strict-image-audit-v1"
 STRICT_AUDIT_RUBRIC_VERSION = STRICT_VISUAL_AUDIT_RUBRIC_VERSION
 STRICT_AUDIT_ROUTE = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS = 3
+
+
+def resilient_visual_provider_request_fingerprint(
+    logical_request_fingerprint: str, physical_attempt_number: int
+) -> str:
+    if (
+        len(logical_request_fingerprint) != 64
+        or any(char not in "0123456789abcdef" for char in logical_request_fingerprint)
+        or not 1 <= physical_attempt_number <= RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+    ):
+        raise ValueError("resilient visual physical attempt identity is invalid")
+    return fingerprint(
+        "official-account-resilient-visual-physical-attempt-v1",
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+        logical_request_fingerprint,
+        physical_attempt_number,
+    )
+
+
+def resilient_visual_attempt_ordinal(slot_ordinal: int, physical_attempt_number: int) -> int:
+    if (
+        not 0 <= slot_ordinal <= 4
+        or not 1 <= physical_attempt_number <= RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+    ):
+        raise ValueError("resilient visual attempt ordinal is invalid")
+    # Deliberately disjoint from legacy run-attempt ordinals (10..64).
+    return (
+        101 + slot_ordinal * RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS + (physical_attempt_number - 1)
+    )
+
+
+def resilient_visual_failure_retries(diagnostic: ImageGenerationFailure) -> bool:
+    """V3 retries provider/output ambiguity, never local/configuration/identity failures."""
+    return diagnostic.reason != "lease_authority_lost" and diagnostic.error_code not in {
+        "provider_authentication_failed",
+        "provider_input_limit",
+        "provider_identity_mismatch",
+        "image_provider_not_configured",
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +184,9 @@ class StrictVisualAuditClaim:
 class StrictGeneratedVisualClaim:
     outcome: Literal["newly_claimed", "in_flight", "completed", "result_unknown", "lease_lost"]
     visual: StoredOfficialAccountGeneratedVisual | None
+    # A one-time authorized compensation is a new physical request, not a logical plan change.
+    provider_request_fingerprint: str | None = None
+    physical_attempt_number: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

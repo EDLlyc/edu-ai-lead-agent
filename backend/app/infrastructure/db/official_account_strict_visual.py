@@ -18,6 +18,7 @@ from app.application.ports.official_account_local import (
     OfficialAccountGeneratedVisualPlan,
 )
 from app.application.ports.official_account_strict_visual import (
+    RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS,
     ObserveVisualAuditSubject,
     ObserveVisualMediaEvidence,
     StoredStrictVisualAudit,
@@ -26,6 +27,9 @@ from app.application.ports.official_account_strict_visual import (
     StrictVisualAuditSubject,
     StrictVisualMediaEvidence,
     observe_quality_issue_codes,
+    resilient_visual_attempt_ordinal,
+    resilient_visual_failure_retries,
+    resilient_visual_provider_request_fingerprint,
     strict_audit_record_fingerprint,
 )
 from app.application.ports.official_account_strict_visual import (
@@ -34,6 +38,7 @@ from app.application.ports.official_account_strict_visual import (
 from app.application.services.official_account_visual_generation import (
     select_generated_visual_block_anchor,
 )
+from app.core.errors import AppError, ImageGenerationFailure
 from app.domain.official_account_local import ArticlePackage, fingerprint
 from app.domain.official_account_upload_media import (
     OFFICIAL_ACCOUNT_UPLOAD_BODY_POLICY_VERSION,
@@ -42,6 +47,7 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_GENERATION_MODELS,
     STRICT_VISUAL_POLICY,
     native_visual_audit_releases,
@@ -51,6 +57,7 @@ from app.domain.official_account_visual_pipeline import (
     strict_visual_audit_passes,
 )
 from app.infrastructure.db.models import (
+    OfficialAccountArticleAttemptModel,
     OfficialAccountArticleRunModel,
     OfficialAccountArticleVersionModel,
     OfficialAccountGeneratedVisualModel,
@@ -162,12 +169,21 @@ async def _strict_fence(
 async def _validate_subject(
     session: AsyncSession, run: OfficialAccountArticleRunModel, subject: StrictVisualAuditSubject
 ) -> OfficialAccountGeneratedVisualModel:
-    observe = run.version_bundle.get("visual_pipeline_version") == OBSERVE_VISUAL_PIPELINE_VERSION
-    if observe != isinstance(subject, ObserveVisualAuditSubject):
+    policy = run.version_bundle.get("visual_pipeline_version")
+    observe = policy == OBSERVE_VISUAL_PIPELINE_VERSION
+    advisory = policy in {
+        OBSERVE_VISUAL_PIPELINE_VERSION,
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+    }
+    if advisory != isinstance(subject, ObserveVisualAuditSubject):
         raise ValueError("native visual subject policy changed")
-    if isinstance(subject, ObserveVisualAuditSubject) and (
-        subject.publication_sha256 in subject.catalog_publication_sha256s
-        or subject.upload_sha256 in subject.catalog_publication_sha256s
+    if (
+        observe
+        and isinstance(subject, ObserveVisualAuditSubject)
+        and (
+            subject.publication_sha256 in subject.catalog_publication_sha256s
+            or subject.upload_sha256 in subject.catalog_publication_sha256s
+        )
     ):
         raise ValueError("observe output is an exact catalog copy")
     visual = await session.get(OfficialAccountGeneratedVisualModel, subject.generated_visual_id)
@@ -263,8 +279,13 @@ class PostgresStrictVisualRepositoryMixin:
     ) -> StrictGeneratedVisualClaim:
         from app.infrastructure.db.official_account_local import (
             _assert_generated_visual_plan,
+            _frozen_retry_policy,
             _stored_generated_visual,
             _validate_generated_visual_plan,
+        )
+        from app.infrastructure.db.official_account_visual_compensation import (
+            claim_authorized_visual_compensation,
+            resolve_visual_provider_request_fingerprint,
         )
 
         _validate_generated_visual_plan(plan)
@@ -281,6 +302,26 @@ class PostgresStrictVisualRepositoryMixin:
                 run.version_bundle.get("generated_visual_prompt_version"),
             ):
                 raise ValueError("strict generation plan changed")
+            if (
+                run.version_bundle.get("visual_pipeline_version")
+                == RESILIENT_VISUAL_PIPELINE_VERSION
+            ):
+                frozen = run.version_bundle.get("execution_retry_policy")
+                if frozen is None:
+                    raise AppError(
+                        "strict_visual_configuration_changed",
+                        "resilient visual retry window is absent",
+                        503,
+                        False,
+                    )
+                _maximum, _delay, resilient_expires_at = _frozen_retry_policy(frozen)
+                if datetime.now(UTC) >= resilient_expires_at:
+                    raise AppError(
+                        "official_account_visual_retry_window_expired",
+                        "resilient visual retry window expired",
+                        409,
+                        False,
+                    )
             row = await session.scalar(
                 select(OfficialAccountGeneratedVisualModel)
                 .where(
@@ -291,6 +332,212 @@ class PostgresStrictVisualRepositoryMixin:
             )
             if row is not None:
                 _assert_generated_visual_plan(row, plan)
+                if (
+                    run.version_bundle.get("visual_pipeline_version")
+                    == RESILIENT_VISUAL_PIPELINE_VERSION
+                ):
+                    expires_at = resilient_expires_at
+                    attempts = tuple(
+                        (
+                            await session.scalars(
+                                select(OfficialAccountArticleAttemptModel)
+                                .where(
+                                    OfficialAccountArticleAttemptModel.run_id == run.id,
+                                    OfficialAccountArticleAttemptModel.stage
+                                    == "generating_body_visuals",
+                                    OfficialAccountArticleAttemptModel.capability
+                                    == "visual_generation",
+                                    OfficialAccountArticleAttemptModel.ordinal.in_(
+                                        tuple(
+                                            resilient_visual_attempt_ordinal(plan.ordinal, number)
+                                            for number in range(
+                                                1,
+                                                RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS + 1,
+                                            )
+                                        )
+                                    ),
+                                )
+                                .order_by(OfficialAccountArticleAttemptModel.ordinal)
+                            )
+                        ).all()
+                    )
+                    for number, attempt in enumerate(attempts, start=1):
+                        expected_request = resilient_visual_provider_request_fingerprint(
+                            plan.request_fingerprint, number
+                        )
+                        if (
+                            attempt.ordinal
+                            != resilient_visual_attempt_ordinal(plan.ordinal, number)
+                            or attempt.request_fingerprint != expected_request
+                            or attempt.safe_metadata.get("visual_pipeline_version")
+                            != RESILIENT_VISUAL_PIPELINE_VERSION
+                            or attempt.safe_metadata.get("logical_request_fingerprint")
+                            != plan.request_fingerprint
+                            or attempt.safe_metadata.get("physical_attempt_number") != number
+                        ):
+                            raise ValueError("resilient visual attempt ledger changed")
+                    attempt_count = len(attempts)
+                    proof = (
+                        ImageGenerationFailure.from_safe_metadata(
+                            attempts[-1].safe_metadata.get("image_failure")
+                        )
+                        if attempts
+                        else None
+                    )
+                    if row.status == "ready":
+                        return StrictGeneratedVisualClaim(
+                            "completed", _stored_generated_visual(row)
+                        )
+                    if row.status == "generating":
+                        physical_attempt = len(attempts) + 1
+                        if physical_attempt > RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS:
+                            raise ValueError("resilient visual attempt ledger is inconsistent")
+                        stale_provider_fingerprint = resilient_visual_provider_request_fingerprint(
+                            plan.request_fingerprint, physical_attempt
+                        )
+                        if (row.intent_lease_token, row.intent_attempt_number) == (
+                            claimed.lease_token,
+                            claimed.attempt_number,
+                        ):
+                            return StrictGeneratedVisualClaim(
+                                "in_flight",
+                                _stored_generated_visual(row),
+                                provider_request_fingerprint=stale_provider_fingerprint,
+                                physical_attempt_number=physical_attempt,
+                            )
+                        diagnostic = ImageGenerationFailure(
+                            error_code="official_account_generated_visual_result_unknown",
+                            disposition="unknown",
+                            reason="lease_authority_lost",
+                        )
+                        now = datetime.now(UTC)
+                        session.add(
+                            OfficialAccountArticleAttemptModel(
+                                id=uuid4(),
+                                run_id=run.id,
+                                article_version_id=plan.article_version_id,
+                                stage="generating_body_visuals",
+                                capability="visual_generation",
+                                ordinal=resilient_visual_attempt_ordinal(
+                                    plan.ordinal, physical_attempt
+                                ),
+                                status="failed",
+                                request_fingerprint=stale_provider_fingerprint,
+                                provider=plan.provider,
+                                model=plan.model,
+                                error_code=diagnostic.error_code,
+                                safe_metadata={
+                                    "ordinal": plan.ordinal,
+                                    "section_index": plan.section_index,
+                                    "selection_method": plan.selection_method,
+                                    "result_unknown": True,
+                                    "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                    "logical_request_fingerprint": plan.request_fingerprint,
+                                    "physical_attempt_number": physical_attempt,
+                                    "provider_request_fingerprint": stale_provider_fingerprint,
+                                    **diagnostic.safe_metadata(),
+                                },
+                                completed_at=now,
+                            )
+                        )
+                        row.status = "result_unknown"
+                        row.error_code = diagnostic.error_code
+                        row.completed_at = now
+                        await session.commit()
+                        return StrictGeneratedVisualClaim(
+                            "result_unknown", _stored_generated_visual(row)
+                        )
+                    if attempt_count >= RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS:
+                        await session.commit()
+                        return StrictGeneratedVisualClaim(
+                            "result_unknown" if row.status == "result_unknown" else "completed",
+                            _stored_generated_visual(row),
+                        )
+                    if (
+                        proof is None
+                        or not resilient_visual_failure_retries(proof)
+                        or datetime.now(UTC) >= expires_at
+                    ):
+                        await session.commit()
+                        return StrictGeneratedVisualClaim(
+                            "result_unknown" if row.status == "result_unknown" else "completed",
+                            _stored_generated_visual(row),
+                        )
+                    next_attempt = attempt_count + 1
+                    resilient_provider_fingerprint = resilient_visual_provider_request_fingerprint(
+                        plan.request_fingerprint, next_attempt
+                    )
+                    row.status = "generating"
+                    row.error_code = None
+                    row.completed_at = None
+                    row.intent_lease_token = claimed.lease_token
+                    row.intent_attempt_number = claimed.attempt_number
+                    run.current_stage = "generating_body_visuals"
+                    await session.commit()
+                    return StrictGeneratedVisualClaim(
+                        "newly_claimed",
+                        _stored_generated_visual(row),
+                        provider_request_fingerprint=resilient_provider_fingerprint,
+                        physical_attempt_number=next_attempt,
+                    )
+                if row.status == "result_unknown":
+                    compensation = await claim_authorized_visual_compensation(
+                        session, run, claimed, row, plan
+                    )
+                    if compensation is not None:
+                        if compensation.outcome == "newly_claimed":
+                            await session.commit()
+                        return compensation
+                # Reclaim only a proved non-applied failure under a later, bounded run claim.
+                # Old failed/unknown rows without the new durable proof stay non-replayable.
+                frozen = run.version_bundle.get("execution_retry_policy")
+                if (
+                    row.status == "failed"
+                    and frozen is not None
+                    and row.intent_attempt_number is not None
+                    and row.intent_attempt_number < claimed.attempt_number
+                ):
+                    maximum, _delay, expires_at = _frozen_retry_policy(frozen)
+                    prior = await session.scalar(
+                        select(OfficialAccountArticleAttemptModel).where(
+                            OfficialAccountArticleAttemptModel.run_id == run.id,
+                            OfficialAccountArticleAttemptModel.article_version_id
+                            == plan.article_version_id,
+                            OfficialAccountArticleAttemptModel.stage == "generating_body_visuals",
+                            OfficialAccountArticleAttemptModel.capability == "visual_generation",
+                            OfficialAccountArticleAttemptModel.ordinal
+                            == row.intent_attempt_number * 10 + plan.ordinal,
+                            OfficialAccountArticleAttemptModel.status == "failed",
+                            OfficialAccountArticleAttemptModel.request_fingerprint
+                            == plan.request_fingerprint,
+                            OfficialAccountArticleAttemptModel.error_code == row.error_code,
+                        )
+                    )
+                    proof = ImageGenerationFailure.from_safe_metadata(
+                        prior.safe_metadata.get("image_failure") if prior is not None else None
+                    )
+                    if (
+                        proof is not None
+                        and proof.disposition == "not_applied_retryable"
+                        and proof.error_code == row.error_code
+                        and claimed.attempt_number <= maximum
+                        and datetime.now(UTC) < expires_at
+                    ):
+                        row.status = "generating"
+                        row.error_code = None
+                        row.completed_at = None
+                        row.intent_lease_token = claimed.lease_token
+                        row.intent_attempt_number = claimed.attempt_number
+                        run.current_stage = "generating_body_visuals"
+                        provider_fingerprint = await resolve_visual_provider_request_fingerprint(
+                            session, run_id=run.id, visual_id=row.id
+                        )
+                        await session.commit()
+                        return StrictGeneratedVisualClaim(
+                            "newly_claimed",
+                            _stored_generated_visual(row),
+                            provider_request_fingerprint=provider_fingerprint,
+                        )
                 if row.status == "generating":
                     if (row.intent_lease_token, row.intent_attempt_number) == (
                         claimed.lease_token,
@@ -317,6 +564,18 @@ class PostgresStrictVisualRepositoryMixin:
             session.add(row)
             run.current_stage = "generating_body_visuals"
             await session.commit()
+            if (
+                run.version_bundle.get("visual_pipeline_version")
+                == RESILIENT_VISUAL_PIPELINE_VERSION
+            ):
+                return StrictGeneratedVisualClaim(
+                    "newly_claimed",
+                    _stored_generated_visual(row),
+                    provider_request_fingerprint=resilient_visual_provider_request_fingerprint(
+                        plan.request_fingerprint, 1
+                    ),
+                    physical_attempt_number=1,
+                )
             return StrictGeneratedVisualClaim("newly_claimed", _stored_generated_visual(row))
 
     async def claim_strict_visual_audit(
@@ -451,6 +710,8 @@ async def validate_strict_visual_ready(
 ) -> tuple[StrictVisualMediaEvidence, ...]:
     policy = run.version_bundle.get("visual_pipeline_version")
     observe = policy == OBSERVE_VISUAL_PIPELINE_VERSION
+    resilient = policy == RESILIENT_VISUAL_PIPELINE_VERSION
+    advisory = observe or resilient
     if policy not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("strict visual policy is absent")
     rows = tuple(
@@ -547,7 +808,7 @@ async def validate_strict_visual_ready(
             prompt_version=visual.prompt_version,
             native_output_size=visual.output_size or "",
         )
-        if observe:
+        if advisory:
             if not isinstance(subject, ObserveVisualAuditSubject) or audit.status == "calling":
                 raise ValueError("observe evidence is incomplete")
             proof = ObserveVisualMediaEvidence(
@@ -560,14 +821,14 @@ async def validate_strict_visual_ready(
         evidence.append(proof)
     # Deterministic batch gate is recomputed here, never an executor-supplied 'passed' flag.
     bodies = subjects[:5]
-    if len({item.upload_sha256 for item in bodies}) != 5 or (
+    if (not resilient and len({item.upload_sha256 for item in bodies}) != 5) or (
         observe and len({item.publication_sha256 for item in bodies}) != 5
     ):
         raise ValueError("strict visual exact repeats rejected")
     for index, subject in enumerate(bodies):
         if subject.catalog_perceptual_hashes != bodies[0].catalog_perceptual_hashes:
             raise ValueError("strict visual catalog batch changed")
-        if observe:
+        if advisory:
             first = bodies[0]
             if (
                 not isinstance(subject, ObserveVisualAuditSubject)
@@ -586,7 +847,7 @@ async def validate_strict_visual_ready(
             for other in comparisons
         ):
             raise ValueError("strict visual perceptual repeats rejected")
-    if observe:
+    if advisory:
         from dataclasses import replace
 
         evidence = [

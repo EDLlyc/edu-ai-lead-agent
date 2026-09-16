@@ -604,6 +604,6 @@ async def test_strict_generator_native_one_post_and_invalid_route_zero_posts() -
     assert len(seen) == 1 and result.attempts == 1
     assert json.loads(seen[0].content)["size"] == "1536x1024"
     assert (result.width, result.height) == (1536, 1024)
-    with pytest.raises(ValueError):
+    with pytest.raises(ImageOutputValidationError):
         await generator.generate(replace(request, output_size="1024x1024"))
     assert len(seen) == 1

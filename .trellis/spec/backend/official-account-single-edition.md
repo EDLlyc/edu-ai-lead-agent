@@ -68,6 +68,12 @@ fingerprints stay unchanged, old bundles are not backfilled, and a queued/runnin
 run with a mismatched policy is not reused. Preserve safe error codes, never raw provider bodies,
 tokens, media IDs, private object paths or signed URLs in public logs/artifacts.
 
+The explicitly authorized September 16 late image compensation is defined in
+[`official-account-image-recovery.md`](./official-account-image-recovery.md).
+It records the original cutoff and old unknown attempt, binds one new physical
+image operation and changes only the target edition's bounded recovery window.
+It is not permission for the scheduler or ordinary retry API to reopen unknowns.
+
 ## 6. Verification
 
 Cover timezone boundaries, M/W/F eligibility, minimum activation date, no backfill,

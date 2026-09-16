@@ -16,12 +16,16 @@ from app.application.ports.official_account_local import (
     OfficialAccountSourceMedia,
 )
 from app.application.ports.official_account_strict_visual import (
+    RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS,
     StrictVisualAuditSubject,
+    resilient_visual_attempt_ordinal,
+    resilient_visual_provider_request_fingerprint,
     strict_visual_derivative_descriptor,
 )
 from app.application.services.official_account_visual_generation import (
     select_generated_visual_block_anchor,
 )
+from app.core.errors import ImageGenerationFailure
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V2
 from app.domain.official_account_local import fingerprint
 from app.domain.official_account_upload_media import (
@@ -32,10 +36,12 @@ from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     strict_visual_audit_criteria,
 )
 from app.infrastructure.db.models import (
+    OfficialAccountArticleAttemptModel,
     OfficialAccountArticleRunModel,
     OfficialAccountArticleVersionModel,
     OfficialAccountGeneratedVisualModel,
@@ -65,9 +71,20 @@ async def integration_context():
             await anext(iterator)
 
 
-async def _prime(context: IntegrationContext):
+async def _prime(context: IntegrationContext, *, available_at: datetime | None = None):
     repository = PostgresOfficialAccountRepository(context.session_factory)
     run, _ = await repository.enqueue_fixture(identity=_v10_identity(suffix=uuid4().hex[:8]))
+    if available_at is not None:
+        # Some consumers intentionally freeze the repository clock. The database default for
+        # ``available_at`` uses its own clock, so pin the queue timestamp to the same test clock
+        # before claiming instead of relying on wall-clock ordering.
+        async with context.session_factory() as session:
+            await session.execute(
+                update(OfficialAccountArticleRunModel)
+                .where(OfficialAccountArticleRunModel.id == run.id)
+                .values(available_at=available_at)
+            )
+            await session.commit()
     assert await _executor(repository, media_adapter=_FailBodyOnceMediaAdapter()).execute_next(
         "prime"
     )
@@ -265,13 +282,15 @@ async def _accept(repository, claimed, subject):
 async def test_forward_only_head_refuses_even_empty_database_downgrade(integration_context):
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
 
     config = Config("backend/alembic.ini")
+    original_head = ScriptDirectory.from_config(config).get_current_head()
     with pytest.raises(RuntimeError, match="cannot downgrade Chinese-family visual prompt"):
         await asyncio.to_thread(command.downgrade, config, "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260914_0046"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == original_head
         )
     await asyncio.to_thread(command.upgrade, config, "head")
 
@@ -311,6 +330,189 @@ async def test_concurrent_one_shot_claims_and_completed_replay(integration_conte
         )
         is None
     )
+
+
+async def _enable_resilient_policy(context, claimed):
+    identity = replace(
+        claimed.identity,
+        visual_pipeline_version=RESILIENT_VISUAL_PIPELINE_VERSION,
+    )
+    claimed = replace(claimed, identity=identity)
+    retry_policy = {
+        "version": "single-edition-article-retry-v1",
+        "max_attempts": 3,
+        "retry_base_seconds": 1,
+        "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+    }
+    async with context.session_factory() as session:
+        await session.execute(
+            update(OfficialAccountArticleRunModel)
+            .where(OfficialAccountArticleRunModel.id == claimed.run_id)
+            .values(
+                version_bundle={
+                    **asdict(identity),
+                    "execution_retry_policy": retry_policy,
+                }
+            )
+        )
+        await session.commit()
+    return claimed
+
+
+async def test_resilient_visual_uses_three_durable_distinct_physical_attempts(
+    integration_context,
+):
+    repo, claimed, article, rendered = await _prime(integration_context)
+    claimed = await _enable_resilient_policy(integration_context, claimed)
+    plan = _plan(claimed, article, rendered)
+    diagnostics = (
+        ImageGenerationFailure(
+            error_code="image_output_invalid",
+            disposition="terminal",
+            reason="image_output_invalid",
+        ),
+        ImageGenerationFailure(
+            error_code="official_account_generated_visual_result_unknown",
+            disposition="unknown",
+            reason="post_outcome_unknown",
+        ),
+    )
+    claims = []
+    for diagnostic in diagnostics:
+        claim = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+        claims.append(claim)
+        assert claim.outcome == "newly_claimed"
+        assert await repo.fail_generated_visual(
+            claimed=claimed,
+            plan=plan,
+            error_code=diagnostic.error_code,
+            result_unknown=diagnostic.disposition == "unknown",
+            diagnostic=diagnostic,
+            provider_request_fingerprint=claim.provider_request_fingerprint,
+            physical_attempt_number=claim.physical_attempt_number,
+        )
+    claim = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+    claims.append(claim)
+    assert claim.outcome == "newly_claimed" and claim.physical_attempt_number == 3
+    stored = await repo.persist_generated_visual(
+        claimed=claimed,
+        plan=plan,
+        result=OfficialAccountGeneratedVisualResult("image/jpeg", 100, "b" * 64, 1536, 1024),
+        provider_request_fingerprint=claim.provider_request_fingerprint,
+        physical_attempt_number=claim.physical_attempt_number,
+    )
+    assert stored is not None and stored.status == "ready"
+    assert (
+        await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+    ).outcome == "completed"
+    assert [item.physical_attempt_number for item in claims] == [1, 2, 3]
+    assert [item.provider_request_fingerprint for item in claims] == [
+        resilient_visual_provider_request_fingerprint(plan.request_fingerprint, number)
+        for number in range(1, RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS + 1)
+    ]
+    async with integration_context.session_factory() as session:
+        attempts = tuple(
+            (
+                await session.scalars(
+                    select(OfficialAccountArticleAttemptModel)
+                    .where(
+                        OfficialAccountArticleAttemptModel.run_id == claimed.run_id,
+                        OfficialAccountArticleAttemptModel.stage == "generating_body_visuals",
+                        OfficialAccountArticleAttemptModel.ordinal.in_(
+                            tuple(
+                                resilient_visual_attempt_ordinal(0, number)
+                                for number in range(1, 4)
+                            )
+                        ),
+                    )
+                    .order_by(OfficialAccountArticleAttemptModel.ordinal)
+                )
+            ).all()
+        )
+    assert [item.status for item in attempts] == ["failed", "failed", "succeeded"]
+    assert len({item.request_fingerprint for item in attempts}) == 3
+    assert [item.safe_metadata["physical_attempt_number"] for item in attempts] == [1, 2, 3]
+
+
+async def test_resilient_visual_rejection_exhausts_without_fourth_attempt(integration_context):
+    repo, claimed, article, rendered = await _prime(integration_context)
+    claimed = await _enable_resilient_policy(integration_context, claimed)
+    plan = _plan(claimed, article, rendered)
+    diagnostic = ImageGenerationFailure(
+        error_code="provider_request_rejected",
+        disposition="terminal",
+        reason="provider_failure",
+    )
+    for physical_attempt in range(1, 4):
+        claim = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+        assert claim.outcome == "newly_claimed"
+        assert claim.physical_attempt_number == physical_attempt
+        assert await repo.fail_generated_visual(
+            claimed=claimed,
+            plan=plan,
+            error_code=diagnostic.error_code,
+            diagnostic=diagnostic,
+            provider_request_fingerprint=claim.provider_request_fingerprint,
+            physical_attempt_number=claim.physical_attempt_number,
+        )
+    exhausted = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+    assert exhausted.outcome == "completed"
+    assert exhausted.visual is not None and exhausted.visual.status == "failed"
+
+
+async def test_resilient_visual_lost_lease_consumes_attempt_without_retry(integration_context):
+    repo, claimed, article, rendered = await _prime(integration_context)
+    claimed = await _enable_resilient_policy(integration_context, claimed)
+    plan = _plan(claimed, article, rendered)
+    first = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+    assert first.outcome == "newly_claimed" and first.physical_attempt_number == 1
+    successor_token = uuid4()
+    async with integration_context.session_factory() as session:
+        await session.execute(
+            update(OfficialAccountArticleRunModel)
+            .where(OfficialAccountArticleRunModel.id == claimed.run_id)
+            .values(lease_token=successor_token)
+        )
+        await session.commit()
+    successor = replace(claimed, lease_token=successor_token)
+    orphan = await repo.claim_strict_generated_visual(claimed=successor, plan=plan)
+    assert orphan.outcome == "result_unknown"
+    assert (
+        await repo.claim_strict_generated_visual(claimed=successor, plan=plan)
+    ).outcome == "result_unknown"
+    async with integration_context.session_factory() as session:
+        attempts = tuple(
+            (
+                await session.scalars(
+                    select(OfficialAccountArticleAttemptModel).where(
+                        OfficialAccountArticleAttemptModel.run_id == claimed.run_id,
+                        OfficialAccountArticleAttemptModel.stage == "generating_body_visuals",
+                    )
+                )
+            ).all()
+        )
+    assert len(attempts) == 1
+    assert attempts[0].safe_metadata["image_failure"]["reason"] == "lease_authority_lost"
+
+
+async def test_resilient_visual_rejects_result_for_noncurrent_physical_attempt(
+    integration_context,
+):
+    repo, claimed, article, rendered = await _prime(integration_context)
+    claimed = await _enable_resilient_policy(integration_context, claimed)
+    plan = _plan(claimed, article, rendered)
+    first = await repo.claim_strict_generated_visual(claimed=claimed, plan=plan)
+    assert first.outcome == "newly_claimed" and first.physical_attempt_number == 1
+    with pytest.raises(ValueError, match="physical attempt is not current"):
+        await repo.persist_generated_visual(
+            claimed=claimed,
+            plan=plan,
+            result=OfficialAccountGeneratedVisualResult("image/jpeg", 100, "c" * 64, 1536, 1024),
+            provider_request_fingerprint=resilient_visual_provider_request_fingerprint(
+                plan.request_fingerprint, 2
+            ),
+            physical_attempt_number=2,
+        )
 
 
 async def test_expired_orphan_audit_unknown_and_stale_result_fenced(integration_context):
@@ -491,13 +693,24 @@ async def test_terminal_audit_requires_nonnull_record(integration_context):
 async def test_schema_upgrade_and_populated_downgrade_fence(integration_context):
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
 
-    await _prime(integration_context)
-    with pytest.raises(RuntimeError, match="cannot downgrade Chinese-family visual prompt"):
-        await asyncio.to_thread(command.downgrade, Config("backend/alembic.ini"), "20260901_0042")
+    config = Config("backend/alembic.ini")
+    original_head = ScriptDirectory.from_config(config).get_current_head()
+    _repository, claimed, _article, _rendered = await _prime(integration_context)
+    async with integration_context.session_factory() as session:
+        run = await session.get(OfficialAccountArticleRunModel, claimed.run_id)
+        assert run is not None
+        run.version_bundle = {
+            **run.version_bundle,
+            "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+        }
+        await session.commit()
+    with pytest.raises(RuntimeError, match="cannot downgrade resilient visual policy data"):
+        await asyncio.to_thread(command.downgrade, config, "20260901_0042")
     async with integration_context.session_factory() as session:
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "20260914_0046"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == original_head
         )
 
 
@@ -525,6 +738,7 @@ async def native_path_context():
         "observe_perceptual",
         "observe_orphan",
         "observe_exact_echo",
+        "resilient_echo",
     ],
 )
 async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consumer(
@@ -545,7 +759,10 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         WeChatOfficialAccountDraftPreparer,
     )
     from app.core.errors import ProviderUnavailableError
-    from app.domain.official_account_visual_pipeline import OBSERVE_VISUAL_PIPELINE_VERSION
+    from app.domain.official_account_visual_pipeline import (
+        OBSERVE_VISUAL_PIPELINE_VERSION,
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+    )
     from app.domain.official_account_weekly_edition import WeeklyArticleRole
     from app.infrastructure.db.models import MaterialPackageModel, WeComDeliveryJobModel
     from app.infrastructure.db.official_account_strict_visual import _stored
@@ -604,7 +821,15 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         package_id = package.id
         await session.commit()
     settings = _settings()
-    if visual_case != "strict":
+    if visual_case == "resilient_echo":
+        settings = settings.model_copy(
+            update={
+                "official_account_local_visual_pipeline_version": (
+                    RESILIENT_VISUAL_PIPELINE_VERSION
+                ),
+            }
+        )
+    elif visual_case != "strict":
         settings = settings.model_copy(
             update={
                 "official_account_local_visual_pipeline_version": OBSERVE_VISUAL_PIPELINE_VERSION,
@@ -612,12 +837,28 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
         )
     identity = official_account_identity_from_settings(settings, provider="zhipu", model="glm-5.2")
     repository = PostgresOfficialAccountRepository(context.session_factory)
+    execution_retry_policy = (
+        {
+            "version": "single-edition-article-retry-v1",
+            "max_attempts": 3,
+            "retry_base_seconds": 1,
+            "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+        }
+        if visual_case == "resilient_echo"
+        else None
+    )
     run, created = await repository.enqueue_material_package(
-        material_package_id=package_id, identity=identity
+        material_package_id=package_id,
+        identity=identity,
+        execution_retry_policy=execution_retry_policy,
     )
     assert created
     assert (
-        await repository.enqueue_material_package(material_package_id=package_id, identity=identity)
+        await repository.enqueue_material_package(
+            material_package_id=package_id,
+            identity=identity,
+            execution_retry_policy=execution_retry_policy,
+        )
     )[0].id == run.id
     proxy = SimpleNamespace(generated={}, audits={})
     claims = []
@@ -649,6 +890,8 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
                 )
             result = await super().generate(request)
             if visual_case == "observe_exact_echo" and len(self.calls) == 3:
+                return replace(result, image_bytes=request.references[0].image_bytes)
+            if visual_case == "resilient_echo":
                 return replace(result, image_bytes=request.references[0].image_bytes)
             if visual_case == "observe_perceptual":
                 from io import BytesIO
@@ -827,5 +1070,18 @@ async def test_normal_material_enqueue_executor_durable_ready_and_prepared_consu
     assert (
         await owner.build_child(run_id=run.id, role=WeeklyArticleRole.APPLICATION_CASE) == artifact
     )
+    if visual_case == "resilient_echo":
+        from alembic import command
+        from alembic.config import Config
+
+        with pytest.raises(RuntimeError, match="cannot downgrade resilient visual policy data"):
+            await asyncio.to_thread(
+                command.downgrade, Config("backend/alembic.ini"), "20260914_0047"
+            )
+        async with context.session_factory() as session:
+            assert (
+                await session.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260916_0048"
+            )
     assert await executor.execute_next("normal-strict-repeat") is False
     assert len(generator.calls) == 5 and len(auditor.calls) == 6

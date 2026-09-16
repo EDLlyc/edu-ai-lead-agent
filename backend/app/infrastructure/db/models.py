@@ -4804,13 +4804,6 @@ class OfficialAccountLocalMediaModel(Base):
         ),
         UniqueConstraint("local_media_id", name="uq_official_account_local_media_local_id"),
         Index("ix_official_account_local_media_run", "run_id", "role"),
-        Index(
-            "uq_official_account_local_media_body_checksum",
-            "run_id",
-            "sha256",
-            unique=True,
-            postgresql_where=text("role = 'body'"),
-        ),
     )
 
 

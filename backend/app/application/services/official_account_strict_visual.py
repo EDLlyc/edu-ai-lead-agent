@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from hashlib import sha256
-from typing import Literal
+from typing import Literal, cast
 
 from app.application.ports.image_generation import (
     ImageGenerationRequest,
@@ -24,8 +24,10 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountRender,
 )
 from app.application.ports.official_account_strict_visual import (
+    RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS,
     ObserveVisualAuditSubject,
     StrictVisualAuditSubject,
+    resilient_visual_failure_retries,
     strict_audit_record_fingerprint,
     strict_visual_derivative_descriptor,
 )
@@ -40,12 +42,16 @@ from app.application.services.official_account_visual_generation import (
 )
 from app.core.errors import (
     AppError,
+    ImageGenerationFailure,
+    ImageOutputValidationError,
     OfficialAccountGeneratedVisualResultUnknownError,
     ProviderAuthenticationError,
     ProviderIdentityMismatchError,
     ProviderRateLimitError,
     ProviderRejectedError,
     ProviderUnavailableError,
+    StrictImageGenerationError,
+    classify_image_generation_failure,
 )
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
@@ -60,8 +66,10 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
+    StrictVisualPipelineVersion,
     native_visual_audit_releases,
     strict_visual_audit_criteria,
     strict_visual_audit_passes,
@@ -173,7 +181,10 @@ async def execute_strict_visuals(
     lease_lost: asyncio.Event | None = None,
 ) -> tuple[tuple[OfficialAccountSourceMedia, ...], OfficialAccountSourceMedia] | None:
     """Only newly_claimed can cross a paid boundary; successful artifacts never roll back."""
-    observe = claimed.identity.visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
+    visual_policy = claimed.identity.visual_pipeline_version
+    observe = visual_policy == OBSERVE_VISUAL_PIPELINE_VERSION
+    resilient = visual_policy == RESILIENT_VISUAL_PIPELINE_VERSION
+    advisory = observe or resilient
     if (
         claimed.identity.generated_visual_prompt_version
         == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
@@ -186,7 +197,9 @@ async def execute_strict_visuals(
     catalog_bytes = tuple([await _read_reference(catalog, ref) for ref in catalog_candidates])
     catalog_hashes = tuple(sorted({perceptual_dhash(content) for content in catalog_bytes}))
     catalog_publication_hashes = (
-        tuple(sorted({sha256(content).hexdigest() for content in catalog_bytes})) if observe else ()
+        tuple(sorted({sha256(content).hexdigest() for content in catalog_bytes}))
+        if advisory
+        else ()
     )
     generated: list[tuple[StoredOfficialAccountGeneratedVisual, bytes]] = []
     for ordinal, (reference, content) in enumerate(zip(references, reference_bytes, strict=True)):
@@ -204,110 +217,200 @@ async def execute_strict_visuals(
             plan_version=claimed.identity.generated_visual_plan_version or "",
             prompt_version=claimed.identity.generated_visual_prompt_version or "",
         )
-        claim = await repository.claim_strict_generated_visual(claimed=claimed, plan=plan)
-        if claim.outcome in {"lease_lost", "in_flight"}:
-            return None
-        if claim.outcome == "result_unknown":
-            raise OfficialAccountGeneratedVisualResultUnknownError()
-        stored = claim.visual
-        if stored is None:
-            raise ValueError("strict generated visual claim is incomplete")
-        if claim.outcome == "newly_claimed":
-            if lease_lost is not None and lease_lost.is_set():
+        while True:
+            claim = await repository.claim_strict_generated_visual(claimed=claimed, plan=plan)
+            if claim.outcome in {"lease_lost", "in_flight"}:
                 return None
-            prompt = build_generated_visual_prompt(
-                article=article,
-                section_index=plan.section_index,
-                reference=reference,
-                prompt_version=plan.prompt_version,
-                block_index=plan.block_index,
-            )
-            try:
-                result = await generator.generate(
-                    ImageGenerationRequest(
-                        run_id=claimed.run_id,
-                        draft_version_id=article.id,
-                        prompt=prompt,
-                        request_fingerprint=plan.request_fingerprint,
-                        output_size=STRICT_VISUAL_POLICY.output_size,
-                        references=(
-                            ImageReference(
-                                role="approved_ip_reference",
-                                asset_id=plan.reference_asset_ref,
-                                filename=f"reference-{plan.reference_asset_ref}.jpg",
-                                sha256=reference.sha256,
-                                image_bytes=content,
-                                selection_reason="approved_catalog_semantic_reference",
-                                input_normalization_version=IMAGE_REFERENCE_INPUT_V2,
-                                provider_input_sha256=plan.reference_input_checksum,
-                            ),
-                        ),
-                        reference_mode="single_reference",
-                    )
-                )
-            except Exception as error:
-                # A dispatch without a trustworthy completion is never submitted again.
-                await repository.fail_generated_visual(
-                    claimed=claimed,
-                    plan=plan,
-                    error_code="official_account_generated_visual_result_unknown",
-                    result_unknown=True,
-                )
-                raise OfficialAccountGeneratedVisualResultUnknownError() from error
-            # Publication JPEG normalization changes byte identity. Preserve the exact-copy
-            # integrity veto on the returned bytes before it can become only a dHash warning.
-            if observe and sha256(result.image_bytes).hexdigest() in catalog_publication_hashes:
-                if not await repository.fail_generated_visual(
-                    claimed=claimed,
-                    plan=plan,
-                    error_code="strict_visual_catalog_exact_reuse",
-                ):
+            if claim.outcome == "result_unknown":
+                raise OfficialAccountGeneratedVisualResultUnknownError()
+            stored = claim.visual
+            if stored is None:
+                raise ValueError("strict generated visual claim is incomplete")
+            if claim.outcome == "newly_claimed":
+                if lease_lost is not None and lease_lost.is_set():
                     return None
-                raise _blocked("strict_visual_catalog_exact_reuse")
-            # Keep the intent ambiguous on storage/DB failure; no misleading 'generation failed'.
-            try:
-                prepared = prepare_generated_visual_result(
-                    result=result, plan=plan, max_bytes=STRICT_VISUAL_POLICY.maximum_image_bytes
+                prompt = build_generated_visual_prompt(
+                    article=article,
+                    section_index=plan.section_index,
+                    reference=reference,
+                    prompt_version=plan.prompt_version,
+                    block_index=plan.block_index,
                 )
-                await store.put_immutable(
-                    prepared.image_bytes, media_type=prepared.result.media_type
+                try:
+                    result = await generator.generate(
+                        ImageGenerationRequest(
+                            run_id=claimed.run_id,
+                            draft_version_id=article.id,
+                            prompt=prompt,
+                            request_fingerprint=plan.request_fingerprint,
+                            provider_request_fingerprint=claim.provider_request_fingerprint,
+                            output_size=STRICT_VISUAL_POLICY.output_size,
+                            references=(
+                                ImageReference(
+                                    role="approved_ip_reference",
+                                    asset_id=plan.reference_asset_ref,
+                                    filename=f"reference-{plan.reference_asset_ref}.jpg",
+                                    sha256=reference.sha256,
+                                    image_bytes=content,
+                                    selection_reason="approved_catalog_semantic_reference",
+                                    input_normalization_version=IMAGE_REFERENCE_INPUT_V2,
+                                    provider_input_sha256=plan.reference_input_checksum,
+                                ),
+                            ),
+                            reference_mode="single_reference",
+                        )
+                    )
+                except Exception as error:
+                    diagnostic = classify_image_generation_failure(error)
+                    unknown = diagnostic.disposition == "unknown"
+                    if not await repository.fail_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        error_code=(
+                            "official_account_generated_visual_result_unknown"
+                            if unknown
+                            else diagnostic.error_code
+                        ),
+                        result_unknown=unknown,
+                        diagnostic=diagnostic,
+                        provider_request_fingerprint=claim.provider_request_fingerprint,
+                        physical_attempt_number=claim.physical_attempt_number,
+                    ):
+                        return None
+                    retry_allowed = resilient and resilient_visual_failure_retries(diagnostic)
+                    if (
+                        retry_allowed
+                        and claim.physical_attempt_number is not None
+                        and claim.physical_attempt_number < RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+                    ):
+                        continue
+                    if retry_allowed:
+                        raise _blocked("strict_visual_generation_attempts_exhausted") from None
+                    if unknown:
+                        raise OfficialAccountGeneratedVisualResultUnknownError(
+                            diagnostic=diagnostic
+                        ) from None
+                    raise StrictImageGenerationError(diagnostic) from None
+                # V2 retains its exact-copy veto. V3 records reuse as advisory below.
+                if observe and sha256(result.image_bytes).hexdigest() in catalog_publication_hashes:
+                    if not await repository.fail_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        error_code="strict_visual_catalog_exact_reuse",
+                    ):
+                        return None
+                    raise _blocked("strict_visual_catalog_exact_reuse")
+                try:
+                    prepared = prepare_generated_visual_result(
+                        result=result,
+                        plan=plan,
+                        max_bytes=STRICT_VISUAL_POLICY.maximum_image_bytes,
+                    )
+                except (
+                    ValueError,
+                    ImageOutputValidationError,
+                    ProviderIdentityMismatchError,
+                ) as error:
+                    diagnostic = classify_image_generation_failure(
+                        ImageOutputValidationError() if isinstance(error, ValueError) else error
+                    )
+                    if not await repository.fail_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        error_code=diagnostic.error_code,
+                        diagnostic=diagnostic,
+                        provider_request_fingerprint=claim.provider_request_fingerprint,
+                        physical_attempt_number=claim.physical_attempt_number,
+                    ):
+                        return None
+                    retry_allowed = resilient and resilient_visual_failure_retries(diagnostic)
+                    if (
+                        retry_allowed
+                        and claim.physical_attempt_number is not None
+                        and claim.physical_attempt_number < RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+                    ):
+                        continue
+                    if retry_allowed:
+                        raise _blocked("strict_visual_generation_attempts_exhausted") from None
+                    raise StrictImageGenerationError(diagnostic) from None
+                try:
+                    await store.put_immutable(
+                        prepared.image_bytes, media_type=prepared.result.media_type
+                    )
+                    saved = await repository.persist_generated_visual(
+                        claimed=claimed,
+                        plan=plan,
+                        result=prepared.result,
+                        provider_request_fingerprint=claim.provider_request_fingerprint,
+                        physical_attempt_number=claim.physical_attempt_number,
+                    )
+                except Exception:
+                    diagnostic = ImageGenerationFailure(
+                        error_code="official_account_generated_visual_result_unknown",
+                        disposition="unknown",
+                        reason="artifact_persistence_failed",
+                    )
+                    if resilient:
+                        if not await repository.fail_generated_visual(
+                            claimed=claimed,
+                            plan=plan,
+                            error_code=diagnostic.error_code,
+                            result_unknown=True,
+                            diagnostic=diagnostic,
+                            provider_request_fingerprint=claim.provider_request_fingerprint,
+                            physical_attempt_number=claim.physical_attempt_number,
+                        ):
+                            return None
+                        if (
+                            claim.physical_attempt_number is not None
+                            and claim.physical_attempt_number
+                            < RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+                        ):
+                            continue
+                    raise OfficialAccountGeneratedVisualResultUnknownError(
+                        diagnostic=diagnostic
+                    ) from None
+                if saved is None:
+                    return None
+                stored = saved
+                publication = prepared.image_bytes
+            elif stored.status == "ready":
+                publication = await store.get_content_addressed_bytes(
+                    media_type=stored.media_type or "",
+                    byte_size=stored.byte_size or 0,
+                    sha256=stored.sha256 or "",
                 )
-                saved = await repository.persist_generated_visual(
-                    claimed=claimed, plan=plan, result=prepared.result
-                )
-            except Exception as error:
-                raise OfficialAccountGeneratedVisualResultUnknownError() from error
-            if saved is None:
-                return None
-            stored = saved
-            publication = prepared.image_bytes
-        elif stored.status == "ready":
-            publication = await store.get_content_addressed_bytes(
-                media_type=stored.media_type or "",
-                byte_size=stored.byte_size or 0,
-                sha256=stored.sha256 or "",
-            )
-        else:
-            raise _blocked("strict_visual_generation_failed")
+            else:
+                raise _blocked("strict_visual_generation_failed")
+            break
         if sha256(publication).hexdigest() != stored.sha256 or len(publication) != stored.byte_size:
             raise ValueError("strict generated publication checksum changed")
         generated.append((stored, publication))
     batch_issues = strict_visual_batch_checks(
         tuple(body for _, body in generated),
         catalog_images=catalog_bytes,
-        policy_version=OBSERVE_VISUAL_PIPELINE_VERSION
-        if observe
-        else STRICT_VISUAL_PIPELINE_VERSION,
+        policy_version=cast(
+            StrictVisualPipelineVersion, visual_policy or STRICT_VISUAL_PIPELINE_VERSION
+        ),
     )
     blocking_issues = tuple(
         code
         for code in batch_issues
-        if not observe
+        if (not advisory)
         or code
-        not in {
-            "strict_visual_perceptual_repetition",
-            "strict_visual_catalog_reuse",
-        }
+        not in (
+            {
+                "strict_visual_perceptual_repetition",
+                "strict_visual_catalog_reuse",
+            }
+            if observe
+            else {
+                "strict_visual_exact_repetition",
+                "strict_visual_perceptual_repetition",
+                "strict_visual_catalog_exact_reuse",
+                "strict_visual_catalog_reuse",
+            }
+        )
     )
     if blocking_issues:
         raise _blocked(blocking_issues[0])
@@ -354,7 +457,7 @@ async def execute_strict_visuals(
             perceptual_hash=perceptual_dhash(derivative.content),
             catalog_perceptual_hashes=catalog_hashes,
         )
-        if observe:
+        if advisory:
             from dataclasses import asdict
 
             subject = ObserveVisualAuditSubject(
@@ -371,7 +474,7 @@ async def execute_strict_visuals(
         claim_audit = await repository.claim_strict_visual_audit(claimed=claimed, subject=subject)
         if claim_audit.outcome in {"lease_lost", "in_flight"}:
             return None
-        if claim_audit.outcome == "result_unknown" and not observe:
+        if claim_audit.outcome == "result_unknown" and not advisory:
             raise OfficialAccountGeneratedVisualResultUnknownError()
         audit = claim_audit.audit
         if claim_audit.outcome == "newly_claimed":
@@ -416,7 +519,7 @@ async def execute_strict_visuals(
                 status: Literal["accepted", "rejected", "unavailable", "result_unknown"] = (
                     "result_unknown"
                 )
-                if observe and isinstance(
+                if advisory and isinstance(
                     error,
                     (
                         ProviderAuthenticationError,
@@ -426,7 +529,7 @@ async def execute_strict_visuals(
                     ),
                 ):
                     status, code = "unavailable", "strict_visual_audit_unavailable"
-                if observe and isinstance(error, ProviderIdentityMismatchError):
+                if advisory and isinstance(error, ProviderIdentityMismatchError):
                     status, code = "rejected", "strict_visual_audit_identity_mismatch"
                 audit = await repository.complete_strict_visual_audit(
                     claimed=claimed,
@@ -434,7 +537,7 @@ async def execute_strict_visuals(
                     status=status,
                     issue_codes=(code,),
                 )
-                if not observe:
+                if not advisory:
                     raise OfficialAccountGeneratedVisualResultUnknownError() from error
             else:
                 accepted = strict_visual_audit_passes(
@@ -446,7 +549,7 @@ async def execute_strict_visuals(
                     expected_request_fingerprint=subject.request_fingerprint,
                 )
                 codes = () if accepted else ("strict_visual_audit_rejected",)
-                if observe and not accepted:
+                if advisory and not accepted:
                     if (
                         audit_result.provider,
                         audit_result.model,
@@ -469,7 +572,7 @@ async def execute_strict_visuals(
             claimed.identity.visual_pipeline_version, audit.status, audit.issue_codes
         ):
             raise _blocked("strict_visual_audit_rejected")
-        if observe and (
+        if advisory and (
             audit.subject != subject
             or audit.record_fingerprint
             != strict_audit_record_fingerprint(subject, audit.status, audit.issue_codes)
@@ -488,7 +591,9 @@ async def execute_strict_visuals(
                 ordinal=subject.ordinal,
                 semantic_label="按正文语义生成的插画",
                 selection_reason=(
-                    "原生横版生成及最终上传字节审图观察"
+                    "原生横版生成及最终上传字节审图建议性留痕"
+                    if resilient
+                    else "原生横版生成及最终上传字节审图观察"
                     if observe
                     else "原生横版生成及最终上传字节审图通过"
                 ),

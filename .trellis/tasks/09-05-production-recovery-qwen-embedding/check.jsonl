@@ -10,3 +10,7 @@
 {"file":".trellis/spec/backend/official-account-readable-sources.md","reason":"Preserve current prepared source/native read-more binding"}
 {"file":".trellis/spec/backend/official-account-single-edition.md","reason":"Date ownership, exclusive routing, bounded retry and prospective activation contract"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tests, type/lint, migration and release gates"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/prd.md", "reason": "Approved exact September 16 compensation and failure classification"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/design.md", "reason": "Latest approved explicit compensation and physical key preservation"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/implement.md", "reason": "Exact code-only deployment then bounded authorized late recovery"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/recovery-findings.md", "reason": "No clone/reset; preserve accepted artifacts and unknown attempt history"}

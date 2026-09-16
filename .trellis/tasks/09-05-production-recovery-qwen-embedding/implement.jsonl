@@ -10,3 +10,6 @@
 {"file":".trellis/spec/backend/official-account-readable-sources.md","reason":"Preserve current prepared source/native read-more binding"}
 {"file":".trellis/spec/backend/official-account-single-edition.md","reason":"Date ownership, exclusive routing, bounded retry and prospective activation contract"}
 {"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tests, type/lint, migration and release gates"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/prd.md", "reason": "Current approved September 16 recovery; supersedes no-historical-recovery restriction only for this exact edition"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/design.md", "reason": "Safe image failure classification and exact-target compensating recovery"}
+{"file": ".trellis/tasks/09-05-production-recovery-qwen-embedding/research/visual-recovery-20260916/implement.md", "reason": "Bounded check release and recovery sequence"}

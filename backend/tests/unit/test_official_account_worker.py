@@ -666,7 +666,10 @@ class _GeneratedVisualRepository(_MemoryRepository):
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
         eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> StoredOfficialAccountGeneratedVisual:
+        del provider_request_fingerprint, physical_attempt_number
         assert claimed.run_id == self.run_id
         current = self.generated[plan.ordinal]
         assert current.plan == plan
@@ -693,7 +696,11 @@ class _GeneratedVisualRepository(_MemoryRepository):
         plan: OfficialAccountGeneratedVisualPlan,
         error_code: str,
         result_unknown: bool = False,
+        diagnostic=None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> bool:
+        del diagnostic, provider_request_fingerprint, physical_attempt_number
         assert claimed.run_id == self.run_id
         current = self.generated[plan.ordinal]
         self.generated[plan.ordinal] = replace(

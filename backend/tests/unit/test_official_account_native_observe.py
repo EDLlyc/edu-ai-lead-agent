@@ -20,6 +20,7 @@ from app.application.ports.official_account_weekly_production import (
 )
 from app.application.services.official_account_strict_prepared import (
     OBSERVE_PREPARED_CHILD_VERSION,
+    RESILIENT_PREPARED_CHILD_VERSION,
     build_strict_prepared_projection,
     validate_strict_prepared_projection,
 )
@@ -33,6 +34,7 @@ from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset
 from app.domain.official_account_local import ArticlePackage, fingerprint
 from app.domain.official_account_visual_pipeline import (
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     native_visual_audit_releases,
     strict_visual_batch_checks,
@@ -311,6 +313,51 @@ def test_observe_prepared_preserves_pixels_body_and_real_audits(
         item["path"] for item in observe_projection.manifest["media"] if item["role"] == "cover"
     )
     assert prepared.cover.body == observe_projection.files[cover_path]
+
+
+@pytest.fixture
+def resilient_projection(observe_projection):
+    raw = observe_projection.manifest
+    media = tuple(EditorHandoffMediaAsset.model_validate(item) for item in raw["media"])
+    evidence = tuple(
+        TypeAdapter(ObserveVisualMediaEvidence).validate_python(item)
+        for item in raw["visual_evidence"]
+    )
+    return build_strict_prepared_projection(
+        run_id=UUID(raw["run_id"]),
+        article_version_id=UUID(raw["article_version_id"]),
+        render_version_id=UUID(raw["render_version_id"]),
+        role=raw["role"],
+        article=ArticlePackage.model_validate(raw["article"]),
+        media=media,
+        evidence=evidence,
+        files={item.path: observe_projection.files[item.path] for item in media},
+        context_originals={
+            item["ordinal"]: observe_projection.files[item["source_path"]]
+            for item in raw["context_derivatives"]
+        },
+        visual_pipeline_version=RESILIENT_VISUAL_PIPELINE_VERSION,
+    )
+
+
+def test_resilient_prepared_envelope_round_trips_through_wechat_consumer(
+    resilient_projection,
+    tmp_path,
+):
+    assert resilient_projection.manifest["version"] == RESILIENT_PREPARED_CHILD_VERSION
+    validate_strict_prepared_projection(resilient_projection.manifest, resilient_projection.files)
+    target = tmp_path / "child"
+    _write_directory(
+        target,
+        files={
+            **resilient_projection.files,
+            "prepared-manifest.json": json.dumps(resilient_projection.manifest).encode(),
+        },
+    )
+    prepared = WeChatOfficialAccountDraftPreparer(max_image_bytes=10 * 1024 * 1024).prepare(
+        WeChatDraftLocalSource(directory=target, role=resilient_projection.manifest["role"])
+    )
+    assert prepared.visual_pipeline_version == RESILIENT_VISUAL_PIPELINE_VERSION
 
 
 @pytest.mark.parametrize(

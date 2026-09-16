@@ -35,12 +35,22 @@ from app.application.ports.official_account_local import (
     StoredOfficialAccountRender,
     generated_visual_eval_record_fingerprint,
 )
+from app.application.ports.official_account_strict_visual import (
+    RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS,
+    resilient_visual_attempt_ordinal,
+    resilient_visual_provider_request_fingerprint,
+)
 from app.application.services.official_account_local import (
     generated_visual_eval_request_fingerprint,
     manual_review_request_fingerprint,
     run_request_fingerprint,
 )
-from app.core.errors import ConflictError, NotFoundError, OfficialAccountLeaseLostError
+from app.core.errors import (
+    ConflictError,
+    ImageGenerationFailure,
+    NotFoundError,
+    OfficialAccountLeaseLostError,
+)
 from app.domain.image_provider_input import IMAGE_REFERENCE_INPUT_V2
 from app.domain.image_quality_eval import (
     IMAGE_EVAL_DECISION_POLICY_VERSION,
@@ -83,6 +93,7 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_GENERATION_MODELS,
     native_visual_audit_releases,
     native_visual_plan_prompt_valid,
@@ -167,6 +178,53 @@ def _article_artifact_version(article: ArticlePackage) -> int:
     if family is None:
         raise ValueError("official-account article version bundle is unsupported")
     return _ARTICLE_ARTIFACT_VERSION_BY_FAMILY[family]
+
+
+async def _assert_resilient_visual_physical_attempt(
+    session: AsyncSession,
+    *,
+    plan: OfficialAccountGeneratedVisualPlan,
+    physical_attempt_number: int,
+    provider_request_fingerprint: str,
+) -> None:
+    """Fence a result to the one currently active V3 physical attempt."""
+    expected_request = resilient_visual_provider_request_fingerprint(
+        plan.request_fingerprint, physical_attempt_number
+    )
+    if provider_request_fingerprint != expected_request:
+        raise ValueError("resilient visual physical result identity changed")
+    attempts = tuple(
+        (
+            await session.scalars(
+                select(OfficialAccountArticleAttemptModel)
+                .where(
+                    OfficialAccountArticleAttemptModel.run_id == plan.run_id,
+                    OfficialAccountArticleAttemptModel.stage == "generating_body_visuals",
+                    OfficialAccountArticleAttemptModel.capability == "visual_generation",
+                    OfficialAccountArticleAttemptModel.ordinal.in_(
+                        tuple(
+                            resilient_visual_attempt_ordinal(plan.ordinal, number)
+                            for number in range(1, RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS + 1)
+                        )
+                    ),
+                )
+                .order_by(OfficialAccountArticleAttemptModel.ordinal)
+            )
+        ).all()
+    )
+    if len(attempts) != physical_attempt_number - 1:
+        raise ValueError("resilient visual physical attempt is not current")
+    for number, attempt in enumerate(attempts, start=1):
+        if (
+            attempt.ordinal != resilient_visual_attempt_ordinal(plan.ordinal, number)
+            or attempt.request_fingerprint
+            != resilient_visual_provider_request_fingerprint(plan.request_fingerprint, number)
+            or attempt.safe_metadata.get("visual_pipeline_version")
+            != RESILIENT_VISUAL_PIPELINE_VERSION
+            or attempt.safe_metadata.get("logical_request_fingerprint") != plan.request_fingerprint
+            or attempt.safe_metadata.get("physical_attempt_number") != number
+        ):
+            raise ValueError("resilient visual attempt ledger changed")
 
 
 class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
@@ -462,6 +520,8 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
         eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> StoredOfficialAccountGeneratedVisual | None:
         _validate_generated_visual_plan(plan)
         if eval_result is not None and eval_result.publication_sha256 != result.sha256:
@@ -510,6 +570,19 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 return _stored_generated_visual(row)
             if row.status != "generating":
                 raise RuntimeError("generated visual cannot accept a late result")
+            resilient = (
+                run.version_bundle.get("visual_pipeline_version")
+                == RESILIENT_VISUAL_PIPELINE_VERSION
+            )
+            if resilient:
+                if physical_attempt_number is None or provider_request_fingerprint is None:
+                    raise ValueError("resilient visual physical success identity changed")
+                await _assert_resilient_visual_physical_attempt(
+                    session,
+                    plan=plan,
+                    physical_attempt_number=physical_attempt_number,
+                    provider_request_fingerprint=provider_request_fingerprint,
+                )
             row.status = "ready"
             row.media_type = result.media_type
             row.byte_size = result.byte_size
@@ -568,9 +641,17 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     article_version_id=plan.article_version_id,
                     stage="generating_body_visuals",
                     capability="visual_generation",
-                    ordinal=claimed.attempt_number * 10 + plan.ordinal,
+                    ordinal=(
+                        resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
+                        if resilient and physical_attempt_number is not None
+                        else claimed.attempt_number * 10 + plan.ordinal
+                    ),
                     status="succeeded",
-                    request_fingerprint=plan.request_fingerprint,
+                    request_fingerprint=(
+                        provider_request_fingerprint
+                        if resilient and provider_request_fingerprint is not None
+                        else plan.request_fingerprint
+                    ),
                     provider=plan.provider,
                     model=plan.model,
                     provider_request_id=None,
@@ -586,6 +667,16 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                         "selection_method": plan.selection_method,
                         "media_type": result.media_type,
                         "byte_size": result.byte_size,
+                        **(
+                            {
+                                "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                "logical_request_fingerprint": plan.request_fingerprint,
+                                "physical_attempt_number": physical_attempt_number,
+                                "provider_request_fingerprint": provider_request_fingerprint,
+                            }
+                            if resilient
+                            else {}
+                        ),
                         **(
                             {"image_eval_decision": eval_result.decision.decision.value}
                             if eval_result is not None
@@ -605,9 +696,17 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
         plan: OfficialAccountGeneratedVisualPlan,
         error_code: str,
         result_unknown: bool = False,
+        diagnostic: ImageGenerationFailure | None = None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> bool:
         _validate_generated_visual_plan(plan)
         safe_error = _safe_error(error_code)
+        if diagnostic is not None and (
+            result_unknown != (diagnostic.disposition == "unknown")
+            or (not result_unknown and safe_error != diagnostic.error_code)
+        ):
+            raise ValueError("image failure diagnostic changed")
         async with self._session_factory() as session:
             run = await _locked_fenced_run(session, claimed)
             if run is None:
@@ -623,8 +722,28 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             if row is None:
                 return False
             _assert_generated_visual_plan(row, plan)
+            if plan.output_size is not None and (
+                row.intent_lease_token != claimed.lease_token
+                or row.intent_attempt_number != claimed.attempt_number
+                or run.lease_expires_at is None
+                or run.lease_expires_at <= datetime.now(UTC)
+            ):
+                return False
             if row.status != "generating":
                 return row.status in {"failed", "result_unknown"}
+            resilient = (
+                run.version_bundle.get("visual_pipeline_version")
+                == RESILIENT_VISUAL_PIPELINE_VERSION
+            )
+            if resilient:
+                if physical_attempt_number is None or provider_request_fingerprint is None:
+                    raise ValueError("resilient visual physical failure identity changed")
+                await _assert_resilient_visual_physical_attempt(
+                    session,
+                    plan=plan,
+                    physical_attempt_number=physical_attempt_number,
+                    provider_request_fingerprint=provider_request_fingerprint,
+                )
             now = datetime.now(UTC)
             row.status = "result_unknown" if result_unknown else "failed"
             row.error_code = safe_error
@@ -636,9 +755,17 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     article_version_id=plan.article_version_id,
                     stage="generating_body_visuals",
                     capability="visual_generation",
-                    ordinal=claimed.attempt_number * 10 + plan.ordinal,
+                    ordinal=(
+                        resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
+                        if resilient and physical_attempt_number is not None
+                        else claimed.attempt_number * 10 + plan.ordinal
+                    ),
                     status="failed",
-                    request_fingerprint=plan.request_fingerprint,
+                    request_fingerprint=(
+                        provider_request_fingerprint
+                        if resilient and provider_request_fingerprint is not None
+                        else plan.request_fingerprint
+                    ),
                     provider=plan.provider,
                     model=plan.model,
                     provider_request_id=None,
@@ -653,6 +780,17 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                         "section_index": plan.section_index,
                         "selection_method": plan.selection_method,
                         "result_unknown": result_unknown,
+                        **(
+                            {
+                                "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                "logical_request_fingerprint": plan.request_fingerprint,
+                                "physical_attempt_number": physical_attempt_number,
+                                "provider_request_fingerprint": provider_request_fingerprint,
+                            }
+                            if resilient
+                            else {}
+                        ),
+                        **(diagnostic.safe_metadata() if diagnostic is not None else {}),
                     },
                     completed_at=now,
                 )
@@ -1542,6 +1680,20 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             )
             if existing is not None:
                 return existing.id, _media_result(existing)
+            if (
+                result.role == "body"
+                and run.version_bundle.get("visual_pipeline_version")
+                != RESILIENT_VISUAL_PIPELINE_VERSION
+                and await session.scalar(
+                    select(OfficialAccountLocalMediaModel.id).where(
+                        OfficialAccountLocalMediaModel.run_id == run.id,
+                        OfficialAccountLocalMediaModel.role == "body",
+                        OfficialAccountLocalMediaModel.sha256 == result.sha256,
+                    )
+                )
+                is not None
+            ):
+                raise RuntimeError("official-account body media checksum is duplicated")
             row = OfficialAccountLocalMediaModel(
                 id=uuid4(),
                 run_id=run.id,
@@ -1709,7 +1861,11 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             if (
                 tuple(item.id for item in body_rows) != body_media_ids
                 or tuple(item.ordinal for item in body_rows) != tuple(range(len(body_media_ids)))
-                or len({item.sha256 for item in body_rows}) != len(body_rows)
+                or (
+                    run.version_bundle.get("visual_pipeline_version")
+                    != RESILIENT_VISUAL_PIPELINE_VERSION
+                    and len({item.sha256 for item in body_rows}) != len(body_rows)
+                )
                 or cover_row is None
                 or cover_row.run_id != run.id
                 or cover_row.render_version_id != render.id
@@ -1798,6 +1954,9 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             if frozen is not None:
                 max_attempts, retry_base_seconds, expires_at = _frozen_retry_policy(frozen)
                 retryable = retryable and now < expires_at
+            elif safe_metadata is not None and "image_failure" in safe_metadata:
+                # Legacy identities have no frozen visual retry authority.
+                retryable = False
             if result_unknown:
                 run.status = "result_unknown"
                 run.current_stage = "result_unknown"

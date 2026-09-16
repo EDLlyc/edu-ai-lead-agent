@@ -15,9 +15,18 @@ import httpx
 from app.application.ports.image_generation import ImageGenerationRequest, ImageGenerationResult
 from app.application.ports.image_validation import ImageQualityAuditRequest, ImageQualityAuditResult
 from app.core.config import Settings
-from app.core.errors import ProviderIdentityMismatchError
+from app.core.errors import (
+    ImageGenerationFailure,
+    ImageOutputValidationError,
+    ImageProviderConfigurationError,
+    ProviderIdentityMismatchError,
+    ProviderRateLimitError,
+    StrictImageGenerationError,
+    classify_image_generation_failure,
+)
 from app.domain.official_account_visual_pipeline import STRICT_VISUAL_POLICY
 from app.infrastructure.ai.factory import create_image_generator
+from app.infrastructure.ai.image_generation import _response_kind
 from app.infrastructure.ai.image_validation import OpenAICompatibleImageQualityAuditor
 
 
@@ -39,6 +48,9 @@ class StrictVisualOneShotTransport(httpx.AsyncBaseTransport):
         self._kind = kind
         self._base = httpx.URL(base_url)
         self._counts: dict[str, int] = {}
+        self.http_status: int | None = None
+        self.response_kind: str | None = None
+        self.last_operation: str | None = None
         if kind == "audit" and base_url != STRICT_VISUAL_POLICY.audit_base_url:
             raise ValueError("strict visual audit route is invalid")
 
@@ -82,7 +94,33 @@ class StrictVisualOneShotTransport(httpx.AsyncBaseTransport):
         if count >= maximum:
             raise ValueError("strict visual physical dispatch budget exceeded")
         self._counts[operation] = count + 1
-        return await self._inner.handle_async_request(request)
+        self.last_operation = operation
+        self.http_status = None
+        self.response_kind = None
+        try:
+            response = await self._inner.handle_async_request(request)
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as error:
+            if self._kind != "generation" or operation != "post":
+                raise
+            reason = (
+                "connect_failed"
+                if isinstance(error, httpx.ConnectError)
+                else "connect_timeout"
+                if isinstance(error, httpx.ConnectTimeout)
+                else "pool_timeout"
+            )
+            raise StrictImageGenerationError(
+                ImageGenerationFailure(
+                    error_code="provider_unavailable",
+                    disposition="not_applied_retryable",
+                    reason=reason,
+                )
+            ) from None
+        self.http_status = response.status_code
+        self.response_kind = _response_kind(
+            response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        )
+        return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()
@@ -103,12 +141,12 @@ class LazyStrictOfficialAccountImageGenerator:
         if (
             settings.image_provider_mode != STRICT_VISUAL_POLICY.generation_provider
             or settings.image_model != STRICT_VISUAL_POLICY.generation_model
-            or request.output_size != STRICT_VISUAL_POLICY.output_size
-            or not request.references
             or settings.comfly_api_key is None
             or not settings.comfly_api_key.get_secret_value().strip()
         ):
-            raise ValueError("strict visual generation policy is unavailable")
+            raise ImageProviderConfigurationError()
+        if request.output_size != STRICT_VISUAL_POLICY.output_size or not request.references:
+            raise ImageOutputValidationError()
         transport = StrictVisualOneShotTransport(
             inner=self._transport_factory(), kind="generation", base_url=settings.comfly_base_url
         )
@@ -126,7 +164,45 @@ class LazyStrictOfficialAccountImageGenerator:
                     ),
                 }
             )
-            result = await create_image_generator(bounded, client=client).generate(request)
+            try:
+                result = await create_image_generator(bounded, client=client).generate(request)
+            except Exception as error:
+                if (
+                    isinstance(error, ProviderRateLimitError)
+                    and transport.last_operation == "post"
+                    and transport.http_status == 429
+                ):
+                    raise StrictImageGenerationError(
+                        ImageGenerationFailure(
+                            error_code="provider_rate_limited",
+                            disposition="not_applied_retryable",
+                            reason="post_rate_limited",
+                            http_status=429,
+                            response_kind=transport.response_kind,
+                        )
+                    ) from None
+                diagnostic = classify_image_generation_failure(
+                    error,
+                    http_status=transport.http_status,
+                    response_kind=transport.response_kind,
+                )
+                if transport.last_operation in {"poll", "download"} and (
+                    transport.http_status is None
+                    or transport.http_status >= 300
+                    or not isinstance(
+                        error, (ImageOutputValidationError, ProviderIdentityMismatchError)
+                    )
+                ):
+                    # A GET failure cannot prove the already accepted paid POST failed.
+                    # Validly fetched but invalid raster bytes remain terminal output errors.
+                    diagnostic = ImageGenerationFailure(
+                        error_code=diagnostic.error_code,
+                        disposition="unknown",
+                        reason="post_outcome_unknown",
+                        http_status=diagnostic.http_status,
+                        response_kind=diagnostic.response_kind,
+                    )
+                raise StrictImageGenerationError(diagnostic) from None
         if (
             result.provider != STRICT_VISUAL_POLICY.generation_provider
             or result.model != STRICT_VISUAL_POLICY.generation_model

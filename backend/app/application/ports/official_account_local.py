@@ -6,6 +6,7 @@ from typing import Any, Literal, Protocol
 from uuid import UUID
 
 from app.application.ports.official_account_strict_visual import StrictVisualRepository
+from app.core.errors import ImageGenerationFailure
 from app.domain.image_quality_eval import (
     IMAGE_EVAL_SINGLE_IMAGE_DIMENSIONS,
     ImageEvalBatchDecision,
@@ -456,6 +457,7 @@ class OfficialAccountDraftRequest:
     request_fingerprint: str
     body_media_items: tuple[OfficialAccountMediaResult, ...] = ()
     context_media_items: tuple[OfficialAccountMediaResult, ...] = ()
+    visual_pipeline_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -636,6 +638,8 @@ class OfficialAccountRunRepository(StrictVisualRepository, Protocol):
         plan: OfficialAccountGeneratedVisualPlan,
         result: OfficialAccountGeneratedVisualResult,
         eval_result: OfficialAccountGeneratedVisualEvalResult | None = None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> StoredOfficialAccountGeneratedVisual | None: ...
 
     async def fail_generated_visual(
@@ -645,6 +649,9 @@ class OfficialAccountRunRepository(StrictVisualRepository, Protocol):
         plan: OfficialAccountGeneratedVisualPlan,
         error_code: str,
         result_unknown: bool = False,
+        diagnostic: ImageGenerationFailure | None = None,
+        provider_request_fingerprint: str | None = None,
+        physical_attempt_number: int | None = None,
     ) -> bool: ...
 
     async def persist_article(

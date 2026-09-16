@@ -138,6 +138,7 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     native_visual_plan_prompt_valid,
 )
 
@@ -892,6 +893,14 @@ class OfficialAccountLocalExecutor:
                 result_unknown=True,
             )
         except OfficialAccountGeneratedVisualResultUnknownError as error:
+            safe_metadata = _safe_provider_metadata(error)
+            logger.warning(
+                "official_account_image_generation_failed",
+                run_id=str(claimed.run_id),
+                attempt=claimed.attempt_number,
+                stage="generating_body_visuals",
+                safe_metadata=safe_metadata or {},
+            )
             await self._repository.fail(
                 claimed=claimed,
                 error_code=error.code,
@@ -899,9 +908,18 @@ class OfficialAccountLocalExecutor:
                 retry_base_seconds=self._retry_base_seconds,
                 max_attempts=self._max_attempts,
                 result_unknown=True,
+                safe_metadata=safe_metadata,
             )
         except AppError as error:
             safe_metadata = _safe_provider_metadata(error)
+            if safe_metadata is not None and "image_failure" in safe_metadata:
+                logger.warning(
+                    "official_account_image_generation_failed",
+                    run_id=str(claimed.run_id),
+                    attempt=claimed.attempt_number,
+                    stage="generating_body_visuals",
+                    safe_metadata=safe_metadata,
+                )
             await self._repository.fail(
                 claimed=claimed,
                 error_code=error.code,
@@ -1264,7 +1282,9 @@ class OfficialAccountLocalExecutor:
             if generated_source_media is None:
                 return
             selected_source_media = generated_source_media
-        if len({item.sha256 for item in selected_source_media}) != len(selected_source_media):
+        if identity.visual_pipeline_version != RESILIENT_VISUAL_PIPELINE_VERSION and len(
+            {item.sha256 for item in selected_source_media}
+        ) != len(selected_source_media):
             raise ValueError("official-account body media candidates contain duplicate checksums")
         body_items: list[tuple[UUID, OfficialAccountMediaResult]] = []
         for slot, source_media in zip(expected_body_slots, selected_source_media, strict=True):
@@ -1342,7 +1362,9 @@ class OfficialAccountLocalExecutor:
             range(len(expected_body_slots))
         ):
             raise ValueError("official-account staged body media ordinals are incomplete")
-        if len({result.sha256 for _id, result in body_items}) != len(body_items):
+        if identity.visual_pipeline_version != RESILIENT_VISUAL_PIPELINE_VERSION and len(
+            {result.sha256 for _id, result in body_items}
+        ) != len(body_items):
             raise ValueError("official-account staged body media checksums are not distinct")
         context_items: list[tuple[UUID, OfficialAccountMediaResult]] = []
         if is_news_context_media:
@@ -1522,6 +1544,7 @@ class OfficialAccountLocalExecutor:
                 request_fingerprint=draft_fingerprint,
                 body_media_items=body_results,
                 context_media_items=tuple(result for _media_id, result in context_items),
+                visual_pipeline_version=identity.visual_pipeline_version,
             )
         )
         await self._repository.persist_draft(
@@ -2040,6 +2063,12 @@ def _validate_result_identity(
 
 
 def _safe_provider_metadata(error: AppError) -> dict[str, object] | None:
+    from app.core.errors import StrictImageGenerationError
+
+    if isinstance(
+        error, (StrictImageGenerationError, OfficialAccountGeneratedVisualResultUnknownError)
+    ):
+        return error.diagnostic.safe_metadata() if error.diagnostic is not None else None
     if not isinstance(error, InvalidProviderOutputError):
         return None
     return {

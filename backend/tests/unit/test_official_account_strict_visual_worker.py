@@ -14,10 +14,15 @@ from app.application.ports.official_account_strict_visual import (
     StoredStrictVisualAudit,
     StrictGeneratedVisualClaim,
     StrictVisualAuditClaim,
+    resilient_visual_provider_request_fingerprint,
     strict_audit_record_fingerprint,
 )
 from app.application.services.official_account_local import OfficialAccountLocalExecutor
-from app.domain.official_account_visual_pipeline import STRICT_VISUAL_POLICY
+from app.core.errors import ImageOutputValidationError
+from app.domain.official_account_visual_pipeline import (
+    RESILIENT_VISUAL_PIPELINE_VERSION,
+    STRICT_VISUAL_POLICY,
+)
 from app.infrastructure.official_account_local import (
     DeterministicFakeOfficialAccountArticleAuditor,
     DeterministicFakeOfficialAccountArticleGenerator,
@@ -39,6 +44,7 @@ class _Repository(_GeneratedVisualRepository):
         self.audits = {}
         self.fail_completion = False
         self.fail_generation_completion = False
+        self.physical_attempts = {}
 
     async def persist_generated_visual(self, **kwargs):
         if self.fail_generation_completion:
@@ -50,14 +56,43 @@ class _Repository(_GeneratedVisualRepository):
 
     async def claim_strict_generated_visual(self, *, claimed, plan):
         prior = self.generated.get(plan.ordinal)
+        resilient = claimed.identity.visual_pipeline_version == RESILIENT_VISUAL_PIPELINE_VERSION
         if prior is not None:
             assert prior.plan == plan
+            if resilient and prior.status in {"failed", "result_unknown"}:
+                physical_attempt = self.physical_attempts[plan.ordinal] + 1
+                if physical_attempt <= 3:
+                    self.physical_attempts[plan.ordinal] = physical_attempt
+                    prior = replace(
+                        prior,
+                        status="generating",
+                        error_code=None,
+                        completed_at=None,
+                    )
+                    self.generated[plan.ordinal] = prior
+                    return StrictGeneratedVisualClaim(
+                        "newly_claimed",
+                        prior,
+                        provider_request_fingerprint=resilient_visual_provider_request_fingerprint(
+                            plan.request_fingerprint, physical_attempt
+                        ),
+                        physical_attempt_number=physical_attempt,
+                    )
             return StrictGeneratedVisualClaim(
-                "completed" if prior.status == "ready" else "result_unknown", prior
+                "completed" if prior.status in {"ready", "failed"} else "result_unknown", prior
             )
-        return StrictGeneratedVisualClaim(
-            "newly_claimed", await self.create_generated_visual_intent(claimed=claimed, plan=plan)
-        )
+        stored = await self.create_generated_visual_intent(claimed=claimed, plan=plan)
+        if resilient:
+            self.physical_attempts[plan.ordinal] = 1
+            return StrictGeneratedVisualClaim(
+                "newly_claimed",
+                stored,
+                provider_request_fingerprint=resilient_visual_provider_request_fingerprint(
+                    plan.request_fingerprint, 1
+                ),
+                physical_attempt_number=1,
+            )
+        return StrictGeneratedVisualClaim("newly_claimed", stored)
 
     async def claim_strict_visual_audit(self, *, claimed, subject):
         key = (subject.role, subject.ordinal)
@@ -146,6 +181,50 @@ class _Generator:
         )
 
 
+class _RetryGenerator(_Generator):
+    async def generate(self, request):
+        self.calls.append(request)
+        if len(self.calls) <= 2:
+            raise ImageOutputValidationError()
+        rng = Random(len(self.calls) + 31)
+        source = Image.new("RGB", (16, 12))
+        source.putdata(
+            [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(192)]
+        )
+        body = BytesIO()
+        source.resize((1536, 1024)).save(body, format="JPEG", quality=85)
+        return ImageGenerationResult(
+            provider="comfly",
+            model=STRICT_VISUAL_POLICY.generation_model,
+            request_fingerprint=request.request_fingerprint,
+            provider_task_id=None,
+            provider_upload_id=None,
+            image_bytes=body.getvalue(),
+            media_type="image/jpeg",
+            width=1536,
+            height=1024,
+            attempts=1,
+        )
+
+
+class _CatalogEchoGenerator(_Generator):
+    async def generate(self, request):
+        self.calls.append(request)
+        body = request.references[0].image_bytes
+        return ImageGenerationResult(
+            provider="comfly",
+            model=STRICT_VISUAL_POLICY.generation_model,
+            request_fingerprint=request.request_fingerprint,
+            provider_task_id=None,
+            provider_upload_id=None,
+            image_bytes=body,
+            media_type="image/jpeg",
+            width=1536,
+            height=1024,
+            attempts=1,
+        )
+
+
 class _Auditor:
     def __init__(self, repository, fail_at=None):
         self.repository = repository
@@ -198,6 +277,39 @@ def _components(*, fail_at=None):
         strict_image_quality_auditor=auditor,
     )
     return repo, store, generator, auditor, executor
+
+
+@pytest.mark.asyncio
+async def test_resilient_executor_retries_one_slot_with_three_distinct_provider_keys():
+    repo, _store, _generator, auditor, executor = _components()
+    repo.identity = replace(
+        repo.identity, visual_pipeline_version=RESILIENT_VISUAL_PIPELINE_VERSION
+    )
+    generator = _RetryGenerator(repo)
+    executor._strict_image_generator = generator
+    assert await executor.execute_next("resilient-offline")
+    assert repo.failure is None and repo.draft is not None
+    assert len(generator.calls) == 7 and len(auditor.calls) == 6
+    first_slot = generator.calls[:3]
+    assert len({item.request_fingerprint for item in first_slot}) == 1
+    assert len({item.provider_request_fingerprint for item in first_slot}) == 3
+    assert [item.provider_request_fingerprint for item in first_slot] == [
+        resilient_visual_provider_request_fingerprint(first_slot[0].request_fingerprint, number)
+        for number in range(1, 4)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resilient_executor_records_but_does_not_block_catalog_reuse():
+    repo, _store, _generator, auditor, executor = _components()
+    repo.identity = replace(
+        repo.identity, visual_pipeline_version=RESILIENT_VISUAL_PIPELINE_VERSION
+    )
+    generator = _CatalogEchoGenerator(repo)
+    executor._strict_image_generator = generator
+    assert await executor.execute_next("resilient-catalog-advisory")
+    assert repo.failure is None and repo.draft is not None
+    assert len(generator.calls) == 5 and len(auditor.calls) == 6
 
 
 @pytest.mark.asyncio

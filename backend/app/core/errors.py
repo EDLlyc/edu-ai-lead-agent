@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 
 _PROVIDER_VALIDATION_ISSUE_LIMIT = 12
 _PROVIDER_VALIDATION_LOC_DEPTH = 8
@@ -124,12 +125,13 @@ class LocalDraftResultUnknownError(AppError):
 
 
 class OfficialAccountGeneratedVisualResultUnknownError(AppError):
-    def __init__(self) -> None:
+    def __init__(self, *, diagnostic: ImageGenerationFailure | None = None) -> None:
         super().__init__(
             "official_account_generated_visual_result_unknown",
             "generated local body visual result is unknown and requires inspection",
             409,
         )
+        self.diagnostic = diagnostic
 
 
 class OfficialAccountGeneratedVisualFailedError(AppError):
@@ -320,6 +322,173 @@ class ImageOutputValidationError(ProviderError):
     def __init__(self, reason: str = "image_output_invalid") -> None:
         super().__init__("image_output_invalid", "generated image failed safety validation", 422)
         self.reason = reason if reason in self._SAFE_REASONS else "image_output_invalid"
+
+
+@dataclass(frozen=True, slots=True)
+class ImageGenerationFailure:
+    """Closed diagnostic projection, never an exception message or provider response."""
+
+    error_code: str
+    disposition: Literal["not_applied_retryable", "terminal", "unknown"]
+    reason: str
+    http_status: int | None = None
+    response_kind: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.error_code not in {
+            "provider_unavailable",
+            "provider_rate_limited",
+            "provider_authentication_failed",
+            "provider_input_limit",
+            "provider_request_rejected",
+            "provider_identity_mismatch",
+            "image_provider_not_configured",
+            "image_provider_rejected",
+            "image_provider_quota_exhausted",
+            "image_provider_timeout",
+            "image_output_invalid",
+            "official_account_generated_visual_result_unknown",
+        } or self.reason not in {
+            "connect_failed",
+            "connect_timeout",
+            "pool_timeout",
+            "post_rate_limited",
+            "provider_failure",
+            "post_outcome_unknown",
+            "lease_authority_lost",
+            "artifact_persistence_failed",
+            *ImageOutputValidationError._SAFE_REASONS,
+        }:
+            raise ValueError("invalid image failure diagnostic")
+        if self.disposition not in {"not_applied_retryable", "terminal", "unknown"}:
+            raise ValueError("invalid image failure disposition")
+        if self.http_status is not None and (
+            type(self.http_status) is not int or not 100 <= self.http_status <= 599
+        ):
+            raise ValueError("invalid image failure HTTP status")
+        if self.response_kind is not None and self.response_kind not in {"json", "raster", "other"}:
+            raise ValueError("invalid image failure response kind")
+        if self.disposition == "not_applied_retryable" and not (
+            (
+                self.reason in {"connect_failed", "connect_timeout", "pool_timeout"}
+                and self.error_code == "provider_unavailable"
+                and self.http_status is None
+            )
+            or (
+                self.reason == "post_rate_limited"
+                and self.error_code == "provider_rate_limited"
+                and self.http_status == 429
+            )
+        ):
+            raise ValueError("image retry requires non-applied transport proof")
+
+    def safe_metadata(self) -> dict[str, object]:
+        return {
+            "image_failure": {
+                "version": "strict-image-failure-v1",
+                "error_code": self.error_code,
+                "disposition": self.disposition,
+                "reason": self.reason,
+                "http_status": self.http_status,
+                "response_kind": self.response_kind,
+            }
+        }
+
+    @classmethod
+    def from_safe_metadata(cls, value: object) -> ImageGenerationFailure | None:
+        if (
+            not isinstance(value, dict)
+            or set(value)
+            != {
+                "version",
+                "error_code",
+                "disposition",
+                "reason",
+                "http_status",
+                "response_kind",
+            }
+            or value.get("version") != "strict-image-failure-v1"
+        ):
+            return None
+        if not all(isinstance(value[key], str) for key in ("error_code", "disposition", "reason")):
+            return None
+        try:
+            return cls(
+                error_code=value["error_code"],
+                disposition=value["disposition"],
+                reason=value["reason"],
+                http_status=value["http_status"],
+                response_kind=value["response_kind"],
+            )
+        except (TypeError, ValueError):
+            return None
+
+
+class StrictImageGenerationError(AppError):
+    def __init__(self, diagnostic: ImageGenerationFailure) -> None:
+        super().__init__(
+            diagnostic.error_code,
+            "official-account image generation failed",
+            503,
+            diagnostic.disposition == "not_applied_retryable",
+        )
+        self.diagnostic = diagnostic
+
+
+def classify_image_generation_failure(
+    error: Exception,
+    *,
+    http_status: int | None = None,
+    response_kind: str | None = None,
+) -> ImageGenerationFailure:
+    """Retryability alone is not proof a paid POST was never applied."""
+    if isinstance(error, StrictImageGenerationError):
+        return error.diagnostic
+    reason = "provider_failure"
+    if isinstance(error, ImageOutputValidationError):
+        reason = error.reason
+    if isinstance(error, ImageProviderRejectedError):
+        http_status = error.http_status if error.http_status is not None else http_status
+        response_kind = error.response_kind or response_kind
+    terminal = isinstance(
+        error,
+        (
+            ProviderAuthenticationError,
+            ProviderInputLimitError,
+            ProviderRejectedError,
+            ProviderIdentityMismatchError,
+            ImageProviderConfigurationError,
+            ImageProviderRejectedError,
+            ImageProviderQuotaError,
+            ImageOutputValidationError,
+        ),
+    ) and not (http_status is not None and http_status >= 500)
+    if isinstance(
+        error,
+        (
+            ProviderAuthenticationError,
+            ProviderInputLimitError,
+            ProviderRejectedError,
+            ProviderIdentityMismatchError,
+            ImageProviderConfigurationError,
+            ImageProviderRejectedError,
+            ImageProviderQuotaError,
+            ImageOutputValidationError,
+            ImageProviderTimeoutError,
+            ProviderRateLimitError,
+            ProviderUnavailableError,
+        ),
+    ):
+        code = error.code
+    else:
+        code = "official_account_generated_visual_result_unknown"
+    return ImageGenerationFailure(
+        error_code=code,
+        disposition="terminal" if terminal else "unknown",
+        reason=reason if terminal else "post_outcome_unknown",
+        http_status=http_status,
+        response_kind=response_kind,
+    )
 
 
 @dataclass(frozen=True, slots=True)

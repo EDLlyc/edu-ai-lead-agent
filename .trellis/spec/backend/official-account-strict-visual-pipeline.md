@@ -1,5 +1,130 @@
 # Prospective strict official-account visuals
 
+Native generation failure diagnostics, proved non-applied retries, and the explicit
+September 16 one-time compensated operation are specified in
+[`official-account-image-recovery.md`](./official-account-image-recovery.md).
+The latter preserves original unknown attempts and accepted content while advancing
+only the authorized current slot projection; it never makes unknown outcomes an
+ordinary automatic retry. All existing visual/publishing boundaries below remain.
+
+## Prospective V3 resilient/advisory policy
+
+### 1. Scope / trigger
+
+New future runs may freeze
+`official-account-visual-pipeline-v3-resilient-advisory`. This is an immutable third
+policy; it does not reinterpret V1 strict, V2 observe, the September 16 recovered
+run, or an already verified draft.
+
+### 2. Signatures
+
+- `StrictVisualPipelineVersion` includes
+  `official-account-visual-pipeline-v3-resilient-advisory`.
+- `RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS = 3` is the closed per-body-slot budget.
+- `resilient_visual_provider_request_fingerprint(logical, physical_attempt)` derives
+  the provider identity; `resilient_visual_attempt_ordinal(slot, physical_attempt)`
+  maps the five slots to durable ordinals 101--115.
+- `StrictGeneratedVisualClaim` returns both `provider_request_fingerprint` and
+  `physical_attempt_number`; `persist_generated_visual(...)` and
+  `fail_generated_visual(...)` must receive the same pair.
+- Prepared artifacts use
+  `wechat-draft-prepared-child-v4-resilient-advisory`.
+- Alembic revision `20260916_0048` removes the policy-blind body-checksum unique
+  index before any run may freeze V3.
+
+### 3. Contracts
+
+Each of the five body slots owns at most three physical generation attempts. The
+logical plan/request fingerprint remains stable, while each physical attempt derives
+a distinct provider request fingerprint from that plan and attempt number. The
+existing `official_account_article_attempts` table is the durable physical ledger;
+its V3 ordinals are disjoint from historical run-attempt ordinals. Claiming happens
+under the fenced run/visual row lock, completed slots are reused, failed attempts are
+never deleted, and success/failure persistence must prove that the supplied physical
+attempt is exactly the next current ledger entry. Three consumed entries are terminal;
+there is no fourth provider call after restart or concurrent claim.
+
+Migration `20260916_0048` removes the old policy-blind unique body-checksum index,
+because V3 permits exact duplication as an observation. The fenced media repository
+retains the same duplicate-check rejection for V1/V2 before insert. Downgrade refuses
+while any V3 run identity exists, rather than exposing that state to an old decoder.
+
+Provider rejection, provider outage/rate/quota failure, invalid provider raster/output,
+and an ambiguity observed while the current owner still holds authority may consume
+the next physical attempt. Invalid credentials, invalid configuration/input, provider
+result-identity mismatch, expired execution window and lost lease authority do not.
+An orphaned `generating` intent is recorded as unknown with
+`reason=lease_authority_lost` and remains terminal; a successor must not turn lease
+loss into another paid dispatch. The one-shot transport remains one POST per physical
+claim, so application-level durable claims—not hidden HTTP retries—own the budget.
+
+V3 still executes and persists all six final-image audits. Model rejection,
+unavailability/result-unknown, ordinary relevance/style/composition findings, exact
+or perceptual sibling duplication, and catalogue reuse are advisory. Audit provider,
+model or request-identity mismatch remains blocking. Raster decoding, native/final
+geometry, byte and checksum integrity, five-body/one-cover count, stored subject and
+artifact lineage, prepared HTML/media correspondence, draft-only authority and all
+factual Article audits remain hard gates.
+
+Prepared output uses the closed
+`wechat-draft-prepared-child-v4-resilient-advisory` envelope. Producer, canonical
+consumer and WeChat preparer must preserve the real audit statuses/codes and recompute
+advisory quality findings without weakening byte, subject or lineage validation.
+V1/V2 envelopes and serialized evidence remain literal.
+
+The production switch is
+`OFFICIAL_ACCOUNT_LOCAL_VISUAL_PIPELINE_VERSION=official-account-visual-pipeline-v3-resilient-advisory`.
+Keep `IMAGE_MAX_ATTEMPTS=1`: the adapter is one physical call per durable claim, while
+V3 owns the three-attempt policy. Apply migration `20260916_0048` before changing the
+environment value. Recreate the identity-producing scheduler/worker processes after
+the switch; never retrofit the value into an already frozen run.
+
+### 4. Validation & error matrix
+
+| Condition | V3 result |
+| --- | --- |
+| Provider rejection, outage/rate/quota response, invalid raster/output, current-owner ambiguity | Persist the attempt and claim the next distinct attempt when fewer than three are consumed |
+| Third retryable failure | Persist terminal failure; never issue a fourth provider request |
+| Invalid credentials, configuration or input limit | Terminal; no next physical request |
+| Provider/model/request result-identity mismatch | Terminal; do not accept or retry the mismatched result |
+| Lost lease or orphaned generating intent | Persist `lease_authority_lost` as unknown/terminal; successor performs no paid retry |
+| Expired frozen execution window | Terminal before provider dispatch |
+| Reviewer rejected/unavailable/result-unknown; ordinary relevance/style/composition issue | Persist as advisory and continue |
+| Exact/perceptual sibling duplicate, catalogue reuse or reference echo | Persist as advisory and continue only for V3 |
+| Audit provider/model/request identity mismatch | Hard-block readiness |
+| Bad raster, geometry/count/checksum, subject/lineage, HTML/media or draft authority | Hard-block readiness |
+
+### 5. Good / base / bad cases
+
+- Good: attempts one and two return invalid output, attempt three succeeds under a
+  third provider key, five body images and six audits reach a draft-only ready state.
+- Base: the first request succeeds; the remaining V3 budget is never consumed and a
+  restart reuses the content-addressed artifact.
+- Good advisory: two body slots contain identical bytes or echo the approved reference;
+  V3 records the finding and continues, while V1/V2 still reject it.
+- Bad: a successor worker sees an orphaned paid call and sends another request, a stale
+  attempt writes into the current slot, an inner HTTP retry hides extra POSTs, or an
+  existing V1/V2 run is reinterpreted as V3.
+
+### 6. Tests required
+
+Required regressions cover success after two failures, three-failure exhaustion,
+distinct physical provider keys, ready-slot reuse, restart/concurrent claim fencing,
+lost-lease no-retry, stale physical-result rejection, V1/V2 parity, advisory review
+matrices and the V3 prepared-envelope round trip through the real draft consumer.
+Migration tests must assert upgrade from 0047, absence of the checksum index, V1/V2
+repository-level duplicate refusal, V3 duplicate acceptance, downgrade success before
+V3 data, and downgrade refusal after a V3 run exists.
+
+### 7. Wrong vs correct
+
+Wrong: set `IMAGE_MAX_ATTEMPTS=3`, let the provider adapter retry internally, remove
+all image checks, or drop duplicate checks globally.
+
+Correct: keep one physical call per claim, persist each attempt under its own key,
+advance only under the fenced V3 repository transition, retain deterministic
+byte/subject/lineage gates, and make only the named quality findings advisory.
+
 ## Prospective V5 Chinese-family illustration requirements
 
 ### 1. Scope / trigger

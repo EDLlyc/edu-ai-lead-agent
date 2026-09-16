@@ -52,6 +52,7 @@ from app.domain.official_account_local import (
     OfficialAccountSourceSnapshot,
     fingerprint,
 )
+from app.domain.official_account_visual_pipeline import RESILIENT_VISUAL_PIPELINE_VERSION
 
 _FIXTURE_NAMESPACE = UUID("8f778a3f-2edb-4b25-a3b3-87a6aa181fd8")
 FIXTURE_EVIDENCE_ID = uuid5(_FIXTURE_NAMESPACE, "evidence")
@@ -694,7 +695,9 @@ class LocalOfficialAccountDraftAdapter:
             raise ValueError("local draft body media must be ordered and contiguous")
         if any(item.role != "body" for item in body_media):
             raise ValueError("local draft media roles are not interchangeable")
-        if len({item.sha256 for item in body_media}) != len(body_media):
+        if request.visual_pipeline_version != RESILIENT_VISUAL_PIPELINE_VERSION and len(
+            {item.sha256 for item in body_media}
+        ) != len(body_media):
             raise ValueError("local draft body media checksums must be distinct")
         context_media = request.context_media_items
         if len(context_media) > 2 or tuple(item.ordinal for item in context_media) != tuple(

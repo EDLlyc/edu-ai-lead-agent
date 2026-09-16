@@ -56,6 +56,7 @@ from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     StrictVisualPipelineVersion,
     native_visual_audit_releases,
@@ -74,7 +75,12 @@ from app.domain.official_account_xiaosai_footer import (
 
 STRICT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v2-native-strict"
 OBSERVE_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v3-native-observe"
-NATIVE_PREPARED_CHILD_VERSIONS = (STRICT_PREPARED_CHILD_VERSION, OBSERVE_PREPARED_CHILD_VERSION)
+RESILIENT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v4-resilient-advisory"
+NATIVE_PREPARED_CHILD_VERSIONS = (
+    STRICT_PREPARED_CHILD_VERSION,
+    OBSERVE_PREPARED_CHILD_VERSION,
+    RESILIENT_PREPARED_CHILD_VERSION,
+)
 
 
 class _Frozen(BaseModel):
@@ -137,7 +143,9 @@ def validate_strict_visual_evidence(
         raise ValueError("strict prepared media slots are duplicated")
     for item in evidence:
         observe = policy_version == OBSERVE_VISUAL_PIPELINE_VERSION
-        if observe != isinstance(item, ObserveVisualMediaEvidence):
+        resilient = policy_version == RESILIENT_VISUAL_PIPELINE_VERSION
+        advisory = observe or resilient
+        if advisory != isinstance(item, ObserveVisualMediaEvidence):
             raise ValueError("native prepared evidence policy changed")
         if isinstance(item, ObserveVisualMediaEvidence):
             subject = item.audit_subject
@@ -162,8 +170,13 @@ def validate_strict_visual_evidence(
                     for field in fields(StrictVisualMediaEvidence)
                     if hasattr(subject, field.name) and field.name != "prompt_version"
                 )
-                or subject.publication_sha256 in subject.catalog_publication_sha256s
-                or subject.upload_sha256 in subject.catalog_publication_sha256s
+                or (
+                    not resilient
+                    and (
+                        subject.publication_sha256 in subject.catalog_publication_sha256s
+                        or subject.upload_sha256 in subject.catalog_publication_sha256s
+                    )
+                )
             ):
                 raise ValueError("observe prepared audit identity changed")
         asset = by_slot.get((item.role, item.ordinal))
@@ -204,7 +217,7 @@ def validate_strict_visual_evidence(
             c not in "0123456789abcdef" for c in item.reference_asset_ref
         ):
             raise ValueError("strict prepared public reference is invalid")
-        if item.upload_sha256 == item.reference_publication_sha256:
+        if not resilient and item.upload_sha256 == item.reference_publication_sha256:
             raise ValueError("strict prepared output cannot reuse a catalog publication")
         if (asset.width, asset.height) != ((1536, 1024) if item.role == "body" else (1175, 500)):
             raise ValueError("strict prepared upload geometry changed")
@@ -213,12 +226,18 @@ def validate_strict_visual_evidence(
         ):
             raise ValueError("strict prepared upload byte bound changed")
     bodies = evidence[:5]
-    if policy_version == OBSERVE_VISUAL_PIPELINE_VERSION:
+    if policy_version in {
+        OBSERVE_VISUAL_PIPELINE_VERSION,
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+    }:
         observations = tuple(
             item for item in evidence if isinstance(item, ObserveVisualMediaEvidence)
         )
         subjects = tuple(item.audit_subject for item in observations)
-        if len(observations) != 6 or len({item.publication_sha256 for item in bodies}) != 5:
+        if len(observations) != 6 or (
+            policy_version == OBSERVE_VISUAL_PIPELINE_VERSION
+            and len({item.publication_sha256 for item in bodies}) != 5
+        ):
             raise ValueError("observe prepared subjects are incomplete or repeated")
         for item in observations:
             if (
@@ -231,7 +250,10 @@ def validate_strict_visual_evidence(
             ):
                 raise ValueError("observe prepared quality observations changed")
     if (
-        len({item.upload_sha256 for item in bodies}) != 5
+        (
+            policy_version != RESILIENT_VISUAL_PIPELINE_VERSION
+            and len({item.upload_sha256 for item in bodies}) != 5
+        )
         or len({item.generated_visual_id for item in bodies}) != 5
         or len({item.audit_id for item in evidence}) != 6
         or evidence[-1].generated_visual_id != bodies[0].generated_visual_id
@@ -414,7 +436,9 @@ def build_strict_prepared_projection(
     output_files["article-body.html"] = body_html.encode("utf-8")
     identity: dict[str, object] = {
         "version": (
-            OBSERVE_PREPARED_CHILD_VERSION
+            RESILIENT_PREPARED_CHILD_VERSION
+            if visual_pipeline_version == RESILIENT_VISUAL_PIPELINE_VERSION
+            else OBSERVE_PREPARED_CHILD_VERSION
             if visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
             else STRICT_PREPARED_CHILD_VERSION
         ),
@@ -471,8 +495,18 @@ def validate_strict_prepared_projection(
     raw_media = manifest.get("media")
     raw_evidence = manifest.get("visual_evidence")
     raw_derivatives = manifest.get("context_derivatives")
-    observe = manifest.get("version") == OBSERVE_PREPARED_CHILD_VERSION
-    policy = OBSERVE_VISUAL_PIPELINE_VERSION if observe else STRICT_VISUAL_PIPELINE_VERSION
+    version = manifest.get("version")
+    advisory = version in {
+        OBSERVE_PREPARED_CHILD_VERSION,
+        RESILIENT_PREPARED_CHILD_VERSION,
+    }
+    policy = (
+        RESILIENT_VISUAL_PIPELINE_VERSION
+        if version == RESILIENT_PREPARED_CHILD_VERSION
+        else OBSERVE_VISUAL_PIPELINE_VERSION
+        if version == OBSERVE_PREPARED_CHILD_VERSION
+        else STRICT_VISUAL_PIPELINE_VERSION
+    )
     if manifest.get("visual_pipeline_version") != policy:
         raise ValueError("native prepared policy/envelope mismatch")
     if (
@@ -505,16 +539,16 @@ def validate_strict_prepared_projection(
     )
     evidence_fields = {
         item.name
-        for item in fields(ObserveVisualMediaEvidence if observe else StrictVisualMediaEvidence)
+        for item in fields(ObserveVisualMediaEvidence if advisory else StrictVisualMediaEvidence)
     }
     if any(not isinstance(item, dict) or set(item) != evidence_fields for item in raw_evidence):
         raise ValueError("strict prepared audit field set changed")
     for item in raw_evidence:
         for name, value in item.items():
-            if observe and name in {"audit_issue_codes", "quality_issue_codes"}:
+            if advisory and name in {"audit_issue_codes", "quality_issue_codes"}:
                 if not isinstance(value, list) or any(not isinstance(code, str) for code in value):
                     raise ValueError("observe prepared issue code type changed")
-            elif observe and name == "audit_subject":
+            elif advisory and name == "audit_subject":
                 if not isinstance(value, dict) or set(value) != {
                     field.name for field in fields(ObserveVisualAuditSubject)
                 }:
@@ -526,7 +560,7 @@ def validate_strict_prepared_projection(
                 raise ValueError("strict prepared audit text type changed")
     evidence: tuple[StrictVisualMediaEvidence, ...] = tuple(
         TypeAdapter(ObserveVisualMediaEvidence).validate_json(_canonical(item), strict=True)
-        if observe
+        if advisory
         else TypeAdapter(StrictVisualMediaEvidence).validate_json(_canonical(item))
         for item in raw_evidence
     )

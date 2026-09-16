@@ -17,6 +17,7 @@ from app.domain.official_account_local import ArticlePackage
 StrictVisualPipelineVersion = Literal[
     "official-account-visual-pipeline-v1-native-strict",
     "official-account-visual-pipeline-v2-native-observe",
+    "official-account-visual-pipeline-v3-resilient-advisory",
 ]
 STRICT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
     "official-account-visual-pipeline-v1-native-strict"
@@ -24,9 +25,13 @@ STRICT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
 OBSERVE_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
     "official-account-visual-pipeline-v2-native-observe"
 )
+RESILIENT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
+    "official-account-visual-pipeline-v3-resilient-advisory"
+)
 NATIVE_VISUAL_PIPELINE_VERSIONS = (
     STRICT_VISUAL_PIPELINE_VERSION,
     OBSERVE_VISUAL_PIPELINE_VERSION,
+    RESILIENT_VISUAL_PIPELINE_VERSION,
 )
 
 
@@ -56,6 +61,12 @@ def native_visual_audit_releases(policy: object, status: str, issue_codes: tuple
     if policy == STRICT_VISUAL_PIPELINE_VERSION:
         return status == "accepted" and not issue_codes
     if policy == OBSERVE_VISUAL_PIPELINE_VERSION:
+        return (
+            status in {"accepted", "rejected", "unavailable", "result_unknown"}
+            and observe_visual_audit_codes_valid(status, issue_codes)
+            and "strict_visual_audit_identity_mismatch" not in issue_codes
+        )
+    if policy == RESILIENT_VISUAL_PIPELINE_VERSION:
         return (
             status in {"accepted", "rejected", "unavailable", "result_unknown"}
             and observe_visual_audit_codes_valid(status, issue_codes)
@@ -231,7 +242,14 @@ def strict_visual_batch_checks(
             perceptual_hash_distance(dhash, other) <= policy.maximum_duplicate_distance
             for other in catalog_perceptual
         )
-        if policy_version == OBSERVE_VISUAL_PIPELINE_VERSION and digest in catalog_hashes:
+        if (
+            policy_version
+            in {
+                OBSERVE_VISUAL_PIPELINE_VERSION,
+                RESILIENT_VISUAL_PIPELINE_VERSION,
+            }
+            and digest in catalog_hashes
+        ):
             codes.add("strict_visual_catalog_exact_reuse")
         if digest in catalog_hashes or catalog_similar:
             codes.add("strict_visual_catalog_reuse")
