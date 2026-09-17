@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 87
-- **Last Active**: 2026-09-16
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 88
+- **Last Active**: 2026-09-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1999 | Active |
+| `journal-2.md` | ~41 | Active |
+| `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 88 | 2026-09-17 | Deploy WeChat marketing-header spacing | `abfb89d` | `release/wechat-two-banner-framing-20260914` |
 | 87 | 2026-09-16 | Activate resilient Official Account visuals | `ee5ff70f7b91fa3da21906ed7dc18c591ff92898`, `af137ca` | `release/wechat-two-banner-framing-20260914` |
 | 86 | 2026-09-15 | Deploy WeChat no-source-link rule | `01ff75e`, `d0b9e0a`, `69a203d`, `d3e3340` | `release/wechat-two-banner-framing-20260914` |
 | 85 | 2026-09-14 | Activate MWF single WeChat draft editions | `d2e709c0b6a5e47d1b91d2ec623de734aa3c0eb2` | `release/wechat-two-banner-framing-20260914` |
