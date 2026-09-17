@@ -23,6 +23,10 @@ from app.application.services.official_account_strict_prepared import (
 from app.application.services.wechat_official_account_draft import (
     WeChatOfficialAccountDraftOnlyService,
 )
+from app.domain.official_account_editor_handoff_v2 import (
+    CHENGYUE_HEADER_BODY_SPACER_HTML,
+    CHENGYUE_HEADER_BODY_SPACING_VERSION,
+)
 from app.domain.official_account_local import ArticlePackage, article_package_fingerprint
 from app.domain.official_account_source_presentation import CURRENT_SOURCE_PRESENTATION_VERSION
 from app.domain.official_account_strict_layout import STRICT_LAYOUT_PROJECTION_V2_VERSION
@@ -72,6 +76,10 @@ from test_official_account_visual_preview import captured  # noqa: F401
 from test_official_account_xiaosai_references import make_catalog
 from test_visual_assets import _write_manifest
 from test_wechat_official_account_draft import _FakeDraftClient
+
+_COMPACT_CHENGYUE_HEADER_BODY_SPACER_HTML = (
+    '<p style="margin:0;font-size:17px"><span leaf><br></span></p>'
+)
 
 
 def test_historical_v4_keeps_the_exact_pre_footer_artifact(
@@ -413,6 +421,15 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
         r'<section style="margin:0"><img [^>]+></section>',
         html[header_section_start:header_section_end],
     )
+    cover_start = html.index("<section", header_section_end)
+    assert html[header_section_end:cover_start] == _COMPACT_CHENGYUE_HEADER_BODY_SPACER_HTML
+    assert html.count(_COMPACT_CHENGYUE_HEADER_BODY_SPACER_HTML) == 1
+    assert CHENGYUE_HEADER_BODY_SPACER_HTML == (
+        '<p style="margin:0;font-size:17px;line-height:1.75;"><span leaf=""><br></span></p>'
+    )
+    assert (
+        projection.manifest["header_body_spacing_version"] == CHENGYUE_HEADER_BODY_SPACING_VERSION
+    )
     assert all("qr" not in path.lower() for path in projection.files)
     assert prepared.author == projection.manifest["author"] == "程岳"
     assert len(projection.manifest["visual_evidence"]) == 6
@@ -430,6 +447,29 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
         m.body for m in (*prepared.body_media[:-1], prepared.cover)
     ]
 
+    legacy_header_projection = build_strict_prepared_projection(
+        **inputs,
+        source_presentation=CURRENT_SOURCE_PRESENTATION_VERSION,
+        header_body_spacing=None,
+    )
+    validate_strict_prepared_projection(
+        legacy_header_projection.manifest, legacy_header_projection.files
+    )
+    legacy_header_html = legacy_header_projection.files["article-body.html"].decode()
+    legacy_header_image = legacy_header_html.index(f'<img src="{CHENGYUE_HEADER_PATH}"')
+    legacy_header_end = legacy_header_html.index("</section>", legacy_header_image) + len(
+        "</section>"
+    )
+    assert legacy_header_html.startswith("<section", legacy_header_end)
+    assert _COMPACT_CHENGYUE_HEADER_BODY_SPACER_HTML not in legacy_header_html
+    assert "header_body_spacing_version" not in legacy_header_projection.manifest
+    assert sha256(legacy_header_projection.files["article-body.html"]).hexdigest() == (
+        "9a0e88f2b2b85492c64dde30cf08e442919cd714710fad875fdc34d5bb853dfd"
+    )
+    assert legacy_header_projection.child_fingerprint == (
+        "1ed5ef768801015b422cc8e1e5d6aad424b0bf5c0ca93cc06bc559e4ae5a3c40"
+    )
+
     historical_inputs = {
         **inputs,
         "header": None,
@@ -443,6 +483,7 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
     }
     historical_projection = build_strict_prepared_projection(**historical_inputs)
     old_html = historical_projection.files["article-body.html"].decode()
+    assert _COMPACT_CHENGYUE_HEADER_BODY_SPACER_HTML not in old_html
     assert len(projection.manifest["files"]) == len(historical_projection.manifest["files"]) + 2
     assert "查看权威原文" in old_html and "查看权威原文" not in html
     assert all(value not in html for value in ("href=", "http", "阅读原文", "查看原文"))
@@ -504,6 +545,17 @@ async def test_actual_prepared_owner_consumer_and_http_keep_fixed_marketing_fram
         html,
     )
     assert all(credit in unescape(payload["content"]) for credit in credits)
+
+
+async def test_unknown_header_body_spacing_version_is_rejected(
+    final_cta,
+) -> None:
+    _inputs, projection = final_cta
+    manifest = copy.deepcopy(projection.manifest)
+    manifest["header_body_spacing_version"] = "unsupported-header-spacing"
+
+    with pytest.raises(ValueError, match="header body spacing version is unsupported"):
+        validate_strict_prepared_projection(manifest, projection.files)
 
 
 @pytest.mark.parametrize(

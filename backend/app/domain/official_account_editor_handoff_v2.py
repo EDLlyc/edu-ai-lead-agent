@@ -58,6 +58,11 @@ EDITOR_HANDOFF_V2_EMPHASIS_VERSION: Final = "editor-handoff-semantic-emphasis-v2
 EDITOR_HANDOFF_V2_RECIPE_VERSION: Final = "editor-handoff-layout-recipe-v2"
 EDITOR_HANDOFF_V2_MOBILE_VERSION: Final = "editor-handoff-mobile-binding-v2"
 EDITOR_HANDOFF_V2_BODY_VISUAL_VERSION: Final = "editor-handoff-body-visual-lineage-v1"
+CHENGYUE_HEADER_BODY_SPACING_VERSION: Final = "official-account-chengyue-header-body-spacing-v1"
+ChengyueHeaderBodySpacingVersion = Literal["official-account-chengyue-header-body-spacing-v1"]
+CHENGYUE_HEADER_BODY_SPACER_HTML: Final = (
+    '<p style="margin:0;font-size:17px;line-height:1.75;"><span leaf=""><br></span></p>'
+)
 
 _VISIBLE_BLOCK_TYPES = (ArticleParagraphBlock, ArticleBulletListBlock, ArticleQuoteBlock)
 _CLAUSE_RE = re.compile(r"[^，。！？；：,.!?;:\n]+")
@@ -82,6 +87,17 @@ _KNOWN_TERMS = (
     "AI时代",
 )
 SemanticEmphasisReason = Literal["context_overlap", "known_term", "numeric", "informative_phrase"]
+
+
+def chengyue_header_body_spacing_version(
+    value: object,
+) -> ChengyueHeaderBodySpacingVersion | None:
+    """Missing preserves previously prepared header-bearing V5 body bytes."""
+    if value is None:
+        return None
+    if type(value) is str and value == CHENGYUE_HEADER_BODY_SPACING_VERSION:
+        return CHENGYUE_HEADER_BODY_SPACING_VERSION
+    raise ValueError("Cheng Yue header body spacing version is unsupported")
 
 
 class _FrozenModel(BaseModel):
@@ -525,8 +541,12 @@ def render_editor_handoff_v2_body(
     header: ChengyueIntroductionHeaderAsset | None = None,
     footer: OfficialAccountXiaosaiFooterAsset | None = None,
     source_presentation: SourcePresentationVersion | None = None,
+    header_body_spacing: ChengyueHeaderBodySpacingVersion | None = None,
 ) -> RenderedEditorHandoffV2:
     source_presentation = source_presentation_version(source_presentation)
+    header_body_spacing = chengyue_header_body_spacing_version(header_body_spacing)
+    if header_body_spacing is not None and header is None:
+        raise ValueError("Cheng Yue header body spacing requires the fixed header")
     recipe = select_layout_recipe(article, media)
     placements = plan_context_placements(article=article, media=media)
     context_by_target = {
@@ -549,6 +569,8 @@ def render_editor_handoff_v2_body(
     sections: list[str] = [v1._global_open()]
     if header is not None:
         sections.append(render_chengyue_header(header=header))
+        if header_body_spacing is not None:
+            sections.append(CHENGYUE_HEADER_BODY_SPACER_HTML)
     sections.extend(
         (
             _cover(article, recipe),

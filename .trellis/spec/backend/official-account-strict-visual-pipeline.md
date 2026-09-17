@@ -356,6 +356,11 @@ every future automatically prepared Article; this does not rewrite old children.
   atomically returns header/publication and footer/publication independently of
   Article assignment zero or the mutable private catalog. The legacy
   `read_xiaosai_footer`/catalog behavior remains for exact persisted replay.
+- `CHENGYUE_HEADER_BODY_SPACING_VERSION` is
+  `official-account-chengyue-header-body-spacing-v1`.
+  `render_editor_handoff_v2_body(..., header_body_spacing=None)` keeps the
+  historical header-to-cover bytes; new canonical prepared construction passes
+  the versioned value and records it as `header_body_spacing_version`.
 - Renderer and prepared-projection inputs accept the typed v1/v2 union while their
   `None` defaults remain historical. New V5 ownership always supplies the current
   header plus footer-v2.
@@ -379,7 +384,14 @@ Canonical current manifests place the header descriptor first and footer descrip
 last; historical V5 footer-v1 children without the new header remain reconstructable.
 
 The first visible block and first `<img>` are the header banner, before the existing
-generated cover. The final visible order is conclusion, unchanged sources, the exact
+generated cover. New prepared artifacts insert exactly one WeChat-visible blank line
+between the closing header wrapper and that cover, represented by one inline-styled
+`p > span[leaf] > br` spacer rather than source-code whitespace. The spacer is not
+part of the header image wrapper and must not change the image bytes or image style.
+Header-bearing V5 artifacts created before this rule have no
+`header_body_spacing_version`; canonical validation must interpret that absence as
+the historical no-spacer rendering instead of silently upgrading their bytes. The
+final visible order is conclusion, unchanged sources, the exact
 `Article.author` signature once, then the footer banner as the last visible content.
 Both wrappers have `margin:0`; both images use
 `max-width:100%;height:auto;display:block;margin:0 auto`, with no forced
@@ -392,6 +404,9 @@ new artifacts. Do not emit the legacy likes/在看/转发 CTA in addition to thi
 | Condition | Required behavior |
 | --- | --- |
 | Homogeneous V5 evidence plus exact packaged framing | Render header first and footer last, each exactly once |
+| New V5 manifest carries `official-account-chengyue-header-body-spacing-v1` | Render exactly one visible blank line after the header and before the cover |
+| Historical header-bearing V5 manifest omits `header_body_spacing_version` | Rebuild its original no-spacer HTML byte-for-byte |
+| Spacing version is unknown, duplicated, or used without the fixed header | Reject canonical construction/validation before upload |
 | Current V5 header/footer absent, duplicated, reordered or on another role/path/ordinal | Reject canonical prepared construction before upload |
 | V4/default renderer carries framing | Reject prepared construction; historical renderer output remains exact |
 | Either packaged master, deterministic derivative, descriptor, geometry or publication bytes disagree | Reject producer/consumer reconstruction and make zero provider/social calls |
@@ -416,6 +431,9 @@ captions, mobile-safe styling and two extra inline uploads. Cover either
 master/publication/descriptor/order tamper with zero HTTP calls,
 V5-required/V4-forbidden, footer-v1 replay, stable goldens, gzh zero warnings/errors,
 and 320/430 rendering without overflow or broken images.
+For the header/body gap, assert the exact order `header -> one spacer -> cover`,
+the serialized version, unknown-version rejection, unchanged upload URL rewriting,
+and a fixed historical header-bearing V5 HTML/fingerprint with the field absent.
 
 ### 7. Wrong vs correct
 
@@ -423,6 +441,11 @@ Wrong: copy image URLs into HTML without typed media or recreate either design t
 a model. Correct: bind each exact master to its deterministic byte-bounded derivative,
 carry typed `header`/`footer` through prepared projection/canonical validation, and
 upload the same bytes first/last without changing either supplied composition.
+
+Wrong: append a spacer whenever a header happens to be present, which changes the
+bytes reconstructed for existing prepared artifacts. Correct: opt new construction
+into the versioned spacing contract and treat a missing manifest field as the frozen
+historical no-spacer behavior.
 
 ## R30 extension: prospective native-observe draft readiness
 

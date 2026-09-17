@@ -23,7 +23,10 @@ from app.application.ports.official_account_strict_visual import (
 from app.domain.image_similarity import perceptual_dhash
 from app.domain.official_account_editor_handoff import EditorHandoffMediaAsset, media_asset_path
 from app.domain.official_account_editor_handoff_v2 import (
+    CHENGYUE_HEADER_BODY_SPACING_VERSION,
+    ChengyueHeaderBodySpacingVersion,
     EditorHandoffV2Identity,
+    chengyue_header_body_spacing_version,
     render_editor_handoff_v2_body,
 )
 from app.domain.official_account_local import (
@@ -279,6 +282,9 @@ def build_strict_prepared_projection(
     header: ChengyueIntroductionHeaderAsset | None = None,
     footer: OfficialAccountXiaosaiFooterAsset | None = None,
     source_presentation: SourcePresentationVersion | None = None,
+    header_body_spacing: ChengyueHeaderBodySpacingVersion | None = (
+        CHENGYUE_HEADER_BODY_SPACING_VERSION
+    ),
 ) -> StrictPreparedProjection:
     """Render frozen Article and final upload media; retain separate exact news originals."""
     if role not in {"official_anchor", "industry_trend", "application_case"}:
@@ -296,6 +302,9 @@ def build_strict_prepared_projection(
         evidence[0].prompt_version == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
     )
     source_presentation = source_presentation_version(source_presentation)
+    header_body_spacing = (
+        chengyue_header_body_spacing_version(header_body_spacing) if header is not None else None
+    )
     if source_presentation is not None and not v5_presentation:
         raise ValueError("readable sources require prospective V5 presentation")
     if v5_presentation:
@@ -423,6 +432,7 @@ def build_strict_prepared_projection(
         header=header,
         footer=footer,
         source_presentation=source_presentation,
+        header_body_spacing=header_body_spacing,
     )
     body_html = compact_strict_xiaosai_html(rendered.body_html, version=layout_projection_version)
     validate_strict_upload_html_headroom(
@@ -479,6 +489,8 @@ def build_strict_prepared_projection(
         identity["content_source_url"] = source_presentation_content_url(
             article, source_presentation
         )
+    if header_body_spacing is not None:
+        identity["header_body_spacing_version"] = header_body_spacing
     identity["content_fingerprint"] = _hash(identity)
     child_fingerprint = _hash(identity)
     manifest = {**identity, "child_fingerprint": child_fingerprint}
@@ -587,6 +599,9 @@ def validate_strict_prepared_projection(
         footer=footer,
         source_presentation=source_presentation_version(
             manifest.get("source_presentation_version")
+        ),
+        header_body_spacing=chengyue_header_body_spacing_version(
+            manifest.get("header_body_spacing_version")
         ),
     )
     if _canonical(expected.manifest) != _canonical(manifest) or expected.files != dict(files):
