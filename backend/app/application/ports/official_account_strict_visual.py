@@ -12,6 +12,7 @@ from app.domain.official_account_local import fingerprint
 from app.domain.official_account_visual_pipeline import (
     RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_AUDIT_RUBRIC_VERSION,
+    TOLERANT_VISUAL_PIPELINE_VERSION,
 )
 
 if TYPE_CHECKING:
@@ -28,17 +29,21 @@ RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS = 3
 
 
 def resilient_visual_provider_request_fingerprint(
-    logical_request_fingerprint: str, physical_attempt_number: int
+    logical_request_fingerprint: str,
+    physical_attempt_number: int,
+    *,
+    policy: object = RESILIENT_VISUAL_PIPELINE_VERSION,
 ) -> str:
     if (
         len(logical_request_fingerprint) != 64
         or any(char not in "0123456789abcdef" for char in logical_request_fingerprint)
         or not 1 <= physical_attempt_number <= RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS
+        or policy not in {RESILIENT_VISUAL_PIPELINE_VERSION, TOLERANT_VISUAL_PIPELINE_VERSION}
     ):
         raise ValueError("resilient visual physical attempt identity is invalid")
     return fingerprint(
         "official-account-resilient-visual-physical-attempt-v1",
-        RESILIENT_VISUAL_PIPELINE_VERSION,
+        policy,
         logical_request_fingerprint,
         physical_attempt_number,
     )
@@ -187,6 +192,9 @@ class StrictGeneratedVisualClaim:
     # A one-time authorized compensation is a new physical request, not a logical plan change.
     provider_request_fingerprint: str | None = None
     physical_attempt_number: int | None = None
+    # The normal run policy is frozen. A narrowly authorized recovery may opt into a
+    # bounded decoder policy for this one physical call without changing its plan.
+    output_geometry_policy: Literal["exact", "native-tolerant-v1"] = "exact"
 
 
 @dataclass(frozen=True, slots=True)

@@ -194,8 +194,15 @@ revalidates all five chosen references before its first paid generation, includi
 resume. Missing required Xiaosai input fails before paid work, never falls back to
 Sai Xiansheng or a mixed image. This is input identity, not a new model quality gate.
 
-Preserve article-specific action, scene variety, premium gouache/palette, no-text
-and native1536x1024 requirements. Complete prompt must pass the existing2000-character
+Preserve article-specific action, scene variety, premium gouache/palette and
+native1536x1024 requirements. In V5, Xiaosai's small centered blue chest panel
+with white literal `AI` is a mandatory, reference-bound identity trait—not
+unapproved scene text. It is the only readable character mark permitted in the
+image. Reject all other words, letters, numbers, logos/marks, labels, UI, QR
+codes, watermarks and ad copy. The generation prompt and both generic and strict
+audit criteria must carry the same exception: allowing the canonical badge while
+silently omitting it is not compliant, and a blanket `no chest labels` instruction
+is forbidden. Complete prompt must pass the existing2000-character
 boundary. Treat article text as untrusted context. V4 prompt bytes and historical
 fingerprints remain literal. Recognize only the closed planV4 plus promptV4/V5
 bundle consistently in identities, worker, repository, weekly replay and prepared
@@ -249,6 +256,10 @@ or upload receipts; a local preview is not a remote draft update.
 - V4/default renderer: historical captions and exact bytes remain unchanged.
 - V5 Sai-only/mixed/unknown reference: excluded before selection, rejected at preflight.
 - No valid Xiaosai-only references: no paid work and no different-character fallback.
+- V5 Xiaosai omits its blue/white `AI` chest badge: audit rejection; do not
+  reinterpret the badge as forbidden text.
+- V5 contains any other readable words, letters, numbers, brand mark, QR code,
+  watermark or ad label: audit rejection.
 - Frozen V4 or legacy request: exact old prompt, fingerprint and policy.
 - Unknown or mixed native bundle: reject before generation or prepared upload.
 - Long normal article context: valid bounded prompt, no unrestricted escape hatch.
@@ -270,7 +281,10 @@ exact trusted Xiaosai-only/Sai-only/mixed/unknown selection, revalidation drift,
 all-five-before-first-call and preserved full-catalog comparisons; unchanged DTO
 and oldV4reference behavior. Cover
 topic-specific action wording; normal/full-bound prompt lengths; literal V4 golden
-hash and V5 deterministic distinct identity. Exercise four shared runtime identity
+hash and V5 deterministic distinct identity. Assert the V5 prompt requires the
+blue/white `AI` chest badge and forbids only *other* readable text; preserve the
+literal V4 golden prompt unchanged. Assert both audit-criterion variants require
+the badge and reject unrelated readable text. Exercise four shared runtime identity
 owners, frozen weekly replay, real native generation input and prepared consumer,
 plus retained observe/strict behavior. Real isolated PostgreSQL must prove upgrade,
 V4/V5 acceptance, invalid bundle rejection and unconditional downgrade refusal.

@@ -35,6 +35,10 @@ class ImageGenerationRequest:
     provider_request_fingerprint: str | None = None
     unrestricted_prompt_length: bool = False
     output_size: Literal["1024x1024", "1536x1024"] = "1024x1024"
+    # Provider output is exact by default. The sole tolerant value is an explicit
+    # prospective official-account recovery policy; adapters must never infer it
+    # from an output size alone.
+    output_geometry_policy: Literal["exact", "native-tolerant-v1"] = "exact"
 
 
 def validate_image_generation_request_prompt(request: ImageGenerationRequest) -> str:

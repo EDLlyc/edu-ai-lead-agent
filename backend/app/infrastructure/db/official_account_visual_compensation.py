@@ -500,8 +500,13 @@ async def authorize_visual_compensation(
             Attempt.error_code == row.error_code,
         )
     )
-    _require(original is not None and original.provider_request_id is None)
+    _require(
+        original is not None
+        and original.provider_request_id is None
+        and row.intent_lease_token is not None
+    )
     assert original is not None
+    assert row.intent_lease_token is not None
     maximum, _delay, expiry = _frozen_retry_policy(run.version_bundle.get("execution_retry_policy"))
     _require(
         expiry == edition.expires_at

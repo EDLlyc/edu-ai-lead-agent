@@ -49,6 +49,7 @@ from app.domain.official_account_local import (
     GeneratedArticleSection,
 )
 from app.domain.official_account_visual_pipeline import (
+    NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PLAN_V4_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V4_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
@@ -323,6 +324,34 @@ def test_native_result_preserves_native_geometry_and_checks_reported_identity() 
         )
 
 
+def test_tolerant_native_result_is_canonically_cropped_only_after_bounded_validation() -> None:
+    plan = _plan()
+    result = ImageGenerationResult(
+        provider="comfly",
+        model=STRICT_VISUAL_POLICY.generation_model,
+        request_fingerprint=plan.request_fingerprint,
+        provider_task_id=None,
+        provider_upload_id=None,
+        image_bytes=_jpeg(size=(1280, 1024)),
+        media_type="image/jpeg",
+        width=1280,
+        height=1024,
+        attempts=1,
+    )
+    with pytest.raises(ImageOutputValidationError) as exact:
+        prepare_generated_visual_result(result=result, plan=plan, max_bytes=12 * 1024 * 1024)
+    assert exact.value.reason == "image_dimensions_invalid"
+    publication = prepare_generated_visual_result(
+        result=result,
+        plan=plan,
+        max_bytes=12 * 1024 * 1024,
+        output_geometry_policy=NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY,
+    )
+    assert (publication.result.width, publication.result.height) == (1536, 1024)
+    with Image.open(BytesIO(publication.image_bytes)) as image:
+        assert image.size == (1536, 1024)
+
+
 def test_all_five_anchors_and_full_references_preflight_before_calls() -> None:
     references = tuple(
         replace(_source(index % 3), assigned_section_index=index) for index in range(5)
@@ -399,6 +428,9 @@ def test_model_boolean_gate_and_exact_final_upload_criteria() -> None:
     )
     assert len(criteria) == 8
     assert max(map(len, criteria)) <= 200
+    assert "mandatory blue chest panel with white 'AI'" in criteria[5]
+    assert "all other readable text" in criteria[6]
+    assert "labels, watermarks" in criteria[6]
     assert "compression" in criteria[-1]
 
 

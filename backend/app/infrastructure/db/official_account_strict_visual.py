@@ -47,10 +47,11 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OBSERVE_VISUAL_PIPELINE_VERSION,
-    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_GENERATION_MODELS,
     STRICT_VISUAL_POLICY,
     native_visual_audit_releases,
+    native_visual_is_advisory,
+    native_visual_is_resilient,
     native_visual_plan_prompt_valid,
     observe_visual_audit_codes_valid,
     strict_visual_audit_criteria,
@@ -171,10 +172,7 @@ async def _validate_subject(
 ) -> OfficialAccountGeneratedVisualModel:
     policy = run.version_bundle.get("visual_pipeline_version")
     observe = policy == OBSERVE_VISUAL_PIPELINE_VERSION
-    advisory = policy in {
-        OBSERVE_VISUAL_PIPELINE_VERSION,
-        RESILIENT_VISUAL_PIPELINE_VERSION,
-    }
+    advisory = native_visual_is_advisory(policy)
     if advisory != isinstance(subject, ObserveVisualAuditSubject):
         raise ValueError("native visual subject policy changed")
     if (
@@ -287,6 +285,11 @@ class PostgresStrictVisualRepositoryMixin:
             claim_authorized_visual_compensation,
             resolve_visual_provider_request_fingerprint,
         )
+        from app.infrastructure.db.official_account_visual_geometry_recovery import (
+            active_authorized_visual_geometry_run_scope,
+            authorized_geometry_recovery_in_flight,
+            claim_authorized_visual_geometry_recovery,
+        )
 
         _validate_generated_visual_plan(plan)
         async with self._session_factory() as session:
@@ -302,10 +305,9 @@ class PostgresStrictVisualRepositoryMixin:
                 run.version_bundle.get("generated_visual_prompt_version"),
             ):
                 raise ValueError("strict generation plan changed")
-            if (
-                run.version_bundle.get("visual_pipeline_version")
-                == RESILIENT_VISUAL_PIPELINE_VERSION
-            ):
+            policy = run.version_bundle.get("visual_pipeline_version")
+            resilient = native_visual_is_resilient(policy)
+            if resilient:
                 frozen = run.version_bundle.get("execution_retry_policy")
                 if frozen is None:
                     raise AppError(
@@ -330,12 +332,49 @@ class PostgresStrictVisualRepositoryMixin:
                 )
                 .with_for_update()
             )
+            scope = (
+                await active_authorized_visual_geometry_run_scope(
+                    session, run=run, claimed=claimed, plan=plan
+                )
+                if resilient
+                else None
+            )
             if row is not None:
                 _assert_generated_visual_plan(row, plan)
-                if (
-                    run.version_bundle.get("visual_pipeline_version")
-                    == RESILIENT_VISUAL_PIPELINE_VERSION
-                ):
+                if row.status == "ready":
+                    return StrictGeneratedVisualClaim("completed", _stored_generated_visual(row))
+                if scope is not None:
+                    provider_request_fingerprint = scope.provider_request_fingerprint(plan)
+                    if row.status == "generating":
+                        if (row.intent_lease_token, row.intent_attempt_number) != (
+                            claimed.lease_token,
+                            claimed.attempt_number,
+                        ):
+                            raise ValueError("scoped geometry visual lease changed")
+                        return StrictGeneratedVisualClaim(
+                            "in_flight",
+                            _stored_generated_visual(row),
+                            provider_request_fingerprint=provider_request_fingerprint,
+                            physical_attempt_number=4,
+                            output_geometry_policy="native-tolerant-v1",
+                        )
+                    if row.status != "failed":
+                        raise ValueError("scoped geometry visual status changed")
+                    row.status = "generating"
+                    row.error_code = None
+                    row.completed_at = None
+                    row.intent_lease_token = claimed.lease_token
+                    row.intent_attempt_number = claimed.attempt_number
+                    run.current_stage = "generating_body_visuals"
+                    await session.commit()
+                    return StrictGeneratedVisualClaim(
+                        "newly_claimed",
+                        _stored_generated_visual(row),
+                        provider_request_fingerprint=provider_request_fingerprint,
+                        physical_attempt_number=4,
+                        output_geometry_policy="native-tolerant-v1",
+                    )
+                if resilient:
                     expires_at = resilient_expires_at
                     attempts = tuple(
                         (
@@ -363,14 +402,13 @@ class PostgresStrictVisualRepositoryMixin:
                     )
                     for number, attempt in enumerate(attempts, start=1):
                         expected_request = resilient_visual_provider_request_fingerprint(
-                            plan.request_fingerprint, number
+                            plan.request_fingerprint, number, policy=policy
                         )
                         if (
                             attempt.ordinal
                             != resilient_visual_attempt_ordinal(plan.ordinal, number)
                             or attempt.request_fingerprint != expected_request
-                            or attempt.safe_metadata.get("visual_pipeline_version")
-                            != RESILIENT_VISUAL_PIPELINE_VERSION
+                            or attempt.safe_metadata.get("visual_pipeline_version") != policy
                             or attempt.safe_metadata.get("logical_request_fingerprint")
                             != plan.request_fingerprint
                             or attempt.safe_metadata.get("physical_attempt_number") != number
@@ -391,9 +429,18 @@ class PostgresStrictVisualRepositoryMixin:
                     if row.status == "generating":
                         physical_attempt = len(attempts) + 1
                         if physical_attempt > RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS:
+                            recovery = await authorized_geometry_recovery_in_flight(
+                                session,
+                                run=run,
+                                claimed=claimed,
+                                row=row,
+                                plan=plan,
+                            )
+                            if recovery is not None:
+                                return recovery
                             raise ValueError("resilient visual attempt ledger is inconsistent")
                         stale_provider_fingerprint = resilient_visual_provider_request_fingerprint(
-                            plan.request_fingerprint, physical_attempt
+                            plan.request_fingerprint, physical_attempt, policy=policy
                         )
                         if (row.intent_lease_token, row.intent_attempt_number) == (
                             claimed.lease_token,
@@ -431,7 +478,7 @@ class PostgresStrictVisualRepositoryMixin:
                                     "section_index": plan.section_index,
                                     "selection_method": plan.selection_method,
                                     "result_unknown": True,
-                                    "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                    "visual_pipeline_version": policy,
                                     "logical_request_fingerprint": plan.request_fingerprint,
                                     "physical_attempt_number": physical_attempt,
                                     "provider_request_fingerprint": stale_provider_fingerprint,
@@ -447,6 +494,16 @@ class PostgresStrictVisualRepositoryMixin:
                         return StrictGeneratedVisualClaim(
                             "result_unknown", _stored_generated_visual(row)
                         )
+                    # A V3 run is normally closed after three physical calls.  This
+                    # separate authorization is the sole exception: it only reaches
+                    # the proved dimension-failure slot and consumes itself atomically.
+                    recovery = await claim_authorized_visual_geometry_recovery(
+                        session, run, claimed, row, plan
+                    )
+                    if recovery is not None:
+                        if recovery.outcome == "newly_claimed":
+                            await session.commit()
+                        return recovery
                     if attempt_count >= RESILIENT_VISUAL_MAX_PHYSICAL_ATTEMPTS:
                         await session.commit()
                         return StrictGeneratedVisualClaim(
@@ -465,7 +522,7 @@ class PostgresStrictVisualRepositoryMixin:
                         )
                     next_attempt = attempt_count + 1
                     resilient_provider_fingerprint = resilient_visual_provider_request_fingerprint(
-                        plan.request_fingerprint, next_attempt
+                        plan.request_fingerprint, next_attempt, policy=policy
                     )
                     row.status = "generating"
                     row.error_code = None
@@ -564,15 +621,20 @@ class PostgresStrictVisualRepositoryMixin:
             session.add(row)
             run.current_stage = "generating_body_visuals"
             await session.commit()
-            if (
-                run.version_bundle.get("visual_pipeline_version")
-                == RESILIENT_VISUAL_PIPELINE_VERSION
-            ):
+            if scope is not None:
+                return StrictGeneratedVisualClaim(
+                    "newly_claimed",
+                    _stored_generated_visual(row),
+                    provider_request_fingerprint=scope.provider_request_fingerprint(plan),
+                    physical_attempt_number=4,
+                    output_geometry_policy="native-tolerant-v1",
+                )
+            if resilient:
                 return StrictGeneratedVisualClaim(
                     "newly_claimed",
                     _stored_generated_visual(row),
                     provider_request_fingerprint=resilient_visual_provider_request_fingerprint(
-                        plan.request_fingerprint, 1
+                        plan.request_fingerprint, 1, policy=policy
                     ),
                     physical_attempt_number=1,
                 )
@@ -710,8 +772,8 @@ async def validate_strict_visual_ready(
 ) -> tuple[StrictVisualMediaEvidence, ...]:
     policy = run.version_bundle.get("visual_pipeline_version")
     observe = policy == OBSERVE_VISUAL_PIPELINE_VERSION
-    resilient = policy == RESILIENT_VISUAL_PIPELINE_VERSION
-    advisory = observe or resilient
+    resilient = native_visual_is_resilient(policy)
+    advisory = native_visual_is_advisory(policy)
     if policy not in NATIVE_VISUAL_PIPELINE_VERSIONS:
         raise ValueError("strict visual policy is absent")
     rows = tuple(

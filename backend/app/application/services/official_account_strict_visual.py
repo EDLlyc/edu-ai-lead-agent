@@ -66,11 +66,13 @@ from app.domain.official_account_upload_media import (
 from app.domain.official_account_visual_pipeline import (
     OBSERVE_VISUAL_PIPELINE_VERSION,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
-    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_POLICY,
     StrictVisualPipelineVersion,
     native_visual_audit_releases,
+    native_visual_is_advisory,
+    native_visual_is_resilient,
+    native_visual_output_geometry_policy,
     strict_visual_audit_criteria,
     strict_visual_audit_passes,
     strict_visual_batch_checks,
@@ -183,8 +185,9 @@ async def execute_strict_visuals(
     """Only newly_claimed can cross a paid boundary; successful artifacts never roll back."""
     visual_policy = claimed.identity.visual_pipeline_version
     observe = visual_policy == OBSERVE_VISUAL_PIPELINE_VERSION
-    resilient = visual_policy == RESILIENT_VISUAL_PIPELINE_VERSION
-    advisory = observe or resilient
+    resilient = native_visual_is_resilient(visual_policy)
+    advisory = native_visual_is_advisory(visual_policy)
+    output_geometry_policy = native_visual_output_geometry_policy(visual_policy)
     if (
         claimed.identity.generated_visual_prompt_version
         == OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION
@@ -216,6 +219,7 @@ async def execute_strict_visuals(
             model=STRICT_VISUAL_POLICY.generation_model,
             plan_version=claimed.identity.generated_visual_plan_version or "",
             prompt_version=claimed.identity.generated_visual_prompt_version or "",
+            output_geometry_policy=output_geometry_policy,
         )
         while True:
             claim = await repository.claim_strict_generated_visual(claimed=claimed, plan=plan)
@@ -229,6 +233,7 @@ async def execute_strict_visuals(
             if claim.outcome == "newly_claimed":
                 if lease_lost is not None and lease_lost.is_set():
                     return None
+                effective_output_geometry_policy = claim.output_geometry_policy
                 prompt = build_generated_visual_prompt(
                     article=article,
                     section_index=plan.section_index,
@@ -245,6 +250,7 @@ async def execute_strict_visuals(
                             request_fingerprint=plan.request_fingerprint,
                             provider_request_fingerprint=claim.provider_request_fingerprint,
                             output_size=STRICT_VISUAL_POLICY.output_size,
+                            output_geometry_policy=effective_output_geometry_policy,
                             references=(
                                 ImageReference(
                                     role="approved_ip_reference",
@@ -305,6 +311,7 @@ async def execute_strict_visuals(
                         result=result,
                         plan=plan,
                         max_bytes=STRICT_VISUAL_POLICY.maximum_image_bytes,
+                        output_geometry_policy=effective_output_geometry_policy,
                     )
                 except (
                     ValueError,

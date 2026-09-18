@@ -55,6 +55,10 @@ from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
     normalize_image_provider_reference,
 )
+from app.domain.official_account_visual_pipeline import (
+    NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY,
+    native_tolerant_output_geometry_valid,
+)
 
 _Sleep = Callable[[float], Awaitable[None]]
 OutputHostObserver = Callable[[str], bool]
@@ -92,6 +96,23 @@ def _request_output_dimensions(
     if request.output_size == "1536x1024" and not square_only:
         return 1536, 1024
     raise ImageOutputValidationError("image_dimensions_invalid")
+
+
+def _output_geometry_allowed(
+    *,
+    dimensions: tuple[int, int],
+    expected_dimensions: tuple[int, int],
+    policy: str,
+) -> bool:
+    """Keep all output exact unless a typed native recovery request opts in."""
+
+    if policy == "exact":
+        return dimensions == expected_dimensions
+    return (
+        policy == NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY
+        and expected_dimensions == (1536, 1024)
+        and native_tolerant_output_geometry_valid(*dimensions)
+    )
 
 
 def _request_references(request: ImageGenerationRequest) -> tuple[ImageReference, ...]:
@@ -558,7 +579,9 @@ class OpenAICompatibleImageGenerator:
                     json=payload,
                 )
                 direct_image = self._direct_image(
-                    created_response, expected_dimensions=expected_dimensions
+                    created_response,
+                    expected_dimensions=expected_dimensions,
+                    output_geometry_policy=request.output_geometry_policy,
                 )
                 if direct_image is not None:
                     body, media_type, width, height = direct_image
@@ -580,7 +603,9 @@ class OpenAICompatibleImageGenerator:
                         if representation is None:
                             raise ImageProviderRejectedError()
                     body, media_type, width, height = await self._normalize_image(
-                        representation, expected_dimensions=expected_dimensions
+                        representation,
+                        expected_dimensions=expected_dimensions,
+                        output_geometry_policy=request.output_geometry_policy,
                     )
         except TimeoutError:
             raise ImageProviderTimeoutError() from None
@@ -655,7 +680,11 @@ class OpenAICompatibleImageGenerator:
         raise ImageProviderTimeoutError()
 
     def _direct_image(
-        self, response: _ComflyResponse, *, expected_dimensions: tuple[int, int]
+        self,
+        response: _ComflyResponse,
+        *,
+        expected_dimensions: tuple[int, int],
+        output_geometry_policy: str,
     ) -> tuple[bytes, str, int, int] | None:
         if response.content_type not in _ALLOWED_MEDIA_TYPES:
             return None
@@ -664,6 +693,7 @@ class OpenAICompatibleImageGenerator:
         return self._normalize_image_bytes(
             response.body,
             expected_dimensions=expected_dimensions,
+            output_geometry_policy=output_geometry_policy,
             declared_media_type=response.content_type,
         )
 
@@ -776,24 +806,37 @@ class OpenAICompatibleImageGenerator:
         raise ProviderUnavailableError()
 
     async def _normalize_image(
-        self, representation: tuple[str, str], *, expected_dimensions: tuple[int, int]
+        self,
+        representation: tuple[str, str],
+        *,
+        expected_dimensions: tuple[int, int],
+        output_geometry_policy: str,
     ) -> tuple[bytes, str, int, int]:
         kind, value = representation
         if kind == "url":
-            return await self._download_image(value, expected_dimensions=expected_dimensions)
+            return await self._download_image(
+                value,
+                expected_dimensions=expected_dimensions,
+                output_geometry_policy=output_geometry_policy,
+            )
         try:
             if len(value) > 4 * ((self._max_download_bytes + 2) // 3) + 4:
                 raise ImageOutputValidationError()
             body = base64.b64decode(value, validate=True)
         except (binascii.Error, ValueError, TypeError):
             raise ImageOutputValidationError("image_output_representation_invalid") from None
-        return self._normalize_image_bytes(body, expected_dimensions=expected_dimensions)
+        return self._normalize_image_bytes(
+            body,
+            expected_dimensions=expected_dimensions,
+            output_geometry_policy=output_geometry_policy,
+        )
 
     def _normalize_image_bytes(
         self,
         body: bytes,
         *,
         expected_dimensions: tuple[int, int],
+        output_geometry_policy: str,
         declared_media_type: str | None = None,
     ) -> tuple[bytes, str, int, int]:
         if not body or len(body) > self._max_download_bytes:
@@ -802,13 +845,21 @@ class OpenAICompatibleImageGenerator:
         if declared_media_type in _ALLOWED_MEDIA_TYPES and media_type != declared_media_type:
             raise ImageOutputValidationError("image_raster_signature_invalid")
         width, height = _image_dimensions(body, media_type)
-        if (width, height) != expected_dimensions:
+        if not _output_geometry_allowed(
+            dimensions=(width, height),
+            expected_dimensions=expected_dimensions,
+            policy=output_geometry_policy,
+        ):
             raise ImageOutputValidationError("image_dimensions_invalid")
-        # Check geometry before loading pixels, then verify the raster really decodes at that
-        # size. The closed request sizes retain a bounded pixel count without any resizing.
+        # Check bounded geometry before loading pixels, then verify the raster really decodes at
+        # that size. Tolerant native bytes are still normalized only after this decode check.
         try:
             with Image.open(BytesIO(body), formats=["PNG", "JPEG", "WEBP"]) as image:
-                if image.size != expected_dimensions:
+                if not _output_geometry_allowed(
+                    dimensions=image.size,
+                    expected_dimensions=expected_dimensions,
+                    policy=output_geometry_policy,
+                ):
                     raise ImageOutputValidationError("image_dimensions_invalid")
                 image.load()
         except (OSError, ValueError, Image.DecompressionBombError):
@@ -816,7 +867,11 @@ class OpenAICompatibleImageGenerator:
         return body, media_type, width, height
 
     async def _download_image(
-        self, url: str, *, expected_dimensions: tuple[int, int]
+        self,
+        url: str,
+        *,
+        expected_dimensions: tuple[int, int],
+        output_geometry_policy: str,
     ) -> tuple[bytes, str, int, int]:
         try:
             parsed = urlsplit(url)
@@ -903,6 +958,7 @@ class OpenAICompatibleImageGenerator:
             return self._normalize_image_bytes(
                 body,
                 expected_dimensions=expected_dimensions,
+                output_geometry_policy=output_geometry_policy,
                 declared_media_type=content_type,
             )
         raise ProviderUnavailableError()

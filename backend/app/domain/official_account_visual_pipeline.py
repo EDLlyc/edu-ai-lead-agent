@@ -18,6 +18,7 @@ StrictVisualPipelineVersion = Literal[
     "official-account-visual-pipeline-v1-native-strict",
     "official-account-visual-pipeline-v2-native-observe",
     "official-account-visual-pipeline-v3-resilient-advisory",
+    "official-account-visual-pipeline-v4-resilient-tolerant-geometry",
 ]
 STRICT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
     "official-account-visual-pipeline-v1-native-strict"
@@ -28,11 +29,69 @@ OBSERVE_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
 RESILIENT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
     "official-account-visual-pipeline-v3-resilient-advisory"
 )
+TOLERANT_VISUAL_PIPELINE_VERSION: StrictVisualPipelineVersion = (
+    "official-account-visual-pipeline-v4-resilient-tolerant-geometry"
+)
 NATIVE_VISUAL_PIPELINE_VERSIONS = (
     STRICT_VISUAL_PIPELINE_VERSION,
     OBSERVE_VISUAL_PIPELINE_VERSION,
     RESILIENT_VISUAL_PIPELINE_VERSION,
+    TOLERANT_VISUAL_PIPELINE_VERSION,
 )
+
+# This is intentionally distinct from the frozen V1--V3 exact-output behavior.
+# It is passed through the typed image request rather than inferred from a provider
+# response. The final persisted publication remains the canonical 1536x1024 JPEG.
+NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY: Literal["native-tolerant-v1"] = "native-tolerant-v1"
+NATIVE_TOLERANT_MINIMUM_SHORT_EDGE = 768
+NATIVE_TOLERANT_MAXIMUM_EDGE = 4096
+NATIVE_TOLERANT_MAXIMUM_PIXELS = 16_000_000
+NATIVE_TOLERANT_MINIMUM_ASPECT_RATIO = 1.0
+NATIVE_TOLERANT_MAXIMUM_ASPECT_RATIO = 2.0
+
+
+def native_visual_is_resilient(policy: object) -> bool:
+    """Return whether this frozen policy owns the bounded physical retry ledger."""
+
+    return policy in {
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+        TOLERANT_VISUAL_PIPELINE_VERSION,
+    }
+
+
+def native_visual_is_advisory(policy: object) -> bool:
+    """Return whether real image-audit findings remain recorded but non-blocking."""
+
+    return policy in {
+        OBSERVE_VISUAL_PIPELINE_VERSION,
+        RESILIENT_VISUAL_PIPELINE_VERSION,
+        TOLERANT_VISUAL_PIPELINE_VERSION,
+    }
+
+
+def native_visual_output_geometry_policy(policy: object) -> Literal["exact", "native-tolerant-v1"]:
+    """Resolve raw provider geometry acceptance from the stored run policy."""
+
+    if policy == TOLERANT_VISUAL_PIPELINE_VERSION:
+        return NATIVE_TOLERANT_OUTPUT_GEOMETRY_POLICY
+    if policy in NATIVE_VISUAL_PIPELINE_VERSIONS:
+        return "exact"
+    raise ValueError("native visual policy is unsupported")
+
+
+def native_tolerant_output_geometry_valid(width: int, height: int) -> bool:
+    """Bound a source raster before deterministic 3:2 publication normalization."""
+
+    if (
+        type(width) is not int
+        or type(height) is not int
+        or min(width, height) < NATIVE_TOLERANT_MINIMUM_SHORT_EDGE
+        or max(width, height) > NATIVE_TOLERANT_MAXIMUM_EDGE
+        or width * height > NATIVE_TOLERANT_MAXIMUM_PIXELS
+    ):
+        return False
+    ratio = width / height
+    return NATIVE_TOLERANT_MINIMUM_ASPECT_RATIO <= ratio <= NATIVE_TOLERANT_MAXIMUM_ASPECT_RATIO
 
 
 def observe_visual_audit_codes_valid(status: str, issue_codes: tuple[str, ...]) -> bool:
@@ -60,13 +119,7 @@ def native_visual_audit_releases(policy: object, status: str, issue_codes: tuple
     """Readiness only; callers must independently verify subject/record/byte integrity."""
     if policy == STRICT_VISUAL_PIPELINE_VERSION:
         return status == "accepted" and not issue_codes
-    if policy == OBSERVE_VISUAL_PIPELINE_VERSION:
-        return (
-            status in {"accepted", "rejected", "unavailable", "result_unknown"}
-            and observe_visual_audit_codes_valid(status, issue_codes)
-            and "strict_visual_audit_identity_mismatch" not in issue_codes
-        )
-    if policy == RESILIENT_VISUAL_PIPELINE_VERSION:
+    if native_visual_is_advisory(policy):
         return (
             status in {"accepted", "rejected", "unavailable", "result_unknown"}
             and observe_visual_audit_codes_valid(status, issue_codes)
@@ -155,10 +208,11 @@ def strict_visual_audit_criteria(
         f"Exact block context 1: {context[:170]}",
         f"Exact block context 2: {context[170:340] or '(continued above)'}",
         f"Exact block context 3: {context[340:480] or '(continued above)'}",
-        "The approved reference character must be recognizable and central in a contextual "
-        "science-education scene, not an isolated avatar or catalog composition.",
-        "Reject words, letters, numbers, logos, watermarks, QR codes, anatomy defects, blur, "
-        "unsupported science, or confusing child/parent interaction.",
+        "Approved Xiaosai must be central and recognizable; retain its mandatory blue chest panel "
+        "with white 'AI', never an isolated avatar or catalog pose.",
+        "Reject all other readable text, letters, numbers, extra logos or marks, labels, "
+        "watermarks, QR codes, anatomy defects, blur, unsupported science, or confusing "
+        "child/parent interaction.",
         (
             "Final upload cover: article-relevant action and character survive cropping and "
             "compression; no cut face, isolated mascot, blur or misleading news photograph."
@@ -244,10 +298,7 @@ def strict_visual_batch_checks(
         )
         if (
             policy_version
-            in {
-                OBSERVE_VISUAL_PIPELINE_VERSION,
-                RESILIENT_VISUAL_PIPELINE_VERSION,
-            }
+            and native_visual_is_advisory(policy_version)
             and digest in catalog_hashes
         ):
             codes.add("strict_visual_catalog_exact_reuse")

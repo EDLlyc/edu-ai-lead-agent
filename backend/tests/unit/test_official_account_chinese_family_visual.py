@@ -89,7 +89,7 @@ def test_contextual_chinese_family_requirements(text, stage):
         "Xiaosai IP",
         "Only Xiaosai IP",
         "Xiaosai-only",
-        "no other mascot, character substitution or blended designs",
+        "no other mascot, substituted or blended design",
         "reference controls identity",
         "fully visible",
         "child proportions",
@@ -110,6 +110,16 @@ def test_contextual_chinese_family_requirements(text, stage):
         assert rule in result
     assert "Sai Xiansheng" not in result
     assert result == prompt(article_for(text))
+
+
+def test_v5_requires_the_canonical_ai_chest_badge_but_no_unrelated_scene_text():
+    result = prompt(article_for("小学生用放大镜观察叶脉并比较结果。"))
+
+    assert "mandatory small centered blue 'AI' chest panel" in result
+    assert "Text: none except Xiaosai's white 'AI' chest badge." in result
+    assert "No other words, letters, numbers, logos, marks" in result
+    assert "labels, UI, QR, watermarks" in result
+    assert "No lettering, numbers, logos, chest labels" not in result
 
 
 def test_nearest_explicit_school_stage_wins_without_forcing_a_mixed_cast():

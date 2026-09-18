@@ -18,6 +18,7 @@ from app.core.errors import (
     ProviderRateLimitError,
     ProviderUnavailableError,
 )
+from app.domain.image_generation import IMAGE_MODEL
 from app.domain.image_provider_input import (
     IMAGE_REFERENCE_INPUT_V2,
     normalize_image_provider_reference,
@@ -132,7 +133,7 @@ async def test_comfly_returns_exact_native_geometry_and_bytes_for_every_route(
     assert [request.url.path for request in requests] == _expected_paths(route)
     assert sum(request.method == "POST" for request in requests) == 1
     assert json.loads(requests[0].content) == {
-        "model": "gpt-image-2",
+        "model": IMAGE_MODEL,
         "prompt": "A science education scene illustration",
         "size": output_size,
         "response_format": "url",
@@ -179,6 +180,42 @@ async def test_comfly_rejects_mismatched_geometry_without_resizing_or_fallback(
     assert error.value.reason == "image_dimensions_invalid"
     assert not error.value.retryable
     assert paths == _expected_paths(route)
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+async def test_comfly_tolerant_native_policy_accepts_only_bounded_decodable_source_rasters(
+    route: str,
+) -> None:
+    body = _raster(1280, 1024)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _response_for_route(request, route=route, body=body, media_type="image/png")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly(client).generate(
+            replace(_request("1536x1024"), output_geometry_policy="native-tolerant-v1")
+        )
+
+    assert (result.width, result.height) == (1280, 1024)
+    assert result.image_bytes == body
+
+
+@pytest.mark.parametrize("dimensions", [(767, 768), (2048, 768), (4097, 2048)])
+async def test_comfly_tolerant_native_policy_keeps_small_or_extreme_sources_rejected(
+    dimensions: tuple[int, int],
+) -> None:
+    body = _raster(*dimensions)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _response_for_route(request, route="raster", body=body, media_type="image/png")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as error:
+            await _comfly(client).generate(
+                replace(_request("1536x1024"), output_geometry_policy="native-tolerant-v1")
+            )
+
+    assert error.value.reason == "image_dimensions_invalid"
 
 
 @pytest.mark.parametrize("route", _ROUTES)

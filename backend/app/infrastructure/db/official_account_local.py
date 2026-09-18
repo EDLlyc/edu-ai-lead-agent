@@ -93,9 +93,9 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_OUTPUT_PROFILE_V4_VERSION,
-    RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_GENERATION_MODELS,
     native_visual_audit_releases,
+    native_visual_is_resilient,
     native_visual_plan_prompt_valid,
 )
 from app.infrastructure.db.models import (
@@ -186,10 +186,11 @@ async def _assert_resilient_visual_physical_attempt(
     plan: OfficialAccountGeneratedVisualPlan,
     physical_attempt_number: int,
     provider_request_fingerprint: str,
+    policy: object,
 ) -> None:
-    """Fence a result to the one currently active V3 physical attempt."""
+    """Fence a result to the one currently active normal resilient attempt."""
     expected_request = resilient_visual_provider_request_fingerprint(
-        plan.request_fingerprint, physical_attempt_number
+        plan.request_fingerprint, physical_attempt_number, policy=policy
     )
     if provider_request_fingerprint != expected_request:
         raise ValueError("resilient visual physical result identity changed")
@@ -218,13 +219,30 @@ async def _assert_resilient_visual_physical_attempt(
         if (
             attempt.ordinal != resilient_visual_attempt_ordinal(plan.ordinal, number)
             or attempt.request_fingerprint
-            != resilient_visual_provider_request_fingerprint(plan.request_fingerprint, number)
-            or attempt.safe_metadata.get("visual_pipeline_version")
-            != RESILIENT_VISUAL_PIPELINE_VERSION
+            != resilient_visual_provider_request_fingerprint(
+                plan.request_fingerprint, number, policy=policy
+            )
+            or attempt.safe_metadata.get("visual_pipeline_version") != policy
             or attempt.safe_metadata.get("logical_request_fingerprint") != plan.request_fingerprint
             or attempt.safe_metadata.get("physical_attempt_number") != number
         ):
             raise ValueError("resilient visual attempt ledger changed")
+
+
+def _geometry_recovery_attempt(
+    run: OfficialAccountArticleRunModel, physical_attempt_number: int
+) -> bool:
+    """A fourth call is possible only behind the separate V3 recovery receipt."""
+
+    from app.infrastructure.db.official_account_visual_geometry_recovery import (
+        RECOVERY_PHYSICAL_ATTEMPT_NUMBER,
+    )
+
+    return (
+        run.version_bundle.get("visual_pipeline_version")
+        == "official-account-visual-pipeline-v3-resilient-advisory"
+        and physical_attempt_number == RECOVERY_PHYSICAL_ATTEMPT_NUMBER
+    )
 
 
 class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
@@ -570,19 +588,45 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 return _stored_generated_visual(row)
             if row.status != "generating":
                 raise RuntimeError("generated visual cannot accept a late result")
-            resilient = (
-                run.version_bundle.get("visual_pipeline_version")
-                == RESILIENT_VISUAL_PIPELINE_VERSION
-            )
+            policy = run.version_bundle.get("visual_pipeline_version")
+            resilient = native_visual_is_resilient(policy)
             if resilient:
                 if physical_attempt_number is None or provider_request_fingerprint is None:
                     raise ValueError("resilient visual physical success identity changed")
-                await _assert_resilient_visual_physical_attempt(
-                    session,
-                    plan=plan,
-                    physical_attempt_number=physical_attempt_number,
-                    provider_request_fingerprint=provider_request_fingerprint,
-                )
+                geometry_recovery = _geometry_recovery_attempt(run, physical_attempt_number)
+                if geometry_recovery:
+                    from app.infrastructure.db.official_account_visual_geometry_recovery import (
+                        assert_authorized_geometry_recovery_physical_attempt,
+                        assert_authorized_visual_geometry_run_scope_attempt,
+                        geometry_recovery_attempt_ordinal,
+                    )
+
+                    scope_recovery = await assert_authorized_visual_geometry_run_scope_attempt(
+                        session,
+                        run=run,
+                        plan=plan,
+                        physical_attempt_number=physical_attempt_number,
+                        provider_request_fingerprint=provider_request_fingerprint,
+                    )
+                    if not scope_recovery:
+                        await assert_authorized_geometry_recovery_physical_attempt(
+                            session,
+                            run=run,
+                            plan=plan,
+                            physical_attempt_number=physical_attempt_number,
+                            provider_request_fingerprint=provider_request_fingerprint,
+                        )
+                else:
+                    scope_recovery = False
+                    await _assert_resilient_visual_physical_attempt(
+                        session,
+                        plan=plan,
+                        physical_attempt_number=physical_attempt_number,
+                        provider_request_fingerprint=provider_request_fingerprint,
+                        policy=policy,
+                    )
+            else:
+                geometry_recovery = False
             row.status = "ready"
             row.media_type = result.media_type
             row.byte_size = result.byte_size
@@ -642,7 +686,9 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     stage="generating_body_visuals",
                     capability="visual_generation",
                     ordinal=(
-                        resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
+                        geometry_recovery_attempt_ordinal(plan.ordinal)
+                        if geometry_recovery
+                        else resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
                         if resilient and physical_attempt_number is not None
                         else claimed.attempt_number * 10 + plan.ordinal
                     ),
@@ -669,10 +715,22 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                         "byte_size": result.byte_size,
                         **(
                             {
-                                "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                "visual_pipeline_version": policy,
                                 "logical_request_fingerprint": plan.request_fingerprint,
                                 "physical_attempt_number": physical_attempt_number,
                                 "provider_request_fingerprint": provider_request_fingerprint,
+                                **(
+                                    {
+                                        "geometry_recovery_version": (
+                                            "single-run-visual-geometry-scope-v1"
+                                            if scope_recovery
+                                            else "single-visual-geometry-recovery-v1"
+                                        ),
+                                        "output_geometry_policy": "native-tolerant-v1",
+                                    }
+                                    if geometry_recovery
+                                    else {}
+                                ),
                             }
                             if resilient
                             else {}
@@ -731,19 +789,45 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 return False
             if row.status != "generating":
                 return row.status in {"failed", "result_unknown"}
-            resilient = (
-                run.version_bundle.get("visual_pipeline_version")
-                == RESILIENT_VISUAL_PIPELINE_VERSION
-            )
+            policy = run.version_bundle.get("visual_pipeline_version")
+            resilient = native_visual_is_resilient(policy)
             if resilient:
                 if physical_attempt_number is None or provider_request_fingerprint is None:
                     raise ValueError("resilient visual physical failure identity changed")
-                await _assert_resilient_visual_physical_attempt(
-                    session,
-                    plan=plan,
-                    physical_attempt_number=physical_attempt_number,
-                    provider_request_fingerprint=provider_request_fingerprint,
-                )
+                geometry_recovery = _geometry_recovery_attempt(run, physical_attempt_number)
+                if geometry_recovery:
+                    from app.infrastructure.db.official_account_visual_geometry_recovery import (
+                        assert_authorized_geometry_recovery_physical_attempt,
+                        assert_authorized_visual_geometry_run_scope_attempt,
+                        geometry_recovery_attempt_ordinal,
+                    )
+
+                    scope_recovery = await assert_authorized_visual_geometry_run_scope_attempt(
+                        session,
+                        run=run,
+                        plan=plan,
+                        physical_attempt_number=physical_attempt_number,
+                        provider_request_fingerprint=provider_request_fingerprint,
+                    )
+                    if not scope_recovery:
+                        await assert_authorized_geometry_recovery_physical_attempt(
+                            session,
+                            run=run,
+                            plan=plan,
+                            physical_attempt_number=physical_attempt_number,
+                            provider_request_fingerprint=provider_request_fingerprint,
+                        )
+                else:
+                    scope_recovery = False
+                    await _assert_resilient_visual_physical_attempt(
+                        session,
+                        plan=plan,
+                        physical_attempt_number=physical_attempt_number,
+                        provider_request_fingerprint=provider_request_fingerprint,
+                        policy=policy,
+                    )
+            else:
+                geometry_recovery = False
             now = datetime.now(UTC)
             row.status = "result_unknown" if result_unknown else "failed"
             row.error_code = safe_error
@@ -756,7 +840,9 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                     stage="generating_body_visuals",
                     capability="visual_generation",
                     ordinal=(
-                        resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
+                        geometry_recovery_attempt_ordinal(plan.ordinal)
+                        if geometry_recovery
+                        else resilient_visual_attempt_ordinal(plan.ordinal, physical_attempt_number)
                         if resilient and physical_attempt_number is not None
                         else claimed.attempt_number * 10 + plan.ordinal
                     ),
@@ -782,10 +868,22 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                         "result_unknown": result_unknown,
                         **(
                             {
-                                "visual_pipeline_version": RESILIENT_VISUAL_PIPELINE_VERSION,
+                                "visual_pipeline_version": policy,
                                 "logical_request_fingerprint": plan.request_fingerprint,
                                 "physical_attempt_number": physical_attempt_number,
                                 "provider_request_fingerprint": provider_request_fingerprint,
+                                **(
+                                    {
+                                        "geometry_recovery_version": (
+                                            "single-run-visual-geometry-scope-v1"
+                                            if scope_recovery
+                                            else "single-visual-geometry-recovery-v1"
+                                        ),
+                                        "output_geometry_policy": "native-tolerant-v1",
+                                    }
+                                    if geometry_recovery
+                                    else {}
+                                ),
                             }
                             if resilient
                             else {}
@@ -954,9 +1052,20 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             if run is None:
                 return None
             frozen = run.version_bundle.get("execution_retry_policy")
+            geometry_scope = None
             if frozen is not None:
                 maximum, _delay, expires_at = _frozen_retry_policy(frozen)
-                if run.attempt_count >= maximum or now >= expires_at:
+                if now < expires_at and run.status == "queued":
+                    from app.infrastructure.db import (
+                        official_account_visual_geometry_recovery as geometry_recovery,
+                    )
+
+                    geometry_scope = (
+                        await geometry_recovery.pending_authorized_visual_geometry_run_scope(
+                            session, run=run, now=now
+                        )
+                    )
+                if (run.attempt_count >= maximum or now >= expires_at) and geometry_scope is None:
                     run.status = "result_unknown" if run.status == "running" else "failed"
                     run.current_stage = run.status
                     run.error_code = "single_generation_budget_exhausted"
@@ -979,6 +1088,18 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
             run.updated_at = now
             run.error_code = None
             run.error_retryable = False
+            if geometry_scope is not None:
+                from app.infrastructure.db.official_account_visual_geometry_recovery import (
+                    consume_authorized_visual_geometry_run_scope,
+                )
+
+                await consume_authorized_visual_geometry_run_scope(
+                    session,
+                    scope=geometry_scope,
+                    run=run,
+                    lease_token=token,
+                    now=now,
+                )
             identity = _identity_from_bundle(run.version_bundle)
             claimed = ClaimedOfficialAccountRun(
                 run_id=run.id,
@@ -1682,8 +1803,9 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 return existing.id, _media_result(existing)
             if (
                 result.role == "body"
-                and run.version_bundle.get("visual_pipeline_version")
-                != RESILIENT_VISUAL_PIPELINE_VERSION
+                and not native_visual_is_resilient(
+                    run.version_bundle.get("visual_pipeline_version")
+                )
                 and await session.scalar(
                     select(OfficialAccountLocalMediaModel.id).where(
                         OfficialAccountLocalMediaModel.run_id == run.id,
@@ -1862,8 +1984,9 @@ class PostgresOfficialAccountRepository(PostgresStrictVisualRepositoryMixin):
                 tuple(item.id for item in body_rows) != body_media_ids
                 or tuple(item.ordinal for item in body_rows) != tuple(range(len(body_media_ids)))
                 or (
-                    run.version_bundle.get("visual_pipeline_version")
-                    != RESILIENT_VISUAL_PIPELINE_VERSION
+                    not native_visual_is_resilient(
+                        run.version_bundle.get("visual_pipeline_version")
+                    )
                     and len({item.sha256 for item in body_rows}) != len(body_rows)
                 )
                 or cover_row is None

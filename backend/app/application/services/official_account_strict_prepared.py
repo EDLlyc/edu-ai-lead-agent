@@ -61,8 +61,11 @@ from app.domain.official_account_visual_pipeline import (
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
     RESILIENT_VISUAL_PIPELINE_VERSION,
     STRICT_VISUAL_PIPELINE_VERSION,
+    TOLERANT_VISUAL_PIPELINE_VERSION,
     StrictVisualPipelineVersion,
     native_visual_audit_releases,
+    native_visual_is_advisory,
+    native_visual_is_resilient,
     native_visual_plan_prompt_valid,
 )
 from app.domain.official_account_xiaosai_footer import (
@@ -79,10 +82,14 @@ from app.domain.official_account_xiaosai_footer import (
 STRICT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v2-native-strict"
 OBSERVE_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v3-native-observe"
 RESILIENT_PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v4-resilient-advisory"
+TOLERANT_PREPARED_CHILD_VERSION: Final = (
+    "wechat-draft-prepared-child-v5-resilient-tolerant-geometry"
+)
 NATIVE_PREPARED_CHILD_VERSIONS = (
     STRICT_PREPARED_CHILD_VERSION,
     OBSERVE_PREPARED_CHILD_VERSION,
     RESILIENT_PREPARED_CHILD_VERSION,
+    TOLERANT_PREPARED_CHILD_VERSION,
 )
 
 
@@ -145,9 +152,8 @@ def validate_strict_visual_evidence(
     if len(by_slot) != len(media):
         raise ValueError("strict prepared media slots are duplicated")
     for item in evidence:
-        observe = policy_version == OBSERVE_VISUAL_PIPELINE_VERSION
-        resilient = policy_version == RESILIENT_VISUAL_PIPELINE_VERSION
-        advisory = observe or resilient
+        resilient = native_visual_is_resilient(policy_version)
+        advisory = native_visual_is_advisory(policy_version)
         if advisory != isinstance(item, ObserveVisualMediaEvidence):
             raise ValueError("native prepared evidence policy changed")
         if isinstance(item, ObserveVisualMediaEvidence):
@@ -229,10 +235,7 @@ def validate_strict_visual_evidence(
         ):
             raise ValueError("strict prepared upload byte bound changed")
     bodies = evidence[:5]
-    if policy_version in {
-        OBSERVE_VISUAL_PIPELINE_VERSION,
-        RESILIENT_VISUAL_PIPELINE_VERSION,
-    }:
+    if native_visual_is_advisory(policy_version):
         observations = tuple(
             item for item in evidence if isinstance(item, ObserveVisualMediaEvidence)
         )
@@ -254,7 +257,7 @@ def validate_strict_visual_evidence(
                 raise ValueError("observe prepared quality observations changed")
     if (
         (
-            policy_version != RESILIENT_VISUAL_PIPELINE_VERSION
+            not native_visual_is_resilient(policy_version)
             and len({item.upload_sha256 for item in bodies}) != 5
         )
         or len({item.generated_visual_id for item in bodies}) != 5
@@ -446,7 +449,9 @@ def build_strict_prepared_projection(
     output_files["article-body.html"] = body_html.encode("utf-8")
     identity: dict[str, object] = {
         "version": (
-            RESILIENT_PREPARED_CHILD_VERSION
+            TOLERANT_PREPARED_CHILD_VERSION
+            if visual_pipeline_version == TOLERANT_VISUAL_PIPELINE_VERSION
+            else RESILIENT_PREPARED_CHILD_VERSION
             if visual_pipeline_version == RESILIENT_VISUAL_PIPELINE_VERSION
             else OBSERVE_PREPARED_CHILD_VERSION
             if visual_pipeline_version == OBSERVE_VISUAL_PIPELINE_VERSION
@@ -511,9 +516,12 @@ def validate_strict_prepared_projection(
     advisory = version in {
         OBSERVE_PREPARED_CHILD_VERSION,
         RESILIENT_PREPARED_CHILD_VERSION,
+        TOLERANT_PREPARED_CHILD_VERSION,
     }
     policy = (
-        RESILIENT_VISUAL_PIPELINE_VERSION
+        TOLERANT_VISUAL_PIPELINE_VERSION
+        if version == TOLERANT_PREPARED_CHILD_VERSION
+        else RESILIENT_VISUAL_PIPELINE_VERSION
         if version == RESILIENT_PREPARED_CHILD_VERSION
         else OBSERVE_VISUAL_PIPELINE_VERSION
         if version == OBSERVE_PREPARED_CHILD_VERSION

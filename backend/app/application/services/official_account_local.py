@@ -138,7 +138,7 @@ from app.domain.official_account_local import (
 from app.domain.official_account_visual_pipeline import (
     NATIVE_VISUAL_PIPELINE_VERSIONS,
     OFFICIAL_ACCOUNT_GENERATED_VISUAL_PROMPT_V5_VERSION,
-    RESILIENT_VISUAL_PIPELINE_VERSION,
+    native_visual_is_resilient,
     native_visual_plan_prompt_valid,
 )
 
@@ -1282,7 +1282,7 @@ class OfficialAccountLocalExecutor:
             if generated_source_media is None:
                 return
             selected_source_media = generated_source_media
-        if identity.visual_pipeline_version != RESILIENT_VISUAL_PIPELINE_VERSION and len(
+        if not native_visual_is_resilient(identity.visual_pipeline_version) and len(
             {item.sha256 for item in selected_source_media}
         ) != len(selected_source_media):
             raise ValueError("official-account body media candidates contain duplicate checksums")
@@ -1362,7 +1362,7 @@ class OfficialAccountLocalExecutor:
             range(len(expected_body_slots))
         ):
             raise ValueError("official-account staged body media ordinals are incomplete")
-        if identity.visual_pipeline_version != RESILIENT_VISUAL_PIPELINE_VERSION and len(
+        if not native_visual_is_resilient(identity.visual_pipeline_version) and len(
             {result.sha256 for _id, result in body_items}
         ) != len(body_items):
             raise ValueError("official-account staged body media checksums are not distinct")
@@ -1917,8 +1917,10 @@ def _generated_visual_audit_criteria(scene_text: str) -> tuple[str, ...]:
     normalized_scene = " ".join(scene_text.split())[:120]
     return (
         f"Semantic: the illustration must faithfully depict this article scene: {normalized_scene}",
-        "IP identity: the approved Xiaosai / Sai Xiansheng protagonist must remain recognizable.",
-        "OCR/text: no words, letters, numbers, logos, QR codes, UI, or watermarks are allowed.",
+        "IP identity: approved Xiaosai must remain recognizable, including its blue chest panel "
+        "with white 'AI'.",
+        "OCR/text: allow only Xiaosai's canonical white 'AI' chest badge; reject unrelated words, "
+        "letters, numbers, logos, QR codes, UI, or watermarks.",
         "Artifacts: subjects and scientific objects must be coherent and free of visible defects.",
         "Layout: the final 1536x1024 crop must keep the protagonist and essential action in view.",
     )
