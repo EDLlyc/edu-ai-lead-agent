@@ -855,9 +855,15 @@ release artifacts, or production deployment automation change.
   container-number labels match the captured previous release. Never remove a running, ambiguous,
   foreign, or differently versioned container. Arm recovery traps only after entrypoint/argument/
   stdin checks, and invoke recovery only after a release mutation was actually armed.
-- Automatic rollback restores only the previous application runtime/digest when no migration was
-  attempted, the Alembic head is unchanged, or backward compatibility was explicitly reviewed.
-  It never restores a database or runs Alembic downgrade.
+- Before activating, read the live Alembic head. When it already equals the candidate head,
+  `ProductionAdapter.migrate()` verifies Compose/image alignment and returns that head without
+  MinIO initialization, migration, or seed replay.
+- Automatic rollback restores only the previous application runtime/digest before the migration
+  boundary, or after successful verification of an unchanged/explicitly compatible head.
+  A reviewed `previous_application_compatible=false` overrides the unchanged-head shortcut:
+  new persisted policies/prepared artifacts can be unreadable by an old app without any DDL.
+  Once candidate activation may expose these inputs, use compatible candidate recovery or stop
+  writers. Never restore a database or run Alembic downgrade automatically.
 - Provider and WeCom calls are absent from release tests and deployment verification.
 
 ### 4. Validation & Error Matrix
@@ -915,6 +921,8 @@ release artifacts, or production deployment automation change.
 | Target migration completed but a fixed readiness delay observed `starting` | Keep draft flags disabled, recover and verify the activated candidate core, never rerun the consumed one-shot identity, and use only a new bound no-migration continuation for optional activation. |
 | Service health remains `starting` within the bounded start period | Wait and re-inspect; fail only after the readiness deadline |
 | Migration attempt fails or schema is not rollback-compatible | Writers remain stopped for incident response; no database restore/downgrade |
+| Live schema already equals the candidate head | Verify and return it; no migration, seed, or MinIO initialization |
+| Same head but explicitly reviewed application incompatibility | No post-activation old-image rollback; retain compatible candidate recovery |
 | Post-activation failure with eligible compatibility | Previous runtime/digest is restored and health-verified |
 
 ### 5. Good / Base / Bad Cases
@@ -1259,7 +1267,7 @@ Account local worker, WeChat draft worker, and WeCom dispatcher. Each appears on
 phase and once in the explicit quiesce plan. Normal quiesce and incident `stop_writers` use the
 same plan; stop order remains explicit because safe writer shutdown is not startup order reversed.
 
-After the single explicit migration, long-running startup and previous-release restart pass
+After schema verification (or a required explicit migration), long-running startup and previous-release restart pass
 `--no-build --no-deps`. Previous restart verifies the previous manifest image; candidate image
 verification is never reused for that assertion. Quiescence counts running Official Account
 Article/weekly/draft roots and WeCom work, and blocks ambiguous WeChat `outcome_unknown` or WeCom
@@ -1278,6 +1286,13 @@ Missing standard `.release-manifest.json` or current release state yields
 this command reports only `metadata_present_not_validated`; strict bundle/deployer evidence remains
 the sole provenance proof. Node/npm/Make/Conda are never runtime-check prerequisites.
 
+Single-edition history is separate from present runtime health. An `outcome_unknown` row is
+historical only when `expires_at <= now()` and both lease fields are NULL. Keep the total count
+and emit `history_health=degraded historical_outcome_unknown=N action=read_only_reconcile`;
+do not clear, deliver, or replay it. Any other unknown remains current/ambiguous and fails health.
+Unknown rows with an expired lease still count as stale. This exception belongs to the read-only
+checker and does not bypass the standard deployer's stronger quiescence/provenance gates.
+
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -1287,6 +1302,8 @@ the sole provenance proof. Node/npm/Make/Conda are never runtime-check prerequis
 | Database head differs from the checked-in migration declaration | Exit 1 with `schema_head_mismatch` |
 | Loopback API fails, is oversized/malformed, or is not production/ok | Exit 1 without echoing its body |
 | WeCom has stale running lease or overall/child ambiguous state | Report only aggregate counts, then exit 1 |
+| Single edition has a current unknown or stale lease | Exit 1; preserve the row and its external-effect uncertainty |
+| Single unknown is expired and has neither lease field | Preserve total/history counts and degraded history; current runtime may be healthy |
 | Queue contains ordinary queued or live lease-valid work | Report `queue_state=active`; exit 0 when other checks pass |
 | Standard manifest/current state is absent | Report incomplete provenance; continue runtime verification |
 | Node is absent | No effect; Node is not inspected |
@@ -1312,6 +1329,10 @@ the sole provenance proof. Node/npm/Make/Conda are never runtime-check prerequis
   containing no Node. It covers healthy incomplete provenance, queued/live-valid activity, schema,
   API, service count/state/restart, image/reference/ID/revision, stale/ambiguous queue failures,
   fixed aggregate SQL, output privacy, and absence of mutation commands.
+- Same-head release tests assert zero migration/seed/MinIO initializer calls and explicit
+  incompatibility defeats rollback. Health tests execute the nine-column single aggregate and
+  cover expired lease-free history, current unknown, stale unknown leases, malformed counts,
+  safe diagnostics, and zero mutation.
 - Bundle tests require the runtime checker as an allowlisted regular member. Pipeline tests compare
   the exact managed service/module/profile sets with Compose and retain optional IP-worker Doctor
   coverage.

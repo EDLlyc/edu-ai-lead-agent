@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -211,6 +212,24 @@ def test_official_account_start_failure_uses_compatible_rollback(
     assert "start:wecom" not in actions.calls
 
 
+def test_reviewed_incompatible_same_head_release_stops_writers(
+    release_manifest: ReleaseManifest,
+) -> None:
+    manifest = replace(
+        release_manifest,
+        database=replace(
+            release_manifest.database,
+            compatibility_reviewed=True,
+            previous_application_compatible=False,
+        ),
+    )
+    actions = FakeActions(fail_at="start:official-account")
+    with pytest.raises(PhaseFailure):
+        DeploymentEngine(manifest, actions).run()
+    assert "rollback" not in actions.calls
+    assert actions.calls[-1] == "stop_writers"
+
+
 def test_partial_activation_failure_restores_previous_snapshot(
     release_manifest: ReleaseManifest,
 ) -> None:
@@ -254,6 +273,20 @@ def test_rollback_eligibility_requires_completed_or_unattempted_migration() -> N
         target_head="same",
         compatibility_reviewed=True,
         previous_application_compatible=True,
+    )
+
+
+@pytest.mark.parametrize("previous_head", ["20260914_0047", "20260916_0048"])
+def test_explicit_incompatibility_forbids_rollback_even_without_schema_change(
+    previous_head: str,
+) -> None:
+    assert not rollback_eligible(
+        migration_attempted=True,
+        migration_completed=True,
+        previous_head=previous_head,
+        target_head="20260916_0048",
+        compatibility_reviewed=True,
+        previous_application_compatible=False,
     )
 
 
@@ -325,6 +358,70 @@ def test_compose_enables_all_six_production_profiles(
     )
     assert profile_arguments == PRODUCTION_COMPOSE_PROFILES
     assert arguments[-2:] == ("config", "--quiet")
+
+
+@pytest.mark.parametrize(
+    ("observed_head", "failure"),
+    [
+        ("20260916_0048", None),
+        ("", "current_alembic_head_invalid"),
+        ("20260914_0047\n20260916_0048", "current_alembic_head_invalid"),
+        ("not a valid head", "current_alembic_head_invalid"),
+        ("20260914_0047", "alembic_head_changed_after_preflight"),
+    ],
+)
+def test_existing_target_schema_is_verified_without_migration_or_seed(
+    tmp_path: Path,
+    release_manifest: ReleaseManifest,
+    observed_head: str,
+    failure: str | None,
+) -> None:
+    manifest = replace(
+        release_manifest,
+        database=replace(release_manifest.database, alembic_head="20260916_0048"),
+    )
+
+    class SchemaRunner(RecordingRunner):
+        def run(
+            self,
+            arguments: Sequence[str],
+            *,
+            cwd: Path | None = None,
+            timeout: int = 300,
+        ) -> CommandResult:
+            super().run(arguments, cwd=cwd, timeout=timeout)
+            if tuple(arguments[-3:]) == ("config", "--format", "json"):
+                return CommandResult(
+                    stdout=json.dumps(
+                        {
+                            "services": {
+                                service: {"image": manifest.image.reference}
+                                for service in APPLICATION_SERVICES
+                            }
+                        }
+                    )
+                )
+            if "exec" in arguments:
+                query = base64.b64decode(arguments[-1]).decode("utf-8")
+                assert query == "SELECT version_num FROM alembic_version"
+                return CommandResult(stdout=observed_head + "\n")
+            assert tuple(arguments[-2:]) == ("config", "--quiet")
+            return CommandResult(stdout="")
+
+    runner = SchemaRunner()
+    actions = production_actions(tmp_path, manifest, runner)
+    actions.previous_head = "20260916_0048"
+    if failure is None:
+        assert actions.migrate() == "20260916_0048"
+    else:
+        with pytest.raises(RuntimeError, match=failure):
+            actions.migrate()
+    assert len(runner.calls) == 3
+    assert not any(
+        command in call
+        for call in runner.calls
+        for command in ("up", "run", "create", "backend-migrate", "minio-init")
+    )
 
 
 def test_quiesce_and_incident_shutdown_cover_the_same_exact_service_set(

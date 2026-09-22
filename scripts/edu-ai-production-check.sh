@@ -356,39 +356,53 @@ SELECT concat_ws('|',
 
     local single_counts single_pending single_live single_stale single_delivering
     local single_unknown single_delivered single_failed single_expired
+    local single_historical_unknown single_current_unknown
     single_counts="$(edu_ai_psql_scalar "
 SELECT concat_ws('|',
   count(*) FILTER (WHERE status IN ('admitted', 'generating', 'preparing', 'ready')),
   count(*) FILTER (
-    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering')
+    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering', 'outcome_unknown')
       AND lease_token IS NOT NULL AND lease_expires_at > now()
   ),
   count(*) FILTER (
-    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering')
+    WHERE status IN ('admitted', 'generating', 'preparing', 'ready', 'delivering', 'outcome_unknown')
       AND lease_token IS NOT NULL AND lease_expires_at <= now()
   ),
   count(*) FILTER (WHERE status = 'delivering'),
   count(*) FILTER (WHERE status = 'outcome_unknown'),
   count(*) FILTER (WHERE status = 'delivered'),
   count(*) FILTER (WHERE status = 'failed'),
-  count(*) FILTER (WHERE status = 'expired')
+  count(*) FILTER (WHERE status = 'expired'),
+  count(*) FILTER (
+    WHERE status = 'outcome_unknown' AND expires_at <= now()
+      AND lease_token IS NULL AND lease_expires_at IS NULL
+  )
 ) FROM official_account_single_editions
 " 2>/dev/null)" || runtime_failure single_queue aggregate_query_failed
-    [[ "${single_counts}" =~ ^[0-9]{1,18}(\|[0-9]{1,18}){7}$ ]] \
+    [[ "${single_counts}" =~ ^[0-9]{1,18}(\|[0-9]{1,18}){8}$ ]] \
         || runtime_failure single_queue aggregate_result_invalid
     IFS='|' read -r single_pending single_live single_stale single_delivering \
-        single_unknown single_delivered single_failed single_expired <<< "${single_counts}"
+        single_unknown single_delivered single_failed single_expired \
+        single_historical_unknown <<< "${single_counts}"
+    (( single_historical_unknown <= single_unknown )) \
+        || runtime_failure single_queue aggregate_result_invalid
+    single_current_unknown=$((single_unknown - single_historical_unknown))
     local single_state=idle
-    if (( single_stale > 0 || single_unknown > 0 )); then
+    if (( single_stale > 0 || single_current_unknown > 0 )); then
         single_state=ambiguous
     elif (( single_pending > 0 || single_live > 0 || single_delivering > 0 )); then
         single_state=active
     fi
-    printf 'single_queue_state=%s pending=%s live_running=%s stale_running=%s delivering=%s outcome_unknown=%s delivered=%s failed=%s expired=%s\n' \
+    printf 'single_queue_state=%s pending=%s live_running=%s stale_running=%s delivering=%s outcome_unknown=%s delivered=%s failed=%s expired=%s current_outcome_unknown=%s historical_outcome_unknown=%s\n' \
         "${single_state}" "${single_pending}" "${single_live}" "${single_stale}" \
         "${single_delivering}" "${single_unknown}" "${single_delivered}" \
-        "${single_failed}" "${single_expired}"
-    (( single_stale == 0 && single_unknown == 0 )) \
+        "${single_failed}" "${single_expired}" "${single_current_unknown}" \
+        "${single_historical_unknown}"
+    if (( single_historical_unknown > 0 )); then
+        printf 'history_health=degraded historical_outcome_unknown=%s action=read_only_reconcile\n' \
+            "${single_historical_unknown}"
+    fi
+    (( single_stale == 0 && single_current_unknown == 0 )) \
         || runtime_failure single_queue stale_or_ambiguous
 
     printf 'runtime_health=ok\n'

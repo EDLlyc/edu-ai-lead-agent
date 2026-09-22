@@ -239,6 +239,10 @@ def rollback_eligible(
         return True
     if not migration_completed:
         return False
+    # A policy-only release can introduce durable inputs the previous application
+    # cannot read. An explicit incompatibility review overrides an unchanged schema.
+    if compatibility_reviewed and not previous_application_compatible:
+        return False
     return previous_head == target_head or (
         compatibility_reviewed and previous_application_compatible
     )
@@ -836,6 +840,13 @@ SELECT
     def migrate(self) -> str:
         self._compose("config", "--quiet")
         self._verify_compose_images()
+        current_head = self._psql_scalar("SELECT version_num FROM alembic_version")
+        if SAFE_ID_RE.fullmatch(current_head) is None:
+            raise RuntimeError("current_alembic_head_invalid")
+        if self.previous_head and current_head != self.previous_head:
+            raise RuntimeError("alembic_head_changed_after_preflight")
+        if current_head == self.manifest.database.alembic_head:
+            return current_head
         self._compose("up", "-d", "--no-build", "minio-init", timeout=300)
         self._compose("wait", "minio-init", timeout=300)
         self._compose("run", "--rm", "--no-deps", "backend-migrate", timeout=1800)

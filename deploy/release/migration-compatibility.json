@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "alembic_head": "20260914_0047",
+  "alembic_head": "20260916_0048",
   "reviewed": true,
   "previous_application_compatible": false,
-  "reason": "Reviewed implementation, not deployment authorization. The 0046 chain is not blanket backward compatibility: V5 and weekly v2 or governance inputs, including inputs with no Article rows yet, remain unsafe for older apps. Revision 0047 itself adds only date and owner tables. A single edition or imported history owner requires single-aware recovery: candidate core with both legacy and single admission/consumption disabled; no automatic old-app restore, database restore or Alembic downgrade."
+  "reason": "Reviewed implementation, not deployment authorization. 0048 drops global body-checksum uniqueness; V1/V2 retain app gates. V4 geometry and approved-catalog fallback need the new app at the same 0048 head. V5/weekly/governance inputs and single/history owners are not blanket backward compatibility. Recover candidate core with both legacy and single admission/consumption disabled; no old-app restore, database restore or Alembic downgrade. Existing 0048: verify only, no migration or seed replay."
 }

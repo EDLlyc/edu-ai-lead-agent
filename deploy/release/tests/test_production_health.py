@@ -17,6 +17,7 @@ CHECK_SCRIPT = PROJECT_ROOT / "scripts" / "edu-ai-production-check.sh"
 IMAGE_REFERENCE = "registry.example.test/edu-ai/app@sha256:" + "b" * 64
 RELEASE_COMMIT = "a" * 40
 IMAGE_ID = "sha256:" + "9" * 64
+ALEMBIC_HEAD = "20260916_0048"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -84,7 +85,7 @@ if args[: len(compose_base)] == compose_base:
             handle.write(json.dumps(query) + "\\n")
         normalized = " ".join(query.split())
         if normalized == "SELECT version_num FROM alembic_version":
-            print(os.environ.get("FAKE_SCHEMA_HEAD", "20260914_0047"))
+            print(os.environ.get("FAKE_SCHEMA_HEAD", {ALEMBIC_HEAD!r}))
             raise SystemExit(0)
         if normalized.startswith("SELECT concat_ws('|',") and normalized.endswith(
             ") FROM wecom_delivery_jobs"
@@ -96,7 +97,7 @@ if args[: len(compose_base)] == compose_base:
         ):
             if os.environ.get("FAKE_SINGLE_QUERY_FAILURE"):
                 raise SystemExit(92)
-            print(os.environ.get("FAKE_SINGLE_COUNTS", "0|0|0|0|0|0|0|0"))
+            print(os.environ.get("FAKE_SINGLE_COUNTS", "0|0|0|0|0|0|0|0|0"))
             raise SystemExit(0)
     raise SystemExit(91)
 
@@ -184,7 +185,7 @@ def runtime_fixture(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     (app_dir / ".release-commit").write_text(f"{RELEASE_COMMIT}\n", encoding="utf-8")
     (app_dir / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
     (app_dir / "deploy" / "release" / "migration-compatibility.json").write_text(
-        json.dumps({"alembic_head": "20260914_0047"}) + "\n",
+        json.dumps({"alembic_head": ALEMBIC_HEAD}) + "\n",
         encoding="utf-8",
     )
     shutil.copy2(
@@ -235,6 +236,12 @@ def test_runtime_check_is_bundled_and_executable() -> None:
     assert relative in BUNDLE_ALLOWED_PREFIXES
     assert relative in BUNDLE_REQUIRED_FILES
     assert CHECK_SCRIPT.stat().st_mode & 0o111
+    declaration = json.loads(
+        (PROJECT_ROOT / "deploy/release/migration-compatibility.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert declaration["alembic_head"] == ALEMBIC_HEAD
 
 
 def test_healthy_offline_runtime_needs_no_node_and_reports_incomplete_provenance(
@@ -268,6 +275,12 @@ def test_healthy_offline_runtime_needs_no_node_and_reports_incomplete_provenance
     assert observed_services == {*LONG_RUNNING_SERVICES, "postgres", "minio"}
     sql_calls = _json_lines(Path(environment["FAKE_SQL_CALLS"]))
     assert len(sql_calls) == 3
+    single_query = " ".join(str(sql_calls[-1]).split())
+    assert (
+        "WHERE status = 'outcome_unknown' AND expires_at <= now() "
+        "AND lease_token IS NULL AND lease_expires_at IS NULL"
+    ) in single_query
+    assert single_query.count("'delivering', 'outcome_unknown')") == 2
     assert all(
         isinstance(query, str) and query.lstrip().startswith("SELECT")
         for query in sql_calls
@@ -296,7 +309,7 @@ def test_queued_or_live_work_is_activity_not_failure(
 
 
 @pytest.mark.parametrize(
-    "counts", ["1|0|0|0|0|0|0|0", "0|1|0|1|0|0|0|0", "0|0|0|1|0|0|0|0"]
+    "counts", ["1|0|0|0|0|0|0|0|0", "0|1|0|1|0|0|0|0|0", "0|0|0|1|0|0|0|0|0"]
 )
 def test_single_preparation_or_delivery_is_activity_not_idle(
     runtime_fixture: tuple[Path, dict[str, str]], counts: str
@@ -311,13 +324,22 @@ def test_single_preparation_or_delivery_is_activity_not_idle(
 def test_completed_and_failed_single_dates_remain_visible_without_blocking_future_dates(
     runtime_fixture: tuple[Path, dict[str, str]],
 ) -> None:
-    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS="0|0|0|0|0|2|1|3")
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS="0|0|0|0|0|2|1|3|0")
     assert result.returncode == 0, result.stderr
     assert "single_queue_state=idle" in result.stdout
     assert "outcome_unknown=0 delivered=2 failed=1 expired=3" in result.stdout
 
 
-@pytest.mark.parametrize("counts", ["0|0|1|0|0|0|0|0", "0|0|0|0|1|0|0|0"])
+@pytest.mark.parametrize(
+    "counts",
+    [
+        "0|0|1|0|0|0|0|0|0",
+        "0|0|0|0|1|0|0|0|0",
+        "0|1|0|0|1|0|0|0|0",
+        "0|0|1|0|1|0|0|0|0",
+        "0|0|0|0|2|0|0|0|1",
+    ],
+)
 def test_single_unknown_or_stale_lease_fails_with_visible_counts(
     runtime_fixture: tuple[Path, dict[str, str]], counts: str
 ) -> None:
@@ -328,8 +350,29 @@ def test_single_unknown_or_stale_lease_fails_with_visible_counts(
     assert "runtime_health=ok" not in result.stdout
 
 
+def test_expired_unleased_unknown_is_visible_history_not_current_queue_failure(
+    runtime_fixture: tuple[Path, dict[str, str]],
+) -> None:
+    result = _run_check(runtime_fixture, FAKE_SINGLE_COUNTS="0|0|0|0|1|2|1|0|1")
+    assert result.returncode == 0, result.stderr
+    assert "single_queue_state=idle" in result.stdout
+    assert "outcome_unknown=1 delivered=2 failed=1" in result.stdout
+    assert "current_outcome_unknown=0 historical_outcome_unknown=1" in result.stdout
+    assert (
+        "history_health=degraded historical_outcome_unknown=1 action=read_only_reconcile"
+    ) in result.stdout
+    assert "runtime_health=ok" in result.stdout
+
+
 @pytest.mark.parametrize(
-    "counts", ["0|0|0", "0|0|0|0|0|0|0|-1", "secret-title", "9" * 19 + "|0|0|0|0|0|0|0"]
+    "counts",
+    [
+        "0|0|0",
+        "0|0|0|0|0|0|0|-1|0",
+        "secret-title",
+        "9" * 19 + "|0|0|0|0|0|0|0|0",
+        "0|0|0|0|0|0|0|0|1",
+    ],
 )
 def test_invalid_single_aggregate_is_redacted(
     runtime_fixture: tuple[Path, dict[str, str]], counts: str
@@ -352,6 +395,7 @@ def test_missing_single_schema_is_not_silently_reported_idle(
 @pytest.mark.parametrize(
     ("overrides", "failure"),
     [
+        ({"FAKE_SCHEMA_HEAD": "20260914_0047"}, "reason=schema_head_mismatch"),
         ({"FAKE_SCHEMA_HEAD": "20260908_0044"}, "reason=schema_head_mismatch"),
         ({"FAKE_QUEUE_COUNTS": "0|0|1|0"}, "reason=stale_or_ambiguous"),
         ({"FAKE_QUEUE_COUNTS": "0|0|0|1"}, "reason=stale_or_ambiguous"),

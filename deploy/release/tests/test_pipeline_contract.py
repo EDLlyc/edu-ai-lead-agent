@@ -324,12 +324,15 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     assert reviewed is True
     assert compatible is False
     reason = json.loads(declaration)["reason"]
-    assert "weekly v2 or governance inputs" in reason
-    assert "including inputs with no Article rows yet" in reason
+    assert "V5/weekly/governance inputs" in reason
     assert "not deployment authorization" in reason
-    assert "Revision 0047 itself adds only" in reason
+    assert "0048 drops global body-checksum uniqueness" in reason
+    assert "V1/V2 retain app gates" in reason
+    assert "V4 geometry and approved-catalog fallback" in reason
+    assert "at the same 0048 head" in reason
+    assert "no migration or seed replay" in reason
     assert "not blanket backward compatibility" in reason
-    assert "imported history owner" in reason
+    assert "single/history owners" in reason
     assert "both legacy and single admission/consumption disabled" in reason
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
     for schema_identity in (
