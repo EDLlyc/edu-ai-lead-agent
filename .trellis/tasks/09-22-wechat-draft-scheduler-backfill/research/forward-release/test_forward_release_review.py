@@ -232,9 +232,9 @@ def test_actual_backup_covers_all_scopes_and_requires_dump_readback(
         root = app / name
         root.mkdir(parents=True, exist_ok=True)
         (root / "fixture.txt").write_bytes(b"private fixture")
-    (app / "private/brand-materials/小赛 AI 品牌资料.docx").write_bytes(
-        b"private document"
-    )
+    brand_document = app / "private/brand-materials/小赛 AI 品牌资料.docx"
+    brand_document.write_bytes(b"private document")
+    brand_document.chmod(0o664)
     for name in m.PROTECTED_FILES:
         path = app / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -590,3 +590,122 @@ def test_preserved_layer_refuses_unsafe_member_paths(
     )
     with pytest.raises(RuntimeError, match="preserved_base_unsafe_path"):
         m.preserved_base_hashes(members, manifest)
+
+
+def test_brand_0664_inventory_preserves_permissions_but_protected_files_stay_strict(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "brand"
+    source.mkdir()
+    asset = source / "品牌 资料.txt"
+    asset.write_bytes(b"reviewed")
+    asset.chmod(0o664)
+    before = m.tree_manifest(source, brand_data=True)
+    assert before[asset.name]["mode"] == 0o664
+    with pytest.raises(RuntimeError, match="writable_file"):
+        m.metadata(asset)
+    with pytest.raises(RuntimeError, match="writable_file"):
+        m.tree_manifest(source)
+    archive = tmp_path / "brand.tar.gz"
+    with tarfile.open(archive, "w:gz") as bundle:
+        bundle.add(asset, arcname=asset.name)
+    m.verify_backup_archive(archive, source, before, brand_data=True)
+    assert asset.stat().st_mode & 0o777 == 0o664
+    asset.write_bytes(b"changed")
+    with pytest.raises(RuntimeError, match="backup_source_changed"):
+        m.verify_backup_archive(archive, source, before, brand_data=True)
+
+
+@pytest.mark.parametrize("mode", [0o666, 0o777, 0o4664, 0o774])
+def test_brand_inventory_still_rejects_world_write_or_special_modes(
+    tmp_path: Path,
+    mode: int,
+) -> None:
+    asset = tmp_path / "asset"
+    asset.write_bytes(b"fixture")
+    asset.chmod(mode)
+    with pytest.raises(RuntimeError, match="unsafe_brand_file_mode"):
+        m.tree_manifest(tmp_path, brand_data=True)
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        None,
+        "new_unknown",
+        "missing_unknown",
+        "membership",
+        "current_date",
+        "lease",
+        "updated_after_cutoff",
+        "count_type",
+    ],
+)
+def test_only_exact_historical_article_unknown_cohort_is_idle(
+    monkeypatch: pytest.MonkeyPatch,
+    drift: str | None,
+) -> None:
+    host = m.Host()
+    summary: dict[str, Any] = {
+        "count": 5,
+        "eligible": 5,
+        "sha256": m.HISTORICAL_ARTICLE_UNKNOWN_SHA,
+    }
+    if drift == "new_unknown":
+        summary["count"] = 6
+    elif drift == "missing_unknown":
+        summary["count"] = 4
+    elif drift == "membership":
+        summary["sha256"] = "b" * 64
+    elif drift in {"current_date", "lease", "updated_after_cutoff"}:
+        summary["eligible"] = 4
+    elif drift == "count_type":
+        summary["count"] = 5.0
+    queries = []
+
+    def scalar(sql: str) -> str:
+        queries.append(sql)
+        assert sql.startswith("SELECT ")
+        if "pg_tables" in sql:
+            return "official_account_article_runs\nwechat_mp_draft_jobs"
+        if "'eligible',count(*) FILTER" in sql:
+            assert "created_at < TIMESTAMPTZ '2026-09-17T00:00:00+08:00'" in sql
+            assert "updated_at < TIMESTAMPTZ '2026-09-17T00:00:00+08:00'" in sql
+            assert (
+                "lease_owner IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL"
+                in sql
+            )
+            assert "jsonb_agg(to_jsonb(t)-'updated_at' ORDER BY id)" in sql
+            return m.canonical(summary).decode()
+        if " q WHERE " in sql:
+            if "FROM official_account_article_runs t" in sql:
+                assert "AND NOT (v->>'status'='result_unknown'" in sql
+            else:
+                assert "AND NOT" not in sql
+        return "0"
+
+    monkeypatch.setattr(host, "scalar", scalar)
+    if drift is None:
+        host.idle()
+        assert any("FROM wechat_mp_draft_jobs t" in query for query in queries)
+    else:
+        with pytest.raises(
+            RuntimeError, match="historical_article_unknown_cohort_drift"
+        ):
+            host.idle()
+        assert len(queries) == 2
+
+
+def test_other_table_unknown_remains_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    host = m.Host()
+
+    def scalar(sql: str) -> str:
+        if "pg_tables" in sql:
+            return "wechat_mp_draft_jobs"
+        assert "AND NOT" not in sql
+        assert "'outcome_unknown','delivery_unknown','result_unknown'" in sql
+        return "1"
+
+    monkeypatch.setattr(host, "scalar", scalar)
+    with pytest.raises(RuntimeError, match="active_or_unknown_work"):
+        host.idle()

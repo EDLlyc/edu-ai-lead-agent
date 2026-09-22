@@ -1302,6 +1302,21 @@ do not clear, deliver, or replay it. Any other unknown remains current/ambiguous
 Unknown rows with an expired lease still count as stale. This exception belongs to the read-only
 checker and does not bypass the standard deployer's stronger quiescence/provenance gates.
 
+A dated, fixed-base offline operator may separately freeze an independently measured cohort of
+old terminal Article runs whose table has no `expires_at` column. This is not a general unknown
+exception: require the exact full-row cohort hash, count, fixed historical cutoff and empty lease
+fields; prove that both base and candidate normal claim/retry paths cannot claim that terminal
+state. Keep the cohort inside before/after full-table fingerprints. New, current, leased, changed,
+or additional unknown rows remain blocking; never clear or replay them to obtain a green check.
+Keep this narrow contract in the dated operator/evidence, not the generic runtime health query.
+
+Protected configuration and archived data have different permission contracts. Bind each
+protected file's actual mode/UID/GID explicitly rather than inferring modes from extensions.
+Do not loosen configuration or source-tree group/world-write checks because an existing brand
+asset is `0664`. A brand-only inventory exception must be explicit, retain read-only application
+mounts, reject unsafe file types and read races, and bind the complete bytes/mode/ownership through
+backup and final comparison. Do not chmod existing user data merely to satisfy a release check.
+
 ### 4. Validation & Error Matrix
 
 | Condition | Required result |

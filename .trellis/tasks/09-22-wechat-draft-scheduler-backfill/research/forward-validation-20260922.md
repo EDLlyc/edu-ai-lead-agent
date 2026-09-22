@@ -80,3 +80,49 @@ is `0755` (both root:root). The other eight protected files matched, including
 `.env` at `0600`, UID 1000, GID 1001. The replacement operator must enumerate
 these exact measured permissions and preserve them; production permissions must
 not be changed to satisfy the preflight. No activation attempt was made.
+
+## Historical terminal article-run preflight
+
+Candidate `c7d38aa9773b6cb52b641ffd319123ba59152b43` passed the same real-image
+smoke, then stopped read-only capture at `active_or_unknown_work`. Aggregate
+inspection found exactly five `official_account_article_runs.result_unknown`
+rows, created September 11 (three), September 14 (one), and September 16 (one).
+All three lease fields are null. This table has no `expires_at` column, so the
+generic JSON-field check incorrectly classified these old terminal rows as live
+unknown work. No service was stopped and no baseline or activation was created.
+
+The exact five-row cohort, including all fields except `updated_at`, has SHA-256
+`636c9d034399d98ae6aaa3a507347e983c6163e2e128ca9b7354b2b624973ad9`
+using ordered `jsonb_agg(to_jsonb(t)-'updated_at' ORDER BY id)`. Any release
+exception must require this fixed hash, count five, creation before September 17
+Shanghai time, and empty leases; it must not accept arbitrary terminal unknowns.
+The article repository only claims queued or expired-running rows. Full-table
+database fingerprints still protect these records across quiescence and startup;
+their unknown state must never be cleared or replayed for this deployment.
+
+The remaining inventory checks were exercised independently without producing a
+baseline or bypassing any deployment gate: 620 runtime source files and all 21
+database snapshot entries passed. Brand inventory exposed a second overly broad
+check: seven existing data files are `0664` (the other 249 are `0644`), all owned
+by UID 1000/GID 1001 and mounted read-only into the applications. Protected
+configuration must retain its strict non-group-writable rule; brand data needs a
+separate explicit inventory policy that preserves its measured mode and freezes
+hash/size/ownership. No permissions were changed. All three named volumes use
+ordinary `0600`/`0644` files, so no broader volume-permission exception is needed.
+
+The final operator delta passed 117 fake tests, Ruff/format, strict mypy and diff
+checks. An independent real-host read-only execution of the exact cohort and
+exclusion SQL returned count=eligible=5, the fixed hash, and zero remaining
+active/unknown Article runs. No apply or quiescence occurred during these checks.
+
+## Historical task closure limitation
+
+The initial exact-target backfill has five unit and two fake-repository integration
+tests, not a complete direct test matrix for all Phase 2 bullets. In particular,
+direct target/authorization drift, concurrent apply, expired backfill authorization,
+explicit provider failure, and reconciliation exceptions remain audit-test debt.
+The 78 prior operator tests must not be presented as proof of each missing case.
+This does not change the separately reviewed prospective fallback's 34 tests.
+Keep that Phase 2 checklist item open. Four historical test modules resolve their
+operators from the active task directory; archive only with an atomic test-path
+update and rerun, preserving the sealed operators and their hashes.

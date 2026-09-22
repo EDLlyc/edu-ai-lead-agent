@@ -127,6 +127,10 @@ HISTORICAL_COPY_DATES = (
 HISTORICAL_COPY_COHORT_SHA = (
     "78f6de9ee6546cf15bfcbb8402b1e2e1d6094282dd9d15c05411c6733ca7ed24"
 )
+HISTORICAL_ARTICLE_UNKNOWN_SHA = (
+    "636c9d034399d98ae6aaa3a507347e983c6163e2e128ca9b7354b2b624973ad9"
+)
+HISTORICAL_ARTICLE_UNKNOWN_CUTOFF = "2026-09-17T00:00:00+08:00"
 PROFILES = (
     "governance",
     "content",
@@ -261,9 +265,8 @@ def read_file(path: Path) -> bytes:
     return stable_file(path)[0]
 
 
-def metadata(path: Path) -> dict[str, Any]:
+def inventory_metadata(path: Path) -> dict[str, Any]:
     body, info = stable_file(path)
-    require(not stat.S_IMODE(info.st_mode) & 0o022, "writable_file")
     return {
         "sha256": sha(body),
         "size": len(body),
@@ -271,6 +274,23 @@ def metadata(path: Path) -> dict[str, Any]:
         "uid": info.st_uid,
         "gid": info.st_gid,
     }
+
+
+def metadata(path: Path) -> dict[str, Any]:
+    result = inventory_metadata(path)
+    require(not result["mode"] & 0o022, "writable_file")
+    return result
+
+
+def brand_metadata(path: Path) -> dict[str, Any]:
+    """Inventory existing read-only-mounted data without changing its permissions."""
+    result = inventory_metadata(path)
+    mode = result["mode"]
+    require(
+        not mode & 0o7000 and (mode == 0o664 or not mode & 0o022),
+        "unsafe_brand_file_mode",
+    )
+    return result
 
 
 def write_new(path: Path, body: bytes) -> None:
@@ -932,7 +952,9 @@ def change_env(body: bytes, key: str, before: str, after: str) -> bytes:
     return result
 
 
-def tree_manifest(root: Path, *, minio_business: bool = False) -> dict[str, Any]:
+def tree_manifest(
+    root: Path, *, minio_business: bool = False, brand_data: bool = False
+) -> dict[str, Any]:
     physical(root)
     require(root.is_dir(), "tree_root")
     result = {}
@@ -941,7 +963,9 @@ def tree_manifest(root: Path, *, minio_business: bool = False) -> dict[str, Any]
             continue
         require(not path.is_symlink(), "tree_symlink")
         if path.is_file():
-            result[path.relative_to(root).as_posix()] = metadata(path)
+            result[path.relative_to(root).as_posix()] = (
+                brand_metadata(path) if brand_data else metadata(path)
+            )
         else:
             require(path.is_dir(), "tree_entry_type")
     return result
@@ -1187,6 +1211,37 @@ class Host:
         require(tables, "job_tables_missing")
         for table in tables:
             require(re.fullmatch(r"[a-z_]+", table), "table_name")
+            historical_exclusion = ""
+            if table == "official_account_article_runs":
+                # This model has no expires_at. Only these five independently
+                # measured terminal rows are exempt, never a new unknown result.
+                cutoff = HISTORICAL_ARTICLE_UNKNOWN_CUTOFF
+                summary = strict_json(
+                    self.scalar(
+                        "SELECT json_build_object('count',count(*),'eligible',count(*) FILTER (WHERE "
+                        f"created_at < TIMESTAMPTZ '{cutoff}' AND updated_at < TIMESTAMPTZ '{cutoff}' "
+                        "AND lease_owner IS NULL AND lease_token IS NULL AND lease_expires_at IS NULL),"
+                        "'sha256',encode(sha256(convert_to(COALESCE(jsonb_agg(to_jsonb(t)-'updated_at' "
+                        "ORDER BY id),'[]'::jsonb)::text,'UTF8')),'hex'))::text "
+                        "FROM official_account_article_runs t WHERE status='result_unknown'"
+                    ).encode()
+                )
+                require(
+                    isinstance(summary, dict)
+                    and set(summary) == {"count", "eligible", "sha256"}
+                    and type(summary["count"]) is int
+                    and type(summary["eligible"]) is int
+                    and summary["count"] == summary["eligible"] == 5
+                    and summary["sha256"] == HISTORICAL_ARTICLE_UNKNOWN_SHA,
+                    "historical_article_unknown_cohort_drift",
+                )
+                historical_exclusion = (
+                    " AND NOT (v->>'status'='result_unknown' "
+                    f"AND (v->>'created_at')::timestamptz < TIMESTAMPTZ '{cutoff}' "
+                    f"AND (v->>'updated_at')::timestamptz < TIMESTAMPTZ '{cutoff}' "
+                    "AND v->>'lease_owner' IS NULL AND v->>'lease_token' IS NULL "
+                    "AND v->>'lease_expires_at' IS NULL)"
+                )
             # An expired historical unknown is immutable history, not live work.
             count = self.scalar(
                 "SELECT count(*) FROM (SELECT to_jsonb(t) AS v FROM "
@@ -1195,7 +1250,9 @@ class Host:
                 "v->>'status'='running' OR v->>'lease_token' IS NOT NULL OR v->>'lease_owner' IS NOT NULL OR "
                 "v->>'lease_expires_at' IS NOT NULL OR "
                 "(v->>'status' IN ('outcome_unknown','delivery_unknown','result_unknown') AND "
-                "(v->>'expires_at' IS NULL OR (v->>'expires_at')::timestamptz > now()))"
+                "(v->>'expires_at' IS NULL OR (v->>'expires_at')::timestamptz > now())"
+                + historical_exclusion
+                + ")"
             )
             require(count == "0", "active_or_unknown_work")
             if table == "copy_generation_jobs":
@@ -1400,7 +1457,9 @@ class Host:
             "db": self.db_snapshot(),
             "journal_sha256": sha(canonical(journal)),
             "brand_sha256": sha(
-                canonical(tree_manifest(APP / "private/brand-materials"))
+                canonical(
+                    tree_manifest(APP / "private/brand-materials", brand_data=True)
+                )
             ),
             "standard_markers_absent": {
                 name: not Path(name).exists()
@@ -1423,7 +1482,12 @@ def same_baseline(expected: dict[str, Any], actual: dict[str, Any]) -> None:
 
 
 def verify_backup_archive(
-    path: Path, source: Path, before: dict[str, Any], *, minio_business: bool = False
+    path: Path,
+    source: Path,
+    before: dict[str, Any],
+    *,
+    minio_business: bool = False,
+    brand_data: bool = False,
 ) -> None:
     actual = {}
     with tarfile.open(path, "r:gz") as archive:
@@ -1458,7 +1522,9 @@ def verify_backup_archive(
                 "gid": entry.gid,
             }
     require(
-        actual == before == tree_manifest(source, minio_business=minio_business),
+        actual
+        == before
+        == tree_manifest(source, minio_business=minio_business, brand_data=brand_data),
         "backup_source_changed",
     )
 
@@ -1640,7 +1706,7 @@ class Deployment:
             )
             inventory[archive.name] = sha(read_file(archive))
         brand = APP / "private/brand-materials"
-        before = tree_manifest(brand)
+        before = tree_manifest(brand, brand_data=True)
         archive = self.backup_dir / "brand-materials.tar.gz"
         run(
             [
@@ -1656,7 +1722,7 @@ class Deployment:
             timeout=600,
         )
         os.chmod(archive, 0o600)
-        verify_backup_archive(archive, brand, before)
+        verify_backup_archive(archive, brand, before, brand_data=True)
         inventory[archive.name] = sha(read_file(archive))
         # Runtime source/config snapshot; base image remains immutable and cached.
         runtime_files = {}
@@ -1697,7 +1763,11 @@ class Deployment:
             "business_volume_drift",
         )
         require(
-            sha(canonical(tree_manifest(APP / "private/brand-materials")))
+            sha(
+                canonical(
+                    tree_manifest(APP / "private/brand-materials", brand_data=True)
+                )
+            )
             == self.baseline["brand_sha256"],
             "brand_drift",
         )
@@ -1804,7 +1874,11 @@ class Deployment:
             "historical_journal_changed",
         )
         require(
-            sha(canonical(tree_manifest(APP / "private/brand-materials")))
+            sha(
+                canonical(
+                    tree_manifest(APP / "private/brand-materials", brand_data=True)
+                )
+            )
             == self.baseline["brand_sha256"],
             "brand_changed",
         )
