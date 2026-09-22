@@ -132,6 +132,22 @@ No other active/pending states were found beyond the already frozen seven old
 preview copy jobs. Deployment and backup locks are root-owned `0600`, the backup
 root is `0700`, and the backup timer is active.
 
+## Docker mount-order preflight
+
+Candidate `95e65157e12c776562577a3354554b13d817398c` passed real-image smoke,
+full production capture and the read-only plan. Its first apply loaded and
+verified the candidate image, then refused `baseline_drift` **before quiesce**.
+The backup/activation attempt directory did not exist, and all original services
+remained running; this was not an uncertain activation or a rollback.
+
+Read-only comparison isolated only the weekly producer's `mounts` list order.
+Repeated Docker inspections of the same un-restarted container alternated the
+two destinations' order. Container identity, image, command, environment and
+each complete mount record were unchanged. Canonicalize ordering at both capture
+and post-start verification; never discard duplicate records or ignore source,
+destination, volume identity or read-only flags. The frozen baseline must be
+recaptured with the corrected, newly sealed operator before any apply.
+
 ## Historical task closure limitation
 
 The initial exact-target backfill has five unit and two fake-repository integration

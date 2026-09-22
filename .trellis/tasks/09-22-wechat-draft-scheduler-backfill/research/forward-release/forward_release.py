@@ -1007,6 +1007,25 @@ def volume_fingerprints(volumes: dict[str, str]) -> dict[str, str]:
     }
 
 
+def normalized_mounts(mounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Docker does not promise Mounts ordering; preserve every projected field."""
+    result = []
+    destinations: set[str] = set()
+    for mount in mounts:
+        item = {
+            key: mount.get(key)
+            for key in ("Type", "Name", "Source", "Destination", "RW")
+        }
+        destination = item["Destination"]
+        require(isinstance(destination, str) and bool(destination), "mount_destination")
+        assert isinstance(destination, str)
+        require(destination not in destinations, "duplicate_mount_destination")
+        require(type(item["RW"]) is bool, "mount_rw_type")
+        destinations.add(destination)
+        result.append(item)
+    return sorted(result, key=canonical)
+
+
 def check_service_environment(
     name: str, item: dict[str, Any], config: dict[str, Any], policy: str
 ) -> dict[str, str]:
@@ -1367,13 +1386,7 @@ class Host:
                 actual_env = check_service_environment(
                     name, item, config["services"][name], V3
                 )
-            mounts = [
-                {
-                    key: mount.get(key)
-                    for key in ("Type", "Name", "Source", "Destination", "RW")
-                }
-                for mount in item["Mounts"]
-            ]
+            mounts = normalized_mounts(item["Mounts"])
             services[name] = {
                 "id": item["Id"],
                 "image": item["Image"],
@@ -1867,13 +1880,7 @@ class Deployment:
                 "candidate_service_not_ready",
             )
             require(
-                [
-                    {
-                        key: mount.get(key)
-                        for key in ("Type", "Name", "Source", "Destination", "RW")
-                    }
-                    for mount in item["Mounts"]
-                ]
+                normalized_mounts(item["Mounts"])
                 == self.baseline["services"][name]["mounts"],
                 "candidate_mount_changed",
             )

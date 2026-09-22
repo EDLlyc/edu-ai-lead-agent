@@ -771,3 +771,82 @@ def test_ready_still_blocks_single_edition_delivery_queue(
     monkeypatch.setattr(host, "scalar", scalar)
     with pytest.raises(RuntimeError, match="pending_work"):
         host.idle()
+
+
+@pytest.mark.parametrize(
+    "change", [None, "Source", "Destination", "RW", "Name", "Type", "duplicate"]
+)
+def test_actual_verification_ignores_only_mount_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str | None,
+) -> None:
+    mounts = [
+        {
+            "Type": "volume",
+            "Name": "fixture_output",
+            "Source": "/vol/output",
+            "Destination": "/app/output",
+            "RW": True,
+        },
+        {
+            "Type": "bind",
+            "Source": "/private/brand",
+            "Destination": "/app/private/brand-materials",
+            "RW": False,
+        },
+    ]
+    baseline = {"services": {"fixture": {"mounts": m.normalized_mounts(mounts)}}}
+    actual = [dict(item) for item in reversed(mounts)]
+    if change == "duplicate":
+        actual.append(dict(actual[0]))
+    elif change == "RW":
+        actual[0]["RW"] = True
+    elif change:
+        actual[0][change] = "changed"
+
+    class VerifyHost:
+        def idle(self) -> None:
+            pass
+
+        def service(self, name: str) -> dict[str, Any]:
+            if name != "fixture":
+                raise RuntimeError("mount_gate_passed")
+            return {
+                "Image": "candidate-id",
+                "Config": {"Image": "candidate-ref"},
+                "State": {"Status": "running", "Health": {"Status": "healthy"}},
+                "RestartCount": 0,
+                "Mounts": actual,
+            }
+
+    monkeypatch.setattr(m, "SERVICES", ("fixture",))
+    operation = m.Deployment(
+        VerifyHost(),
+        tmp_path / "candidate.json",
+        {"revision": "a" * 40, "candidate_ref": "candidate-ref"},
+        baseline,
+    )
+    operation.loaded_id = "candidate-id"
+    expected_error = (
+        "mount_gate_passed"
+        if change is None
+        else "duplicate_mount_destination"
+        if change == "duplicate"
+        else "candidate_mount_changed"
+    )
+    with pytest.raises(RuntimeError, match=expected_error):
+        operation.verify()
+    if change is None:
+        assert len(m.normalized_mounts(actual)) == len(mounts) == 2
+        m.same_baseline(
+            baseline, {"services": {"fixture": {"mounts": m.normalized_mounts(actual)}}}
+        )
+
+
+def test_mount_normalization_refuses_duplicate_target_or_nonboolean_rw() -> None:
+    mount = {"Type": "bind", "Source": "/source", "Destination": "/target", "RW": False}
+    with pytest.raises(RuntimeError, match="duplicate_mount_destination"):
+        m.normalized_mounts([mount, {**mount, "Source": "/another"}])
+    with pytest.raises(RuntimeError, match="mount_rw_type"):
+        m.normalized_mounts([{**mount, "RW": 0}])
