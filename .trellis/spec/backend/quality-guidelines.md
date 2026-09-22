@@ -794,6 +794,15 @@ release artifacts, or production deployment automation change.
   actual `RepoDigests`, then persist that digest rather than the isolated transport tag. A mutable
   prior tag is corrected only while production remains active, followed by a fresh bound baseline;
   never bypass the backup validator or record `unknown` for an observable image.
+- A nominal base Git revision is not evidence that every old offline-image file equals that Git
+  tree. The September 22 fixed-base overlay preserves exactly `app/infrastructure/ai/zhipu.py`
+  from the audited `c98c...` base: runtime SHA-256
+  `b9aa021414acc1dcb25068bac707c97da3b52cbd5fc5cb3195ed1a3174514cd9`, while both base and candidate
+  Git must retain `3e63bf9d40131c3be51ee4351e8acec8832319f24ba5e5bfc9aab5e256f0345e`.
+  Prove the former from the validated OCI layers, forbid overlaying that path, and record the
+  exact exception in the candidate manifest. This is not a wildcard mismatch waiver; every other
+  source path and immutable runtime input remains exact. Never deploy unrelated newer integration
+  code merely to repair a source-projection assertion.
 - Treat an image loaded during offline preflight as owned only when its tag was absent before load
   and its observed ID is bound to the validated OCI graph. Cleanup revalidates both RepoDigest and
   transport-tag IDs and checks the complete running/stopped container inventory. Any inspect/list

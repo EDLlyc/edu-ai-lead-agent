@@ -32,6 +32,17 @@ VERSION = "wechat-forward-v4-fallback-20260922-v1"
 BASE_REVISION = "abfb89d9371d56b1fc651e9ea0a11f50bed37724"
 BASE_ID = "sha256:c98c7004a19274a7897ac267784cc376f9ad41e28570de28edfd57ecee5a9bd6"
 BASE_ARCHIVE_SHA = "22512ec68fad689713a43580d2829f41f31416518737f203941a8516c4d07eb4"
+# A previous offline release deliberately retained this live OCR integration.
+# It is outside this change: Git equality is required, but the frozen base bytes
+# (not the newer repository implementation) remain authoritative in the image.
+PRESERVED_BASE_FILES = {
+    "infrastructure/ai/zhipu.py": {
+        "runtime_sha256": "b9aa021414acc1dcb25068bac707c97da3b52cbd5fc5cb3195ed1a3174514cd9",
+        "runtime_size": 48896,
+        "base_git_sha256": "3e63bf9d40131c3be51ee4351e8acec8832319f24ba5e5bfc9aab5e256f0345e",
+        "candidate_git_sha256": "3e63bf9d40131c3be51ee4351e8acec8832319f24ba5e5bfc9aab5e256f0345e",
+    },
+}
 REPOSITORY = "offline.local/edu-ai/edu-ai-lead-agent-backend"
 BASE_REF = REPOSITORY + "@" + BASE_ID
 SCHEMA = "20260916_0048"
@@ -62,7 +73,7 @@ PROTECTED_METADATA = {
     name: {
         "mode": 0o700 if name.endswith(".sh") else 0o600,
         "uid": 1000 if name == ".env" else 0,
-        "gid": 1000 if name == ".env" else 0,
+        "gid": 1001 if name == ".env" else 0,
     }
     for name in PROTECTED_FILES
 }
@@ -483,6 +494,76 @@ def oci_graph(
     return manifest, config, index["manifests"][0]["digest"]
 
 
+def preserved_base_hashes(
+    members: dict[str, bytes], base_manifest: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Read only the fixed exception paths from the already verified OCI layers."""
+    target_names = {"app/app/" + path: path for path in PRESERVED_BASE_FILES}
+    found: dict[str, dict[str, Any]] = {}
+    for descriptor in base_manifest["layers"]:
+        body = bounded_gunzip(members["blobs/sha256/" + descriptor["digest"][7:]])
+        seen: set[str] = set()
+        layer_found: dict[str, dict[str, Any]] = {}
+        removed: set[str] = set()
+        with tarfile.open(fileobj=io.BytesIO(body), mode="r:") as layer:
+            for entry in layer:
+                entry_path = PurePosixPath(entry.name)
+                require(
+                    not entry_path.is_absolute() and ".." not in entry_path.parts,
+                    "preserved_base_unsafe_path",
+                )
+                name = entry_path.as_posix()
+                for target, relative in target_names.items():
+                    parts = PurePosixPath(target).parts
+                    ancestors = [
+                        "/".join(parts[:index]) for index in range(1, len(parts))
+                    ]
+                    whiteouts = [
+                        "/".join((*parts[:index], ".wh." + parts[index]))
+                        for index in range(len(parts))
+                    ]
+                    opaque = [
+                        ".wh..wh..opq",
+                        *(parent + "/.wh..wh..opq" for parent in ancestors),
+                    ]
+                    if name in whiteouts or name in opaque:
+                        removed.add(relative)
+                    if name in ancestors:
+                        require(entry.isdir(), "preserved_base_ancestor_type")
+                    if name != target:
+                        continue
+                    require(
+                        name not in seen
+                        and entry.isfile()
+                        and entry.size <= 2 * 1024 * 1024,
+                        "preserved_base_entry",
+                    )
+                    seen.add(name)
+                    stream = layer.extractfile(entry)
+                    require(stream is not None, "preserved_base_stream")
+                    assert stream is not None
+                    content = stream.read(entry.size + 1)
+                    require(len(content) == entry.size, "preserved_base_size")
+                    layer_found[relative] = {
+                        "runtime_sha256": sha(content),
+                        "runtime_size": len(content),
+                    }
+        # OCI whiteouts affect lower layers, never entries written by this same
+        # layer. Tar member ordering must not change the effective bytes.
+        for relative in removed:
+            found.pop(relative, None)
+        found.update(layer_found)
+    expected = {
+        path: {
+            "runtime_sha256": value["runtime_sha256"],
+            "runtime_size": value["runtime_size"],
+        }
+        for path, value in PRESERVED_BASE_FILES.items()
+    }
+    require(found == expected, "preserved_base_bytes")
+    return found
+
+
 def build(
     repo: Path, base_archive: Path, output: Path, revision: str
 ) -> dict[str, Any]:
@@ -530,6 +611,17 @@ def build(
     old = git_files(repo, BASE_REVISION, "backend/app")
     new = git_files(repo, revision, "backend/app")
     require(set(old) <= set(new), "app_deletion")
+    for relative, preserved in PRESERVED_BASE_FILES.items():
+        path = "backend/app/" + relative
+        require(
+            path in old
+            and path in new
+            and old[path] == new[path]
+            and sha(old[path])
+            == preserved["base_git_sha256"]
+            == preserved["candidate_git_sha256"],
+            "preserved_file_git_changed",
+        )
     overlay = {key: body for key, body in new.items() if old.get(key) != body}
     require(overlay, "empty_app_overlay")
     hosts = {name: git(repo, "show", revision + ":" + name) for name in HOST_FILES}
@@ -553,6 +645,7 @@ def build(
         == BASE_REVISION,
         "base_identity",
     )
+    preserved_base_hashes(members, base_manifest)
     raw_stream = io.BytesIO()
     with tarfile.open(fileobj=raw_stream, mode="w", format=tarfile.PAX_FORMAT) as layer:
         for path, body in sorted(overlay.items()):
@@ -633,11 +726,24 @@ def build(
             key.removeprefix("backend/app/"): sha(body) for key, body in overlay.items()
         },
         "base_app_tree": {
-            key.removeprefix("backend/app/"): sha(body) for key, body in old.items()
+            **{
+                key.removeprefix("backend/app/"): sha(body) for key, body in old.items()
+            },
+            **{
+                path: item["runtime_sha256"]
+                for path, item in PRESERVED_BASE_FILES.items()
+            },
         },
         "candidate_app_tree": {
-            key.removeprefix("backend/app/"): sha(body) for key, body in new.items()
+            **{
+                key.removeprefix("backend/app/"): sha(body) for key, body in new.items()
+            },
+            **{
+                path: item["runtime_sha256"]
+                for path, item in PRESERVED_BASE_FILES.items()
+            },
         },
+        "preserved_base_files": copy.deepcopy(PRESERVED_BASE_FILES),
         "host_files": {key: sha(body) for key, body in hosts.items()},
         "immutable_runtime_tree": {
             key.removeprefix("backend/"): sha(body) for key, body in immutable.items()
@@ -705,6 +811,11 @@ def validate_bundle(path: Path, expected: str) -> dict[str, Any]:
         and value["base_layers"] == value["base_manifest"]["layers"],
         "bound_base_graph",
     )
+    require(
+        canonical(value.get("preserved_base_files")) == canonical(PRESERVED_BASE_FILES),
+        "preserved_base_contract",
+    )
+    preserved_base_hashes(members, value["base_manifest"])
     expected_config = copy.deepcopy(value["base_config"])
     expected_config["config"]["Labels"].update(
         {
@@ -746,6 +857,14 @@ def validate_bundle(path: Path, expected: str) -> dict[str, Any]:
             require(stream is not None, "overlay_stream")
             actual[relative] = sha(stream.read())  # type: ignore[union-attr]
     require(actual == value["files"], "overlay_files")
+    for relative, preserved in PRESERVED_BASE_FILES.items():
+        require(
+            relative not in actual
+            and value["base_app_tree"].get(relative)
+            == value["candidate_app_tree"].get(relative)
+            == preserved["runtime_sha256"],
+            "preserved_base_projection",
+        )
     require(
         {**value["base_app_tree"], **actual} == value["candidate_app_tree"],
         "full_app_projection",

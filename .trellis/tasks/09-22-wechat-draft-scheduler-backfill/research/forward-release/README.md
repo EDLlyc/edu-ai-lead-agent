@@ -12,11 +12,26 @@ production apply. Implementation/review tests use fake subprocesses only.
 
 ## Build after the reviewed commit exists
 
-The builder obtains application and four host-file bytes from Git blobs. The
+The builder obtains the reviewed application overlay and four host-file bytes
+from Git blobs, and preserves the immutable production base underneath. The
 running operator must itself equal the version in that commit. Dirty unrelated
 workspace files are not exported. The complete base-to-candidate app diff is
 hash-bound; dependencies, Dockerfile, Compose, migrations, and unrelated host
 changes are rejected.
+
+Exactly one pre-existing base/Git discrepancy is explicitly retained:
+`infrastructure/ai/zhipu.py`. The pinned production OCI's last effective copy is
+48,896 bytes with SHA-256
+`b9aa021414acc1dcb25068bac707c97da3b52cbd5fc5cb3195ed1a3174514cd9`;
+both baseline and candidate Git blobs must remain
+`3e63bf9d40131c3be51ee4351e8acec8832319f24ba5e5bfc9aab5e256f0345e`.
+This preserves an earlier offline release's live OCR integration rather than
+deploying an unrelated OCR change. The builder verifies the final bytes by
+reading the hash-verified base layers; this path cannot appear in the new layer.
+`preserved_base_files` records the exact exception in the manifest. The
+validator rejects missing/extra exceptions, altered hashes, changed Git bytes,
+or an application-tree projection using the repository OCR bytes. Every other
+file remains under the unchanged strict Git-overlay/full-image comparison.
 
 ```bash
 python3 -B .trellis/tasks/09-22-wechat-draft-scheduler-backfill/research/forward-release/forward_release.py build \

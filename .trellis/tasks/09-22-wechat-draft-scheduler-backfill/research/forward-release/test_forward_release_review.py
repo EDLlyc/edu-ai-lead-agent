@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import gzip
 import importlib.util
 import io
 import os
@@ -75,6 +76,7 @@ def test_failed_atomic_replace_preserves_original_and_cleans_temp(
     "name,key,value",
     [
         (".env", "uid", 0),
+        (".env", "gid", 1000),
         (".release.env", "uid", 1000),
         ("scripts/edu-ai-release-common.sh", "mode", 0o755),
         (".release-commit", "uid", False),
@@ -440,3 +442,98 @@ def test_actual_source_probe_argv_is_offline_and_detects_extra_files(
     (root / "escape.py").symlink_to(root / "a.py")
     with pytest.raises(RuntimeError, match="app_symlink"):
         m.Host().app_tree("fixture@sha256:" + "a" * 64)
+
+
+def preserved_layers(
+    monkeypatch: pytest.MonkeyPatch, layers: list[list[tuple[str, bytes]]]
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    content = b"frozen reviewed runtime"
+    monkeypatch.setattr(
+        m,
+        "PRESERVED_BASE_FILES",
+        {
+            "infrastructure/ai/zhipu.py": {
+                "runtime_sha256": m.sha(content),
+                "runtime_size": len(content),
+                "base_git_sha256": "a" * 64,
+                "candidate_git_sha256": "a" * 64,
+            }
+        },
+    )
+    members = {}
+    descriptors = []
+    for records in layers:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            for name, body in records:
+                entry = tarfile.TarInfo(name)
+                entry.size = len(body)
+                archive.addfile(entry, io.BytesIO(body))
+        body = gzip.compress(buffer.getvalue(), mtime=0)
+        descriptor = m.describe(body, m.OCI + "layer.v1.tar+gzip")
+        descriptors.append(descriptor)
+        members["blobs/sha256/" + descriptor["digest"][7:]] = body
+    return members, {"layers": descriptors}
+
+
+@pytest.mark.parametrize(
+    "whiteout",
+    [".wh..wh..opq", "app/app/.wh..wh..opq", "app/app/infrastructure/ai/.wh.zhipu.py"],
+)
+@pytest.mark.parametrize("whiteout_first", [True, False])
+def test_preserved_whiteouts_only_remove_lower_layers_not_same_layer_file(
+    monkeypatch: pytest.MonkeyPatch, whiteout: str, whiteout_first: bool
+) -> None:
+    target = "app/app/infrastructure/ai/zhipu.py"
+    records = [(whiteout, b""), (target, b"frozen reviewed runtime")]
+    if not whiteout_first:
+        records.reverse()
+    members, manifest = preserved_layers(
+        monkeypatch, [[(target, b"older code")], records]
+    )
+    assert m.preserved_base_hashes(members, manifest)["infrastructure/ai/zhipu.py"] == {
+        "runtime_sha256": m.sha(b"frozen reviewed runtime"),
+        "runtime_size": len(b"frozen reviewed runtime"),
+    }
+
+
+def test_root_opaque_removes_a_preserved_lower_layer_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    members, manifest = preserved_layers(
+        monkeypatch,
+        [
+            [("app/app/infrastructure/ai/zhipu.py", b"frozen reviewed runtime")],
+            [(".wh..wh..opq", b"")],
+        ],
+    )
+    with pytest.raises(RuntimeError, match="preserved_base_bytes"):
+        m.preserved_base_hashes(members, manifest)
+
+
+def test_repeated_dot_path_is_a_real_final_overlay_not_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    members, manifest = preserved_layers(
+        monkeypatch,
+        [
+            [("app/app/infrastructure/ai/zhipu.py", b"frozen reviewed runtime")],
+            [("././app/app/infrastructure/ai/zhipu.py", b"unexpected final code")],
+        ],
+    )
+    with pytest.raises(RuntimeError, match="preserved_base_bytes"):
+        m.preserved_base_hashes(members, manifest)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/app/app/infrastructure/ai/zhipu.py", "../app/app/infrastructure/ai/zhipu.py"],
+)
+def test_preserved_layer_refuses_unsafe_member_paths(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    members, manifest = preserved_layers(
+        monkeypatch, [[(path, b"frozen reviewed runtime")]]
+    )
+    with pytest.raises(RuntimeError, match="preserved_base_unsafe_path"):
+        m.preserved_base_hashes(members, manifest)

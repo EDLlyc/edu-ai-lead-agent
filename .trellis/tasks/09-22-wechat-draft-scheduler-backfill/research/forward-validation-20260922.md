@@ -49,3 +49,22 @@ rewrite old migrations, or relax failed assertions merely to claim a clean repos
 The final frozen-image smoke and production activation results will be
 recorded separately after completion. Test success does not prove a future live image provider
 request or WeChat draft acknowledgement has occurred.
+
+## Real-image baseline exception discovered before production mutation
+
+The first committed candidate `9a67bf8e7c88cd7827b8c57b133b616954caf783` built correctly but its
+local network-none smoke rejected `offline_smoke`. Exact path/hash comparison found just one
+pre-existing difference between the pinned `c98c...` base image and its nominal `abfb89d...`
+Git source: `app/infrastructure/ai/zhipu.py`. The image preserves the older deployed OCR
+integration; both base and candidate Git still contain the same newer OCR implementation.
+
+- Actual pinned-base file: SHA-256 `b9aa021414acc1dcb25068bac707c97da3b52cbd5fc5cb3195ed1a3174514cd9`, 48,896 bytes.
+- Base/candidate Git file: SHA-256 `3e63bf9d40131c3be51ee4351e8acec8832319f24ba5e5bfc9aab5e256f0345e`.
+- All other application path/hash entries and all immutable runtime inputs matched.
+- No server services or production configuration were changed; the failed candidate remains
+  local evidence, not a deployed release.
+
+The replacement builder must prove this exact one-file base-preservation contract from the
+validated OCI layers, require unchanged base/candidate Git bytes for that path, exclude it from
+the overlay, and explicitly record the exception. Any other mismatch stays fatal. Do not deploy
+the unrelated newer OCR implementation merely to make an overbroad Git-equality claim pass.

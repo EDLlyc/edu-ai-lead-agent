@@ -37,6 +37,23 @@ def candidate(
         "backend/app/old.py": b"old = False\n",
         "backend/app/new.py": b"fallback = True\n",
     }
+    preserved_path = "infrastructure/ai/zhipu.py"
+    repository_ocr = b"repository_ocr = True\n"
+    live_ocr = b"frozen_live_ocr = True\n"
+    base_app["backend/app/" + preserved_path] = repository_ocr
+    new_app["backend/app/" + preserved_path] = repository_ocr
+    monkeypatch.setattr(
+        m,
+        "PRESERVED_BASE_FILES",
+        {
+            preserved_path: {
+                "runtime_sha256": m.sha(live_ocr),
+                "runtime_size": len(live_ocr),
+                "base_git_sha256": m.sha(repository_ocr),
+                "candidate_git_sha256": m.sha(repository_ocr),
+            }
+        },
+    )
     compatibility = m.canonical(
         {"alembic_head": m.SCHEMA, "previous_application_compatible": False}
     )
@@ -47,6 +64,7 @@ def candidate(
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as layer:
         m.tar_member(layer, "app/app/old.py", base_app["backend/app/old.py"])
+        m.tar_member(layer, "app/app/" + preserved_path, live_ocr)
     raw = buffer.getvalue()
     zipped = gzip.compress(raw, mtime=0)
     config = {
@@ -142,7 +160,10 @@ def test_committed_complete_overlay_and_strict_graph(
     assert actual["candidate_app_tree"] == {
         "old.py": m.sha(b"old = False\n"),
         "new.py": m.sha(b"fallback = True\n"),
+        "infrastructure/ai/zhipu.py": m.sha(b"frozen_live_ocr = True\n"),
     }
+    assert actual["preserved_base_files"] == m.PRESERVED_BASE_FILES
+    assert "infrastructure/ai/zhipu.py" not in actual["files"]
     assert actual["schema"] == "20260916_0048"
     assert actual["migration_executed"] is False
     assert actual["standard_release_provenance"] == "incomplete"
@@ -321,6 +342,89 @@ def test_uncommitted_operator_is_rejected(
 def test_gzip_expansion_is_bounded() -> None:
     with pytest.raises(RuntimeError, match="gzip_expansion_limit"):
         m.bounded_gunzip(gzip.compress(b"x" * 500), limit=100)
+
+
+@pytest.mark.parametrize(
+    "change", ["hash", "extra_path", "git_projection", "size_type"]
+)
+def test_preserved_exception_contract_is_closed(
+    candidate: tuple[Path, dict[str, Any]], change: str
+) -> None:
+    output, value = candidate
+    path = "infrastructure/ai/zhipu.py"
+    if change == "hash":
+        value["preserved_base_files"][path]["runtime_sha256"] = "0" * 64
+    elif change == "extra_path":
+        value["preserved_base_files"]["unreviewed.py"] = dict(
+            value["preserved_base_files"][path]
+        )
+    elif change == "size_type":
+        value["preserved_base_files"][path]["runtime_size"] = float(
+            value["preserved_base_files"][path]["runtime_size"]
+        )
+    else:
+        value["base_app_tree"][path] = value["candidate_app_tree"][path] = value[
+            "preserved_base_files"
+        ][path]["base_git_sha256"]
+    (output / "candidate.json").write_bytes(m.canonical(value))
+    with pytest.raises(
+        RuntimeError, match="preserved_base_contract|preserved_base_projection"
+    ):
+        m.validate_bundle(output / "candidate.json", m.sha(m.canonical(value)))
+
+
+@pytest.mark.parametrize("change_base_too", [False, True])
+def test_preserved_path_cannot_be_changed_in_git(
+    candidate: tuple[Path, dict[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change_base_too: bool,
+) -> None:
+    original = m.git_files
+
+    def changed(repo: Path, revision: str, prefix: str) -> dict[str, bytes]:
+        files = original(repo, revision, prefix)
+        if prefix == "backend/app" and (change_base_too or revision != m.BASE_REVISION):
+            files["backend/app/infrastructure/ai/zhipu.py"] = b"new out of scope OCR"
+        return files
+
+    monkeypatch.setattr(m, "git_files", changed)
+    with pytest.raises(RuntimeError, match="preserved_file_git_changed"):
+        m.build(tmp_path, tmp_path / "base.tar.gz", tmp_path / "changed_ocr", "a" * 40)
+
+
+@pytest.mark.parametrize("last", ["correct", "wrong", "whiteout", "opaque"])
+def test_preserved_base_uses_last_effective_layer(
+    candidate: tuple[Path, dict[str, Any]], last: str
+) -> None:
+    members: dict[str, bytes] = {}
+    descriptors = []
+    path = "app/app/infrastructure/ai/zhipu.py"
+    entries = [(path, b"repository_ocr = True\n"), (path, b"frozen_live_ocr = True\n")]
+    if last == "wrong":
+        entries.append((path, b"unexpected final layer"))
+    elif last == "whiteout":
+        entries.append(("app/app/infrastructure/ai/.wh.zhipu.py", b""))
+    elif last == "opaque":
+        entries.append(("app/app/infrastructure/.wh..wh..opq", b""))
+    for name, body in entries:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as layer:
+            m.tar_member(layer, name, body)
+        zipped = gzip.compress(buffer.getvalue(), mtime=0)
+        desc = m.describe(zipped, m.OCI + "layer.v1.tar+gzip")
+        descriptors.append(desc)
+        members["blobs/sha256/" + desc["digest"][7:]] = zipped
+    if last == "correct":
+        assert m.preserved_base_hashes(members, {"layers": descriptors}) == {
+            "infrastructure/ai/zhipu.py": {
+                "runtime_sha256": m.sha(b"frozen_live_ocr = True\n"),
+                "runtime_size": len(b"frozen_live_ocr = True\n"),
+            }
+        }
+    else:
+        with pytest.raises(RuntimeError, match="preserved_base_bytes"):
+            m.preserved_base_hashes(members, {"layers": descriptors})
 
 
 def test_next_mwf_window() -> None:
