@@ -36,6 +36,7 @@ tests.
 | [Official-Account Weekly Three-Article Edition](./official-account-weekly-edition.md) | One weekly local batch containing independent official, industry, and application V2 handoffs with governed selection and deterministic aggregate integrity |
 | [Official-Account Weekly Three-Article DAG](./official-account-weekly-dag.md) | Static 16-node orchestration with development fixtures plus explicit production scheduling, frozen real inputs, durable recovery, and prepared draft-only handoff |
 | [M/W/F Single Draft Editions](./official-account-single-edition.md) | Prospective date-scoped single drafts, history-aware ownership, exclusive legacy routing and intent/ACK recovery |
+| [Single-Draft Catalog Fallback](./official-account-catalog-fallback.md) | V4-only three-attempt failure proof, whole-set frozen brand material, independently validated prepared children and read-only status |
 | [Official Account Image Recovery](./official-account-image-recovery.md) | Safe image diagnostics, proved non-applied retries and explicit one-time compensated image generation |
 | [Weekly Production Source Preflight](./weekly-production-source-preflight.md) | Complete pre-selection material validation, deterministic terminal input errors, and audited sibling-preserving recovery |
 | [WeChat Official Account Draft Adapter](./wechat-official-account-drafts.md) | Default-disabled adapter plus durable three-role worker for legacy and prepared weekly inputs, without publish/send semantics |

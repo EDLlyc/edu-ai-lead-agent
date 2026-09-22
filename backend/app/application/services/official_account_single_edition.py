@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -17,6 +17,8 @@ from app.application.services.official_account_weekly_production import (
     WeeklyProductionPreparedArtifacts,
 )
 from app.core.errors import ConflictError, NotFoundError
+from app.domain.official_account_visual_pipeline import TOLERANT_VISUAL_PIPELINE_VERSION
+from app.domain.official_account_weekly_dag import WeeklyDagArtifact
 from app.domain.official_account_weekly_edition import WeeklyArticleRole
 
 
@@ -58,11 +60,14 @@ class SingleEditionProducer:
         checkpoints: WeeklyProductionCheckpointOwner,
         account: str,
         clock: Callable[[], datetime] | None = None,
+        fallback_builder: Callable[[SingleEdition, datetime], Awaitable[WeeklyDagArtifact]]
+        | None = None,
     ) -> None:
         self.repository, self.planner = repository, planner
         self.articles, self.artifacts, self.checkpoints = article_repository, artifacts, checkpoints
         self.account = account
         self.clock = clock or (lambda: datetime.now(UTC))
+        self.fallback_builder = fallback_builder
 
     async def process_once(self) -> bool:
         now = self.clock()
@@ -122,6 +127,15 @@ class SingleEditionProducer:
                 if run.status == "ready":
                     edition = replace(edition, status="preparing", error_code=None)
                 elif run.status in {"review_required", "failed", "result_unknown"}:
+                    if (
+                        run.status in {"failed", "result_unknown"}
+                        and edition.identity.visual_pipeline_version
+                        == TOLERANT_VISUAL_PIPELINE_VERSION
+                        and self.fallback_builder is not None
+                    ):
+                        artifact = await self.fallback_builder(edition, self.clock())
+                        await self._complete_preparation(edition, artifact)
+                        return True
                     edition = replace(
                         edition,
                         status="outcome_unknown" if run.status == "result_unknown" else "failed",
@@ -138,22 +152,7 @@ class SingleEditionProducer:
                 artifact = await self.artifacts.build_child(
                     run_id=edition.article_run_id, role=role
                 )
-                prepared = self.artifacts.validate_child(artifact, role=role)
-                edition = replace(
-                    edition,
-                    prepared_artifact=artifact,
-                    article_fingerprint=prepared.article_fingerprint,
-                    content_fingerprint=prepared.content_fingerprint,
-                )
-                if not await self.repository.reserve_article(edition, now=self.clock()):
-                    edition = replace(
-                        edition, status="failed", error_code="single_article_already_owned"
-                    )
-                else:
-                    edition = replace(
-                        edition, status="ready", available_at=edition.deliver_at, error_code=None
-                    )
-                await self.repository.save(edition, now=self.clock())
+                await self._complete_preparation(edition, artifact)
                 return True
             raise ValueError("single producer state invalid")
         except (ConflictError, NotFoundError, ValueError):
@@ -180,3 +179,24 @@ class SingleEditionProducer:
                 now=self.clock(),
             )
             return True
+
+    async def _complete_preparation(
+        self, edition: SingleEdition, artifact: WeeklyDagArtifact
+    ) -> None:
+        assert edition.role is not None
+        if self.clock() >= edition.expires_at:
+            raise ValueError("single_preparation_window_expired")
+        prepared = self.artifacts.validate_child(artifact, role=WeeklyArticleRole(edition.role))
+        edition = replace(
+            edition,
+            prepared_artifact=artifact,
+            article_fingerprint=prepared.article_fingerprint,
+            content_fingerprint=prepared.content_fingerprint,
+        )
+        if not await self.repository.reserve_article(edition, now=self.clock()):
+            edition = replace(edition, status="failed", error_code="single_article_already_owned")
+        else:
+            edition = replace(
+                edition, status="ready", available_at=edition.deliver_at, error_code=None
+            )
+        await self.repository.save(edition, now=self.clock())

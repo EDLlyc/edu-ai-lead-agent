@@ -65,6 +65,9 @@ def _parser() -> argparse.ArgumentParser:
         help="production mode reuses persisted Zhipu article runs and prepared draft artifacts",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser(
+        "single-status", help="read-only single edition state; no provider clients"
+    )
 
     enqueue = subparsers.add_parser("enqueue")
     enqueue.add_argument("--week-start", type=date.fromisoformat, required=True)
@@ -96,6 +99,20 @@ def _parser() -> argparse.ArgumentParser:
 
 async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
+    if args.command == "single-status":
+        from app.infrastructure.db.official_account_single_status import single_edition_status
+
+        status_engine = create_engine(settings)
+        try:
+            result = await single_edition_status(
+                create_session_factory(status_engine),
+                settings,
+                now=datetime.now(UTC),
+            )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
+        finally:
+            await status_engine.dispose()
     if settings.official_account_single_enabled and args.command != "status":
         if args.command != "worker":
             raise ValueError("single mode forbids legacy weekly admission/replay")

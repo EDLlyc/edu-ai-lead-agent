@@ -512,7 +512,7 @@ class PostgresStrictVisualRepositoryMixin:
                         )
                     if (
                         proof is None
-                        or not resilient_visual_failure_retries(proof)
+                        or not resilient_visual_failure_retries(proof, policy=policy)
                         or datetime.now(UTC) >= expires_at
                     ):
                         await session.commit()

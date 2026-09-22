@@ -567,10 +567,15 @@ def load_prepared_draft_child(
     max_image_bytes: int,
 ) -> WeChatPreparedDraft:
     """Read-only single-child consumer: same canonical checks, no repository/resolver."""
+    fallback_type = "application/vnd.wechat.approved-catalog-fallback-child+directory"
     fingerprint = _artifact_fingerprint(
         artifact,
         ref_version=PREPARED_DRAFT_CHILD_REF_VERSION,
-        media_type="application/vnd.wechat.prepared-draft-child+directory",
+        media_type=(
+            fallback_type
+            if artifact.media_type == fallback_type
+            else "application/vnd.wechat.prepared-draft-child+directory"
+        ),
     )
     target = work_root / "children" / f"wechat-draft-prepared-child-{fingerprint}"
     if _directory_size(target) != artifact.byte_size:
@@ -578,6 +583,10 @@ def load_prepared_draft_child(
     prepared = WeChatOfficialAccountDraftPreparer(max_image_bytes=max_image_bytes).prepare(
         WeChatDraftLocalSource(directory=target, role=role.value)
     )
+    if (artifact.media_type == fallback_type) != (
+        prepared.visual_origin == "approved_catalog_fallback"
+    ):
+        raise ValueError("prepared draft fallback origin changed")
     manifest = _json_object((target / "prepared-manifest.json").read_bytes())
     if manifest.get("child_fingerprint") != fingerprint:
         raise ValueError("prepared draft child fingerprint changed")

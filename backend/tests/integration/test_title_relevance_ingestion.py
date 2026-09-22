@@ -41,9 +41,7 @@ from .conftest import IntegrationContext
 FIXTURE_EVALUATED_AT = datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
 XINHUA_EVALUATED_AT = datetime(2026, 8, 20, 1, 0, tzinfo=UTC)
 XINHUA_FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources" / "xinhua_tech_v1"
-GOV_YAOWEN_FIXTURE_ROOT = (
-    Path(__file__).parents[1] / "fixtures" / "sources" / "gov_cn_yaowen_v1"
-)
+GOV_YAOWEN_FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "sources" / "gov_cn_yaowen_v1"
 
 
 def fixture_clock() -> datetime:
@@ -277,9 +275,7 @@ async def test_government_yaowen_persists_only_the_qualified_hard_tech_item(
     assert job.filtered_count == 1
     assert [candidate.source_item_id for candidate in candidates] == ["content_7079251.htm"]
     target = candidates[0]
-    assert target.original_url == (
-        "https://www.gov.cn/yaowen/liebiao/202608/content_7079251.htm"
-    )
+    assert target.original_url == ("https://www.gov.cn/yaowen/liebiao/202608/content_7079251.htm")
     assert target.relevance_rule_version == SCIENCE_TECH_EDITORIAL_RULE_VERSION
     assert target.extraction_metadata["editorial_cohort"] == "frontier_science_technology"
     assert target.extraction_metadata["editorial_priority_score"] == pytest.approx(0.86)

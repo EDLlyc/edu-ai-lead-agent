@@ -16,6 +16,32 @@ from .conftest import IntegrationContext
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
+async def test_current_head_keeps_v5_forward_only_guard(integration_context):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import text
+
+    revision = ScriptDirectory.from_config(Config("backend/alembic.ini")).get_revision(
+        "20260909_0045"
+    )
+
+    def downgrade(connection):
+        with Operations.context(MigrationContext.configure(connection)):
+            revision.module.downgrade()
+
+    with pytest.raises(RuntimeError, match="frozen V5 weekly filesystem inputs"):
+        async with integration_context.engine.begin() as connection:
+            await connection.run_sync(downgrade)
+    async with integration_context.engine.connect() as connection:
+        assert (
+            await connection.scalar(text("SELECT version_num FROM alembic_version"))
+            == "20260916_0048"
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
 async def test_governance_migration_downgrades_without_touching_acquisition(
     integration_context: IntegrationContext,
 ) -> None:
@@ -33,7 +59,9 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
     get_settings.cache_clear()
     try:
         config = Config("backend/alembic.ini")
-        await asyncio.to_thread(command.upgrade, config, "head")
+        # Historical governance reversibility ends before V5's forward-only
+        # filesystem contract. Current-head refusal is tested independently below.
+        await asyncio.to_thread(command.upgrade, config, "20260907_0043")
         populated = await asyncpg.connect(
             make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
         )
@@ -137,7 +165,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
         assert revision_at_previous_head == "20260814_0020"
         assert preserved_slot == 1
         assert preserved_governance == 1
-        await asyncio.to_thread(command.upgrade, config, "head")
+        await asyncio.to_thread(command.upgrade, config, "20260907_0043")
         populated = await asyncpg.connect(
             make_url(test_url).set(drivername="postgresql").render_as_string(hide_password=False)
         )
@@ -179,7 +207,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             )
         finally:
             await populated.close()
-        assert revision_after_slot_refusal == "20260914_0047"
+        assert revision_after_slot_refusal == "20260907_0043"
         with pytest.raises(RuntimeError, match="governance or checkpoint data exists"):
             await asyncio.to_thread(command.downgrade, config, "20260729_0003")
         populated = await asyncpg.connect(
@@ -192,7 +220,7 @@ async def test_governance_migration_downgrades_without_touching_acquisition(
             await populated.execute("DELETE FROM governance_runs")
         finally:
             await populated.close()
-        assert revision_after_refusal == "20260914_0047"
+        assert revision_after_refusal == "20260907_0043"
         await asyncio.to_thread(command.downgrade, config, "20260729_0003")
 
         downgraded_url = make_url(test_url)

@@ -283,7 +283,9 @@ async def execute_strict_visuals(
                         physical_attempt_number=claim.physical_attempt_number,
                     ):
                         return None
-                    retry_allowed = resilient and resilient_visual_failure_retries(diagnostic)
+                    retry_allowed = resilient and resilient_visual_failure_retries(
+                        diagnostic, policy=visual_policy
+                    )
                     if (
                         retry_allowed
                         and claim.physical_attempt_number is not None
@@ -330,7 +332,9 @@ async def execute_strict_visuals(
                         physical_attempt_number=claim.physical_attempt_number,
                     ):
                         return None
-                    retry_allowed = resilient and resilient_visual_failure_retries(diagnostic)
+                    retry_allowed = resilient and resilient_visual_failure_retries(
+                        diagnostic, policy=visual_policy
+                    )
                     if (
                         retry_allowed
                         and claim.physical_attempt_number is not None

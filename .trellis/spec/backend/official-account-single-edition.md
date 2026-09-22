@@ -81,7 +81,8 @@ single selection and excluded events; use isolated PostgreSQL for date/event rac
 leases, history import and populated-downgrade refusal. Exercise prepared-child
 validation and intent/ACK crash recovery with fake clients, not live model/WeChat
 calls. Validate compose routing, migration metadata and production health checks
-against the same `0047` head. Retain legacy weekly and source/layout regressions.
+against the same `20260916_0048` head (the initial single tables were introduced at `0047`).
+Retain legacy weekly and source/layout regressions.
 
 ## 7. Deployment and recovery boundary
 
@@ -94,6 +95,12 @@ before the activation date. Check these separately from container health.
 Once migration may have run, do not automatically restore the old image, downgrade
 Alembic or restore the database. Imported history alone can establish the new
 ownership boundary. Recovery uses compatible candidate core with **both** old and
-new optional admission/consumption disabled. If schema is not verified at `0047`,
+new optional admission/consumption disabled. If schema is not verified at `20260916_0048`,
 leave writers stopped and require a forward fix. Standard release metadata gaps
 remain explicit; an offline activation is not proof of a bootstrapped pipeline.
+
+The September 22 forward release uses the already installed `0048` schema. It must not rerun
+migration, source seeds, or historical admission. Reviewed application incompatibility overrides
+same-head rollback eligibility because the new V4/catalog prepared contracts are durable state.
+The runtime checker preserves expired lease-free unknown history as a separate degraded count;
+current unknowns and stale leases remain failures. Neither classification authorizes replay.

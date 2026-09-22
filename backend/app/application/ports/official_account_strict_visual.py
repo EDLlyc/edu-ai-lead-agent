@@ -61,8 +61,18 @@ def resilient_visual_attempt_ordinal(slot_ordinal: int, physical_attempt_number:
     )
 
 
-def resilient_visual_failure_retries(diagnostic: ImageGenerationFailure) -> bool:
+def resilient_visual_failure_retries(
+    diagnostic: ImageGenerationFailure,
+    *,
+    policy: object = RESILIENT_VISUAL_PIPELINE_VERSION,
+) -> bool:
     """V3 retries provider/output ambiguity, never local/configuration/identity failures."""
+    if (
+        policy == TOLERANT_VISUAL_PIPELINE_VERSION
+        and diagnostic.error_code == "image_output_invalid"
+    ):
+        # Tolerant geometry never turns corrupt/un-decodable images into paid retries.
+        return diagnostic.reason == "image_dimensions_invalid"
     return diagnostic.reason != "lease_authority_lost" and diagnostic.error_code not in {
         "provider_authentication_failed",
         "provider_input_limit",

@@ -54,9 +54,7 @@ OFFICIAL_ACCOUNT_RULE_V1_VERSION = "official-account-rules-v1"
 OFFICIAL_ACCOUNT_RULE_V2_VERSION = "official-account-rules-v2"
 OFFICIAL_ACCOUNT_RULE_V3_VERSION = "official-account-rules-v3-parent-field-guide"
 OFFICIAL_ACCOUNT_RULE_VERSION = "official-account-rules-v4-reader-copy"
-OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION = (
-    "official-account-rules-v5-editorial-advisory"
-)
+OFFICIAL_ACCOUNT_RELAXED_EDITORIAL_RULE_VERSION = "official-account-rules-v5-editorial-advisory"
 OFFICIAL_ACCOUNT_RENDERER_V1_VERSION = "wechat-html-renderer-v1"
 OFFICIAL_ACCOUNT_STYLE_V1_VERSION = "wechat-inline-style-v1"
 OFFICIAL_ACCOUNT_TEMPLATE_V1_VERSION = "wechat-fragment-template-v1"

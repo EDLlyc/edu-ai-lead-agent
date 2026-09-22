@@ -23,8 +23,10 @@ from app.domain.topic_selection import (
 from app.infrastructure.db.session import create_engine, create_session_factory
 from app.infrastructure.db.topic_selection import PostgresTopicSelectionRepository
 
-LOCAL_EXACT_TARGET_PROFILE = "local_exact_target"
-LOCAL_EXACT_TARGET_RULE_VERSION = "local-exact-target-selection-v1"
+LOCAL_EXACT_TARGET_PROFILE: Literal["local_exact_target"] = "local_exact_target"
+LOCAL_EXACT_TARGET_RULE_VERSION: Literal["local-exact-target-selection-v1"] = (
+    "local-exact-target-selection-v1"
+)
 LOCAL_EXACT_TARGET_THRESHOLD = 0.0
 LOCAL_EXACT_TARGET_BOUNDARY = "LOCAL ONLY · exact governed target · not published"
 

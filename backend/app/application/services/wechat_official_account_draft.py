@@ -36,6 +36,11 @@ from app.application.ports.wechat_official_account import (
     WeChatMpInvalidResponseError,
     WeChatOfficialAccountDraftClient,
 )
+from app.application.services.official_account_catalog_fallback import (
+    CATALOG_FALLBACK_CHILD_VERSION,
+    CATALOG_FALLBACK_ORIGIN,
+    validate_catalog_fallback_projection,
+)
 from app.application.services.official_account_strict_prepared import (
     NATIVE_PREPARED_CHILD_VERSIONS,
     validate_strict_prepared_projection,
@@ -114,6 +119,7 @@ class WeChatPreparedDraft:
     need_open_comment: bool
     only_fans_can_comment: bool
     visual_pipeline_version: str | None = None
+    visual_origin: str | None = None
 
 
 class WeChatOfficialAccountDraftPreparer:
@@ -380,7 +386,8 @@ def _prepare_persisted_draft_source(
     if not manifest_body or len(manifest_body) > 256 * 1024:
         raise ValueError("prepared draft manifest size is invalid")
     manifest = _json_object(manifest_body)
-    strict = manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
+    fallback = manifest.get("version") == CATALOG_FALLBACK_CHILD_VERSION
+    strict = manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS or fallback
     if strict:
         lexical = source.directory.expanduser().absolute()
         if any(path.is_symlink() for path in (lexical, *lexical.parents)):
@@ -392,7 +399,12 @@ def _prepare_persisted_draft_source(
         ):
             raise ValueError("strict prepared directory set changed")
     if (
-        manifest.get("version") not in {_PREPARED_CHILD_VERSION, *NATIVE_PREPARED_CHILD_VERSIONS}
+        manifest.get("version")
+        not in {
+            _PREPARED_CHILD_VERSION,
+            *NATIVE_PREPARED_CHILD_VERSIONS,
+            CATALOG_FALLBACK_CHILD_VERSION,
+        }
         or manifest.get("role") != source.role
         or manifest.get("published") is not False
         or manifest.get("draft_only") is not True
@@ -408,7 +420,9 @@ def _prepare_persisted_draft_source(
         if strict and _has_v5_footer(manifest)
         else 0
     )
-    if strict and not 7 + framing_extra <= len(projections) <= 11 + framing_extra:
+    if fallback and not 14 <= len(projections) <= 18:
+        raise ValueError("fallback prepared file count is invalid")
+    if strict and not fallback and not 7 + framing_extra <= len(projections) <= 11 + framing_extra:
         raise ValueError("strict prepared file count is invalid")
     files: dict[str, bytes] = {}
     projected_paths: set[str] = set()
@@ -472,8 +486,9 @@ def _prepare_persisted_draft_source(
         maximum=WECHAT_MP_MAX_DRAFT_DIGEST_CHARACTERS,
     )
     body_html = files["article-body.html"].decode("utf-8")
-    strict = manifest.get("version") in NATIVE_PREPARED_CHILD_VERSIONS
-    if strict:
+    if fallback:
+        validate_catalog_fallback_projection(manifest, files)
+    elif strict:
         validate_strict_prepared_projection(manifest, files)
     _validate_draft_html_size(body_html)
     parser = _DraftHtmlValidator(
@@ -526,6 +541,7 @@ def _prepare_persisted_draft_source(
         need_open_comment=source.need_open_comment,
         only_fans_can_comment=source.only_fans_can_comment,
         visual_pipeline_version=str(manifest["visual_pipeline_version"]) if strict else None,
+        visual_origin=CATALOG_FALLBACK_ORIGIN if fallback else None,
     )
 
 
@@ -617,8 +633,22 @@ def _prepare_media(
             preserve_upload_bytes
             and raw.get("ordinal") == 0
             and (
-                (role == "header" and _has_v5_framing(manifest) and path == CHENGYUE_HEADER_PATH)
-                or (role == "footer" and _has_v5_footer(manifest) and path in XIAOSAI_FOOTER_PATHS)
+                (
+                    role == "header"
+                    and (
+                        _has_v5_framing(manifest)
+                        or manifest.get("version") == CATALOG_FALLBACK_CHILD_VERSION
+                    )
+                    and path == CHENGYUE_HEADER_PATH
+                )
+                or (
+                    role == "footer"
+                    and (
+                        _has_v5_footer(manifest)
+                        or manifest.get("version") == CATALOG_FALLBACK_CHILD_VERSION
+                    )
+                    and path in XIAOSAI_FOOTER_PATHS
+                )
             )
         ):
             raise ValueError("media role is invalid")
@@ -659,7 +689,13 @@ def _prepare_media(
             if role == "cover":
                 if (
                     media_type != "image/jpeg"
-                    or (width, height) != (1175, 500)
+                    or (
+                        (width, height) != (1175, 500)
+                        and not (
+                            manifest.get("version") == CATALOG_FALLBACK_CHILD_VERSION
+                            and width * 20 == height * 47
+                        )
+                    )
                     or len(body) > WECHAT_MP_MAX_THUMB_BYTES
                 ):
                     raise ValueError("strict upload thumb identity is invalid")

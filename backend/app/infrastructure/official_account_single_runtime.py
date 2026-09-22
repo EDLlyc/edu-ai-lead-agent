@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -74,14 +75,19 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
                     return 0
                 await _wait(stop, 30)
         elif plane == "producer":
+            from app.application.ports.official_account_single_edition import SingleEdition
             from app.application.services.official_account_single_edition import (
                 SingleEditionProducer,
             )
+            from app.domain.official_account_weekly_dag import WeeklyDagArtifact
             from app.infrastructure.db.official_account_local import (
                 PostgresOfficialAccountRepository,
             )
             from app.infrastructure.db.official_account_weekly_production import (
                 PostgresWeeklyProductionInputPlanner,
+            )
+            from app.infrastructure.official_account_catalog import (
+                LocalOfficialAccountCatalogMediaProvider,
             )
             from app.infrastructure.official_account_media import OfficialAccountLocalMediaResolver
             from app.infrastructure.official_account_weekly_production import (
@@ -89,8 +95,8 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
             )
             from app.infrastructure.storage.minio_image_store import MinioImageStore
             from app.infrastructure.storage.minio_snapshot_store import MinioSnapshotStore
-            from app.infrastructure.wechat_official_account.prepared_artifacts import (
-                PreparedWeeklyDraftArtifactOwner,
+            from app.infrastructure.wechat_official_account.catalog_fallback_artifacts import (
+                PreparedSingleDraftArtifactOwner,
             )
 
             if (
@@ -99,21 +105,38 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
             ):
                 raise ValueError("single producer requires the persisted article worker")
             root = Path(settings.official_account_weekly_artifact_root)
+            artifacts = PreparedSingleDraftArtifactOwner(
+                session_factory=sessions,
+                resolver=OfficialAccountLocalMediaResolver(
+                    image_asset_manifest=settings.image_asset_manifest,
+                    image_store=MinioImageStore(settings),
+                    snapshot_store=MinioSnapshotStore(settings),
+                ),
+                work_root=root / "prepared",
+                inbox_root=Path(settings.wechat_mp_draft_weekly_inbox_root),
+                max_image_bytes=settings.wechat_mp_max_image_bytes,
+            )
+
+            async def fallback(edition: SingleEdition, now: datetime) -> WeeklyDagArtifact:
+                if settings.image_asset_manifest is None:
+                    raise ValueError("single_catalog_fallback_catalog_unconfigured")
+                artifact = await artifacts.build_fallback_child(
+                    edition=edition,
+                    now=now,
+                    catalog=LocalOfficialAccountCatalogMediaProvider(settings.image_asset_manifest),
+                )
+                if not await repository.heartbeat(
+                    edition, now=datetime.now(UTC), lease_seconds=900
+                ):
+                    raise ValueError("single_catalog_fallback_lease_lost")
+                return artifact
+
             producer = SingleEditionProducer(
                 repository=repository,
                 planner=PostgresWeeklyProductionInputPlanner(sessions),
                 article_repository=PostgresOfficialAccountRepository(sessions),
-                artifacts=PreparedWeeklyDraftArtifactOwner(
-                    session_factory=sessions,
-                    resolver=OfficialAccountLocalMediaResolver(
-                        image_asset_manifest=settings.image_asset_manifest,
-                        image_store=MinioImageStore(settings),
-                        snapshot_store=MinioSnapshotStore(settings),
-                    ),
-                    work_root=root / "prepared",
-                    inbox_root=Path(settings.wechat_mp_draft_weekly_inbox_root),
-                    max_image_bytes=settings.wechat_mp_max_image_bytes,
-                ),
+                artifacts=artifacts,
+                fallback_builder=fallback,
                 checkpoints=LocalWeeklyProductionArtifactOwner(root),
                 account=account,
             )
@@ -163,8 +186,6 @@ async def run_single_runtime(settings: Settings, *, plane: str, once: bool = Fal
                         )
                         if edition is not None:
                             if not await repository.reserve_article(edition, now=datetime.now(UTC)):
-                                from dataclasses import replace
-
                                 await repository.save(
                                     replace(
                                         edition,

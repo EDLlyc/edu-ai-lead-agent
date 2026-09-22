@@ -245,7 +245,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260914_0047"
+    assert revision == "20260916_0048"
     assert isinstance(columns["ip_asset_generation_jobs"]["prompt"]["type"], Text)
     assert {
         "sources",
@@ -547,14 +547,9 @@ async def test_clean_database_is_at_alembic_head(
         "media_role" in str(item["sqltext"]) and "body" in str(item["sqltext"])
         for item in official_account_body_checks.values()
     )
-    body_checksum_index = official_account_media_indexes[
-        "uq_official_account_local_media_body_checksum"
-    ]
-    assert body_checksum_index["unique"] is True
-    assert body_checksum_index["column_names"] == ["run_id", "sha256"]
-    body_checksum_predicate = str(body_checksum_index["dialect_options"]["postgresql_where"])
-    assert "role" in body_checksum_predicate
-    assert "body" in body_checksum_predicate
+    # 0048 permits advisory V3/V4 duplicate body bytes; strict legacy policy is
+    # still enforced at the repository boundary rather than by this global index.
+    assert "uq_official_account_local_media_body_checksum" not in official_account_media_indexes
     assert (
         official_account_review_foreign_keys["fk_official_account_manual_reviews_run_id"][
             "referred_table"
