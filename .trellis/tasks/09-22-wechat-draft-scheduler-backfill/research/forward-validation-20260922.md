@@ -115,6 +115,23 @@ checks. An independent real-host read-only execution of the exact cohort and
 exclusion SQL returned count=eligible=5, the fixed hash, and zero remaining
 active/unknown Article runs. No apply or quiescence occurred during these checks.
 
+## Terminal draft-job state preflight
+
+The following full capture stopped at `pending_work`, still before baseline or
+activation. All 14 queue/run tables were then aggregated read-only. The only
+remaining falsely classified pending group was two `wechat_mp_draft_jobs.ready`
+rows from September 7–8, with empty leases and no later changes. In that
+repository, `ready` is the successful terminal state set by `_finish_job_ready`;
+only `queued`, `retryable_failed`, or expired `running` jobs are claimable.
+Fix the pending query for this table's actual state machine, preserving unknown
+and lease checks and full-table fingerprints. Explicitly reject `retryable_failed`
+instead of omitting it from the generic pending vocabulary. Do not clear or replay
+successful drafts. The measured ready cohort hash is
+`875748c456419e1e517711dce3ecc1194ff031b6f0e9dafb30c6031b6ef2b1a4`.
+No other active/pending states were found beyond the already frozen seven old
+preview copy jobs. Deployment and backup locks are root-owned `0600`, the backup
+root is `0700`, and the backup timer is active.
+
 ## Historical task closure limitation
 
 The initial exact-target backfill has five unit and two fake-repository integration

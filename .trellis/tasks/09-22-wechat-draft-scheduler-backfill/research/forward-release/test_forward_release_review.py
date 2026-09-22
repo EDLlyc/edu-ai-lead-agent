@@ -709,3 +709,65 @@ def test_other_table_unknown_remains_fatal(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(host, "scalar", scalar)
     with pytest.raises(RuntimeError, match="active_or_unknown_work"):
         host.idle()
+
+
+@pytest.mark.parametrize(
+    "status,allowed",
+    [
+        ("ready", True),
+        ("terminal_failed", True),
+        ("queued", False),
+        ("retryable_failed", False),
+        ("running", False),
+        ("partial", False),
+        ("outcome_unknown", False),
+    ],
+)
+def test_wechat_ready_is_terminal_but_real_unfinished_states_block(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    allowed: bool,
+) -> None:
+    host = m.Host()
+    queries = []
+
+    def scalar(sql: str) -> str:
+        queries.append(sql)
+        if "pg_tables" in sql:
+            return "wechat_mp_draft_jobs"
+        if " q WHERE " in sql:
+            assert "v->>'status'='running'" in sql
+            assert "'outcome_unknown','delivery_unknown','result_unknown'" in sql
+            assert "v->>'lease_expires_at' IS NOT NULL" in sql
+            return "1" if status in {"running", "outcome_unknown"} else "0"
+        assert "WHERE to_jsonb(t)->>'status' IN (" in sql
+        states = sql.split(" IN (", 1)[1].rstrip(")").replace("'", "").split(",")
+        assert "ready" not in states
+        assert {"queued", "retryable_failed", "partial"} <= set(states)
+        return "1" if status in states else "0"
+
+    monkeypatch.setattr(host, "scalar", scalar)
+    if allowed:
+        host.idle()
+        assert len(queries) == 3
+    else:
+        with pytest.raises(RuntimeError, match="pending_work|active_or_unknown_work"):
+            host.idle()
+
+
+def test_ready_still_blocks_single_edition_delivery_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = m.Host()
+
+    def scalar(sql: str) -> str:
+        if "pg_tables" in sql:
+            return "official_account_single_editions"
+        if " q WHERE " in sql:
+            return "0"
+        assert "'ready'" in sql and "'retryable_failed'" in sql
+        return "1"
+
+    monkeypatch.setattr(host, "scalar", scalar)
+    with pytest.raises(RuntimeError, match="pending_work"):
+        host.idle()

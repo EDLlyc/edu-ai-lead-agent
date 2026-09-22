@@ -1273,21 +1273,43 @@ class Host:
             else:
                 exclusion = ""
             # No pending work, including future entries, may be activated during this narrow release.
-            pending = self.scalar(
-                "SELECT count(*) FROM " + table + " t WHERE to_jsonb(t)->>'status' IN "
-                "('queued','pending','retry_scheduled','admitted','generating','preparing','ready','delivering','partial')"
-                + exclusion
+            pending_statuses: tuple[str, ...] = (
+                "queued",
+                "pending",
+                "retry_scheduled",
+                "retryable_failed",
+                "admitted",
+                "generating",
+                "preparing",
+                "ready",
+                "delivering",
+                "partial",
             )
+            # For WeChat jobs, _finish_job_ready is successful completion, not
+            # waiting-to-send. Its claimable states are queued/retryable_failed.
+            if table == "wechat_mp_draft_jobs":
+                pending_statuses = tuple(
+                    value for value in pending_statuses if value != "ready"
+                )
             # Ready article_runs are immutable content, not a runnable job queue.
             if table in (
                 "official_account_article_runs",
                 "official_account_weekly_dag_runs",
             ):
-                pending = self.scalar(
-                    "SELECT count(*) FROM "
-                    + table
-                    + " t WHERE to_jsonb(t)->>'status' IN ('queued','running','retry_scheduled')"
+                pending_statuses = (
+                    "queued",
+                    "running",
+                    "retry_scheduled",
+                    "retryable_failed",
                 )
+            pending = self.scalar(
+                "SELECT count(*) FROM "
+                + table
+                + " t WHERE to_jsonb(t)->>'status' IN ("
+                + ",".join("'" + value + "'" for value in pending_statuses)
+                + ")"
+                + exclusion
+            )
             require(pending == "0", "pending_work")
 
     def capture(self, manifest: dict[str, Any]) -> dict[str, Any]:
