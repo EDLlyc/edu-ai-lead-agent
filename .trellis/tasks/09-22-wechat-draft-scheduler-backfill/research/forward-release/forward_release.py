@@ -70,12 +70,16 @@ PROTECTED_FILES = (
     *HOST_FILES,
 )
 PROTECTED_METADATA = {
-    name: {
-        "mode": 0o700 if name.endswith(".sh") else 0o600,
-        "uid": 1000 if name == ".env" else 0,
-        "gid": 1001 if name == ".env" else 0,
-    }
-    for name in PROTECTED_FILES
+    ".env": {"mode": 0o600, "uid": 1000, "gid": 1001},
+    ".release.env": {"mode": 0o600, "uid": 0, "gid": 0},
+    ".release-commit": {"mode": 0o600, "uid": 0, "gid": 0},
+    "RELEASE_COMMIT": {"mode": 0o600, "uid": 0, "gid": 0},
+    "compose.yaml": {"mode": 0o600, "uid": 0, "gid": 0},
+    "scripts/edu-ai-release-common.sh": {"mode": 0o700, "uid": 0, "gid": 0},
+    "deploy/release/migration-compatibility.json": {"mode": 0o644, "uid": 0, "gid": 0},
+    "deploy/release/deploy.py": {"mode": 0o600, "uid": 0, "gid": 0},
+    "scripts/edu-ai-production-check.sh": {"mode": 0o700, "uid": 0, "gid": 0},
+    "scripts/doctor.sh": {"mode": 0o755, "uid": 0, "gid": 0},
 }
 SERVICES = (
     "acquisition-api",

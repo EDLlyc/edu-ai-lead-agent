@@ -22,6 +22,19 @@ assert SPEC and SPEC.loader
 m = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(m)
 
+CAPTURED_FILE_METADATA = {
+    ".env": {"mode": 0o600, "uid": 1000, "gid": 1001},
+    ".release.env": {"mode": 0o600, "uid": 0, "gid": 0},
+    ".release-commit": {"mode": 0o600, "uid": 0, "gid": 0},
+    "RELEASE_COMMIT": {"mode": 0o600, "uid": 0, "gid": 0},
+    "compose.yaml": {"mode": 0o600, "uid": 0, "gid": 0},
+    "scripts/edu-ai-release-common.sh": {"mode": 0o700, "uid": 0, "gid": 0},
+    "deploy/release/migration-compatibility.json": {"mode": 0o644, "uid": 0, "gid": 0},
+    "deploy/release/deploy.py": {"mode": 0o600, "uid": 0, "gid": 0},
+    "scripts/edu-ai-production-check.sh": {"mode": 0o700, "uid": 0, "gid": 0},
+    "scripts/doctor.sh": {"mode": 0o755, "uid": 0, "gid": 0},
+}
+
 
 @pytest.fixture(autouse=True)
 def deny_external_process(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,6 +103,46 @@ def test_capture_rejects_unreviewed_protected_metadata_before_any_process(
         result = {**m.PROTECTED_METADATA[relative], "size": 3, "sha256": "a" * 64}
         if relative == name:
             result[key] = value
+        return result
+
+    monkeypatch.setattr(m, "metadata", metadata)
+    monkeypatch.setattr(m.os, "geteuid", lambda: 0)
+    with pytest.raises(RuntimeError, match="protected_metadata_policy"):
+        m.Host().capture({})
+
+
+def test_capture_accepts_the_complete_independently_measured_metadata_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert m.PROTECTED_METADATA == CAPTURED_FILE_METADATA
+    assert set(m.PROTECTED_FILES) == set(CAPTURED_FILE_METADATA)
+    assert len(CAPTURED_FILE_METADATA) == 10
+
+    def metadata(path: Path) -> dict[str, Any]:
+        relative = path.relative_to(m.APP).as_posix()
+        return {**CAPTURED_FILE_METADATA[relative], "size": 3, "sha256": "a" * 64}
+
+    def after_metadata(path: Path) -> bytes:
+        assert path == m.APP / ".release-commit"
+        raise RuntimeError("metadata_gate_passed")
+
+    monkeypatch.setattr(m, "metadata", metadata)
+    monkeypatch.setattr(m, "read_file", after_metadata)
+    monkeypatch.setattr(m.os, "geteuid", lambda: 0)
+    with pytest.raises(RuntimeError, match="metadata_gate_passed"):
+        m.Host().capture({})
+
+
+@pytest.mark.parametrize("name", tuple(CAPTURED_FILE_METADATA))
+@pytest.mark.parametrize("field", ["mode", "uid", "gid"])
+def test_capture_rejects_each_protected_file_metadata_drift(
+    monkeypatch: pytest.MonkeyPatch, name: str, field: str
+) -> None:
+    def metadata(path: Path) -> dict[str, Any]:
+        relative = path.relative_to(m.APP).as_posix()
+        result = {**CAPTURED_FILE_METADATA[relative], "size": 3, "sha256": "a" * 64}
+        if relative == name:
+            result[field] = CAPTURED_FILE_METADATA[relative][field] + 1
         return result
 
     monkeypatch.setattr(m, "metadata", metadata)

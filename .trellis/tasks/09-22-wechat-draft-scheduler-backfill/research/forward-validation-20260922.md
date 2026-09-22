@@ -68,3 +68,15 @@ The replacement builder must prove this exact one-file base-preservation contrac
 validated OCI layers, require unchanged base/candidate Git bytes for that path, exclude it from
 the overlay, and explicitly record the exception. Any other mismatch stays fatal. Do not deploy
 the unrelated newer OCR implementation merely to make an overbroad Git-equality claim pass.
+
+## Real-host metadata preflight
+
+Candidate `eaf310cd8bf2a1843a0449fa11bd91f61c5b5679` passed the real network-none
+image smoke. Its first production read-only capture then refused
+`protected_metadata_policy` before creating a baseline or stopping any service.
+The fixed allowlist had incorrectly generalized two existing file modes:
+`deploy/release/migration-compatibility.json` is `0644`, and `scripts/doctor.sh`
+is `0755` (both root:root). The other eight protected files matched, including
+`.env` at `0600`, UID 1000, GID 1001. The replacement operator must enumerate
+these exact measured permissions and preserve them; production permissions must
+not be changed to satisfy the preflight. No activation attempt was made.
