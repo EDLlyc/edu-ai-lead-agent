@@ -1,0 +1,11 @@
+{"file":".trellis/spec/backend/index.md","reason":"Verify model/social clients remain isolated to authorized workers and publication is impossible."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify migration safety, stable uniqueness, lease fencing, atomic intent/ACK reconciliation, and no historical rewrites."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Audit retry classification, unknown no-replay, exact-target drift, and stable sanitized errors."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Scan tests, operator output, logs, receipts, and task artifacts for private identifiers or provider bodies."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run independent product, database, operator, release, regression, static and production health checks."}
+{"file":".trellis/spec/backend/official-account-strict-visual-pipeline.md","reason":"Verify old V3 attempts remain immutable and only bounded V4 geometry recovery is admitted."}
+{"file":".trellis/spec/backend/official-account-editor-handoff-v2.md","reason":"Verify frozen article/render, five images, cover, framing, HTML and source presentation round-trip unchanged."}
+{"file":".trellis/spec/backend/wechat-official-account-drafts.md","reason":"Verify exactly one draft/add, persisted ACK, official readback, duplicate prevention and unpublished state."}
+{"file":".trellis/spec/backend/official-account-image-recovery.md","reason":"Deployed-line image uncertainty, immutable attempts, explicit recovery boundaries, and privacy-safe diagnostics."}
+{"file":".trellis/spec/backend/official-account-single-edition.md","reason":"Deployed M/W/F one account/date identity, history ownership, intent/ACK recovery, and exclusive legacy routing."}
+{"file":".trellis/spec/backend/official-account-catalog-fallback.md","reason":"Prospective V4 exhausted-ledger proof, all-or-nothing frozen catalog prepared contract, independent consumer validation and honest readonly status."}
