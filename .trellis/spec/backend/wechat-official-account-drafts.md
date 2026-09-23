@@ -454,3 +454,64 @@ draft displays it, or retry an upload after a timeout.
 Correct: journal each write, update the original draft once, then verify
 `thumb_media_id` and article content through `draft/get` and inspect the
 returned material through `material/get_material`.
+
+## Scenario: Keep internal context-image rights notices out of reader HTML
+
+### 1. Scope / Trigger
+
+Future unpublished drafts may contain original news context images whose
+rights state is `publish_permission_unverified`. Keep that internal state and
+all source/credit/context-only projections; omit only the renderer-generated
+orange notice paragraph from the HTML submitted to WeChat.
+
+### 2. Signatures
+
+`_hide_generated_context_rights_notice(body_html: str) -> str` runs inside
+`WeChatOfficialAccountDraftOnlyService._create_prepared`, before image URL
+replacement and the `draft/add` request. It does not mutate prepared children
+or their stored fingerprints.
+
+### 3. Contracts
+
+Match the exact rendered `<p>` notice text and its distinctive color/margin
+style, not a global substring. Ordinary article prose containing the same
+words remains visible. Only the outgoing draft request changes; `article.md`,
+`article-body.html`, manifest, rights/source metadata and historical V1/V2/V4
+reconstruction stay byte-identical. A journaled existing `draft/add` intent
+remains immutable: changed request fingerprints fail closed rather than being
+silently replayed.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Exact renderer notice node in submitted HTML | Omit the node only |
+| Same sentence in actual Article prose | Preserve it |
+| Similar paragraph with other text/style | Preserve it |
+| Existing add intent with old request fingerprint | Stop/reconcile; never overwrite or replay |
+| Rights status or source/credit metadata differs | Keep normal prepared validation failure |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a newly submitted draft retains news images and captions but has no
+  generated internal notice; rights metadata remains unverified.
+- Base: a V5 prepared body that already hid notices is unchanged at submit.
+- Bad: strip the sentence from all text, relabel images as licensed, rewrite
+  immutable prepared artifacts, or reopen an already-delivered draft.
+
+### 6. Tests Required
+
+Exercise real strict prepared children and V1/V2 compressed inputs with a
+fake draft client. Assert exact outgoing content, ordinary same-text prose,
+image order, source/rights metadata, and original prepared bytes. Assert the
+request journal fails closed for changed historical add intent. For a
+one-off existing-draft correction, verify the same media ID, unchanged article
+fields/image topology, zero remaining notice paragraphs and no publication.
+
+### 7. Wrong vs Correct
+
+Wrong: `body_html.replace(notice_text, "")`, which can delete real prose and
+leaves a meaningless visible wrapper.
+
+Correct: remove only the renderer's exact notice node at the outgoing
+draft boundary, while retaining original prepared bytes and rights state.
