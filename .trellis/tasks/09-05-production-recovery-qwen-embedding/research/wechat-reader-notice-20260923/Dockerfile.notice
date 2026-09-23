@@ -1,0 +1,8 @@
+FROM offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:2b3a9a7c5e35a3a7173a129a3bd7e0d5322caaeef2c125b9a4d63146e77c9d1a
+
+COPY --chown=app:app backend/app/application/services/wechat_official_account_draft.py /app/app/application/services/wechat_official_account_draft.py
+COPY --chown=app:app backend/app/domain/official_account_editor_handoff.py /app/app/domain/official_account_editor_handoff.py
+
+LABEL org.opencontainers.image.revision="a9db34f" \
+      edu.ai.change="wechat-reader-notice-20260923" \
+      edu.ai.overlay.base="sha256:2b3a9a7c5e35a3a7173a129a3bd7e0d5322caaeef2c125b9a4d63146e77c9d1a"
