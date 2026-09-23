@@ -395,3 +395,62 @@ Wrong: call `draft/add` with an edited article and leave both drafts in the box.
 Correct: fence the original draft by receipt and current readback, upload only
 replacement media, call `draft/update` once for its original media ID, then
 verify the selected slots through `draft/get`.
+
+## Scenario: Correct the cover of an existing unpublished draft
+
+### 1. Scope / Trigger
+
+Use only for a named draft whose inline illustrations are already accepted.
+The September 23 operator follows the five-image correction above; it does
+not create another draft or alter any automated production policy.
+
+### 2. Signatures
+
+The task-local command exposes `plan|apply|reconcile --candidate <JPEG>`.
+`apply` allows one `material/add_material?type=thumb` upload and one
+`draft/update` with the original `media_id`, `index=0`, and one `news` article.
+
+### 3. Contracts
+
+The candidate is an immutable SHA-bound 1175×500 JPEG under 64 KiB. Bind the
+date-scoped edition, account, add receipt, prior body-update receipt, original
+cover ID, and candidate SHA before the first write. Preserve every article
+field and existing inline image slot except `thumb_media_id`. Record upload
+intent/ACK before draft-update intent/ACK in the private journal. No
+`draft/add`, `freepublish`, or subscriber send capability exists.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Prior body correction no longer matches its receipt | Stop before cover upload |
+| Candidate SHA, geometry or byte bound changes | Stop before cover upload |
+| Upload intent exists without ACK | Unknown; never upload again blindly |
+| Update intent exists without ACK | Read current draft and reconcile; never update again blindly |
+| `draft/get` has changing response metadata | Compare article contract fields, not whole response-object equality |
+| WeChat reserializes HTML after update | Require identical visible prose, links and image order/identities; allow only established CDN display variants |
+| Cover ID or retained article content differs at readback | Reject verification |
+
+### 5. Good / Base / Bad Cases
+
+- Good: one permanent thumbnail is uploaded, the same draft ID is updated,
+  and `draft/get` plus `material/get_material` show the intended cover.
+- Base: `plan` is read-only and a later `reconcile` verifies without replay.
+- Bad: create a second draft, replay an ambiguous write or require identical
+  raw HTML bytes when WeChat has normalized safe display markup.
+
+### 6. Tests Required
+
+Check immutable candidate bytes, dimensions and existing body receipt before
+write. Exercise changed article fields, upload/update unknown outcomes, same-ID
+readback and idempotent reconciliation. Compare returned cover pixels visually
+when WeChat re-encodes the uploaded JPEG; its byte hash may legitimately differ.
+
+### 7. Wrong vs Correct
+
+Wrong: update the cover and assume the successful HTTP response proves the
+draft displays it, or retry an upload after a timeout.
+
+Correct: journal each write, update the original draft once, then verify
+`thumb_media_id` and article content through `draft/get` and inspect the
+returned material through `material/get_material`.
