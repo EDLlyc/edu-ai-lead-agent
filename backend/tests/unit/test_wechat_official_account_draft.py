@@ -22,8 +22,20 @@ from app.application.services.wechat_official_account_draft import (
     WeChatDraftLocalSource,
     WeChatOfficialAccountDraftOnlyService,
     WeChatOfficialAccountDraftPreparer,
+    WeChatPreparedDraft,
+    WeChatPreparedMedia,
     _DraftHtmlValidator,
+    _hide_generated_context_rights_notice,
     _normalize_inline_image,
+)
+from app.domain.official_account_editor_handoff import (
+    CONTEXT_RIGHTS_NOTICE_TEXT,
+    EditorHandoffMediaAsset,
+    _image,
+)
+from app.domain.official_account_strict_layout import (
+    STRICT_LAYOUT_PROJECTION_V2_VERSION,
+    compact_strict_xiaosai_html,
 )
 from app.domain.official_account_weekly_edition import WEEKLY_EDITION_ROLE_ORDER
 from app.official_account_weekly_edition_demo import (
@@ -61,6 +73,107 @@ class _FakeDraftClient:
     async def add_draft(self, article: WeChatDraftArticleRequest) -> WeChatDraftCreated:
         self.drafts.append(article)
         return WeChatDraftCreated(media_id=f"draft-{len(self.drafts)}")
+
+
+def _context_html(ordinal: int) -> str:
+    body = b"test-context-image"
+    asset = EditorHandoffMediaAsset(
+        path=f"assets/context-{ordinal:02d}.jpg",
+        role="context",
+        ordinal=ordinal,
+        media_type="image/jpeg",
+        byte_size=len(body),
+        sha256=sha256(body).hexdigest(),
+        width=100,
+        height=100,
+        alt_text=f"新闻配图 {ordinal}",
+        assigned_section_index=ordinal,
+        source_page_url="https://example.org/source",
+        caption=f"新闻图片说明 {ordinal}",
+        credit="来源署名",
+        rights_status="publish_permission_unverified",
+        context_only_not_evidence=True,
+    )
+    return _image(asset, disclose_rights=True)
+
+
+@pytest.mark.parametrize("compact_v2", [False, True])
+def test_wechat_display_omits_only_generated_context_notice(compact_v2: bool) -> None:
+    authored = f'<p style="margin:0"><span leaf="">{CONTEXT_RIGHTS_NOTICE_TEXT}</span></p>'
+    html = authored + _context_html(0) + _context_html(1)
+    if compact_v2:
+        html = compact_strict_xiaosai_html(html, version=STRICT_LAYOUT_PROJECTION_V2_VERSION)
+    assert html.count(CONTEXT_RIGHTS_NOTICE_TEXT) == 3
+
+    displayed = _hide_generated_context_rights_notice(html)
+
+    assert displayed.count(CONTEXT_RIGHTS_NOTICE_TEXT) == 1
+    assert "新闻图片说明 0" in displayed and "新闻图片说明 1" in displayed
+    assert displayed.count("来源署名") == 2
+    assert displayed.count("<img ") == 2
+    assert _hide_generated_context_rights_notice(displayed) == displayed
+
+
+def test_wechat_display_recognizes_compacted_leaf_and_reordered_notice_style() -> None:
+    html = (
+        _context_html(0)
+        .replace(
+            "font-size:11px;color:#B85A00;line-height:1.7;margin:6px 0 0;",
+            "margin:6px 0 0;color:#B85A00",
+        )
+        .replace('<span leaf="">', "<span leaf>")
+    )
+
+    displayed = _hide_generated_context_rights_notice(html)
+
+    assert CONTEXT_RIGHTS_NOTICE_TEXT not in displayed
+    assert "新闻图片说明 0" in displayed
+    assert "来源署名" in displayed
+    assert displayed.count("<img ") == 1
+
+
+@pytest.mark.asyncio
+async def test_draft_submission_omits_notice_without_mutating_prepared_artifact() -> None:
+    original_html = _context_html(0) + _context_html(1)
+    prepared = WeChatPreparedDraft(
+        role="official_anchor",
+        article_fingerprint="a" * 64,
+        content_fingerprint="b" * 64,
+        title="测试文章",
+        author="程岳",
+        digest="摘要",
+        content_source_url=None,
+        body_html=original_html,
+        body_media=tuple(
+            WeChatPreparedMedia(
+                path=f"assets/context-{ordinal:02d}.jpg",
+                media_type="image/jpeg",
+                body=b"test-context-image",
+                upload_filename=f"context-{ordinal:02d}.jpg",
+            )
+            for ordinal in range(2)
+        ),
+        cover=WeChatPreparedMedia(
+            path="assets/cover-wide.jpg",
+            media_type="image/jpeg",
+            body=b"test-cover",
+            upload_filename="cover-thumb.jpg",
+        ),
+        need_open_comment=False,
+        only_fans_can_comment=False,
+    )
+    fake = _FakeDraftClient()
+    service = WeChatOfficialAccountDraftOnlyService(client=fake)
+
+    receipt = await service.create_prepared(prepared)
+
+    assert receipt.not_published is True
+    assert prepared.body_html == original_html
+    assert original_html.count(CONTEXT_RIGHTS_NOTICE_TEXT) == 2
+    assert CONTEXT_RIGHTS_NOTICE_TEXT not in fake.drafts[0].content
+    assert fake.drafts[0].content.count("来源署名") == 2
+    assert fake.drafts[0].content.count("https://mmbiz.qpic.cn/") == 2
+    assert len(fake.inline_uploads) == 2
 
 
 async def _finalized_directories(tmp_path: Path) -> tuple[Path, Path, Path]:

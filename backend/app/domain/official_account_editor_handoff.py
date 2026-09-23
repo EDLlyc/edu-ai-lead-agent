@@ -47,6 +47,9 @@ EDITOR_HANDOFF_PREFLIGHT_VERSION: Final[Literal["wechat-editor-handoff-preflight
 EDITOR_HANDOFF_RIGHTS_POLICY_VERSION: Final[
     Literal["editor-handoff-context-rights-v1-direct-use-disclosed"]
 ] = "editor-handoff-context-rights-v1-direct-use-disclosed"
+CONTEXT_RIGHTS_NOTICE_TEXT: Final = (
+    "按当前本地策略直接使用，发布权未验证；仅作上下文参考，不是事实证据。"
+)
 
 _ALLOWED_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 _MEDIA_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
@@ -531,7 +534,7 @@ def _image(
     )
     warning = (
         '<p style="font-size:11px;color:#B85A00;line-height:1.7;margin:6px 0 0;">'
-        f"{_leaf('按当前本地策略直接使用，发布权未验证；仅作上下文参考，不是事实证据。')}</p>"
+        f"{_leaf(CONTEXT_RIGHTS_NOTICE_TEXT)}</p>"
         if disclose_rights
         else ""
     )

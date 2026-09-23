@@ -12,6 +12,10 @@ from app.application.services.official_account_strict_prepared import (
     build_strict_prepared_projection,
     validate_strict_prepared_projection,
 )
+from app.application.services.wechat_official_account_draft import (
+    _hide_generated_context_rights_notice,
+)
+from app.domain.official_account_editor_handoff import CONTEXT_RIGHTS_NOTICE_TEXT
 from app.domain.official_account_editor_handoff_v2 import render_editor_handoff_v2_body
 from app.domain.official_account_local import ArticleParagraphBlock, article_package_fingerprint
 from app.domain.official_account_visual_pipeline import (
@@ -29,6 +33,26 @@ from test_official_account_body_caption_visibility import (
 from test_official_account_native_observe import observe_projection  # noqa: F401
 from test_official_account_strict_prepared import strict_projection  # noqa: F401
 from test_official_account_visual_preview import captured  # noqa: F401
+
+
+def test_actual_strict_prepared_html_removes_notice_only_at_wechat_boundary(
+    strict_projection: StrictPreparedProjection,  # noqa: F811
+) -> None:
+    original = strict_projection.files["article-body.html"]
+    html = original.decode("utf-8")
+    assert CONTEXT_RIGHTS_NOTICE_TEXT in html
+
+    displayed = _hide_generated_context_rights_notice(html)
+
+    assert CONTEXT_RIGHTS_NOTICE_TEXT not in displayed
+    assert displayed.count("<img ") == html.count("<img ")
+    assert strict_projection.files["article-body.html"] == original
+    assert all(
+        item["rights_status"] == "publish_permission_unverified"
+        and item["context_only_not_evidence"] is True
+        for item in strict_projection.manifest["media"]
+        if item["role"] == "context"
+    )
 
 
 @pytest.mark.parametrize("observed", [False, True])
