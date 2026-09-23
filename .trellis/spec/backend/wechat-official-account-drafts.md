@@ -337,3 +337,61 @@ receipts = await service.create_weekly_drafts(
 )
 assert all(receipt.not_published for receipt in receipts)
 ```
+
+## Scenario: Correct selected illustrations in an existing unpublished draft
+
+### 1. Scope / Trigger
+
+Use this only for an explicitly identified draft whose article content is already
+accepted and whose selected inline illustrations need correction. It is a one-off
+operator action, not part of automatic draft creation or publication.
+
+### 2. Signatures
+
+The task-local operator exposes `plan`, `apply`, and `reconcile` with an immutable
+candidate directory. Its only WeChat write endpoints are `media/uploadimg` and
+`draft/update` with the original `media_id` and `index=0`. It cannot call
+`draft/add`, `freepublish`, or mass-send.
+
+### 3. Contracts
+
+Bind the run, edition, account fingerprint, original add ACK, media-ID fingerprint,
+candidate byte hashes, and fixed image-slot indices before any write. `plan` reads
+the current draft and checks it against the original receipt. `apply` records each
+upload intent and ACK, checks the original draft again, writes one update intent,
+and reads the same draft back. Preserve title, author, digest, cover media ID,
+comments, source URL, prose, links, image count, and all unselected image slots.
+Do not rewrite immutable source artifacts or SQL visual rows.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+|---|---|
+| Original draft changed before update | Stop before a new provider write |
+| Upload/update intent exists without ACK | Reconcile; never blind-replay the write |
+| WeChat changes `http` to `https` or terminal `/0` to `/640` | Accept only if CDN host, remaining path, query, and image order are identical |
+| Any prose, link, retained image, cover or article field drifts | Reject readback |
+| Same corrected draft is reconciled again | Return verified without another upload or update |
+
+### 5. Good / Base / Bad Cases
+
+- Good: five designated brand images are replaced in the same nine-image draft;
+  four other image slots and all article fields remain intact.
+- Base: a read-only plan reports the target and makes no social write.
+- Bad: creating a second draft to change pictures, replaying an ambiguous update,
+  or accepting a changed image query/path as a harmless CDN rewrite.
+
+### 6. Tests Required
+
+Check the exact slot map, image count, candidate SHA-256 and JPEG geometry before
+upload. Exercise unchanged-field and changed-field readback comparisons. After
+the live update, run `reconcile` to prove the same draft is verified without a
+second write; keep the safe status `not_published=true`.
+
+### 7. Wrong vs Correct
+
+Wrong: call `draft/add` with an edited article and leave both drafts in the box.
+
+Correct: fence the original draft by receipt and current readback, upload only
+replacement media, call `draft/update` once for its original media ID, then
+verify the selected slots through `draft/get`.
