@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -46,6 +47,7 @@ from app.application.services.official_account_strict_prepared import (
     validate_strict_prepared_projection,
 )
 from app.application.services.official_account_weekly_edition import load_finalized_v2_child
+from app.domain.official_account_editor_handoff import CONTEXT_RIGHTS_NOTICE_TEXT
 from app.domain.official_account_strict_layout import (
     STRICT_LAYOUT_PROJECTION_V2_VERSION,
     strict_escaped_upload_url,
@@ -83,6 +85,26 @@ _ALLOWED_TAG_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
 }
 _VOID_TAGS: Final = frozenset({"img", "br"})
 _PREPARED_CHILD_VERSION: Final = "wechat-draft-prepared-child-v1"
+_CONTEXT_RIGHTS_NOTICE_NODE: Final = re.compile(
+    r'<p style="(?P<style>[^"]+)"><span leaf(?:="")?>'
+    r"(?P<text>[^<]*)</span></p>"
+)
+
+
+def _hide_generated_context_rights_notice(body_html: str) -> str:
+    """Omit only the renderer's display node, never article prose or rights metadata."""
+
+    def omit(match: re.Match[str]) -> str:
+        declarations = dict(part.split(":", 1) for part in match["style"].split(";") if ":" in part)
+        if (
+            match["text"] == escape(CONTEXT_RIGHTS_NOTICE_TEXT, quote=False)
+            and declarations.get("color") == "#B85A00"
+            and declarations.get("margin") == "6px 0 0"
+        ):
+            return ""
+        return match[0]
+
+    return _CONTEXT_RIGHTS_NOTICE_NODE.sub(omit, body_html)
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +241,7 @@ class WeChatOfficialAccountDraftOnlyService:
         *,
         created_at: datetime,
     ) -> WeChatDraftReceipt:
-        rewritten = prepared.body_html
+        rewritten = _hide_generated_context_rights_notice(prepared.body_html)
         if prepared.visual_pipeline_version is not None:
             if prepared.visual_pipeline_version not in NATIVE_VISUAL_PIPELINE_VERSIONS:
                 raise WeChatMpDraftPreparationError()
