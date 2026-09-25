@@ -1237,6 +1237,22 @@ async def test_slot_copy_reconciliation_creates_one_independent_run_per_selectio
         integration_context,
         target_at=target_at,
     )
+    settings = integration_context.settings.model_copy(
+        update={"content_enabled": True, "content_slot_mode_enabled": True}
+    )
+    repository = PostgresCopyGenerationRepository(integration_context.session_factory)
+    bundle = build_copy_version_bundle(settings)
+    # The fixture starts with three accepted selections. A new deployment
+    # bundle must not schedule them again.
+    assert (
+        await repository.reconcile_ready_slot_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=bundle,
+        )
+        == 0
+    )
     async with integration_context.session_factory() as session:
         selection_ids = tuple(
             (
@@ -1282,21 +1298,25 @@ async def test_slot_copy_reconciliation_creates_one_independent_run_per_selectio
         )
         await session.commit()
 
-    settings = integration_context.settings.model_copy(
-        update={"content_enabled": True, "content_slot_mode_enabled": True}
+    changed_bundle = build_copy_version_bundle(
+        settings.model_copy(update={"copy_pipeline_version": "slot-copy-other-version-v1"})
     )
-    repository = PostgresCopyGenerationRepository(integration_context.session_factory)
-    bundle = build_copy_version_bundle(settings)
 
-    assert (
-        await repository.reconcile_ready_slot_topics(
+    created = await asyncio.gather(
+        repository.reconcile_ready_slot_topics(
             business_date=business_date,
             timezone="Asia/Shanghai",
             scoring_profile=profile,
             version_bundle=bundle,
-        )
-        == 3
+        ),
+        repository.reconcile_ready_slot_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=changed_bundle,
+        ),
     )
+    assert sum(created) == 3
     assert (
         await repository.reconcile_ready_slot_topics(
             business_date=business_date,
@@ -1306,13 +1326,21 @@ async def test_slot_copy_reconciliation_creates_one_independent_run_per_selectio
         )
         == 0
     )
+    assert (
+        await repository.reconcile_ready_slot_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=changed_bundle,
+        )
+        == 0
+    )
     async with integration_context.session_factory() as session:
         rows = tuple(
             (
                 await session.scalars(
                     select(CopyGenerationRunModel).where(
                         CopyGenerationRunModel.content_slot_selection_id.in_(selection_ids),
-                        CopyGenerationRunModel.version_fingerprint == bundle.fingerprint,
                     )
                 )
             ).all()
@@ -1334,3 +1362,36 @@ async def test_slot_copy_reconciliation_creates_one_independent_run_per_selectio
     assert all(row.topic_selection_run_id is None for row in rows)
     assert job_count == 3
     assert checkpoint_count == 3
+
+    # An old failure is still prior work and must not be requeued on a third
+    # version. Keep the job/run states consistent for this fixture.
+    async with integration_context.session_factory() as session:
+        completed_at = datetime.now(UTC)
+        await session.execute(
+            update(CopyGenerationRunModel)
+            .where(CopyGenerationRunModel.id == rows[0].id)
+            .values(status="failed", error_code="fixture_failure", completed_at=completed_at)
+        )
+        await session.execute(
+            update(CopyGenerationJobModel)
+            .where(CopyGenerationJobModel.run_id == rows[0].id)
+            .values(status="failed", error_code="fixture_failure", completed_at=completed_at)
+        )
+        await session.execute(
+            update(CopyGenerationCheckpointModel)
+            .where(CopyGenerationCheckpointModel.run_id == rows[0].id)
+            .values(stage="failed", issue_codes=["fixture_failure"])
+        )
+        await session.commit()
+    third_bundle = build_copy_version_bundle(
+        settings.model_copy(update={"copy_pipeline_version": "slot-copy-third-version-v1"})
+    )
+    assert (
+        await repository.reconcile_ready_slot_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=third_bundle,
+        )
+        == 0
+    )

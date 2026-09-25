@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -95,12 +95,14 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
     ) -> UUID:
         async with self._session_factory() as session:
             selection = await session.scalar(
-                select(DailyTopicSelectionModel).where(
+                select(DailyTopicSelectionModel)
+                .where(
                     DailyTopicSelectionModel.business_date == business_date,
                     DailyTopicSelectionModel.timezone == timezone,
                     DailyTopicSelectionModel.scoring_profile == scoring_profile,
                     DailyTopicSelectionModel.superseded_at.is_(None),
                 )
+                .with_for_update()
             )
             if selection is None:
                 raise NotFoundError("daily topic selection")
@@ -128,12 +130,8 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                         select(DailyTopicSelectionModel)
                         .outerjoin(
                             CopyGenerationRunModel,
-                            and_(
-                                CopyGenerationRunModel.daily_topic_selection_id
-                                == DailyTopicSelectionModel.id,
-                                CopyGenerationRunModel.version_fingerprint
-                                == version_bundle.fingerprint,
-                            ),
+                            CopyGenerationRunModel.daily_topic_selection_id
+                            == DailyTopicSelectionModel.id,
                         )
                         .where(
                             DailyTopicSelectionModel.business_date == business_date,
@@ -151,9 +149,26 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         for selection in selections:
             async with self._session_factory() as session:
                 try:
+                    # The candidate query is only a fast prefilter. Lock and
+                    # recheck before inserting so different version bundles
+                    # cannot each schedule the same selection at startup.
+                    locked = await session.scalar(
+                        select(DailyTopicSelectionModel)
+                        .where(DailyTopicSelectionModel.id == selection.id)
+                        .with_for_update()
+                    )
+                    if locked is None or locked.superseded_at is not None:
+                        continue
+                    prior_run_id = await session.scalar(
+                        select(CopyGenerationRunModel.id)
+                        .where(CopyGenerationRunModel.daily_topic_selection_id == locked.id)
+                        .limit(1)
+                    )
+                    if prior_run_id is not None:
+                        continue
                     await _enqueue_selection(
                         session,
-                        selection=selection,
+                        selection=locked,
                         version_bundle=version_bundle,
                         max_attempts=max_attempts,
                     )
@@ -183,12 +198,8 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                         )
                         .outerjoin(
                             CopyGenerationRunModel,
-                            and_(
-                                CopyGenerationRunModel.content_slot_selection_id
-                                == ContentSlotSelectionModel.id,
-                                CopyGenerationRunModel.version_fingerprint
-                                == version_bundle.fingerprint,
-                            ),
+                            CopyGenerationRunModel.content_slot_selection_id
+                            == ContentSlotSelectionModel.id,
                         )
                         .where(
                             ContentSlotSelectionModel.business_date == business_date,
@@ -206,9 +217,23 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         for selection in selections:
             async with self._session_factory() as session:
                 try:
+                    locked = await session.scalar(
+                        select(ContentSlotSelectionModel)
+                        .where(ContentSlotSelectionModel.id == selection.id)
+                        .with_for_update()
+                    )
+                    if locked is None:
+                        continue
+                    prior_run_id = await session.scalar(
+                        select(CopyGenerationRunModel.id)
+                        .where(CopyGenerationRunModel.content_slot_selection_id == locked.id)
+                        .limit(1)
+                    )
+                    if prior_run_id is not None:
+                        continue
                     await _enqueue_slot_selection(
                         session,
-                        selection=selection,
+                        selection=locked,
                         version_bundle=version_bundle,
                         max_attempts=max_attempts,
                     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -15,7 +16,7 @@ from app.infrastructure.db.copy_generation import (
     PostgresCopyGenerationRepository,
     get_copy_generation_projection,
 )
-from app.infrastructure.db.models import CopyGenerationAttemptModel
+from app.infrastructure.db.models import CopyGenerationAttemptModel, CopyGenerationRunModel
 from app.infrastructure.db.topic_selection import (
     claim_topic_selection_job,
     complete_topic_selection_job,
@@ -132,6 +133,18 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
             }
         ],
     }
+    # A failed old run must not be replayed automatically merely because a
+    # deployment changes the copy bundle. Explicit enqueue below still may
+    # create a run for another version.
+    assert (
+        await repository.reconcile_ready_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=bundle,
+        )
+        == 0
+    )
     review_cases = (
         ("provider_request_rejected", (), []),
         (
@@ -197,6 +210,7 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
         scoring_profile=profile,
         version_bundle=bundle,
     )
+    assert run_id != diagnostic_run_id
     replay_id = await repository.enqueue_for_daily_topic(
         business_date=business_date,
         timezone="Asia/Shanghai",
@@ -204,6 +218,15 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
         version_bundle=bundle,
     )
     assert replay_id == run_id
+    assert (
+        await repository.reconcile_ready_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=bundle,
+        )
+        == 0
+    )
     executor = CopyGenerationExecutor(
         repository=repository,
         brand_retriever=None,
@@ -246,3 +269,94 @@ async def test_no_topic_copy_run_is_idempotent_and_never_calls_a_model(
     finally:
         app.state.settings = previous_settings
         app.state.session_factory = previous_factory
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_daily_copy_reconciliation_serializes_versions_but_preserves_explicit_enqueue(
+    integration_context: IntegrationContext,
+) -> None:
+    suffix = uuid4().hex[:12]
+    profile = f"copy-reconcile-{suffix}"
+    business_date = date(2097, 8, 1)
+    cutoff = datetime(2000, 1, 1, tzinfo=UTC)
+    config = TopicScoringConfig(version=f"copy-reconcile-{suffix}", profile=profile)
+    async with integration_context.session_factory() as session:
+        topic_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=cutoff,
+        )
+        claimed = await claim_topic_selection_job(
+            session,
+            run_id=topic_run.id,
+            worker_id="copy-reconcile-topic-selection",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed is not None
+        decision = select_daily_topic(
+            await load_topic_candidates(session, topic_run.id),
+            as_of=cutoff,
+            config=config,
+        )
+        assert decision.is_no_topic
+        assert await persist_topic_selection_decision(
+            session, claimed=claimed, config=config, decision=decision
+        )
+        assert await complete_topic_selection_job(session, claimed=claimed)
+
+    settings = integration_context.settings.model_copy(update={"content_enabled": True})
+    first_bundle = build_copy_version_bundle(settings)
+    second_bundle = build_copy_version_bundle(
+        settings.model_copy(update={"copy_pipeline_version": f"copy-reconcile-v2-{suffix}"})
+    )
+    repository = PostgresCopyGenerationRepository(integration_context.session_factory)
+    created = await asyncio.gather(
+        *(
+            repository.reconcile_ready_topics(
+                business_date=business_date,
+                timezone="Asia/Shanghai",
+                scoring_profile=profile,
+                version_bundle=bundle,
+            )
+            for bundle in (first_bundle, first_bundle, second_bundle)
+        )
+    )
+    assert sum(created) == 1
+    async with integration_context.session_factory() as session:
+        automatic_runs = tuple(
+            (
+                await session.scalars(
+                    select(CopyGenerationRunModel).where(
+                        CopyGenerationRunModel.topic_selection_run_id == topic_run.id
+                    )
+                )
+            ).all()
+        )
+    assert len(automatic_runs) == 1
+    assert (
+        await repository.reconcile_ready_topics(
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            scoring_profile=profile,
+            version_bundle=second_bundle,
+        )
+        == 0
+    )
+
+    # An explicit request is still allowed to create a different version.
+    explicit_bundle = (
+        second_bundle
+        if automatic_runs[0].version_fingerprint == first_bundle.fingerprint
+        else first_bundle
+    )
+    explicit_run_id = await repository.enqueue_for_daily_topic(
+        business_date=business_date,
+        timezone="Asia/Shanghai",
+        scoring_profile=profile,
+        version_bundle=explicit_bundle,
+    )
+    assert explicit_run_id != automatic_runs[0].id
