@@ -24,6 +24,21 @@ operator are integrated into one reviewed commit. The base image's documented
 OCR runtime/Git discrepancy is retained and checked against the last effective
 base-layer bytes; this release cannot overwrite the OCR file.
 
+## Authoritative source gate
+
+Before building or activating a candidate, push the isolated reviewed release
+branch to the configured internal Codeup `origin`. Independently read back the
+exact remote branch tip with `GIT_TERMINAL_PROMPT=0 git ls-remote origin
+refs/heads/release/moments-heading-advisory-prod-20260925` and require its full
+40-character commit ID to equal both the reviewed local `HEAD` and the
+candidate manifest's `revision`. Do not use a GitHub mirror, an unfetched local
+branch, a mutable tag, or a detached/uncommitted working tree as release
+authority. After any review fix, commit, push, read back, rebuild, and re-run
+offline smoke; an older candidate manifest is no longer eligible. This remote
+identity check is an external operator gate: the fixed-base builder itself
+remains network-independent and validates only committed Git objects and its
+own hash-bound bytes.
+
 ## Local immutable candidate
 
 From a clean, reviewed production-base worktree, using the complete locally
