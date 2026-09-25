@@ -29,10 +29,21 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
-VERSION = "moments-heading-advisory-20260925-v1"
+VERSION = "moments-heading-advisory-20260925-v2-mixed-baseline"
 BASE_REVISION = "3e62b33fcc62582240cb73ede9b12756eda029c5"
 BASE_ID = "sha256:2b3a9a7c5e35a3a7173a129a3bd7e0d5322caaeef2c125b9a4d63146e77c9d1a"
 BASE_ARCHIVE_SHA = "651dbc6c08efc38ba405f133b630f4af077c45101de71f3777eab3a22827a80e"
+NOTICE_REVISION = "a9db34f8937effda32a2a58358d2b849268700a5"
+NOTICE_LABEL_REVISION = "a9db34f"
+NOTICE_SERVICE = "wechat-official-account-draft-worker"
+NOTICE_IMAGE_ID = (
+    "sha256:c3f26a9d352332b4cbb63430922babcd71a025ba593fff2e792a4b6c1421e974"
+)
+NOTICE_IMAGE_TAG = "offline.local/edu-ai/edu-ai-lead-agent-backend:notice-a9db34f"
+NOTICE_APP_HASHES = {
+    "application/services/wechat_official_account_draft.py": "05ff063fccc9b8602dc969a9a51c1809ba55cfb4e4e01dc40ebaeb4eb386e3e5",
+    "domain/official_account_editor_handoff.py": "71fd515fee2e1bb1124db9de77843a2dd5fd63746603b9354246ac44aa5a6c0e",
+}
 # A previous offline release deliberately retained this live OCR integration.
 # It is outside this change: Git equality is required, but the frozen base bytes
 # (not the newer repository implementation) remain authoritative in the image.
@@ -56,8 +67,10 @@ BACKUP_LOCK = Path("/var/lock/edu-ai-backup.lock")
 OPERATOR_PATH = ".trellis/tasks/09-23-moments-brand-rag-diversity/research/r14-release/moments_release.py"
 ALLOWED_APP_FILES = {
     "backend/app/application/services/copy_generation.py",
+    "backend/app/application/services/wechat_official_account_draft.py",
     "backend/app/core/config.py",
     "backend/app/domain/copy_generation.py",
+    "backend/app/domain/official_account_editor_handoff.py",
     "backend/app/schemas/copy_generation.py",
 }
 HOST_FILES: tuple[str, ...] = ()
@@ -618,6 +631,51 @@ def preserved_base_hashes(
     return found
 
 
+def notice_tree(base_tree: dict[str, str]) -> dict[str, str]:
+    require(set(NOTICE_APP_HASHES) <= set(base_tree), "notice_source_paths")
+    return {**base_tree, **NOTICE_APP_HASHES}
+
+
+def check_notice_app_tree(actual: dict[str, str], expected: dict[str, str]) -> None:
+    require(actual == expected, "notice_app_tree")
+
+
+def check_notice_image(base: dict[str, Any], notice: dict[str, Any]) -> None:
+    """Bind the one independently released draft-Worker image, not a wildcard."""
+    require(
+        notice.get("Id") == NOTICE_IMAGE_ID
+        and NOTICE_IMAGE_TAG in notice.get("RepoTags", [])
+        and notice["Config"]["Labels"]["org.opencontainers.image.revision"]
+        == NOTICE_LABEL_REVISION,
+        "notice_image_identity",
+    )
+    base_layers = base["RootFS"]["Layers"]
+    notice_layers = notice["RootFS"]["Layers"]
+    require(
+        len(notice_layers) == len(base_layers) + 2
+        and notice_layers[: len(base_layers)] == base_layers,
+        "notice_image_lineage",
+    )
+    require(
+        {key: value for key, value in notice["Config"].items() if key != "Labels"}
+        == {key: value for key, value in base["Config"].items() if key != "Labels"},
+        "notice_runtime_config",
+    )
+
+
+def check_baseline_service_image(
+    name: str, item: dict[str, Any], rendered_image: str
+) -> None:
+    expected_id = NOTICE_IMAGE_ID if name == NOTICE_SERVICE else BASE_ID
+    expected_ref = NOTICE_IMAGE_TAG if name == NOTICE_SERVICE else BASE_REF
+    require(
+        item["Image"] == expected_id
+        and item["Config"]["Image"] == expected_ref
+        and rendered_image == BASE_REF,
+        "baseline_service_image",
+    )
+
+
 def build(
     repo: Path, base_archive: Path, output: Path, revision: str
 ) -> dict[str, Any]:
@@ -674,6 +732,26 @@ def build(
     old = git_files(repo, BASE_REVISION, "backend/app")
     new = git_files(repo, revision, "backend/app")
     require(set(old) <= set(new), "app_deletion")
+    require(
+        git(repo, "rev-parse", NOTICE_REVISION + "^{commit}").decode().strip()
+        == NOTICE_REVISION,
+        "notice_commit_missing",
+    )
+    git(repo, "merge-base", "--is-ancestor", BASE_REVISION, NOTICE_REVISION)
+    notice_source = git_files(repo, NOTICE_REVISION, "backend/app")
+    require(
+        set(notice_source) == set(old)
+        and {
+            path.removeprefix("backend/app/"): sha(body)
+            for path, body in notice_source.items()
+            if old[path] != body
+        }
+        == NOTICE_APP_HASHES,
+        "notice_git_tree",
+    )
+    for relative in NOTICE_APP_HASHES:
+        path = "backend/app/" + relative
+        require(new[path] == notice_source[path], "notice_fix_not_preserved")
     for relative, preserved in PRESERVED_BASE_FILES.items():
         path = "backend/app/" + relative
         require(
@@ -766,6 +844,13 @@ def build(
     archive = archive_bytes(keep)
     write_new(output / "backend-image.oci.tar.gz", archive)
     write_new(output / "moments_release.py", operator)
+    base_app_tree = {
+        **{key.removeprefix("backend/app/"): sha(body) for key, body in old.items()},
+        **{
+            path: cast(str, item["runtime_sha256"])
+            for path, item in PRESERVED_BASE_FILES.items()
+        },
+    }
     candidate = {
         "version": VERSION,
         "revision": revision,
@@ -786,15 +871,11 @@ def build(
         "files": {
             key.removeprefix("backend/app/"): sha(body) for key, body in overlay.items()
         },
-        "base_app_tree": {
-            **{
-                key.removeprefix("backend/app/"): sha(body) for key, body in old.items()
-            },
-            **{
-                path: item["runtime_sha256"]
-                for path, item in PRESERVED_BASE_FILES.items()
-            },
-        },
+        "base_app_tree": base_app_tree,
+        "notice_revision": NOTICE_REVISION,
+        "notice_image_id": NOTICE_IMAGE_ID,
+        "notice_image_tag": NOTICE_IMAGE_TAG,
+        "notice_app_tree": notice_tree(base_app_tree),
         "candidate_app_tree": {
             **{
                 key.removeprefix("backend/app/"): sha(body) for key, body in new.items()
@@ -833,6 +914,9 @@ def validate_bundle(path: Path, expected: str) -> dict[str, Any]:
         and value["base_revision"] == BASE_REVISION
         and value["base_image"] == BASE_REF
         and value["base_archive_sha256"] == BASE_ARCHIVE_SHA
+        and value.get("notice_revision") == NOTICE_REVISION
+        and value.get("notice_image_id") == NOTICE_IMAGE_ID
+        and value.get("notice_image_tag") == NOTICE_IMAGE_TAG
         and value["schema"] == SCHEMA,
         "candidate_fixed_base",
     )
@@ -937,6 +1021,14 @@ def validate_bundle(path: Path, expected: str) -> dict[str, Any]:
     require(
         {**value["base_app_tree"], **actual} == value["candidate_app_tree"],
         "full_app_projection",
+    )
+    require(
+        value.get("notice_app_tree") == notice_tree(value["base_app_tree"])
+        and all(
+            value["files"].get(path) == digest
+            for path, digest in NOTICE_APP_HASHES.items()
+        ),
+        "notice_candidate_projection",
     )
     return value
 
@@ -1527,6 +1619,8 @@ class Host:
             == BASE_REVISION,
             "baseline_image",
         )
+        notice = self.inspect(NOTICE_IMAGE_TAG, image=True)
+        check_notice_image(base, notice)
         config = strict_json(self.compose("config", "--format", "json"))
         services = {}
         volumes = {}
@@ -1540,11 +1634,8 @@ class Host:
                 "baseline_service_health",
             )
             if name in SERVICES:
-                require(
-                    item["Image"] == BASE_ID
-                    and item["Config"]["Image"] == BASE_REF
-                    and config["services"][name]["image"] == BASE_REF,
-                    "baseline_service_image",
+                check_baseline_service_image(
+                    name, item, config["services"][name]["image"]
                 )
                 actual_env = check_service_environment(
                     name, item, config["services"][name], PROD_POLICY
@@ -1560,6 +1651,7 @@ class Host:
             if name in SERVICES:
                 services[name].update(
                     {
+                        "config_image": item["Config"]["Image"],
                         "env_sha256": sha(canonical(actual_env)),
                         "command": item["Config"]["Cmd"],
                     }
@@ -1607,12 +1699,23 @@ class Host:
             == manifest["base_app_tree"],
             "base_app_tree",
         )
+        check_notice_app_tree(
+            self.app_tree(services[NOTICE_SERVICE]["id"], running=True),
+            manifest["notice_app_tree"],
+        )
         require(
             self.app_tree(
                 services["acquisition-api"]["id"], running=True, probe=RUNTIME_PROBE
             )
             == manifest["immutable_runtime_tree"],
             "immutable_runtime_tree",
+        )
+        require(
+            self.app_tree(
+                services[NOTICE_SERVICE]["id"], running=True, probe=RUNTIME_PROBE
+            )
+            == manifest["immutable_runtime_tree"],
+            "notice_immutable_runtime_tree",
         )
         copy_identity = self.copy_identity(services["acquisition-api"]["id"])
         require(
@@ -1987,8 +2090,14 @@ class Deployment:
         )
         self.host.idle()
         for name in SERVICES:
+            item = self.host.service(name)
+            bound = self.baseline["services"][name]
             require(
-                self.host.service(name)["State"]["Status"] == "exited",
+                item["State"]["Status"] == "exited"
+                and item["Id"] == bound["id"]
+                and item["Image"] == bound["image"]
+                and item["Config"]["Image"] == bound["config_image"]
+                and normalized_mounts(item["Mounts"]) == bound["mounts"],
                 "writer_not_stopped",
             )
         for name in ("postgres", "minio"):

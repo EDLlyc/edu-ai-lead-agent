@@ -2,19 +2,22 @@
 
 This is a fixed-base, one-attempt release operator for the owner's approved R13
 heading and advisory-review behavior. It is **not** a general deployer. It
-accepts only production commit `3e62b33fcc62582240cb73ede9b12756eda029c5`,
+accepts only production host marker `3e62b33fcc62582240cb73ede9b12756eda029c5`,
 OCI digest `sha256:2b3a9a7c5e35a3a7173a129a3bd7e0d5322caaeef2c125b9a4d63146e77c9d1a`,
 base archive SHA-256 `651dbc6c08efc38ba405f133b630f4af077c45101de71f3777eab3a22827a80e`,
+the one already-live draft-Worker notice fix `a9db34f8937effda32a2a58358d2b849268700a5`,
 and schema `20260916_0048`. Recheck all of them on the host immediately before
 use. No migration, provider call, social send, business replay, PDF activation,
 environment-policy change, or host-script replacement is included.
 
 The source commit must descend from that exact base. The entire application
-overlay must be exactly these four modified files:
+overlay must be exactly these six modified files:
 
 - `backend/app/application/services/copy_generation.py`
+- `backend/app/application/services/wechat_official_account_draft.py`
 - `backend/app/core/config.py`
 - `backend/app/domain/copy_generation.py`
+- `backend/app/domain/official_account_editor_handoff.py`
 - `backend/app/schemas/copy_generation.py`
 
 Only `backend/tests/` and this release directory may contain other changes.
@@ -22,7 +25,10 @@ The builder reads Git blobs, not the worktree. Its own committed bytes must matc
 the running operator. Build only after the production-base port and this
 operator are integrated into one reviewed commit. The base image's documented
 OCR runtime/Git discrepancy is retained and checked against the last effective
-base-layer bytes; this release cannot overwrite the OCR file.
+base-layer bytes; this release cannot overwrite the OCR file. The two WeChat
+files must byte-match the original `a9db34f` Git commit. The other four files
+are the reviewed R13 copy port. This is one uniform combined candidate, not a
+replacement of the notice Worker with older base behavior.
 
 ## Authoritative source gate
 
@@ -76,7 +82,15 @@ read-only. Before any application mutation, both bind the live image/revision,
 schema, all 12 app services, effective copy defaults, Zhipu `embedding-3`/2048,
 active brand-pointer digest, protected host files, complete relevant DB-table
 fingerprints, business volumes, journal, brand files, idle queues, backup timer,
-and the next Monday/Wednesday/Friday 09:00 preparation window. The baseline
+and the next Monday/Wednesday/Friday 09:00 preparation window. Exactly eleven
+application services must run the pinned base digest/ref; only
+`wechat-official-account-draft-worker` may run the pinned `notice-a9db34f` tag
+and image ID, while Compose still renders the base ref. Capture verifies that
+notice image's revision label, exact two-layer extension of the base, unchanged
+non-label image configuration, complete running application tree against the
+known `a9db34f` Git tree plus the pinned OCR exception, and immutable runtime
+tree. Any unknown image, misplaced notice image, extra application-file change,
+or baseline drift fails closed. The baseline
 expires after two hours. The plan refuses an existing attempt directory or a
 window less than 20 minutes away, a future-dated receipt, insufficient backup
 space, any installed standard-release marker, or a mount that shadows verified
@@ -92,7 +106,8 @@ runtime/config backup; fences the stopped state; then switches **only**
 `.release.env` `APP_IMAGE` and the two revision markers. It starts the same 12
 services once. PostgreSQL/MinIO containers and volumes remain intact.
 
-Acceptance requires exact candidate image in every app container, zero abnormal
+Acceptance requires the same exact combined candidate image in every app
+container, zero abnormal
 restarts, health, schema `0048`, unchanged Compose/env flags and mounts,
 unchanged provider and active brand pointers, unchanged protected DB/business
 fingerprints, v24/v19/v12/preview-v12 effective copy defaults, backup timer, and

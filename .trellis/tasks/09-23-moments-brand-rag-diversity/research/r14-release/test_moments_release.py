@@ -40,12 +40,92 @@ def test_fixed_base_and_exact_application_allowlist() -> None:
     assert m.SCHEMA == "20260916_0048"
     assert m.ALLOWED_APP_FILES == {
         "backend/app/application/services/copy_generation.py",
+        "backend/app/application/services/wechat_official_account_draft.py",
         "backend/app/core/config.py",
         "backend/app/domain/copy_generation.py",
+        "backend/app/domain/official_account_editor_handoff.py",
         "backend/app/schemas/copy_generation.py",
     }
+    assert m.NOTICE_REVISION == "a9db34f8937effda32a2a58358d2b849268700a5"
+    assert m.NOTICE_SERVICE == "wechat-official-account-draft-worker"
+    assert m.NOTICE_IMAGE_ID.startswith("sha256:c3f26a9d3523")
+    assert len(m.NOTICE_APP_HASHES) == 2
     assert m.HOST_FILES == ()
     assert m.BASE_COPY_VERSIONS != m.CANDIDATE_COPY_VERSIONS
+
+
+def test_known_notice_image_has_exact_identity_lineage_and_runtime_config() -> None:
+    base = {
+        "Id": m.BASE_ID,
+        "RootFS": {"Layers": ["base-1", "base-2"]},
+        "Config": {"Cmd": ["python", "-m", "app"], "Labels": {"revision": "base"}},
+    }
+    notice = {
+        "Id": m.NOTICE_IMAGE_ID,
+        "RepoTags": [m.NOTICE_IMAGE_TAG],
+        "RootFS": {"Layers": ["base-1", "base-2", "notice-1", "notice-2"]},
+        "Config": {
+            "Cmd": ["python", "-m", "app"],
+            "Labels": {"org.opencontainers.image.revision": m.NOTICE_LABEL_REVISION},
+        },
+    }
+    m.check_notice_image(base, notice)
+    for field, value, code in (
+        ("Id", m.BASE_ID, "notice_image_identity"),
+        ("RepoTags", ["unrelated:tag"], "notice_image_identity"),
+        (
+            "RootFS",
+            {"Layers": ["other", "base-2", "notice-1", "notice-2"]},
+            "notice_image_lineage",
+        ),
+        (
+            "Config",
+            {**notice["Config"], "Cmd": ["unexpected"]},
+            "notice_runtime_config",
+        ),
+    ):
+        changed = {**notice, field: value}
+        with pytest.raises(RuntimeError, match=code):
+            m.check_notice_image(base, changed)
+    wrong_label = {
+        **notice,
+        "Config": {
+            **notice["Config"],
+            "Labels": {"org.opencontainers.image.revision": "unreviewed"},
+        },
+    }
+    with pytest.raises(RuntimeError, match="notice_image_identity"):
+        m.check_notice_image(base, wrong_label)
+
+
+def test_mixed_baseline_is_bound_to_one_service_and_compose_base() -> None:
+    base = {"Image": m.BASE_ID, "Config": {"Image": m.BASE_REF}}
+    notice = {"Image": m.NOTICE_IMAGE_ID, "Config": {"Image": m.NOTICE_IMAGE_TAG}}
+    m.check_baseline_service_image("acquisition-api", base, m.BASE_REF)
+    m.check_baseline_service_image(m.NOTICE_SERVICE, notice, m.BASE_REF)
+    for name, item, rendered in (
+        ("acquisition-api", notice, m.BASE_REF),  # wrong role
+        (m.NOTICE_SERVICE, base, m.BASE_REF),  # silently lost live patch
+        (m.NOTICE_SERVICE, {**notice, "Image": "sha256:" + "0" * 64}, m.BASE_REF),
+        (m.NOTICE_SERVICE, notice, m.NOTICE_IMAGE_TAG),  # Compose drift
+    ):
+        with pytest.raises(RuntimeError, match="baseline_service_image"):
+            m.check_baseline_service_image(name, item, rendered)
+
+
+def test_notice_tree_contains_only_the_two_pinned_source_changes() -> None:
+    base_tree = {**{path: "old" for path in m.NOTICE_APP_HASHES}, "other.py": "same"}
+    expected = {**base_tree, **m.NOTICE_APP_HASHES}
+    assert m.notice_tree(base_tree) == expected
+    m.check_notice_app_tree(expected, m.notice_tree(base_tree))
+    with pytest.raises(RuntimeError, match="notice_app_tree"):
+        m.check_notice_app_tree({**expected, "unreviewed.py": "unexpected"}, expected)
+    with pytest.raises(RuntimeError, match="notice_app_tree"):
+        m.check_notice_app_tree(
+            {**expected, next(iter(m.NOTICE_APP_HASHES)): "wrong"}, expected
+        )
+    with pytest.raises(RuntimeError, match="notice_source_paths"):
+        m.notice_tree({"other.py": "same"})
 
 
 @pytest.mark.parametrize(
@@ -342,7 +422,20 @@ def test_failed_activation_intent_write_never_restarts_old_image(
 
 
 def test_same_baseline_does_not_ignore_business_identity() -> None:
-    before = {"captured_at": "a", "brand_identity": "x", "db": "y"}
+    before = {
+        "captured_at": "a",
+        "brand_identity": "x",
+        "db": "y",
+        "services": {m.NOTICE_SERVICE: {"image": m.NOTICE_IMAGE_ID}},
+    }
     m.same_baseline(before, {**before, "captured_at": "b"})
     with pytest.raises(RuntimeError, match="baseline_drift"):
         m.same_baseline(before, {**before, "brand_identity": "z"})
+    with pytest.raises(RuntimeError, match="baseline_drift"):
+        m.same_baseline(
+            before,
+            {
+                **before,
+                "services": {m.NOTICE_SERVICE: {"image": m.BASE_ID}},
+            },
+        )
