@@ -210,12 +210,12 @@ class Settings(BaseSettings):
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
     copy_pipeline_version: str = ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
-    copy_generator_prompt_version: str = "moments-generator-v19-exact-claim-span"
+    copy_generator_prompt_version: str = "moments-generator-v24-standalone-heading"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
-    copy_auditor_prompt_version: str = "moments-auditor-v18-xiaosai-insight"
+    copy_auditor_prompt_version: str = "moments-auditor-v19-standalone-heading"
     copy_audit_schema_version: str = "moments-audit-schema-v1"
-    copy_rule_version: str = "moments-rules-v11-compact-warning-recovery"
-    copy_preview_policy_version: str = "preview-v11-compact-content-warning-recovery"
+    copy_rule_version: str = "moments-rules-v12-standalone-heading-advisory"
+    copy_preview_policy_version: str = "preview-v12-standalone-heading-advisory"
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)

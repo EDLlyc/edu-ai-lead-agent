@@ -14,6 +14,7 @@ from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
     COPY_OPENING_PREFIX,
+    COPY_STANDALONE_HEADING,
     AuditVerdict,
     CopyIssue,
     MaterialDraft,
@@ -24,6 +25,7 @@ from app.schemas.copy_generation import (
     has_copy_news_framing,
     has_copy_news_source_footer,
     has_copy_paragraph_format,
+    has_copy_standalone_heading,
     has_non_trailing_hashtags,
 )
 
@@ -342,6 +344,12 @@ _DANGLING_DEPENDENT_CLAUSE = re.compile(
 _SUPPORT_TEXT = re.compile(r"[\W_]+", re.UNICODE)
 _NUMBER_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
 _PREVIEW_PROFILES = frozenset({"preview", "preview-v1", "preview-v2"})
+STANDALONE_HEADING_COPY_RULE_VERSIONS = frozenset(
+    {
+        "moments-rules-v12-standalone-heading-advisory",
+        "preview-v12-standalone-heading-advisory",
+    }
+)
 _PREVIEW_RULE_VERSIONS = frozenset(
     {
         "preview-v1",
@@ -355,6 +363,7 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v9-content-warning-recovery",
         "preview-v10-compact-content-warning-recovery",
         "preview-v11-compact-content-warning-recovery",
+        "preview-v12-standalone-heading-advisory",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
@@ -369,6 +378,7 @@ _QUALITY_WARNING_RULE_VERSIONS = frozenset(
         "preview-v9-content-warning-recovery",
         "preview-v10-compact-content-warning-recovery",
         "preview-v11-compact-content-warning-recovery",
+        *STANDALONE_HEADING_COPY_RULE_VERSIONS,
     }
 )
 _PREVIEW_CONTENT_WARNING_RULE_VERSIONS = frozenset(
@@ -563,6 +573,8 @@ _REQUIRED_HASHTAG = "#赛先生科学"
 def copy_repair_codes_for_rule(rule_version: str | None) -> frozenset[str]:
     """Return the bounded repair allowlist for a persisted copy policy."""
 
+    if rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS:
+        return frozenset()
     if rule_version in _PREVIEW_CONTENT_WARNING_RULE_VERSIONS:
         return COPY_QUALITY_REPAIR_CODES | COPY_CONTENT_WARNING_CODES
     return COPY_QUALITY_REPAIR_CODES
@@ -580,7 +592,8 @@ def validate_material_draft(
     issues: list[CopyIssue] = []
     evidence_by_id = {item.evidence_id: item for item in topic.evidence}
     brand_by_id = {item.chunk_id: item for item in brand_context}
-    copy_body = extract_copy_body(draft.copywriting)
+    standalone_heading = rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS
+    copy_body = extract_copy_body(draft.copywriting, exclude_standalone_heading=standalone_heading)
     hanzi_count = count_hanzi(copy_body)
     if hanzi_count > 260:
         issues.append(
@@ -601,7 +614,9 @@ def validate_material_draft(
                 severity="warning",
             )
         )
-    if not has_copy_paragraph_format(draft.copywriting):
+    if not has_copy_paragraph_format(
+        draft.copywriting, exclude_standalone_heading=standalone_heading
+    ):
         issues.append(
             _issue(
                 "copy_paragraph_format",
@@ -610,11 +625,19 @@ def validate_material_draft(
                 severity="warning",
             )
         )
-    if not has_copy_news_framing(draft.copywriting):
+    if not (
+        has_copy_standalone_heading(draft.copywriting)
+        if standalone_heading
+        else has_copy_news_framing(draft.copywriting)
+    ):
         issues.append(
             _issue(
                 "copy_news_framing",
-                f"朋友圈正文必须以“{COPY_OPENING_PREFIX}”开头并直接进入核心事实",
+                (
+                    f"朋友圈正文必须以独立标题“{COPY_STANDALONE_HEADING}”开头"
+                    if standalone_heading
+                    else f"朋友圈正文必须以“{COPY_OPENING_PREFIX}”开头并直接进入核心事实"
+                ),
                 field="copywriting",
                 severity="warning",
             )
@@ -873,9 +896,16 @@ def apply_copy_audit_policy(
         return verdict
     issues = tuple(
         issue.model_copy(update={"severity": "warning"})
-        if (quality_warning_policy and issue.code in _COPY_ADVISORY_AUDIT_CODES)
-        or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
-        or (content_warning_policy and issue.code in COPY_CONTENT_WARNING_CODES)
+        if not (
+            rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS
+            and issue.code == "brand_value"
+            and issue.severity == "error"
+        )
+        and (
+            (quality_warning_policy and issue.code in _COPY_ADVISORY_AUDIT_CODES)
+            or (uses_preview and issue.code in _PREVIEW_AUDIT_WARNING_CODES)
+            or (content_warning_policy and issue.code in COPY_CONTENT_WARNING_CODES)
+        )
         else issue
         for issue in verdict.issues
     )

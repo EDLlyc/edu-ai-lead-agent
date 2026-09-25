@@ -17,6 +17,8 @@ from app.application.ports.copy_generation import (
     StoredDraft,
 )
 from app.application.services.copy_generation import (
+    STANDALONE_HEADING_AUDITOR_PROMPT_VERSION,
+    STANDALONE_HEADING_GENERATOR_PROMPT_VERSION,
     CopyGenerationExecutor,
     build_auditor_prompt,
     build_copy_version_bundle,
@@ -46,6 +48,7 @@ from app.infrastructure.ai.copy_generation import (
 )
 from app.schemas.copy_generation import (
     COPY_OPENING_PREFIX,
+    COPY_STANDALONE_HEADING,
     AuditVerdict,
     CopyIssue,
     DraftClaim,
@@ -56,6 +59,8 @@ from app.schemas.copy_generation import (
     has_copy_news_framing,
     has_copy_news_source_footer,
     has_copy_paragraph_format,
+    has_copy_standalone_heading,
+    normalize_copy_standalone_heading,
 )
 from structlog.testing import capture_logs
 
@@ -64,6 +69,18 @@ JOB_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 LEASE = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 EVIDENCE_ID = UUID("11111111-1111-4111-8111-111111111111")
 BRAND_CHUNK_ID = UUID("22222222-2222-4222-8222-222222222222")
+
+
+def _historical_settings(**overrides: object) -> Settings:
+    return Settings.model_validate(
+        {
+            "copy_generator_prompt_version": "moments-generator-v19-exact-claim-span",
+            "copy_auditor_prompt_version": "moments-auditor-v18-xiaosai-insight",
+            "copy_rule_version": "moments-rules-v11-compact-warning-recovery",
+            "copy_preview_policy_version": "preview-v11-compact-content-warning-recovery",
+            **overrides,
+        }
+    )
 
 
 def _topic(
@@ -238,7 +255,7 @@ class FakeCopyRepository:
     ) -> None:
         self.topic = topic
         self.version_bundle = version_bundle or build_copy_version_bundle(
-            Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"),
+            _historical_settings(ai_provider_mode="fake", ai_chat_model="fake-copy"),
             scoring_profile=topic.scoring_profile,
         )
         self.claimed: ClaimedCopyGenerationJob | None = ClaimedCopyGenerationJob(
@@ -474,6 +491,24 @@ class AdvisoryRejectingAuditor(CountingAuditor):
         )
 
 
+class BrandValueErrorAuditor(CountingAuditor):
+    async def audit(self, request: DraftAuditRequest) -> DraftAuditResult:
+        result = await super().audit(request)
+        return replace(
+            result,
+            verdict=AuditVerdict(
+                accepted=False,
+                issues=(
+                    CopyIssue(
+                        code="brand_value",
+                        message="品牌主张没有足够依据",
+                        severity="error",
+                    ),
+                ),
+            ),
+        )
+
+
 class HardRejectingAuditor(CountingAuditor):
     async def audit(self, request: DraftAuditRequest) -> DraftAuditResult:
         result = await super().audit(request)
@@ -690,14 +725,173 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v11-compact-content-warning-recovery"
-    assert preview.generator_prompt_version == "moments-generator-v19-exact-claim-span"
-    assert preview.auditor_prompt_version == "moments-auditor-v18-xiaosai-insight"
+    assert preview.rule_version == "preview-v12-standalone-heading-advisory"
+    assert preview.generator_prompt_version == STANDALONE_HEADING_GENERATOR_PROMPT_VERSION
+    assert preview.auditor_prompt_version == STANDALONE_HEADING_AUDITOR_PROMPT_VERSION
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v11-compact-warning-recovery"
-    assert manual_strict.rule_version == "moments-rules-v11-compact-warning-recovery"
-    assert manual_preview.rule_version == "preview-v11-compact-content-warning-recovery"
+    assert strict.rule_version == "moments-rules-v12-standalone-heading-advisory"
+    assert manual_strict.rule_version == "moments-rules-v12-standalone-heading-advisory"
+    assert manual_preview.rule_version == "preview-v12-standalone-heading-advisory"
+
+
+def test_new_default_prompt_preserves_exact_claims_and_source_boundary() -> None:
+    bundle = build_copy_version_bundle(Settings())
+    topic = _topic()
+    brand = _brand()
+    prompt = build_generator_prompt(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=brand,
+            version_bundle=bundle,
+            draft_version=1,
+            max_output_tokens=2048,
+        )
+    )
+    auditor_prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=topic,
+            brand_context=brand,
+            draft=_contract_draft(),
+            version_bundle=bundle,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert f"copywriting首行单独写“{COPY_STANDALONE_HEADING}”" in prompt
+    assert "逐字符可审计的一致性" in prompt
+    assert "REQUIRED_EXACT_CLAIMS" in prompt
+    assert "unsupported_brand_claim error" in auditor_prompt
+
+
+@pytest.mark.parametrize(
+    "opening",
+    (
+        "小赛洞察：",
+        "🔎 小赛洞察\n\n",
+        "🔎 小赛洞察\n\n小赛洞察：",
+        "  小赛洞察：\n🔎 小赛洞察\n",
+    ),
+)
+def test_standalone_heading_normalization_is_idempotent_and_body_preserving(opening: str) -> None:
+    original = f"{opening}研究团队发布了成果。\n\n家长可以和孩子讨论。\n#赛先生科学 #科学教育"
+    normalized = normalize_copy_standalone_heading(original)
+
+    assert normalized.startswith(f"{COPY_STANDALONE_HEADING}\n\n研究团队发布了成果。")
+    assert normalized.count(COPY_STANDALONE_HEADING) == 1
+    assert normalized.endswith("#赛先生科学 #科学教育")
+    assert normalize_copy_standalone_heading(normalized) == normalized
+
+
+def test_standalone_heading_is_excluded_from_body_checks() -> None:
+    draft = _contract_draft(hanzi_count=260, emojis=("🔍", "🧪"))
+    copywriting = normalize_copy_standalone_heading(draft.copywriting)
+    updated = draft.model_copy(update={"copywriting": copywriting})
+
+    assert has_copy_standalone_heading(copywriting)
+    assert has_copy_paragraph_format(copywriting, exclude_standalone_heading=True)
+    assert not has_copy_paragraph_format(copywriting)
+    assert "小赛洞察" not in extract_copy_body(copywriting, exclude_standalone_heading=True)
+    issues = validate_material_draft(
+        updated,
+        topic=_topic(),
+        brand_context=_brand(),
+        rule_version="preview-v12-standalone-heading-advisory",
+    )
+    checked_codes = {
+        "copy_length",
+        "copy_emoji_count",
+        "copy_paragraph_format",
+        "copy_news_framing",
+    }
+    assert not checked_codes.intersection(issue.code for issue in issues)
+
+
+def test_standalone_footer_replaces_untrusted_source_without_hashtags() -> None:
+    text = (
+        "🔎 小赛洞察\n\n研究团队发布了成果。\n\n"
+        "新闻来源：不可信来源\n原文链接：https://invalid.test/fabricated\n#赛先生科学 #bad!"
+    )
+    result = append_copy_news_source_footer(
+        text,
+        source_name="科技日报",
+        source_url="https://example.test/article",
+        allow_missing_hashtags=True,
+    )
+
+    assert "不可信来源" not in result
+    assert "invalid.test" not in result
+    assert "#bad!" in result
+    assert has_copy_news_source_footer(
+        result, source_name="科技日报", source_url="https://example.test/article"
+    )
+
+
+@pytest.mark.parametrize(
+    "model_footer",
+    (
+        "新闻来源：不可信来源",
+        "原文链接：https://invalid.test/fabricated",
+        "新闻来源：不可信来源\n原文链接：https://invalid.test/fabricated",
+        "新闻来源:不可信来源\n原文链接:https://invalid.test/fabricated",
+    ),
+)
+@pytest.mark.parametrize("hashtags", ("", "\n#赛先生科学 #科学教育"))
+def test_standalone_footer_removes_partial_model_source_metadata(
+    model_footer: str, hashtags: str
+) -> None:
+    text = f"🔎 小赛洞察\n\n研究团队发布了成果。\n\n{model_footer}{hashtags}"
+    result = append_copy_news_source_footer(
+        text,
+        source_name="科技日报",
+        source_url="https://example.test/article",
+        allow_missing_hashtags=True,
+    )
+
+    assert "不可信来源" not in result
+    assert "invalid.test" not in result
+    assert result.count("新闻来源：") == 1
+    assert result.count("原文链接：") == 1
+    assert has_copy_news_source_footer(
+        result, source_name="科技日报", source_url="https://example.test/article"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ("preview", "strict"))
+async def test_new_default_executor_normalizes_heading_without_repair(profile: str) -> None:
+    topic = replace(_topic(), scoring_profile=profile)
+    bundle = build_copy_version_bundle(
+        Settings(
+            ai_provider_mode="fake", ai_chat_model="fake-copy", content_scoring_profile=profile
+        )
+    )
+    repository = FakeCopyRepository(topic, version_bundle=bundle)
+    generator = CountingGenerator()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-heading-worker") is True
+    assert repository.status == "accepted"
+    assert repository.repair_count == 0
+    assert generator.calls == 1
+    copywriting = repository.drafts[0].draft.copywriting
+    assert copywriting.startswith(f"{COPY_STANDALONE_HEADING}\n\n")
+    assert copywriting.count(COPY_STANDALONE_HEADING) == 1
+    assert topic.evidence[0].exact_quote in copywriting
+    assert has_copy_news_source_footer(
+        copywriting,
+        source_name=topic.evidence[0].source_name,
+        source_url=topic.evidence[0].source_url,
+    )
 
 
 def test_copy_version_bundle_metadata_requires_exact_fields_and_matching_fingerprint() -> None:
@@ -751,7 +945,7 @@ async def test_executor_uses_durable_run_bundle_when_server_profile_differs(
     expected_calls: int,
     expected_severity: str,
 ) -> None:
-    settings = Settings(
+    settings = _historical_settings(
         content_scoring_profile=server_profile,
         ai_provider_mode="fake",
         ai_chat_model="fake-copy",
@@ -1058,7 +1252,7 @@ def test_generator_and_auditor_prompts_share_copy_counting_contract() -> None:
     topic = _topic()
     brand = _brand()
     draft = _contract_draft()
-    bundle = build_copy_version_bundle(Settings())
+    bundle = build_copy_version_bundle(_historical_settings())
     generation_request = DraftGenerationRequest(
         run_id=RUN_ID,
         topic=topic,
@@ -1192,7 +1386,7 @@ def test_non_preview_prompts_preserve_content_safety_guidance() -> None:
     topic = _topic()
     brand = _brand()
     draft = _contract_draft()
-    bundle = build_copy_version_bundle(Settings(content_scoring_profile="strict"))
+    bundle = build_copy_version_bundle(_historical_settings(content_scoring_profile="strict"))
     prompts = (
         build_generator_prompt(
             DraftGenerationRequest(
@@ -1337,6 +1531,114 @@ async def test_advisory_only_format_repair_provider_failure_accepts_original_dra
     assert repository.drafts[0].audit.accepted is True
 
 
+@pytest.mark.asyncio
+async def test_new_rule_accepts_editorial_warnings_without_spending_repair() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(_topic(), version_bundle=bundle)
+    generator = ScriptedGenerator((_contract_draft(hanzi_count=270, emojis=("🧪",)),))
+    auditor = AdvisoryRejectingAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-rule-editorial-worker") is True
+    assert repository.status == "accepted"
+    assert repository.repair_count == 0
+    assert generator.calls == 1
+    assert auditor.calls == 1
+    assert {issue.code for issue in repository.drafts[0].validation_issues} >= {
+        "copy_length",
+        "copy_emoji_count",
+    }
+    assert repository.drafts[0].audit is not None
+    assert repository.drafts[0].audit.accepted is True
+
+
+@pytest.mark.asyncio
+async def test_new_rule_missing_hashtags_keeps_locked_source_without_repair() -> None:
+    topic = _topic()
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(topic, version_bundle=bundle)
+    bare_draft = _contract_draft().model_copy(
+        update={"copywriting": extract_copy_body(_contract_draft().copywriting)}
+    )
+    generator = ScriptedGenerator((bare_draft,))
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-rule-no-hashtag-worker") is True
+    assert repository.status == "accepted"
+    assert repository.repair_count == 0
+    assert generator.calls == 1
+    stored = repository.drafts[0]
+    assert has_copy_news_source_footer(
+        stored.draft.copywriting,
+        source_name=topic.evidence[0].source_name,
+        source_url=topic.evidence[0].source_url,
+    )
+    assert {issue.code: issue.severity for issue in stored.validation_issues}[
+        "hashtag_format"
+    ] == "warning"
+
+
+@pytest.mark.asyncio
+async def test_new_rule_repairs_hard_evidence_error_once() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(_topic(), version_bundle=bundle)
+    generator = RepairingBindingGenerator()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-rule-hard-evidence-worker") is True
+    assert repository.status == "accepted"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert {issue.code for issue in generator.requests[1].repair_issues} == {"unknown_evidence_id"}
+
+
+@pytest.mark.asyncio
+async def test_new_preview_rule_keeps_privacy_injection_and_marketing_hard() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(_topic(), version_bundle=bundle)
+    generator = PreviewContentWarningOnlyGenerator()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-rule-hard-safety-worker") is True
+    assert repository.status == "review_required"
+    assert repository.error_code == "repair_validation_failed"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    issues = {issue.code: issue for issue in repository.drafts[0].validation_issues}
+    for code in (
+        "personal_data",
+        "prompt_injection_echo",
+        "prohibited_marketing",
+        "education_anxiety",
+    ):
+        assert issues[code].severity == "error"
+    assert all(issue.severity == "error" for issue in generator.requests[1].repair_issues)
+
+
 def test_prompt_data_cannot_close_its_delimited_section() -> None:
     topic = _topic()
     evidence = replace(
@@ -1385,7 +1687,7 @@ def test_v19_initial_prompt_requires_contiguous_exact_claim_spans() -> None:
         run_id=RUN_ID,
         topic=_topic(),
         brand_context=_brand(),
-        version_bundle=build_copy_version_bundle(Settings()),
+        version_bundle=build_copy_version_bundle(_historical_settings()),
         draft_version=1,
         max_output_tokens=2048,
     )
@@ -1841,6 +2143,56 @@ def test_preview_audit_policy_keeps_safety_and_factual_risks_blocking() -> None:
         )
         == verdict
     )
+
+
+@pytest.mark.parametrize(
+    "rule_version",
+    (
+        "moments-rules-v12-standalone-heading-advisory",
+        "preview-v12-standalone-heading-advisory",
+    ),
+)
+def test_new_rule_preserves_brand_and_safety_errors(rule_version: str) -> None:
+    verdict = AuditVerdict(
+        accepted=False,
+        issues=(
+            CopyIssue(code="brand_value", message="品牌主张无据", severity="error"),
+            CopyIssue(code="unsupported_brand_claim", message="具体课程无据", severity="error"),
+            CopyIssue(code="brand_fit", message="语气一般", severity="error"),
+            CopyIssue(code="privacy", message="个人信息", severity="error"),
+        ),
+    )
+    normalized = apply_copy_audit_policy(verdict, rule_version=rule_version)
+    assert normalized.accepted is False
+    assert {issue.code: issue.severity for issue in normalized.issues} == {
+        "brand_value": "error",
+        "unsupported_brand_claim": "error",
+        "brand_fit": "warning",
+        "privacy": "error",
+    }
+
+
+@pytest.mark.asyncio
+async def test_new_rule_brand_value_error_uses_one_repair_then_review() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(_topic(), version_bundle=bundle)
+    generator = CountingGenerator()
+    auditor = BrandValueErrorAuditor()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=generator,
+        auditor=auditor,
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("new-rule-brand-error-worker") is True
+    assert repository.status == "review_required"
+    assert repository.error_code == "repair_exhausted"
+    assert repository.repair_count == 1
+    assert generator.calls == 2
+    assert auditor.calls == 2
+    assert {issue.code for issue in generator.requests[1].repair_issues} == {"brand_value"}
 
 
 def test_local_preview_audit_policy_keeps_safety_findings_blocking() -> None:

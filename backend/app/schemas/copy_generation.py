@@ -30,7 +30,18 @@ _EMOJI_VARIATION_SELECTORS = frozenset({0xFE0E, 0xFE0F})
 _ZERO_WIDTH_JOINER = 0x200D
 _NEWS_SOURCE_PREFIX = "新闻来源\uff1a"
 _NEWS_LINK_PREFIX = "原文链接\uff1a"
+_MODEL_SOURCE_LINE = re.compile(r"^(?:新闻来源|原文链接)[\uff1a:]")
 COPY_OPENING_PREFIX = "小赛洞察\uff1a"
+COPY_STANDALONE_HEADING = "🔎 小赛洞察"
+_LEADING_INSIGHT_HEADING = re.compile(r"^(?:🔎[ \t]*)?小赛洞察(?:[\uff1a:]|(?=[ \t\r\n]|$))")
+
+
+def normalize_copy_standalone_heading(text: str) -> str:
+    """Normalize leading branded headings without touching factual body or source text."""
+    body = text.lstrip()
+    while match := _LEADING_INSIGHT_HEADING.match(body):
+        body = body[match.end() :].lstrip(" \t\r\n")
+    return f"{COPY_STANDALONE_HEADING}\n\n{body}"
 
 
 def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
@@ -54,7 +65,7 @@ def has_non_trailing_hashtags(text: str) -> bool:
     )
 
 
-def extract_copy_body(text: str) -> str:
+def extract_copy_body(text: str, *, exclude_standalone_heading: bool = False) -> str:
     """Return the copy body while excluding a final hashtag candidate line."""
     lines = text.splitlines()
     while lines and not lines[-1].strip():
@@ -62,10 +73,19 @@ def extract_copy_body(text: str) -> str:
     if lines and _is_hashtag_candidate_line(lines[-1]):
         lines.pop()
     _remove_news_source_footer(lines)
-    return "\n".join(lines)
+    body = "\n".join(lines)
+    if exclude_standalone_heading and body.startswith(f"{COPY_STANDALONE_HEADING}\n"):
+        return body[len(COPY_STANDALONE_HEADING) :].lstrip("\r\n")
+    return body
 
 
-def append_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> str:
+def append_copy_news_source_footer(
+    text: str,
+    *,
+    source_name: str,
+    source_url: str,
+    allow_missing_hashtags: bool = False,
+) -> str:
     """Bind a generated copy to its first eligible news source without trusting model text."""
     normalized_name = " ".join(source_name.split())
     normalized_url = source_url.strip()
@@ -77,6 +97,29 @@ def append_copy_news_source_footer(text: str, *, source_name: str, source_url: s
     ):
         raise ValueError("news source footer requires one safe source name and URL")
     hashtags = extract_trailing_hashtags(text)
+    if allow_missing_hashtags:
+        lines = text.splitlines()
+        while lines and not lines[-1].strip():
+            lines.pop()
+        hashtag_candidate = (
+            lines.pop().strip() if lines and _is_hashtag_candidate_line(lines[-1]) else None
+        )
+        while lines and not lines[-1].strip():
+            lines.pop()
+        # New-rule model metadata is untrusted even when only one footer line was generated.
+        while lines and _MODEL_SOURCE_LINE.match(lines[-1].strip()):
+            lines.pop()
+            while lines and not lines[-1].strip():
+                lines.pop()
+        footer_lines = (
+            "\n".join(lines).rstrip(),
+            "",
+            f"{_NEWS_SOURCE_PREFIX}{normalized_name}",
+            f"{_NEWS_LINK_PREFIX}{normalized_url}",
+        )
+        if hashtag_candidate is None:
+            return "\n".join(footer_lines)
+        return "\n".join((*footer_lines, " ".join(hashtags) if hashtags else hashtag_candidate))
     if not hashtags:
         return text
     body = extract_copy_body(text).rstrip()
@@ -94,6 +137,11 @@ def append_copy_news_source_footer(text: str, *, source_name: str, source_url: s
 def has_copy_news_framing(text: str) -> bool:
     """Require the branded opening prefix at the very start of the copy body."""
     return extract_copy_body(text).startswith(COPY_OPENING_PREFIX)
+
+
+def has_copy_standalone_heading(text: str) -> bool:
+    """Check that the new heading occupies the first line, not the first sentence."""
+    return extract_copy_body(text).startswith(f"{COPY_STANDALONE_HEADING}\n")
 
 
 def has_copy_news_source_footer(text: str, *, source_name: str, source_url: str) -> bool:
@@ -119,11 +167,14 @@ def extract_copy_paragraphs(text: str) -> tuple[str, ...]:
     return tuple(extract_copy_body(text).splitlines())
 
 
-def has_copy_paragraph_format(text: str) -> bool:
+def has_copy_paragraph_format(text: str, *, exclude_standalone_heading: bool = False) -> bool:
     """Accept a readable two- or three-paragraph copy body without line-shape rules."""
     paragraphs = tuple(
         paragraph.strip()
-        for paragraph in re.split(r"\n\s*\n", extract_copy_body(text).strip())
+        for paragraph in re.split(
+            r"\n\s*\n",
+            extract_copy_body(text, exclude_standalone_heading=exclude_standalone_heading).strip(),
+        )
         if paragraph.strip()
     )
     return 2 <= len(paragraphs) <= 3
