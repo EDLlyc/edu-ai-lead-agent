@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -71,6 +72,11 @@ PROTECTED_FILES = (
     "deploy/release/deploy.py",
     "scripts/edu-ai-production-check.sh",
     "scripts/doctor.sh",
+)
+STANDARD_RELEASE_MARKERS = (
+    "/var/lib/edu-ai/releases/current.json",
+    str(APP / ".release-manifest.json"),
+    "/usr/local/sbin/edu-ai-deploy",
 )
 PROTECTED_METADATA = {
     ".env": {"mode": 0o600, "uid": 1000, "gid": 1001},
@@ -1049,6 +1055,65 @@ def normalized_mounts(mounts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(result, key=canonical)
 
 
+def check_application_mounts(mounts: list[dict[str, Any]]) -> None:
+    """A bind or volume must not shadow code verified inside the OCI image."""
+    directories = ("/app/app", "/app/alembic")
+    files = ("/app/alembic.ini", "/app/pyproject.toml")
+    for mount in mounts:
+        destination = mount["Destination"].rstrip("/")
+        require(
+            not any(
+                destination == path
+                or path.startswith(destination + "/")
+                or destination.startswith(path + "/")
+                for path in directories
+            )
+            and not any(
+                destination == path or path.startswith(destination + "/")
+                for path in files
+            ),
+            "application_mount_shadow",
+        )
+
+
+def standard_release_markers_absent() -> dict[str, bool]:
+    return {name: not os.path.lexists(name) for name in STANDARD_RELEASE_MARKERS}
+
+
+def check_backup_space(baseline: dict[str, Any]) -> None:
+    """Leave room for a full logical dump and the uncompressed backup inputs."""
+    postgres_mounts = [
+        mount
+        for mount in baseline["services"]["postgres"]["mounts"]
+        if mount["Type"] == "volume"
+        and mount["Name"] == "edu-ai-lead-agent_postgres_data"
+    ]
+    require(len(postgres_mounts) == 1, "postgres_backup_source")
+    sources = [
+        Path(postgres_mounts[0]["Source"]),
+        *(Path(root) for root in baseline["volumes"].values()),
+        APP / "private/brand-materials",
+        *(APP / name for name in ("backend", "deploy", "scripts", "infra")),
+    ]
+    size = 0
+    for root in sources:
+        physical(root)
+        require(root.is_dir(), "backup_source_missing")
+        for path in root.rglob("*"):
+            info = path.lstat()
+            require(
+                stat.S_ISREG(info.st_mode)
+                or stat.S_ISDIR(info.st_mode)
+                or stat.S_ISLNK(info.st_mode),
+                "backup_source_type",
+            )
+            if not stat.S_ISDIR(info.st_mode):
+                size += info.st_size
+    # Compression usually helps, but never rely on it when reserving space.
+    required = size * 3 // 2 + 512 * 1024 * 1024
+    require(shutil.disk_usage(BACKUP_ROOT).free >= required, "backup_space")
+
+
 def check_service_environment(
     name: str, item: dict[str, Any], config: dict[str, Any], policy: str
 ) -> dict[str, str]:
@@ -1420,6 +1485,10 @@ class Host:
 
     def capture(self, manifest: dict[str, Any]) -> dict[str, Any]:
         require(os.geteuid() == 0, "root_required")
+        require(
+            all(standard_release_markers_absent().values()),
+            "standard_release_path_changed",
+        )
         files = {name: metadata(APP / name) for name in PROTECTED_FILES}
         require(
             all(
@@ -1481,6 +1550,8 @@ class Host:
                     name, item, config["services"][name], PROD_POLICY
                 )
             mounts = normalized_mounts(item["Mounts"])
+            if name in SERVICES:
+                check_application_mounts(mounts)
             services[name] = {
                 "id": item["Id"],
                 "image": item["Image"],
@@ -1607,13 +1678,7 @@ class Host:
                     tree_manifest(APP / "private/brand-materials", brand_data=True)
                 )
             ),
-            "standard_markers_absent": {
-                name: not Path(name).exists()
-                for name in (
-                    "/var/lib/edu-ai/releases/current.json",
-                    str(APP / ".release-manifest.json"),
-                )
-            },
+            "standard_markers_absent": standard_release_markers_absent(),
             "compose_sha256": sha(canonical(config)),
             "schedule_window": next_window(datetime.now(UTC)),
             "captured_at": datetime.now(UTC).isoformat(),
@@ -1708,11 +1773,8 @@ class Deployment:
             "backup_root_permissions",
         )
         same_baseline(self.baseline, self.host.capture(self.manifest))
-        require(
-            datetime.now(UTC) - datetime.fromisoformat(self.baseline["captured_at"])
-            < timedelta(hours=2),
-            "baseline_expired",
-        )
+        age = datetime.now(UTC) - datetime.fromisoformat(self.baseline["captured_at"])
+        require(timedelta(0) <= age < timedelta(hours=2), "baseline_expired")
         require(
             datetime.fromisoformat(next_window(datetime.now(UTC))["prepare_at"])
             - datetime.now(UTC)
@@ -1723,6 +1785,7 @@ class Deployment:
             self.baseline["schedule_window"] == next_window(datetime.now(UTC)),
             "schedule_changed",
         )
+        check_backup_space(self.baseline)
 
     def load(self) -> None:
         image_rows = run(
@@ -1942,6 +2005,10 @@ class Deployment:
         )
 
     def activate(self) -> None:
+        # The intent write itself may fail after creating the file. Once we
+        # begin that write, any uncertain outcome must use forward recovery,
+        # never the pre-activation old-image restart path.
+        self.activated = True
         write_new(
             self.backup_dir / "activation-intent.json",
             canonical(
@@ -1951,7 +2018,6 @@ class Deployment:
                 }
             ),
         )
-        self.activated = True
         replacements: dict[str, bytes] = {}
         replacements[".release.env"] = change_env(
             read_file(APP / ".release.env"),
@@ -1999,6 +2065,7 @@ class Deployment:
                 == self.baseline["services"][name]["mounts"],
                 "candidate_mount_changed",
             )
+            check_application_mounts(normalized_mounts(item["Mounts"]))
         for name in ("postgres", "minio"):
             item = self.host.service(name)
             require(
@@ -2145,8 +2212,12 @@ class Deployment:
             run(["systemctl", "is-active", "edu-ai-backup.timer"]).strip() == b"active",
             "backup_timer",
         )
-        for name, absent in self.baseline["standard_markers_absent"].items():
-            require(not absent or not Path(name).exists(), "fabricated_standard_marker")
+        require(
+            all(self.baseline["standard_markers_absent"].values())
+            and standard_release_markers_absent()
+            == self.baseline["standard_markers_absent"],
+            "standard_release_path_changed",
+        )
         return {
             "status": "deployed",
             "revision": self.manifest["revision"],
@@ -2171,6 +2242,7 @@ class Deployment:
         self.log("load_and_verify_candidate")
         self.load()
         same_baseline(self.baseline, self.host.capture(self.manifest))
+        check_backup_space(self.baseline)
         stopped = False
         try:
             self.log("quiesce")

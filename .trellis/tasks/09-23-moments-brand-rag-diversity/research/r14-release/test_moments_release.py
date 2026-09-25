@@ -6,6 +6,7 @@ import importlib.util
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -135,6 +136,65 @@ def test_offline_copy_probe_has_no_network(
     ]
 
 
+@pytest.mark.parametrize(
+    "destination",
+    ["/app", "/app/app", "/app/app/domain", "/app/alembic", "/app/alembic.ini"],
+)
+def test_mounts_cannot_shadow_verified_application(
+    destination: str,
+) -> None:
+    with pytest.raises(RuntimeError, match="application_mount_shadow"):
+        m.check_application_mounts([{"Destination": destination}])
+    m.check_application_mounts([{"Destination": "/app/private/brand-materials"}])
+
+
+def test_fixed_base_operator_rejects_standard_release_markers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    marker = tmp_path / "current.json"
+    monkeypatch.setattr(m, "STANDARD_RELEASE_MARKERS", (str(marker),))
+    assert m.standard_release_markers_absent() == {str(marker): True}
+    marker.symlink_to(tmp_path / "missing")
+    assert m.standard_release_markers_absent() == {str(marker): False}
+
+
+def test_backup_space_is_checked_before_stopping_services(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    app = tmp_path / "app"
+    for name in ("private/brand-materials", "backend", "deploy", "scripts", "infra"):
+        (app / name).mkdir(parents=True)
+    postgres = tmp_path / "postgres"
+    postgres.mkdir()
+    volume = tmp_path / "volume"
+    volume.mkdir()
+    monkeypatch.setattr(m, "APP", app)
+    monkeypatch.setattr(m, "BACKUP_ROOT", tmp_path)
+    baseline = {
+        "services": {
+            "postgres": {
+                "mounts": [
+                    {
+                        "Type": "volume",
+                        "Name": "edu-ai-lead-agent_postgres_data",
+                        "Source": str(postgres),
+                    }
+                ]
+            }
+        },
+        "volumes": {"edu-ai-lead-agent_minio_data": str(volume)},
+    }
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _path: SimpleNamespace(free=1024 * 1024)
+    )
+    with pytest.raises(RuntimeError, match="backup_space"):
+        m.check_backup_space(baseline)
+    monkeypatch.setattr(
+        m.shutil, "disk_usage", lambda _path: SimpleNamespace(free=1024**3)
+    )
+    m.check_backup_space(baseline)
+
+
 def test_capture_baseline_comparison_and_expiration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -152,6 +212,7 @@ def test_capture_baseline_comparison_and_expiration(
     backup_root = tmp_path / "backups"
     backup_root.mkdir(mode=0o700)
     monkeypatch.setattr(m, "BACKUP_ROOT", backup_root)
+    monkeypatch.setattr(m, "check_backup_space", lambda _baseline: None)
     deployment = m.Deployment(
         CaptureHost(), tmp_path / "candidate.json", {"revision": "a" * 40}, baseline
     )
@@ -161,6 +222,10 @@ def test_capture_baseline_comparison_and_expiration(
         deployment.plan()
     live["brand_identity"] = {"sha256": "a" * 64}
     baseline["captured_at"] = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
+    live["captured_at"] = baseline["captured_at"]
+    with pytest.raises(RuntimeError, match="baseline_expired"):
+        deployment.plan()
+    baseline["captured_at"] = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     live["captured_at"] = baseline["captured_at"]
     with pytest.raises(RuntimeError, match="baseline_expired"):
         deployment.plan()
@@ -179,6 +244,7 @@ def test_activation_only_switches_image_and_commit_markers(
     )
     monkeypatch.setattr(m, "write_new", lambda _path, _body: None)
     monkeypatch.setattr(m, "BACKUP_ROOT", tmp_path)
+    monkeypatch.setattr(m, "check_backup_space", lambda _baseline: None)
     manifest = {
         "revision": "a" * 40,
         "candidate_ref": "offline.local/candidate@sha256:" + "b" * 64,
@@ -206,6 +272,7 @@ def test_failure_recovery_never_blindly_restarts_old_after_activation(
             return {"captured_at": "x"}
 
     monkeypatch.setattr(m, "BACKUP_ROOT", tmp_path)
+    monkeypatch.setattr(m, "check_backup_space", lambda _baseline: None)
     baseline = {"captured_at": "x", "files": {name: {} for name in m.PROTECTED_FILES}}
     deployment = m.Deployment(
         FakeHost(), tmp_path / "candidate.json", {"revision": "a" * 40}, baseline
@@ -229,6 +296,49 @@ def test_failure_recovery_never_blindly_restarts_old_after_activation(
         assert not any(action[0] == "start" for action in actions)
     else:
         assert ("start", *m.SERVICES) in actions
+
+
+def test_failed_activation_intent_write_never_restarts_old_image(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    actions: list[tuple[str, ...]] = []
+    baseline = {"captured_at": "x", "files": {name: {} for name in m.PROTECTED_FILES}}
+
+    class FakeHost:
+        def compose(self, *args: str, **_kwargs: Any) -> bytes:
+            actions.append(args)
+            return b""
+
+        def capture(self, _manifest: dict[str, Any]) -> dict[str, Any]:
+            return dict(baseline)
+
+    monkeypatch.setattr(m, "BACKUP_ROOT", tmp_path)
+    monkeypatch.setattr(m, "check_backup_space", lambda _baseline: None)
+    deployment = m.Deployment(
+        FakeHost(),
+        tmp_path / "candidate.json",
+        {
+            "revision": "a" * 40,
+            "candidate_ref": "offline.local/candidate@sha256:" + "b" * 64,
+        },
+        baseline,
+    )
+    monkeypatch.setattr(deployment, "plan", lambda: None)
+    monkeypatch.setattr(deployment, "load", lambda: None)
+    monkeypatch.setattr(deployment, "fence_stopped", lambda: None)
+    monkeypatch.setattr(deployment, "backup", lambda: None)
+    deployment.backup_dir.mkdir()
+
+    def failed_intent(path: Path, _body: bytes) -> None:
+        assert path.name == "activation-intent.json"
+        path.touch()
+        raise RuntimeError("intent_write_uncertain")
+
+    monkeypatch.setattr(m, "write_new", failed_intent)
+    with pytest.raises(RuntimeError, match="intent_write_uncertain"):
+        deployment.apply()
+    assert ("stop", "-t", "60", *m.SERVICES) in actions
+    assert not any(action[0] == "start" for action in actions)
 
 
 def test_same_baseline_does_not_ignore_business_identity() -> None:

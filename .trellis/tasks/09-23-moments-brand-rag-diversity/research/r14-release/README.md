@@ -63,7 +63,10 @@ active brand-pointer digest, protected host files, complete relevant DB-table
 fingerprints, business volumes, journal, brand files, idle queues, backup timer,
 and the next Monday/Wednesday/Friday 09:00 preparation window. The baseline
 expires after two hours. The plan refuses an existing attempt directory or a
-window less than 20 minutes away. Existing historical queued preview jobs and
+window less than 20 minutes away, a future-dated receipt, insufficient backup
+space, any installed standard-release marker, or a mount that shadows verified
+application code. Space is checked again after the candidate image is loaded,
+before stopping services. Existing historical queued preview jobs and
 old unknowns are accepted only under the prior independently pinned cohort;
 new pending, leased, stale or unknown work blocks release.
 
@@ -87,7 +90,8 @@ rollback** is allowed: a new v24/v12 run may have been persisted, and old
 version-bundle compatibility is unproven. On failure or uncertain SSH outcome,
 stop all 12 writers, inspect the private intent/backup/receipt and actual host
 state, then plan a separately reviewed forward recovery. Do not infer success
-or failure from an interrupted transport connection.
+or failure from an interrupted transport connection. Even an uncertain write
+of the activation-intent file enters this forward-only state.
 
 ## Offline checks
 
