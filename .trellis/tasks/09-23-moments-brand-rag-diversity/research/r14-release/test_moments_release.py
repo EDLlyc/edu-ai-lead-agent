@@ -168,7 +168,7 @@ def test_next_window_is_dynamic_and_mwf() -> None:
     assert window["expires_at"] == "2026-09-28T16:00:00+08:00"
 
 
-def test_brand_identity_requires_active_ready_zhipu_and_returns_digest(
+def test_brand_identity_pins_one_legacy_fake_and_returns_digest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     host = m.Host()
@@ -176,21 +176,47 @@ def test_brand_identity_requires_active_ready_zhipu_and_returns_digest(
 
     def scalar(sql: str) -> str:
         calls.append(sql)
-        return json.dumps({"active_count": 11, "wrong_provider": 0, "sha256": "a" * 64})
+        return json.dumps(
+            {
+                "active_count": 11,
+                "wrong_provider": 1,
+                "legacy_fake_count": 1,
+                "legacy_fake_sha256": m.LEGACY_FAKE_BRAND_SHA,
+                "sha256": "a" * 64,
+            }
+        )
 
     monkeypatch.setattr(host, "scalar", scalar)
     assert host.brand_identity()["active_count"] == 11
     assert calls and calls[0].startswith("SELECT ")
     assert "brand_documents" in calls[0] and "embedding_model" in calls[0]
-    monkeypatch.setattr(
-        host,
-        "scalar",
-        lambda _sql: json.dumps(
-            {"active_count": 11, "wrong_provider": 1, "sha256": "a" * 64}
-        ),
-    )
-    with pytest.raises(RuntimeError, match="brand_identity"):
-        host.brand_identity()
+    assert "legacy_fake_sha256" in calls[0]
+    assert "fv.id=fd.active_version_id" in calls[0]
+    assert "fv.embedding_provider='fake'" in calls[0]
+    assert "'source_sha256',fv.sha256" in calls[0]
+    for override in (
+        {"wrong_provider": 0},
+        {"wrong_provider": 2},
+        {"legacy_fake_count": 0},
+        {"legacy_fake_count": 2},
+        {"legacy_fake_sha256": "b" * 64},
+    ):
+        monkeypatch.setattr(
+            host,
+            "scalar",
+            lambda _sql, override=override: json.dumps(
+                {
+                    "active_count": 11,
+                    "wrong_provider": 1,
+                    "legacy_fake_count": 1,
+                    "legacy_fake_sha256": m.LEGACY_FAKE_BRAND_SHA,
+                    "sha256": "a" * 64,
+                    **override,
+                }
+            ),
+        )
+        with pytest.raises(RuntimeError, match="brand_identity"):
+            host.brand_identity()
 
 
 def test_offline_copy_probe_has_no_network(

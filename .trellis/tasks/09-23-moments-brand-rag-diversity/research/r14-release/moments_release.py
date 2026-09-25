@@ -44,6 +44,12 @@ NOTICE_APP_HASHES = {
     "application/services/wechat_official_account_draft.py": "05ff063fccc9b8602dc969a9a51c1809ba55cfb4e4e01dc40ebaeb4eb386e3e5",
     "domain/official_account_editor_handoff.py": "71fd515fee2e1bb1124db9de77843a2dd5fd63746603b9354246ac44aa5a6c0e",
 }
+# One pre-existing July test document is still active with provider "fake".
+# The production Zhipu retrieval filters it out; this release neither edits nor
+# activates brand data. Pin its identity instead of weakening the provider gate.
+LEGACY_FAKE_BRAND_SHA = (
+    "8385e6303397820cdc3cb6c1811754cc6b843a0b93b6a6e8cf38337e8328351e"
+)
 # A previous offline release deliberately retained this live OCR integration.
 # It is outside this change: Git equality is required, but the frozen base bytes
 # (not the newer repository implementation) remain authoritative in the image.
@@ -1389,6 +1395,17 @@ class Host:
                 "'wrong_provider',count(*) FILTER (WHERE d.active_version_id IS NOT NULL AND "
                 "(v.embedding_provider <> 'zhipu' OR v.embedding_model <> 'embedding-3' "
                 "OR v.embedding_dimensions <> 2048 OR v.status <> 'ready' OR v.active IS NOT TRUE)),"
+                "'legacy_fake_count',count(*) FILTER (WHERE d.active_version_id IS NOT NULL "
+                "AND v.embedding_provider='fake'),"
+                "'legacy_fake_sha256',(SELECT encode(sha256(convert_to(jsonb_build_object("
+                "'document_id',fd.id,'version_id',fv.id,'document_key',fd.document_key,"
+                "'title',fd.title,'document_kind',fd.document_kind,'audience',fd.audience,"
+                "'document_status',fd.status,'provider',fv.embedding_provider,"
+                "'model',fv.embedding_model,'dimensions',fv.embedding_dimensions,"
+                "'version_status',fv.status,'active',fv.active,'source_sha256',fv.sha256)"
+                "::text,'UTF8')),'hex') FROM brand_documents fd "
+                "JOIN brand_document_versions fv ON fv.id=fd.active_version_id "
+                "WHERE fv.embedding_provider='fake'),"
                 "'sha256',encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_object("
                 "'document_id',d.id,'active_version_id',d.active_version_id,'status',d.status,"
                 "'provider',v.embedding_provider,'model',v.embedding_model,'dimensions',v.embedding_dimensions,"
@@ -1401,7 +1418,9 @@ class Host:
             isinstance(result, dict)
             and type(result.get("active_count")) is int
             and result["active_count"] >= 4
-            and result.get("wrong_provider") == 0
+            and result.get("wrong_provider") == 1
+            and result.get("legacy_fake_count") == 1
+            and result.get("legacy_fake_sha256") == LEGACY_FAKE_BRAND_SHA
             and re.fullmatch(r"[0-9a-f]{64}", result.get("sha256", "")),
             "brand_identity",
         )

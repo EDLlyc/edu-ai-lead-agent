@@ -99,6 +99,13 @@ before stopping services. Existing historical queued preview jobs and
 old unknowns are accepted only under the prior independently pinned cohort;
 new pending, leased, stale or unknown work blocks release.
 
+The live brand corpus contains one July test document whose active version uses
+the `fake` embedding provider. Zhipu retrieval excludes it by provider/model.
+The release does not modify that document: capture requires its pinned
+document/version identity and source fingerprint, exactly one such exception, and all
+other active versions to be ready Zhipu `embedding-3`/2048. The full active
+pointer digest is then bound across plan, stop, activation and acceptance.
+
 `apply` takes deploy and backup locks; loads and probes the candidate; repeats
 the baseline; stops exactly the 12 application services; verifies PostgreSQL
 custom dump/list, three non-Postgres volume archives, brand files, and host
