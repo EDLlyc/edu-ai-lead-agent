@@ -469,7 +469,7 @@ migration_revision="$(
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT version_num FROM alembic_version;"' \
     2>/dev/null || true
 )"
-[[ "$migration_revision" == "20260916_0048" ]] \
+[[ "$migration_revision" == "20260926_0050" ]] \
   || fail "Database migration is not at head; run 'make migrate'"
 pass "Alembic migration is at $migration_revision"
 

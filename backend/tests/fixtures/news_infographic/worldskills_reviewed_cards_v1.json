@@ -1,0 +1,25 @@
+{
+  "schema_version": "daily-news-infographic-reviewed-cards-v1",
+  "package_id": "2e1b6d31-68c1-4f43-b77e-cd580e171595",
+  "input_fingerprint": "38c32c4ba43e2ef812d4e26bc2b64d8f40752fa47e733ba82084d3f7469e3ad0",
+  "cards": [
+    {
+      "kind": "science",
+      "heading": "为什么要学AI？",
+      "body": "在世界技能大会开幕式上，李强提出：要积极开展人工智能通识教育，帮助劳动者实现技能转型。",
+      "claim_ids": ["claim-1", "claim-2"]
+    },
+    {
+      "kind": "learning",
+      "heading": "AI的回答可信吗？",
+      "body": "先问“依据是什么”，再找资料核对。你会从哪里找证据？",
+      "claim_ids": ["claim-2"]
+    },
+    {
+      "kind": "brand",
+      "heading": "学会质疑",
+      "body": "我们不直接把答案塞给孩子，而是引导孩子自己拆解和分析问题。",
+      "claim_ids": ["claim-3", "claim-4"]
+    }
+  ]
+}

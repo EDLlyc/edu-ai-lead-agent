@@ -29,6 +29,7 @@ from app.application.ports.governance import (
 from app.application.ports.image_validation import (
     ImageTextRecognitionRequest,
     ImageTextRecognitionResult,
+    PosterRegionRecognitionRequest,
 )
 from app.application.services.governance_analysis import build_factual_analysis_prompt
 from app.core.errors import (
@@ -562,18 +563,57 @@ class ZhipuImageTextRecognizer:
         self._sleep = sleep
 
     async def recognize(self, request: ImageTextRecognitionRequest) -> ImageTextRecognitionResult:
-        media_type = request.media_type.casefold()
+        recognized_lines = await self._recognize_layout_lines(
+            request.image_bytes, request.media_type
+        )
+        text_validation = validate_exact_visual_text(
+            recognized_lines,
+            request.expected_text,
+            require_order=request.require_order,
+        )
+        if not text_validation.passed:
+            raise InvalidProviderOutputError(text_validation.issue_codes)
+        return self._result(recognized_lines, request.request_fingerprint)
+
+    async def recognize_poster_region(
+        self, request: PosterRegionRecognitionRequest
+    ) -> ImageTextRecognitionResult:
+        """Return bounded layout lines for one poster crop, without generic set matching.
+
+        The poster worker verifies the complete frozen field after joining visual
+        wrap lines; this path never changes ``recognize`` for other consumers.
+        """
+        lines = await self._recognize_layout_lines(request.image_bytes, request.media_type)
+        return self._result(lines, request.request_fingerprint)
+
+    def _result(
+        self, recognized_lines: tuple[str, ...], request_fingerprint: str
+    ) -> ImageTextRecognitionResult:
+        try:
+            return ImageTextRecognitionResult(
+                recognized_lines=recognized_lines,
+                provider=_IMAGE_OCR_PROVIDER,
+                model=self._model,
+                request_fingerprint=request_fingerprint,
+            )
+        except ValueError:
+            raise InvalidProviderOutputError((_IMAGE_OCR_SCHEMA_ISSUE,)) from None
+
+    async def _recognize_layout_lines(
+        self, image_bytes: bytes, declared_media_type: str
+    ) -> tuple[str, ...]:
+        media_type = declared_media_type.casefold()
         if media_type not in {"image/png", "image/jpeg"}:
             raise ProviderInputLimitError()
         validation = validate_image_output(
-            request.image_bytes,
+            image_bytes,
             media_type,
             expected_dimensions=None,
             max_bytes=self._max_input_bytes,
         )
         if not validation.passed:
             raise ProviderInputLimitError()
-        encoded = base64.b64encode(request.image_bytes).decode("ascii")
+        encoded = base64.b64encode(image_bytes).decode("ascii")
         payload: dict[str, Any] = {
             "model": self._model,
             "file": f"data:{media_type};base64,{encoded}",
@@ -624,29 +664,13 @@ class ZhipuImageTextRecognizer:
         page, page_width, page_height, element_widths, element_heights = (
             _sole_image_ocr_layout_page(parsed)
         )
-        recognized_lines = _project_image_ocr_lines(
+        return _project_image_ocr_lines(
             page,
             page_width=page_width,
             page_height=page_height,
             element_widths=element_widths,
             element_heights=element_heights,
         )
-        text_validation = validate_exact_visual_text(
-            recognized_lines,
-            request.expected_text,
-            require_order=request.require_order,
-        )
-        if not text_validation.passed:
-            raise InvalidProviderOutputError(text_validation.issue_codes)
-        try:
-            return ImageTextRecognitionResult(
-                recognized_lines=recognized_lines,
-                provider=_IMAGE_OCR_PROVIDER,
-                model=self._model,
-                request_fingerprint=request.request_fingerprint,
-            )
-        except ValueError:
-            raise InvalidProviderOutputError((_IMAGE_OCR_SCHEMA_ISSUE,)) from None
 
 
 def _image_ocr_schema_issues(error: ValidationError) -> tuple[str, ...]:

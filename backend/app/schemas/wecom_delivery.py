@@ -63,3 +63,41 @@ class WeComDeliveryResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     retry_url: str
+
+
+class WeComInfographicAttemptResponse(BaseModel):
+    attempt_number: int
+    result_state: Literal["succeeded", "failed", "unknown"]
+    safe_response_code: str | None
+    created_at: datetime
+
+
+class WeComInfographicStatusResponse(BaseModel):
+    """Safe projection; an absent job is not a successful infographic send."""
+
+    base_job_id: UUID
+    base_status: WeComDeliveryStatus
+    infographic_job_id: UUID | None
+    infographic_status: str | None
+    infographic_safe_error_code: str | None
+    quality_mode: Literal["strict", "advisory"] | None
+    warning_codes: list[str]
+    warning_notice_version: str | None
+    content_slot_selection_id: UUID | None
+    sequence_ordinal: int | None
+    business_date: str | None
+    content_slot: str | None
+    package_version: int | None
+    delivery_sha256: str | None
+    delivery_byte_size: int | None
+    delivery_width: int | None
+    delivery_height: int | None
+    ocr_status: str | None
+    footer_ocr_status: str | None
+    visual_status: str | None
+    supplement_id: UUID | None
+    supplement_status: str | None
+    supplement_safe_error_code: str | None
+    supplement_attempt_count: int
+    supplement_expires_at: datetime | None
+    attempts: list[WeComInfographicAttemptResponse]

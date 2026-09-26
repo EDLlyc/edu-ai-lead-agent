@@ -11,6 +11,7 @@ import time
 import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import Enum
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlsplit
@@ -75,6 +76,25 @@ _SUPPORTED_IMAGE_MODELS = {TOAPIS_IMAGE_MODEL, _FLUX_IMAGE_MODEL, _GEMINI_IMAGE_
 _COMFLY_RESPONSE_FORMAT = "url"
 _SAFE_OUTPUT_HOST_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _GENERIC_DOWNLOAD_MEDIA_TYPES = frozenset({"", "application/octet-stream", "binary/octet-stream"})
+
+
+class ImageOutputGeometry(Enum):
+    """Closed output-size profiles; the portrait profile is for an explicit local trial."""
+
+    SQUARE_1024 = (IMAGE_WIDTH, IMAGE_HEIGHT)
+    PORTRAIT_1152X2048 = (1152, 2048)
+
+    @property
+    def width(self) -> int:
+        return self.value[0]
+
+    @property
+    def height(self) -> int:
+        return self.value[1]
+
+    @property
+    def size(self) -> str:
+        return f"{self.width}x{self.height}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,6 +512,7 @@ class OpenAICompatibleImageGenerator:
         base_url: str,
         api_key: SecretStr,
         model: str = IMAGE_MODEL,
+        output_geometry: ImageOutputGeometry = ImageOutputGeometry.SQUARE_1024,
         max_attempts: int = 3,
         initial_poll_seconds: float = 5.0,
         poll_interval_seconds: float = 7.0,
@@ -543,10 +564,13 @@ class OpenAICompatibleImageGenerator:
             or any(character.isspace() for character in normalized_model)
         ):
             raise ValueError("Comfly image model identifier is invalid")
+        if not isinstance(output_geometry, ImageOutputGeometry):
+            raise ValueError("Comfly output geometry profile is invalid")
         self._client = client
         self._base_url = normalized_base_url
         self._api_key = SecretStr(key)
         self._model = normalized_model
+        self._output_geometry = output_geometry
         self._max_attempts = max_attempts
         self._initial_poll_seconds = initial_poll_seconds
         self._poll_interval_seconds = poll_interval_seconds
@@ -562,6 +586,16 @@ class OpenAICompatibleImageGenerator:
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         expected_dimensions = _request_output_dimensions(request)
+        if self._output_geometry is ImageOutputGeometry.PORTRAIT_1152X2048:
+            # The existing official-account path chooses square/landscape per request.
+            # Only this explicitly constructed infographic adapter overrides the
+            # legacy square request; never broaden its native-tolerant policy.
+            if request.output_size != "1024x1024" or request.output_geometry_policy != "exact":
+                raise ImageOutputValidationError("image_dimensions_invalid")
+            expected_dimensions = (
+                self._output_geometry.width,
+                self._output_geometry.height,
+            )
         task_id: str | None = None
         try:
             async with asyncio.timeout(self._provider_window_seconds):
@@ -628,9 +662,13 @@ class OpenAICompatibleImageGenerator:
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
-            "size": request.output_size,
-            # GPT-Image-2 documents URL output as its current primary contract. The response
-            # decoder remains compatible with valid Base64, direct raster, and task results.
+            "size": (
+                self._output_geometry.size
+                if self._output_geometry is ImageOutputGeometry.PORTRAIT_1152X2048
+                else request.output_size
+            ),
+            # The relay contract requests URL output. The response decoder remains compatible
+            # with valid Base64, direct raster, and task results.
             "response_format": _COMFLY_RESPONSE_FORMAT,
         }
         references = _request_references(request)

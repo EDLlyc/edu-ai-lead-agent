@@ -31,7 +31,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:${PATH}
 
-RUN groupadd --system app && useradd --system --gid app --home-dir /app app
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app \
+    && useradd --system --gid app --home-dir /app app
 WORKDIR /app
 
 COPY --from=dependencies /opt/venv /opt/venv

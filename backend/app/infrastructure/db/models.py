@@ -5212,6 +5212,368 @@ class WeComDeliveryAttemptModel(Base):
     )
 
 
+class NewsInfographicJobModel(Base):
+    """One conservative portrait-image reservation for one formal slot package."""
+
+    __tablename__ = "news_infographic_jobs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    base_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wecom_delivery_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    material_package_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("material_packages.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    copy_generation_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("copy_generation_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    content_slot_selection_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("content_slot_selections.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sequence_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_event_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    selected_event_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    content_slot: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    package_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    copy_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audit_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    image_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ocr_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    footer_ocr_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    visual_request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    copy_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    audit_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    image_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ocr_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    footer_ocr_intent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    visual_intent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    raw_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    raw_byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_media_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    composite_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    composite_byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    footer_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    footer_byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivery_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    delivery_byte_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivery_media_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    delivery_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivery_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ocr_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'not_checked'")
+    )
+    footer_ocr_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'not_checked'")
+    )
+    visual_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'not_checked'")
+    )
+    # Forward-only advisory policy. Historical rows remain strict and are never
+    # reinterpreted as accepted merely because a new quality mode is enabled.
+    quality_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'strict'")
+    )
+    warning_codes: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    warning_notice_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    copy_candidate_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    copy_audit_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    safe_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "sequence_ordinal BETWEEN 1 AND 3", name="ck_news_infographic_jobs_ordinal"
+        ),
+        CheckConstraint("package_version >= 1", name="ck_news_infographic_jobs_package_version"),
+        CheckConstraint(
+            "content_slot IN ('morning', 'noon', 'evening')", name="ck_news_infographic_jobs_slot"
+        ),
+        CheckConstraint("provider = 'group_webhook'", name="ck_news_infographic_jobs_provider"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'ready', 'failed', "
+            "'result_unknown', 'expired', 'skipped')",
+            name="ck_news_infographic_jobs_status",
+        ),
+        CheckConstraint(
+            "quality_mode IN ('strict', 'advisory')",
+            name=conv("ck_news_infographic_jobs_quality_mode"),
+        ),
+        CheckConstraint(
+            "jsonb_typeof(warning_codes) = 'array' "
+            "AND jsonb_array_length(warning_codes) <= 16 "
+            'AND warning_codes <@ \'["advisory_unverified","copy_deterministic_rejected",'
+            '"copy_audit_rejected","copy_audit_unavailable",'
+            '"copy_audit_schema_invalid","layout_unverified",'
+            '"layout_overflow","body_ocr_failed","body_ocr_unavailable",'
+            '"footer_ocr_unavailable","visual_failed","visual_unavailable",'
+            '"brand_unverified"]\'::jsonb',
+            name=conv("ck_news_infographic_jobs_warning_codes"),
+        ),
+        CheckConstraint(
+            "(quality_mode = 'strict' AND warning_codes = '[]'::jsonb "
+            "AND warning_notice_version IS NULL) OR "
+            "(quality_mode = 'advisory' AND warning_notice_version IS NOT NULL "
+            "AND length(warning_notice_version) > 0 "
+            "AND (status <> 'ready' OR warning_codes @> "
+            '\'["advisory_unverified","layout_unverified"]\'::jsonb))',
+            name=conv("ck_news_infographic_jobs_advisory_shape"),
+        ),
+        UniqueConstraint("base_job_id", name="uq_news_infographic_jobs_base_job"),
+        UniqueConstraint(
+            "content_slot_selection_id",
+            "recipient_id",
+            "provider",
+            "policy_fingerprint",
+            name="uq_news_infographic_jobs_slot_selection_policy",
+        ),
+        UniqueConstraint(
+            "material_package_id",
+            "package_version",
+            "policy_fingerprint",
+            name="uq_news_infographic_jobs_package_policy",
+        ),
+        ForeignKeyConstraint(
+            ["content_slot_selection_id", "sequence_ordinal"],
+            ["content_slot_selections.id", "content_slot_selections.ordinal"],
+            name="fk_news_infographic_jobs_selection_ordinal",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_news_infographic_jobs_date_intent", "business_date", "image_intent_at"),
+        Index("ix_news_infographic_jobs_claim", "status", "lease_expires_at"),
+    )
+
+
+class WeComInfographicSupplementModel(Base):
+    """Separate send outcome; base `delivered` never depends on this row."""
+
+    __tablename__ = "wecom_infographic_supplements"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    infographic_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("news_infographic_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    base_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wecom_delivery_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    safe_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'delivered', 'failed', 'result_unknown', 'expired')",
+            name="ck_wecom_infographic_supplements_status",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_wecom_infographic_supplements_attempts"),
+        UniqueConstraint("infographic_job_id", name="uq_wecom_infographic_supplements_artifact"),
+        UniqueConstraint("base_job_id", name="uq_wecom_infographic_supplements_base_job"),
+        UniqueConstraint("request_fingerprint", name="uq_wecom_infographic_supplements_request"),
+        Index("ix_wecom_infographic_supplements_claim", "status", "next_attempt_at", "expires_at"),
+    )
+
+
+class WeComInfographicAttemptModel(Base):
+    __tablename__ = "wecom_infographic_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    supplement_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wecom_infographic_supplements.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    safe_response_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("attempt_number >= 1", name="ck_wecom_infographic_attempts_number"),
+        CheckConstraint(
+            "result_state IN ('succeeded', 'failed', 'unknown')",
+            name="ck_wecom_infographic_attempts_result",
+        ),
+        UniqueConstraint(
+            "supplement_id", "attempt_number", name="uq_wecom_infographic_attempts_number"
+        ),
+    )
+
+
+class WeComInfographicTestRunModel(Base):
+    """One explicitly approved same-news triple test to the configured fixed group."""
+
+    __tablename__ = "wecom_infographic_test_runs"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    formal_base_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wecom_delivery_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    infographic_job_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("news_infographic_jobs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    material_package_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("material_packages.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    content_slot_selection_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("content_slot_selections.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sequence_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    content_slot: Mapped[str] = mapped_column(String(20), nullable=False)
+    package_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    formal_delivery_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    test_artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    test_artifact_byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    text_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_image_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_delivery_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    text_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    original_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    infographic_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    safe_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "sequence_ordinal BETWEEN 1 AND 3", name="ck_wecom_infographic_test_runs_ordinal"
+        ),
+        CheckConstraint(
+            "content_slot IN ('morning', 'noon', 'evening')",
+            name="ck_wecom_infographic_test_runs_slot",
+        ),
+        CheckConstraint(
+            "status IN ('prepared', 'queued', 'running', 'delivered', "
+            "'failed', 'result_unknown', 'expired')",
+            name="ck_wecom_infographic_test_runs_status",
+        ),
+        CheckConstraint(
+            "text_status IN ('pending', 'running', 'delivered', 'failed', 'unknown')",
+            name="ck_wecom_infographic_test_runs_text_status",
+        ),
+        CheckConstraint(
+            "original_status IN ('pending', 'running', 'delivered', 'failed', 'unknown')",
+            name="ck_wecom_infographic_test_runs_original_status",
+        ),
+        CheckConstraint(
+            "infographic_status IN ('pending', 'running', 'delivered', 'failed', 'unknown')",
+            name="ck_wecom_infographic_test_runs_infographic_status",
+        ),
+        UniqueConstraint("formal_base_job_id", name="uq_wecom_infographic_test_runs_formal_base"),
+        UniqueConstraint("infographic_job_id", name="uq_wecom_infographic_test_runs_poster"),
+        ForeignKeyConstraint(
+            ["content_slot_selection_id", "sequence_ordinal"],
+            ["content_slot_selections.id", "content_slot_selections.ordinal"],
+            name="fk_wecom_infographic_test_runs_selection_ordinal",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_wecom_infographic_test_runs_claim", "status", "expires_at"),
+    )
+
+
+class WeComInfographicTestAttemptModel(Base):
+    __tablename__ = "wecom_infographic_test_attempts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    test_run_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wecom_infographic_test_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    message_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    safe_response_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "message_kind IN ('text', 'original', 'infographic')",
+            name="ck_wecom_infographic_test_attempts_kind",
+        ),
+        CheckConstraint(
+            "result_state IN ('intent', 'succeeded', 'failed', 'unknown')",
+            name="ck_wecom_infographic_test_attempts_result",
+        ),
+        UniqueConstraint(
+            "test_run_id", "message_kind", name="uq_wecom_infographic_test_attempts_kind"
+        ),
+    )
+
+
 class IpAssetProfileModel(Base):
     __tablename__ = "ip_asset_profiles"
 

@@ -37,6 +37,11 @@ async def test_clean_database_is_at_alembic_head(
                     "copy_generation_runs",
                     "wecom_delivery_jobs",
                     "wecom_delivery_windows",
+                    "news_infographic_jobs",
+                    "wecom_infographic_supplements",
+                    "wecom_infographic_attempts",
+                    "wecom_infographic_test_runs",
+                    "wecom_infographic_test_attempts",
                     "topic_selection_runs",
                     "topic_scores",
                     "content_slot_runs",
@@ -245,7 +250,7 @@ async def test_clean_database_is_at_alembic_head(
             }
         )
 
-    assert revision == "20260916_0048"
+    assert revision == "20260926_0050"
     assert isinstance(columns["ip_asset_generation_jobs"]["prompt"]["type"], Text)
     assert {
         "sources",
@@ -306,6 +311,11 @@ async def test_clean_database_is_at_alembic_head(
         "wecom_delivery_windows",
         "wecom_delivery_jobs",
         "wecom_delivery_attempts",
+        "news_infographic_jobs",
+        "wecom_infographic_supplements",
+        "wecom_infographic_attempts",
+        "wecom_infographic_test_runs",
+        "wecom_infographic_test_attempts",
         "ip_assets",
         "ip_asset_tags",
         "ip_asset_derivatives",
@@ -325,6 +335,11 @@ async def test_clean_database_is_at_alembic_head(
         "wechat_mp_draft_jobs",
         "wechat_mp_draft_items",
         "wechat_mp_draft_attempts",
+        "news_infographic_jobs",
+        "wecom_infographic_supplements",
+        "wecom_infographic_attempts",
+        "wecom_infographic_test_runs",
+        "wecom_infographic_test_attempts",
     ):
         assert set(columns[table_name]) == set(Base.metadata.tables[table_name].columns.keys())
     assert columns["wechat_mp_draft_items"]["source_ref"]["nullable"] is False

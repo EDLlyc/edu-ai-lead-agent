@@ -8,7 +8,10 @@ from typing import Any
 
 import httpx
 import pytest
-from app.application.ports.image_validation import ImageTextRecognitionRequest
+from app.application.ports.image_validation import (
+    ImageTextRecognitionRequest,
+    PosterRegionRecognitionRequest,
+)
 from app.core.errors import (
     InvalidProviderOutputError,
     ProviderAuthenticationError,
@@ -223,6 +226,67 @@ async def test_image_layout_parsing_uses_private_bounded_raster_and_ordered_text
     assert "private-provider-request-id" not in repr(result)
     assert "provider markdown" not in repr(result)
     assert "private-provider.invalid" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_poster_region_returns_bounded_wrapped_lines_without_weakening_generic_gate() -> None:
+    wrapped = ("孩子从真实", "问题出发", "观察并记录")
+    page = [
+        _layout_element(index, line, bbox=[0.1, 0.1 + index * 0.2, 0.9, 0.2 + index * 0.2])
+        for index, line in enumerate(wrapped)
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        region = await adapter.recognize_poster_region(
+            PosterRegionRecognitionRequest(
+                image_bytes=JPEG_BODY,
+                media_type="image/jpeg",
+                region_id="masthead",
+                request_fingerprint="poster-child-1",
+            )
+        )
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize(
+                _request(
+                    JPEG_BODY,
+                    media_type="image/jpeg",
+                    expected_text=("孩子从真实问题出发观察并记录",),
+                )
+            )
+    assert region.recognized_lines == wrapped
+    assert region.request_fingerprint == "poster-child-1"
+    assert raised.value.issue_codes == (
+        "missing_visual_text",
+        "unexpected_visual_text",
+    )
+
+
+@pytest.mark.asyncio
+async def test_poster_region_retains_eight_line_provider_limit() -> None:
+    page = [
+        _layout_element(
+            0, "\n".join(f"line-{index}" for index in range(9)), bbox=[0.1, 0.1, 0.9, 0.9]
+        )
+    ]
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(layout_details=[page]))
+
+    adapter, client = _adapter(handler)
+    async with client:
+        with pytest.raises(InvalidProviderOutputError) as raised:
+            await adapter.recognize_poster_region(
+                PosterRegionRecognitionRequest(
+                    image_bytes=JPEG_BODY,
+                    region_id="science",
+                    request_fingerprint="poster-child-2",
+                )
+            )
+    assert raised.value.issue_codes == ("image_ocr_contract_line_limit",)
 
 
 @pytest.mark.parametrize("indices", ((0, 7, 19), (1, 8, 20)))

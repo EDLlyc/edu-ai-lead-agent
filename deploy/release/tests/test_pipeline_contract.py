@@ -138,7 +138,7 @@ def test_ci_jobs_use_pinned_specified_container_and_probe_docker() -> None:
 def test_compose_uses_one_application_image_variable() -> None:
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     assert "image: ${APP_IMAGE:-edu-ai-lead-agent-backend:local}" in compose
-    assert compose.count("<<: *app-runtime") == 15
+    assert compose.count("<<: *app-runtime") == 16
     services = yaml.safe_load(compose)["services"]
     for service_name in (
         "official-account-local-worker",
@@ -149,6 +149,22 @@ def test_compose_uses_one_application_image_variable() -> None:
     assert services["official-account-weekly-dag-worker"]["profiles"] == [
         "official-account-weekly-dag"
     ]
+    infographic_producer = services["wecom-infographic-producer"]
+    assert infographic_producer["profiles"] == ["infographic"]
+    assert infographic_producer["command"] == [
+        "python",
+        "-m",
+        "app.wecom_news_infographic_main",
+    ]
+    assert infographic_producer["environment"][
+        "WECOM_INFOGRAPHIC_PRODUCER_ENABLED"
+    ] == ("${WECOM_INFOGRAPHIC_PRODUCER_ENABLED:-false}")
+    assert "IMAGE_MODEL" not in infographic_producer["environment"]
+    assert compose.count("IMAGE_MODEL: ${IMAGE_MODEL:-gpt-image-2}") == 3
+    assert "IMAGE_MODEL: ${IMAGE_MODEL:-gpt-image-2.5-sunburst}" not in compose
+    assert "IMAGE_MODEL=gpt-image-2\n" in Path(".env.example").read_text(
+        encoding="utf-8"
+    )
     weekly_scheduler = services["official-account-weekly-scheduler"]
     assert weekly_scheduler["profiles"] == ["official-account-weekly-dag"]
     assert weekly_scheduler.get("ports") is None
@@ -324,16 +340,15 @@ def test_repository_migration_declaration_and_doctor_match_the_single_head() -> 
     assert reviewed is True
     assert compatible is False
     reason = json.loads(declaration)["reason"]
-    assert "V5/weekly/governance inputs" in reason
+    assert "0048→0049→0050 schema" in reason
     assert "not deployment authorization" in reason
-    assert "0048 drops global body-checksum uniqueness" in reason
-    assert "V1/V2 retain app gates" in reason
-    assert "V4 geometry and approved-catalog fallback" in reason
-    assert "at the same 0048 head" in reason
-    assert "no migration or seed replay" in reason
+    assert "0049 adds five infographic tables" in reason
+    assert "0050 adds strict defaults and nullable advisory evidence" in reason
+    assert "Populated infographic/advisory evidence refuses downgrade" in reason
+    assert "no seed replay or provider calls" in reason
     assert "not blanket backward compatibility" in reason
     assert "single/history owners" in reason
-    assert "both legacy and single admission/consumption disabled" in reason
+    assert "default-off idle check" in reason
     assert f'[[ "$migration_revision" == "{head}" ]]' in doctor
     for schema_identity in (
         "brand_visual_index_jobs",
@@ -402,9 +417,9 @@ def test_compose_and_doctor_share_the_bounded_image_ocr_contract() -> None:
         "IMAGE_OCR_TIMEOUT_SECONDS": "120",
     }
     for key, value in defaults.items():
-        assert compose.count(f"{key}: ${{{key}:-{value}}}") == 2
+        assert compose.count(f"{key}: ${{{key}:-{value}}}") == 3
         assert f'"{key}"' in doctor
-    assert compose.count("IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-false}") == 2
+    assert compose.count("IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-false}") == 4
     assert '"IMAGE_OCR_ENABLED"' in doctor
     assert "diversity_enabled = compose_bool" in doctor
     assert "ocr_enabled = compose_bool" in doctor

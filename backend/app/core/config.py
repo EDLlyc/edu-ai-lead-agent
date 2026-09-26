@@ -184,6 +184,16 @@ class Settings(BaseSettings):
     wecom_group_max_image_bytes: int = Field(default=2 * 1024 * 1024, ge=6, le=2 * 1024 * 1024)
     wecom_group_max_text_bytes: int = Field(default=4096, ge=1, le=4096)
     wecom_slot_package_gap_seconds: int = Field(default=60, ge=1, le=600)
+    # Independent per-news supplement; no existing text/image behavior depends on these gates.
+    wecom_infographic_producer_enabled: bool = False
+    wecom_infographic_delivery_enabled: bool = False
+    wecom_infographic_test_enabled: bool = False
+    wecom_infographic_review_mode: Literal["strict", "advisory"] = "strict"
+    wecom_infographic_morning_enabled: bool = False
+    wecom_infographic_noon_enabled: bool = False
+    wecom_infographic_evening_enabled: bool = False
+    wecom_infographic_max_ordinal: int = Field(default=1, ge=1, le=3)
+    wecom_infographic_append_minutes: int = Field(default=30, ge=1, le=60)
 
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
@@ -941,6 +951,37 @@ class Settings(BaseSettings):
                     raise ValueError("enabled group-webhook delivery requires a valid webhook key")
         if self.wecom_auto_delivery_enabled and not self.wecom_enabled:
             raise ValueError("automatic WeCom delivery requires WeCom to be enabled")
+        if (
+            self.wecom_infographic_producer_enabled
+            or self.wecom_infographic_delivery_enabled
+            or self.wecom_infographic_test_enabled
+        ):
+            if (
+                not self.wecom_enabled
+                or not self.wecom_auto_delivery_enabled
+                or self.wecom_delivery_provider != "group_webhook"
+                or not self.content_slot_mode_enabled
+            ):
+                raise ValueError("WeCom infographic requires automatic group-webhook slot delivery")
+            if self.wecom_infographic_review_mode == "strict" and (
+                not self.image_ocr_enabled or not self.image_quality_audit_enabled
+            ):
+                raise ValueError("WeCom infographic requires OCR and visual audit")
+            for enabled, slot_enabled in (
+                (self.wecom_infographic_morning_enabled, self.content_morning_enabled),
+                (self.wecom_infographic_noon_enabled, self.content_noon_enabled),
+                (self.wecom_infographic_evening_enabled, self.content_evening_enabled),
+            ):
+                if enabled and not slot_enabled:
+                    raise ValueError("WeCom infographic slot requires its base content slot")
+            if not any(
+                (
+                    self.wecom_infographic_morning_enabled,
+                    self.wecom_infographic_noon_enabled,
+                    self.wecom_infographic_evening_enabled,
+                )
+            ):
+                raise ValueError("WeCom infographic requires an explicitly enabled slot cohort")
         if not self.wecom_default_recipient_name.strip():
             raise ValueError("WeCom default recipient name must be non-blank")
         if self.ai_total_timeout_seconds < self.ai_read_timeout_seconds:

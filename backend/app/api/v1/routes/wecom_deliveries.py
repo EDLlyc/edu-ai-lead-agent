@@ -4,6 +4,7 @@ from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_session
@@ -13,10 +14,17 @@ from app.application.services.wecom_delivery import (
     wecom_recipient_is_configured,
 )
 from app.core.errors import NotFoundError
-from app.infrastructure.db.models import WeComDeliveryJobModel
+from app.infrastructure.db.models import (
+    NewsInfographicJobModel,
+    WeComDeliveryJobModel,
+    WeComInfographicAttemptModel,
+    WeComInfographicSupplementModel,
+)
 from app.schemas.wecom_delivery import (
     WeComDeliveryCreateRequest,
     WeComDeliveryResponse,
+    WeComInfographicAttemptResponse,
+    WeComInfographicStatusResponse,
     WeComRecipientListResponse,
     WeComRecipientResponse,
 )
@@ -71,6 +79,80 @@ async def read_wecom_delivery(
     if job is None:
         raise NotFoundError("WeCom delivery")
     return _response(job)
+
+
+@router.get(
+    "/wecom-deliveries/{delivery_id}/infographic",
+    response_model=WeComInfographicStatusResponse,
+)
+async def read_wecom_infographic_status(
+    delivery_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> WeComInfographicStatusResponse:
+    """Expose only lineage, checksum, gate and outcome codes; no private assets."""
+    base = await session.get(WeComDeliveryJobModel, delivery_id)
+    if base is None:
+        raise NotFoundError("WeCom delivery")
+    poster = await session.scalar(
+        select(NewsInfographicJobModel).where(NewsInfographicJobModel.base_job_id == delivery_id)
+    )
+    supplement = (
+        await session.scalar(
+            select(WeComInfographicSupplementModel).where(
+                WeComInfographicSupplementModel.base_job_id == delivery_id
+            )
+        )
+        if poster is not None
+        else None
+    )
+    attempts = (
+        (
+            await session.scalars(
+                select(WeComInfographicAttemptModel)
+                .where(WeComInfographicAttemptModel.supplement_id == supplement.id)
+                .order_by(WeComInfographicAttemptModel.attempt_number)
+                .limit(20)
+            )
+        ).all()
+        if supplement is not None
+        else []
+    )
+    return WeComInfographicStatusResponse(
+        base_job_id=base.id,
+        base_status=cast(Any, base.status),
+        infographic_job_id=poster.id if poster else None,
+        infographic_status=poster.status if poster else None,
+        infographic_safe_error_code=poster.safe_error_code if poster else None,
+        quality_mode=cast(Any, poster.quality_mode) if poster else None,
+        warning_codes=poster.warning_codes if poster else [],
+        warning_notice_version=poster.warning_notice_version if poster else None,
+        content_slot_selection_id=poster.content_slot_selection_id if poster else None,
+        sequence_ordinal=poster.sequence_ordinal if poster else None,
+        business_date=poster.business_date.isoformat() if poster else None,
+        content_slot=poster.content_slot if poster else None,
+        package_version=poster.package_version if poster else None,
+        delivery_sha256=poster.delivery_sha256 if poster else None,
+        delivery_byte_size=poster.delivery_byte_size if poster else None,
+        delivery_width=poster.delivery_width if poster else None,
+        delivery_height=poster.delivery_height if poster else None,
+        ocr_status=poster.ocr_status if poster else None,
+        footer_ocr_status=poster.footer_ocr_status if poster else None,
+        visual_status=poster.visual_status if poster else None,
+        supplement_id=supplement.id if supplement else None,
+        supplement_status=supplement.status if supplement else None,
+        supplement_safe_error_code=supplement.safe_error_code if supplement else None,
+        supplement_attempt_count=supplement.attempt_count if supplement else 0,
+        supplement_expires_at=supplement.expires_at if supplement else None,
+        attempts=[
+            WeComInfographicAttemptResponse(
+                attempt_number=item.attempt_number,
+                result_state=cast(Any, item.result_state),
+                safe_response_code=item.safe_response_code,
+                created_at=item.created_at,
+            )
+            for item in attempts
+        ],
+    )
 
 
 @router.post("/wecom-deliveries/{delivery_id}/retry", response_model=WeComDeliveryResponse)

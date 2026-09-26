@@ -1,0 +1,25 @@
+{
+  "schema_version": "daily-news-infographic-reviewed-cards-v2",
+  "package_id": "2e1b6d31-68c1-4f43-b77e-cd580e171595",
+  "input_fingerprint": "38c32c4ba43e2ef812d4e26bc2b64d8f40752fa47e733ba82084d3f7469e3ad0",
+  "cards": [
+    {
+      "kind": "science",
+      "heading": "新闻发生在哪？",
+      "body": "国务院总理李强9月23日上午在上海出席2026年世界技能大会开幕式并致辞。",
+      "claim_ids": ["claim-1"]
+    },
+    {
+      "kind": "learning",
+      "heading": "AI通识学什么？",
+      "body": "“人工智能通识教育”具体学什么？它怎样帮助劳动者实现“技能转型”？",
+      "claim_ids": ["claim-2"]
+    },
+    {
+      "kind": "brand",
+      "heading": "不直接把答案塞给孩子",
+      "body": "我们的目标是让孩子学会质疑，而不是被动接受。",
+      "claim_ids": ["claim-3", "claim-4"]
+    }
+  ]
+}

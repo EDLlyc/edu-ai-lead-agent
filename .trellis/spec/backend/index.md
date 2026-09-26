@@ -50,6 +50,7 @@ tests.
 | [IP Digital Asset Hub](./ip-asset-hub.md) | Intranet/no-auth dynamic upload, naming, private object storage, partial-index retrieval, download, and generation-to-library contracts |
 | [Brand Knowledge RAG](./brand-knowledge-rag.md) | Implemented private upload, immutable versions, parser safety, provider-scoped embeddings, retrieval, API, UI, and tests |
 | [WeCom Sales Delivery](./wecom-delivery.md) | Implemented reviewed material-package enqueueing, bounded Enterprise WeChat delivery, leases, idempotency, and safe provider error projection |
+| [Daily News Infographic Local Trials](./daily-news-infographic-local.md) | Frozen same-package poster inputs, versioned concise advisory copy, provider-free preflight, exact source/footer and local no-send preview gates |
 | [Error Handling](./error-handling.md) | Typed failures, API responses, retries, and terminal states |
 | [Logging Guidelines](./logging-guidelines.md) | Structured observability, privacy, and audit fields |
 | [Quality Guidelines](./quality-guidelines.md) | Type, test, migration, security, and contract gates |

@@ -64,6 +64,11 @@ _ROLE_SECRETS = {
     "content-scheduler": set(),
     "content-worker": _IMAGE_SECRETS,
     "wecom-dispatcher": _WECOM_SECRETS,
+    "wecom-infographic-producer": {
+        "AI_PLATFORM_API_KEY",
+        "COMFLY_API_KEY",
+        "WECOM_GROUP_WEBHOOK_KEY",
+    },
     "official-account-weekly-scheduler": set(),
     "official-account-weekly-dag-worker": {"AI_PLATFORM_API_KEY"},
     _ARTICLE_WORKER: _IMAGE_SECRETS,
@@ -206,8 +211,10 @@ def test_all_python_roles_start_and_keep_exact_secret_and_policy_projection(rend
         }
         assert secret_fields == _COMMON_SECRETS | _ROLE_SECRETS[name]
         assert all(environment[key] for key in secret_fields)
-        assert ("IMAGE_QUALITY_AUDIT_MODEL" in environment) == (name == _ARTICLE_WORKER)
-        if name == _ARTICLE_WORKER:
+        assert ("IMAGE_QUALITY_AUDIT_MODEL" in environment) == (
+            name in {_ARTICLE_WORKER, "wecom-infographic-producer"}
+        )
+        if name in {_ARTICLE_WORKER, "wecom-infographic-producer"}:
             assert environment["IMAGE_QUALITY_AUDIT_MODEL"] == "glm-5v-turbo"
         assert settings.official_account_local_generated_visuals_enabled == (
             name == _ARTICLE_WORKER and mode != "disabled"

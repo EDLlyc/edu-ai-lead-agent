@@ -19,7 +19,9 @@ from app.core.errors import (
     ImageOutputValidationError,
     ImageProviderQuotaError,
     ImageProviderRejectedError,
+    ImageProviderTimeoutError,
     ProviderAuthenticationError,
+    ProviderUnavailableError,
 )
 from app.domain.image_generation import IMAGE_MODEL, TOAPIS_IMAGE_MODEL, validate_image_prompt
 from app.domain.image_provider_input import (
@@ -30,6 +32,7 @@ from app.image_live_smoke import _prompt_for_profile
 from app.infrastructure.ai.factory import create_image_generator
 from app.infrastructure.ai.image_generation import (
     DeterministicFakeImageGenerator,
+    ImageOutputGeometry,
     OpenAICompatibleImageGenerator,
     ToApisImageGenerator,
     _generation_payload,
@@ -510,19 +513,23 @@ def _image_request(
     )
 
 
-def _direct_raster(media_type: str, *, webp_lossless: bool = False) -> bytes:
-    image = Image.new("RGB", (1024, 1024), (37, 97, 158))
+def _direct_raster(
+    media_type: str,
+    *,
+    webp_lossless: bool = False,
+    size: tuple[int, int] = (1024, 1024),
+) -> bytes:
+    image = Image.new("RGB", size, (37, 97, 158))
     output = BytesIO()
-    options: dict[str, str | bool] = {
-        "format": {
-            "image/png": "PNG",
-            "image/jpeg": "JPEG",
-            "image/webp": "WEBP",
-        }[media_type]
-    }
+    image_format = {
+        "image/png": "PNG",
+        "image/jpeg": "JPEG",
+        "image/webp": "WEBP",
+    }[media_type]
     if media_type == "image/webp":
-        options["lossless"] = webp_lossless
-    image.save(output, **options)
+        image.save(output, format=image_format, lossless=webp_lossless)
+    else:
+        image.save(output, format=image_format)
     return output.getvalue()
 
 
@@ -553,6 +560,222 @@ async def test_comfly_accepts_direct_raster_creation_response(
     assert seen_paths == ["/v1/images/generations"]
     assert result.image_bytes == image
     assert (result.width, result.height, result.media_type) == (1024, 1024, media_type)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media_type", ["image/png", "image/jpeg", "image/webp"])
+async def test_comfly_explicit_portrait_accepts_exact_direct_raster(media_type: str) -> None:
+    image = _direct_raster(media_type, size=(1152, 2048))
+    posted_sizes: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posted_sizes.append(json.loads(request.content)["size"])
+        return httpx.Response(200, headers={"content-type": media_type}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(
+            client,
+            output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+        ).generate(_image_request())
+
+    assert posted_sizes == ["1152x2048"]
+    assert result.image_bytes == image
+    assert (result.width, result.height, result.media_type) == (1152, 2048, media_type)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("representation", ["sync_base64", "sync_url", "async_base64", "async_url"])
+async def test_comfly_explicit_portrait_accepts_all_json_result_paths(
+    representation: str,
+) -> None:
+    image = _direct_raster("image/png", size=(1152, 2048))
+    paths: list[str] = []
+    posted_payloads: list[dict[str, object]] = []
+
+    def image_entry() -> dict[str, str]:
+        if representation.endswith("url"):
+            return {"url": "https://images.comfly.org/portrait.png"}
+        return {"b64_json": base64.b64encode(image).decode("ascii")}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/v1/images/generations":
+            posted_payloads.append(json.loads(request.content))
+            if representation.startswith("async"):
+                return httpx.Response(200, json={"id": "portrait-task", "status": "queued"})
+            return httpx.Response(200, json={"data": [image_entry()]})
+        if request.url.path == "/v1/images/tasks/portrait-task":
+            return httpx.Response(200, json={"status": "completed", "data": [image_entry()]})
+        if request.url.host == "images.comfly.org":
+            return httpx.Response(200, headers={"content-type": "image/png"}, content=image)
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await _comfly_generator(
+            client,
+            output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+        ).generate(_image_request())
+
+    assert len(posted_payloads) == 1
+    assert posted_payloads[0]["size"] == "1152x2048"
+    assert posted_payloads[0]["response_format"] == "url"
+    assert result.image_bytes == image
+    assert (result.width, result.height) == (1152, 2048)
+    assert len(paths) == (1 + representation.startswith("async") + representation.endswith("url"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wrong_size", [(1024, 1024), (2048, 1152), (1152, 2047)])
+async def test_comfly_explicit_portrait_rejects_wrong_actual_dimensions(
+    wrong_size: tuple[int, int],
+) -> None:
+    image = _direct_raster("image/png", size=wrong_size)
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert json.loads(request.content)["size"] == "1152x2048"
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"b64_json": base64.b64encode(image).decode("ascii")}],
+                "width": 1152,
+                "height": 2048,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(
+                client,
+                output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+            ).generate(_image_request())
+
+    assert raised.value.reason == "image_dimensions_invalid"
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header_size", [(0, 2048), (65535, 65535)])
+async def test_comfly_explicit_portrait_rejects_invalid_header_dimensions(
+    header_size: tuple[int, int],
+) -> None:
+    image = bytearray(_direct_raster("image/png", size=(1152, 2048)))
+    image[16:24] = header_size[0].to_bytes(4, "big") + header_size[1].to_bytes(4, "big")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=bytes(image))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(
+                client,
+                output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+            ).generate(_image_request())
+
+    assert raised.value.reason == "image_dimensions_invalid"
+
+
+@pytest.mark.asyncio
+async def test_comfly_default_square_rejects_portrait_and_unknown_profiles() -> None:
+    image = _direct_raster("image/png", size=(1152, 2048))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content)["size"] == "1024x1024"
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(client).generate(_image_request())
+        assert raised.value.reason == "image_dimensions_invalid"
+        for unsupported in ("1152x2048", (1152, 2048), True, None, object()):
+            with pytest.raises(ValueError, match="output geometry profile"):
+                _comfly_generator(client, output_geometry=unsupported)
+
+
+@pytest.mark.asyncio
+async def test_comfly_square_and_portrait_instances_do_not_leak_geometry() -> None:
+    images = {
+        "1024x1024": _direct_raster("image/png"),
+        "1152x2048": _direct_raster("image/png", size=(1152, 2048)),
+    }
+    seen_sizes: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        size = json.loads(request.content)["size"]
+        seen_sizes.append(size)
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=images[size])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        square = _comfly_generator(client)
+        portrait = _comfly_generator(
+            client,
+            output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+        )
+        results = [
+            await generator.generate(_image_request())
+            for generator in (square, portrait, square, portrait)
+        ]
+
+    assert seen_sizes == ["1024x1024", "1152x2048", "1024x1024", "1152x2048"]
+    assert [(result.width, result.height) for result in results] == [
+        (1024, 1024),
+        (1152, 2048),
+        (1024, 1024),
+        (1152, 2048),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["server_error", "timeout"])
+async def test_comfly_portrait_one_attempt_does_not_retry_post(failure: str) -> None:
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if failure == "timeout":
+            raise httpx.ReadTimeout("mock timeout")
+        return httpx.Response(503, json={"error": "mock outage"})
+
+    expected_error = ImageProviderTimeoutError if failure == "timeout" else ProviderUnavailableError
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(expected_error):
+            await _comfly_generator(
+                client,
+                output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+                max_attempts=1,
+            ).generate(_image_request())
+
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_comfly_portrait_keeps_reference_and_mime_validation() -> None:
+    reference = _solid_png("portrait-reference", "approved")
+    image = _direct_raster("image/png", size=(1152, 2048))
+    seen_payload: dict[str, object] | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_payload
+        seen_payload = json.loads(request.content)
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=image)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ImageOutputValidationError) as raised:
+            await _comfly_generator(
+                client,
+                output_geometry=ImageOutputGeometry.PORTRAIT_1152X2048,
+            ).generate(_image_request(reference))
+
+    assert raised.value.reason == "image_raster_signature_invalid"
+    assert seen_payload is not None
+    assert seen_payload["size"] == "1152x2048"
+    encoded = seen_payload["image"]
+    assert isinstance(encoded, list) and len(encoded) == 1
+    assert isinstance(encoded[0], str)
+    assert base64.b64decode(encoded[0].split(",", 1)[1]) == reference
 
 
 @pytest.mark.asyncio

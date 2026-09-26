@@ -11,6 +11,8 @@ import structlog
 
 from app.application.ports.wecom import WeComDeliveryClient
 from app.application.services.wecom_delivery import WeComDeliveryExecutor
+from app.application.services.wecom_infographic_supplement import WeComInfographicSupplementExecutor
+from app.application.services.wecom_infographic_test import WeComInfographicVisibleTest
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.infrastructure.db.session import create_engine, create_session_factory
@@ -49,6 +51,18 @@ async def run_dispatcher() -> None:
                 image_store=MinioImageStore(settings),
                 settings=settings,
             )
+            supplements = WeComInfographicSupplementExecutor(
+                session_factory=session_factory,
+                client=client,
+                image_store=MinioImageStore(settings),
+                settings=settings,
+            )
+            visible_tests = WeComInfographicVisibleTest(
+                session_factory=session_factory,
+                client=client,
+                image_store=MinioImageStore(settings),
+                settings=settings,
+            )
             worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
             logger.info(
                 "wecom_dispatcher_started",
@@ -61,6 +75,8 @@ async def run_dispatcher() -> None:
                         worker_id=f"{worker_prefix}:{index + 1}",
                         stop=stop,
                         executor=executor,
+                        supplements=supplements,
+                        visible_tests=visible_tests,
                         poll_seconds=settings.wecom_poll_seconds,
                         reconcile_auto=index == 0,
                     )
@@ -89,14 +105,50 @@ async def _worker_loop(
     worker_id: str,
     stop: asyncio.Event,
     executor: WeComDeliveryExecutor,
+    supplements: WeComInfographicSupplementExecutor,
     poll_seconds: float,
     reconcile_auto: bool,
+    visible_tests: WeComInfographicVisibleTest | None = None,
 ) -> None:
     while not stop.is_set():
         if reconcile_auto:
             await executor.reconcile_auto_deliveries()
         worked = await executor.execute_next(worker_id)
         if worked:
+            # Bound supplement work to one send after each base. A supplement backlog
+            # must never starve due text and original-image deliveries.
+            try:
+                await supplements.reconcile()
+                await supplements.execute_next(worker_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning(
+                    "wecom_infographic_cycle_failed", exception_type=type(error).__name__
+                )
+            continue
+        try:
+            if reconcile_auto:
+                await supplements.reconcile()
+            supplement_worked = await supplements.execute_next(worker_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning("wecom_infographic_cycle_failed", exception_type=type(error).__name__)
+            supplement_worked = False
+        if supplement_worked:
+            continue
+        try:
+            test_worked = visible_tests is not None and await visible_tests.execute_next(worker_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning(
+                "wecom_infographic_visible_test_cycle_failed",
+                exception_type=type(error).__name__,
+            )
+            test_worked = False
+        if test_worked:
             continue
         try:
             await asyncio.wait_for(stop.wait(), timeout=poll_seconds)

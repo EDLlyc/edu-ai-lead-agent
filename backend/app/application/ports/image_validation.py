@@ -39,6 +39,29 @@ class ImageTextRecognitionRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PosterRegionRecognitionRequest:
+    """One bounded crop of a poster; exact copy is checked by the poster worker.
+
+    This is deliberately separate from ImageTextRecognitionRequest: generic image
+    OCR retains its exact-set contract, while a poster may wrap one frozen field
+    across several recognized lines.
+    """
+
+    image_bytes: bytes
+    request_fingerprint: str
+    region_id: str
+    media_type: str = "image/jpeg"
+
+    def __post_init__(self) -> None:
+        _validate_image_input(self.image_bytes, self.media_type)
+        _validate_fingerprint(self.request_fingerprint)
+        _validate_text(self.region_id, field_name="poster OCR region", maximum=40)
+        if not self.request_fingerprint or not self.region_id.isascii():
+            raise ValueError("poster OCR region identity is invalid")
+        object.__setattr__(self, "media_type", normalize_image_media_type(self.media_type))
+
+
+@dataclass(frozen=True, slots=True)
 class ImageTextRecognitionResult:
     recognized_lines: tuple[str, ...]
     provider: str = ""
@@ -178,4 +201,5 @@ __all__ = [
     "ImageTextRecognitionResult",
     "ImageTextRecognizer",
     "ImageValidationResult",
+    "PosterRegionRecognitionRequest",
 ]
