@@ -396,6 +396,18 @@ When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `
 
 ## When to Create Flow Documentation
 
+Before changing a live-to-quiescent deployment flow, ask which observations
+are only admission checks and which are authoritative backup identities:
+
+- [ ] Can an in-flight writer commit between live capture and complete stop?
+- [ ] Is the first stopped-writer business snapshot bound to dump, clone,
+      migration and enablement receipts while protected identities stay fixed?
+- [ ] Are stopped-state digests rechecked after long backup/clone work and
+      immediately before an irreversible migration?
+- [ ] Is pre-migration recovery separately proven from post-migration
+      forward-only reconciliation, with exact old-container and schema proof?
+
+
 Create detailed flow docs when:
 
 - Feature spans 3+ layers

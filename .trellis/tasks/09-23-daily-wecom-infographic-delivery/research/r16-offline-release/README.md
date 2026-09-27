@@ -257,14 +257,22 @@ and local attempt/lock paths; it is **not a sandbox** and Python cannot prove
 that an arbitrary injected adapter has no external side effects. Never import
 it with a real host adapter. The CLI exposes no simulation action and `apply`
 always refuses. The simulation requires both locks, one fresh running baseline,
-a durable pause intent, a verified stop of all writers, then two identical
-quiescent captures around a backup receipt that separately accounts for a
+a durable pause intent, a verified stop of all writers, then a separately
+recorded **authoritative stopped-writer baseline**. The pre-stop business
+digest is an admission snapshot, not the expected post-stop digest: an
+in-flight transaction may commit while Docker stops the containers. The
+operator accepts that transition only once, after every original service is
+verified stopped, while requiring unchanged schema, recipient, protected
+files, brand, volumes and flags, plus the exact idle/work gate. It then
+requires two identical quiescent captures around a backup receipt that accounts for a
 readable PostgreSQL dump/TOC, all three volume readbacks, private
 brand-material readback, complete source/config archives and exact protected-
 file metadata. It then stages the exact candidate image, rehearses isolated
 restore and `0048→0049→0050` upgrade from that **same newly captured dump**,
-verifies the clone receipt's dump SHA/business identity and writes a separate
-migration intent. It migrates once forward, requires a freshly
+verifies the clone receipt's dump SHA/business identity, and repeats the full
+quiescent capture after the long clone rehearsal before writing a separate
+migration intent. The real adapter also rechecks work and original-table
+identity immediately before the Alembic command. It migrates once forward, requires a freshly
 read exact `0050` head, and installs/starts the original
 12 services default-off and verifies them. Any post-intent failure records
 `forward-recovery-required` before calling `stop_all`, so even a failed stop
@@ -287,9 +295,16 @@ rehearsal and production upgrade must preserve existing source/business rows.
 
 `r16_real_host.py` implements the host operations behind the separately
 sealed `r16_release_cli.py`; it is not a standalone command.
-It computes a live baseline from release markers, image/container inspection,
-protected file metadata, stopped-writer business row hashes, brand and named
-volume trees; creates a private custom PostgreSQL dump plus TOC readback,
+It computes a live admission baseline from release markers, image/container
+inspection, protected file metadata, per-table business row hashes, brand and
+named volume trees. It does not latch the live row hashes. The first verified
+stopped-writer capture binds the business rows for the private custom PostgreSQL
+dump, clone, migration and final receipt. `quiescent-baseline.json` records
+both baseline hashes, the exact stopped snapshot and their self-hash;
+the backup, clone, release and enablement receipts cross-check that chain;
+enablement revalidates the complete backup and clone receipt contracts, not
+only their hashes.
+The dump receives a TOC readback,
 protected/source/config and all three volume/brand archives with per-entry
 byte/owner/mode readback; stages an exact archive SHA/image digest; and models
 an internal-network, unpublished-port clone using the same dump. Its only
@@ -305,6 +320,17 @@ independently reviewed cohort hash. The current group's two key hashes prove
 the same webhook key, not the membership of that group. A release attempt
 with `migration-intent.json` but no success receipt is reconcile-only,
 including after a power loss; never rename/retry that attempt.
+
+Before migration intent, a failed release automatically restarts **only the
+same R15 containers**, never recreates them, and writes a recovery intent and
+receipt only if a fresh read-only check confirms the original `0048` schema,
+both revision markers, original image/ref/container/config identities, no new
+producer, healthy dependencies, idle work and unchanged protected files,
+brand and non-Postgres volumes. A changed post-stop business digest or failed
+recovery postcheck instead leaves a durable forward-recovery marker and stops
+the application for operator reconciliation. Once `migration-intent.json`
+exists, even if Alembic has not visibly advanced yet, **no automatic old-image
+restart, restore or downgrade is allowed**. Each attempt remains single-use.
 
 The release begins with all infographic flags false and the optional producer
 absent, preserving original WeCom text/image and Official Account behavior.

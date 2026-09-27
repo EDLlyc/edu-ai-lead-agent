@@ -1401,6 +1401,97 @@ sudo /opt/edu-ai-lead-agent/scripts/edu-ai-production-check.sh
 The first command conflates a Node-dependent developer gate with server health. The second performs
 the bounded read-only runtime check and reports provenance separately.
 
+## Scenario: Quiescent business baseline for offline R16 release
+
+### 1. Scope / Trigger
+
+Use this contract when an offline release stops live writers, backs up PostgreSQL,
+rehearses a forward migration, and then changes an incompatible application
+schema. A live database row digest is an admission observation, not a stable
+backup identity: an in-flight worker may commit during `docker compose stop`.
+
+### 2. Signatures
+
+- Task operator: `r16_forward_operator.apply_release(host, manifest,
+  manifest_sha256, attempt_dir, lock_paths)`.
+- Host adapter: `capture()` while writers run, `stop_writers()`,
+  `capture_quiescent()`, `adopt_quiescent_baseline(live_baseline, snapshot)`,
+  `backup()`, `rehearse_clone(dump_sha256)`, and `migrate_forward(...)`.
+- Receipts: `intent.json` binds the pre-stop baseline;
+  `quiescent-baseline.json` binds both that baseline and the first stopped-writer
+  snapshot; backup, clone, release and enablement receipts bind the resulting
+  authoritative baseline hash. `migration-intent.json` is the irreversible
+  old-application restart boundary.
+
+### 3. Contracts
+
+- Capture under both deployment/backup locks and verify exact R15 revision,
+  image, 12-service topology, recipient fingerprint, protected files, brand,
+  volumes, schema `20260916_0048`, and idle work before an attempt exists.
+- Write the one-attempt intent before stopping writers. After every original
+  writer is stopped, retain the pre-stop non-business identities, require no
+  claimable work, exact table inventory and schema, then bind the first
+  stopped-writer per-row digest as the sole backup/migration business baseline.
+  A normal stop-window row change may alter this digest; a changed table set
+  or protected identity may not.
+- Recheck that same stopped snapshot after backup and after the long clone
+  rehearsal; recheck work and business identity immediately before Alembic.
+  The database dump and clone must be from the stopped authoritative state.
+- Before migration intent, a failure may restart only the same existing R15
+  containers after read-only proof of original schema, markers, image, IDs,
+  configuration, recipient, protected/brand/volume identities and idle work.
+  Persist recovery intent and verified recovery receipt. If proof/postcheck
+  fails, leave writers stopped and require operator reconciliation.
+- Once migration intent exists, never start the previous application, auto-
+  restore the database, rename the attempt, or replay `apply`. Enablement must
+  validate the complete backup/clone/quiescent receipt chain, not just hashes.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+|---|---|
+| Business row changes while live writers stop; stopped state is complete and idle | Admit a new `quiescent-baseline.json`; bind subsequent receipts to it |
+| Table inventory, work queue or protected identity changes unexpectedly | Block before backup/migration; recover R15 only after exact proof |
+| Business digest changes after authoritative stopped capture | Block before migration; do not refresh the baseline |
+| Original R15 proof or recovery health check fails before migration intent | Persist forward-recovery marker and keep writers stopped |
+| Failure at or after `migration-intent.json` | Forward-only reconciliation; old restart/automatic downgrade forbidden |
+| Quiescent, backup or clone content conflicts with the authoritative baseline, even if receipt hashes are recomputed | Refuse release enablement |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a live content worker commits while stop is in progress, all 12
+  writers then stop, the frozen state is idle, one fresh dump/clone binds that
+  state, and both release and enablement verify the same receipt chain.
+- Base: no stop-window write occurs; the pre-stop and quiescent business hashes
+  happen to match, but the quiescent receipt is still mandatory.
+- Bad: treating the live hash as immutable through stop, accepting a new hash
+  after backup/clone, restarting old code after migration intent, or treating
+  a rehashed receipt that contradicts the authoritative baseline as valid
+  backup evidence.
+
+### 6. Tests Required
+
+- `test_r16_forward_operator.py` covers stop-window row change, backup/clone
+  binding, post-backup/post-clone drift, pre-migration recovery and post-intent
+  forward-only behavior with distinct one-attempt directories.
+- `test_r16_real_host.py` covers table inventory, stopped-state identity,
+  pre-Alembic work/business gates, exact original-container proof and restart.
+- `test_r16_enablement.py` recomputes backup/release hashes and still rejects
+  altered backup content; it also rejects mismatched clone business identity.
+  Run the complete R16 release suite, Ruff,
+  strict mypy and offline image smoke before any new sealed production attempt.
+
+### 7. Wrong vs Correct
+
+Wrong: `live_digest = capture(); stop_writers(); assert digest() == live_digest`.
+This confuses a live admission check with the immutable backup state.
+
+Correct: `capture(); write_intent(); stop_writers(); quiet =
+capture_quiescent(); adopt_quiescent_baseline(..., quiet); backup();
+assert capture_quiescent() == quiet` (then repeat after clone and immediately
+before migration). The first stopped snapshot is authoritative; later drift
+fails closed.
+
 ## Review checklist
 
 - Is the change in the correct API/application/domain/infrastructure layer?

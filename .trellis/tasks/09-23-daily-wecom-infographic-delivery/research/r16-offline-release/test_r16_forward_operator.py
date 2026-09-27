@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 import r16_enablement as enable
 
 MODULE_PATH = Path(__file__).with_name("r16_forward_operator.py")
@@ -123,9 +122,11 @@ def production_fixture() -> tuple[dict[str, Any], dict[str, Any]]:
 class FakeHost:
     def __init__(self, baseline: dict[str, Any], *, failure: str | None = None) -> None:
         self.baseline = copy.deepcopy(baseline)
+        self.live_baseline = copy.deepcopy(baseline)
         self.failure = failure
         self.calls: list[str] = []
         self.stopped = False
+        self.quiet_reads = 0
 
     def arm_production_mutation(
         self,
@@ -140,14 +141,22 @@ class FakeHost:
 
     def capture(self) -> dict[str, Any]:
         self.calls.append("capture")
-        return copy.deepcopy(self.baseline)
+        return copy.deepcopy(self.live_baseline)
 
     def capture_quiescent(self) -> dict[str, Any]:
         self.calls.append("capture_quiescent")
         assert self.stopped
+        self.quiet_reads += 1
         return {
             "schema": self.baseline["schema"],
-            "business_identity_sha256": self.baseline["business_identity_sha256"],
+            "business_identity_sha256": (
+                "c" * 64
+                if (self.failure == "post_stop_drift" and self.quiet_reads > 1)
+                or (self.failure == "post_clone_drift" and self.quiet_reads > 2)
+                else "b" * 64
+                if self.failure == "stop_window_write"
+                else self.baseline["business_identity_sha256"]
+            ),
             "brand_identity_sha256": self.baseline["brand_identity_sha256"],
             "recipient_fingerprint": self.baseline["recipient_fingerprint"],
             "protected_files": copy.deepcopy(self.baseline["protected_files"]),
@@ -156,6 +165,41 @@ class FakeHost:
             "stopped_services": list(operator.SERVICES),
             "optional_producer_absent": True,
         }
+
+    def adopt_quiescent_baseline(
+        self, live_baseline: dict[str, Any], snapshot: dict[str, Any]
+    ) -> None:
+        self.calls.append("adopt_quiescent_baseline")
+        assert live_baseline == self.live_baseline
+        self.baseline = operator.quiescent_baseline(live_baseline, snapshot)
+
+    def verify_original_recoverable(self, baseline: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append("verify_original_recoverable")
+        assert baseline == self.live_baseline
+        if self.failure in (
+            "recovery_identity",
+            "post_stop_drift",
+            "post_clone_drift",
+        ):
+            raise operator.ReleaseBlocked("pre_migration_original_identity")
+        return {
+            "verified": True,
+            "schema": operator.BASE_SCHEMA,
+            "image": operator.BASE_IMAGE,
+            "revision": operator.BASE_REVISION,
+        }
+
+    def start_original(self, services: tuple[str, ...]) -> None:
+        self.calls.append("start_original")
+        assert services == operator.SERVICES
+        if self.failure == "recovery_start":
+            raise RuntimeError("recovery_start_failed")
+        self.stopped = False
+
+    def verify_original_recovered(self, baseline: dict[str, Any]) -> bool:
+        self.calls.append("verify_original_recovered")
+        assert baseline == self.live_baseline
+        return self.failure != "recovery_verify"
 
     def backup(self) -> dict[str, Any]:
         self.calls.append("backup")
@@ -419,10 +463,12 @@ def test_fake_one_attempt_is_forward_only(tmp_path: Path) -> None:
         "stop_writers",
         "verify_writers_stopped",
         "capture_quiescent",
+        "adopt_quiescent_baseline",
         "backup",
         "capture_quiescent",
         "stage_candidate_image",
         "rehearse_clone",
+        "capture_quiescent",
         "migrate_forward",
         "read_schema_head",
         "install_candidate",
@@ -504,6 +550,7 @@ def test_backup_failure_after_quiescence_requires_forward_recovery(
         "stop_writers",
         "verify_writers_stopped",
         "capture_quiescent",
+        "adopt_quiescent_baseline",
         "backup",
         "stop_all",
     ]
@@ -809,6 +856,18 @@ def test_actual_operator_one_attempt_fake_host_is_default_off(
     assert receipt["status"] == "deployed_default_off"
     assert receipt["simulation_only"] is False
     assert receipt["default_off"] is True
+    assert receipt["pre_stop_baseline_sha256"] == operator.sha(
+        operator.canonical(baseline)
+    )
+    quiet = json.loads((attempt / "quiescent-baseline.json").read_text())
+    assert quiet["receipt_sha256"] == receipt["quiescent_receipt_sha256"]
+    assert receipt["baseline_sha256"] == operator.sha(
+        operator.canonical(quiet["baseline"])
+    )
+    assert (
+        json.loads((attempt / "backup-receipt.json").read_text())["baseline_sha256"]
+        == receipt["baseline_sha256"]
+    )
     assert (
         json.loads((attempt / "intent.json").read_text())["manifest_sha256"] == "d" * 64
     )
@@ -829,10 +888,109 @@ def test_actual_operator_one_attempt_fake_host_is_default_off(
         operator.apply_release(host, manifest, "d" * 64, attempt, locks)
 
 
-@pytest.mark.parametrize(
-    "failure", ["stop", "backup", "stage", "clone", "migration", "verify"]
-)
-def test_actual_operator_failure_is_forward_only(tmp_path: Path, failure: str) -> None:
+def test_write_while_stopping_is_bound_to_quiescent_backup(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure="stop_window_write")
+    attempt = tmp_path / "r16-forward-fake1"
+    receipt = operator.apply_release(
+        host,
+        manifest,
+        "d" * 64,
+        attempt,
+        (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+    )
+    quiet = json.loads((attempt / "quiescent-baseline.json").read_text())
+    backup = json.loads((attempt / "backup-receipt.json").read_text())
+    clone = json.loads((attempt / "clone-receipt.json").read_text())
+    assert quiet["pre_stop_baseline"]["business_identity_sha256"] == HEX
+    assert quiet["baseline"]["business_identity_sha256"] == "b" * 64
+    assert backup["baseline_sha256"] == receipt["baseline_sha256"]
+    assert clone["source_business_sha256"] == "b" * 64
+    assert "start_original" not in host.calls
+
+
+def test_post_stop_business_drift_fails_closed_before_migration(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure="post_stop_drift")
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(
+        operator.ReleaseBlocked, match="pre_migration_original_identity"
+    ):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert (attempt / "forward-recovery-required.json").exists()
+    assert not (attempt / "migration-intent.json").exists()
+    assert "start_original" not in host.calls
+    assert host.calls[-1] == "stop_all"
+
+
+def test_post_clone_business_drift_fails_before_migration_intent(
+    tmp_path: Path,
+) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure="post_clone_drift")
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(
+        operator.ReleaseBlocked, match="pre_migration_original_identity"
+    ):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert (attempt / "forward-recovery-required.json").exists()
+    assert not (attempt / "migration-intent.json").exists()
+    assert "migrate_forward" not in host.calls
+    assert "start_original" not in host.calls
+    assert host.calls[-1] == "stop_all"
+
+
+@pytest.mark.parametrize("failure", ["stop", "backup", "stage", "clone"])
+def test_actual_operator_pre_migration_failure_recovers_original(
+    tmp_path: Path, failure: str
+) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure=failure)
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(RuntimeError):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls[-1] == "verify_original_recovered"
+    assert host.stopped is False
+    assert (attempt / "intent.json").exists()
+    assert (attempt / "pre-migration-recovery-intent.json").exists()
+    assert (attempt / "pre-migration-recovery-receipt.json").exists()
+    recovered = json.loads(
+        (attempt / "pre-migration-recovery-receipt.json").read_text()
+    )
+    assert recovered["candidate_deployed"] is False
+    assert recovered["receipt_sha256"] == operator.sha(
+        operator.canonical(
+            {key: value for key, value in recovered.items() if key != "receipt_sha256"}
+        )
+    )
+    assert not (attempt / "forward-recovery-required.json").exists()
+    assert not (attempt / "migration-intent.json").exists()
+    assert not (attempt / "release-receipt.json").exists()
+    assert host.calls.count("migrate_forward") <= 1
+
+
+@pytest.mark.parametrize("failure", ["migration", "verify"])
+def test_actual_operator_post_migration_intent_is_forward_only(
+    tmp_path: Path, failure: str
+) -> None:
     manifest, baseline = production_fixture()
     host = FakeHost(baseline, failure=failure)
     attempt = tmp_path / "r16-forward-fake1"
@@ -845,10 +1003,10 @@ def test_actual_operator_failure_is_forward_only(tmp_path: Path, failure: str) -
             (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
         )
     assert host.calls[-1] == "stop_all"
-    assert (attempt / "intent.json").exists()
+    assert (attempt / "migration-intent.json").exists()
     assert (attempt / "forward-recovery-required.json").exists()
-    assert not (attempt / "release-receipt.json").exists()
-    assert host.calls.count("migrate_forward") <= 1
+    assert not (attempt / "pre-migration-recovery-intent.json").exists()
+    assert "start_original" not in host.calls
 
 
 def test_actual_operator_lock_contention_prevents_attempt(tmp_path: Path) -> None:
@@ -888,6 +1046,51 @@ def test_actual_operator_wrong_group_blocks_before_intent(tmp_path: Path) -> Non
         )
     assert host.calls == ["capture"]
     assert not attempt.exists()
+
+
+def test_current_pending_work_blocks_before_any_mutation(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+    baseline["pending_work_count"] = 1
+    baseline["idle"] = False
+    host = FakeHost(baseline)
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(operator.ReleaseBlocked, match="baseline_identity"):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls == ["capture"]
+    assert not attempt.exists()
+
+
+def test_unverified_pre_migration_recovery_never_restarts(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+
+    class UnrecoverableHost(FakeHost):
+        def verify_original_recoverable(
+            self, baseline: dict[str, Any]
+        ) -> dict[str, Any]:
+            super().verify_original_recoverable(baseline)
+            raise operator.ReleaseBlocked("pre_migration_original_identity")
+
+    host = UnrecoverableHost(baseline, failure="backup")
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(
+        operator.ReleaseBlocked, match="pre_migration_original_identity"
+    ):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert "start_original" not in host.calls
+    assert host.calls[-1] == "stop_all"
+    assert (attempt / "forward-recovery-required.json").exists()
 
 
 def test_synthetic_crash_after_migration_intent_is_reconcile_only(

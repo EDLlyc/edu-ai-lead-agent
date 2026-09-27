@@ -94,12 +94,17 @@ from r16_forward_operator import (
     canonical,
     fsync_directory,
     is_sha,
+    quiescent_baseline,
     require,
     sha,
     two_local_locks,
+    valid_backup,
+    valid_baseline,
     valid_enablement_evidence,
+    valid_fresh_clone,
     valid_manifest,
     valid_production_manifest,
+    valid_quiescent,
     write_new,
 )
 
@@ -230,7 +235,9 @@ def valid_release_receipt(manifest: dict[str, Any], release: dict[str, Any]) -> 
             "services",
             "default_off",
             "recipient_fingerprint",
+            "pre_stop_baseline_sha256",
             "baseline_sha256",
+            "quiescent_receipt_sha256",
             "backup_receipt_sha256",
             "clone_receipt_sha256",
             "simulation_only",
@@ -260,7 +267,9 @@ def valid_release_receipt(manifest: dict[str, Any], release: dict[str, Any]) -> 
         and release.get("default_off") is True
         and release.get("simulation_only") is False
         and is_sha(release.get("recipient_fingerprint"))
+        and is_sha(release.get("pre_stop_baseline_sha256"))
         and is_sha(release.get("baseline_sha256"))
+        and is_sha(release.get("quiescent_receipt_sha256"))
         and is_sha(release.get("backup_receipt_sha256"))
         and is_sha(release.get("clone_receipt_sha256"))
         and release.get("receipt_sha256") == _receipt_hash(release),
@@ -745,11 +754,53 @@ def valid_release_attempt_files(
         "release_recovery_marker",
     )
     intent = private_json("intent.json")
+    quiescent = private_json("quiescent-baseline.json")
     release = private_json("release-receipt.json")
     backup = private_json("backup-receipt.json")
     clone = private_json("clone-receipt.json")
     migration_intent = private_json("migration-intent.json")
     valid_release_receipt(manifest, release)
+    pre_stop = quiescent.get("pre_stop_baseline")
+    authoritative = quiescent.get("baseline")
+    snapshot = quiescent.get("snapshot")
+    require(
+        quiescent.get("version") == "r16-quiescent-baseline-v1"
+        and isinstance(pre_stop, dict)
+        and isinstance(authoritative, dict)
+        and isinstance(snapshot, dict),
+        "quiescent_release_chain",
+    )
+    assert isinstance(pre_stop, dict)
+    assert isinstance(authoritative, dict)
+    assert isinstance(snapshot, dict)
+    valid_baseline(pre_stop)
+    valid_quiescent(snapshot, pre_stop)
+    require(
+        authoritative == quiescent_baseline(pre_stop, snapshot)
+        and quiescent.get("pre_stop_baseline_sha256") == sha(canonical(pre_stop))
+        and quiescent.get("receipt_sha256")
+        == sha(
+            canonical(
+                {
+                    key: value
+                    for key, value in quiescent.items()
+                    if key != "receipt_sha256"
+                }
+            )
+        )
+        and release["pre_stop_baseline_sha256"] == quiescent["pre_stop_baseline_sha256"]
+        and release["baseline_sha256"] == sha(canonical(authoritative))
+        and release["quiescent_receipt_sha256"] == quiescent["receipt_sha256"]
+        and backup.get("baseline_sha256") == release["baseline_sha256"]
+        and clone.get("source_business_sha256")
+        == authoritative["business_identity_sha256"],
+        "quiescent_release_chain",
+    )
+    # The release hash chain alone proves byte consistency, not that the
+    # backup and clone receipts describe the stopped-writer baseline. Reuse
+    # the release operator's complete receipt contracts before enablement.
+    valid_backup(backup, authoritative)
+    valid_fresh_clone(clone, authoritative, backup)
     require(
         intent.get("version") == "r16-default-off-intent-v1"
         and release["attempt_id"] == release_dir.name
@@ -757,7 +808,7 @@ def valid_release_attempt_files(
         and intent.get("candidate") == manifest["image"]
         and intent.get("revision") == manifest["revision"]
         and intent.get("manifest_sha256") == manifest_sha256
-        and intent.get("baseline_sha256") == release["baseline_sha256"]
+        and intent.get("baseline_sha256") == release["pre_stop_baseline_sha256"]
         and intent.get("old_app_restart_forbidden_after_migration_intent") is True
         and intent.get("simulation_only") is False
         and is_sha(backup.get("pg_dump_sha256"))

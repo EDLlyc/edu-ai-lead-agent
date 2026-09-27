@@ -19,7 +19,7 @@ import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 BASE_REVISION = "36b24d67b969a433f19c691bb9d12a3c13e00244"
 BASE_IMAGE = "sha256:d740275be855c258d2dbaccb180b65e8a14e949070f8597fcca4b3fb984eeb1f"
@@ -398,12 +398,12 @@ def valid_backup(backup: dict[str, Any], baseline: dict[str, Any]) -> None:
 
 
 def valid_quiescent(snapshot: dict[str, Any], baseline: dict[str, Any]) -> None:
-    """Bind a stopped-writer capture to the pre-stop protected identities."""
+    """Preserve pre-stop identities while allowing writes during the stop window."""
     require(
         snapshot
         == {
             "schema": BASE_SCHEMA,
-            "business_identity_sha256": baseline["business_identity_sha256"],
+            "business_identity_sha256": snapshot.get("business_identity_sha256"),
             "brand_identity_sha256": baseline["brand_identity_sha256"],
             "recipient_fingerprint": baseline["recipient_fingerprint"],
             "protected_files": baseline["protected_files"],
@@ -411,9 +411,36 @@ def valid_quiescent(snapshot: dict[str, Any], baseline: dict[str, Any]) -> None:
             "flags": baseline["flags"],
             "stopped_services": list(SERVICES),
             "optional_producer_absent": True,
-        },
+        }
+        and is_sha(snapshot.get("business_identity_sha256")),
         "quiescent_identity",
     )
+
+
+def quiescent_baseline(
+    live_baseline: dict[str, Any], snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    """Make the first stopped-writer business digest authoritative."""
+    valid_quiescent(snapshot, live_baseline)
+    result = json.loads(canonical(live_baseline))
+    result["business_identity_sha256"] = snapshot["business_identity_sha256"]
+    valid_baseline(result)
+    return cast(dict[str, Any], result)
+
+
+def quiescent_receipt(
+    live_baseline: dict[str, Any], snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    baseline = quiescent_baseline(live_baseline, snapshot)
+    receipt = {
+        "version": "r16-quiescent-baseline-v1",
+        "pre_stop_baseline_sha256": sha(canonical(live_baseline)),
+        "pre_stop_baseline": live_baseline,
+        "baseline": baseline,
+        "snapshot": snapshot,
+    }
+    receipt["receipt_sha256"] = sha(canonical(receipt))
+    return receipt
 
 
 class SimulatedHost(Protocol):
@@ -421,6 +448,9 @@ class SimulatedHost(Protocol):
 
     def capture(self) -> dict[str, Any]: ...
     def capture_quiescent(self) -> dict[str, Any]: ...
+    def adopt_quiescent_baseline(
+        self, live_baseline: dict[str, Any], snapshot: dict[str, Any]
+    ) -> None: ...
     def backup(self) -> dict[str, Any]: ...
     def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]: ...
     def stop_writers(self) -> None: ...
@@ -441,6 +471,11 @@ class ProductionHost(SimulatedHost, Protocol):
         baseline: dict[str, Any],
         manifest_sha256: str,
     ) -> None: ...
+    def verify_original_recoverable(
+        self, baseline: dict[str, Any]
+    ) -> dict[str, Any]: ...
+    def start_original(self, services: tuple[str, ...]) -> None: ...
+    def verify_original_recovered(self, baseline: dict[str, Any]) -> bool: ...
 
 
 def capture_readonly(host: SimulatedHost) -> dict[str, Any]:
@@ -529,8 +564,12 @@ def simulate(
             require(host.verify_writers_stopped() is True, "writers_not_stopped")
             before_backup = host.capture_quiescent()
             valid_quiescent(before_backup, frozen_baseline)
+            quiet = quiescent_receipt(frozen_baseline, before_backup)
+            authoritative_baseline = quiet["baseline"]
+            host.adopt_quiescent_baseline(frozen_baseline, before_backup)
+            write_new(attempt_dir / "quiescent-baseline.json", quiet)
             backup = host.backup()
-            valid_backup(backup, frozen_baseline)
+            valid_backup(backup, authoritative_baseline)
             after_backup = host.capture_quiescent()
             require(after_backup == before_backup, "post_backup_quiescent_drift")
             require(
@@ -538,8 +577,12 @@ def simulate(
                 "staged_image_identity",
             )
             clone = host.rehearse_clone(backup["pg_dump_sha256"])
-            valid_fresh_clone(clone, frozen_baseline, backup)
+            valid_fresh_clone(clone, authoritative_baseline, backup)
             write_new(attempt_dir / "clone-receipt.json", clone)
+            require(
+                host.capture_quiescent() == before_backup,
+                "pre_migration_quiescent_drift",
+            )
             write_new(
                 attempt_dir / "migration-intent.json",
                 {
@@ -564,7 +607,9 @@ def simulate(
                 "default_off": True,
                 "verified": True,
                 "recipient_fingerprint": frozen_baseline["recipient_fingerprint"],
-                "baseline_sha256": planned["baseline_sha256"],
+                "pre_stop_baseline_sha256": planned["baseline_sha256"],
+                "baseline_sha256": sha(canonical(authoritative_baseline)),
+                "quiescent_receipt_sha256": quiet["receipt_sha256"],
                 "backup_receipt_sha256": sha(canonical(backup)),
                 "clone_receipt_sha256": clone["receipt_sha256"],
                 "simulation_only": True,
@@ -597,9 +642,9 @@ def apply_release(
 ) -> dict[str, Any]:
     """One live default-off attempt; caller authenticates source/bundle first.
 
-    A fresh baseline is captured *inside* both locks. Once the intent exists,
-    any ambiguous result leaves the old application stopped and a forward
-    recovery marker. A failed attempt is never renamed or replayed.
+    The live capture gates entry. The first stopped-writer capture becomes the
+    authoritative business baseline. Pre-migration failures restart only a
+    verified unchanged R15; after migration intent they remain forward-only.
     """
     valid_production_manifest(manifest)
     require(is_sha(manifest_sha256), "manifest_hash_unpinned")
@@ -631,15 +676,23 @@ def apply_release(
                 "simulation_only": False,
             },
         )
-        host.arm_production_mutation(frozen_manifest, frozen_baseline, manifest_sha256)
         completed = False
+        mutation_armed = False
         try:
+            host.arm_production_mutation(
+                frozen_manifest, frozen_baseline, manifest_sha256
+            )
+            mutation_armed = True
             host.stop_writers()
             require(host.verify_writers_stopped() is True, "writers_not_stopped")
             before_backup = host.capture_quiescent()
             valid_quiescent(before_backup, frozen_baseline)
+            quiet = quiescent_receipt(frozen_baseline, before_backup)
+            authoritative_baseline = quiet["baseline"]
+            host.adopt_quiescent_baseline(frozen_baseline, before_backup)
+            write_new(attempt_dir / "quiescent-baseline.json", quiet)
             backup = host.backup()
-            valid_backup(backup, frozen_baseline)
+            valid_backup(backup, authoritative_baseline)
             write_new(attempt_dir / "backup-receipt.json", backup)
             require(
                 host.capture_quiescent() == before_backup,
@@ -650,8 +703,12 @@ def apply_release(
                 "staged_image_identity",
             )
             clone = host.rehearse_clone(backup["pg_dump_sha256"])
-            valid_fresh_clone(clone, frozen_baseline, backup)
+            valid_fresh_clone(clone, authoritative_baseline, backup)
             write_new(attempt_dir / "clone-receipt.json", clone)
+            require(
+                host.capture_quiescent() == before_backup,
+                "pre_migration_quiescent_drift",
+            )
             write_new(
                 attempt_dir / "migration-intent.json",
                 {
@@ -687,7 +744,9 @@ def apply_release(
                 "services": len(SERVICES),
                 "default_off": True,
                 "recipient_fingerprint": frozen_baseline["recipient_fingerprint"],
-                "baseline_sha256": baseline_sha256,
+                "pre_stop_baseline_sha256": baseline_sha256,
+                "baseline_sha256": sha(canonical(authoritative_baseline)),
+                "quiescent_receipt_sha256": quiet["receipt_sha256"],
                 "backup_receipt_sha256": sha(canonical(backup)),
                 "clone_receipt_sha256": clone["receipt_sha256"],
                 "simulation_only": False,
@@ -697,17 +756,85 @@ def apply_release(
             completed = True
         finally:
             if not completed:
-                try:
+                if not mutation_armed:
                     write_new(
-                        attempt_dir / "forward-recovery-required.json",
+                        attempt_dir / "pre-mutation-abort.json",
                         {
+                            "version": "r16-pre-mutation-abort-v1",
+                            "baseline_sha256": baseline_sha256,
                             "candidate": frozen_manifest["image"],
-                            "old_app_restart_forbidden": True,
-                            "automatic_downgrade_or_restore_forbidden": True,
+                            "no_service_stop_or_schema_change_by_operator": True,
                         },
                     )
-                finally:
-                    host.stop_all()
+                elif (attempt_dir / "migration-intent.json").exists():
+                    try:
+                        write_new(
+                            attempt_dir / "forward-recovery-required.json",
+                            {
+                                "candidate": frozen_manifest["image"],
+                                "old_app_restart_forbidden": True,
+                                "automatic_downgrade_or_restore_forbidden": True,
+                            },
+                        )
+                    finally:
+                        host.stop_all()
+                else:
+                    try:
+                        proof = host.verify_original_recoverable(frozen_baseline)
+                        require(
+                            proof.get("verified") is True
+                            and proof.get("schema") == BASE_SCHEMA
+                            and proof.get("image") == BASE_IMAGE
+                            and proof.get("revision") == BASE_REVISION,
+                            "pre_migration_recovery_proof",
+                        )
+                        recovery_intent = {
+                            "version": "r16-pre-migration-recovery-intent-v1",
+                            "pre_stop_baseline_sha256": baseline_sha256,
+                            "proof": proof,
+                            "candidate": frozen_manifest["image"],
+                        }
+                        recovery_intent["receipt_sha256"] = sha(
+                            canonical(recovery_intent)
+                        )
+                        write_new(
+                            attempt_dir / "pre-migration-recovery-intent.json",
+                            recovery_intent,
+                        )
+                        host.start_original(SERVICES)
+                        require(
+                            host.verify_original_recovered(frozen_baseline) is True,
+                            "pre_migration_recovery_postcheck",
+                        )
+                        recovered = {
+                            "version": "r16-pre-migration-recovered-v1",
+                            "recovery_intent_sha256": recovery_intent["receipt_sha256"],
+                            "schema": BASE_SCHEMA,
+                            "image": BASE_IMAGE,
+                            "revision": BASE_REVISION,
+                            "services": len(SERVICES),
+                            "old_application_running": True,
+                            "candidate_deployed": False,
+                        }
+                        recovered["receipt_sha256"] = sha(canonical(recovered))
+                        write_new(
+                            attempt_dir / "pre-migration-recovery-receipt.json",
+                            recovered,
+                        )
+                    except BaseException:
+                        try:
+                            write_new(
+                                attempt_dir / "forward-recovery-required.json",
+                                {
+                                    "candidate": frozen_manifest["image"],
+                                    "old_app_restart_forbidden": True,
+                                    "automatic_downgrade_or_restore_forbidden": True,
+                                    "reason": "pre_migration_recovery_unverified",
+                                },
+                            )
+                        finally:
+                            host.stop_all()
+                        raise
     return receipt
 
 

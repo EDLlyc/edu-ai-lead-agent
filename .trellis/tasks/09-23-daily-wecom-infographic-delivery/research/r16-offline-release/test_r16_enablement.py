@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 import r16_enablement as enable
 import r16_forward_operator as release_operator
 
@@ -51,7 +50,9 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
         "default_off": True,
         "simulation_only": False,
         "recipient_fingerprint": HEX,
+        "pre_stop_baseline_sha256": HEX,
         "baseline_sha256": HEX,
+        "quiescent_receipt_sha256": HEX,
         "backup_receipt_sha256": "4" * 64,
         "clone_receipt_sha256": "5" * 64,
     }
@@ -756,6 +757,44 @@ def test_isolated_cli_rejects_unsealed_bundle_before_sibling_import() -> None:
     }
 
 
+def _release_baseline_fixture(recipient_fingerprint: str) -> dict[str, Any]:
+    return {
+        "release_commit": release_operator.BASE_REVISION,
+        "release_commit_secondary": release_operator.BASE_REVISION,
+        "image": release_operator.BASE_IMAGE,
+        "release_env_image": release_operator.BASE_REF,
+        "schema": release_operator.BASE_SCHEMA,
+        "optional_producer_absent": True,
+        "standard_manifest_absent": True,
+        "backup_timer_active": True,
+        "idle": True,
+        "unknown_work_count": 0,
+        "pending_work_count": 0,
+        "business_identity_sha256": "a" * 64,
+        "brand_identity_sha256": "a" * 64,
+        "recipient_fingerprint": recipient_fingerprint,
+        "flags": dict.fromkeys(release_operator.OFF_FLAGS, False),
+        "services": {
+            name: {
+                "image": release_operator.BASE_IMAGE,
+                "image_ref": release_operator.BASE_REF,
+                "running": True,
+                "healthy": True,
+                "restarts": 0,
+                "command_sha256": HEX,
+                "mounts_sha256": HEX,
+                "env_sha256": HEX,
+            }
+            for name in release_operator.SERVICES
+        },
+        "protected_files": {
+            name: {"sha256": HEX, "mode": 0o600, "uid": 0, "gid": 0}
+            for name in release_operator.PROTECTED_FILES
+        },
+        "volumes": dict.fromkeys(release_operator.VOLUMES, HEX),
+    }
+
+
 def _production_fixture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Path, str, Path]:
@@ -784,11 +823,42 @@ def _production_fixture(
     release_dir = tmp_path / released["attempt_id"]
     release_dir.mkdir(mode=0o700)
     manifest_sha = "6" * 64
+    pre_stop = _release_baseline_fixture(fingerprint)
+    snapshot = {
+        "schema": release_operator.BASE_SCHEMA,
+        "business_identity_sha256": "b" * 64,
+        "brand_identity_sha256": pre_stop["brand_identity_sha256"],
+        "recipient_fingerprint": fingerprint,
+        "protected_files": pre_stop["protected_files"],
+        "volumes": pre_stop["volumes"],
+        "flags": pre_stop["flags"],
+        "stopped_services": list(release_operator.SERVICES),
+        "optional_producer_absent": True,
+    }
+    quiescent = release_operator.quiescent_receipt(pre_stop, snapshot)
+    released["pre_stop_baseline_sha256"] = quiescent["pre_stop_baseline_sha256"]
+    released["baseline_sha256"] = release_operator.sha(
+        release_operator.canonical(quiescent["baseline"])
+    )
+    released["quiescent_receipt_sha256"] = quiescent["receipt_sha256"]
     backup = {
+        "baseline_sha256": released["baseline_sha256"],
         "pg_dump_sha256": "9" * 64,
         "pg_dump_bytes": 1024,
+        "pg_restore_toc_sha256": HEX,
         "pg_restore_toc_read": True,
         "protected_files_readback": True,
+        "protected_files": pre_stop["protected_files"],
+        "protected_metadata_sha256": HEX,
+        "brand_materials_readback": True,
+        "brand_identity_sha256": pre_stop["brand_identity_sha256"],
+        "brand_archive_sha256": HEX,
+        "source_config_readback": True,
+        "source_config_archives": dict.fromkeys(
+            ("backend", "deploy", "scripts", "infra"), HEX
+        ),
+        "volumes": dict.fromkeys(release_operator.VOLUMES, HEX),
+        "volume_readbacks": dict.fromkeys(release_operator.VOLUMES, True),
     }
     clone: dict[str, Any] = {
         "chain": release_operator.MIGRATION_CHAIN,
@@ -798,8 +868,8 @@ def _production_fixture(
         "isolated_restore_readback": True,
         "isolated_target": True,
         "existing_table_counts_equal": True,
-        "source_business_sha256": "a" * 64,
-        "retained_business_sha256": "a" * 64,
+        "source_business_sha256": "b" * 64,
+        "retained_business_sha256": "b" * 64,
     }
     clone["receipt_sha256"] = enable._receipt_hash(clone)
     released["backup_receipt_sha256"] = release_operator.sha(
@@ -818,7 +888,7 @@ def _production_fixture(
         "candidate": manifest["image"],
         "revision": manifest["revision"],
         "manifest_sha256": manifest_sha,
-        "baseline_sha256": released["baseline_sha256"],
+        "baseline_sha256": released["pre_stop_baseline_sha256"],
         "old_app_restart_forbidden_after_migration_intent": True,
         "simulation_only": False,
     }
@@ -833,6 +903,7 @@ def _production_fixture(
     }
     for name, data in (
         ("intent.json", intent),
+        ("quiescent-baseline.json", quiescent),
         ("release-receipt.json", released),
         ("backup-receipt.json", backup),
         ("clone-receipt.json", clone),
@@ -902,6 +973,10 @@ def test_production_enable_uses_real_release_tree_and_separate_receipt(
         ("wrong_user_auth", "user_authorization_record_mismatch"),
         ("wrong_authorization_file", "user_authorization_file_mismatch"),
         ("wrong_migration_intent", "release_migration_intent_crosscheck"),
+        ("wrong_quiescent", "quiescent_release_chain"),
+        ("wrong_backup_baseline", "quiescent_release_chain"),
+        ("forged_backup_brand", "backup_receipt"),
+        ("wrong_clone_business", "quiescent_release_chain"),
         ("public_release_dir", "release_attempt_directory"),
         ("recovery_marker", "release_recovery_marker"),
         ("broken_recovery_marker", "release_recovery_marker"),
@@ -937,6 +1012,44 @@ def test_production_enable_rejects_untrusted_provenance_before_mutation(
         path = release_dir / "migration-intent.json"
         value = json.loads(path.read_bytes())
         value["forward_only"] = False
+        path.write_bytes(release_operator.canonical(value))
+    elif corruption == "wrong_quiescent":
+        path = release_dir / "quiescent-baseline.json"
+        value = json.loads(path.read_bytes())
+        value["snapshot"]["business_identity_sha256"] = "c" * 64
+        path.write_bytes(release_operator.canonical(value))
+    elif corruption == "wrong_backup_baseline":
+        path = release_dir / "backup-receipt.json"
+        value = json.loads(path.read_bytes())
+        value["baseline_sha256"] = "c" * 64
+        path.write_bytes(release_operator.canonical(value))
+    elif corruption == "forged_backup_brand":
+        path = release_dir / "backup-receipt.json"
+        value = json.loads(path.read_bytes())
+        value["brand_identity_sha256"] = "c" * 64
+        path.write_bytes(release_operator.canonical(value))
+        release_path = release_dir / "release-receipt.json"
+        release = json.loads(release_path.read_bytes())
+        release["backup_receipt_sha256"] = release_operator.sha(
+            release_operator.canonical(value)
+        )
+        release["receipt_sha256"] = enable._receipt_hash(release)
+        release_path.write_bytes(release_operator.canonical(release))
+        auth = evidence["direct_first_live_authorization"]
+        auth["release_receipt_sha256"] = release["receipt_sha256"]
+        auth["authorization_sha256"] = release_operator.sha(
+            release_operator.canonical(
+                {
+                    key: value
+                    for key, value in auth.items()
+                    if key != "authorization_sha256"
+                }
+            )
+        )
+    elif corruption == "wrong_clone_business":
+        path = release_dir / "clone-receipt.json"
+        value = json.loads(path.read_bytes())
+        value["source_business_sha256"] = "c" * 64
         path.write_bytes(release_operator.canonical(value))
     elif corruption == "public_release_dir":
         os.chmod(release_dir, 0o755)

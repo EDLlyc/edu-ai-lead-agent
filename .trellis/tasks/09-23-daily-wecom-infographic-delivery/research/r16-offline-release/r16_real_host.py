@@ -38,6 +38,7 @@ from r16_forward_operator import (
     VOLUMES,
     ReleaseBlocked,
     canonical,
+    quiescent_baseline,
     require,
     sha,
     valid_baseline,
@@ -435,9 +436,11 @@ class RealHostAdapter:
         self._service_env: dict[str, dict[str, str]] = {}
         self._volume_paths: dict[str, Path] = {}
         self._table_identity: dict[str, dict[str, int | str]] = {}
+        self._live_table_names: frozenset[str] | None = None
         self._stopped = False
         self._clone_verified = False
         self._candidate_loaded = False
+        self._original_recovery_verified = False
         self._production_paths = require_production_paths
         self._mutation_armed = False
         require(
@@ -677,8 +680,10 @@ class RealHostAdapter:
             .strip()
         )
 
-    def _db_identity(self) -> str:
-        """Hash counts and canonically ordered per-row digests, not just counts."""
+    def _db_identity(
+        self, *, bind_if_unbound: bool = False, allow_additive_tables: bool = True
+    ) -> str:
+        """Measure every row; bind only the first stopped-writer measurement."""
         tables = self._sql(
             "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
         ).splitlines()
@@ -698,15 +703,22 @@ class RealHostAdapter:
                 "table_identity",
             )
             identity[table] = {"count": int(count), "rows_md5": digest}
-        if not self._table_identity:
+        names = frozenset(identity)
+        if self._live_table_names is None:
+            self._live_table_names = names
+        elif bind_if_unbound or not allow_additive_tables:
+            require(names == self._live_table_names, "business_table_inventory_drift")
+        if not self._table_identity and bind_if_unbound:
             self._table_identity = identity
-        else:
+        elif self._table_identity:
             require(
                 {name: identity.get(name) for name in self._table_identity}
                 == self._table_identity,
                 "business_identity_drift",
             )
-        return sha(canonical(self._table_identity))
+        # New additive tables appear after 0048 -> 0050. Preserve the bound
+        # original-table digest while still comparing every original table.
+        return sha(canonical(self._table_identity or identity))
 
     def _work_counts(self) -> tuple[int, int]:
         """Refuse new work; allow only the exact reviewed, inert 0048 cohort."""
@@ -1049,7 +1061,7 @@ class RealHostAdapter:
         require(unknown == pending == 0, "quiescent_work")
         return {
             "schema": self._sql("SELECT version_num FROM alembic_version"),
-            "business_identity_sha256": self._db_identity(),
+            "business_identity_sha256": self._db_identity(bind_if_unbound=True),
             "brand_identity_sha256": brand,
             "recipient_fingerprint": baseline["recipient_fingerprint"],
             "protected_files": {
@@ -1061,6 +1073,25 @@ class RealHostAdapter:
             "stopped_services": list(SERVICES),
             "optional_producer_absent": True,
         }
+
+    def adopt_quiescent_baseline(
+        self, live_baseline: dict[str, Any], snapshot: dict[str, Any]
+    ) -> None:
+        """Switch backup/clone checks to the stopped-writer business identity."""
+        require(
+            self._mutation_armed
+            and self.verify_writers_stopped()
+            and self._baseline == live_baseline
+            and bool(self._table_identity),
+            "quiescent_adoption_order",
+        )
+        authoritative = quiescent_baseline(live_baseline, snapshot)
+        require(
+            snapshot["business_identity_sha256"]
+            == sha(canonical(self._table_identity)),
+            "quiescent_table_identity",
+        )
+        self._baseline = authoritative
 
     def backup(self) -> dict[str, Any]:
         self._require_mutation_review()
@@ -1457,6 +1488,13 @@ class RealHostAdapter:
             and self.read_schema_head() == BASE_SCHEMA,
             "production_migration_gate",
         )
+        require(
+            bool(self._table_identity)
+            and self._work_counts() == (0, 0)
+            and self._db_identity(allow_additive_tables=False)
+            == baseline["business_identity_sha256"],
+            "production_pre_migration_business_drift",
+        )
         db_env = self.attempt_dir / "production-migration.env"
         self._write_private(
             db_env, ("DATABASE_URL=" + self._production_db_url() + "\n").encode()
@@ -1711,6 +1749,132 @@ class RealHostAdapter:
 
     def read_schema_head(self) -> str:
         return self._sql("SELECT version_num FROM alembic_version")
+
+    def verify_original_recoverable(
+        self, live_baseline: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Prove exact R15 code/config/containers remain before any restart."""
+        self._require_mutation_review()
+        require(
+            self._baseline is not None
+            and not (self.attempt_dir / "migration-intent.json").exists()
+            and self.read_schema_head() == BASE_SCHEMA
+            and (self.paths.app / ".release-commit").read_text().strip()
+            == BASE_REVISION
+            and (self.paths.app / "RELEASE_COMMIT").read_text().strip() == BASE_REVISION
+            and _parse_env(self.paths.app / ".release.env").get("APP_IMAGE")
+            == BASE_REF,
+            "pre_migration_original_identity",
+        )
+        baseline = self._required_baseline()
+        require(
+            all(
+                baseline.get(key) == live_baseline.get(key)
+                for key in live_baseline
+                if key != "business_identity_sha256"
+            ),
+            "pre_migration_baseline_identity",
+        )
+        protected, brand, volumes = self._common_identity()
+        require(
+            {
+                name: {key: value for key, value in meta.items() if key != "size"}
+                for name, meta in protected.items()
+            }
+            == live_baseline["protected_files"]
+            and brand == live_baseline["brand_identity_sha256"]
+            and volumes == live_baseline["volumes"]
+            and self._work_counts() == (0, 0),
+            "pre_migration_data_or_file_drift",
+        )
+        image = self._image(BASE_REF)
+        require(image.get("Id") == BASE_IMAGE, "pre_migration_image_identity")
+        for name, container_id in live_baseline["dependencies"].items():
+            item = self._service(name)
+            require(
+                item.get("Id") == container_id
+                and item.get("State", {}).get("Status") == "running",
+                "pre_migration_dependency_identity",
+            )
+        for name in SERVICES:
+            item = self._service(name)
+            config = item.get("Config", {})
+            expected = live_baseline["services"][name]
+            actual_env = dict(
+                value.split("=", 1) for value in config.get("Env", []) if "=" in value
+            )
+            require(
+                item.get("Id") == expected["container_id"]
+                and item.get("Image") == BASE_IMAGE
+                and config.get("Image") == BASE_REF
+                and item.get("State", {}).get("Status") in ("running", "exited")
+                and item.get("RestartCount") == 0
+                and sha(canonical(config.get("Cmd"))) == expected["command_sha256"]
+                and sha(canonical(item.get("Mounts"))) == expected["mounts_sha256"]
+                and sha(canonical(actual_env)) == expected["env_sha256"],
+                "pre_migration_service_identity",
+            )
+        optional = self._run(
+            "docker",
+            "ps",
+            "-a",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=wecom-infographic-producer",
+            code="optional_producer_lookup",
+        )
+        require(not optional.strip(), "pre_migration_optional_producer")
+        business_sha = self._db_identity(allow_additive_tables=False)
+        require(
+            not self._table_identity
+            or business_sha == sha(canonical(self._table_identity)),
+            "pre_migration_business_drift",
+        )
+        self._original_recovery_verified = True
+        return {
+            "verified": True,
+            "schema": BASE_SCHEMA,
+            "image": BASE_IMAGE,
+            "revision": BASE_REVISION,
+            "business_identity_sha256": business_sha,
+            "baseline_sha256": sha(canonical(live_baseline)),
+            "services": len(SERVICES),
+        }
+
+    def start_original(self, services: tuple[str, ...]) -> None:
+        self._require_mutation_review()
+        require(
+            services == SERVICES
+            and self._original_recovery_verified
+            and not (self.attempt_dir / "migration-intent.json").exists()
+            and (self.attempt_dir / "pre-migration-recovery-intent.json").is_file(),
+            "pre_migration_restart_gate",
+        )
+        # `start` uses the existing containers and cannot recreate from new code.
+        self._compose("start", *SERVICES, code="start_original", timeout=180)
+        self._stopped = False
+
+    def verify_original_recovered(self, live_baseline: dict[str, Any]) -> bool:
+        require(self._original_recovery_verified, "recovery_verification_order")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            healthy = True
+            for name in SERVICES:
+                item = self._service(name)
+                state = item.get("State", {})
+                if not (
+                    item.get("Id") == live_baseline["services"][name]["container_id"]
+                    and state.get("Status") == "running"
+                    and state.get("Health", {}).get("Status", "healthy") == "healthy"
+                ):
+                    healthy = False
+                    break
+            if healthy:
+                return self.read_schema_head() == BASE_SCHEMA
+            time.sleep(2)
+        return False
 
     def stop_all(self) -> None:
         self._require_mutation_review()

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 import r16_real_host as real
 from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
@@ -44,6 +43,8 @@ class FakeCommands:
         self.fail_code: str | None = None
         self.runtime_tree_sha = real.R15_RUNTIME_TREE_SHA256
         self.dispatcher_key = "fake-group-key"
+        self.row_md5 = EMPTY_MD5
+        self.tables = list(TABLES)
         self.compose_help = b"--no-build --no-deps --pull --wait --wait-timeout"
         self.names = {
             f"{i + 1:012x}": name
@@ -56,11 +57,11 @@ class FakeCommands:
         if sql.startswith("SELECT tablename FROM pg_tables"):
             if "tablename LIKE" in sql:
                 return b"wecom_delivery_jobs\n"
-            return ("\n".join(TABLES) + "\n").encode()
+            return ("\n".join(self.tables) + "\n").encode()
         if sql.startswith("SELECT count(*)"):
             return b"0\n"
         if sql.startswith("SELECT md5("):
-            return (EMPTY_MD5 + "\n").encode()
+            return (self.row_md5 + "\n").encode()
         if sql == real.HISTORICAL_WORK_COHORT_SQL:
             return b"reviewed\n"
         raise AssertionError("unexpected SQL shape")
@@ -127,6 +128,9 @@ class FakeCommands:
                 return self._sql(argv[-1], clone=False)
             if "stop" in argv:
                 self.stopped = True
+                return b""
+            if "start" in argv:
+                self.stopped = False
                 return b""
             if "up" in argv:
                 self.candidate_started = True
@@ -458,6 +462,100 @@ def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
     ]
 
 
+def test_live_db_digest_does_not_bind_until_writers_stop(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    assert adapter._table_identity == {}
+    commands.row_md5 = "b" * 32
+    adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    assert quiet["business_identity_sha256"] != live["business_identity_sha256"]
+    valid_quiescent(quiet, live)
+    adapter._mutation_armed = True  # fake runner only; exercise adoption gate
+    adapter.adopt_quiescent_baseline(live, quiet)
+    assert adapter._baseline is not None
+    assert (
+        adapter._baseline["business_identity_sha256"]
+        == quiet["business_identity_sha256"]
+    )
+    commands.row_md5 = "c" * 32
+    with pytest.raises(ReleaseBlocked, match="business_identity_drift"):
+        adapter.capture_quiescent()
+
+
+def test_additive_migration_tables_do_not_change_bound_business_hash(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    commands.tables.append("news_infographic_jobs")
+    assert adapter._db_identity() == quiet["business_identity_sha256"]
+
+
+def test_table_inventory_change_during_stop_is_not_normalized(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    commands.tables.append("unexpected_table")
+    with pytest.raises(ReleaseBlocked, match="business_table_inventory_drift"):
+        adapter.capture_quiescent()
+
+
+def test_migration_rechecks_business_after_clone_before_docker_run(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    adapter._mutation_armed = True  # fake runner only; exercise production gate
+    adapter.adopt_quiescent_baseline(live, quiet)
+    adapter._candidate_loaded = True
+    adapter._clone_verified = True
+    commands.row_md5 = "c" * 32
+    with pytest.raises(ReleaseBlocked, match="business_identity_drift"):
+        adapter.migrate_forward(ALEMBIC_ONLY_COMMAND, MIGRATION_CHAIN)
+    assert not any("production_alembic_upgrade" in call for call in commands.calls)
+
+
+def test_original_containers_restart_only_after_pre_migration_proof(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    proof = adapter.verify_original_recoverable(live)
+    assert proof["verified"] is True
+    with pytest.raises(ReleaseBlocked, match="pre_migration_restart_gate"):
+        adapter.start_original(SERVICES)
+    (adapter.attempt_dir / "pre-migration-recovery-intent.json").write_bytes(b"test")
+    adapter.start_original(SERVICES)
+    assert adapter.verify_original_recovered(live)
+    assert any("start" in call for call in commands.calls)
+
+
+def test_schema_change_blocks_old_container_restart(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    commands.production_schema = TARGET_SCHEMA
+    with pytest.raises(ReleaseBlocked, match="pre_migration_original_identity"):
+        adapter.verify_original_recoverable(live)
+    assert not any("start" in call for call in commands.calls)
+
+
+def test_non_postgres_volume_drift_blocks_old_container_restart(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    (commands.volume_paths[VOLUMES[0]] / "content.bin").write_bytes(b"changed")
+    with pytest.raises(ReleaseBlocked, match="pre_migration_data_or_file_drift"):
+        adapter.verify_original_recoverable(live)
+    assert not any("start" in call for call in commands.calls)
+
+
 def test_clone_rejects_different_dump_bytes_before_docker_mutation(
     tmp_path: Path,
 ) -> None:
@@ -496,6 +594,9 @@ def test_bad_host_bundle_stops_before_any_protected_replacement(
     adapter, _, manifest = _fixture(tmp_path)
     baseline = adapter.capture()
     adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    adapter._mutation_armed = True  # fake runner only; exercise adoption gate
+    adapter.adopt_quiescent_baseline(baseline, quiet)
     backup = adapter.backup()
     adapter.stage_candidate_image(manifest)
     adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
@@ -514,6 +615,9 @@ def test_symlinked_host_bundle_file_refused_before_replace(tmp_path: Path) -> No
     adapter, _, manifest = _fixture(tmp_path)
     baseline = adapter.capture()
     adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    adapter._mutation_armed = True  # fake runner only; exercise adoption gate
+    adapter.adopt_quiescent_baseline(baseline, quiet)
     backup = adapter.backup()
     adapter.stage_candidate_image(manifest)
     adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
@@ -558,8 +662,11 @@ def test_missing_compose_wait_capability_blocks_before_any_stop(tmp_path: Path) 
 
 def test_flag_on_blocks_default_off_start(tmp_path: Path) -> None:
     adapter, commands, manifest = _fixture(tmp_path)
-    adapter.capture()
+    baseline = adapter.capture()
     adapter.stop_writers()
+    quiet = adapter.capture_quiescent()
+    adapter._mutation_armed = True  # fake runner only; exercise adoption gate
+    adapter.adopt_quiescent_baseline(baseline, quiet)
     backup = adapter.backup()
     adapter.stage_candidate_image(manifest)
     adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
