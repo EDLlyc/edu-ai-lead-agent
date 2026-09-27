@@ -42,6 +42,14 @@ DEFAULT_OFF = (
     "WECOM_INFOGRAPHIC_NOON_ENABLED",
     "WECOM_INFOGRAPHIC_EVENING_ENABLED",
 )
+SERVICE_FLAGS = {
+    "wecom-dispatcher": DEFAULT_OFF[1:],
+    "wecom-infographic-producer": (DEFAULT_OFF[0], *DEFAULT_OFF[3:]),
+}
+PINNED_PYTHON_BASE = (
+    b"python:3.11.15-slim-bookworm@sha256:"
+    b"d29f48a31a8b408ed19272ca1e7b10ebae13b240a27e862d3d4217c528e2e0c3"
+)
 
 
 class GateError(RuntimeError):
@@ -100,16 +108,38 @@ def validate_committed_contract(blobs: dict[str, bytes]) -> None:
     compose = blobs.get("compose.yaml")
     require(compose is not None, "missing_compose")
     assert compose is not None
-    for name in DEFAULT_OFF:
-        require(
-            re.search(rb"\$\{" + name.encode() + rb":-false\}", compose) is not None,
-            "flag_not_default_off",
+    for service, names in SERVICE_FLAGS.items():
+        match = re.search(
+            rb"(?ms)^  " + service.encode() + rb":\s*\n(.*?)(?=^  [a-z][a-z0-9-]*:|\Z)",
+            compose,
         )
-    require(
-        b'profiles: ["infographic"]' in compose
-        and b'command: ["python", "-m", "app.wecom_news_infographic_main"]' in compose,
-        "producer_profile_contract",
-    )
+        require(match is not None, "missing_wecom_service")
+        assert match is not None
+        body = match.group(1)
+        for name in names:
+            require(
+                re.search(
+                    rb"(?m)^      "
+                    + name.encode()
+                    + rb":\s*\$\{"
+                    + name.encode()
+                    + rb":-false\}\s*$",
+                    body,
+                )
+                is not None,
+                "flag_not_default_off",
+            )
+        if service == "wecom-infographic-producer":
+            require(
+                re.search(rb'(?m)^    profiles: \["infographic"\]\s*$', body)
+                is not None
+                and re.search(
+                    rb'(?m)^    command: \["python", "-m", "app.wecom_news_infographic_main"\]\s*$',
+                    body,
+                )
+                is not None,
+                "producer_profile_contract",
+            )
 
     dockerfile = blobs.get("backend/Dockerfile")
     require(dockerfile is not None, "missing_dockerfile")
@@ -118,6 +148,43 @@ def validate_committed_contract(blobs: dict[str, bytes]) -> None:
         b"fonts-noto-cjk" in dockerfile and b"COPY alembic ./alembic" in dockerfile,
         "full_image_required",
     )
+    require(
+        re.search(rb"(?m)^ARG PYTHON_BASE=" + PINNED_PYTHON_BASE + rb"\s*$", dockerfile)
+        is not None,
+        "python_base_unpinned",
+    )
+    # A package name alone resolves against a mutable apt index. The full-image
+    # release must use a dated Debian archive and an explicit font version; the
+    # resulting image/font hashes are then sealed in the offline OCI manifest.
+    require(
+        re.search(rb"(?m)^ARG DEBIAN_SNAPSHOT=\d{8}T\d{6}Z\s*$", dockerfile) is not None
+        and b"snapshot.debian.org/archive/debian/" in dockerfile,
+        "debian_snapshot_unpinned",
+    )
+    snapshot_source = b"snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}"
+    require(
+        re.search(
+            rb"(?m)^RUN rm(?: -f)? /etc/apt/sources.list.d/debian.sources"
+            rb"[ \t]*\\\n[ \t]*&& printf [^\n#]*"
+            + re.escape(snapshot_source)
+            + rb"[^\n#]*> /etc/apt/sources.list"
+            rb"[ \t]*\\\n[ \t]*&& apt-get update\b",
+            dockerfile,
+        )
+        is not None,
+        "debian_snapshot_not_applied",
+    )
+    require(
+        re.search(rb"(?m)^ARG FONTS_NOTO_CJK_VERSION=[0-9][^\s]*\s*$", dockerfile)
+        is not None
+        and re.search(
+            rb"(?m)^[ \t]*&& apt-get install --yes --no-install-recommends "
+            rb'"fonts-noto-cjk=\$\{FONTS_NOTO_CJK_VERSION\}"',
+            dockerfile,
+        )
+        is not None,
+        "font_package_unpinned",
+    )
 
 
 def verify_r15_bundle(bundle: Path) -> None:
@@ -125,8 +192,22 @@ def verify_r15_bundle(bundle: Path) -> None:
     archive = bundle / "backend-image.oci.tar.gz"
     operator = bundle / "forward_release.py"
     require(file_sha256(manifest) == BASE_MANIFEST_SHA256, "base_manifest_hash")
-    require(file_sha256(archive) == BASE_ARCHIVE_SHA256, "base_archive_hash")
     value = json.loads(manifest.read_bytes())
+    # The bundle checker is executable code. Authenticate it and its imported
+    # support before invoking it, even if the manifest/archive hashes match.
+    for filename, key in (
+        ("forward_release.py", "operator_sha256"),
+        ("r14_support.py", "support_sha256"),
+        ("forward_activate.py", "activator_sha256"),
+    ):
+        expected = value.get(key)
+        require(
+            isinstance(expected, str)
+            and re.fullmatch(r"[0-9a-f]{64}", expected) is not None
+            and file_sha256(bundle / filename) == expected,
+            "base_checker_hash",
+        )
+    require(file_sha256(archive) == BASE_ARCHIVE_SHA256, "base_archive_hash")
     require(
         value.get("revision") == BASE_REVISION
         and value.get("image") == BASE_IMAGE

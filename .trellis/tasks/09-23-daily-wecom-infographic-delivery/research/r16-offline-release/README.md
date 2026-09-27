@@ -39,6 +39,15 @@ gate passed on that clean HEAD with 77 changed files and explicitly returned
 `deployment_ready=false`. This does not satisfy the image, recipient, build,
 backup or activation gates below.
 
+The source gate now also refuses a floating font build. A future candidate
+must retain the pinned Python base, replace Debian's mutable apt source with
+an actually used dated `snapshot.debian.org` source before `apt-get update`,
+and install `fonts-noto-cjk` at an explicit Debian package version. This is
+only a static source condition: image verification must still prove the
+installed package version and font-file hashes. A candidate with an
+unversioned `apt-get install fonts-noto-cjk` is deliberately blocked and must
+not be represented as a reproducible release.
+
 ## Why a new operator and full image are mandatory
 
 The R15 operator is a fixed, one-attempt R14→R15 overlay for a single
@@ -50,14 +59,56 @@ would be a false release.
 
 Build a **new full runtime image** from an exact reviewed Git commit, not the
 dirty checkout. Freeze the resolved base image and font package inputs; the
-current Dockerfile pins the Python base digest but does not pin the Debian
-`fonts-noto-cjk` package version. Record the built image ID, all OCI archive
+first R16 candidate pinned the Python base but left the Debian
+`fonts-noto-cjk` package floating, so it is not a valid build input. Record
+the built image ID, all OCI archive
 blobs/config/manifest digests, revision label, `/app/app` and `/app/alembic`
-trees, `fc-list`/font identity and the exact `compose.yaml` and migration
+trees, Noto font identity/Pillow Chinese-glyph load and the exact `compose.yaml` and migration
 declaration hashes. Verify an offline `docker load` and a network-none,
 read-only runtime probe on a non-production host. The host receives the
 immutable OCI archive and a separately hash-bound protected-file bundle;
 never build or fetch packages on production during activation.
+
+`r16_oci.py` is a **local-only** deterministic Docker-save→OCI packaging and
+graph checker. Once a reviewed, clean, committed full image has been built
+under the required R16 tag, export it with `docker save -o` into a new private
+local directory and run:
+
+```text
+python3 r16_oci.py \
+  --docker-archive /private/new-r16/docker-image.tar \
+  --output /private/new-r16/backend-image.oci.tar.gz \
+  --tag offline.local/edu-ai/edu-ai-lead-agent-backend:infographic-r16-COMMIT12 \
+  --revision FULL_40_CHARACTER_CANDIDATE_COMMIT
+```
+
+The converter checks the Docker revision label, immutable config digest,
+every raw layer's `diff_id`, every compressed OCI blob and the complete OCI
+index/manifest graph. It refuses to overwrite an existing output. Its JSON
+result is **image evidence only**, not an activation manifest, font-runtime
+probe, host preflight, backup receipt or permission to copy/apply it remotely.
+It accepts both older Docker-save archives with raw tar layers and Docker 29
+containerd archives whose `manifest.json` points at gzip blobs; both must
+decompress to the declared `rootfs.diff_ids` before deterministic OCI packing.
+
+After recording the converter's `image` and `config_id`, run `r16_smoke.py`
+against that exact archive and a clean checkout at the same commit. It loads
+the archive locally, then runs the image with `--network none --read-only`,
+compares `/app/app` and `/app/alembic` plus config files byte-for-byte against
+the commit, imports all runtime entry points including the optional poster
+producer, checks Alembic head `0050`, `pip check`, the committed Noto package
+version/full font-file SHA and Pillow Chinese-glyph load, and validates Compose with
+and without the optional infographic profile. It never starts a business
+service or calls a provider. Example:
+
+```text
+python3 r16_smoke.py \
+  --repo /root/projects/edu-ai-lead-agent/.trellis/worktrees/wecom-infographic-r15-port.20260926 \
+  --revision FULL_40_CHARACTER_CANDIDATE_COMMIT \
+  --archive /private/new-r16/backend-image.oci.tar.gz \
+  --config-id sha256:FROM_CONVERTER \
+  --image sha256:FROM_CONVERTER
+```
 
 The new production operator must be source-reviewed and independently tested
 before it can be bundled. It should use a fresh, root-owned, single-attempt

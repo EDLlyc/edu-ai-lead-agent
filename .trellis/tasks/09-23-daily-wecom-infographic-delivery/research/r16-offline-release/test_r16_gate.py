@@ -31,11 +31,30 @@ def valid_blobs() -> dict[str, bytes]:
             }
         ).encode(),
         "compose.yaml": (
-            "\n".join(f"{name}: ${{{name}:-false}}" for name in gate.DEFAULT_OFF)
-            + '\nprofiles: ["infographic"]\n'
-            + 'command: ["python", "-m", "app.wecom_news_infographic_main"]\n'
+            "services:\n  wecom-dispatcher:\n    environment:\n"
+            + "\n".join(
+                f"      {name}: ${{{name}:-false}}"
+                for name in gate.SERVICE_FLAGS["wecom-dispatcher"]
+            )
+            + '\n  wecom-infographic-producer:\n    profiles: ["infographic"]\n'
+            + "    environment:\n"
+            + "\n".join(
+                f"      {name}: ${{{name}:-false}}"
+                for name in gate.SERVICE_FLAGS["wecom-infographic-producer"]
+            )
+            + '\n    command: ["python", "-m", "app.wecom_news_infographic_main"]\n'
         ).encode(),
-        "backend/Dockerfile": b"RUN apt-get install fonts-noto-cjk\nCOPY alembic ./alembic\n",
+        "backend/Dockerfile": (
+            b"ARG PYTHON_BASE=python:3.11.15-slim-bookworm@sha256:"
+            b"d29f48a31a8b408ed19272ca1e7b10ebae13b240a27e862d3d4217c528e2e0c3\n"
+            b"ARG DEBIAN_SNAPSHOT=20260926T000000Z\n"
+            b"ARG FONTS_NOTO_CJK_VERSION=1:20201225-2\n"
+            b"RUN rm -f /etc/apt/sources.list.d/debian.sources \\\n"
+            b"    && printf 'deb https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/ bookworm main' > /etc/apt/sources.list \\\n"
+            b"    && apt-get update \\\n"
+            b'    && apt-get install --yes --no-install-recommends "fonts-noto-cjk=${FONTS_NOTO_CJK_VERSION}"\n'
+            b"COPY alembic ./alembic\n"
+        ),
     }
 
 
@@ -71,10 +90,72 @@ def test_any_enabled_switch_is_rejected() -> None:
         gate.validate_committed_contract(blobs)
 
 
+def test_default_off_decoy_cannot_mask_enabled_dispatcher() -> None:
+    blobs = valid_blobs()
+    blobs["compose.yaml"] = (
+        blobs["compose.yaml"].replace(
+            b"WECOM_INFOGRAPHIC_DELIVERY_ENABLED:-false",
+            b"WECOM_INFOGRAPHIC_DELIVERY_ENABLED:-true",
+        )
+        + b"# WECOM_INFOGRAPHIC_DELIVERY_ENABLED: ${WECOM_INFOGRAPHIC_DELIVERY_ENABLED:-false}\n"
+    )
+    with pytest.raises(gate.GateError, match="flag_not_default_off"):
+        gate.validate_committed_contract(blobs)
+
+
 def test_missing_font_requires_full_image() -> None:
     blobs = valid_blobs()
     blobs["backend/Dockerfile"] = b"COPY alembic ./alembic\n"
     with pytest.raises(gate.GateError, match="full_image_required"):
+        gate.validate_committed_contract(blobs)
+
+
+def test_mutable_apt_index_is_rejected() -> None:
+    blobs = valid_blobs()
+    blobs["backend/Dockerfile"] = blobs["backend/Dockerfile"].replace(
+        b"snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}",
+        b"deb.debian.org/debian",
+    )
+    with pytest.raises(gate.GateError, match="debian_snapshot_unpinned"):
+        gate.validate_committed_contract(blobs)
+
+
+def test_snapshot_string_without_applied_apt_source_is_rejected() -> None:
+    blobs = valid_blobs()
+    blobs["backend/Dockerfile"] = blobs["backend/Dockerfile"].replace(
+        b" > /etc/apt/sources.list", b""
+    )
+    with pytest.raises(gate.GateError, match="debian_snapshot_not_applied"):
+        gate.validate_committed_contract(blobs)
+
+
+def test_commented_snapshot_cannot_mask_mutable_apt_source() -> None:
+    blobs = valid_blobs()
+    blobs["backend/Dockerfile"] = blobs["backend/Dockerfile"].replace(
+        b"    && printf 'deb https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/ bookworm main' > /etc/apt/sources.list \\\n",
+        b"    # && printf 'deb https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/ bookworm main' > /etc/apt/sources.list \\\n",
+    )
+    with pytest.raises(gate.GateError, match="debian_snapshot_not_applied"):
+        gate.validate_committed_contract(blobs)
+
+
+def test_unversioned_font_is_rejected() -> None:
+    blobs = valid_blobs()
+    blobs["backend/Dockerfile"] = blobs["backend/Dockerfile"].replace(
+        b"fonts-noto-cjk=${FONTS_NOTO_CJK_VERSION}", b"fonts-noto-cjk"
+    )
+    with pytest.raises(gate.GateError, match="font_package_unpinned"):
+        gate.validate_committed_contract(blobs)
+
+
+def test_unpinned_python_base_is_rejected() -> None:
+    blobs = valid_blobs()
+    blobs["backend/Dockerfile"] = blobs["backend/Dockerfile"].replace(
+        b"python:3.11.15-slim-bookworm@sha256:"
+        b"d29f48a31a8b408ed19272ca1e7b10ebae13b240a27e862d3d4217c528e2e0c3",
+        b"python:3.11-slim-bookworm",
+    )
+    with pytest.raises(gate.GateError, match="python_base_unpinned"):
         gate.validate_committed_contract(blobs)
 
 
@@ -89,4 +170,14 @@ def test_base_bundle_mutation_is_rejected(tmp_path: Path) -> None:
     (tmp_path / "candidate.json").write_bytes(b"{}")
     (tmp_path / "backend-image.oci.tar.gz").write_bytes(b"test")
     with pytest.raises(gate.GateError, match="base_manifest_hash"):
+        gate.verify_r15_bundle(tmp_path)
+
+
+def test_bundle_checker_is_hashed_before_execution(tmp_path: Path) -> None:
+    bundle = Path("/root/projects/edu-ai-lead-agent/output/moments-r15-36b24d6")
+    if not bundle.exists():
+        pytest.skip("private local R15 archive absent")
+    (tmp_path / "candidate.json").write_bytes((bundle / "candidate.json").read_bytes())
+    (tmp_path / "forward_release.py").write_bytes(b"raise RuntimeError('untrusted')\n")
+    with pytest.raises(gate.GateError, match="base_checker_hash"):
         gate.verify_r15_bundle(tmp_path)
