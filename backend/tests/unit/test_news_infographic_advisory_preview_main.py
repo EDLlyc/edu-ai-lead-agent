@@ -1,4 +1,4 @@
-"""Provider-free checks for the one-case v12 advisory local poster."""
+"""Provider-free checks for the one-case v13 advisory local poster."""
 
 # ruff: noqa: RUF001 -- Chinese text is the poster's exact rendering contract.
 
@@ -62,16 +62,19 @@ def test_preflight_pins_new_policy_and_makes_no_intent(tmp_path: Path) -> None:
     assert preflight.safe_projection()["image_intents"] == 0
     assert (
         preflight.safe_projection()["policy_version"]
-        == "wecom-news-infographic-v12-shared-anchor-advisory"
+        == "wecom-news-infographic-v13-boundary-comma-advisory"
     )
-    assert preflight.safe_projection()["reference_contract"] == "formal_v12_character_only"
-    assert preview._LEDGER_DIR.name == "daily-news-infographic-advisory-v12-intents"
+    assert preflight.safe_projection()["reference_contract"] == "formal_v13_character_only"
+    assert preflight.safe_projection()["trial_version"] == (
+        "daily-news-infographic-advisory-v13-local-preview-v1"
+    )
+    assert preview._LEDGER_DIR.name == "daily-news-infographic-advisory-v13-intents"
     assert not (tmp_path / "ledger").exists()
 
 
 def test_preflight_rejects_extra_style_reference_and_wrong_lineage(tmp_path: Path) -> None:
     paths = _frozen_files(tmp_path)
-    with pytest.raises(preview.TrialInputError, match="formal v12 character reference"):
+    with pytest.raises(preview.TrialInputError, match="formal v13 character reference"):
         preflight_advisory_preview(
             input_bundle=paths[0],
             package_detail=paths[1],
@@ -97,9 +100,10 @@ def test_negative_audit_still_makes_one_marked_local_image(tmp_path: Path) -> No
     )
     raw_draft = _concise_draft(preflight)
     raw_draft["child"] = plan.child_frame + raw_draft["child"]
-    old_ledger = tmp_path / "daily-news-infographic-advisory-v10-intents"
+    raw_draft["brand"] = "，" + raw_draft["brand"]
+    old_ledger = tmp_path / "daily-news-infographic-advisory-v12-intents"
     old_ledger.mkdir(mode=0o700)
-    old_intent = old_ledger / "consumed-v10.generation.intent.json"
+    old_intent = old_ledger / "consumed-v12.generation.intent.json"
     old_intent.write_text('{"state":"reserved"}', encoding="utf-8")
     old_bytes = old_intent.read_bytes()
     rejected = _accepted_audit()
@@ -121,6 +125,7 @@ def test_negative_audit_still_makes_one_marked_local_image(tmp_path: Path) -> No
     )
     assert result["status"] == "generated_local_preview_pending_human_inspection"
     assert result["send_ready"] is False and result["copy_approved"] is False
+    assert result["reference_contract"] == "formal_v13_character_only"
     assert result["generation_intents"] == result["audit_intents"] == 1
     assert result["image_intents"] == len(image.calls) == 1
     assert "copy_audit_rejected" in result["warning_codes"]
@@ -130,7 +135,9 @@ def test_negative_audit_still_makes_one_marked_local_image(tmp_path: Path) -> No
     assert json.loads((output / "private/generation-response.json").read_text()) == raw_draft
     normalized = json.loads((output / "private/rich-copy.json").read_text())
     assert normalized["normalized_exact_prefixes"] == ["child"]
+    assert normalized["normalized_boundary_commas"] == ["brand"]
     assert result["normalized_exact_prefixes"] == ["child"]
+    assert result["normalized_boundary_commas"] == ["brand"]
     assert result["raw_draft_sha256"] == normalized["raw_draft_sha256"]
     assert (
         result["raw_draft_sha256"]

@@ -1,4 +1,4 @@
-"""One-case, local-only v12 concise advisory poster trial.
+"""One-case, local-only v13 concise advisory poster trial.
 
 Dry-run validates frozen same-package inputs and assets without a provider.
 Execution reserves one durable intent per paid stage; it never sends to WeCom,
@@ -71,8 +71,8 @@ from app.news_infographic_moments_copy_trial_main import (
     preflight_trial,
 )
 
-_LEDGER_DIR = _WORKSPACE_ROOT / "output" / "daily-news-infographic-advisory-v12-intents"
-_TRIAL_VERSION = "daily-news-infographic-advisory-v12-local-preview-v1"
+_LEDGER_DIR = _WORKSPACE_ROOT / "output" / "daily-news-infographic-advisory-v13-intents"
+_TRIAL_VERSION = "daily-news-infographic-advisory-v13-local-preview-v1"
 _MAX_GROUP_BYTES = 2 * 1024 * 1024
 _MAX_PRIVATE_JSON_BYTES = 24_000
 _IMAGE_DIAGNOSTIC_VERSION = "advisory-local-image-failure-v1"
@@ -156,7 +156,7 @@ class AdvisoryPreviewPreflight:
             "input_fingerprint": self.frozen.case.fingerprint,
             "policy_version": ADVISORY_POLICY_VERSION,
             "trial_version": _TRIAL_VERSION,
-            "reference_contract": "formal_v12_character_only",
+            "reference_contract": "formal_v13_character_only",
             "notice": ADVISORY_NOTICE_TEXT,
             "reference_sha256": [item.sha256 for item in self.references],
             "generation_intents": 0,
@@ -185,7 +185,7 @@ def preflight_advisory_preview(
         or not references[0].image_bytes
         or sha256(references[0].image_bytes).hexdigest() != references[0].sha256
     ):
-        raise TrialInputError("advisory preview needs the formal v12 character reference")
+        raise TrialInputError("advisory preview needs the formal v13 character reference")
     validate_exact_source_footer_layout(frozen.case, mode="formal")
     font_sha256 = advisory_notice_font_sha256()
     prompt = build_advisory_generation_prompt(frozen.case, frozen.binding)
@@ -279,7 +279,7 @@ def _summary(
         "package_id": str(preflight.frozen.package_id),
         "input_fingerprint": preflight.frozen.case.fingerprint,
         "policy_version": ADVISORY_POLICY_VERSION,
-        "reference_contract": "formal_v12_character_only",
+        "reference_contract": "formal_v13_character_only",
         "notice": ADVISORY_NOTICE_TEXT,
         "notice_version": ADVISORY_NOTICE_VERSION,
         "warning_codes": normalize_advisory_warnings(warning_codes or ()),
@@ -393,6 +393,7 @@ async def execute_advisory_preview(
         "raw_draft_sha256": rich.raw_draft_sha256,
         "raw_response_sha256": raw_response_sha256,
         "normalized_exact_prefixes": list(rich.normalized_exact_prefixes),
+        "normalized_boundary_commas": list(rich.normalized_boundary_commas),
     }
     warnings = {"layout_unverified"}
     if "copy_layout_warning" in rich.warning_codes:
@@ -589,7 +590,7 @@ async def execute_advisory_preview(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Local-only one-case v12 advisory poster")
+    parser = argparse.ArgumentParser(description="Local-only one-case v13 advisory poster")
     parser.add_argument("--input-bundle", required=True, type=Path)
     parser.add_argument("--package-detail", required=True, type=Path)
     parser.add_argument("--copy-run-detail", required=True, type=Path)

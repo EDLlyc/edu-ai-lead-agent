@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 from app.application.services.news_infographic_advisory import (
+    ADVISORY_AUDIT_VERSION,
     ADVISORY_COPY_VERSION,
     ADVISORY_GENERATION_PROMPT_VERSION,
     ADVISORY_IMAGE_PROMPT_VERSION,
@@ -51,7 +52,11 @@ def test_same_package_rich_copy_pins_exact_fact_brand_and_model_painted_cards() 
     assert case.topic_title in generation_prompt
     assert "不需要因担心审核不通过而返回空对象" in generation_prompt
     assert case.source_url not in generation_prompt
-    assert ADVISORY_POLICY_VERSION == "wecom-news-infographic-v12-shared-anchor-advisory"
+    assert ADVISORY_POLICY_VERSION == "wecom-news-infographic-v13-boundary-comma-advisory"
+    assert ADVISORY_COPY_VERSION == "wecom-infographic-advisory-concise-copy-v5"
+    assert ADVISORY_GENERATION_PROMPT_VERSION == "wecom-infographic-advisory-concise-generation-v5"
+    assert ADVISORY_AUDIT_VERSION == "wecom-infographic-advisory-copy-audit-v4"
+    assert ADVISORY_IMAGE_PROMPT_VERSION == "wecom-infographic-advisory-concise-painted-image-v4"
     assert generation_prompt.startswith(ADVISORY_GENERATION_PROMPT_VERSION)
     assert '"final_visible_max_chars"' in generation_prompt
     copy = build_advisory_rich_copy(case, binding, fields)
@@ -61,6 +66,7 @@ def test_same_package_rich_copy_pins_exact_fact_brand_and_model_painted_cards() 
     assert copy.exact_fact in copy.news_body
     assert copy.exact_brand in copy.brand_body
     assert copy.normalized_exact_prefixes == ()
+    assert copy.normalized_boundary_commas == ()
     assert copy.brand_body == copy.exact_brand + "。" + fields["brand"]
     assert len(copy.top_summary) <= 58
     assert len(copy.news_body) <= 96
@@ -133,6 +139,7 @@ def test_one_exact_prefix_is_removed_once_with_raw_provenance_and_combined_budge
     copy = build_advisory_rich_copy(case, binding, raw)
     assert raw == frozen_raw  # Parsing/normalization never mutates the provider response.
     assert copy.normalized_exact_prefixes == ("news", "child", "brand")
+    assert copy.normalized_boundary_commas == ()
     assert (
         copy.raw_draft_sha256
         == sha256(
@@ -147,6 +154,74 @@ def test_one_exact_prefix_is_removed_once_with_raw_provenance_and_combined_budge
     assert len(copy.brand_body) <= 108
     assert build_advisory_audit_prompt(case, binding, copy)
     assert build_advisory_image_prompt(case, copy)
+
+
+@pytest.mark.parametrize("role", ["news", "child", "brand"])
+@pytest.mark.parametrize("comma", ["，", ","])
+def test_one_leading_boundary_comma_is_removed_from_only_its_continuation(
+    role: str, comma: str
+) -> None:
+    case, binding, fields = _frozen()
+    baseline = build_advisory_rich_copy(case, binding, fields)
+    raw = dict(fields)
+    raw[role] = comma + fields[role]
+    copy = build_advisory_rich_copy(case, binding, raw)
+    assert raw[role] == comma + fields[role]
+    assert (
+        copy.raw_draft_sha256
+        == sha256(
+            json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    assert copy.normalized_exact_prefixes == ()
+    assert copy.normalized_boundary_commas == (role,)
+    assert (copy.news_body, copy.child_body, copy.brand_body) == (
+        baseline.news_body,
+        baseline.child_body,
+        baseline.brand_body,
+    )
+    assert build_advisory_audit_prompt(case, binding, copy)
+    assert build_advisory_image_prompt(case, copy)
+
+
+def test_boundary_comma_after_exact_prefix_is_recorded_separately() -> None:
+    case, binding, fields = _frozen()
+    plan = build_moments_rich_draft_plan(case, binding, build_moments_rich_seed(case, binding))
+    raw = dict(fields)
+    raw["brand"] = plan.brand.text + "。" + "，" + fields["brand"]
+    copy = build_advisory_rich_copy(case, binding, raw)
+    assert copy.normalized_exact_prefixes == ("brand",)
+    assert copy.normalized_boundary_commas == ("brand",)
+    assert copy.brand_body == plan.brand.text + "。" + fields["brand"]
+
+
+@pytest.mark.parametrize("leading", ["，，", ",,", "，。", "， ", ",\t"])
+def test_multiple_punctuation_or_whitespace_after_one_comma_still_fails(leading: str) -> None:
+    case, binding, fields = _frozen()
+    fields["brand"] = leading + fields["brand"]
+    with pytest.raises(AdvisoryCopyError, match=r"invalid sentence boundary|control characters"):
+        build_advisory_rich_copy(case, binding, fields)
+
+
+def test_boundary_comma_does_not_relax_top_empty_budget_or_binding_gates() -> None:
+    case, binding, fields = _frozen()
+    fields["top"] = "，" + fields["top"]
+    with pytest.raises(AdvisoryCopyError, match="invalid sentence boundary"):
+        build_advisory_rich_copy(case, binding, fields)
+    fields = _frozen()[2]
+    fields["brand"] = "，"
+    with pytest.raises(AdvisoryCopyError, match="visible-text budget"):
+        build_advisory_rich_copy(case, binding, fields)
+    fields["brand"] = "，" + fields["brand"] + "教学" * 80
+    with pytest.raises(AdvisoryCopyError, match="visible-text budget"):
+        build_advisory_rich_copy(case, binding, fields)
+    plan = build_moments_rich_draft_plan(case, binding, build_moments_rich_seed(case, binding))
+    fields["brand"] = "，" + plan.brand.text
+    with pytest.raises(AdvisoryCopyError, match="repeats"):
+        build_advisory_rich_copy(case, binding, fields)
+    fields["brand"] = "，新闻来源：https://example.org/other"
+    with pytest.raises(AdvisoryCopyError, match="source attribution"):
+        build_advisory_rich_copy(case, binding, fields)
 
 
 def test_nonprefix_and_broken_fixed_prefix_are_not_fuzzy_rewritten() -> None:

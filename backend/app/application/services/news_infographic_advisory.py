@@ -37,11 +37,11 @@ from app.application.services.wecom_infographic_quality import (
 )
 from app.domain.news_infographic import ValidatedInfographicInput
 
-ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v12-shared-anchor-advisory"
-ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v4"
-ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v4"
-ADVISORY_AUDIT_VERSION: Final = "wecom-infographic-advisory-copy-audit-v3"
-ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v3"
+ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v13-boundary-comma-advisory"
+ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v5"
+ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v5"
+ADVISORY_AUDIT_VERSION: Final = "wecom-infographic-advisory-copy-audit-v4"
+ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v4"
 ADVISORY_NOTICE: Final = ADVISORY_NOTICE_TEXT
 _NOTICE_FONT_PATH = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 _GEOMETRY = (1152, 2048)
@@ -94,7 +94,7 @@ class AdvisoryRichCopy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    policy_version: Literal["wecom-infographic-advisory-concise-copy-v4"] = ADVISORY_COPY_VERSION
+    policy_version: Literal["wecom-infographic-advisory-concise-copy-v5"] = ADVISORY_COPY_VERSION
     package_id: UUID
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_name: str
@@ -112,6 +112,7 @@ class AdvisoryRichCopy(BaseModel):
     exact_brand: str
     raw_draft_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     normalized_exact_prefixes: tuple[Literal["news", "child", "brand"], ...]
+    normalized_boundary_commas: tuple[Literal["news", "child", "brand"], ...]
     warning_codes: tuple[AdvisoryCopyWarning, ...]
     content_approved: Literal[False] = False
 
@@ -156,6 +157,13 @@ def _normalize_exact_prefix(value: str, *, fixed: str, separator: str = "") -> t
     if shared_start >= broken_prefix_limit:
         raise AdvisoryCopyError("advisory continuation has a broken frozen prefix")
     return continuation, normalized
+
+
+def _normalize_one_boundary_comma(value: str) -> tuple[str, bool]:
+    """Remove one redundant continuation comma; later gates still reject malformed text."""
+    if value.startswith(("，", ",")):
+        return value[1:], True
+    return value, False
 
 
 def _measured_lines(text: str, *, font: ImageFont.FreeTypeFont, width: int) -> int:
@@ -247,6 +255,7 @@ def build_advisory_generation_prompt(
         "程序会另行原样插入 exact_news_fact、child_frame、exact_brand_statement 和完整来源；"
         "news、child、brand 分别只写对应固定文字之后的续句，"
         "不要以 exact_news_fact、child_frame 或 exact_brand_statement 开头；"
+        "续句首字符不要写逗号或其他标点；"
         "固定句末若缺标点，会补一个句号隔开续句；"
         "这些固定文字已经计入 final_visible_max_chars，绝不要复写或换句话重复。"
         "top 与 news 不得写成同一句；不要用省略号截断句子，也不要靠缩小字号塞字。"
@@ -299,6 +308,16 @@ def build_advisory_rich_copy(
         normalized_exact_prefixes.append("child")
     if brand_normalized:
         normalized_exact_prefixes.append("brand")
+    news, news_comma_normalized = _normalize_one_boundary_comma(news)
+    child, child_comma_normalized = _normalize_one_boundary_comma(child)
+    brand, brand_comma_normalized = _normalize_one_boundary_comma(brand)
+    normalized_boundary_commas: list[Literal["news", "child", "brand"]] = []
+    if news_comma_normalized:
+        normalized_boundary_commas.append("news")
+    if child_comma_normalized:
+        normalized_boundary_commas.append("child")
+    if brand_comma_normalized:
+        normalized_boundary_commas.append("brand")
     values = {"top": fields.top, "news": news, "child": child, "brand": brand}
     if any(any(ord(char) < 32 or ord(char) == 127 for char in value) for value in values.values()):
         raise AdvisoryCopyError("advisory copy contains control characters")
@@ -362,6 +381,7 @@ def build_advisory_rich_copy(
         exact_brand=plan.brand.text,
         raw_draft_sha256=raw_draft_sha256,
         normalized_exact_prefixes=tuple(normalized_exact_prefixes),
+        normalized_boundary_commas=tuple(normalized_boundary_commas),
         warning_codes=tuple(warnings),
     )
 
