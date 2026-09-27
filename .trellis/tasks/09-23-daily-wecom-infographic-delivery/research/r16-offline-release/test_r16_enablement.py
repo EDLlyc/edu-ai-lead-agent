@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 import r16_enablement as enable
 import r16_forward_operator as release_operator
 
