@@ -1,9 +1,12 @@
 # R16 infographic offline OCI release path — preparation only
 
 **Status: NOT DEPLOYABLE.** This directory contains a read-only committed-source
-gate and a release specification. It is not an activation operator or a
-substitute for the quality, fixed-recipient, backup or migration reviews. It
-must not be copied to the production host and run with an improvised `apply`.
+gate, local image tooling, a release specification and a **simulation-only**
+forward-operator contract. It is not a production activation operator or a
+substitute for the quality, fixed-recipient, backup or migration reviews. The
+`r16_forward_operator.py apply` command always returns
+`production_apply_unavailable`; do not copy it to the host with an improvised
+`apply` or change that guard by hand.
 
 ## Frozen starting identity
 
@@ -155,11 +158,15 @@ profile; it cannot silently assume a thirteenth existing service.
 
 ## Backup, activation and recovery contract
 
-Before the first stop/migration intent, take a *new* PostgreSQL `-Fc` dump and
-validate it with `pg_restore -l`; inventory/copy all three non-PostgreSQL
-volumes, private brand assets, protected host files and source/configuration.
-Record SHA-256, size, metadata and a separate verified recovery read. The R15
-backup is historical evidence, not a backup of the current 0048 state.
+Under both locks, recapture the idle 0048 baseline, write a single-attempt
+pause intent, then stop and verify **all application writers**. While they
+remain stopped, capture a quiescent baseline and take a *new* PostgreSQL `-Fc`
+dump, validating it with `pg_restore -l` and an isolated clone restore.
+Inventory/copy all three non-PostgreSQL volumes, private brand assets,
+protected host files and source/configuration, with SHA-256, size, metadata
+and separate readbacks. Recapture the same quiescent identity after backup.
+No backup from live writers is a coherent release backup; the R15 backup is
+historical evidence, not a backup of the current 0048 state.
 
 The reviewed migration is `0048 → 0049 → 0050`. Test it against an isolated
 clone of the actual production-shaped 0048 schema and verify all existing
@@ -172,9 +179,9 @@ jobs.** On any uncertain or partial migration/activation result, stop all
 application writers and move to separately reviewed forward recovery. The
 backup is for forensic/disaster planning, not automatic rollback.
 
-Only after successful backup and a final byte-for-byte recapture should an
-operator write an activation intent, stop the twelve application writers,
-load/verify the candidate image, run Alembic once to exactly `0050`, replace
+Only after that stopped-writer backup and clone are verified should an
+operator write a separate migration intent, load/verify the candidate image,
+run Alembic once to exactly `0050`, replace
 only reviewed protected host files and image markers, then start the existing
 12 application services under **all infographic flags false**. The optional
 producer remains absent. Verify API health, schema, all service identities,
@@ -190,11 +197,91 @@ before noon/evening flags. Keep the original text/image and M/W/F Official
 Account paths unchanged; do not backfill old news. If any gate fails, leave
 infographic delivery/producer off and preserve the existing workflow.
 
+## Forward-only operator contract — simulation only
+
+`r16_forward_operator.py plan` validates the *shape* and internal identity of
+the candidate manifest, 12-service default-off baseline, three distinct
+same-package quality receipts, fixed-group triple and production-shaped
+`0048→0049→0050` clone receipt. Its output always says
+`production_apply_available=false`: supplied JSON cannot authenticate live
+host state or real provider outcomes. No production host adapter is supplied.
+The module's `simulate` function is exercised only with injected fake hosts
+and local attempt/lock paths; it is **not a sandbox** and Python cannot prove
+that an arbitrary injected adapter has no external side effects. Never import
+it with a real host adapter. The CLI exposes no simulation action and `apply`
+always refuses. The simulation requires both locks, one fresh running baseline,
+a durable pause intent, a verified stop of all writers, then two identical
+quiescent captures around a backup receipt that separately accounts for a
+readable PostgreSQL dump/TOC,
+the same dump's isolated clone rehearsal, all three volume readbacks, private
+brand-material readback and exact protected-file metadata. It then writes one
+candidate-image staging call whose returned digest must equal the manifest,
+then a separate migration intent, migrates once forward, requires a freshly
+read exact `0050` head, and installs/starts the original
+12 services default-off and verifies them. Any post-intent failure records
+`forward-recovery-required` before calling `stop_all`, so even a failed stop
+does not erase the recovery warning; an existing attempt is
+reconcile-only. The fake-host tests cover success, missing receipts,
+duplicate attempts, backup failure, partial stop, ambiguous migration and
+post-migration failures. These tests are **not** a production migration,
+backup or activation rehearsal.
+
+The `plan` input checks only declarative receipt *shape*: its migration-clone
+record must name a source dump hash, an isolated target and successful restore
+readback. `simulate` also requires the newly captured dump hash to equal that
+clone source hash before creating an intent. Neither a JSON boolean nor a hash
+string proves the underlying bytes; a future real adapter must verify them
+against the actual dump, restored clone, copied volumes, brand tree and
+protected files. `plan` remains `production_apply_available=false` even when
+every declarative field is present.
+
+The migration call in this contract is explicitly `python -m alembic -c
+/app/alembic.ini upgrade 20260926_0050`; a future adapter must **not** invoke
+Compose `backend-migrate` (it also seeds sources) or `minio-init`. The clone
+rehearsal and production upgrade must preserve existing source/business rows.
+
+The missing production adapter must be independently reviewed and must perform
+actual locked host capture, PostgreSQL/volume/protected-file backup with
+restore-read checks, exact OCI/host-file byte verification, one migration
+intent, and stop/forward-recovery behavior. Until such an adapter and the
+quality/group/migration/backup receipts exist, the explicit hard refusal is
+the only safe `apply` behavior.
+
+### Exact local image verification for commit `4312451` (2026-09-27)
+
+A full image was built from clean commit
+`43124512385686a2427f1120f343c6697a865092`, with the pinned Python base,
+Debian snapshot `20260901T000000Z`, exact `fonts-noto-cjk`
+`1:20220127+repack1-1`, downloaded package SHA
+`4a2515eb6db3978b897fef9709ed0d2b1f4c6c4df4d83d6c4ef65f71f1b1f502`
+and TTC SHA
+`b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a`
+verified during build. The original Docker save is 226,487,808 bytes with
+SHA-256 `7ba32147e74173a0f50407f941f96a2e9d15d6a70a185a5a7d7632796ef8669c`.
+The 11-layer OCI archive is 222,109,840 bytes with SHA-256
+`d7b5e8fd6222de883512cb9e1c8407681ef305463b6be38361f7f7b0dcbdfca4`;
+its manifest/image digest is
+`sha256:a2936357441f4d86a43dbe10bb0899dd39f1fdf7a5a5cac6bc7a17111c728028`
+and config blob digest is
+`sha256:1c0b8b6c5734a7a6cd07dc4a4a38f134e016e89e7f43dcb1f9f2c13eb5a49b67`.
+Local offline `docker load` returned the same manifest digest. The network-none,
+read-only smoke passed 359 exact source files, the optional producer and other
+runtime imports, OpenAPI, `pip check`, Alembic head `0050`, the full font SHA,
+Pillow Chinese glyphs and both Compose profile shapes. The private artifacts
+are under `output/wecom-infographic-r16-431245123856/` in the root workspace.
+This is **local image evidence only**. The image source commit `4312451` and a
+later reviewed operator-source commit may differ if the two identities are
+explicitly bound in a release record and a committed-tree diff proves that
+runtime, migrations, Compose and protected host-file bytes did not change.
+Otherwise, build a new full image from the later commit. Never relabel the
+`4312451` image or claim its revision label names later source bytes.
+
 ## Open release evidence — no safe apply yet
 
 - [x] Candidate source is committed; `r16_gate.py` passes on a clean HEAD.
-- [ ] Full-image build is reproducible, including pinned Noto font package,
-      immutable archive graph, runtime tree and offline load/font probe.
+- [x] Local full-image build for source commit `4312451` passed pinned Noto,
+      immutable archive graph, runtime tree and offline load/font probes; this
+      is not a production load or approval of a later operator-source commit.
 - [ ] New independently reviewed activation operator and fail-closed tests
       cover 12-service default-off topology, exact host-file changes, lock
       ownership, one-attempt receipts, idle capture, backup and both
