@@ -984,7 +984,7 @@ def main() -> int:
                 "enable_operator_source_hash",
             )
             require(
-                args.release_attempt.parent == Path("/opt/edu-ai-release-backups")
+                args.release_attempt.parent == Path("/root/edu-ai-release-backups")
                 and not args.release_attempt.is_symlink(),
                 "release_attempt_location",
             )
@@ -1015,6 +1015,11 @@ def main() -> int:
             )
             from r16_enable_host import EnablePaths, RealEnableHost
             from r16_real_host import BACKUP_ROOT, SubprocessRunner
+
+            require(
+                args.release_attempt.parent == BACKUP_ROOT,
+                "enable_release_root_drift",
+            )
 
             host = RealEnableHost(SubprocessRunner(), EnablePaths(), manifest)
             receipt = enable_production(

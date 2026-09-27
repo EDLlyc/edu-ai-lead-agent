@@ -45,7 +45,10 @@ from r16_forward_operator import (
 )
 
 APP = Path("/opt/edu-ai-lead-agent")
-BACKUP_ROOT = Path("/opt/edu-ai-release-backups")
+# /opt is owned by the application Unix user on the production host. A sealed
+# enablement receipt must be under root-owned ancestors all the way to /;
+# use a separate, private root path for this one-attempt release backup.
+BACKUP_ROOT = Path("/root/edu-ai-release-backups")
 PROJECT = "edu-ai-lead-agent"
 DEPENDENCY_REFS = {
     "postgres": "pgvector/pgvector:0.8.1-pg16",

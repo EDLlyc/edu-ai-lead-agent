@@ -18,6 +18,17 @@ image/bundle cannot be promoted with an operator-only edit. Build a new full
 image from the final reviewed commit and repeat the sealed preflight before
 any live release action.
 
+The next read-only preflight correctly stopped on two **current** queued
+2026-09-27 evening WeCom deliveries whose `not_before` is 18:30 Asia/Shanghai.
+They are not part of the historical exception and must complete normally
+before another idle release preflight. A further path audit found that the
+production `/opt` ancestor is owned by the application Unix user, while the
+sealed enablement CLI requires every release-receipt ancestor to be root
+owned. The R16 one-attempt backup/receipt root is therefore
+`/root/edu-ai-release-backups` (root-owned 0700); the existing backup timer
+and its `/opt/edu-ai-release-backups` data are left untouched. A new full
+image and bundle are again required after this operator change.
+
 ## Frozen starting identity
 
 Read-only inspection on 2026-09-26 found:
