@@ -464,6 +464,85 @@ if len(frozen_fact + sentence_separator + news) > 96:
     raise AdvisoryCopyError("advisory copy exceeds concise visible-text budget")
 ```
 
+## Scenario: v13 single boundary-comma advisory continuation
+
+### 1. Scope / Trigger
+
+Use this forward-only formal/local advisory policy when a model writes one
+redundant comma at the start of a `news`, `child` or `brand` continuation.
+The 2026-09-27 panda v12 run stopped after its copy intent on that exact
+format. This change does not reclassify that response as accepted or permit
+replay of any v12 generation, audit or image intent.
+
+### 2. Signatures
+
+```text
+build_advisory_rich_copy(case, same_package_binding, raw_draft)
+  -> AdvisoryRichCopy(normalized_boundary_commas, raw_draft_sha256, ...)
+python -m app.news_infographic_advisory_preview_main \
+  --input-bundle FROZEN_INPUT --package-detail FROZEN_PACKAGE \
+  --copy-run-detail FROZEN_MOMENTS --approved-asset-root PROJECT_ROOT \
+  [--output-dir FRESH_DIR --execute]
+```
+
+### 3. Contracts
+
+- Formal policy `wecom-news-infographic-v13-boundary-comma-advisory`, copy
+  `wecom-infographic-advisory-concise-copy-v5`, generation v5, audit v4 and
+  image prompt v4 advance together. The local trial and durable intent
+  namespace are `daily-news-infographic-advisory-v13-local-preview-v1` and
+  `daily-news-infographic-advisory-v13-intents`; the character reference
+  contract is `formal_v13_character_only`.
+- Hash and privately preserve the exact four-field model response **before**
+  normalization. After exact fixed-prefix deduplication, remove at most one
+  leading `，` or `,` from each of `news`, `child`, `brand`, recording only the
+  affected field names in `normalized_boundary_commas`. Never normalize
+  `top`, later punctuation, whitespace or free-form wording.
+- Reapply the unchanged nonempty minimum, four visible-text budgets,
+  source/number/claim/brand binding, repetition and measured layout gates to
+  the normalized text. A local result stays `send_ready=false`; provider
+  intents, exact final-JPEG checks and fixed-recipient rollout remain separate.
+
+### 4. Validation & Error Matrix
+
+| Input | Required result |
+| --- | --- |
+| One leading comma on a continuation with valid remaining text | Remove once, record field, revalidate all gates |
+| Two commas, comma then whitespace, or comma with no remaining text | `AdvisoryCopyError`; no image intent |
+| Leading comma on `top` or other leading punctuation | Reject; do not silently rewrite |
+| Normalized text exceeds budget or violates fact/source/brand checks | Reject at the original deterministic gate |
+| Existing package/policy/stage v13 intent | Refuse before another paid call; new directory is not a retry |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a same-package brand continuation begins with one fullwidth comma;
+  the assembled brand card includes the exact bound statement once and fits.
+- Base: no comma; the generated text and normalized-field list stay unchanged.
+- Bad: strip arbitrary punctuation or trim whitespace to force an unbound,
+  over-budget or previously rejected v12 draft into an image request.
+
+### 6. Tests Required
+
+- Assert raw SHA is computed before normalization and only field names are
+  projected; one ASCII/fullwidth comma on each allowed role passes the same
+  downstream validators.
+- Assert `top`, repeated punctuation, whitespace, empty continuation,
+  over-budget text, mismatched same-package identity and consumed intent all
+  reject before image; retain old v12 artifacts and flags off.
+- Run fake-provider tests, PostgreSQL producer/visible-test integration,
+  Ruff/strict mypy and an independent check before any paid v13 trial.
+
+### 7. Wrong vs Correct
+
+```python
+# Wrong: generic lstrip silently changes untrusted prose and may hide errors.
+continuation = raw_value.lstrip("，, \t")
+
+# Correct: remove only one permitted boundary character, then revalidate.
+continuation, normalized = _normalize_one_boundary_comma(raw_value)
+# Keep the existing minimum, budget, provenance and layout checks below.
+```
+
 ## Scenario: Rich-copy proposal preflight (default off)
 
 ### 1. Scope / Trigger
