@@ -494,6 +494,29 @@ def test_ci_toolchain_files_define_pinned_isolated_runtimes() -> None:
     assert pipeline_starts_infra_before_backend_check()
 
 
+def test_runtime_dockerfile_pins_bookworm_noto_package_and_font_bytes() -> None:
+    dockerfile = Path("backend/Dockerfile").read_text(encoding="utf-8")
+    assert (
+        "ARG PYTHON_BASE=python:3.11.15-slim-bookworm@sha256:"
+        "d29f48a31a8b408ed19272ca1e7b10ebae13b240a27e862d3d4217c528e2e0c3"
+    ) in dockerfile
+    assert "ARG DEBIAN_SNAPSHOT=20260901T000000Z" in dockerfile
+    assert "ARG FONTS_NOTO_CJK_VERSION=1:20220127+repack1-1" in dockerfile
+    runtime = dockerfile.split("FROM ${PYTHON_BASE} AS runtime", 1)[1]
+    assert (
+        runtime.index("rm /etc/apt/sources.list.d/debian.sources")
+        < runtime.index("snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}")
+        < runtime.index("apt-get update")
+    )
+    assert "> /etc/apt/sources.list" in runtime
+    assert "fonts-noto-cjk=${FONTS_NOTO_CJK_VERSION}" in runtime
+    assert "--download-only" in runtime
+    assert "4a2515eb6db3978b897fef9709ed0d2b1f4c6c4df4d83d6c4ef65f71f1b1f502" in runtime
+    assert "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a" in runtime
+    assert "sha256sum --check -" in runtime
+    assert "test ! -L /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" in runtime
+
+
 def pipeline_text() -> str:
     return Path("deploy/yunxiao/pipeline.yaml").read_text(encoding="utf-8")
 
