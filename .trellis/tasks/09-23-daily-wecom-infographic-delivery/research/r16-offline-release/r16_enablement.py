@@ -2,10 +2,10 @@
 """Import-only full-coverage enablement PLAN and fake-host simulation.
 
 No production adapter is accepted by the CLI. The existing R16 release starts
-default-off; this separate contract models the user's direct all-news target
-only after a distinct real default-off release receipt and the currently
-required quality/fixed-group evidence. Python simulation is not an authority
-to send a WeCom message or enable a host.
+default-off; this contract models strict legacy and explicitly authorized
+direct-first-live enablement after a distinct real default-off release receipt.
+It does not make any individual image send-ready. Python simulation is not an
+authority to send a WeCom message or enable a host.
 """
 
 from __future__ import annotations
@@ -32,8 +32,48 @@ from r16_forward_operator import (
 )
 
 POLICY = "r16-direct-all-news-after-release-v1"
+DIRECT_FIRST_LIVE_POLICY = "r16-direct-first-live-after-release-v1"
+DIRECT_FIRST_LIVE_AUTH_VERSION = "r16-direct-first-live-authorization-v1"
+DIRECT_FIRST_LIVE_DECISION = "first_successful_image_to_ordinary_group"
+STRICT_MODE = "legacy_strict"
+DIRECT_FIRST_LIVE_MODE = "direct_first_live"
+DIRECT_AUTH_FIELDS = frozenset(
+    {
+        "version",
+        "decision",
+        "scope",
+        "user_authorization_record_sha256",
+        "operator_id",
+        "operator_approved_at_utc",
+        "operator_acknowledged",
+        "recipient_fingerprint_method",
+        "recipient_route",
+        "ordinary_group_acknowledged",
+        "recipient_fingerprint",
+        "release_receipt_sha256",
+        "waive_three_previews",
+        "waive_fixed_group_test",
+        "first_success_to_ordinary_group",
+        "max_daily_image_intents",
+        "provider_failure_preserves_base",
+        "unknown_result_auto_replay",
+        "authorization_sha256",
+    }
+)
+DIRECT_EVIDENCE_FIELDS = frozenset(
+    {
+        "enablement_mode",
+        "rollout_policy",
+        "direct_first_live_authorization",
+        "failure_isolation",
+        "first_live_candidate",
+        "first_live_expected",
+    }
+)
+MAX_DAILY_IMAGE_INTENTS = 9
 NOTICE_VERSION = "wecom-infographic-advisory-notice-v1"
 MAX_JPEG_BYTES = 2 * 1024 * 1024
+JPEG_GEOMETRY = (1152, 2048)
 SLOTS = ("morning", "noon", "evening")
 ACTIVE_FLAGS = {
     "WECOM_INFOGRAPHIC_PRODUCER_ENABLED": True,
@@ -193,46 +233,178 @@ def valid_current(
         )
 
 
-def valid_same_news_evidence(
-    baseline: dict[str, Any], evidence: dict[str, Any]
+def _valid_final_jpeg(baseline: dict[str, Any], item: dict[str, Any]) -> None:
+    """Validate a proposed final JPEG; this never grants a send by itself."""
+    require(
+        isinstance(item.get("package_id"), str)
+        and bool(item["package_id"])
+        and is_sha(item.get("jpeg_sha256"))
+        and item.get("exact_source") is True
+        and item.get("send_ready") is True
+        and item.get("business_date") is not None
+        and isinstance(item.get("business_date"), str)
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["business_date"]) is not None
+        and item.get("slot") in SLOTS
+        and type(item.get("ordinal")) is int
+        and 1 <= item["ordinal"] <= MAX_ORDINAL
+        and isinstance(item.get("base_job_id"), str)
+        and bool(item["base_job_id"])
+        and item.get("recipient_fingerprint") == baseline["recipient_fingerprint"]
+        and type(item.get("jpeg_bytes")) is int
+        and 0 < item["jpeg_bytes"] <= MAX_JPEG_BYTES
+        and item.get("media_type") == "image/jpeg"
+        and item.get("final_jpeg_checked") is True
+        and (item.get("jpeg_width"), item.get("jpeg_height")) == JPEG_GEOMETRY
+        and is_sha(item.get("source_url_sha256"))
+        and item.get("footer_url_sha256") == item["source_url_sha256"]
+        and isinstance(item.get("source_date"), str)
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["source_date"]) is not None
+        and item.get("footer_date") == item["source_date"]
+        and item.get("warning_notice_version") == NOTICE_VERSION
+        and item.get("warning_visible") is True
+        and type(item.get("image_intent_count")) is int
+        and item["image_intent_count"] == 1
+        and item.get("image_result_known") is True
+        and item.get("delivery_unknown") is False,
+        "same_news_final_jpeg",
+    )
+
+
+def valid_first_live_candidate(
+    baseline: dict[str, Any], expected: dict[str, Any], item: dict[str, Any]
 ) -> None:
-    """Preserve existing strict image/group gate, then bind final JPEG details."""
+    """Bind an optional first-live image to its own expected formal package."""
+    _valid_final_jpeg(baseline, item)
+    require(
+        all(
+            expected.get(field) == item[field]
+            for field in (
+                "package_id",
+                "base_job_id",
+                "business_date",
+                "slot",
+                "ordinal",
+                "recipient_fingerprint",
+                "source_url_sha256",
+                "source_date",
+            )
+        )
+        and expected.get("jpeg_sha256") == item["jpeg_sha256"]
+        and expected.get("max_daily_image_intents") == MAX_DAILY_IMAGE_INTENTS
+        and expected.get("base_text_confirmed") is True
+        and expected.get("base_original_image_confirmed") is True
+        and expected.get("within_slot_window") is True,
+        "first_live_same_package_identity",
+    )
+
+
+def _valid_failure_isolation(evidence: dict[str, Any]) -> None:
+    isolation = evidence.get("failure_isolation")
+    require(
+        isinstance(isolation, dict)
+        and isolation.get("base_status") == "delivered"
+        and isolation.get("text_confirmed") is True
+        and isolation.get("original_image_confirmed") is True
+        and isolation.get("supplement_status") == "failed"
+        and isolation.get("unknown_result_auto_replayed") is False
+        and is_sha(isolation.get("test_receipt_sha256")),
+        "base_delivery_failure_isolation",
+    )
+
+
+def _valid_direct_authorization(
+    release: dict[str, Any], baseline: dict[str, Any], evidence: dict[str, Any]
+) -> None:
+    auth = evidence.get("direct_first_live_authorization")
+    require(
+        isinstance(auth, dict)
+        and set(auth) == DIRECT_AUTH_FIELDS
+        and auth.get("version") == DIRECT_FIRST_LIVE_AUTH_VERSION
+        and auth.get("decision") == DIRECT_FIRST_LIVE_DECISION
+        and auth.get("scope") == "every_delivered_news_all_three_slots"
+        and is_sha(auth.get("user_authorization_record_sha256"))
+        and isinstance(auth.get("operator_id"), str)
+        and re.fullmatch(r"[A-Za-z0-9._-]{3,64}", auth["operator_id"]) is not None
+        and isinstance(auth.get("operator_approved_at_utc"), str)
+        and re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+            auth["operator_approved_at_utc"],
+        )
+        is not None
+        and auth.get("operator_acknowledged") is True
+        and auth.get("recipient_fingerprint_method") == "sha256(group_webhook\\0key)"
+        and auth.get("recipient_route") == "existing_ordinary_group_webhook"
+        and auth.get("ordinary_group_acknowledged") is True
+        and auth.get("recipient_fingerprint") == baseline["recipient_fingerprint"]
+        and auth.get("release_receipt_sha256") == release["receipt_sha256"]
+        and auth.get("waive_three_previews") is True
+        and auth.get("waive_fixed_group_test") is True
+        and auth.get("first_success_to_ordinary_group") is True
+        and auth.get("max_daily_image_intents") == MAX_DAILY_IMAGE_INTENTS
+        and auth.get("provider_failure_preserves_base") is True
+        and auth.get("unknown_result_auto_replay") is False
+        and auth.get("authorization_sha256")
+        == sha(
+            canonical(
+                {
+                    key: value
+                    for key, value in auth.items()
+                    if key != "authorization_sha256"
+                }
+            )
+        ),
+        "direct_first_live_authorization",
+    )
+
+
+def valid_same_news_evidence(
+    baseline: dict[str, Any],
+    evidence: dict[str, Any],
+    release: dict[str, Any] | None = None,
+) -> None:
+    """Strict legacy gates remain; direct-first-live needs explicit bound waiver."""
+    mode = evidence.get("enablement_mode", STRICT_MODE)
+    require(mode in (STRICT_MODE, DIRECT_FIRST_LIVE_MODE), "enablement_mode")
+    if mode == DIRECT_FIRST_LIVE_MODE:
+        require(
+            evidence.get("images", []) == [] and "group_test" not in evidence,
+            "direct_first_live_no_legacy_receipts",
+        )
+        require(
+            set(evidence) <= DIRECT_EVIDENCE_FIELDS, "direct_first_live_evidence_fields"
+        )
+        require(
+            evidence.get("rollout_policy") == DIRECT_FIRST_LIVE_POLICY,
+            "enablement_policy",
+        )
+        require(release is not None, "direct_first_live_authorization")
+        assert release is not None
+        _valid_direct_authorization(release, baseline, evidence)
+        candidate = evidence.get("first_live_candidate")
+        expected = evidence.get("first_live_expected")
+        require(
+            (candidate is None and expected is None)
+            or (isinstance(candidate, dict) and isinstance(expected, dict)),
+            "first_live_candidate_pair",
+        )
+        if isinstance(candidate, dict) and isinstance(expected, dict):
+            valid_first_live_candidate(baseline, expected, candidate)
+        _valid_failure_isolation(evidence)
+        return
+
     valid_enablement_evidence(baseline, evidence)
     require(evidence.get("rollout_policy") == POLICY, "enablement_policy")
+    require("direct_first_live_authorization" not in evidence, "strict_no_waiver")
     samples = evidence["images"]
     by_package = {item["package_id"]: item for item in samples}
     identities: set[tuple[str, str, int, str]] = set()
     for item in samples:
+        _valid_final_jpeg(baseline, item)
         identity = (
             item.get("business_date"),
             item.get("slot"),
             item.get("ordinal"),
             item.get("base_job_id"),
-        )
-        require(
-            isinstance(item.get("business_date"), str)
-            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["business_date"]) is not None
-            and item.get("slot") in SLOTS
-            and type(item.get("ordinal")) is int
-            and 1 <= item["ordinal"] <= MAX_ORDINAL
-            and isinstance(item.get("base_job_id"), str)
-            and bool(item["base_job_id"])
-            and item.get("recipient_fingerprint") == baseline["recipient_fingerprint"]
-            and type(item.get("jpeg_bytes")) is int
-            and 0 < item["jpeg_bytes"] <= MAX_JPEG_BYTES
-            and item.get("media_type") == "image/jpeg"
-            and item.get("final_jpeg_checked") is True
-            and is_sha(item.get("source_url_sha256"))
-            and item.get("footer_url_sha256") == item["source_url_sha256"]
-            and isinstance(item.get("source_date"), str)
-            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["source_date"]) is not None
-            and item.get("footer_date") == item["source_date"]
-            and item.get("warning_notice_version") == NOTICE_VERSION
-            and item.get("warning_visible") is True
-            and item.get("image_intent_count") == 1
-            and item.get("image_result_known") is True
-            and item.get("delivery_unknown") is False,
-            "same_news_final_jpeg",
         )
         identities.add(identity)
     require(len(identities) == len(samples), "distinct_news_lineage")
@@ -250,17 +422,7 @@ def valid_same_news_evidence(
         and group.get("receipt_sha256") == _receipt_hash(group),
         "same_news_fixed_group_receipt",
     )
-    isolation = evidence.get("failure_isolation")
-    require(
-        isinstance(isolation, dict)
-        and isolation.get("base_status") == "delivered"
-        and isolation.get("text_confirmed") is True
-        and isolation.get("original_image_confirmed") is True
-        and isolation.get("supplement_status") == "failed"
-        and isolation.get("unknown_result_auto_replayed") is False
-        and is_sha(isolation.get("test_receipt_sha256")),
-        "base_delivery_failure_isolation",
-    )
+    _valid_failure_isolation(evidence)
 
 
 def plan(
@@ -272,10 +434,15 @@ def plan(
     valid_manifest(manifest)
     valid_release_receipt(manifest, release)
     valid_current(manifest, release, current, enabled=False)
-    valid_same_news_evidence(current, evidence)
+    valid_same_news_evidence(current, evidence, release)
+    mode = evidence.get("enablement_mode", STRICT_MODE)
+    selected_policy = (
+        DIRECT_FIRST_LIVE_POLICY if mode == DIRECT_FIRST_LIVE_MODE else POLICY
+    )
     return {
         "phase": "enablement_plan_only",
-        "policy": POLICY,
+        "policy": selected_policy,
+        "enablement_mode": mode,
         "release_receipt_sha256": release["receipt_sha256"],
         "current_sha256": sha(canonical(current)),
         "evidence_sha256": sha(canonical(evidence)),
@@ -284,6 +451,18 @@ def plan(
         "max_ordinal": MAX_ORDINAL,
         "flags": ACTIVE_FLAGS,
         "review_mode": REVIEW_MODE,
+        "max_daily_image_intents": MAX_DAILY_IMAGE_INTENTS,
+        "first_success_to_ordinary_group": mode == DIRECT_FIRST_LIVE_MODE,
+        "waived_pre_enable_gates": (
+            ["three_approved_jpegs", "fixed_group_triple_receipt"]
+            if mode == DIRECT_FIRST_LIVE_MODE
+            else []
+        ),
+        "authorization_sha256": (
+            evidence["direct_first_live_authorization"]["authorization_sha256"]
+            if mode == DIRECT_FIRST_LIVE_MODE
+            else None
+        ),
         "production_enable_available": False,
         "reason": "declarative receipts and fake-host simulation cannot authenticate a live target or send outcome",
     }
@@ -323,7 +502,10 @@ def simulate(
         write_new(
             attempt_dir / "enablement-intent.json",
             {
-                "policy": POLICY,
+                "policy": checked["policy"],
+                "enablement_mode": checked["enablement_mode"],
+                "authorization_sha256": checked["authorization_sha256"],
+                "waived_pre_enable_gates": checked["waived_pre_enable_gates"],
                 "release_receipt_sha256": frozen_release["receipt_sha256"],
                 "recipient_fingerprint": frozen_current["recipient_fingerprint"],
                 "evidence_sha256": checked["evidence_sha256"],
@@ -366,7 +548,10 @@ def simulate(
             )
             receipt = {
                 "version": "r16-all-news-enablement-receipt-v1",
-                "policy": POLICY,
+                "policy": checked["policy"],
+                "enablement_mode": checked["enablement_mode"],
+                "authorization_sha256": checked["authorization_sha256"],
+                "waived_pre_enable_gates": checked["waived_pre_enable_gates"],
                 "candidate": frozen_manifest["image"],
                 "release_receipt_sha256": frozen_release["receipt_sha256"],
                 "before_sha256": sha(canonical(frozen_current)),
@@ -388,7 +573,7 @@ def simulate(
                     write_new(
                         attempt_dir / "enablement-recovery-required.json",
                         {
-                            "policy": POLICY,
+                            "policy": checked["policy"],
                             "candidate": frozen_manifest["image"],
                             "disable_supplement_only": True,
                             "preserve_base_text_and_original_image": True,

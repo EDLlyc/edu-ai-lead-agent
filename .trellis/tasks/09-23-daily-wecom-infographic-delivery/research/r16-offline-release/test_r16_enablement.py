@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 import r16_enablement as enable
 import r16_forward_operator as release_operator
 
@@ -46,7 +47,7 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
         "clone_receipt_sha256": "5" * 64,
     }
     released["receipt_sha256"] = enable._receipt_hash(released)
-    current = {
+    current: dict[str, Any] = {
         "image": manifest["image"],
         "revision": manifest["revision"],
         "schema": release_operator.TARGET_SCHEMA,
@@ -86,6 +87,8 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
                 "jpeg_bytes": 800_000 + index,
                 "media_type": "image/jpeg",
                 "final_jpeg_checked": True,
+                "jpeg_width": 1152,
+                "jpeg_height": 2048,
                 "source_url_sha256": str(index + 3) * 64,
                 "footer_url_sha256": str(index + 3) * 64,
                 "source_date": "2026-09-26",
@@ -134,6 +137,66 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
             "test_receipt_sha256": "f" * 64,
         },
     }
+    return manifest, released, current, evidence
+
+
+def direct_first_live_fixture(
+    *,
+    with_candidate: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    manifest, released, current, strict_evidence = fixture()
+    auth = {
+        "version": enable.DIRECT_FIRST_LIVE_AUTH_VERSION,
+        "decision": enable.DIRECT_FIRST_LIVE_DECISION,
+        "scope": "every_delivered_news_all_three_slots",
+        "user_authorization_record_sha256": "6" * 64,
+        "operator_id": "release-operator-1",
+        "operator_approved_at_utc": "2026-09-27T06:00:00Z",
+        "operator_acknowledged": True,
+        "recipient_fingerprint_method": "sha256(group_webhook\\0key)",
+        "recipient_route": "existing_ordinary_group_webhook",
+        "ordinary_group_acknowledged": True,
+        "recipient_fingerprint": current["recipient_fingerprint"],
+        "release_receipt_sha256": released["receipt_sha256"],
+        "waive_three_previews": True,
+        "waive_fixed_group_test": True,
+        "first_success_to_ordinary_group": True,
+        "max_daily_image_intents": 9,
+        "provider_failure_preserves_base": True,
+        "unknown_result_auto_replay": False,
+    }
+    auth["authorization_sha256"] = enable._receipt_hash(auth)
+    evidence = {
+        "enablement_mode": enable.DIRECT_FIRST_LIVE_MODE,
+        "rollout_policy": enable.DIRECT_FIRST_LIVE_POLICY,
+        "direct_first_live_authorization": auth,
+        "failure_isolation": strict_evidence["failure_isolation"],
+    }
+    if with_candidate:
+        candidate = strict_evidence["images"][0]
+        evidence["first_live_candidate"] = candidate
+        evidence["first_live_expected"] = {
+            field: candidate[field]
+            for field in (
+                "package_id",
+                "base_job_id",
+                "business_date",
+                "slot",
+                "ordinal",
+                "recipient_fingerprint",
+                "source_url_sha256",
+                "source_date",
+                "jpeg_sha256",
+            )
+        }
+        evidence["first_live_expected"].update(
+            {
+                "max_daily_image_intents": 9,
+                "base_text_confirmed": True,
+                "base_original_image_confirmed": True,
+                "within_slot_window": True,
+            }
+        )
     return manifest, released, current, evidence
 
 
@@ -216,6 +279,7 @@ def test_plan_explicit_direct_all_news_but_never_authorizes_production() -> None
     assert result["slots"] == ["morning", "noon", "evening"]
     assert result["max_ordinal"] == 3
     assert result["flags"]["WECOM_INFOGRAPHIC_TEST_ENABLED"] is False
+    assert result["waived_pre_enable_gates"] == []
     assert all(
         result["flags"][f"WECOM_INFOGRAPHIC_{slot.upper()}_ENABLED"]
         for slot in enable.SLOTS
@@ -241,6 +305,8 @@ def test_simulated_default_off_receipt_cannot_be_promoted() -> None:
         ("current", "unknown_work_count", 1, "enablement_current_identity"),
         ("evidence", "rollout_policy", "morning-only", "enablement_policy"),
         ("sample", "jpeg_bytes", 2 * 1024 * 1024 + 1, "same_news_final_jpeg"),
+        ("sample", "jpeg_width", 1024, "same_news_final_jpeg"),
+        ("sample", "image_intent_count", True, "same_news_final_jpeg"),
         ("sample", "footer_url_sha256", "b" * 64, "same_news_final_jpeg"),
         ("sample", "footer_date", "2026-09-27", "same_news_final_jpeg"),
         ("sample", "recipient_fingerprint", "b" * 64, "same_news_final_jpeg"),
@@ -287,6 +353,251 @@ def test_fixed_group_remains_required() -> None:
     del evidence["group_test"]
     with pytest.raises(
         release_operator.ReleaseBlocked, match="fixed_group_triple_receipt"
+    ):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_direct_first_live_requires_explicit_authorization_not_three_images() -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    assert "images" not in evidence and "group_test" not in evidence
+    result = enable.plan(manifest, released, current, evidence)
+    assert result["enablement_mode"] == enable.DIRECT_FIRST_LIVE_MODE
+    assert result["policy"] == enable.DIRECT_FIRST_LIVE_POLICY
+    assert result["first_success_to_ordinary_group"] is True
+    assert result["max_daily_image_intents"] == 9
+    assert result["slots"] == ["morning", "noon", "evening"]
+    assert result["max_ordinal"] == 3
+    assert all(
+        result["flags"][f"WECOM_INFOGRAPHIC_{slot.upper()}_ENABLED"]
+        for slot in enable.SLOTS
+    )
+    assert result["waived_pre_enable_gates"] == [
+        "three_approved_jpegs",
+        "fixed_group_triple_receipt",
+    ]
+    assert (
+        result["authorization_sha256"]
+        == evidence["direct_first_live_authorization"]["authorization_sha256"]
+    )
+    assert result["production_enable_available"] is False
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "code"),
+    [
+        ("evidence", "enablement_mode", "other", "enablement_mode"),
+        ("evidence", "rollout_policy", enable.POLICY, "enablement_policy"),
+        ("auth", "decision", "try_test_group_first", "direct_first_live_authorization"),
+        (
+            "auth",
+            "user_authorization_record_sha256",
+            "",
+            "direct_first_live_authorization",
+        ),
+        ("auth", "operator_acknowledged", False, "direct_first_live_authorization"),
+        (
+            "auth",
+            "recipient_route",
+            "fixed_test_group_webhook",
+            "direct_first_live_authorization",
+        ),
+        (
+            "auth",
+            "ordinary_group_acknowledged",
+            False,
+            "direct_first_live_authorization",
+        ),
+        ("auth", "recipient_fingerprint", "b" * 64, "direct_first_live_authorization"),
+        (
+            "auth",
+            "release_receipt_sha256",
+            "b" * 64,
+            "direct_first_live_authorization",
+        ),
+        ("auth", "waive_fixed_group_test", False, "direct_first_live_authorization"),
+        (
+            "auth",
+            "first_success_to_ordinary_group",
+            False,
+            "direct_first_live_authorization",
+        ),
+        ("auth", "max_daily_image_intents", 10, "direct_first_live_authorization"),
+        ("auth", "unknown_result_auto_replay", True, "direct_first_live_authorization"),
+        ("auth", "authorization_sha256", "0" * 64, "direct_first_live_authorization"),
+        ("current", "recipient_fingerprint", "b" * 64, "enablement_current_identity"),
+    ],
+)
+def test_direct_first_live_waiver_and_recipient_cannot_drift(
+    section: str, field: str, value: Any, code: str
+) -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    target = (
+        evidence["direct_first_live_authorization"]
+        if section == "auth"
+        else current
+        if section == "current"
+        else evidence
+    )
+    target[field] = value
+    if section == "auth" and field != "authorization_sha256":
+        target["authorization_sha256"] = release_operator.sha(
+            release_operator.canonical(
+                {
+                    key: item
+                    for key, item in target.items()
+                    if key != "authorization_sha256"
+                }
+            )
+        )
+    with pytest.raises(release_operator.ReleaseBlocked, match=code):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_direct_first_live_rejects_extra_waiver_claims() -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    evidence["waive_source_identity"] = True
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="direct_first_live_evidence_fields"
+    ):
+        enable.plan(manifest, released, current, evidence)
+    del evidence["waive_source_identity"]
+    auth = evidence["direct_first_live_authorization"]
+    auth["waive_final_jpeg_checks"] = True
+    auth["authorization_sha256"] = enable._receipt_hash(auth)
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="direct_first_live_authorization"
+    ):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_direct_first_live_provider_failure_must_preserve_base() -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    evidence["failure_isolation"]["original_image_confirmed"] = False
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="base_delivery_failure_isolation"
+    ):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_strict_mode_cannot_import_direct_waiver() -> None:
+    manifest, released, current, evidence = fixture()
+    _, _, _, direct = direct_first_live_fixture()
+    evidence["direct_first_live_authorization"] = direct[
+        "direct_first_live_authorization"
+    ]
+    with pytest.raises(release_operator.ReleaseBlocked, match="strict_no_waiver"):
+        enable.plan(manifest, released, current, evidence)
+    del evidence["images"]
+    with pytest.raises(release_operator.ReleaseBlocked, match="three_news_images"):
+        enable.plan(manifest, released, current, evidence)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "code"),
+    [
+        ("candidate", "package_id", "other-news", "first_live_same_package_identity"),
+        ("candidate", "base_job_id", "other-base", "first_live_same_package_identity"),
+        (
+            "candidate",
+            "business_date",
+            "2026-09-28",
+            "first_live_same_package_identity",
+        ),
+        ("candidate", "source_url_sha256", "b" * 64, "same_news_final_jpeg"),
+        ("candidate", "footer_date", "2026-09-25", "same_news_final_jpeg"),
+        ("candidate", "recipient_fingerprint", "b" * 64, "same_news_final_jpeg"),
+        ("candidate", "jpeg_bytes", 2 * 1024 * 1024 + 1, "same_news_final_jpeg"),
+        ("candidate", "jpeg_bytes", 0, "same_news_final_jpeg"),
+        ("candidate", "media_type", "image/png", "same_news_final_jpeg"),
+        ("candidate", "jpeg_height", 1900, "same_news_final_jpeg"),
+        ("candidate", "final_jpeg_checked", False, "same_news_final_jpeg"),
+        ("candidate", "image_intent_count", 2, "same_news_final_jpeg"),
+        ("candidate", "image_result_known", False, "same_news_final_jpeg"),
+        ("candidate", "delivery_unknown", True, "same_news_final_jpeg"),
+        ("candidate", "warning_visible", False, "same_news_final_jpeg"),
+        (
+            "expected",
+            "base_original_image_confirmed",
+            False,
+            "first_live_same_package_identity",
+        ),
+        ("expected", "within_slot_window", False, "first_live_same_package_identity"),
+        ("expected", "max_daily_image_intents", 10, "first_live_same_package_identity"),
+    ],
+)
+def test_direct_first_live_candidate_must_still_be_own_sendable_jpeg(
+    section: str, field: str, value: Any, code: str
+) -> None:
+    manifest, released, current, evidence = direct_first_live_fixture(
+        with_candidate=True
+    )
+    target = evidence[
+        "first_live_candidate" if section == "candidate" else "first_live_expected"
+    ]
+    target[field] = value
+    with pytest.raises(release_operator.ReleaseBlocked, match=code):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_direct_first_live_candidate_envelope_and_group_claim_cannot_be_partial() -> (
+    None
+):
+    manifest, released, current, evidence = direct_first_live_fixture(
+        with_candidate=True
+    )
+    assert (
+        enable.plan(manifest, released, current, evidence)[
+            "production_enable_available"
+        ]
+        is False
+    )
+    del evidence["first_live_expected"]
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="first_live_candidate_pair"
+    ):
+        enable.plan(manifest, released, current, evidence)
+    _, _, _, evidence = direct_first_live_fixture()
+    evidence["group_test"] = {}
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="direct_first_live_no_legacy_receipts"
+    ):
+        enable.plan(manifest, released, current, evidence)
+
+
+def test_direct_first_live_simulation_records_waiver_and_remains_non_promotable(
+    tmp_path: Path,
+) -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    attempt = tmp_path / "direct-first-live"
+    result = enable.simulate(
+        FakeHost(current),
+        manifest,
+        released,
+        current,
+        evidence,
+        attempt,
+        (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+    )
+    assert result["production_enable_available"] is False
+    intent = json.loads((attempt / "enablement-intent.json").read_text())
+    receipt = json.loads((attempt / "simulation-enablement-receipt.json").read_text())
+    assert intent["policy"] == enable.DIRECT_FIRST_LIVE_POLICY
+    assert (
+        receipt["authorization_sha256"]
+        == evidence["direct_first_live_authorization"]["authorization_sha256"]
+    )
+    assert receipt["simulation_only"] is True
+    assert receipt["waived_pre_enable_gates"] == [
+        "three_approved_jpegs",
+        "fixed_group_triple_receipt",
+    ]
+
+
+def test_direct_first_live_provider_failure_must_leave_base_delivered() -> None:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    evidence["failure_isolation"]["original_image_confirmed"] = False
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="base_delivery_failure_isolation"
     ):
         enable.plan(manifest, released, current, evidence)
 
