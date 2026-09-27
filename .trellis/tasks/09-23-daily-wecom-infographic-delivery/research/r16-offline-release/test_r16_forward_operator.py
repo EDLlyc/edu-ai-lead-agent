@@ -31,6 +31,7 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         "schema": operator.TARGET_SCHEMA,
         "migration_chain": operator.MIGRATION_CHAIN,
         "previous_application_compatible": False,
+        "host_files": dict.fromkeys(operator.HOST_REPLACEMENTS, HEX),
     }
     baseline = {
         "release_commit": operator.BASE_REVISION,
@@ -91,18 +92,6 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
             ],
             "artifact_sha256": "5" * 64,
         },
-        "migration_clone": {
-            "chain": operator.MIGRATION_CHAIN,
-            "source_dump_sha256": HEX,
-            "isolated_restore_readback": True,
-            "isolated_target": True,
-            "source_business_sha256": HEX,
-            "retained_business_sha256": HEX,
-            "existing_table_counts_equal": True,
-            "source_schema": operator.BASE_SCHEMA,
-            "target_schema": operator.TARGET_SCHEMA,
-            "receipt_sha256": "8" * 64,
-        },
         "candidate_image": manifest["image"],
         "candidate_archive_sha256": manifest["archive_sha256"],
     }
@@ -147,12 +136,39 @@ class FakeHost:
             "pg_restore_toc_read": True,
             "protected_files_readback": True,
             "protected_files": copy.deepcopy(self.baseline["protected_files"]),
+            "protected_metadata_sha256": HEX,
             "brand_materials_readback": True,
             "brand_identity_sha256": self.baseline["brand_identity_sha256"],
+            "brand_archive_sha256": HEX,
             "source_config_readback": True,
+            "source_config_archives": dict.fromkeys(
+                ("backend", "deploy", "scripts", "infra"), HEX
+            ),
             "volumes": dict.fromkeys(operator.VOLUMES, HEX),
             "volume_readbacks": dict.fromkeys(operator.VOLUMES, True),
         }
+
+    def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]:
+        self.calls.append("rehearse_clone")
+        if self.failure == "clone":
+            raise RuntimeError("clone_failed")
+        receipt = {
+            "chain": operator.MIGRATION_CHAIN,
+            "source_dump_sha256": dump_sha256,
+            "isolated_restore_readback": self.failure != "clone_restore",
+            "isolated_target": True,
+            "source_business_sha256": self.baseline["business_identity_sha256"],
+            "retained_business_sha256": self.baseline["business_identity_sha256"],
+            "existing_table_counts_equal": True,
+            "source_schema": operator.BASE_SCHEMA,
+            "target_schema": operator.TARGET_SCHEMA,
+        }
+        if self.failure == "clone_old_dump":
+            receipt["source_dump_sha256"] = "b" * 64
+        receipt["receipt_sha256"] = operator.sha(operator.canonical(receipt))
+        if self.failure == "clone_forged_receipt":
+            receipt["receipt_sha256"] = "c" * 64
+        return receipt
 
     def stop_writers(self) -> None:
         self.calls.append("stop_writers")
@@ -215,6 +231,23 @@ def test_plan_is_never_deployment_ready() -> None:
     assert result["phase"] == "plan_only"
     assert result["services"] == 12
     assert result["production_apply_available"] is False
+    assert result["enablement_ready"] is False
+
+
+def test_missing_host_file_identity_blocks_release_plan() -> None:
+    manifest, baseline, evidence = fixture()
+    del manifest["host_files"]["compose.yaml"]
+    with pytest.raises(operator.ReleaseBlocked, match="candidate_host_files"):
+        operator.plan(manifest, baseline, evidence)
+
+
+def test_default_off_release_does_not_require_undelivered_poster_receipts() -> None:
+    manifest, baseline, evidence = fixture()
+    del evidence["images"]
+    del evidence["group_test"]
+    assert operator.plan(manifest, baseline, evidence)["default_off"] is True
+    with pytest.raises(operator.ReleaseBlocked, match="three_news_images"):
+        operator.valid_enablement_evidence(baseline, evidence)
 
 
 def test_readonly_capture_has_no_backup_or_service_side_effects() -> None:
@@ -247,25 +280,8 @@ def test_operator_commit_split_requires_reviewed_byte_equivalence() -> None:
 @pytest.mark.parametrize(
     ("path", "value", "code"),
     [
-        (("images",), [], "three_news_images"),
-        (("images", 1, "jpeg_sha256"), "5" * 64, "distinct_news_images"),
-        (("group_test", "outcomes"), ["text_confirmed"], "fixed_group_triple_receipt"),
-        (("group_test", "artifact_sha256"), "6" * 64, "fixed_group_triple_receipt"),
-        (
-            ("migration_clone", "target_schema"),
-            "20260916_0048",
-            "migration_clone_receipt",
-        ),
-        (
-            ("migration_clone", "isolated_restore_readback"),
-            False,
-            "migration_clone_receipt",
-        ),
-        (
-            ("migration_clone", "source_dump_sha256"),
-            "not-a-sha",
-            "migration_clone_receipt",
-        ),
+        (("candidate_image",), "sha256:" + "9" * 64, "image_evidence_identity"),
+        (("candidate_archive_sha256",), "9" * 64, "image_evidence_identity"),
     ],
 )
 def test_missing_release_receipts_block(
@@ -277,6 +293,35 @@ def test_missing_release_receipts_block(
         current = current[key]
     current[path[-1]] = value
     with pytest.raises(operator.ReleaseBlocked, match=code):
+        operator.plan(manifest, baseline, evidence)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "code"),
+    [
+        (("images",), [], "three_news_images"),
+        (("images", 1, "jpeg_sha256"), "5" * 64, "distinct_news_images"),
+        (("group_test", "outcomes"), ["text_confirmed"], "fixed_group_triple_receipt"),
+        (("group_test", "artifact_sha256"), "6" * 64, "fixed_group_triple_receipt"),
+    ],
+)
+def test_missing_enablement_receipts_block(
+    path: tuple[str | int, ...], value: Any, code: str
+) -> None:
+    manifest, baseline, evidence = fixture()
+    current: Any = evidence
+    for key in path[:-1]:
+        current = current[key]
+    current[path[-1]] = value
+    assert operator.plan(manifest, baseline, evidence)["enablement_ready"] is False
+    with pytest.raises(operator.ReleaseBlocked, match=code):
+        operator.valid_enablement_evidence(baseline, evidence)
+
+
+def test_old_clone_receipt_is_not_a_preflight_input() -> None:
+    manifest, baseline, evidence = fixture()
+    evidence["migration_clone"] = {"source_dump_sha256": HEX}
+    with pytest.raises(operator.ReleaseBlocked, match="preexisting_clone_receipt"):
         operator.plan(manifest, baseline, evidence)
 
 
@@ -306,6 +351,7 @@ def test_fake_one_attempt_is_forward_only(tmp_path: Path) -> None:
         "backup",
         "capture_quiescent",
         "stage_candidate_image",
+        "rehearse_clone",
         "migrate_forward",
         "read_schema_head",
         "install_candidate",
@@ -314,6 +360,7 @@ def test_fake_one_attempt_is_forward_only(tmp_path: Path) -> None:
     ]
     assert (attempt / "intent.json").exists()
     assert (attempt / "migration-intent.json").exists()
+    assert (attempt / "clone-receipt.json").exists()
     assert (attempt / "simulation-receipt.json").exists()
     with pytest.raises(operator.ReleaseBlocked, match="attempt_exists_reconcile_only"):
         operator.simulate(host, manifest, baseline, evidence, attempt, locks)
@@ -321,7 +368,16 @@ def test_fake_one_attempt_is_forward_only(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "failure",
-    ["stop", "stop_verify", "stage", "migration", "schema_verify", "install", "verify"],
+    [
+        "stop",
+        "stop_verify",
+        "stage",
+        "clone",
+        "migration",
+        "schema_verify",
+        "install",
+        "verify",
+    ],
 )
 def test_any_post_intent_failure_stops_and_requires_forward_recovery(
     tmp_path: Path, failure: str
@@ -392,12 +448,14 @@ def test_backup_failure_after_quiescence_requires_forward_recovery(
         (("pg_restore_toc_read",), False, "backup_receipt"),
         (("protected_files_readback",), False, "backup_receipt"),
         (("protected_files", "compose.yaml", "sha256"), "b" * 64, "backup_receipt"),
+        (("protected_metadata_sha256",), "not-a-sha", "backup_receipt"),
         (("brand_materials_readback",), False, "backup_receipt"),
         (("brand_identity_sha256",), "b" * 64, "backup_receipt"),
+        (("brand_archive_sha256",), "not-a-sha", "backup_receipt"),
         (("source_config_readback",), False, "backup_receipt"),
+        (("source_config_archives", "backend"), "not-a-sha", "backup_source_receipt"),
         (("volumes", operator.VOLUMES[0]), "not-a-sha", "backup_volume_receipt"),
         (("volume_readbacks", operator.VOLUMES[1]), False, "backup_volume_receipt"),
-        (("pg_dump_sha256",), "b" * 64, "clone_backup_identity"),
     ],
 )
 def test_incomplete_backup_receipt_blocks_before_intent(
@@ -487,7 +545,6 @@ def test_backup_cannot_rewrite_checked_candidate_or_clone_identity(
     class MutatingContractHost(FakeHost):
         def backup(self) -> dict[str, Any]:
             manifest["image"] = "sha256:" + "9" * 64
-            evidence["migration_clone"]["source_dump_sha256"] = "9" * 64
             return super().backup()
 
         def install_candidate(self, candidate: dict[str, Any]) -> None:
@@ -506,6 +563,53 @@ def test_backup_cannot_rewrite_checked_candidate_or_clone_identity(
     )
     receipt = json.loads((attempt / "simulation-receipt.json").read_text())
     assert receipt["candidate"] == checked_image
+
+
+@pytest.mark.parametrize(
+    "failure", ["clone_restore", "clone_old_dump", "clone_forged_receipt"]
+)
+def test_fresh_clone_must_bind_actual_dump_and_verified_receipt(
+    tmp_path: Path, failure: str
+) -> None:
+    manifest, baseline, evidence = fixture()
+    host = FakeHost(baseline, failure=failure)
+    attempt = tmp_path / "attempt"
+    with pytest.raises(operator.ReleaseBlocked, match="fresh_migration_clone_receipt"):
+        operator.simulate(
+            host,
+            manifest,
+            baseline,
+            evidence,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert "migrate_forward" not in host.calls
+    assert not (attempt / "migration-intent.json").exists()
+    assert (attempt / "forward-recovery-required.json").exists()
+
+
+def test_changed_dump_bytes_use_new_hash_not_stale_clone_hash(tmp_path: Path) -> None:
+    manifest, baseline, evidence = fixture()
+
+    class ChangedDumpHost(FakeHost):
+        def backup(self) -> dict[str, Any]:
+            receipt = super().backup()
+            receipt["pg_dump_sha256"] = "d" * 64
+            return receipt
+
+    host = ChangedDumpHost(baseline)
+    attempt = tmp_path / "attempt"
+    operator.simulate(
+        host,
+        manifest,
+        baseline,
+        evidence,
+        attempt,
+        (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+    )
+    clone = json.loads((attempt / "clone-receipt.json").read_text())
+    assert clone["source_dump_sha256"] == "d" * 64
+    assert clone["source_dump_sha256"] != HEX
 
 
 def test_stopped_writer_identity_drift_blocks_before_migration(tmp_path: Path) -> None:

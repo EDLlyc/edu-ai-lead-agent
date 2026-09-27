@@ -1,0 +1,1459 @@
+"""Import-only R16 host adapter draft; the release CLI still refuses ``apply``.
+
+This module contains real filesystem/Docker operations so their exact commands
+can be reviewed and fake-runner tested. It is deliberately not wired to the
+release entry point. A green unit test is not a production backup, clone,
+recipient receipt, or authority to run these methods on a live host.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import secrets
+import stat
+import subprocess
+import tarfile
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Any, BinaryIO, Protocol, cast
+from urllib.parse import quote, urlsplit
+
+from r16_forward_operator import (
+    ALEMBIC_ONLY_COMMAND,
+    BASE_IMAGE,
+    BASE_REF,
+    BASE_REVISION,
+    BASE_SCHEMA,
+    HOST_REPLACEMENTS,
+    OFF_FLAGS,
+    PROTECTED_FILES,
+    SERVICES,
+    TARGET_SCHEMA,
+    VOLUMES,
+    ReleaseBlocked,
+    canonical,
+    require,
+    sha,
+    valid_baseline,
+)
+
+APP = Path("/opt/edu-ai-lead-agent")
+BACKUP_ROOT = Path("/opt/edu-ai-release-backups")
+PROJECT = "edu-ai-lead-agent"
+DEPENDENCY_REFS = {
+    "postgres": "pgvector/pgvector:0.8.1-pg16",
+    "minio": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
+}
+DEPENDENCY_VOLUMES = {
+    "postgres": "edu-ai-lead-agent_postgres_data",
+    "minio": "edu-ai-lead-agent_minio_data",
+}
+SOURCE_DIRS = ("backend", "deploy", "scripts", "infra")
+REPLACED_FILES = HOST_REPLACEMENTS
+MAX_COMMAND_OUTPUT = 2 * 1024 * 1024
+MIN_RELEASE_FREE_BYTES = 8 * 1024**3
+MIN_RELEASE_FREE_INODES = 10_000
+# Intentional second lockout: even a direct import cannot mutate real host
+# paths until a later independently reviewed release changes this source hash.
+REAL_HOST_MUTATION_REVIEWED = False
+PG_CLONE_DB = "edu_ai_r16_clone"
+PG_CLONE_USER = "r16_clone"
+SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z")
+
+
+class Runner(Protocol):
+    def run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        code: str,
+        timeout: int = 60,
+        input_file: Path | None = None,
+        output_file: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> bytes: ...
+
+
+class SubprocessRunner:
+    """Never echoes command arguments, stderr, stdout, or environment on error."""
+
+    def run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        code: str,
+        timeout: int = 60,
+        input_file: Path | None = None,
+        output_file: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> bytes:
+        source: BinaryIO | None = None
+        target: BinaryIO | None = None
+        try:
+            if input_file is not None:
+                source = input_file.open("rb")
+            if output_file is not None:
+                fd = os.open(
+                    output_file,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600,
+                )
+                target = os.fdopen(fd, "wb")
+            result = subprocess.run(
+                argv,
+                cwd=APP,
+                env=dict(env) if env is not None else None,
+                stdin=source,
+                stdout=target if target is not None else subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=False,
+            )
+            require(result.returncode == 0, code)
+            if target is not None:
+                target.flush()
+                os.fsync(target.fileno())
+                return b""
+            body = result.stdout
+            require(isinstance(body, bytes) and len(body) <= MAX_COMMAND_OUTPUT, code)
+            return body
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ReleaseBlocked(code) from exc
+        finally:
+            if source is not None:
+                source.close()
+            if target is not None:
+                target.close()
+
+
+def _regular_file(path: Path, *, private: bool = False) -> os.stat_result:
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "unsafe_file_type")
+    if private:
+        require(stat.S_IMODE(info.st_mode) == 0o600, "private_file_mode")
+    return info
+
+
+def _metadata(path: Path) -> dict[str, int | str]:
+    info = _regular_file(path)
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while part := stream.read(1024 * 1024):
+            digest.update(part)
+    again = _regular_file(path)
+    require(
+        (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+        == (again.st_dev, again.st_ino, again.st_size, again.st_mtime_ns),
+        "file_changed_during_read",
+    )
+    return {
+        "sha256": digest.hexdigest(),
+        "size": info.st_size,
+        "mode": stat.S_IMODE(info.st_mode),
+        "uid": info.st_uid,
+        "gid": info.st_gid,
+    }
+
+
+def _tree(root: Path) -> dict[str, dict[str, int | str]]:
+    require(root.is_dir() and not root.is_symlink(), "unsafe_tree_root")
+    root_info = root.lstat()
+    result: dict[str, dict[str, int | str]] = {
+        ".": {
+            "type": "dir",
+            "mode": stat.S_IMODE(root_info.st_mode),
+            "uid": root_info.st_uid,
+            "gid": root_info.st_gid,
+        }
+    }
+    for folder, dirs, files in os.walk(root, followlinks=False):
+        parent = Path(folder)
+        for name in dirs:
+            child = parent / name
+            require(child.is_dir() and not child.is_symlink(), "unsafe_tree_entry")
+            info = child.lstat()
+            result[child.relative_to(root).as_posix()] = {
+                "type": "dir",
+                "mode": stat.S_IMODE(info.st_mode),
+                "uid": info.st_uid,
+                "gid": info.st_gid,
+            }
+        for name in files:
+            child = parent / name
+            relative = child.relative_to(root).as_posix()
+            require(relative not in result, "duplicate_tree_entry")
+            result[relative] = {"type": "file", **_metadata(child)}
+    return dict(sorted(result.items()))
+
+
+def _tree_hash(root: Path) -> str:
+    return sha(canonical(_tree(root)))
+
+
+def _safe_archive_name(name: str) -> None:
+    relative = PurePosixPath(name)
+    require(
+        bool(name)
+        and not relative.is_absolute()
+        and ".." not in relative.parts
+        and str(relative) == name
+        and not any(ord(c) < 32 or ord(c) == 127 for c in name),
+        "unsafe_archive_name",
+    )
+
+
+def _archive_tree(source: Path, archive_path: Path) -> tuple[str, dict[str, Any]]:
+    """Create and independently read a complete regular-file archive."""
+    before = _tree(source)
+    fd = os.open(
+        archive_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+    )
+    with os.fdopen(fd, "wb") as stream:
+        with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+            for name, meta in before.items():
+                _safe_archive_name(name)
+                path = source / name
+                if meta["type"] == "dir":
+                    info = path.lstat()
+                    require(
+                        path.is_dir() and not path.is_symlink(), "archive_dir_drift"
+                    )
+                    member = tarfile.TarInfo(name)
+                    member.type = tarfile.DIRTYPE
+                    member.mode = stat.S_IMODE(info.st_mode)
+                    member.uid = info.st_uid
+                    member.gid = info.st_gid
+                    archive.addfile(member)
+                    continue
+                info = _regular_file(path)
+                require(
+                    {"type": "file", **_metadata(path)} == meta, "archive_source_drift"
+                )
+                member = tarfile.TarInfo(name)
+                member.size = info.st_size
+                member.mode = stat.S_IMODE(info.st_mode)
+                member.uid = info.st_uid
+                member.gid = info.st_gid
+                with path.open("rb") as item:
+                    archive.addfile(member, item)
+        stream.flush()
+        os.fsync(stream.fileno())
+    observed: dict[str, dict[str, int | str]] = {}
+    with tarfile.open(archive_path, "r:gz") as archive:
+        for member in archive:
+            _safe_archive_name(member.name)
+            require(member.name not in observed, "archive_duplicate")
+            if member.isdir():
+                observed[member.name] = {
+                    "type": "dir",
+                    "mode": member.mode,
+                    "uid": member.uid,
+                    "gid": member.gid,
+                }
+                continue
+            require(member.isfile(), "archive_entry_type")
+            body = archive.extractfile(member)
+            require(body is not None, "archive_entry_read")
+            assert body is not None
+            digest = hashlib.sha256()
+            while part := body.read(1024 * 1024):
+                digest.update(part)
+            observed[member.name] = {
+                "type": "file",
+                "sha256": digest.hexdigest(),
+                "size": member.size,
+                "mode": member.mode,
+                "uid": member.uid,
+                "gid": member.gid,
+            }
+    require(observed == before == _tree(source), "archive_readback_drift")
+    return str(_metadata(archive_path)["sha256"]), before
+
+
+def _parse_env(path: Path) -> dict[str, str]:
+    _regular_file(path, private=True)
+    values: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        if not line or line.lstrip().startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        require(
+            sep == "="
+            and re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is not None
+            and key not in values,
+            "environment_syntax",
+        )
+        values[key] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _json(body: bytes, code: str) -> Any:
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ReleaseBlocked(code) from exc
+
+
+@dataclass(frozen=True)
+class HostPaths:
+    app: Path = APP
+    backup_root: Path = BACKUP_ROOT
+
+
+class RealHostAdapter:
+    """Reviewed-method draft, not an executable deployment entry point.
+
+    Only the explicitly passed attempt directory receives backup/clone files.
+    The caller must hold both audited locks and must never invoke this class
+    from an unreviewed shell. ``r16_forward_operator.py apply`` remains off.
+    """
+
+    def __init__(
+        self,
+        runner: Runner,
+        paths: HostPaths,
+        attempt_dir: Path,
+        manifest: dict[str, Any],
+        bundle_dir: Path,
+        *,
+        require_production_paths: bool = True,
+    ) -> None:
+        if require_production_paths:
+            require(os.geteuid() == 0, "root_required")
+            require(paths == HostPaths(), "host_paths")
+            require(attempt_dir.parent == paths.backup_root, "attempt_root")
+        else:
+            require(
+                paths.app.resolve() != APP
+                and paths.backup_root.resolve() != BACKUP_ROOT,
+                "test_paths_only",
+            )
+        require(
+            attempt_dir.name.startswith("r16-forward-")
+            and SAFE_NAME.fullmatch(attempt_dir.name) is not None,
+            "attempt_name",
+        )
+        self.runner = runner
+        self.paths = paths
+        self.attempt_dir = attempt_dir
+        self.manifest = manifest
+        self.bundle_dir = bundle_dir
+        self._baseline: dict[str, Any] | None = None
+        self._service_env: dict[str, dict[str, str]] = {}
+        self._volume_paths: dict[str, Path] = {}
+        self._table_identity: dict[str, dict[str, int | str]] = {}
+        self._stopped = False
+        self._clone_verified = False
+        self._candidate_loaded = False
+        self._production_paths = require_production_paths
+
+    def _required_baseline(self) -> dict[str, Any]:
+        require(self._baseline is not None, "capture_required")
+        assert self._baseline is not None
+        return self._baseline
+
+    def _bundle_file(self, relative: str) -> Path:
+        """Do not follow bundle symlinks, including parent directories."""
+        path = self.bundle_dir / relative
+        require(path.is_relative_to(self.bundle_dir), "bundle_path")
+        parent = path.parent
+        while True:
+            info = parent.lstat()
+            require(
+                stat.S_ISDIR(info.st_mode) and not parent.is_symlink(),
+                "bundle_parent_type",
+            )
+            if parent == self.bundle_dir:
+                break
+            parent = parent.parent
+        _regular_file(path)
+        return path
+
+    def _require_mutation_review(self) -> None:
+        require(
+            not self._production_paths or REAL_HOST_MUTATION_REVIEWED,
+            "real_host_mutation_unreviewed",
+        )
+
+    def _run(
+        self,
+        *argv: str,
+        code: str,
+        timeout: int = 60,
+        input_file: Path | None = None,
+        output_file: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> bytes:
+        return self.runner.run(
+            tuple(argv),
+            code=code,
+            timeout=timeout,
+            input_file=input_file,
+            output_file=output_file,
+            env=env,
+        )
+
+    def _compose(
+        self,
+        *args: str,
+        code: str,
+        timeout: int = 60,
+        input_file: Path | None = None,
+        output_file: Path | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> bytes:
+        # Compose shell variables override --env-file. Never allow the
+        # operator's ambient APP_IMAGE/feature flags to silently change the
+        # candidate or briefly start a live delivery before postchecks run.
+        require(env is None, "compose_env_override")
+        app = self.paths.app
+        return self._run(
+            "docker",
+            "compose",
+            "--project-name",
+            PROJECT,
+            "-f",
+            str(app / "compose.yaml"),
+            "--env-file",
+            str(app / ".env"),
+            "--env-file",
+            str(app / ".release.env"),
+            *args,
+            code=code,
+            timeout=timeout,
+            input_file=input_file,
+            output_file=output_file,
+            env={
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME": "/root",
+                "DOCKER_CONFIG": "/root/.docker",
+            },
+        )
+
+    def _inspect(self, *args: str) -> dict[str, Any]:
+        result = _json(
+            self._run("docker", "inspect", *args, code="docker_inspect"),
+            "docker_inspect_json",
+        )
+        require(
+            isinstance(result, list)
+            and len(result) == 1
+            and isinstance(result[0], dict),
+            "docker_inspect_shape",
+        )
+        return cast(dict[str, Any], result[0])
+
+    def _image(self, ref: str) -> dict[str, Any]:
+        result = _json(
+            self._run("docker", "image", "inspect", ref, code="image_inspect"),
+            "image_inspect_json",
+        )
+        require(
+            isinstance(result, list)
+            and len(result) == 1
+            and isinstance(result[0], dict),
+            "image_inspect_shape",
+        )
+        return cast(dict[str, Any], result[0])
+
+    def _service(self, name: str) -> dict[str, Any]:
+        require(name in (*SERVICES, "postgres", "minio"), "service_name")
+        ids = (
+            self._compose("ps", "-a", "-q", name, code="service_lookup")
+            .decode()
+            .split()
+        )
+        require(
+            len(ids) == 1 and re.fullmatch(r"[0-9a-f]{12,64}", ids[0]) is not None,
+            "service_count",
+        )
+        return self._inspect(ids[0])
+
+    def _sql(self, sql: str) -> str:
+        require(sql.startswith("SELECT ") and ";" not in sql, "readonly_sql")
+        return (
+            self._compose(
+                "exec",
+                "-T",
+                "postgres",
+                "sh",
+                "-c",
+                'exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "$1"',
+                "sh",
+                sql,
+                code="postgres_readonly",
+                timeout=180,
+            )
+            .decode()
+            .strip()
+        )
+
+    def _db_identity(self) -> str:
+        """Hash counts and canonically ordered per-row digests, not just counts."""
+        tables = self._sql(
+            "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
+        ).splitlines()
+        require("alembic_version" in tables and len(tables) >= 10, "table_inventory")
+        identity: dict[str, dict[str, int | str]] = {}
+        for table in tables:
+            require(re.fullmatch(r"[a-z][a-z0-9_]*", table) is not None, "table_name")
+            if table == "alembic_version":
+                continue
+            count = self._sql(f"SELECT count(*) FROM public.{table}")
+            digest = self._sql(
+                "SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text),'' "
+                f"ORDER BY md5(to_jsonb(t)::text)),'')) FROM public.{table} t"
+            )
+            require(
+                count.isdecimal() and re.fullmatch(r"[0-9a-f]{32}", digest) is not None,
+                "table_identity",
+            )
+            identity[table] = {"count": int(count), "rows_md5": digest}
+        if not self._table_identity:
+            self._table_identity = identity
+        else:
+            require(
+                {name: identity.get(name) for name in self._table_identity}
+                == self._table_identity,
+                "business_identity_drift",
+            )
+        return sha(canonical(self._table_identity))
+
+    def _work_counts(self) -> tuple[int, int]:
+        """Refuse new unknown/claimable work; historical exceptions need review."""
+        tables = self._sql(
+            "SELECT tablename FROM pg_tables WHERE schemaname='public' AND "
+            "(tablename LIKE '%_jobs' OR tablename LIKE '%_runs') ORDER BY tablename"
+        ).splitlines()
+        require("wecom_delivery_jobs" in tables, "work_table_inventory")
+        unknown_total = 0
+        pending_total = 0
+        for table in tables:
+            require(
+                re.fullmatch(r"[a-z][a-z0-9_]*", table) is not None, "work_table_name"
+            )
+            unknown = self._sql(
+                "SELECT count(*) FROM public."
+                + table
+                + " t WHERE to_jsonb(t)->>'status' IN "
+                "('delivery_unknown','result_unknown','outcome_unknown') "
+                "AND (to_jsonb(t)->>'expires_at' IS NULL OR "
+                "(to_jsonb(t)->>'expires_at')::timestamptz > now())"
+            )
+            pending = self._sql(
+                "SELECT count(*) FROM public."
+                + table
+                + " t WHERE to_jsonb(t)->>'status' IN "
+                "('queued','pending','running','delivering','retryable_failed',"
+                "'retry_scheduled','admitted','generating','preparing') "
+                "OR to_jsonb(t)->>'lease_token' IS NOT NULL"
+            )
+            require(unknown.isdecimal() and pending.isdecimal(), "work_count")
+            unknown_total += int(unknown)
+            pending_total += int(pending)
+        return unknown_total, pending_total
+
+    def _common_identity(
+        self,
+    ) -> tuple[dict[str, dict[str, int | str]], str, dict[str, str]]:
+        app = self.paths.app
+        protected = {name: _metadata(app / name) for name in PROTECTED_FILES}
+        brand = _tree_hash(app / "private/brand-materials")
+        volumes: dict[str, str] = {}
+        for name in VOLUMES:
+            result = _json(
+                self._run("docker", "volume", "inspect", name, code="volume_inspect"),
+                "volume_inspect_json",
+            )
+            require(
+                isinstance(result, list)
+                and len(result) == 1
+                and result[0].get("Name") == name,
+                "volume_identity",
+            )
+            path = Path(result[0]["Mountpoint"])
+            require(path.is_absolute() and not path.is_symlink(), "volume_mountpoint")
+            self._volume_paths[name] = path
+            volumes[name] = _tree_hash(path)
+        return protected, brand, volumes
+
+    def capture(self) -> dict[str, Any]:
+        app = self.paths.app
+        host_files = self.manifest.get("host_files")
+        require(
+            isinstance(host_files, dict) and set(host_files) == set(REPLACED_FILES),
+            "candidate_host_files",
+        )
+        assert isinstance(host_files, dict)
+        require(
+            _metadata(self._bundle_file("backend-image.oci.tar.gz"))["sha256"]
+            == self.manifest.get("archive_sha256"),
+            "candidate_archive_sha256",
+        )
+        for name in REPLACED_FILES:
+            require(
+                _metadata(self._bundle_file("host-files/" + name))["sha256"]
+                == host_files[name],
+                "host_file_sha256",
+            )
+        if self._production_paths:
+            for directory in (self.paths.backup_root, Path("/var/lib/docker")):
+                info = directory.lstat()
+                require(
+                    stat.S_ISDIR(info.st_mode) and not directory.is_symlink(),
+                    "release_storage_directory",
+                )
+                free = os.statvfs(directory)
+                require(
+                    free.f_bavail * free.f_frsize >= MIN_RELEASE_FREE_BYTES
+                    and free.f_favail >= MIN_RELEASE_FREE_INODES,
+                    "release_storage_capacity",
+                )
+            backup_info = self.paths.backup_root.stat()
+            require(
+                backup_info.st_uid == 0
+                and backup_info.st_gid == 0
+                and stat.S_IMODE(backup_info.st_mode) == 0o700,
+                "backup_root_permissions",
+            )
+        require(
+            (app / ".release-commit").read_text().strip() == BASE_REVISION,
+            "base_revision",
+        )
+        require(
+            (app / "RELEASE_COMMIT").read_text().strip() == BASE_REVISION,
+            "base_revision_secondary",
+        )
+        env = _parse_env(app / ".env")
+        release = _parse_env(app / ".release.env")
+        require(release.get("APP_IMAGE") == BASE_REF, "release_image_ref")
+        require(
+            env.get("WECOM_DELIVERY_PROVIDER") == "group_webhook"
+            and bool(env.get("WECOM_GROUP_WEBHOOK_KEY")),
+            "recipient_not_configured",
+        )
+        flags = {key: env.get(key, "false").lower() == "true" for key in OFF_FLAGS}
+        require(
+            all(
+                env.get(key, "false").lower() in ("true", "false") for key in OFF_FLAGS
+            ),
+            "flag_syntax",
+        )
+        image = self._image(BASE_REF)
+        require(
+            image.get("Id") == BASE_IMAGE
+            and image.get("Config", {})
+            .get("Labels", {})
+            .get("org.opencontainers.image.revision")
+            == BASE_REVISION,
+            "base_image_identity",
+        )
+        services: dict[str, Any] = {}
+        dependencies: dict[str, str] = {}
+        for name in SERVICES:
+            item = self._service(name)
+            state = item.get("State", {})
+            config = item.get("Config", {})
+            require(
+                state.get("Status") == "running"
+                and state.get("Health", {}).get("Status", "healthy") == "healthy",
+                "service_unhealthy",
+            )
+            container_id = item.get("Id")
+            require(
+                isinstance(container_id, str)
+                and re.fullmatch(r"[0-9a-f]{64}", container_id) is not None,
+                "service_container_id",
+            )
+            actual_env = dict(
+                value.split("=", 1) for value in config.get("Env", []) if "=" in value
+            )
+            self._service_env[name] = actual_env
+            require(
+                all(
+                    actual_env.get(flag, "false").lower() == "false"
+                    for flag in OFF_FLAGS
+                ),
+                "running_infographic_flag_enabled",
+            )
+            services[name] = {
+                "image": item.get("Image"),
+                "image_ref": config.get("Image"),
+                "running": True,
+                "healthy": True,
+                "restarts": item.get("RestartCount"),
+                "command_sha256": sha(canonical(config.get("Cmd"))),
+                "mounts_sha256": sha(canonical(item.get("Mounts"))),
+                "env_sha256": sha(canonical(actual_env)),
+                "container_id": container_id,
+            }
+        for name in ("postgres", "minio"):
+            item = self._service(name)
+            state = item.get("State", {})
+            require(
+                state.get("Status") == "running"
+                and state.get("Health", {}).get("Status", "healthy") == "healthy"
+                and item.get("RestartCount") == 0,
+                "dependency_health",
+            )
+            container_id = item.get("Id")
+            require(
+                isinstance(container_id, str)
+                and re.fullmatch(r"[0-9a-f]{64}", container_id) is not None
+                and item.get("Config", {}).get("Image") == DEPENDENCY_REFS[name]
+                and any(
+                    mount.get("Type") == "volume"
+                    and mount.get("Name") == DEPENDENCY_VOLUMES[name]
+                    for mount in item.get("Mounts", [])
+                ),
+                "dependency_identity",
+            )
+            assert isinstance(container_id, str)
+            dependencies[name] = container_id
+        # There must not be an already-created optional producer, even exited.
+        optional = self._run(
+            "docker",
+            "ps",
+            "-a",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=wecom-infographic-producer",
+            code="optional_producer_lookup",
+        )
+        protected, brand, volumes = self._common_identity()
+        unknown, pending = self._work_counts()
+        result = {
+            "release_commit": BASE_REVISION,
+            "release_commit_secondary": BASE_REVISION,
+            "image": image["Id"],
+            "release_env_image": release["APP_IMAGE"],
+            "schema": self._sql("SELECT version_num FROM alembic_version"),
+            "optional_producer_absent": not optional.strip(),
+            "standard_manifest_absent": not (app / ".release-manifest.json").exists(),
+            "backup_timer_active": self._run(
+                "systemctl", "is-active", "edu-ai-backup.timer", code="backup_timer"
+            ).strip()
+            == b"active",
+            "idle": unknown == pending == 0,
+            "unknown_work_count": unknown,
+            "pending_work_count": pending,
+            "business_identity_sha256": self._db_identity(),
+            "brand_identity_sha256": brand,
+            "recipient_fingerprint": sha(
+                ("group_webhook\0" + env["WECOM_GROUP_WEBHOOK_KEY"]).encode()
+            ),
+            "flags": flags,
+            "services": services,
+            "protected_files": {
+                name: {key: value for key, value in meta.items() if key != "size"}
+                for name, meta in protected.items()
+            },
+            "volumes": volumes,
+            "dependencies": dependencies,
+        }
+        valid_baseline(result)
+        self._baseline = result
+        return result
+
+    def stop_writers(self) -> None:
+        self._require_mutation_review()
+        require(self._baseline is not None, "capture_required")
+        self._compose("stop", *SERVICES, code="stop_writers", timeout=180)
+        self._stopped = True
+
+    def verify_writers_stopped(self) -> bool:
+        if not self._stopped:
+            return False
+        return all(
+            self._service(name).get("State", {}).get("Status") == "exited"
+            for name in SERVICES
+        )
+
+    def capture_quiescent(self) -> dict[str, Any]:
+        require(
+            self._baseline is not None and self.verify_writers_stopped(),
+            "writers_not_stopped",
+        )
+        baseline = self._required_baseline()
+        for name in SERVICES:
+            require(
+                self._service(name).get("Id")
+                == baseline["services"][name]["container_id"],
+                "writer_recreated_during_stop",
+            )
+        for name, container_id in baseline["dependencies"].items():
+            require(
+                self._service(name).get("Id") == container_id, "dependency_recreated"
+            )
+        protected, brand, volumes = self._common_identity()
+        unknown, pending = self._work_counts()
+        require(unknown == pending == 0, "quiescent_work")
+        return {
+            "schema": self._sql("SELECT version_num FROM alembic_version"),
+            "business_identity_sha256": self._db_identity(),
+            "brand_identity_sha256": brand,
+            "recipient_fingerprint": baseline["recipient_fingerprint"],
+            "protected_files": {
+                name: {key: value for key, value in meta.items() if key != "size"}
+                for name, meta in protected.items()
+            },
+            "volumes": volumes,
+            "flags": baseline["flags"],
+            "stopped_services": list(SERVICES),
+            "optional_producer_absent": True,
+        }
+
+    def backup(self) -> dict[str, Any]:
+        self._require_mutation_review()
+        baseline = self._required_baseline()
+        require(
+            self._baseline is not None and self.verify_writers_stopped(),
+            "backup_requires_stopped_writers",
+        )
+        attempt_info = self.attempt_dir.lstat()
+        require(
+            stat.S_ISDIR(attempt_info.st_mode)
+            and not self.attempt_dir.is_symlink()
+            and stat.S_IMODE(attempt_info.st_mode) == 0o700
+            and attempt_info.st_uid == os.geteuid(),
+            "attempt_dir_mode",
+        )
+        dump = self.attempt_dir / "postgres.dump"
+        self._compose(
+            "exec",
+            "-T",
+            "postgres",
+            "sh",
+            "-c",
+            'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc',
+            code="postgres_dump",
+            timeout=900,
+            output_file=dump,
+        )
+        with dump.open("rb") as stream:
+            magic = stream.read(5)
+        require(
+            dump.stat().st_size > 1024 and magic == b"PGDMP", "postgres_dump_format"
+        )
+        toc = self._compose(
+            "exec",
+            "-T",
+            "postgres",
+            "pg_restore",
+            "--list",
+            code="pg_restore_toc",
+            timeout=180,
+            input_file=dump,
+        )
+        require(b"TABLE DATA" in toc and b"alembic_version" in toc, "pg_restore_toc")
+        protected_dir = self.attempt_dir / "protected"
+        protected_dir.mkdir(mode=0o700)
+        protected_metadata: dict[str, dict[str, int | str]] = {}
+        for name in PROTECTED_FILES:
+            target = protected_dir / name
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            source = self.paths.app / name
+            before = _metadata(source)
+            fd = os.open(
+                target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+            )
+            with os.fdopen(fd, "wb") as output, source.open("rb") as item:
+                while part := item.read(1024 * 1024):
+                    output.write(part)
+                output.flush()
+                os.fsync(output.fileno())
+            require(
+                _metadata(source) == before
+                and _metadata(target)["sha256"] == before["sha256"],
+                "protected_readback",
+            )
+            protected_metadata[name] = before
+        metadata_path = self.attempt_dir / "protected-metadata.json"
+        self._write_private(metadata_path, canonical(protected_metadata))
+        require(
+            _json(metadata_path.read_bytes(), "protected_metadata_readback")
+            == protected_metadata,
+            "protected_metadata_readback",
+        )
+        volume_archives: dict[str, str] = {}
+        for name in VOLUMES:
+            digest, _ = _archive_tree(
+                self._volume_paths[name], self.attempt_dir / (name + ".tar.gz")
+            )
+            volume_archives[name] = digest
+        brand_digest, _ = _archive_tree(
+            self.paths.app / "private/brand-materials",
+            self.attempt_dir / "brand-materials.tar.gz",
+        )
+        source_root = self.attempt_dir / "source-config"
+        source_root.mkdir(mode=0o700)
+        source_digests: dict[str, str] = {}
+        for name in SOURCE_DIRS:
+            source_digests[name], _ = _archive_tree(
+                self.paths.app / name, source_root / (name + ".tar.gz")
+            )
+        return {
+            "baseline_sha256": sha(canonical(baseline)),
+            "pg_dump_sha256": _metadata(dump)["sha256"],
+            "pg_dump_bytes": dump.stat().st_size,
+            "pg_restore_toc_sha256": sha(toc),
+            "pg_restore_toc_read": True,
+            "protected_files_readback": True,
+            "protected_files": baseline["protected_files"],
+            "protected_metadata_sha256": _metadata(metadata_path)["sha256"],
+            "brand_materials_readback": True,
+            "brand_identity_sha256": baseline["brand_identity_sha256"],
+            "brand_archive_sha256": brand_digest,
+            "source_config_readback": len(source_digests) == len(SOURCE_DIRS),
+            "source_config_archives": source_digests,
+            "volumes": volume_archives,
+            "volume_readbacks": dict.fromkeys(VOLUMES, True),
+        }
+
+    def stage_candidate_image(self, manifest: dict[str, Any]) -> str:
+        self._require_mutation_review()
+        require(manifest == self.manifest and self._stopped, "candidate_stage_order")
+        archive = self._bundle_file("backend-image.oci.tar.gz")
+        require(
+            _metadata(archive)["sha256"] == manifest["archive_sha256"],
+            "candidate_archive_sha256",
+        )
+        self._run(
+            "docker",
+            "load",
+            "-i",
+            str(archive),
+            code="candidate_load",
+            timeout=600,
+        )
+        ref = self._candidate_ref()
+        image = self._image(ref)
+        require(
+            image.get("Id") == manifest["image"]
+            and ref in image.get("RepoDigests", [])
+            and image.get("Config", {})
+            .get("Labels", {})
+            .get("org.opencontainers.image.revision")
+            == manifest["revision"],
+            "candidate_loaded_identity",
+        )
+        self._candidate_loaded = True
+        return cast(str, manifest["image"])
+
+    def _candidate_ref(self) -> str:
+        return "offline.local/edu-ai/edu-ai-lead-agent-backend@" + cast(
+            str, self.manifest["image"]
+        )
+
+    def _clone_sql(self, container: str, sql: str) -> str:
+        require(sql.startswith("SELECT ") and ";" not in sql, "clone_readonly_sql")
+        return (
+            self._run(
+                "docker",
+                "exec",
+                container,
+                "psql",
+                "-X",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-U",
+                PG_CLONE_USER,
+                "-d",
+                PG_CLONE_DB,
+                "-Atc",
+                sql,
+                code="clone_sql",
+                timeout=180,
+            )
+            .decode()
+            .strip()
+        )
+
+    def _clone_table_identity(self, container: str) -> dict[str, dict[str, int | str]]:
+        tables = self._clone_sql(
+            container,
+            "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
+        ).splitlines()
+        require("alembic_version" in tables, "clone_table_inventory")
+        identity: dict[str, dict[str, int | str]] = {}
+        for table in self._table_identity:
+            require(
+                table in tables and SAFE_NAME.fullmatch(table) is not None,
+                "clone_table_missing",
+            )
+            count = self._clone_sql(container, f"SELECT count(*) FROM public.{table}")
+            digest = self._clone_sql(
+                container,
+                "SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text),'' "
+                f"ORDER BY md5(to_jsonb(t)::text)),'')) FROM public.{table} t",
+            )
+            require(
+                count.isdecimal() and re.fullmatch(r"[0-9a-f]{32}", digest) is not None,
+                "clone_table_identity",
+            )
+            identity[table] = {"count": int(count), "rows_md5": digest}
+        return identity
+
+    def _write_private(self, path: Path, body: bytes) -> None:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(body)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]:
+        self._require_mutation_review()
+        require(
+            self._stopped and self._candidate_loaded and self._baseline is not None,
+            "clone_order",
+        )
+        baseline = self._required_baseline()
+        dump = self.attempt_dir / "postgres.dump"
+        require(_metadata(dump)["sha256"] == dump_sha256, "clone_dump_bytes")
+        suffix = self.attempt_dir.name.removeprefix("r16-forward-")
+        require(
+            SAFE_NAME.fullmatch(suffix) is not None and len(suffix) <= 32, "clone_name"
+        )
+        network = "r16-net-" + suffix
+        volume = "r16-pg-" + suffix
+        container = "r16-clone-" + suffix
+        password = secrets.token_urlsafe(24)
+        clone_env = self.attempt_dir / "clone-postgres.env"
+        self._write_private(
+            clone_env,
+            (
+                f"POSTGRES_USER={PG_CLONE_USER}\n"
+                f"POSTGRES_PASSWORD={password}\n"
+                f"POSTGRES_DB={PG_CLONE_DB}\n"
+            ).encode(),
+        )
+        url = (
+            f"postgresql+asyncpg://{PG_CLONE_USER}:{quote(password, safe='')}"
+            f"@postgres:5432/{PG_CLONE_DB}"
+        )
+        app_env = self.attempt_dir / "clone-app.env"
+        self._write_private(app_env, f"DATABASE_URL={url}\n".encode())
+        postgres = self._service("postgres")
+        postgres_ref = postgres.get("Config", {}).get("Image")
+        require(
+            isinstance(postgres_ref, str)
+            and postgres_ref.startswith("pgvector/pgvector:"),
+            "clone_postgres_image",
+        )
+        self._run(
+            "docker", "network", "create", "--internal", network, code="clone_network"
+        )
+        self._run("docker", "volume", "create", volume, code="clone_volume")
+        self._run(
+            "docker",
+            "run",
+            "-d",
+            "--pull",
+            "never",
+            "--name",
+            container,
+            "--network",
+            network,
+            "--network-alias",
+            "postgres",
+            "--env-file",
+            str(clone_env),
+            "--mount",
+            f"type=volume,src={volume},dst=/var/lib/postgresql/data",
+            postgres_ref,
+            code="clone_start",
+            timeout=120,
+        )
+        for _ in range(60):
+            try:
+                self._run(
+                    "docker",
+                    "exec",
+                    container,
+                    "pg_isready",
+                    "-U",
+                    PG_CLONE_USER,
+                    "-d",
+                    PG_CLONE_DB,
+                    code="clone_ready",
+                    timeout=5,
+                )
+                break
+            except ReleaseBlocked:
+                time.sleep(1)
+        else:
+            raise ReleaseBlocked("clone_ready_timeout")
+        self._run(
+            "docker",
+            "exec",
+            "-i",
+            container,
+            "pg_restore",
+            "--exit-on-error",
+            "--no-owner",
+            "--no-acl",
+            "-U",
+            PG_CLONE_USER,
+            "-d",
+            PG_CLONE_DB,
+            code="clone_restore",
+            timeout=900,
+            input_file=dump,
+        )
+        require(
+            self._clone_sql(container, "SELECT version_num FROM alembic_version")
+            == BASE_SCHEMA,
+            "clone_source_schema",
+        )
+        require(
+            self._clone_table_identity(container) == self._table_identity,
+            "clone_restore_business",
+        )
+        self._run(
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--network",
+            network,
+            "--env-file",
+            str(app_env),
+            "--entrypoint",
+            "python",
+            self._candidate_ref(),
+            *ALEMBIC_ONLY_COMMAND[1:],
+            code="clone_alembic_upgrade",
+            timeout=900,
+        )
+        require(
+            self._clone_sql(container, "SELECT version_num FROM alembic_version")
+            == TARGET_SCHEMA,
+            "clone_target_schema",
+        )
+        require(
+            self._clone_table_identity(container) == self._table_identity,
+            "clone_retained_business",
+        )
+        self._run("docker", "stop", container, code="clone_stop", timeout=60)
+        receipt = {
+            "chain": [BASE_SCHEMA, "20260923_0049", TARGET_SCHEMA],
+            "source_dump_sha256": dump_sha256,
+            "isolated_restore_readback": True,
+            "isolated_target": True,
+            "source_business_sha256": baseline["business_identity_sha256"],
+            "retained_business_sha256": baseline["business_identity_sha256"],
+            "existing_table_counts_equal": True,
+            "source_schema": BASE_SCHEMA,
+            "target_schema": TARGET_SCHEMA,
+            "clone_network": network,
+            "clone_volume": volume,
+            "clone_container": container,
+        }
+        receipt["receipt_sha256"] = sha(canonical(receipt))
+        self._clone_verified = True
+        return receipt
+
+    def _production_db_url(self) -> str:
+        # Use the actual running application's resolved URL, not a second,
+        # potentially divergent interpretation of Compose .env quoting.
+        value = self._service_env.get("acquisition-api", {}).get("DATABASE_URL")
+        require(
+            isinstance(value, str) and value.startswith("postgresql+asyncpg://"),
+            "production_database_url",
+        )
+        parsed = urlsplit(value)
+        require(
+            parsed.hostname == "postgres"
+            and parsed.port == 5432
+            and bool(parsed.username)
+            and bool(parsed.password)
+            and bool(parsed.path.strip("/")),
+            "production_database_url",
+        )
+        assert isinstance(value, str)
+        return value
+
+    def _production_network(self) -> str:
+        networks = (
+            self._service("postgres").get("NetworkSettings", {}).get("Networks", {})
+        )
+        require(isinstance(networks, dict) and len(networks) == 1, "postgres_network")
+        network = cast(str, next(iter(networks)))
+        require(network.startswith(PROJECT + "_"), "postgres_network_identity")
+        return network
+
+    def migrate_forward(self, command: tuple[str, ...], chain: list[str]) -> None:
+        self._require_mutation_review()
+        baseline = self._required_baseline()
+        require(
+            self._clone_verified
+            and self._candidate_loaded
+            and self.verify_writers_stopped()
+            and command == ALEMBIC_ONLY_COMMAND
+            and chain == [BASE_SCHEMA, "20260923_0049", TARGET_SCHEMA]
+            and self.read_schema_head() == BASE_SCHEMA,
+            "production_migration_gate",
+        )
+        db_env = self.attempt_dir / "production-migration.env"
+        self._write_private(
+            db_env, ("DATABASE_URL=" + self._production_db_url() + "\n").encode()
+        )
+        self._run(
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--network",
+            self._production_network(),
+            "--env-file",
+            str(db_env),
+            "--entrypoint",
+            "python",
+            self._candidate_ref(),
+            *ALEMBIC_ONLY_COMMAND[1:],
+            code="production_alembic_upgrade",
+            timeout=900,
+        )
+        require(self.read_schema_head() == TARGET_SCHEMA, "production_target_schema")
+        require(
+            self._db_identity() == baseline["business_identity_sha256"],
+            "migration_business_drift",
+        )
+
+    def _replace_file(self, name: str, body: bytes) -> None:
+        self._require_mutation_review()
+        baseline = self._required_baseline()
+        require(name in PROTECTED_FILES, "replace_scope")
+        path = self.paths.app / name
+        parent = path.parent
+        while parent != self.paths.app.parent:
+            info = parent.lstat()
+            require(
+                stat.S_ISDIR(info.st_mode) and not parent.is_symlink(),
+                "protected_parent_type",
+            )
+            parent = parent.parent
+        before = _metadata(path)
+        require(
+            {key: value for key, value in before.items() if key != "size"}
+            == baseline["protected_files"][name],
+            "protected_before_replace",
+        )
+        temp = path.with_name(path.name + ".r16-new")
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(body)
+            os.fchmod(stream.fileno(), int(before["mode"]))
+            os.fchown(stream.fileno(), int(before["uid"]), int(before["gid"]))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        require(_metadata(path)["sha256"] == sha(body), "protected_replace_readback")
+
+    def install_candidate(self, manifest: dict[str, Any]) -> None:
+        self._require_mutation_review()
+        require(
+            manifest == self.manifest
+            and self._clone_verified
+            and self.read_schema_head() == TARGET_SCHEMA
+            and self.verify_writers_stopped(),
+            "candidate_install_gate",
+        )
+        host_files = manifest.get("host_files")
+        require(
+            isinstance(host_files, dict) and set(host_files) == set(REPLACED_FILES),
+            "host_files_manifest",
+        )
+        assert isinstance(host_files, dict)
+        candidate_bodies: dict[str, bytes] = {}
+        for name in REPLACED_FILES:
+            body = self._bundle_file("host-files/" + name).read_bytes()
+            require(sha(body) == host_files[name], "host_file_sha256")
+            candidate_bodies[name] = body
+        migration = _json(
+            candidate_bodies["deploy/release/migration-compatibility.json"],
+            "migration_declaration_json",
+        )
+        require(
+            migration.get("previous_application_compatible") is False
+            and migration.get("reviewed") is True
+            and migration.get("alembic_head") == TARGET_SCHEMA,
+            "migration_declaration",
+        )
+        release_path = self.paths.app / ".release.env"
+        release_body = release_path.read_bytes()
+        old_line = ("APP_IMAGE=" + BASE_REF).encode()
+        require(release_body.count(old_line) == 1, "release_env_old_ref")
+        new_release = release_body.replace(
+            old_line, ("APP_IMAGE=" + self._candidate_ref()).encode()
+        )
+        for name in REPLACED_FILES:
+            self._replace_file(name, candidate_bodies[name])
+        self._replace_file(".release.env", new_release)
+        for name in (".release-commit", "RELEASE_COMMIT"):
+            self._replace_file(name, (manifest["revision"] + "\n").encode())
+
+    def start_default_off(self, services: tuple[str, ...]) -> None:
+        self._require_mutation_review()
+        require(
+            services == SERVICES
+            and self.read_schema_head() == TARGET_SCHEMA
+            and _parse_env(self.paths.app / ".release.env").get("APP_IMAGE")
+            == self._candidate_ref()
+            and all(
+                _parse_env(self.paths.app / ".env").get(key, "false").lower() == "false"
+                for key in OFF_FLAGS
+            ),
+            "default_off_start_gate",
+        )
+        self._compose(
+            "up",
+            "-d",
+            "--no-build",
+            "--no-deps",
+            "--pull",
+            "never",
+            "--force-recreate",
+            *SERVICES,
+            code="default_off_start",
+            timeout=600,
+        )
+
+    def verify_candidate(self, manifest: dict[str, Any]) -> bool:
+        baseline = self._required_baseline()
+        require(
+            manifest == self.manifest and self._baseline is not None,
+            "candidate_verify_gate",
+        )
+        if self.read_schema_head() != TARGET_SCHEMA:
+            return False
+        env = _parse_env(self.paths.app / ".env")
+        if any(env.get(key, "false").lower() != "false" for key in OFF_FLAGS):
+            return False
+        if (
+            _tree_hash(self.paths.app / "private/brand-materials")
+            != baseline["brand_identity_sha256"]
+        ):
+            return False
+        if any(
+            _tree_hash(self._volume_paths[name]) != baseline["volumes"][name]
+            for name in VOLUMES
+        ):
+            return False
+        if self._db_identity() != baseline["business_identity_sha256"]:
+            return False
+        host_files = manifest.get("host_files")
+        if not isinstance(host_files, dict) or set(host_files) != set(REPLACED_FILES):
+            return False
+        for name in PROTECTED_FILES:
+            actual = _metadata(self.paths.app / name)
+            if name in REPLACED_FILES:
+                expected_sha = host_files[name]
+            elif name in (".release-commit", "RELEASE_COMMIT"):
+                expected_sha = sha((manifest["revision"] + "\n").encode())
+            elif name == ".release.env":
+                saved = (self.attempt_dir / "protected" / name).read_bytes()
+                old_line = ("APP_IMAGE=" + BASE_REF).encode()
+                if saved.count(old_line) != 1:
+                    return False
+                expected_sha = sha(
+                    saved.replace(
+                        old_line, ("APP_IMAGE=" + self._candidate_ref()).encode()
+                    )
+                )
+                if (
+                    _parse_env(self.paths.app / name).get("APP_IMAGE")
+                    != self._candidate_ref()
+                ):
+                    return False
+            else:
+                expected_sha = baseline["protected_files"][name]["sha256"]
+            if actual["sha256"] != expected_sha:
+                return False
+        for name, container_id in baseline["dependencies"].items():
+            if self._service(name).get("Id") != container_id:
+                return False
+        for name in SERVICES:
+            item = self._service(name)
+            state = item.get("State", {})
+            config = item.get("Config", {})
+            if (
+                item.get("Image") != manifest["image"]
+                or config.get("Image") != self._candidate_ref()
+                or state.get("Status") != "running"
+                or state.get("Health", {}).get("Status", "healthy") != "healthy"
+                or item.get("RestartCount") != 0
+            ):
+                return False
+            new_env = dict(
+                value.split("=", 1) for value in config.get("Env", []) if "=" in value
+            )
+            old_env = self._service_env[name]
+            common = {
+                key: value
+                for key, value in new_env.items()
+                if not key.startswith("WECOM_INFOGRAPHIC_")
+            }
+            if common != old_env:
+                return False
+            if any(new_env.get(key, "false").lower() != "false" for key in OFF_FLAGS):
+                return False
+            if (
+                sha(canonical(config.get("Cmd")))
+                != baseline["services"][name]["command_sha256"]
+            ):
+                return False
+            if (
+                sha(canonical(item.get("Mounts")))
+                != baseline["services"][name]["mounts_sha256"]
+            ):
+                return False
+        optional = self._run(
+            "docker",
+            "ps",
+            "-a",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=wecom-infographic-producer",
+            code="optional_producer_lookup",
+        )
+        if optional.strip():
+            return False
+        health = _json(
+            self._run(
+                "curl",
+                "--fail",
+                "--silent",
+                "--max-time",
+                "5",
+                "--max-filesize",
+                "65536",
+                "http://127.0.0.1:8000/healthz",
+                code="api_health",
+            ),
+            "api_health_json",
+        )
+        return isinstance(health, dict) and health.get("status") == "ok"
+
+    def read_schema_head(self) -> str:
+        return self._sql("SELECT version_num FROM alembic_version")
+
+    def stop_all(self) -> None:
+        self._require_mutation_review()
+        self._compose("stop", *SERVICES, code="stop_all", timeout=180)

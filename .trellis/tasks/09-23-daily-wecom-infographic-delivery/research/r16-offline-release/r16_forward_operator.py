@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R16 forward-only release contract and local simulation, never production apply.
+"""R16 default-off release contract and local simulation, never production apply.
 
 The real host adapter is intentionally absent. A plan proves only that a
 reviewed evidence *shape* is complete; it cannot authenticate live host state
@@ -67,6 +67,11 @@ VOLUMES = (
     "edu-ai-lead-agent_wechat_mp_draft_artifacts",
     "edu-ai-lead-agent_official_account_weekly_dag_output",
 )
+HOST_REPLACEMENTS = (
+    "compose.yaml",
+    "deploy/release/migration-compatibility.json",
+    "scripts/doctor.sh",
+)
 OFF_FLAGS = (
     "WECOM_INFOGRAPHIC_PRODUCER_ENABLED",
     "WECOM_INFOGRAPHIC_DELIVERY_ENABLED",
@@ -114,6 +119,13 @@ def valid_manifest(manifest: dict[str, Any]) -> None:
         and is_sha(manifest.get("archive_sha256"))
         and manifest.get("operator_sha256") == sha(Path(__file__).read_bytes()),
         "candidate_manifest",
+    )
+    host_files = manifest.get("host_files")
+    require(
+        isinstance(host_files, dict)
+        and set(host_files) == set(HOST_REPLACEMENTS)
+        and all(is_sha(host_files[name]) for name in HOST_REPLACEMENTS),
+        "candidate_host_files",
     )
     if manifest["operator_source_revision"] != manifest["revision"]:
         split = manifest.get("source_split")
@@ -194,9 +206,20 @@ def valid_baseline(baseline: dict[str, Any]) -> None:
     require(all(is_sha(value) for value in volumes.values()), "volume_identity")
 
 
-def valid_evidence(
-    manifest: dict[str, Any], baseline: dict[str, Any], evidence: dict[str, Any]
+def valid_release_evidence(manifest: dict[str, Any], evidence: dict[str, Any]) -> None:
+    """Check candidate identity; quality/recipient receipts gate enablement later."""
+    require("migration_clone" not in evidence, "preexisting_clone_receipt")
+    require(
+        evidence.get("candidate_image") == manifest["image"]
+        and evidence.get("candidate_archive_sha256") == manifest["archive_sha256"],
+        "image_evidence_identity",
+    )
+
+
+def valid_enablement_evidence(
+    baseline: dict[str, Any], evidence: dict[str, Any]
 ) -> None:
+    """Separate fixed-recipient and three-image gate, never implied by release."""
     images = evidence.get("images")
     require(isinstance(images, list) and len(images) == 3, "three_news_images")
     assert isinstance(images, list)
@@ -234,27 +257,30 @@ def valid_evidence(
         and group.get("artifact_sha256") == image_by_package.get(group_package_id),
         "fixed_group_triple_receipt",
     )
-    migration = evidence.get("migration_clone")
+
+
+def valid_fresh_clone(
+    clone: dict[str, Any], baseline: dict[str, Any], backup: dict[str, Any]
+) -> None:
+    """Bind a restored/upgraded clone to this attempt's just-verified dump."""
     require(
-        isinstance(migration, dict)
-        and migration.get("chain") == MIGRATION_CHAIN
-        and migration.get("source_business_sha256")
+        clone.get("chain") == MIGRATION_CHAIN
+        and clone.get("source_dump_sha256") == backup["pg_dump_sha256"]
+        and clone.get("source_business_sha256") == baseline["business_identity_sha256"]
+        and clone.get("retained_business_sha256")
         == baseline["business_identity_sha256"]
-        and migration.get("retained_business_sha256")
-        == baseline["business_identity_sha256"]
-        and migration.get("existing_table_counts_equal") is True
-        and migration.get("isolated_restore_readback") is True
-        and migration.get("isolated_target") is True
-        and is_sha(migration.get("source_dump_sha256"))
-        and migration.get("source_schema") == BASE_SCHEMA
-        and migration.get("target_schema") == TARGET_SCHEMA
-        and is_sha(migration.get("receipt_sha256")),
-        "migration_clone_receipt",
-    )
-    require(
-        evidence.get("candidate_image") == manifest["image"]
-        and evidence.get("candidate_archive_sha256") == manifest["archive_sha256"],
-        "image_evidence_identity",
+        and clone.get("existing_table_counts_equal") is True
+        and clone.get("isolated_restore_readback") is True
+        and clone.get("isolated_target") is True
+        and clone.get("source_schema") == BASE_SCHEMA
+        and clone.get("target_schema") == TARGET_SCHEMA
+        and clone.get("receipt_sha256")
+        == sha(
+            canonical(
+                {key: value for key, value in clone.items() if key != "receipt_sha256"}
+            )
+        ),
+        "fresh_migration_clone_receipt",
     )
 
 
@@ -263,7 +289,7 @@ def plan(
 ) -> dict[str, Any]:
     valid_manifest(manifest)
     valid_baseline(baseline)
-    valid_evidence(manifest, baseline, evidence)
+    valid_release_evidence(manifest, evidence)
     return {
         "phase": "plan_only",
         "candidate_revision": manifest["revision"],
@@ -271,9 +297,11 @@ def plan(
         "baseline_sha256": sha(canonical(baseline)),
         "services": len(SERVICES),
         "default_off": True,
+        "enablement_ready": False,
         "migration_chain": MIGRATION_CHAIN,
         "production_apply_available": False,
-        "reason": "declarative receipts are not live capture, verified backup, or an audited host adapter",
+        "clone_pending": True,
+        "reason": "preflight receipts are not a fresh stopped-writer backup, clone, or audited host adapter",
     }
 
 
@@ -287,10 +315,19 @@ def valid_backup(backup: dict[str, Any], baseline: dict[str, Any]) -> None:
         and backup.get("pg_restore_toc_read") is True
         and backup.get("protected_files_readback") is True
         and backup.get("protected_files") == baseline["protected_files"]
+        and is_sha(backup.get("protected_metadata_sha256"))
         and backup.get("brand_materials_readback") is True
         and backup.get("brand_identity_sha256") == baseline["brand_identity_sha256"]
+        and is_sha(backup.get("brand_archive_sha256"))
         and backup.get("source_config_readback") is True,
         "backup_receipt",
+    )
+    source_archives = backup.get("source_config_archives")
+    require(
+        isinstance(source_archives, dict)
+        and set(source_archives) == {"backend", "deploy", "scripts", "infra"}
+        and all(is_sha(value) for value in source_archives.values()),
+        "backup_source_receipt",
     )
     volumes = backup.get("volumes")
     volume_readbacks = backup.get("volume_readbacks")
@@ -330,6 +367,7 @@ class SimulatedHost(Protocol):
     def capture(self) -> dict[str, Any]: ...
     def capture_quiescent(self) -> dict[str, Any]: ...
     def backup(self) -> dict[str, Any]: ...
+    def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]: ...
     def stop_writers(self) -> None: ...
     def verify_writers_stopped(self) -> bool: ...
     def stage_candidate_image(self, manifest: dict[str, Any]) -> str: ...
@@ -399,7 +437,6 @@ def simulate(
     # backup and thereby make later comparisons agree with unreviewed drift.
     frozen_manifest = json.loads(canonical(manifest))
     frozen_baseline = json.loads(canonical(baseline))
-    frozen_evidence = json.loads(canonical(evidence))
     require(not attempt_dir.exists(), "attempt_exists_reconcile_only")
     with two_local_locks(lock_paths):
         require(host.capture() == frozen_baseline, "fresh_baseline_drift")
@@ -421,20 +458,22 @@ def simulate(
             valid_quiescent(before_backup, frozen_baseline)
             backup = host.backup()
             valid_backup(backup, frozen_baseline)
-            require(
-                backup["pg_dump_sha256"]
-                == frozen_evidence["migration_clone"]["source_dump_sha256"],
-                "clone_backup_identity",
-            )
             after_backup = host.capture_quiescent()
             require(after_backup == before_backup, "post_backup_quiescent_drift")
             require(
                 host.stage_candidate_image(frozen_manifest) == frozen_manifest["image"],
                 "staged_image_identity",
             )
+            clone = host.rehearse_clone(backup["pg_dump_sha256"])
+            valid_fresh_clone(clone, frozen_baseline, backup)
+            write_new(attempt_dir / "clone-receipt.json", clone)
             write_new(
                 attempt_dir / "migration-intent.json",
-                {"chain": MIGRATION_CHAIN, "forward_only": True},
+                {
+                    "chain": MIGRATION_CHAIN,
+                    "forward_only": True,
+                    "clone_receipt_sha256": clone["receipt_sha256"],
+                },
             )
             host.migrate_forward(ALEMBIC_ONLY_COMMAND, MIGRATION_CHAIN)
             require(host.read_schema_head() == TARGET_SCHEMA, "target_schema_mismatch")

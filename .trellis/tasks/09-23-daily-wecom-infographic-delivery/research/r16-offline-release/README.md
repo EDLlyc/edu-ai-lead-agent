@@ -1,8 +1,9 @@
 # R16 infographic offline OCI release path — preparation only
 
 **Status: NOT DEPLOYABLE.** This directory contains a read-only committed-source
-gate, local image tooling, a release specification and a **simulation-only**
-forward-operator contract. It is not a production activation operator or a
+gate, local image tooling, a release specification, a simulation-only
+forward-operator contract and an **import-only, unreviewed real-host adapter
+draft**. It is not a production activation operator or a
 substitute for the quality, fixed-recipient, backup or migration reviews. The
 `r16_forward_operator.py apply` command always returns
 `production_apply_unavailable`; do not copy it to the host with an improvised
@@ -179,15 +180,24 @@ jobs.** On any uncertain or partial migration/activation result, stop all
 application writers and move to separately reviewed forward recovery. The
 backup is for forensic/disaster planning, not automatic rollback.
 
-Only after that stopped-writer backup and clone are verified should an
-operator write a separate migration intent, load/verify the candidate image,
-run Alembic once to exactly `0050`, replace
+After the stopped-writer backup is verified, load/verify the exact candidate
+image and use it to rehearse the clone against that same dump. Only after the
+clone readback passes may an operator write a separate migration intent, run
+Alembic once to exactly `0050`, replace
 only reviewed protected host files and image markers, then start the existing
 12 application services under **all infographic flags false**. The optional
 producer remains absent. Verify API health, schema, all service identities,
 brand/runtime/protected-file integrity, unchanged historical state, no new
 business work and a complete bounded idle cycle. This is *default-off code
 deployment*, not automatic poster delivery.
+
+The Compose `wecom-infographic-producer` service depends on `backend-migrate`,
+whose command also runs `app.seed_sources` after Alembic; `backend-migrate`
+depends on `minio-init`. A direct `docker compose up` of the producer is not a
+safe activation command. The drafted default-off restart uses `--no-deps` on
+the existing 12 services and neither starts the producer nor requests those
+one-shot dependencies. Any later producer start needs a separately reviewed
+no-dependency command and fresh recipient/quality gates.
 
 After that separate release receipt exists, do a new fixed-group visible-test
 preflight and observe one same-package triple `text → original image →
@@ -200,11 +210,15 @@ infographic delivery/producer off and preserve the existing workflow.
 ## Forward-only operator contract — simulation only
 
 `r16_forward_operator.py plan` validates the *shape* and internal identity of
-the candidate manifest, 12-service default-off baseline, three distinct
-same-package quality receipts, fixed-group triple and production-shaped
-`0048→0049→0050` clone receipt. Its output always says
-`production_apply_available=false`: supplied JSON cannot authenticate live
-host state or real provider outcomes. No production host adapter is supplied.
+the candidate manifest, 12-service default-off baseline, and exact image/archive
+identity. Three distinct same-package quality receipts and the fixed-group
+triple are separate **enablement** gates checked by
+`valid_enablement_evidence`; they are not prerequisites for a default-off code
+release. This plan always reports `enablement_ready=false`. It deliberately rejects
+a pre-existing migration-clone receipt: the clone must use this attempt's
+fresh stopped-writer dump, whose SHA does not exist at plan time. Its output
+always says `production_apply_available=false`: supplied JSON cannot
+authenticate live host state or real provider outcomes.
 The module's `simulate` function is exercised only with injected fake hosts
 and local attempt/lock paths; it is **not a sandbox** and Python cannot prove
 that an arbitrary injected adapter has no external side effects. Never import
@@ -212,11 +226,12 @@ it with a real host adapter. The CLI exposes no simulation action and `apply`
 always refuses. The simulation requires both locks, one fresh running baseline,
 a durable pause intent, a verified stop of all writers, then two identical
 quiescent captures around a backup receipt that separately accounts for a
-readable PostgreSQL dump/TOC,
-the same dump's isolated clone rehearsal, all three volume readbacks, private
-brand-material readback and exact protected-file metadata. It then writes one
-candidate-image staging call whose returned digest must equal the manifest,
-then a separate migration intent, migrates once forward, requires a freshly
+readable PostgreSQL dump/TOC, all three volume readbacks, private
+brand-material readback, complete source/config archives and exact protected-
+file metadata. It then stages the exact candidate image, rehearses isolated
+restore and `0048→0049→0050` upgrade from that **same newly captured dump**,
+verifies the clone receipt's dump SHA/business identity and writes a separate
+migration intent. It migrates once forward, requires a freshly
 read exact `0050` head, and installs/starts the original
 12 services default-off and verifies them. Any post-intent failure records
 `forward-recovery-required` before calling `stop_all`, so even a failed stop
@@ -226,26 +241,51 @@ duplicate attempts, backup failure, partial stop, ambiguous migration and
 post-migration failures. These tests are **not** a production migration,
 backup or activation rehearsal.
 
-The `plan` input checks only declarative receipt *shape*: its migration-clone
-record must name a source dump hash, an isolated target and successful restore
-readback. `simulate` also requires the newly captured dump hash to equal that
-clone source hash before creating an intent. Neither a JSON boolean nor a hash
-string proves the underlying bytes; a future real adapter must verify them
-against the actual dump, restored clone, copied volumes, brand tree and
-protected files. `plan` remains `production_apply_available=false` even when
-every declarative field is present.
+The simulation checks the freshly returned clone receipt's self-hash and
+exact dump SHA before migration intent. A prior receipt, forged receipt SHA,
+changed dump bytes or failed restore cannot pass. This is still a fake-host
+contract, not proof that any real backup can be restored. `plan` remains
+`production_apply_available=false` even when every preflight field is present.
 
 The migration call in this contract is explicitly `python -m alembic -c
 /app/alembic.ini upgrade 20260926_0050`; a future adapter must **not** invoke
 Compose `backend-migrate` (it also seeds sources) or `minio-init`. The clone
 rehearsal and production upgrade must preserve existing source/business rows.
 
-The missing production adapter must be independently reviewed and must perform
-actual locked host capture, PostgreSQL/volume/protected-file backup with
-restore-read checks, exact OCI/host-file byte verification, one migration
-intent, and stop/forward-recovery behavior. Until such an adapter and the
-quality/group/migration/backup receipts exist, the explicit hard refusal is
-the only safe `apply` behavior.
+`r16_real_host.py` is an **unwired draft** of the actual host operations.
+It computes a live baseline from release markers, image/container inspection,
+protected file metadata, stopped-writer business row hashes, brand and named
+volume trees; creates a private custom PostgreSQL dump plus TOC readback,
+protected/source/config and all three volume/brand archives with per-entry
+byte/owner/mode readback; stages an exact archive SHA/image digest; and models
+an internal-network, unpublished-port clone using the same dump. Its only
+migration command is candidate-image Alembic to `0050`, never
+`backend-migrate`, `seed_sources` or `minio-init`. It then has hash-checked
+host-file replacement, a 12-service default-off start and identity/health
+postcheck. Fake-runner tests exercise those command shapes and local file
+copies, including failures. The draft has no CLI, is not connected to
+`simulate`, and its production-path mutators additionally refuse while
+`REAL_HOST_MUTATION_REVIEWED=false`. This Python flag is defense in depth,
+not a security sandbox. It must **not** be imported into a production execution wrapper
+without independent code/security review, production-shaped clone rehearsal,
+fresh backup verification, immutable bundle provenance and explicit activation
+authorization. Historical unknown/queued work is currently fail-closed;
+any exception requires a specific independently reviewed cohort hash. The
+fixed group still needs human target confirmation: a webhook-key fingerprint
+alone is not recipient proof. The explicit hard refusal remains the only safe
+`apply` behavior.
+
+The release begins with all infographic flags false and the optional producer
+absent so the original WeCom text/image and Official Account flows can be
+observed unchanged. That is an **atomic initial stage, not the product's final
+configuration**. After a verified visible fixed-group
+`text → original image → same-news infographic` receipt, exact final-JPEG SHA,
+same package and recipient checks, and morning gray observations, the intended
+full-coverage stage must explicitly enable producer/delivery, all three slot
+flags and `WECOM_INFOGRAPHIC_MAX_ORDINAL=3`. Turning on only producer/delivery
+would silently leave later news or noon/evening uncovered. A provider failure
+must affect only that news's supplement; its approved text and original image
+remain on schedule. No unknown result may be resent automatically.
 
 ### Exact local image verification for commit `4312451` (2026-09-27)
 
