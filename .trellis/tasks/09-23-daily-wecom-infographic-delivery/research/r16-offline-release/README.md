@@ -1,13 +1,13 @@
-# R16 infographic offline OCI release path — preparation only
+# R16 infographic offline OCI release path — not yet deployed
 
-**Status: NOT DEPLOYABLE.** This directory contains a read-only committed-source
-gate, local image tooling, a release specification, a simulation-only
-forward-operator contract and an **import-only, unreviewed real-host adapter
-draft**. It is not a production activation operator or a
-substitute for the quality, fixed-recipient, backup or migration reviews. The
-`r16_forward_operator.py apply` command always returns
-`production_apply_unavailable`; do not copy it to the host with an improvised
-`apply` or change that guard by hand.
+**Status: code reviewed for a locked preflight; production not changed.** This
+directory now contains sealed `r16_release_cli.py` and `r16_enablement.py`
+entry points in addition to source/image checks and fake-host tests. Use only
+the reviewed `python3 -I` entry points from one root-owned, hash-bound bundle;
+the older `r16_forward_operator.py apply` remains intentionally blocked.
+Neither a passing local test nor a supplied JSON receipt authorizes a live
+`apply` or `enable`: the final commit's full OCI image/bundle, locked live
+baseline, fresh backup/clone and real release receipt are still missing.
 
 ## Frozen starting identity
 
@@ -199,26 +199,27 @@ the existing 12 services and neither starts the producer nor requests those
 one-shot dependencies. Any later producer start needs a separately reviewed
 no-dependency command and fresh recipient/quality gates.
 
-After that separate release receipt exists, do a new fixed-group visible-test
-preflight and observe one same-package triple `text → original image →
-infographic` with exact job/artifact/recipient identities and no unknown
-outcome. The historical plan then had morning gray (one and three independent
-packages) before noon/evening. The user's latest requested target is instead
-a separately versioned **direct all-news**
-enablement after controlled release, with all three slots and ordinals 1–3
-enabled together; it is not authorized by the default-off receipt alone. Keep
-the original text/image and M/W/F Official Account paths unchanged; do not
+The historical strict plan required a fixed-group same-package triple and
+morning gray before expansion; it remains available as a separate policy,
+but the user explicitly approved a versioned **direct-first-live all-news**
+route. After the real default-off receipt, that route enables all three slots
+and ordinals 1–3 together and permits the first passing poster to reach the
+existing ordinary group. It is not authorized by the default-off receipt
+alone; the explicit decision record and every per-poster hard check remain.
+Keep the original text/image and M/W/F Official Account paths unchanged; do not
 backfill old news. If any gate fails, leave
 infographic delivery/producer off and preserve the existing workflow.
 
-## Forward-only operator contract — simulation only
+## Forward-only operator contract and sealed CLI
 
 `r16_forward_operator.py plan` validates the *shape* and internal identity of
 the candidate manifest, 12-service default-off baseline, and exact image/archive
 identity. Three distinct same-package quality receipts and the fixed-group
-triple are separate **enablement** gates checked by
-`valid_enablement_evidence`; they are not prerequisites for a default-off code
-release. This plan always reports `enablement_ready=false`. It deliberately rejects
+triple remain **strict-mode enablement** gates checked by
+`valid_enablement_evidence`; direct-first-live instead requires its explicit
+authorization record and same-news per-poster hard checks. Neither policy is
+a prerequisite for the default-off code release. This plan always reports
+`enablement_ready=false`. It deliberately rejects
 a pre-existing migration-clone receipt: the clone must use this attempt's
 fresh stopped-writer dump, whose SHA does not exist at plan time. Its output
 always says `production_apply_available=false`: supplied JSON cannot
@@ -252,11 +253,12 @@ contract, not proof that any real backup can be restored. `plan` remains
 `production_apply_available=false` even when every preflight field is present.
 
 The migration call in this contract is explicitly `python -m alembic -c
-/app/alembic.ini upgrade 20260926_0050`; a future adapter must **not** invoke
+/app/alembic.ini upgrade 20260926_0050`; the adapter must **not** invoke
 Compose `backend-migrate` (it also seeds sources) or `minio-init`. The clone
 rehearsal and production upgrade must preserve existing source/business rows.
 
-`r16_real_host.py` is an **unwired draft** of the actual host operations.
+`r16_real_host.py` implements the host operations behind the separately
+sealed `r16_release_cli.py`; it is not a standalone command.
 It computes a live baseline from release markers, image/container inspection,
 protected file metadata, stopped-writer business row hashes, brand and named
 volume trees; creates a private custom PostgreSQL dump plus TOC readback,
@@ -267,54 +269,63 @@ migration command is candidate-image Alembic to `0050`, never
 `backend-migrate`, `seed_sources` or `minio-init`. It then has hash-checked
 host-file replacement, a 12-service default-off start and identity/health
 postcheck. Fake-runner tests exercise those command shapes and local file
-copies, including failures. The draft has no CLI, is not connected to
-`simulate`, and its production-path mutators additionally refuse while
-`REAL_HOST_MUTATION_REVIEWED=false`. This Python flag is defense in depth,
-not a security sandbox. It must **not** be imported into a production execution wrapper
-without independent code/security review, production-shaped clone rehearsal,
-fresh backup verification, immutable bundle provenance and explicit activation
-authorization. Historical unknown/queued work is currently fail-closed;
-any exception requires a specific independently reviewed cohort hash. The
-fixed group still needs human target confirmation: a webhook-key fingerprint
-alone is not recipient proof. The explicit hard refusal remains the only safe
-`apply` behavior.
+copies, including failures. Direct Python imports are **not a security
+sandbox**: the only supported operational route is the independently
+hash-checked, isolated-Python CLI from a root-owned bundle. Historical
+unknown/queued work is fail-closed; any exception requires a specific
+independently reviewed cohort hash. The current group's two key hashes prove
+the same webhook key, not the membership of that group. A release attempt
+with `migration-intent.json` but no success receipt is reconcile-only,
+including after a power loss; never rename/retry that attempt.
 
 The release begins with all infographic flags false and the optional producer
-absent so the original WeCom text/image and Official Account flows can be
-observed unchanged. That is an **atomic initial stage, not the product's final
-configuration**. After a verified visible fixed-group
-`text → original image → same-news infographic` receipt, exact final-JPEG SHA,
-same package and recipient checks, the intended
-full-coverage stage must explicitly enable producer/delivery, all three slot
-flags and `WECOM_INFOGRAPHIC_MAX_ORDINAL=3`. Turning on only producer/delivery
-would silently leave later news or noon/evening uncovered. A provider failure
-must affect only that news's supplement; its approved text and original image
-remain on schedule. No unknown result may be resent automatically.
+absent, preserving original WeCom text/image and Official Account behavior.
+This is an **atomic intermediate state**, not the user's requested outcome.
+The user explicitly authorized `direct_first_live`: the first successful,
+individually checked poster may reach the existing ordinary group without
+three preapproved JPEGs or a fixed-test-group triple. Legacy strict mode
+retains those gates. Direct mode still requires the exact authorization
+record, unchanged existing webhook-key fingerprint, same-package final-JPEG
+source/date/URL, byte/geometry and unknown-result checks. Advisory OCR/visual
+findings are warnings, never false passes. A provider failure affects only
+that news's supplement; original copy/image remain on schedule and no old
+poster is substituted.
 
-`r16_enablement.py` is a **separate, simulation-only direct-all-news contract**.
-Its `plan` consumes a distinct actual default-off release receipt, current
-post-release 12-service/0050/recipient identity, three distinct same-news
-final-JPEG receipts, the currently required visible fixed-group triple and a
-base-delivery failure-isolation regression. It checks the final JPEG's
-byte limit, immutable SHA, exact source URL/date footer, advisory warning,
-single known image intent and no unknown-result replay. The desired
-configuration is exactly producer=true, delivery=true, test=false, morning/
-noon/evening=true, advisory review and max ordinal 3, verified both in the
-host configuration and the effective dispatcher/producer container environments.
-Historical morning gray
-receipts may be recorded separately but are **not silently imposed as a new
-hard prerequisite** for this newly requested direct-all-news policy.
+`r16_enablement.py` and `r16_enable_host.py` now provide a separate sealed
+enablement path after a **real** strong default-off release receipt. It
+requires schema 0050, 12 healthy original services, the same ordinary group,
+the root-owned 0600 authorization record with SHA-256
+`ea52cdb7d3c26737e83a13c64893a35b367354ef051e9f3412860790e6def2b2`,
+and effective dispatcher/producer settings: producer/delivery=true,
+test=false, morning/noon/evening=true, advisory review and
+`WECOM_INFOGRAPHIC_MAX_ORDINAL=3`. It restarts only reviewed services with
+`--no-deps --no-build --pull never`, forbids `backend-migrate`, `seed_sources`
+and `minio-init`, and writes a separate one-attempt receipt after postcheck.
+An uncertain prior attempt cannot be renamed and replayed. On failure it
+disables only the new supplement path while preserving the base flow.
+No fake-host result proves a live release or send.
 
-The fake-host `simulate` holds two local locks, creates one attempt, models a
-dispatcher restart and producer start using explicit `--no-deps --no-build
---pull never` commands, rejects `backend-migrate`, `seed_sources` and
-`minio-init`, and writes a separately hashed enablement receipt only after
-the 13-service/all-slot postcheck. Failure records a no-replay recovery marker
-and calls supplement-only disablement while preserving original copy/image.
-Neither a JSON receipt nor a fake host proves a live send. CLI `enable` always
-returns `production_enable_unavailable`, and no real enablement adapter is
-present. The currently documented fixed-group requirement remains unchanged
-until the user explicitly resolves any requested exception.
+### Controlled command boundary — no production execution yet
+
+After final commit and full image rebuild, stage exactly one root-owned 0700
+bundle containing `candidate.json`, the verified OCI archive, the five R16
+operator/adapter source files and the exact reviewed host-file set. All bundle
+ancestors must be root-owned and not group/other writable. Use isolated
+`python3 -I` and pass independently reviewed full manifest and launcher
+hashes; do not rely on ambient `DOCKER_HOST`, shell feature flags or a copied
+script outside that bundle. The first invocation may only be `preflight`.
+`apply --execute` additionally requires the exact R15 baseline, final image,
+recipient and target-schema confirmations, a fresh private attempt directory
+and a verified idle window. It must stop all writers before the fresh full
+backup and same-dump isolated migration rehearsal. A failed or unknown
+attempt is reconcile-only, not retryable by changing the attempt name.
+
+The later `enable --execute` uses the **same sealed bundle**, authenticated
+production release attempt/receipt and a private root-owned 0600 copy of
+`research/r16-direct-first-live-authorization-20260927.md`. It never
+substitutes a test/simulation receipt. The root-level project source file is
+the audit record; it is not a secret credential or a cryptographic signature.
+No `apply` or `enable` command has been run on production as of this entry.
 
 ### Exact local image verification for commit `4312451` (2026-09-27)
 
@@ -351,18 +362,26 @@ Otherwise, build a new full image from the later commit. Never relabel the
 - [x] Local full-image build for source commit `4312451` passed pinned Noto,
       immutable archive graph, runtime tree and offline load/font probes; this
       is not a production load or approval of a later operator-source commit.
-- [ ] New independently reviewed activation operator and fail-closed tests
-      cover 12-service default-off topology, exact host-file changes, lock
-      ownership, one-attempt receipts, idle capture, backup and both
-      pre-/post-migration forward-recovery branches.
+- [x] R16 release/enable CLI code paths have independent fake-host review and
+      tests for default-off 12-service topology, strict bundle identity,
+      one-attempt receipts and fail-forward branches; **no live execution or
+      final-bundle attestation has happened**.
+- [ ] Final commit's full image and one sealed root-owned bundle pass source,
+      OCI graph, offline load, runtime and independent manifest/hash review.
 - [ ] Isolated production-shaped 0048→0050 migration, retained-history and
       previous-app incompatibility evidence passes.
-- [ ] Three distinct current-news exact group JPEGs pass copy/claim, OCR,
-      visual/phone, source/footer and byte gates; no historical poster reuse.
-- [ ] Fixed-group recipient is verified and a test-mode triple receipt has
-      confirmed outcomes; unresolved/unknown sends are not replayed.
+- [x] The user explicitly waived three preapproved JPEGs and a fixed-group
+      triple **for direct-first-live pre-enable only**; neither is falsely
+      recorded as passed. Every actual poster still needs its own hard
+      source/recipient/final-byte/unknown-result checks.
+- [ ] Lock-captured current ordinary-group key fingerprint matches the pinned
+      key and both post-release dispatcher/producer effective environments.
 - [ ] Fresh production baseline, verified backup and protected brand/material
       identity are captured immediately before an explicit apply.
+- [ ] A real default-off release receipt exists; the separate direct-first-live
+      enable attempt verifies it and records effective three-slot/ordinal-3
+      runtime state. First actual long-image send outcome is observed, not
+      inferred from local tests.
 
 Therefore this preparation does **not** authorize a production write or
 declare the infographic deployed. The earlier R15 `forward_activate.py` and
