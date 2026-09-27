@@ -373,6 +373,11 @@ python -m app.news_infographic_advisory_preview_main \
   draft must be accepted and byte-identical to the package's accepted prose.
   Compare claim IDs, kinds, text and binding-ID sets, ignoring only the order
   of those IDs. A changed or duplicated binding ID remains a mismatch.
+- Treat the package's active-draft pointer as the selection boundary, not the
+  whole draft-history collection. Before any paid intent, test at least one
+  production-shaped package with a rejected predecessor, one with reordered
+  binding IDs, and one with an overlong first fact; synthetic all-accepted,
+  single-fact fixtures do not prove daily-news coverage.
 - A neutral title may use a safe CJK noun phrase that occurs exactly in both
   the frozen topic title and one same-source bound external fact. If the first
   eligible fact cannot fit the measured card, select another eligible fact

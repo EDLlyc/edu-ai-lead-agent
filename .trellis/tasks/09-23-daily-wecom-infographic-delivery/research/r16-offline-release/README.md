@@ -33,7 +33,11 @@ python3 r16_gate.py \
 ```
 
 A source-gate `passed` result intentionally still says
-`deployment_ready=false`. The current dirty/uncommitted candidate cannot pass.
+`deployment_ready=false`. The independently checked candidate was committed as
+`192870567c2988f99e36191d956c046043b76577` on 2026-09-26; the read-only
+gate passed on that clean HEAD with 77 changed files and explicitly returned
+`deployment_ready=false`. This does not satisfy the image, recipient, build,
+backup or activation gates below.
 
 ## Why a new operator and full image are mandatory
 
@@ -137,7 +141,7 @@ infographic delivery/producer off and preserve the existing workflow.
 
 ## Open release evidence — no safe apply yet
 
-- [ ] Candidate source is committed; `r16_gate.py` passes on a clean HEAD.
+- [x] Candidate source is committed; `r16_gate.py` passes on a clean HEAD.
 - [ ] Full-image build is reproducible, including pinned Noto font package,
       immutable archive graph, runtime tree and offline load/font probe.
 - [ ] New independently reviewed activation operator and fail-closed tests
