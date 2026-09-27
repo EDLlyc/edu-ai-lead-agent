@@ -493,9 +493,11 @@ python -m app.news_infographic_advisory_preview_main \
   namespace are `daily-news-infographic-advisory-v13-local-preview-v1` and
   `daily-news-infographic-advisory-v13-intents`; the character reference
   contract is `formal_v13_character_only`.
-- Hash and privately preserve the exact four-field model response **before**
-  normalization. After exact fixed-prefix deduplication, remove at most one
-  leading `，` or `,` from each of `news`, `child`, `brand`, recording only the
+- Hash the exact four-field model response **before** normalization. The
+  local preview preserves that raw reply privately with its SHA-256; the
+  formal job persists the pre-normalization SHA-256 and normalized candidate,
+  not the raw reply body. After exact fixed-prefix deduplication, remove at most
+  one leading `，` or `,` from each of `news`, `child`, `brand`, recording only the
   affected field names in `normalized_boundary_commas`. Never normalize
   `top`, later punctuation, whitespace or free-form wording.
 - Reapply the unchanged nonempty minimum, four visible-text budgets,
