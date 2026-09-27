@@ -9,6 +9,15 @@ Neither a passing local test nor a supplied JSON receipt authorizes a live
 `apply` or `enable`: the final commit's full OCI image/bundle, locked live
 baseline, fresh backup/clone and real release receipt are still missing.
 
+The first sealed read-only preflight on 2026-09-27 found 19 historical,
+non-automatically-claimable rows and stopped at `baseline_identity` without
+creating a release attempt. Their exact cohort was reviewed in
+`../r16-historical-work-review-20260927.md`. A subsequent candidate adds one
+hash-bound exception for those unchanged rows only; the former `c3d5589`
+image/bundle cannot be promoted with an operator-only edit. Build a new full
+image from the final reviewed commit and repeat the sealed preflight before
+any live release action.
+
 ## Frozen starting identity
 
 Read-only inspection on 2026-09-26 found:

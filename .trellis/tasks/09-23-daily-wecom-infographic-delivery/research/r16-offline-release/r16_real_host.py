@@ -75,6 +75,43 @@ R15_RUNTIME_FILES = 334
 R15_RUNTIME_TREE_SHA256 = (
     "c5742de810955c17bb69c36be4868819c3ae73f3cd8691d9f34d96c6f818daa0"
 )
+# The production 0048 baseline has a specifically reviewed, inert cohort:
+# seven August preview copy jobs/runs (claim requires the *current* business
+# date) and five terminal September Official Account image-result unknowns.
+# This fingerprint includes every relevant row's ID and safety fields. It is
+# not a general age/status exemption: any added, removed or changed member
+# blocks release. See the task's historical-work review research record.
+HISTORICAL_WORK_COHORT_SHA256 = (
+    "22fc386e051df9f0cf6509677a929ae53d35e25a4e63775a68b7b20706fa0e12"
+)
+HISTORICAL_WORK_COHORT_SQL = """
+WITH cohort AS (
+  SELECT jsonb_build_array('copy_generation_jobs', j.id::text, j.run_id::text,
+    j.status, j.attempt_count, j.lease_token IS NULL, r.business_date::text,
+    r.scoring_profile, r.status)::text AS line
+  FROM copy_generation_jobs j
+  JOIN copy_generation_runs r ON r.id=j.run_id
+  WHERE j.status IN ('queued','pending','running','delivering','retryable_failed',
+    'retry_scheduled','admitted','generating','preparing') OR j.lease_token IS NOT NULL
+  UNION ALL
+  SELECT jsonb_build_array('copy_generation_runs', r.id::text, r.status,
+    r.business_date::text, r.scoring_profile, r.timezone, r.decision_kind,
+    (to_jsonb(r)->>'lease_token' IS NULL))::text AS line
+  FROM copy_generation_runs r
+  WHERE r.status IN ('queued','pending','running','delivering','retryable_failed',
+    'retry_scheduled','admitted','generating','preparing')
+    OR to_jsonb(r)->>'lease_token' IS NOT NULL
+  UNION ALL
+  SELECT jsonb_build_array('official_account_article_runs', a.id::text, a.status,
+    a.current_stage, a.error_code, a.error_retryable, a.attempt_count,
+    a.lease_token IS NULL, a.generation_mode)::text AS line
+  FROM official_account_article_runs a
+  WHERE a.status IN ('delivery_unknown','result_unknown','outcome_unknown')
+    AND (to_jsonb(a)->>'expires_at' IS NULL
+      OR (to_jsonb(a)->>'expires_at')::timestamptz > now())
+)
+SELECT line FROM cohort ORDER BY line
+"""
 RUNTIME_TREE_SCRIPT = """import hashlib,json,pathlib,stat
 roots=('/app/app','/app/alembic','/app/alembic.ini','/app/pyproject.toml')
 files={}
@@ -665,7 +702,7 @@ class RealHostAdapter:
         return sha(canonical(self._table_identity))
 
     def _work_counts(self) -> tuple[int, int]:
-        """Refuse new unknown/claimable work; historical exceptions need review."""
+        """Refuse new work; allow only the exact reviewed, inert 0048 cohort."""
         tables = self._sql(
             "SELECT tablename FROM pg_tables WHERE schemaname='public' AND "
             "(tablename LIKE '%_jobs' OR tablename LIKE '%_runs') ORDER BY tablename"
@@ -696,7 +733,18 @@ class RealHostAdapter:
             require(unknown.isdecimal() and pending.isdecimal(), "work_count")
             unknown_total += int(unknown)
             pending_total += int(pending)
-        return unknown_total, pending_total
+        if unknown_total == pending_total == 0:
+            return 0, 0
+        require(
+            (unknown_total, pending_total) == (5, 14),
+            "unreviewed_pending_or_unknown_work",
+        )
+        cohort = self._sql(HISTORICAL_WORK_COHORT_SQL)
+        require(
+            sha(cohort.encode()) == HISTORICAL_WORK_COHORT_SHA256,
+            "historical_work_cohort_drift",
+        )
+        return 0, 0
 
     def _common_identity(
         self,

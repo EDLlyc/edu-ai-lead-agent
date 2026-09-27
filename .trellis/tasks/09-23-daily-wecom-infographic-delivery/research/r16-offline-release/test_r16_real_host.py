@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 import r16_real_host as real
 from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
@@ -295,6 +296,41 @@ def test_real_adapter_draft_has_no_apply_entry_point(tmp_path: Path) -> None:
     with pytest.raises(ReleaseBlocked, match="capture_required"):
         adapter.migrate_forward(ALEMBIC_ONLY_COMMAND, MIGRATION_CHAIN)
     assert commands.calls == []
+
+
+def test_only_exact_historical_work_cohort_is_exempted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, _, _ = _fixture(tmp_path)
+    monkeypatch.setattr(real, "HISTORICAL_WORK_COHORT_SHA256", sha(b"reviewed"))
+    state = {"extra_pending": False, "cohort": "reviewed"}
+
+    def fake_sql(sql: str) -> str:
+        if sql.startswith("SELECT tablename FROM pg_tables"):
+            return (
+                "copy_generation_jobs\ncopy_generation_runs\n"
+                "official_account_article_runs\nwecom_delivery_jobs"
+            )
+        if sql == real.HISTORICAL_WORK_COHORT_SQL:
+            return state["cohort"]
+        if sql.startswith("SELECT count(*) FROM public."):
+            table = sql.split("public.", 1)[1].split(" ", 1)[0]
+            if "delivery_unknown" in sql:
+                return "5" if table == "official_account_article_runs" else "0"
+            if table in {"copy_generation_jobs", "copy_generation_runs"}:
+                return "8" if state["extra_pending"] else "7"
+            return "0"
+        raise AssertionError("unexpected read-only SQL")
+
+    monkeypatch.setattr(adapter, "_sql", fake_sql)
+    assert adapter._work_counts() == (0, 0)
+    state["extra_pending"] = True
+    with pytest.raises(ReleaseBlocked, match="unreviewed_pending_or_unknown_work"):
+        adapter._work_counts()
+    state["extra_pending"] = False
+    state["cohort"] = "changed"
+    with pytest.raises(ReleaseBlocked, match="historical_work_cohort_drift"):
+        adapter._work_counts()
 
 
 def test_compose_ignores_ambient_feature_and_image_overrides(

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 import r16_enablement as enable
 
 MODULE_PATH = Path(__file__).with_name("r16_forward_operator.py")

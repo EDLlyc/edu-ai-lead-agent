@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 import r16_release_cli as cli
 
 
