@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,21 +26,29 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str,
         "operator_sha256": release_operator.sha(
             Path(release_operator.__file__).read_bytes()
         ),
+        "real_host_sha256": "7" * 64,
+        "release_cli_sha256": "8" * 64,
         "schema": release_operator.TARGET_SCHEMA,
         "migration_chain": release_operator.MIGRATION_CHAIN,
         "previous_application_compatible": False,
         "host_files": dict.fromkeys(release_operator.HOST_REPLACEMENTS, HEX),
     }
     released = {
-        "version": "r16-default-off-receipt-v1",
+        "version": "r16-default-off-production-receipt-v1",
+        "status": "deployed_default_off",
+        "attempt_id": "r16-forward-20260927-test",
+        "manifest_sha256": "6" * 64,
         "candidate": manifest["image"],
         "revision": manifest["revision"],
+        "archive_sha256": manifest["archive_sha256"],
+        "operator_sha256": manifest["operator_sha256"],
+        "real_host_sha256": manifest.get("real_host_sha256"),
+        "release_cli_sha256": manifest.get("release_cli_sha256"),
         "schema": release_operator.TARGET_SCHEMA,
+        "migration_chain": release_operator.MIGRATION_CHAIN,
         "services": len(release_operator.SERVICES),
         "default_off": True,
-        "verified": True,
         "simulation_only": False,
-        "activation_attempt_id": "r16-forward-20260927-test",
         "recipient_fingerprint": HEX,
         "baseline_sha256": HEX,
         "backup_receipt_sha256": "4" * 64,
@@ -164,7 +173,11 @@ def direct_first_live_fixture(
         "provider_failure_preserves_base": True,
         "unknown_result_auto_replay": False,
     }
-    auth["authorization_sha256"] = enable._receipt_hash(auth)
+    auth["authorization_sha256"] = release_operator.sha(
+        release_operator.canonical(
+            {key: value for key, value in auth.items() if key != "authorization_sha256"}
+        )
+    )
     evidence = {
         "enablement_mode": enable.DIRECT_FIRST_LIVE_MODE,
         "rollout_policy": enable.DIRECT_FIRST_LIVE_POLICY,
@@ -208,6 +221,12 @@ class FakeHost:
     def capture(self) -> dict[str, Any]:
         self.calls.append("capture")
         return copy.deepcopy(self.current)
+
+    def arm_production_mutation(
+        self, manifest: dict[str, Any], current: dict[str, Any]
+    ) -> None:
+        self.calls.append("arm_production_mutation")
+        assert manifest["image"] == current["image"]
 
     def install_flags(
         self, flags: dict[str, bool], max_ordinal: int, review_mode: str
@@ -462,7 +481,11 @@ def test_direct_first_live_rejects_extra_waiver_claims() -> None:
     del evidence["waive_source_identity"]
     auth = evidence["direct_first_live_authorization"]
     auth["waive_final_jpeg_checks"] = True
-    auth["authorization_sha256"] = enable._receipt_hash(auth)
+    auth["authorization_sha256"] = release_operator.sha(
+        release_operator.canonical(
+            {key: value for key, value in auth.items() if key != "authorization_sha256"}
+        )
+    )
     with pytest.raises(
         release_operator.ReleaseBlocked, match="direct_first_live_authorization"
     ):
@@ -683,7 +706,14 @@ def test_enablement_failure_disables_supplement_but_preserves_base(
 def test_cli_enable_hard_refuses_without_reading_input_files() -> None:
     path = Path(enable.__file__)
     result = subprocess.run(
-        [sys.executable, str(path), "enable", "--manifest", "/missing/secret.json"],
+        [
+            sys.executable,
+            "-I",
+            str(path),
+            "enable",
+            "--manifest",
+            "/missing/secret.json",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -691,5 +721,268 @@ def test_cli_enable_hard_refuses_without_reading_input_files() -> None:
     assert result.returncode == 2
     assert json.loads(result.stdout) == {
         "phase": "blocked",
-        "code": "production_enable_unavailable",
+        "code": "execute_required",
     }
+
+
+def test_cli_refuses_nonisolated_python_before_sibling_import() -> None:
+    path = Path(enable.__file__)
+    result = subprocess.run(
+        [sys.executable, str(path), "enable", "--execute"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert json.loads(result.stdout) == {
+        "phase": "blocked",
+        "code": "isolated_python_required",
+    }
+
+
+def test_isolated_cli_rejects_unsealed_bundle_before_sibling_import() -> None:
+    path = Path(enable.__file__)
+    result = subprocess.run(
+        [sys.executable, "-I", str(path), "enable", "--execute"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert json.loads(result.stdout) == {
+        "phase": "blocked",
+        "code": "bundle_auth_failed",
+    }
+
+
+def _production_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Path, str, Path]:
+    manifest, released, current, evidence = direct_first_live_fixture()
+    authorization_record = tmp_path / "user-authorization.md"
+    authorization_record.write_bytes(b"test-only direct-first-live user decision\n")
+    os.chmod(authorization_record, 0o600)
+    monkeypatch.setattr(
+        enable,
+        "USER_AUTHORIZATION_RECORD_SHA256",
+        release_operator.sha(authorization_record.read_bytes()),
+    )
+    fingerprint = release_operator.APPROVED_RECIPIENT_FINGERPRINT
+    current["recipient_fingerprint"] = fingerprint
+    released["recipient_fingerprint"] = fingerprint
+    released["receipt_sha256"] = enable._receipt_hash(released)
+    auth = evidence["direct_first_live_authorization"]
+    auth["recipient_fingerprint"] = fingerprint
+    auth["release_receipt_sha256"] = released["receipt_sha256"]
+    auth["user_authorization_record_sha256"] = enable.USER_AUTHORIZATION_RECORD_SHA256
+    auth["authorization_sha256"] = release_operator.sha(
+        release_operator.canonical(
+            {key: value for key, value in auth.items() if key != "authorization_sha256"}
+        )
+    )
+    release_dir = tmp_path / released["attempt_id"]
+    release_dir.mkdir(mode=0o700)
+    manifest_sha = "6" * 64
+    backup = {
+        "pg_dump_sha256": "9" * 64,
+        "pg_dump_bytes": 1024,
+        "pg_restore_toc_read": True,
+        "protected_files_readback": True,
+    }
+    clone: dict[str, Any] = {
+        "chain": release_operator.MIGRATION_CHAIN,
+        "source_dump_sha256": backup["pg_dump_sha256"],
+        "source_schema": release_operator.BASE_SCHEMA,
+        "target_schema": release_operator.TARGET_SCHEMA,
+        "isolated_restore_readback": True,
+        "isolated_target": True,
+        "existing_table_counts_equal": True,
+        "source_business_sha256": "a" * 64,
+        "retained_business_sha256": "a" * 64,
+    }
+    clone["receipt_sha256"] = enable._receipt_hash(clone)
+    released["backup_receipt_sha256"] = release_operator.sha(
+        release_operator.canonical(backup)
+    )
+    released["clone_receipt_sha256"] = clone["receipt_sha256"]
+    released["receipt_sha256"] = enable._receipt_hash(released)
+    auth["release_receipt_sha256"] = released["receipt_sha256"]
+    auth["authorization_sha256"] = release_operator.sha(
+        release_operator.canonical(
+            {key: value for key, value in auth.items() if key != "authorization_sha256"}
+        )
+    )
+    intent = {
+        "version": "r16-default-off-intent-v1",
+        "candidate": manifest["image"],
+        "revision": manifest["revision"],
+        "manifest_sha256": manifest_sha,
+        "baseline_sha256": released["baseline_sha256"],
+        "old_app_restart_forbidden_after_migration_intent": True,
+        "simulation_only": False,
+    }
+    migration_intent = {
+        "chain": release_operator.MIGRATION_CHAIN,
+        "forward_only": True,
+        "clone_receipt_sha256": clone["receipt_sha256"],
+        "backup_receipt_sha256": released["backup_receipt_sha256"],
+        "if_unobserved": "forward_reconcile_only",
+        "old_app_restart_forbidden": True,
+        "automatic_restore_or_downgrade_forbidden": True,
+    }
+    for name, data in (
+        ("intent.json", intent),
+        ("release-receipt.json", released),
+        ("backup-receipt.json", backup),
+        ("clone-receipt.json", clone),
+        ("migration-intent.json", migration_intent),
+    ):
+        path = release_dir / name
+        path.write_bytes(release_operator.canonical(data))
+        os.chmod(path, 0o600)
+    return manifest, current, evidence, release_dir, manifest_sha, authorization_record
+
+
+def test_production_enable_uses_real_release_tree_and_separate_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, current, evidence, release_dir, manifest_sha, authorization_record = (
+        _production_fixture(tmp_path, monkeypatch)
+    )
+    monkeypatch.setattr(
+        enable, "valid_production_manifest", release_operator.valid_manifest
+    )
+    host = FakeHost(current)
+    receipt = enable.enable_production(
+        host,
+        manifest,
+        manifest_sha,
+        release_dir,
+        evidence,
+        authorization_record,
+        tmp_path / "r16-enable-one-attempt",
+        (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+    )
+    assert receipt["status"] == "enabled_all_news"
+    assert (
+        receipt["recipient_fingerprint"]
+        == release_operator.APPROVED_RECIPIENT_FINGERPRINT
+    )
+    assert receipt["receipt_sha256"] == enable._receipt_hash(receipt)
+    assert host.calls == [
+        "capture",
+        "arm_production_mutation",
+        "install_flags",
+        "restart_dispatcher",
+        "start_producer",
+        "capture",
+    ]
+    assert (tmp_path / "r16-enable-one-attempt" / "enablement-receipt.json").exists()
+    with pytest.raises(
+        release_operator.ReleaseBlocked, match="prior_enable_attempt_reconcile_only"
+    ):
+        enable.enable_production(
+            host,
+            manifest,
+            manifest_sha,
+            release_dir,
+            evidence,
+            authorization_record,
+            tmp_path / "r16-enable-second-attempt",
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("corruption", "code"),
+    [
+        ("weak_release", "default_off_release_receipt"),
+        ("wrong_manifest", "release_attempt_crosscheck"),
+        ("wrong_user_auth", "user_authorization_record_mismatch"),
+        ("wrong_authorization_file", "user_authorization_file_mismatch"),
+        ("wrong_migration_intent", "release_migration_intent_crosscheck"),
+        ("public_release_dir", "release_attempt_directory"),
+        ("recovery_marker", "release_recovery_marker"),
+        ("broken_recovery_marker", "release_recovery_marker"),
+    ],
+)
+def test_production_enable_rejects_untrusted_provenance_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corruption: str,
+    code: str,
+) -> None:
+    manifest, current, evidence, release_dir, manifest_sha, authorization_record = (
+        _production_fixture(tmp_path, monkeypatch)
+    )
+    monkeypatch.setattr(
+        enable, "valid_production_manifest", release_operator.valid_manifest
+    )
+    if corruption == "weak_release":
+        path = release_dir / "release-receipt.json"
+        value = json.loads(path.read_bytes())
+        del value["archive_sha256"]
+        value["receipt_sha256"] = enable._receipt_hash(value)
+        path.write_bytes(release_operator.canonical(value))
+    elif corruption == "wrong_manifest":
+        manifest_sha = "b" * 64
+    elif corruption == "wrong_user_auth":
+        evidence["direct_first_live_authorization"][
+            "user_authorization_record_sha256"
+        ] = "b" * 64
+    elif corruption == "wrong_authorization_file":
+        authorization_record.write_bytes(b"changed user decision\n")
+    elif corruption == "wrong_migration_intent":
+        path = release_dir / "migration-intent.json"
+        value = json.loads(path.read_bytes())
+        value["forward_only"] = False
+        path.write_bytes(release_operator.canonical(value))
+    elif corruption == "public_release_dir":
+        os.chmod(release_dir, 0o755)
+    elif corruption == "broken_recovery_marker":
+        (release_dir / "forward-recovery-required.json").symlink_to("missing-target")
+    else:
+        (release_dir / "forward-recovery-required.json").write_text("{}")
+    host = FakeHost(current)
+    with pytest.raises(release_operator.ReleaseBlocked, match=code):
+        enable.enable_production(
+            host,
+            manifest,
+            manifest_sha,
+            release_dir,
+            evidence,
+            authorization_record,
+            tmp_path / "r16-enable-attempt",
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls == []
+    assert not (tmp_path / "r16-enable-attempt").exists()
+
+
+def test_production_enable_failure_disables_only_supplement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, current, evidence, release_dir, manifest_sha, authorization_record = (
+        _production_fixture(tmp_path, monkeypatch)
+    )
+    monkeypatch.setattr(
+        enable, "valid_production_manifest", release_operator.valid_manifest
+    )
+    host = FakeHost(current, failure="producer")
+    attempt = tmp_path / "r16-enable-producer-failure"
+    with pytest.raises(RuntimeError, match="producer_failed"):
+        enable.enable_production(
+            host,
+            manifest,
+            manifest_sha,
+            release_dir,
+            evidence,
+            authorization_record,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls[-1] == "disable_supplement_preserve_base"
+    assert host.current["base_delivery_healthy"] is True
+    assert host.current["producer_running"] is False
+    assert (attempt / "enablement-recovery-required.json").exists()
+    assert not (attempt / "enablement-receipt.json").exists()

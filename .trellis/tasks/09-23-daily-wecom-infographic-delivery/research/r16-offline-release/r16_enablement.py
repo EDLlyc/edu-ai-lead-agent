@@ -1,33 +1,105 @@
-#!/usr/bin/env python3
-"""Import-only full-coverage enablement PLAN and fake-host simulation.
+#!/usr/bin/env -S python3 -I
+"""Separate, one-attempt R16 infographic enablement after a default-off release.
 
-No production adapter is accepted by the CLI. The existing R16 release starts
-default-off; this contract models strict legacy and explicitly authorized
-direct-first-live enablement after a distinct real default-off release receipt.
-It does not make any individual image send-ready. Python simulation is not an
-authority to send a WeCom message or enable a host.
+The executable path requires the real release receipt, a pinned source manifest,
+the ordinary-group fingerprint and the user's direct-first-live decision. It
+never sends a message itself; the runtime still validates each final JPEG.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
+import os
 import re
+import stat
+import sys
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
+
+
+def _authenticate_entry_before_sibling_import() -> None:
+    """Validate the sealed bundle before importing any sibling as root."""
+    if not sys.flags.isolated:
+        print(json.dumps({"phase": "blocked", "code": "isolated_python_required"}))
+        raise SystemExit(2)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("action", nargs="?")
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--bundle", type=Path)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--manifest-sha256")
+    parser.add_argument("--operator-sha256")
+    parser.add_argument("--release-launcher-sha256")
+    args, _ = parser.parse_known_args()
+    if args.action == "enable" and not args.execute:
+        print(json.dumps({"phase": "blocked", "code": "execute_required"}))
+        raise SystemExit(2)
+    try:
+        if not (
+            args.bundle
+            and args.manifest
+            and args.manifest_sha256
+            and args.operator_sha256
+            and args.release_launcher_sha256
+            and Path(__file__).absolute() == args.bundle / "r16_enablement.py"
+            and args.manifest == args.bundle / "candidate.json"
+            and re.fullmatch(r"[0-9a-f]{64}", args.operator_sha256)
+            and hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+            == args.operator_sha256
+        ):
+            raise ValueError("unsealed enable entry")
+        launcher = args.bundle / "r16_release_cli.py"
+        # Load the stdlib-only launcher by its exact path without placing the
+        # bundle on sys.path. Its full source hash is checked by the launcher
+        # before it authenticates the remaining source siblings and manifest.
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", args.release_launcher_sha256)
+            or hashlib.sha256(launcher.read_bytes()).hexdigest()
+            != args.release_launcher_sha256
+        ):
+            raise ValueError("unsealed release launcher")
+        spec = importlib.util.spec_from_file_location("r16_release_cli", launcher)
+        if spec is None or spec.loader is None:
+            raise ValueError("missing release launcher")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.authenticate_bundle(
+            launcher,
+            args.bundle,
+            args.manifest,
+            args.manifest_sha256,
+            args.release_launcher_sha256,
+        )
+    except Exception:  # noqa: BLE001 - never expose bundle paths or secrets
+        print(json.dumps({"phase": "blocked", "code": "bundle_auth_failed"}))
+        raise SystemExit(2) from None
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(args.bundle))
+
+
+if __name__ == "__main__":
+    _authenticate_entry_before_sibling_import()
 
 from r16_forward_operator import (
+    APPROVED_RECIPIENT_FINGERPRINT,
+    BASE_SCHEMA,
+    MIGRATION_CHAIN,
     OFF_FLAGS,
     SERVICES,
     TARGET_SCHEMA,
     ReleaseBlocked,
     canonical,
+    fsync_directory,
     is_sha,
     require,
     sha,
     two_local_locks,
     valid_enablement_evidence,
     valid_manifest,
+    valid_production_manifest,
     write_new,
 )
 
@@ -71,6 +143,9 @@ DIRECT_EVIDENCE_FIELDS = frozenset(
     }
 )
 MAX_DAILY_IMAGE_INTENTS = 9
+USER_AUTHORIZATION_RECORD_SHA256 = (
+    "ea52cdb7d3c26737e83a13c64893a35b367354ef051e9f3412860790e6def2b2"
+)
 NOTICE_VERSION = "wecom-infographic-advisory-notice-v1"
 MAX_JPEG_BYTES = 2 * 1024 * 1024
 JPEG_GEOMETRY = (1152, 2048)
@@ -136,21 +211,54 @@ def _receipt_hash(receipt: dict[str, Any]) -> str:
 
 
 def valid_release_receipt(manifest: dict[str, Any], release: dict[str, Any]) -> None:
-    """A simulated release receipt is explicitly non-promotable."""
+    """Only the real operator's default-off production receipt can advance."""
     require(
-        release.get("version") == "r16-default-off-receipt-v1"
-        and release.get("candidate") == manifest["image"]
-        and release.get("revision") == manifest["revision"]
-        and release.get("schema") == TARGET_SCHEMA
-        and release.get("services") == len(SERVICES)
-        and release.get("default_off") is True
-        and release.get("verified") is True
-        and release.get("simulation_only") is False
-        and isinstance(release.get("activation_attempt_id"), str)
+        set(release)
+        == {
+            "version",
+            "status",
+            "attempt_id",
+            "manifest_sha256",
+            "candidate",
+            "revision",
+            "archive_sha256",
+            "operator_sha256",
+            "real_host_sha256",
+            "release_cli_sha256",
+            "schema",
+            "migration_chain",
+            "services",
+            "default_off",
+            "recipient_fingerprint",
+            "baseline_sha256",
+            "backup_receipt_sha256",
+            "clone_receipt_sha256",
+            "simulation_only",
+            "receipt_sha256",
+        }
+        and release.get("version") == "r16-default-off-production-receipt-v1"
+        and release.get("status") == "deployed_default_off"
+        and isinstance(release.get("attempt_id"), str)
         and re.fullmatch(
-            r"r16-forward-[a-z0-9][a-z0-9-]{4,63}", release["activation_attempt_id"]
+            r"r16-forward-[A-Za-z0-9][A-Za-z0-9.-]{4,63}", release["attempt_id"]
         )
         is not None
+        and is_sha(release.get("manifest_sha256"))
+        and release.get("candidate") == manifest["image"]
+        and release.get("revision") == manifest["revision"]
+        and release.get("archive_sha256") == manifest.get("archive_sha256")
+        and is_sha(release.get("archive_sha256"))
+        and release.get("operator_sha256") == manifest.get("operator_sha256")
+        and is_sha(release.get("operator_sha256"))
+        and release.get("real_host_sha256") == manifest.get("real_host_sha256")
+        and is_sha(release.get("real_host_sha256"))
+        and release.get("release_cli_sha256") == manifest.get("release_cli_sha256")
+        and is_sha(release.get("release_cli_sha256"))
+        and release.get("schema") == TARGET_SCHEMA
+        and release.get("migration_chain") == MIGRATION_CHAIN
+        and release.get("services") == len(SERVICES)
+        and release.get("default_off") is True
+        and release.get("simulation_only") is False
         and is_sha(release.get("recipient_fingerprint"))
         and is_sha(release.get("baseline_sha256"))
         and is_sha(release.get("backup_receipt_sha256"))
@@ -176,9 +284,17 @@ def valid_current(
         and current.get("recipient_fingerprint") == release["recipient_fingerprint"]
         and current.get("base_delivery_healthy") is True
         and type(current.get("unknown_work_count")) is int
-        and current.get("unknown_work_count") == 0
+        and (
+            current.get("unknown_work_count", -1) >= 0
+            if enabled
+            else current.get("unknown_work_count") == 0
+        )
         and type(current.get("pending_work_count")) is int
-        and current.get("pending_work_count") == 0
+        and (
+            current.get("pending_work_count", -1) >= 0
+            if enabled
+            else current.get("pending_work_count") == 0
+        )
         and isinstance(flags, dict)
         and flags == expected_flags
         and current.get("producer_running") is enabled
@@ -469,7 +585,7 @@ def plan(
 
 
 class SimulatedEnableHost(Protocol):
-    """Fake-only; no production implementation or CLI path exists."""
+    """Small host boundary shared by fake tests and the separately armed CLI."""
 
     def capture(self) -> dict[str, Any]: ...
     def install_flags(
@@ -478,6 +594,12 @@ class SimulatedEnableHost(Protocol):
     def restart_dispatcher(self, command: tuple[str, ...]) -> None: ...
     def start_producer(self, command: tuple[str, ...]) -> None: ...
     def disable_supplement_preserve_base(self) -> None: ...
+
+
+class ProductionEnableHost(SimulatedEnableHost, Protocol):
+    def arm_production_mutation(
+        self, manifest: dict[str, Any], current: dict[str, Any]
+    ) -> None: ...
 
 
 def simulate(
@@ -586,6 +708,232 @@ def simulate(
     return {"phase": "simulated_enablement", "production_enable_available": False}
 
 
+def valid_release_attempt_files(
+    manifest: dict[str, Any], manifest_sha256: str, release_dir: Path
+) -> dict[str, Any]:
+    """Authenticate the actual completed release tree, not a supplied JSON story."""
+    info = release_dir.lstat()
+    require(
+        release_dir.name.startswith("r16-forward-")
+        and re.fullmatch(
+            r"r16-forward-[A-Za-z0-9][A-Za-z0-9.-]{4,63}", release_dir.name
+        )
+        is not None
+        and stat.S_ISDIR(info.st_mode)
+        and info.st_uid == os.geteuid()
+        and stat.S_IMODE(info.st_mode) == 0o700,
+        "release_attempt_directory",
+    )
+
+    def private_json(name: str) -> dict[str, Any]:
+        path = release_dir / name
+        info = path.lstat()
+        require(
+            stat.S_ISREG(info.st_mode)
+            and info.st_nlink == 1
+            and info.st_uid == os.geteuid()
+            and stat.S_IMODE(info.st_mode) == 0o600,
+            "release_attempt_file_type",
+        )
+        value = json.loads(path.read_bytes())
+        require(isinstance(value, dict), "release_attempt_json")
+        return cast(dict[str, Any], value)
+
+    require(
+        not (release_dir / "forward-recovery-required.json").exists()
+        and not (release_dir / "forward-recovery-required.json").is_symlink(),
+        "release_recovery_marker",
+    )
+    intent = private_json("intent.json")
+    release = private_json("release-receipt.json")
+    backup = private_json("backup-receipt.json")
+    clone = private_json("clone-receipt.json")
+    migration_intent = private_json("migration-intent.json")
+    valid_release_receipt(manifest, release)
+    require(
+        intent.get("version") == "r16-default-off-intent-v1"
+        and release["attempt_id"] == release_dir.name
+        and release["manifest_sha256"] == manifest_sha256
+        and intent.get("candidate") == manifest["image"]
+        and intent.get("revision") == manifest["revision"]
+        and intent.get("manifest_sha256") == manifest_sha256
+        and intent.get("baseline_sha256") == release["baseline_sha256"]
+        and intent.get("old_app_restart_forbidden_after_migration_intent") is True
+        and intent.get("simulation_only") is False
+        and is_sha(backup.get("pg_dump_sha256"))
+        and type(backup.get("pg_dump_bytes")) is int
+        and backup["pg_dump_bytes"] > 0
+        and backup.get("pg_restore_toc_read") is True
+        and backup.get("protected_files_readback") is True
+        and release["backup_receipt_sha256"] == sha(canonical(backup))
+        and clone.get("chain") == MIGRATION_CHAIN
+        and clone.get("source_dump_sha256") == backup["pg_dump_sha256"]
+        and clone.get("source_schema") == BASE_SCHEMA
+        and clone.get("target_schema") == TARGET_SCHEMA
+        and clone.get("isolated_restore_readback") is True
+        and clone.get("isolated_target") is True
+        and clone.get("existing_table_counts_equal") is True
+        and is_sha(clone.get("source_business_sha256"))
+        and clone.get("retained_business_sha256") == clone["source_business_sha256"]
+        and release["clone_receipt_sha256"] == clone.get("receipt_sha256")
+        and clone.get("receipt_sha256") == _receipt_hash(clone),
+        "release_attempt_crosscheck",
+    )
+    require(
+        migration_intent.get("chain") == MIGRATION_CHAIN
+        and migration_intent.get("forward_only") is True
+        and migration_intent.get("clone_receipt_sha256") == clone["receipt_sha256"]
+        and migration_intent.get("backup_receipt_sha256")
+        == release["backup_receipt_sha256"]
+        and migration_intent.get("if_unobserved") == "forward_reconcile_only"
+        and migration_intent.get("old_app_restart_forbidden") is True
+        and migration_intent.get("automatic_restore_or_downgrade_forbidden") is True,
+        "release_migration_intent_crosscheck",
+    )
+    return release
+
+
+def valid_authorization_record(path: Path) -> None:
+    """Require the exact separately preserved user-decision file, not a JSON claim."""
+    info = path.lstat()
+    require(
+        stat.S_ISREG(info.st_mode)
+        and info.st_nlink == 1
+        and info.st_uid == os.geteuid()
+        and stat.S_IMODE(info.st_mode) == 0o600
+        and 0 < info.st_size <= 64 * 1024
+        and sha(path.read_bytes()) == USER_AUTHORIZATION_RECORD_SHA256,
+        "user_authorization_file_mismatch",
+    )
+
+
+def enable_production(
+    host: ProductionEnableHost,
+    manifest: dict[str, Any],
+    manifest_sha256: str,
+    release_dir: Path,
+    evidence: dict[str, Any],
+    authorization_record: Path,
+    attempt_dir: Path,
+    lock_paths: tuple[Path, Path],
+) -> dict[str, Any]:
+    """Forward-only enablement; no retry or replay after an ambiguous attempt."""
+    valid_production_manifest(manifest)
+    require(is_sha(manifest_sha256), "manifest_hash_unpinned")
+    require(
+        attempt_dir.name.startswith("r16-enable-")
+        and re.fullmatch(r"r16-enable-[A-Za-z0-9][A-Za-z0-9.-]{4,63}", attempt_dir.name)
+        is not None
+        and not attempt_dir.exists(),
+        "enablement_attempt_exists_reconcile_only",
+    )
+    require(
+        evidence.get("enablement_mode") == DIRECT_FIRST_LIVE_MODE,
+        "production_direct_mode_required",
+    )
+    auth = evidence.get("direct_first_live_authorization")
+    require(
+        isinstance(auth, dict)
+        and auth.get("user_authorization_record_sha256")
+        == USER_AUTHORIZATION_RECORD_SHA256,
+        "user_authorization_record_mismatch",
+    )
+    valid_authorization_record(authorization_record)
+    with two_local_locks(lock_paths):
+        require(not attempt_dir.exists(), "enablement_attempt_exists_reconcile_only")
+        require(
+            not any(
+                item.name.startswith("r16-enable-")
+                for item in attempt_dir.parent.iterdir()
+            ),
+            "prior_enable_attempt_reconcile_only",
+        )
+        release = valid_release_attempt_files(manifest, manifest_sha256, release_dir)
+        require(
+            release["recipient_fingerprint"] == APPROVED_RECIPIENT_FINGERPRINT,
+            "approved_recipient_mismatch",
+        )
+        current = host.capture()
+        checked = plan(manifest, release, current, evidence)
+        require(
+            current["recipient_fingerprint"] == APPROVED_RECIPIENT_FINGERPRINT,
+            "approved_recipient_mismatch",
+        )
+        host.arm_production_mutation(manifest, current)
+        attempt_dir.mkdir(mode=0o700, exist_ok=False)
+        fsync_directory(attempt_dir.parent)
+        write_new(
+            attempt_dir / "enablement-intent.json",
+            {
+                "version": "r16-direct-first-live-intent-v1",
+                "candidate": manifest["image"],
+                "revision": manifest["revision"],
+                "manifest_sha256": manifest_sha256,
+                "release_receipt_sha256": release["receipt_sha256"],
+                "before_sha256": sha(canonical(current)),
+                "evidence_sha256": checked["evidence_sha256"],
+                "authorization_sha256": checked["authorization_sha256"],
+                "recipient_fingerprint": APPROVED_RECIPIENT_FINGERPRINT,
+                "user_authorization_record_sha256": USER_AUTHORIZATION_RECORD_SHA256,
+                "simulation_only": False,
+                "unknown_result_auto_replay": False,
+            },
+        )
+        completed = False
+        try:
+            host.install_flags(dict(ACTIVE_FLAGS), MAX_ORDINAL, REVIEW_MODE)
+            host.restart_dispatcher(DISPATCHER_START)
+            host.start_producer(PRODUCER_START)
+            after = host.capture()
+            valid_current(manifest, release, after, enabled=True)
+            require(
+                after["recipient_fingerprint"] == APPROVED_RECIPIENT_FINGERPRINT,
+                "enablement_recipient_drift",
+            )
+            receipt = {
+                "version": "r16-direct-first-live-production-receipt-v1",
+                "status": "enabled_all_news",
+                "candidate": manifest["image"],
+                "revision": manifest["revision"],
+                "schema": TARGET_SCHEMA,
+                "release_receipt_sha256": release["receipt_sha256"],
+                "before_sha256": sha(canonical(current)),
+                "after_sha256": sha(canonical(after)),
+                "evidence_sha256": checked["evidence_sha256"],
+                "authorization_sha256": checked["authorization_sha256"],
+                "user_authorization_record_sha256": USER_AUTHORIZATION_RECORD_SHA256,
+                "recipient_fingerprint": APPROVED_RECIPIENT_FINGERPRINT,
+                "slots": list(SLOTS),
+                "max_ordinal": MAX_ORDINAL,
+                "review_mode": REVIEW_MODE,
+                "max_daily_image_intents": MAX_DAILY_IMAGE_INTENTS,
+                "first_success_to_ordinary_group": True,
+                "base_delivery_healthy": True,
+                "unknown_result_auto_replay": False,
+                "simulation_only": False,
+            }
+            receipt["receipt_sha256"] = _receipt_hash(receipt)
+            write_new(attempt_dir / "enablement-receipt.json", receipt)
+            completed = True
+        finally:
+            if not completed:
+                try:
+                    write_new(
+                        attempt_dir / "enablement-recovery-required.json",
+                        {
+                            "version": "r16-enablement-recovery-v1",
+                            "candidate": manifest["image"],
+                            "disable_supplement_only": True,
+                            "preserve_base_text_and_original_image": True,
+                            "no_auto_replay_unknown": True,
+                            "simulation_only": False,
+                        },
+                    )
+                finally:
+                    host.disable_supplement_preserve_base()
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("plan", "enable"))
@@ -593,10 +941,117 @@ def main() -> int:
     parser.add_argument("--release", type=Path)
     parser.add_argument("--current", type=Path)
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--authorization-record", type=Path)
+    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--bundle", type=Path)
+    parser.add_argument("--manifest-sha256")
+    parser.add_argument("--operator-sha256")
+    parser.add_argument("--enable-host-sha256")
+    parser.add_argument("--release-launcher-sha256")
+    parser.add_argument("--release-attempt", type=Path)
+    parser.add_argument("--attempt-name")
     args = parser.parse_args()
     if args.action == "enable":
-        print(json.dumps({"phase": "blocked", "code": "production_enable_unavailable"}))
-        return 2
+        if not args.execute:
+            print(json.dumps({"phase": "blocked", "code": "execute_required"}))
+            return 2
+        try:
+            from r16_release_cli import authenticate_bundle, trusted_path
+
+            require(os.geteuid() == 0, "root_required")
+            require(
+                args.bundle is not None
+                and args.manifest is not None
+                and args.evidence is not None
+                and args.authorization_record is not None
+                and args.release_attempt is not None
+                and isinstance(args.attempt_name, str)
+                and is_sha(args.manifest_sha256)
+                and is_sha(args.operator_sha256)
+                and is_sha(args.enable_host_sha256)
+                and is_sha(args.release_launcher_sha256),
+                "enable_arguments",
+            )
+            require(
+                Path(__file__).absolute() == args.bundle / "r16_enablement.py"
+                and args.manifest == args.bundle / "candidate.json",
+                "enable_not_in_sealed_bundle",
+            )
+            require(
+                args.operator_sha256 == sha(Path(__file__).read_bytes())
+                and args.enable_host_sha256
+                == sha(Path(__file__).with_name("r16_enable_host.py").read_bytes()),
+                "enable_operator_source_hash",
+            )
+            require(
+                args.release_attempt.parent == Path("/opt/edu-ai-release-backups")
+                and not args.release_attempt.is_symlink(),
+                "release_attempt_location",
+            )
+            manifest = authenticate_bundle(
+                args.bundle / "r16_release_cli.py",
+                args.bundle,
+                args.manifest,
+                args.manifest_sha256,
+                args.release_launcher_sha256,
+            )
+            require(
+                manifest.get("enable_operator_sha256") == args.operator_sha256
+                and manifest.get("enable_host_sha256") == args.enable_host_sha256,
+                "enable_source_not_manifest_pinned",
+            )
+            trusted_path(args.evidence, directory=False)
+            trusted_path(args.authorization_record, directory=False)
+            trusted_path(args.release_attempt, directory=True)
+            require(
+                stat.S_IMODE(args.evidence.stat().st_mode) == 0o600
+                and 0 < args.evidence.stat().st_size <= 64 * 1024,
+                "enable_evidence_file",
+            )
+            evidence = json.loads(args.evidence.read_bytes())
+            require(
+                isinstance(manifest, dict) and isinstance(evidence, dict),
+                "enable_input_json",
+            )
+            from r16_enable_host import EnablePaths, RealEnableHost
+            from r16_real_host import BACKUP_ROOT, SubprocessRunner
+
+            host = RealEnableHost(SubprocessRunner(), EnablePaths(), manifest)
+            receipt = enable_production(
+                host,
+                manifest,
+                args.manifest_sha256,
+                args.release_attempt,
+                evidence,
+                args.authorization_record,
+                BACKUP_ROOT / args.attempt_name,
+                (
+                    Path("/var/lock/edu-ai-deploy.lock"),
+                    Path("/var/lock/edu-ai-backup.lock"),
+                ),
+            )
+            print(
+                json.dumps(
+                    {
+                        "phase": "enabled_all_news",
+                        "candidate": receipt["candidate"],
+                        "receipt_sha256": receipt["receipt_sha256"],
+                        "recipient_fingerprint": receipt["recipient_fingerprint"],
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        except Exception as exc:  # noqa: BLE001 - redact unexpected host failures
+            known = (
+                isinstance(exc, ReleaseBlocked)
+                or exc.__class__.__name__ == "LaunchBlocked"
+            )
+            code = str(exc) if known else "enable_input_or_host_failure"
+            if re.fullmatch(r"[a-z][a-z0-9_]*", code) is None:
+                code = "enable_input_or_host_failure"
+            print(json.dumps({"phase": "blocked", "code": code}))
+            return 2
     if not (args.manifest and args.release and args.current and args.evidence):
         parser.error("plan requires --manifest, --release, --current and --evidence")
     try:
