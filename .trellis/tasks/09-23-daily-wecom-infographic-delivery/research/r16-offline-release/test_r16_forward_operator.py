@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import r16_enablement as enable
 
 MODULE_PATH = Path(__file__).with_name("r16_forward_operator.py")
 SPEC = importlib.util.spec_from_file_location("r16_forward_operator", MODULE_PATH)
@@ -98,12 +99,43 @@ def fixture() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     return manifest, baseline, evidence
 
 
+def production_fixture() -> tuple[dict[str, Any], dict[str, Any]]:
+    manifest, baseline, _ = fixture()
+    manifest["real_host_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_real_host.py").read_bytes()
+    )
+    manifest["release_cli_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_release_cli.py").read_bytes()
+    )
+    manifest["enable_operator_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_enablement.py").read_bytes()
+    )
+    manifest["enable_host_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_enable_host.py").read_bytes()
+    )
+    manifest["trusted_recipient_fingerprint"] = operator.APPROVED_RECIPIENT_FINGERPRINT
+    manifest["trusted_recipient_key_sha256"] = operator.APPROVED_RECIPIENT_KEY_SHA256
+    baseline["recipient_fingerprint"] = operator.APPROVED_RECIPIENT_FINGERPRINT
+    return manifest, baseline
+
+
 class FakeHost:
     def __init__(self, baseline: dict[str, Any], *, failure: str | None = None) -> None:
         self.baseline = copy.deepcopy(baseline)
         self.failure = failure
         self.calls: list[str] = []
         self.stopped = False
+
+    def arm_production_mutation(
+        self,
+        manifest: dict[str, Any],
+        baseline: dict[str, Any],
+        manifest_sha256: str,
+    ) -> None:
+        assert manifest["revision"] == "1" * 40
+        assert baseline == self.baseline
+        assert manifest_sha256 == "d" * 64
+        self.calls.append("arm_production_mutation")
 
     def capture(self) -> dict[str, Any]:
         self.calls.append("capture")
@@ -287,6 +319,15 @@ def test_production_manifest_requires_exact_operator_source_and_host_hash() -> N
         operator.valid_production_manifest(manifest)
     manifest["real_host_sha256"] = operator.sha(
         MODULE_PATH.with_name("r16_real_host.py").read_bytes()
+    )
+    manifest["release_cli_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_release_cli.py").read_bytes()
+    )
+    manifest["enable_operator_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_enablement.py").read_bytes()
+    )
+    manifest["enable_host_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_enable_host.py").read_bytes()
     )
     with pytest.raises(operator.ReleaseBlocked, match="trusted_recipient_unpinned"):
         operator.valid_production_manifest(manifest)
@@ -754,3 +795,123 @@ def test_cli_production_apply_is_hard_disabled_even_with_paths(tmp_path: Path) -
         "phase": "blocked",
         "code": "production_apply_unavailable",
     }
+
+
+def test_actual_operator_one_attempt_fake_host_is_default_off(
+    tmp_path: Path,
+) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline)
+    attempt = tmp_path / "r16-forward-fake1"
+    locks = (tmp_path / "deploy.lock", tmp_path / "backup.lock")
+    receipt = operator.apply_release(host, manifest, "d" * 64, attempt, locks)
+    assert receipt["status"] == "deployed_default_off"
+    assert receipt["simulation_only"] is False
+    assert receipt["default_off"] is True
+    assert (
+        json.loads((attempt / "intent.json").read_text())["manifest_sha256"] == "d" * 64
+    )
+    assert (attempt / "backup-receipt.json").exists()
+    assert (attempt / "clone-receipt.json").exists()
+    assert (attempt / "migration-intent.json").exists()
+    migration_intent = json.loads((attempt / "migration-intent.json").read_text())
+    assert migration_intent["if_unobserved"] == "forward_reconcile_only"
+    assert migration_intent["old_app_restart_forbidden"] is True
+    assert migration_intent["automatic_restore_or_downgrade_forbidden"] is True
+    assert json.loads((attempt / "release-receipt.json").read_text()) == receipt
+    enable.valid_release_receipt(manifest, receipt)
+    assert host.calls.index("backup") < host.calls.index("rehearse_clone")
+    assert host.calls.index("rehearse_clone") < host.calls.index("migrate_forward")
+    assert host.calls.index("migrate_forward") < host.calls.index("start_default_off")
+    assert "stop_all" not in host.calls
+    with pytest.raises(operator.ReleaseBlocked, match="attempt_exists_reconcile_only"):
+        operator.apply_release(host, manifest, "d" * 64, attempt, locks)
+
+
+@pytest.mark.parametrize(
+    "failure", ["stop", "backup", "stage", "clone", "migration", "verify"]
+)
+def test_actual_operator_failure_is_forward_only(tmp_path: Path, failure: str) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure=failure)
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(RuntimeError):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls[-1] == "stop_all"
+    assert (attempt / "intent.json").exists()
+    assert (attempt / "forward-recovery-required.json").exists()
+    assert not (attempt / "release-receipt.json").exists()
+    assert host.calls.count("migrate_forward") <= 1
+
+
+def test_actual_operator_lock_contention_prevents_attempt(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline)
+    backup_lock = tmp_path / "backup.lock"
+    fd = os.open(backup_lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            operator.apply_release(
+                host,
+                manifest,
+                "d" * 64,
+                tmp_path / "r16-forward-fake1",
+                (tmp_path / "deploy.lock", backup_lock),
+            )
+        assert host.calls == []
+        assert not (tmp_path / "r16-forward-fake1").exists()
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def test_actual_operator_wrong_group_blocks_before_intent(tmp_path: Path) -> None:
+    manifest, baseline = production_fixture()
+    baseline["recipient_fingerprint"] = "f" * 64
+    host = FakeHost(baseline)
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(operator.ReleaseBlocked, match="approved_recipient_mismatch"):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls == ["capture"]
+    assert not attempt.exists()
+
+
+def test_synthetic_crash_after_migration_intent_is_reconcile_only(
+    tmp_path: Path,
+) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline)
+    attempt = tmp_path / "r16-forward-crash1"
+    attempt.mkdir(mode=0o700)
+    operator.write_new(
+        attempt / "migration-intent.json",
+        {
+            "chain": operator.MIGRATION_CHAIN,
+            "forward_only": True,
+            "if_unobserved": "forward_reconcile_only",
+            "old_app_restart_forbidden": True,
+        },
+    )
+    assert not (attempt / "release-receipt.json").exists()
+    with pytest.raises(operator.ReleaseBlocked, match="attempt_exists_reconcile_only"):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert host.calls == []

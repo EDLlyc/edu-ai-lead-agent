@@ -43,6 +43,7 @@ class FakeCommands:
         self.fail_code: str | None = None
         self.runtime_tree_sha = real.R15_RUNTIME_TREE_SHA256
         self.dispatcher_key = "fake-group-key"
+        self.compose_help = b"--no-build --no-deps --pull --wait --wait-timeout"
         self.names = {
             f"{i + 1:012x}": name
             for i, name in enumerate((*SERVICES, "postgres", "minio"))
@@ -107,7 +108,11 @@ class FakeCommands:
             return json.dumps(
                 [{"Name": name, "Mountpoint": str(self.volume_paths[name])}]
             ).encode()
+        if argv == ("docker", "compose", "up", "--help"):
+            return self.compose_help
         if argv[:3] == ("docker", "compose", "--project-name"):
+            if "config" in argv:
+                return b""
             if "ps" in argv:
                 name = argv[-1]
                 return next(
@@ -220,7 +225,7 @@ def _fixture(
     app.mkdir()
     backup_root = tmp_path / "backups"
     backup_root.mkdir(mode=0o700)
-    attempt = backup_root / "r16-forward-test"
+    attempt = backup_root / "r16-forward-test1"
     attempt.mkdir(mode=0o700)
     bundle = tmp_path / "bundle"
     bundle.mkdir()
@@ -302,7 +307,7 @@ def test_compose_ignores_ambient_feature_and_image_overrides(
     compose_envs = [
         env
         for call, env in zip(commands.calls, commands.envs, strict=True)
-        if call[:2] == ("docker", "compose")
+        if call[:3] == ("docker", "compose", "--project-name")
     ]
     assert compose_envs
     assert all(
@@ -350,11 +355,25 @@ def test_review_lockout_blocks_real_host_mutation_even_by_import(
     tmp_path: Path,
 ) -> None:
     adapter, commands, _ = _fixture(tmp_path)
-    assert real.REAL_HOST_MUTATION_REVIEWED is False
+    assert adapter._mutation_armed is False
     adapter._production_paths = True
-    with pytest.raises(ReleaseBlocked, match="real_host_mutation_unreviewed"):
+    with pytest.raises(ReleaseBlocked, match="real_host_mutation_unarmed"):
         adapter.stop_writers()
     assert commands.calls == []
+
+
+def test_real_host_cannot_arm_without_durable_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, commands, manifest = _fixture(tmp_path)
+    baseline = adapter.capture()
+    adapter._production_paths = True
+    adapter.runner = real.SubprocessRunner()
+    monkeypatch.setattr(real, "valid_production_manifest", lambda _manifest: None)
+    with pytest.raises(ReleaseBlocked, match="mutation_intent_missing"):
+        adapter.arm_production_mutation(manifest, baseline, "d" * 64)
+    assert adapter._mutation_armed is False
+    assert not any("stop" in call for call in commands.calls)
 
 
 def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
@@ -381,6 +400,10 @@ def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
     assert sum("alembic" in call for call in commands.calls) == 2
     adapter.install_candidate(manifest)
     adapter.start_default_off(SERVICES)
+    start = next(
+        call for call in commands.calls if "up" in call and "--help" not in call
+    )
+    assert {"--no-build", "--no-deps", "never", "--wait"}.issubset(start)
     assert adapter.verify_candidate(manifest)
     assert (adapter.paths.app / ".env").read_bytes().count(b"fake-group-key") == 1
     assert (adapter.paths.app / ".release-commit").read_text().strip() == manifest[
@@ -470,6 +493,22 @@ def test_tampered_bundle_refused_during_readonly_capture(tmp_path: Path) -> None
     assert commands.calls == []
 
 
+def test_candidate_compose_syntax_blocks_before_any_stop(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.fail_code = "candidate_compose_config"
+    with pytest.raises(ReleaseBlocked, match="candidate_compose_config"):
+        adapter.capture()
+    assert not any("stop" in call for call in commands.calls)
+
+
+def test_missing_compose_wait_capability_blocks_before_any_stop(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.compose_help = b"--no-build --no-deps --pull"
+    with pytest.raises(ReleaseBlocked, match="compose_up_capabilities"):
+        adapter.capture()
+    assert not any("stop" in call for call in commands.calls)
+
+
 def test_flag_on_blocks_default_off_start(tmp_path: Path) -> None:
     adapter, commands, manifest = _fixture(tmp_path)
     adapter.capture()
@@ -535,6 +574,23 @@ def test_subprocess_explicit_env_does_not_inherit_overrides(
     assert body.strip() == b"absent"
 
 
+def test_subprocess_default_env_pins_local_docker_socket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(real, "APP", tmp_path)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://wrong-daemon:2375")
+    monkeypatch.setenv("DOCKER_CONTEXT", "remote")
+    body = real.SubprocessRunner().run(
+        (
+            sys.executable,
+            "-c",
+            "import os; print(os.getenv('DOCKER_HOST'), os.getenv('DOCKER_CONTEXT'))",
+        ),
+        code="test_docker_env",
+    )
+    assert body.strip() == b"unix:///var/run/docker.sock None"
+
+
 def test_production_constructor_rejects_test_paths(tmp_path: Path) -> None:
     adapter, commands, manifest = _fixture(tmp_path)
     with pytest.raises(ReleaseBlocked, match="host_paths|root_required"):
@@ -545,6 +601,20 @@ def test_production_constructor_rejects_test_paths(tmp_path: Path) -> None:
             manifest,
             adapter.bundle_dir,
         )
+
+
+def test_too_long_clone_suffix_blocks_before_capture(tmp_path: Path) -> None:
+    adapter, commands, manifest = _fixture(tmp_path)
+    with pytest.raises(ReleaseBlocked, match="attempt_name"):
+        real.RealHostAdapter(
+            commands,
+            adapter.paths,
+            adapter.paths.backup_root / ("r16-forward-" + "x" * 33),
+            manifest,
+            adapter.bundle_dir,
+            require_production_paths=False,
+        )
+    assert commands.calls == []
 
 
 def test_test_paths_cannot_pair_with_real_docker_runner(tmp_path: Path) -> None:
@@ -560,5 +630,5 @@ def test_test_paths_cannot_pair_with_real_docker_runner(tmp_path: Path) -> None:
         )
     # A later accidental runner swap must not bypass the second lockout.
     adapter.runner = real.SubprocessRunner()
-    with pytest.raises(ReleaseBlocked, match="real_host_mutation_unreviewed"):
+    with pytest.raises(ReleaseBlocked, match="real_host_mutation_unarmed"):
         adapter.stop_writers()

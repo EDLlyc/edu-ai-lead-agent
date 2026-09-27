@@ -1,9 +1,7 @@
-"""Import-only R16 host adapter draft; the release CLI still refuses ``apply``.
+"""R16 host adapter used only by the authenticated, one-attempt release CLI.
 
-This module contains real filesystem/Docker operations so their exact commands
-can be reviewed and fake-runner tested. It is deliberately not wired to the
-release entry point. A green unit test is not a production backup, clone,
-recipient receipt, or authority to run these methods on a live host.
+Real filesystem and Docker operations are never invoked by unit tests. A
+green fake-runner test is not a production backup, clone or release receipt.
 """
 
 from __future__ import annotations
@@ -27,6 +25,7 @@ from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
     APPROVED_RECIPIENT_FINGERPRINT,
     APPROVED_RECIPIENT_KEY_SHA256,
+    ATTEMPT_NAME,
     BASE_IMAGE,
     BASE_REF,
     BASE_REVISION,
@@ -42,6 +41,7 @@ from r16_forward_operator import (
     require,
     sha,
     valid_baseline,
+    valid_production_manifest,
 )
 
 APP = Path("/opt/edu-ai-lead-agent")
@@ -60,9 +60,14 @@ REPLACED_FILES = HOST_REPLACEMENTS
 MAX_COMMAND_OUTPUT = 2 * 1024 * 1024
 MIN_RELEASE_FREE_BYTES = 8 * 1024**3
 MIN_RELEASE_FREE_INODES = 10_000
-# Intentional second lockout: even a direct import cannot mutate real host
-# paths until a later independently reviewed release changes this source hash.
-REAL_HOST_MUTATION_REVIEWED = False
+HOST_COMMAND_ENV = {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "HOME": "/root",
+    "DOCKER_CONFIG": "/root/.docker",
+    "DOCKER_HOST": "unix:///var/run/docker.sock",
+}
+# Real paths are armed only after the authenticated operator captures its
+# baseline under both existing locks. Direct imports remain unarmed.
 # Computed from the independently checked R15 OCI bundle (archive SHA-256 in
 # r16_gate.BASE_ARCHIVE_SHA256) loaded as BASE_IMAGE, not from a mutable tag.
 # The tree contains /app/app, /app/alembic, alembic.ini and pyproject.toml.
@@ -134,7 +139,7 @@ class SubprocessRunner:
             result = subprocess.run(
                 argv,
                 cwd=APP,
-                env=dict(env) if env is not None else None,
+                env=dict(env) if env is not None else dict(HOST_COMMAND_ENV),
                 stdin=source,
                 stdout=target if target is not None else subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -302,6 +307,18 @@ def _archive_tree(source: Path, archive_path: Path) -> tuple[str, dict[str, Any]
     return str(_metadata(archive_path)["sha256"]), before
 
 
+def _fsync_directories(root: Path) -> None:
+    """Persist backup directory entries before a migration intent is written."""
+    require(root.is_dir() and not root.is_symlink(), "backup_directory_type")
+    paths = [Path(folder) for folder, _, _ in os.walk(root, followlinks=False)]
+    for path in reversed(paths):
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+
 def _parse_env(path: Path) -> dict[str, str]:
     _regular_file(path, private=True)
     values: dict[str, str] = {}
@@ -333,11 +350,10 @@ class HostPaths:
 
 
 class RealHostAdapter:
-    """Reviewed-method draft, not an executable deployment entry point.
+    """Release host operations, armed only after a locked baseline capture.
 
-    Only the explicitly passed attempt directory receives backup/clone files.
-    The caller must hold both audited locks and must never invoke this class
-    from an unreviewed shell. ``r16_forward_operator.py apply`` remains off.
+    The authenticated CLI owns the two locks and one-attempt directory. The
+    old ``r16_forward_operator.py apply`` entry remains hard-disabled.
     """
 
     def __init__(
@@ -369,11 +385,7 @@ class RealHostAdapter:
                 not isinstance(runner, SubprocessRunner),
                 "test_paths_real_runner_forbidden",
             )
-        require(
-            attempt_dir.name.startswith("r16-forward-")
-            and SAFE_NAME.fullmatch(attempt_dir.name) is not None,
-            "attempt_name",
-        )
+        require(ATTEMPT_NAME.fullmatch(attempt_dir.name) is not None, "attempt_name")
         self.runner = runner
         self.paths = paths
         self.attempt_dir = attempt_dir
@@ -387,6 +399,7 @@ class RealHostAdapter:
         self._clone_verified = False
         self._candidate_loaded = False
         self._production_paths = require_production_paths
+        self._mutation_armed = False
         require(
             not require_production_paths
             or (
@@ -422,13 +435,68 @@ class RealHostAdapter:
 
     def _require_mutation_review(self) -> None:
         require(
-            REAL_HOST_MUTATION_REVIEWED
+            self._mutation_armed
             or (
                 not self._production_paths
                 and not isinstance(self.runner, SubprocessRunner)
             ),
-            "real_host_mutation_unreviewed",
+            "real_host_mutation_unarmed",
         )
+
+    def arm_production_mutation(
+        self,
+        manifest: dict[str, Any],
+        baseline: dict[str, Any],
+        manifest_sha256: str,
+    ) -> None:
+        """Bind host writes to a durable single-attempt intent and capture."""
+        require(
+            self._production_paths
+            and isinstance(self.runner, SubprocessRunner)
+            and not self._mutation_armed
+            and not self._stopped,
+            "mutation_arm_order",
+        )
+        valid_production_manifest(manifest)
+        require(
+            re.fullmatch(r"[0-9a-f]{64}", manifest_sha256) is not None,
+            "mutation_manifest_hash",
+        )
+        attempt_info = self.attempt_dir.lstat()
+        require(
+            stat.S_ISDIR(attempt_info.st_mode)
+            and not self.attempt_dir.is_symlink()
+            and attempt_info.st_uid == 0
+            and stat.S_IMODE(attempt_info.st_mode) == 0o700,
+            "mutation_attempt_directory",
+        )
+        intent_path = self.attempt_dir / "intent.json"
+        require(intent_path.exists(), "mutation_intent_missing")
+        intent_info = _regular_file(intent_path, private=True)
+        require(intent_info.st_uid == 0, "mutation_intent_owner")
+        intent = _json(intent_path.read_bytes(), "mutation_intent_json")
+        require(
+            isinstance(intent, dict)
+            and intent
+            == {
+                "version": "r16-default-off-intent-v1",
+                "candidate": manifest["image"],
+                "revision": manifest["revision"],
+                "manifest_sha256": manifest_sha256,
+                "baseline_sha256": sha(canonical(baseline)),
+                "old_app_restart_forbidden_after_migration_intent": True,
+                "simulation_only": False,
+            },
+            "mutation_intent_identity",
+        )
+        require(
+            manifest == self.manifest
+            and self._baseline == baseline
+            and baseline.get("recipient_fingerprint") == APPROVED_RECIPIENT_FINGERPRINT
+            and self._trusted_recipient_key_sha256 == APPROVED_RECIPIENT_KEY_SHA256,
+            "mutation_arm_identity",
+        )
+        self._mutation_armed = True
 
     def _run(
         self,
@@ -478,11 +546,7 @@ class RealHostAdapter:
             timeout=timeout,
             input_file=input_file,
             output_file=output_file,
-            env={
-                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                "HOME": "/root",
-                "DOCKER_CONFIG": "/root/.docker",
-            },
+            env=HOST_COMMAND_ENV,
         )
 
     def _inspect(self, *args: str) -> dict[str, Any]:
@@ -677,6 +741,38 @@ class RealHostAdapter:
                 == host_files[name],
                 "host_file_sha256",
             )
+        self._run(
+            "docker",
+            "compose",
+            "--project-name",
+            PROJECT,
+            "-f",
+            str(self._bundle_file("host-files/compose.yaml")),
+            "--env-file",
+            str(app / ".env"),
+            "--env-file",
+            str(app / ".release.env"),
+            "config",
+            "--quiet",
+            code="candidate_compose_config",
+            env=HOST_COMMAND_ENV,
+        )
+        compose_help = self._run(
+            "docker", "compose", "up", "--help", code="compose_up_capabilities"
+        ).decode()
+        require(
+            all(
+                option in compose_help
+                for option in (
+                    "--no-build",
+                    "--no-deps",
+                    "--pull",
+                    "--wait",
+                    "--wait-timeout",
+                )
+            ),
+            "compose_up_capabilities",
+        )
         if self._production_paths:
             for directory in (self.paths.backup_root, Path("/var/lib/docker")):
                 info = directory.lstat()
@@ -805,6 +901,10 @@ class RealHostAdapter:
             "label=com.docker.compose.service=wecom-infographic-producer",
             code="optional_producer_lookup",
         )
+        # These values are used by the post-backup Alembic-only command.
+        # Reject malformed URLs/networks before stopping a single writer.
+        self._production_db_url()
+        self._production_network()
         protected, brand, volumes = self._common_identity()
         dispatcher_env = self._service_env["wecom-dispatcher"]
         require(
@@ -856,8 +956,8 @@ class RealHostAdapter:
             "dependencies": dependencies,
         }
         valid_baseline(result)
-        self._baseline = result
-        return result
+        self._baseline = json.loads(canonical(result))
+        return cast(dict[str, Any], json.loads(canonical(result)))
 
     def stop_writers(self) -> None:
         self._require_mutation_review()
@@ -996,6 +1096,9 @@ class RealHostAdapter:
             source_digests[name], _ = _archive_tree(
                 self.paths.app / name, source_root / (name + ".tar.gz")
             )
+        _fsync_directories(protected_dir)
+        _fsync_directories(source_root)
+        _fsync_directories(self.attempt_dir)
         return {
             "baseline_sha256": sha(canonical(baseline)),
             "pg_dump_sha256": _metadata(dump)["sha256"],
@@ -1425,6 +1528,9 @@ class RealHostAdapter:
             "--pull",
             "never",
             "--force-recreate",
+            "--wait",
+            "--wait-timeout",
+            "300",
             *SERVICES,
             code="default_off_start",
             timeout=600,

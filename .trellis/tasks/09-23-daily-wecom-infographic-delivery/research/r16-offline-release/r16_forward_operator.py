@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""R16 default-off release contract and local simulation, never production apply.
+"""R16 default-off release contract, fake simulation and one-attempt core.
 
-The real host adapter is intentionally absent. A plan proves only that a
-reviewed evidence *shape* is complete; it cannot authenticate live host state
-or backup bytes. `apply` always refuses. `simulate` is for fake-host tests and
-enforces one attempt, both locks, a checked backup, and forward-only failure.
+This module's legacy ``apply`` CLI always refuses. Only the separate,
+independently hash-pinned ``r16_release_cli.py apply --execute`` entry point
+may call ``apply_release`` with the real host adapter. ``plan`` and
+``simulate`` never imply live backup, migration or delivery evidence.
 """
 
 from __future__ import annotations
@@ -81,6 +81,7 @@ OFF_FLAGS = (
     "WECOM_INFOGRAPHIC_EVENING_ENABLED",
 )
 SHA = re.compile(r"[0-9a-f]{64}\Z")
+ATTEMPT_NAME = re.compile(r"r16-forward-[a-z0-9][a-z0-9-]{4,31}\Z")
 # Independently captured from the existing production daily-group dispatcher
 # while the user authorized delivery to that same group. Hashes identify the
 # webhook key, not group membership. A key rotation requires a fresh review.
@@ -177,6 +178,21 @@ def valid_production_manifest(manifest: dict[str, Any]) -> None:
         == sha(Path(__file__).with_name("r16_real_host.py").read_bytes()),
         "real_host_source_hash_mismatch",
     )
+    require(
+        is_sha(manifest.get("release_cli_sha256"))
+        and manifest["release_cli_sha256"]
+        == sha(Path(__file__).with_name("r16_release_cli.py").read_bytes()),
+        "release_cli_source_hash_mismatch",
+    )
+    for name, field in (
+        ("r16_enablement.py", "enable_operator_sha256"),
+        ("r16_enable_host.py", "enable_host_sha256"),
+    ):
+        require(
+            is_sha(manifest.get(field))
+            and manifest[field] == sha(Path(__file__).with_name(name).read_bytes()),
+            "enable_source_hash_mismatch",
+        )
 
 
 def valid_baseline(baseline: dict[str, Any]) -> None:
@@ -418,6 +434,15 @@ class SimulatedHost(Protocol):
     def stop_all(self) -> None: ...
 
 
+class ProductionHost(SimulatedHost, Protocol):
+    def arm_production_mutation(
+        self,
+        manifest: dict[str, Any],
+        baseline: dict[str, Any],
+        manifest_sha256: str,
+    ) -> None: ...
+
+
 def capture_readonly(host: SimulatedHost) -> dict[str, Any]:
     """Validate one live-shaped snapshot without writing or trusting a cache."""
     baseline = host.capture()
@@ -460,6 +485,15 @@ def write_new(path: Path, value: dict[str, Any]) -> None:
         stream.write(canonical(value))
         stream.flush()
         os.fsync(stream.fileno())
+    fsync_directory(path.parent)
+
+
+def fsync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def simulate(
@@ -552,6 +586,129 @@ def simulate(
                 finally:
                     host.stop_all()
     return {"phase": "simulated_success", "production_apply_available": False}
+
+
+def apply_release(
+    host: ProductionHost,
+    manifest: dict[str, Any],
+    manifest_sha256: str,
+    attempt_dir: Path,
+    lock_paths: tuple[Path, Path],
+) -> dict[str, Any]:
+    """One live default-off attempt; caller authenticates source/bundle first.
+
+    A fresh baseline is captured *inside* both locks. Once the intent exists,
+    any ambiguous result leaves the old application stopped and a forward
+    recovery marker. A failed attempt is never renamed or replayed.
+    """
+    valid_production_manifest(manifest)
+    require(is_sha(manifest_sha256), "manifest_hash_unpinned")
+    require(ATTEMPT_NAME.fullmatch(attempt_dir.name) is not None, "attempt_name")
+    frozen_manifest = json.loads(canonical(manifest))
+    require(not attempt_dir.exists(), "attempt_exists_reconcile_only")
+    with two_local_locks(lock_paths):
+        require(not attempt_dir.exists(), "attempt_exists_reconcile_only")
+        baseline = host.capture()
+        valid_baseline(baseline)
+        require(
+            baseline["recipient_fingerprint"] == APPROVED_RECIPIENT_FINGERPRINT,
+            "approved_recipient_mismatch",
+        )
+        frozen_baseline = json.loads(canonical(baseline))
+        baseline_sha256 = sha(canonical(frozen_baseline))
+        attempt_dir.mkdir(mode=0o700, exist_ok=False)
+        os.chmod(attempt_dir, 0o700, follow_symlinks=False)
+        fsync_directory(attempt_dir.parent)
+        write_new(
+            attempt_dir / "intent.json",
+            {
+                "version": "r16-default-off-intent-v1",
+                "candidate": frozen_manifest["image"],
+                "revision": frozen_manifest["revision"],
+                "manifest_sha256": manifest_sha256,
+                "baseline_sha256": baseline_sha256,
+                "old_app_restart_forbidden_after_migration_intent": True,
+                "simulation_only": False,
+            },
+        )
+        host.arm_production_mutation(frozen_manifest, frozen_baseline, manifest_sha256)
+        completed = False
+        try:
+            host.stop_writers()
+            require(host.verify_writers_stopped() is True, "writers_not_stopped")
+            before_backup = host.capture_quiescent()
+            valid_quiescent(before_backup, frozen_baseline)
+            backup = host.backup()
+            valid_backup(backup, frozen_baseline)
+            write_new(attempt_dir / "backup-receipt.json", backup)
+            require(
+                host.capture_quiescent() == before_backup,
+                "post_backup_quiescent_drift",
+            )
+            require(
+                host.stage_candidate_image(frozen_manifest) == frozen_manifest["image"],
+                "staged_image_identity",
+            )
+            clone = host.rehearse_clone(backup["pg_dump_sha256"])
+            valid_fresh_clone(clone, frozen_baseline, backup)
+            write_new(attempt_dir / "clone-receipt.json", clone)
+            write_new(
+                attempt_dir / "migration-intent.json",
+                {
+                    "chain": MIGRATION_CHAIN,
+                    "forward_only": True,
+                    "clone_receipt_sha256": clone["receipt_sha256"],
+                    "backup_receipt_sha256": sha(canonical(backup)),
+                    "if_unobserved": "forward_reconcile_only",
+                    "old_app_restart_forbidden": True,
+                    "automatic_restore_or_downgrade_forbidden": True,
+                },
+            )
+            host.migrate_forward(ALEMBIC_ONLY_COMMAND, MIGRATION_CHAIN)
+            require(host.read_schema_head() == TARGET_SCHEMA, "target_schema_mismatch")
+            host.install_candidate(frozen_manifest)
+            host.start_default_off(SERVICES)
+            require(
+                host.verify_candidate(frozen_manifest) is True, "candidate_postcheck"
+            )
+            receipt = {
+                "version": "r16-default-off-production-receipt-v1",
+                "status": "deployed_default_off",
+                "attempt_id": attempt_dir.name,
+                "manifest_sha256": manifest_sha256,
+                "candidate": frozen_manifest["image"],
+                "revision": frozen_manifest["revision"],
+                "archive_sha256": frozen_manifest["archive_sha256"],
+                "operator_sha256": frozen_manifest["operator_sha256"],
+                "real_host_sha256": frozen_manifest["real_host_sha256"],
+                "release_cli_sha256": frozen_manifest["release_cli_sha256"],
+                "schema": TARGET_SCHEMA,
+                "migration_chain": MIGRATION_CHAIN,
+                "services": len(SERVICES),
+                "default_off": True,
+                "recipient_fingerprint": frozen_baseline["recipient_fingerprint"],
+                "baseline_sha256": baseline_sha256,
+                "backup_receipt_sha256": sha(canonical(backup)),
+                "clone_receipt_sha256": clone["receipt_sha256"],
+                "simulation_only": False,
+            }
+            receipt["receipt_sha256"] = sha(canonical(receipt))
+            write_new(attempt_dir / "release-receipt.json", receipt)
+            completed = True
+        finally:
+            if not completed:
+                try:
+                    write_new(
+                        attempt_dir / "forward-recovery-required.json",
+                        {
+                            "candidate": frozen_manifest["image"],
+                            "old_app_restart_forbidden": True,
+                            "automatic_downgrade_or_restore_forbidden": True,
+                        },
+                    )
+                finally:
+                    host.stop_all()
+    return receipt
 
 
 def main() -> int:
