@@ -202,9 +202,13 @@ no-dependency command and fresh recipient/quality gates.
 After that separate release receipt exists, do a new fixed-group visible-test
 preflight and observe one same-package triple `text → original image →
 infographic` with exact job/artifact/recipient identities and no unknown
-outcome. Only then review morning gray (one and three independent packages)
-before noon/evening flags. Keep the original text/image and M/W/F Official
-Account paths unchanged; do not backfill old news. If any gate fails, leave
+outcome. The historical plan then had morning gray (one and three independent
+packages) before noon/evening. The user's latest requested target is instead
+a separately versioned **direct all-news**
+enablement after controlled release, with all three slots and ordinals 1–3
+enabled together; it is not authorized by the default-off receipt alone. Keep
+the original text/image and M/W/F Official Account paths unchanged; do not
+backfill old news. If any gate fails, leave
 infographic delivery/producer off and preserve the existing workflow.
 
 ## Forward-only operator contract — simulation only
@@ -280,12 +284,37 @@ absent so the original WeCom text/image and Official Account flows can be
 observed unchanged. That is an **atomic initial stage, not the product's final
 configuration**. After a verified visible fixed-group
 `text → original image → same-news infographic` receipt, exact final-JPEG SHA,
-same package and recipient checks, and morning gray observations, the intended
+same package and recipient checks, the intended
 full-coverage stage must explicitly enable producer/delivery, all three slot
 flags and `WECOM_INFOGRAPHIC_MAX_ORDINAL=3`. Turning on only producer/delivery
 would silently leave later news or noon/evening uncovered. A provider failure
 must affect only that news's supplement; its approved text and original image
 remain on schedule. No unknown result may be resent automatically.
+
+`r16_enablement.py` is a **separate, simulation-only direct-all-news contract**.
+Its `plan` consumes a distinct actual default-off release receipt, current
+post-release 12-service/0050/recipient identity, three distinct same-news
+final-JPEG receipts, the currently required visible fixed-group triple and a
+base-delivery failure-isolation regression. It checks the final JPEG's
+byte limit, immutable SHA, exact source URL/date footer, advisory warning,
+single known image intent and no unknown-result replay. The desired
+configuration is exactly producer=true, delivery=true, test=false, morning/
+noon/evening=true, advisory review and max ordinal 3, verified both in the
+host configuration and the effective dispatcher/producer container environments.
+Historical morning gray
+receipts may be recorded separately but are **not silently imposed as a new
+hard prerequisite** for this newly requested direct-all-news policy.
+
+The fake-host `simulate` holds two local locks, creates one attempt, models a
+dispatcher restart and producer start using explicit `--no-deps --no-build
+--pull never` commands, rejects `backend-migrate`, `seed_sources` and
+`minio-init`, and writes a separately hashed enablement receipt only after
+the 13-service/all-slot postcheck. Failure records a no-replay recovery marker
+and calls supplement-only disablement while preserving original copy/image.
+Neither a JSON receipt nor a fake host proves a live send. CLI `enable` always
+returns `production_enable_unavailable`, and no real enablement adapter is
+present. The currently documented fixed-group requirement remains unchanged
+until the user explicitly resolves any requested exception.
 
 ### Exact local image verification for commit `4312451` (2026-09-27)
 

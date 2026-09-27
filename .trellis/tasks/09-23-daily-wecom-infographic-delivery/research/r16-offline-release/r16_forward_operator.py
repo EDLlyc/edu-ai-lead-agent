@@ -482,14 +482,22 @@ def simulate(
             require(
                 host.verify_candidate(frozen_manifest) is True, "candidate_postcheck"
             )
-            write_new(
-                attempt_dir / "simulation-receipt.json",
-                {
-                    "candidate": frozen_manifest["image"],
-                    "default_off": True,
-                    "verified": True,
-                },
-            )
+            release_receipt = {
+                "version": "r16-default-off-receipt-v1",
+                "candidate": frozen_manifest["image"],
+                "revision": frozen_manifest["revision"],
+                "schema": TARGET_SCHEMA,
+                "services": len(SERVICES),
+                "default_off": True,
+                "verified": True,
+                "recipient_fingerprint": frozen_baseline["recipient_fingerprint"],
+                "baseline_sha256": planned["baseline_sha256"],
+                "backup_receipt_sha256": sha(canonical(backup)),
+                "clone_receipt_sha256": clone["receipt_sha256"],
+                "simulation_only": True,
+            }
+            release_receipt["receipt_sha256"] = sha(canonical(release_receipt))
+            write_new(attempt_dir / "simulation-receipt.json", release_receipt)
             completed = True
         finally:
             if not completed:
