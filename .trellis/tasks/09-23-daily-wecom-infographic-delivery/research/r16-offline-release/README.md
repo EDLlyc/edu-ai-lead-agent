@@ -29,6 +29,14 @@ owned. The R16 one-attempt backup/receipt root is therefore
 and its `/opt/edu-ai-release-backups` data are left untouched. A new full
 image and bundle are again required after this operator change.
 
+After both evening base deliveries reached `delivered`, the next sealed
+preflight stopped at `readonly_sql` before executing the exact historical
+cohort query: the query was a static `WITH` CTE, while the host adapter only
+admitted `SELECT` prefixes. The adapter now allows that **one exact** CTE
+string, still rejects other CTEs/semicolon-bearing SQL, and has a regression
+test through the real adapter SQL guard. This is another operator-byte change,
+so only a new full image/manifest from the later commit can be considered.
+
 ## Frozen starting identity
 
 Read-only inspection on 2026-09-26 found:

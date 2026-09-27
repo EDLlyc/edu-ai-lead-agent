@@ -61,6 +61,8 @@ class FakeCommands:
             return b"0\n"
         if sql.startswith("SELECT md5("):
             return (EMPTY_MD5 + "\n").encode()
+        if sql == real.HISTORICAL_WORK_COHORT_SQL:
+            return b"reviewed\n"
         raise AssertionError("unexpected SQL shape")
 
     def run(
@@ -331,6 +333,15 @@ def test_only_exact_historical_work_cohort_is_exempted(
     state["cohort"] = "changed"
     with pytest.raises(ReleaseBlocked, match="historical_work_cohort_drift"):
         adapter._work_counts()
+
+
+def test_readonly_sql_allows_only_exact_historical_cohort_cte(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    assert adapter._sql(real.HISTORICAL_WORK_COHORT_SQL) == "reviewed"
+    prior = list(commands.calls)
+    with pytest.raises(ReleaseBlocked, match="readonly_sql"):
+        adapter._sql("WITH changed AS (DELETE FROM jobs) SELECT * FROM changed")
+    assert commands.calls == prior
 
 
 def test_compose_ignores_ambient_feature_and_image_overrides(

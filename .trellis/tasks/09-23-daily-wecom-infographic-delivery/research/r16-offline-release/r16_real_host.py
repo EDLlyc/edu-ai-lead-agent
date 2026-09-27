@@ -655,7 +655,11 @@ class RealHostAdapter:
         return cast(dict[str, Any], result)
 
     def _sql(self, sql: str) -> str:
-        require(sql.startswith("SELECT ") and ";" not in sql, "readonly_sql")
+        require(
+            (sql.startswith("SELECT ") or sql == HISTORICAL_WORK_COHORT_SQL)
+            and ";" not in sql,
+            "readonly_sql",
+        )
         return (
             self._compose(
                 "exec",
