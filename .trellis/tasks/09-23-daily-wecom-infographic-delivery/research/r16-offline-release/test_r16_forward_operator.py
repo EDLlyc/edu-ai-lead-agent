@@ -275,6 +275,35 @@ def test_operator_commit_split_requires_reviewed_byte_equivalence() -> None:
         operator.plan(manifest, baseline, evidence)["production_apply_available"]
         is False
     )
+    with pytest.raises(
+        operator.ReleaseBlocked, match="production_source_split_unverified"
+    ):
+        operator.valid_production_manifest(manifest)
+
+
+def test_production_manifest_requires_exact_operator_source_and_host_hash() -> None:
+    manifest, _, _ = fixture()
+    with pytest.raises(operator.ReleaseBlocked, match="real_host_source_unpinned"):
+        operator.valid_production_manifest(manifest)
+    manifest["real_host_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_real_host.py").read_bytes()
+    )
+    with pytest.raises(operator.ReleaseBlocked, match="trusted_recipient_unpinned"):
+        operator.valid_production_manifest(manifest)
+    manifest["trusted_recipient_fingerprint"] = operator.APPROVED_RECIPIENT_FINGERPRINT
+    manifest["trusted_recipient_key_sha256"] = operator.APPROVED_RECIPIENT_KEY_SHA256
+    operator.valid_production_manifest(manifest)
+    manifest["real_host_sha256"] = "f" * 64
+    with pytest.raises(operator.ReleaseBlocked, match="real_host_source_hash_mismatch"):
+        operator.valid_production_manifest(manifest)
+    manifest["real_host_sha256"] = operator.sha(
+        MODULE_PATH.with_name("r16_real_host.py").read_bytes()
+    )
+    manifest["source_split"] = {"review_receipt_sha256": "a" * 64}
+    with pytest.raises(
+        operator.ReleaseBlocked, match="production_source_split_unverified"
+    ):
+        operator.valid_production_manifest(manifest)
 
 
 @pytest.mark.parametrize(

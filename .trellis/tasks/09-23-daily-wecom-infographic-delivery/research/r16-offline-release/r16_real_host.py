@@ -25,6 +25,8 @@ from urllib.parse import quote, urlsplit
 
 from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
+    APPROVED_RECIPIENT_FINGERPRINT,
+    APPROVED_RECIPIENT_KEY_SHA256,
     BASE_IMAGE,
     BASE_REF,
     BASE_REVISION,
@@ -61,6 +63,31 @@ MIN_RELEASE_FREE_INODES = 10_000
 # Intentional second lockout: even a direct import cannot mutate real host
 # paths until a later independently reviewed release changes this source hash.
 REAL_HOST_MUTATION_REVIEWED = False
+# Computed from the independently checked R15 OCI bundle (archive SHA-256 in
+# r16_gate.BASE_ARCHIVE_SHA256) loaded as BASE_IMAGE, not from a mutable tag.
+# The tree contains /app/app, /app/alembic, alembic.ini and pyproject.toml.
+R15_RUNTIME_FILES = 334
+R15_RUNTIME_TREE_SHA256 = (
+    "c5742de810955c17bb69c36be4868819c3ae73f3cd8691d9f34d96c6f818daa0"
+)
+RUNTIME_TREE_SCRIPT = """import hashlib,json,pathlib,stat
+roots=('/app/app','/app/alembic','/app/alembic.ini','/app/pyproject.toml')
+files={}
+for root_name in roots:
+    root=pathlib.Path(root_name)
+    if root.is_symlink() or not root.exists():
+        raise RuntimeError('unsafe runtime root')
+    paths=[root] if root.is_file() else sorted(root.rglob('*'))
+    for path in paths:
+        info=path.lstat()
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            raise RuntimeError('unsafe runtime entry')
+        files[str(path)]=hashlib.sha256(path.read_bytes()).hexdigest()
+body=json.dumps(files,sort_keys=True,separators=(',',':')).encode()
+print(json.dumps({'files':len(files),'sha256':hashlib.sha256(body).hexdigest()}))
+"""
 PG_CLONE_DB = "edu_ai_r16_clone"
 PG_CLONE_USER = "r16_clone"
 SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z")
@@ -322,6 +349,8 @@ class RealHostAdapter:
         bundle_dir: Path,
         *,
         require_production_paths: bool = True,
+        trusted_recipient_fingerprint: str | None = None,
+        trusted_recipient_key_sha256: str | None = None,
     ) -> None:
         if require_production_paths:
             require(os.geteuid() == 0, "root_required")
@@ -332,6 +361,13 @@ class RealHostAdapter:
                 paths.app.resolve() != APP
                 and paths.backup_root.resolve() != BACKUP_ROOT,
                 "test_paths_only",
+            )
+            # Docker Compose still targets the fixed production project even
+            # when its YAML lives under a test path. Never pair that escape
+            # hatch with the actual subprocess/Docker runner.
+            require(
+                not isinstance(runner, SubprocessRunner),
+                "test_paths_real_runner_forbidden",
             )
         require(
             attempt_dir.name.startswith("r16-forward-")
@@ -351,6 +387,16 @@ class RealHostAdapter:
         self._clone_verified = False
         self._candidate_loaded = False
         self._production_paths = require_production_paths
+        require(
+            not require_production_paths
+            or (
+                trusted_recipient_fingerprint == APPROVED_RECIPIENT_FINGERPRINT
+                and trusted_recipient_key_sha256 == APPROVED_RECIPIENT_KEY_SHA256
+            ),
+            "trusted_recipient_anchor_required",
+        )
+        self._trusted_recipient_fingerprint = trusted_recipient_fingerprint
+        self._trusted_recipient_key_sha256 = trusted_recipient_key_sha256
 
     def _required_baseline(self) -> dict[str, Any]:
         require(self._baseline is not None, "capture_required")
@@ -376,7 +422,11 @@ class RealHostAdapter:
 
     def _require_mutation_review(self) -> None:
         require(
-            not self._production_paths or REAL_HOST_MUTATION_REVIEWED,
+            REAL_HOST_MUTATION_REVIEWED
+            or (
+                not self._production_paths
+                and not isinstance(self.runner, SubprocessRunner)
+            ),
             "real_host_mutation_unreviewed",
         )
 
@@ -473,6 +523,32 @@ class RealHostAdapter:
             "service_count",
         )
         return self._inspect(ids[0])
+
+    def _runtime_tree(self, container_id: str) -> dict[str, Any]:
+        require(
+            re.fullmatch(r"[0-9a-f]{64}", container_id) is not None,
+            "runtime_container_identity",
+        )
+        result = _json(
+            self._run(
+                "docker",
+                "exec",
+                container_id,
+                "python",
+                "-c",
+                RUNTIME_TREE_SCRIPT,
+                code="runtime_tree_readback",
+                timeout=180,
+            ),
+            "runtime_tree_json",
+        )
+        require(
+            isinstance(result, dict)
+            and result.get("files") == R15_RUNTIME_FILES
+            and result.get("sha256") == R15_RUNTIME_TREE_SHA256,
+            "live_runtime_tree_drift",
+        )
+        return cast(dict[str, Any], result)
 
     def _sql(self, sql: str) -> str:
         require(sql.startswith("SELECT ") and ";" not in sql, "readonly_sql")
@@ -670,10 +746,12 @@ class RealHostAdapter:
                 and re.fullmatch(r"[0-9a-f]{64}", container_id) is not None,
                 "service_container_id",
             )
+            assert isinstance(container_id, str)
             actual_env = dict(
                 value.split("=", 1) for value in config.get("Env", []) if "=" in value
             )
             self._service_env[name] = actual_env
+            self._runtime_tree(container_id)
             require(
                 all(
                     actual_env.get(flag, "false").lower() == "false"
@@ -728,6 +806,27 @@ class RealHostAdapter:
             code="optional_producer_lookup",
         )
         protected, brand, volumes = self._common_identity()
+        dispatcher_env = self._service_env["wecom-dispatcher"]
+        require(
+            dispatcher_env.get("WECOM_DELIVERY_PROVIDER") == "group_webhook"
+            and dispatcher_env.get("WECOM_GROUP_WEBHOOK_KEY")
+            == env["WECOM_GROUP_WEBHOOK_KEY"],
+            "live_recipient_config_drift",
+        )
+        recipient_fingerprint = sha(
+            ("group_webhook\0" + env["WECOM_GROUP_WEBHOOK_KEY"]).encode()
+        )
+        if self._trusted_recipient_fingerprint is not None:
+            require(
+                recipient_fingerprint == self._trusted_recipient_fingerprint,
+                "trusted_recipient_mismatch",
+            )
+        if self._trusted_recipient_key_sha256 is not None:
+            require(
+                sha(env["WECOM_GROUP_WEBHOOK_KEY"].encode())
+                == self._trusted_recipient_key_sha256,
+                "trusted_recipient_key_mismatch",
+            )
         unknown, pending = self._work_counts()
         result = {
             "release_commit": BASE_REVISION,
@@ -746,9 +845,7 @@ class RealHostAdapter:
             "pending_work_count": pending,
             "business_identity_sha256": self._db_identity(),
             "brand_identity_sha256": brand,
-            "recipient_fingerprint": sha(
-                ("group_webhook\0" + env["WECOM_GROUP_WEBHOOK_KEY"]).encode()
-            ),
+            "recipient_fingerprint": recipient_fingerprint,
             "flags": flags,
             "services": services,
             "protected_files": {

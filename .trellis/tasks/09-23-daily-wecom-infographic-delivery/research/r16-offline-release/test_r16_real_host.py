@@ -41,6 +41,8 @@ class FakeCommands:
         self.clone_schema = BASE_SCHEMA
         self.production_schema = BASE_SCHEMA
         self.fail_code: str | None = None
+        self.runtime_tree_sha = real.R15_RUNTIME_TREE_SHA256
+        self.dispatcher_key = "fake-group-key"
         self.names = {
             f"{i + 1:012x}": name
             for i, name in enumerate((*SERVICES, "postgres", "minio"))
@@ -159,6 +161,15 @@ class FakeCommands:
                             "Env": [
                                 "APP_ENV=production",
                                 "DATABASE_URL=postgresql+asyncpg://edu_ai:fake-db-password@postgres:5432/edu_ai",
+                                *(
+                                    [
+                                        "WECOM_DELIVERY_PROVIDER=group_webhook",
+                                        "WECOM_GROUP_WEBHOOK_KEY="
+                                        + self.dispatcher_key,
+                                    ]
+                                    if name == "wecom-dispatcher"
+                                    else []
+                                ),
                             ],
                         },
                         "Mounts": dependency_mounts,
@@ -171,6 +182,13 @@ class FakeCommands:
         if argv[:2] == ("docker", "ps"):
             return b""
         if argv[:2] == ("docker", "exec"):
+            if len(argv) >= 6 and argv[3:5] == ("python", "-c"):
+                return json.dumps(
+                    {
+                        "files": real.R15_RUNTIME_FILES,
+                        "sha256": self.runtime_tree_sha,
+                    }
+                ).encode()
             if "pg_isready" in argv:
                 return b"accepting connections"
             return self._sql(argv[-1], clone=True)
@@ -293,6 +311,39 @@ def test_compose_ignores_ambient_feature_and_image_overrides(
         and "APP_IMAGE" not in env
         for env in compose_envs
     )
+
+
+def test_live_runtime_tree_must_match_frozen_r15_bundle(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.runtime_tree_sha = "f" * 64
+    with pytest.raises(ReleaseBlocked, match="live_runtime_tree_drift"):
+        adapter.capture()
+    assert not any("stop" in call for call in commands.calls)
+
+
+def test_running_dispatcher_recipient_must_match_protected_config(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.dispatcher_key = "different-group"
+    with pytest.raises(ReleaseBlocked, match="live_recipient_config_drift"):
+        adapter.capture()
+    assert not any("stop" in call for call in commands.calls)
+
+
+def test_external_recipient_anchor_must_match_live_group(tmp_path: Path) -> None:
+    adapter, _, _ = _fixture(tmp_path)
+    adapter._trusted_recipient_fingerprint = "f" * 64
+    with pytest.raises(ReleaseBlocked, match="trusted_recipient_mismatch"):
+        adapter.capture()
+
+
+def test_external_raw_key_hash_must_match_live_group(tmp_path: Path) -> None:
+    adapter, _, _ = _fixture(tmp_path)
+    adapter._trusted_recipient_fingerprint = sha(b"group_webhook\0fake-group-key")
+    adapter._trusted_recipient_key_sha256 = "f" * 64
+    with pytest.raises(ReleaseBlocked, match="trusted_recipient_key_mismatch"):
+        adapter.capture()
 
 
 def test_review_lockout_blocks_real_host_mutation_even_by_import(
@@ -494,3 +545,20 @@ def test_production_constructor_rejects_test_paths(tmp_path: Path) -> None:
             manifest,
             adapter.bundle_dir,
         )
+
+
+def test_test_paths_cannot_pair_with_real_docker_runner(tmp_path: Path) -> None:
+    adapter, _, manifest = _fixture(tmp_path)
+    with pytest.raises(ReleaseBlocked, match="test_paths_real_runner_forbidden"):
+        real.RealHostAdapter(
+            real.SubprocessRunner(),
+            adapter.paths,
+            adapter.attempt_dir,
+            manifest,
+            adapter.bundle_dir,
+            require_production_paths=False,
+        )
+    # A later accidental runner swap must not bypass the second lockout.
+    adapter.runner = real.SubprocessRunner()
+    with pytest.raises(ReleaseBlocked, match="real_host_mutation_unreviewed"):
+        adapter.stop_writers()

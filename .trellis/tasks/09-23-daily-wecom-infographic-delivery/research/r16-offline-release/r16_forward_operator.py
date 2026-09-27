@@ -81,6 +81,15 @@ OFF_FLAGS = (
     "WECOM_INFOGRAPHIC_EVENING_ENABLED",
 )
 SHA = re.compile(r"[0-9a-f]{64}\Z")
+# Independently captured from the existing production daily-group dispatcher
+# while the user authorized delivery to that same group. Hashes identify the
+# webhook key, not group membership. A key rotation requires a fresh review.
+APPROVED_RECIPIENT_KEY_SHA256 = (
+    "881eb2da09566da7820dc49a7c572e1ff6266e6df58ce5020a7b6e31bcc13769"
+)
+APPROVED_RECIPIENT_FINGERPRINT = (
+    "ee3864b8650f24f39abcebe4b67e323fb1b090109b6935bcef0f6a1359534c8e"
+)
 
 
 class ReleaseBlocked(RuntimeError):
@@ -138,6 +147,36 @@ def valid_manifest(manifest: dict[str, Any]) -> None:
             and is_sha(split.get("review_receipt_sha256")),
             "source_split_unreviewed",
         )
+
+
+def valid_production_manifest(manifest: dict[str, Any]) -> None:
+    """A live apply cannot promote a self-attested source-split receipt.
+
+    The image and operator must come from the same reviewed commit. Any
+    later operator-only change requires a new full-image build, not a JSON
+    assertion that runtime and migrations remained unchanged.
+    """
+    valid_manifest(manifest)
+    require(
+        manifest["operator_source_revision"] == manifest["revision"]
+        and "source_split" not in manifest,
+        "production_source_split_unverified",
+    )
+    require(
+        is_sha(manifest.get("real_host_sha256")),
+        "real_host_source_unpinned",
+    )
+    require(
+        manifest.get("trusted_recipient_fingerprint") == APPROVED_RECIPIENT_FINGERPRINT
+        and manifest.get("trusted_recipient_key_sha256")
+        == APPROVED_RECIPIENT_KEY_SHA256,
+        "trusted_recipient_unpinned",
+    )
+    require(
+        manifest["real_host_sha256"]
+        == sha(Path(__file__).with_name("r16_real_host.py").read_bytes()),
+        "real_host_source_hash_mismatch",
+    )
 
 
 def valid_baseline(baseline: dict[str, Any]) -> None:
