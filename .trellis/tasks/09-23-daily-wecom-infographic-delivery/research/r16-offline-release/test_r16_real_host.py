@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+
 import r16_real_host as real
 from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
@@ -54,6 +55,13 @@ class FakeCommands:
             f"{i + 1:012x}": name
             for i, name in enumerate((*SERVICES, "postgres", "minio"))
         }
+        self.service_mounts: dict[str, list[dict[str, str]]] = {
+            name: [] for name in SERVICES
+        }
+        self.service_mounts["acquisition-api"] = [
+            {"Type": "bind", "Source": "/private/brand", "Destination": "/brand"},
+            {"Type": "bind", "Source": "/private/showcase", "Destination": "/showcase"},
+        ]
         self.minio_objects: dict[str, bytes] = {
             "source-snapshots/sha256/ab/abcd": b"persisted-object"
         }
@@ -257,7 +265,9 @@ class FakeCommands:
                                 ),
                             ],
                         },
-                        "Mounts": dependency_mounts,
+                        "Mounts": self.service_mounts[name]
+                        if app
+                        else dependency_mounts,
                         "NetworkSettings": {
                             "Networks": {"edu-ai-lead-agent_default": {}}
                         },
@@ -537,6 +547,10 @@ def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
     )
     assert {"--no-build", "--no-deps", "never", "--wait"}.issubset(start)
     assert adapter.verify_candidate(manifest)
+    commands.service_mounts["acquisition-api"].reverse()
+    assert adapter.verify_candidate(manifest)
+    commands.service_mounts["acquisition-api"][0]["Source"] = "/different"
+    assert not adapter.verify_candidate(manifest)
     assert (adapter.paths.app / ".env").read_bytes().count(b"fake-group-key") == 1
     assert (adapter.paths.app / ".release-commit").read_text().strip() == manifest[
         "revision"
@@ -615,6 +629,28 @@ def test_original_containers_restart_only_after_pre_migration_proof(
     adapter.start_original(SERVICES)
     assert adapter.verify_original_recovered(live)
     assert any("start" in call for call in commands.calls)
+
+
+def test_mount_order_change_preserves_exact_original_container_proof(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    commands.service_mounts["acquisition-api"].reverse()
+    assert adapter.verify_original_recoverable(live)["verified"] is True
+
+
+def test_mount_content_change_still_blocks_original_container_proof(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    commands.service_mounts["acquisition-api"].reverse()
+    commands.service_mounts["acquisition-api"][0]["Source"] = "/different"
+    with pytest.raises(ReleaseBlocked, match="pre_migration_service_identity"):
+        adapter.verify_original_recoverable(live)
 
 
 def test_schema_change_blocks_old_container_restart(tmp_path: Path) -> None:

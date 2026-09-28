@@ -1462,6 +1462,13 @@ backup identity: an in-flight worker may commit during `docker compose stop`.
   configuration, recipient, protected/brand/volume identities and idle work.
   Persist recovery intent and verified recovery receipt. If proof/postcheck
   fails, leave writers stopped and require operator reconciliation.
+- Docker inspect may enumerate a container's mount list in a different order
+  after stop/start. Bind the complete mount **multiset** with a deterministic
+  sort of canonical mount records at capture, recovery and candidate checks;
+  retain every field and duplicate. An order-only permutation must not strand
+  stopped writers, while a changed source, destination, mode or count must
+  still fail the identity gate. Test both sides against a service with multiple
+  mounts, not only the zero-mount fake-host default.
 - Once migration intent exists, never start the previous application, auto-
   restore the database, rename the attempt, or replay `apply`. Enablement must
   validate the complete backup/clone/quiescent receipt chain, not just hashes.
@@ -1495,7 +1502,8 @@ backup identity: an in-flight worker may commit during `docker compose stop`.
   binding, post-backup/post-clone drift, pre-migration recovery and post-intent
   forward-only behavior with distinct one-attempt directories.
 - `test_r16_real_host.py` covers table inventory, stopped-state identity,
-  pre-Alembic work/business gates, exact original-container proof and restart.
+  pre-Alembic work/business gates, exact original-container proof and restart,
+  including multi-mount order changes and real mount-content drift.
 - `test_r16_enablement.py` recomputes backup/release hashes and still rejects
   altered backup content; it also rejects mismatched clone business identity.
   Run the complete R16 release suite, Ruff,

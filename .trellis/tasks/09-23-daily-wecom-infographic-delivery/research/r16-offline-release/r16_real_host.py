@@ -412,6 +412,15 @@ def _json(body: bytes, code: str) -> Any:
         raise ReleaseBlocked(code) from exc
 
 
+def _mounts_sha256(mounts: Any) -> str:
+    """Bind every Docker mount field without depending on inspect list order."""
+    require(
+        isinstance(mounts, list) and all(isinstance(item, dict) for item in mounts),
+        "service_mounts_shape",
+    )
+    return sha(canonical(sorted(mounts, key=canonical)))
+
+
 @dataclass(frozen=True)
 class HostPaths:
     app: Path = APP
@@ -1300,7 +1309,7 @@ class RealHostAdapter:
                 "healthy": True,
                 "restarts": item.get("RestartCount"),
                 "command_sha256": sha(canonical(config.get("Cmd"))),
-                "mounts_sha256": sha(canonical(item.get("Mounts"))),
+                "mounts_sha256": _mounts_sha256(item.get("Mounts")),
                 "env_sha256": sha(canonical(actual_env)),
                 "container_id": container_id,
             }
@@ -2166,7 +2175,7 @@ class RealHostAdapter:
             ):
                 return False
             if (
-                sha(canonical(item.get("Mounts")))
+                _mounts_sha256(item.get("Mounts"))
                 != baseline["services"][name]["mounts_sha256"]
             ):
                 return False
@@ -2266,7 +2275,7 @@ class RealHostAdapter:
                 and item.get("State", {}).get("Status") in ("running", "exited")
                 and item.get("RestartCount") == 0
                 and sha(canonical(config.get("Cmd"))) == expected["command_sha256"]
-                and sha(canonical(item.get("Mounts"))) == expected["mounts_sha256"]
+                and _mounts_sha256(item.get("Mounts")) == expected["mounts_sha256"]
                 and sha(canonical(actual_env)) == expected["env_sha256"],
                 "pre_migration_service_identity",
             )

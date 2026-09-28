@@ -48,6 +48,17 @@ assumption: the MinIO server remains active after application writers stop,
 so its `.minio.sys` control tree is not a stable business-data fingerprint.
 The exact mismatched component was not recorded and must not be asserted.
 
+A third live attempt on 2026-09-28 used the logical MinIO backup and wrote a
+backup receipt, then stopped before migration at
+`pre_migration_service_identity`. The exact mismatch was the order of two
+otherwise identical `acquisition-api` Docker inspect mount records. After
+confirming no migration intent, schema `0048`, and exact original container
+identities, operators restarted the same 12 R15 containers and verified API
+health. The single-use attempt and its backup are retained. See
+`../r16-third-production-attempt-incident-20260928.md` for evidence and the
+order-insensitive, content-preserving mount identity fix. A fresh full image,
+bundle, preflight and attempt are required before another release action.
+
 For a subsequent candidate, the selected release boundary is an **online
 logical backup of the current application bucket objects** with MinIO kept
 running. The backup must independently verify object inventory and bytes and
