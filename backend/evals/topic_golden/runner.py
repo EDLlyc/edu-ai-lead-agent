@@ -22,9 +22,11 @@ from app.domain.editorial_relevance import (
     evaluate_science_tech_editorial_relevance,
 )
 from app.domain.education_policy_signal import is_education_policy_title
+from app.domain.topic_safety_signals import is_industrial_technology_title
 from app.domain.topic_selection import (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     TopicCandidate,
     TopicScore,
     TopicScoringConfig,
@@ -38,10 +40,11 @@ CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 REPORT_VERSION = "topic-golden-v1"
 AS_OF = datetime(2026, 9, 28, 1, 0, tzinfo=UTC)
-# `.11` is the pre-change production baseline; `.13` is the current default.
+# `.11` pre-education-policy baseline, `.13` education policy, `.14` current default.
 COMPARED_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+    SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
 )
 _SOURCE_TRUST_WEIGHTS = {"A": 1.0, "B": 0.75}
 
@@ -151,8 +154,8 @@ def title_fetch_priority(title: str) -> str:
     cohort = evaluate_science_tech_editorial_relevance(title).cohort
     if cohort is ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY:
         return "education_title"
-    if is_education_policy_title(title):
-        return "education_policy_title"
+    if is_education_policy_title(title) or is_industrial_technology_title(title):
+        return "policy_or_industry_title"
     if cohort is ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY:
         return "frontier_title"
     return "neutral_leftover"

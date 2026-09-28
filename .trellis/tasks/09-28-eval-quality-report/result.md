@@ -35,3 +35,16 @@ Open gaps kept visible in `canonical-report.md`:
 - Unit: `test_quality_report.py`, `test_topic_golden_eval.py` (+ education-policy and topic-selection
   suites) pass. Integration: `test_quality_report.py` runs every report query read-only against a
   freshly migrated schema. ruff + mypy clean.
+
+## Fixes from the first findings (`.14`, 2026-09-28 evening)
+
+- Golden set with `.14`: must select 7/7, with priority 6/6, should-not rejected 5/6 (only `n05`
+  trade-forum incidental AI remains, the `.12` territory); must-select headlines fetched with
+  priority 7/7.
+- Acquisition failure diagnosis: cas-research failing every run since 2026-09-19, bnu-news since
+  09-27, stdaily-tech intermittent — all `conflict` (a repository idempotency `ConflictError`, not
+  HTTP). The failure log did not say which check; `acquisition_job_failed` now logs the static
+  `error_message` so the next run identifies it. sensetime-news `parse_failure` since 09-12
+  (likely a site redesign) — not changed.
+- Selection too academic (3/9 niche materials-science picks on 09-27): left for the operator to
+  decide.

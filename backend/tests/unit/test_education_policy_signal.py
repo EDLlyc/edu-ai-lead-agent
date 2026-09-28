@@ -163,13 +163,11 @@ def _config(version: str = EDUCATION_POLICY_TOPIC_SCORING_VERSION) -> TopicScori
     return build_topic_scoring_config(Settings(_env_file=None, content_scoring_version=version))
 
 
-def test_default_config_is_v13_built_on_production_v11_identities() -> None:
+def test_v13_config_is_built_on_production_v11_identities() -> None:
     config = _config()
     v11 = _config(QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION)
 
-    assert build_topic_scoring_config(Settings(_env_file=None)).version == (
-        EDUCATION_POLICY_TOPIC_SCORING_VERSION
-    )
+    # The default moved on to `.14`, which keeps this rule; see test_topic_safety_signals.py.
     assert config.has_education_policy_signal
     assert config.has_qualified_authoritative_priority
     assert config.has_broad_hard_tech_pool and config.has_authenticated_ministry_priority

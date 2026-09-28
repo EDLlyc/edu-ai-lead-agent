@@ -36,6 +36,12 @@ from app.domain.science_policy_priority import (
     SCIENCE_POLICY_PRIORITY_RULE_VERSION,
     evaluate_science_policy_priority,
 )
+from app.domain.topic_safety_signals import (
+    INDUSTRIAL_TECHNOLOGY_RULE_VERSION,
+    NEGATIVE_INCIDENT_RULE_VERSION,
+    evaluate_industrial_technology,
+    evaluate_negative_incident,
+)
 
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
 DELIVERED_HISTORY_TOPIC_SCORING_VERSION = "scoring-v1-preview.7-delivered-repeat-history"
@@ -48,11 +54,16 @@ QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION = (
     "scoring-v1-preview.11-qualified-authoritative-priority"
 )
 EDUCATION_POLICY_TOPIC_SCORING_VERSION = "scoring-v1-preview.13-education-policy-signal"
-# `.13` reuses every `.11` identity and adds the education-policy direction rule.
-QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS = frozenset(
-    {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, EDUCATION_POLICY_TOPIC_SCORING_VERSION}
+# `.14` = `.13` + deterministic negative-incident veto + national industrial-technology topics.
+SAFETY_INDUSTRY_TOPIC_SCORING_VERSION = "scoring-v1-preview.14-negative-incident-industrial-tech"
+EDUCATION_POLICY_TOPIC_SCORING_VERSIONS = frozenset(
+    {EDUCATION_POLICY_TOPIC_SCORING_VERSION, SAFETY_INDUSTRY_TOPIC_SCORING_VERSION}
 )
-DEFAULT_TOPIC_SCORING_VERSION = EDUCATION_POLICY_TOPIC_SCORING_VERSION
+# `.13` and `.14` reuse every `.11` identity and add their own rules on top.
+QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS = frozenset(
+    {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS}
+)
+DEFAULT_TOPIC_SCORING_VERSION = SAFETY_INDUSTRY_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -61,6 +72,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+    SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -69,6 +81,7 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+    SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
@@ -76,6 +89,7 @@ LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+    SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -175,7 +189,7 @@ class TopicScoringConfig:
         ):
             raise ValueError("hard-tech pool policy version must be non-blank and bounded")
         if self.education_policy_signal_rule_version is not None and (
-            self.version != EDUCATION_POLICY_TOPIC_SCORING_VERSION
+            self.version not in EDUCATION_POLICY_TOPIC_SCORING_VERSIONS
             or self.education_policy_signal_rule_version != EDUCATION_POLICY_SIGNAL_RULE_VERSION
         ):
             raise ValueError("education policy signal rule is unsupported for this scoring version")
@@ -289,7 +303,7 @@ class TopicScoringConfig:
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
-            EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+            *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS,
         }:
             return SCIENCE_TECH_EDITORIAL_RULE_VERSION
         return SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
@@ -302,7 +316,7 @@ class TopicScoringConfig:
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
-            EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+            *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS,
         }:
             return BROAD_HARD_TECH_POOL_POLICY_VERSION
         return None
@@ -343,6 +357,7 @@ class TopicScoringConfig:
             ),
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (DELIVERED_CONTENT_VETO_RULE_VERSION),
             EDUCATION_POLICY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            SAFETY_INDUSTRY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         expected_priority_rule = (
             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
@@ -363,7 +378,7 @@ class TopicScoringConfig:
                     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
                     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
                     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
-                    EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+                    *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS,
                 }
                 else SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
             )
@@ -378,7 +393,7 @@ class TopicScoringConfig:
                 BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
                 SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
                 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
-                EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+                *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS,
             }
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
@@ -400,7 +415,7 @@ class TopicScoringConfig:
 
     @property
     def effective_education_policy_signal_rule_version(self) -> str | None:
-        if self.version != EDUCATION_POLICY_TOPIC_SCORING_VERSION:
+        if self.version not in EDUCATION_POLICY_TOPIC_SCORING_VERSIONS:
             return None
         return self.education_policy_signal_rule_version or EDUCATION_POLICY_SIGNAL_RULE_VERSION
 
@@ -410,6 +425,13 @@ class TopicScoringConfig:
             self.effective_education_policy_signal_rule_version
             == EDUCATION_POLICY_SIGNAL_RULE_VERSION
             and self.has_qualified_authoritative_priority
+        )
+
+    @property
+    def has_safety_industry_rules(self) -> bool:
+        return (
+            self.version == SAFETY_INDUSTRY_TOPIC_SCORING_VERSION
+            and self.has_education_policy_signal
         )
 
     @property
@@ -455,6 +477,9 @@ class TopicScoringConfig:
             metadata["education_policy_signal_rule_version"] = (
                 self.effective_education_policy_signal_rule_version
             )
+        if self.version == SAFETY_INDUSTRY_TOPIC_SCORING_VERSION:
+            metadata["negative_incident_rule_version"] = NEGATIVE_INCIDENT_RULE_VERSION
+            metadata["industrial_technology_rule_version"] = INDUSTRIAL_TECHNOLOGY_RULE_VERSION
         return metadata
 
     @classmethod
@@ -782,6 +807,26 @@ def score_topic_candidate(
 ) -> TopicScore:
     if as_of.tzinfo is None:
         raise ValueError("topic scoring time must be timezone-aware")
+    if (
+        config.has_safety_industry_rules
+        and candidate.science_tech_editorial_cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
+    ):
+        industrial = evaluate_industrial_technology(
+            candidate.priority_title, candidate.priority_summary
+        )
+        if industrial.matched:
+            # National industrial-technology directions join the frontier cohort at the
+            # conservative general-tech value; every veto and threshold rule still applies.
+            candidate = replace(
+                candidate,
+                science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+                editorial_priority=max(candidate.editorial_priority, 0.52),
+                frontier_significance=max(candidate.frontier_significance, 0.52),
+                science_tech_editorial_reason_codes=(
+                    *candidate.science_tech_editorial_reason_codes,
+                    industrial.reason_code,
+                ),
+            )
 
     age_days = max(0.0, (as_of - candidate.event_time).total_seconds() / 86_400)
     common_normalized_features = {
@@ -1051,6 +1096,12 @@ def _veto_codes(
         vetoes.append(TopicVetoCode.STALE_EVENT)
     if config.uses_science_education_features and not candidate.science_ai_education_eligible:
         vetoes.append(TopicVetoCode.OUTSIDE_SCIENCE_AI_EDUCATION_SCOPE)
+    if (
+        config.has_safety_industry_rules
+        and TopicVetoCode.UNSUITABLE_NEGATIVE_INCIDENT not in vetoes
+        and evaluate_negative_incident(candidate.priority_title, candidate.priority_summary).matched
+    ):
+        vetoes.append(TopicVetoCode.UNSUITABLE_NEGATIVE_INCIDENT)
     return tuple(vetoes)
 
 

@@ -57,6 +57,7 @@ from app.domain.title_relevance import (
     TitleRelevanceResult,
     evaluate_title_relevance,
 )
+from app.domain.topic_safety_signals import is_industrial_technology_title
 from app.infrastructure.ingestion.connectors import get_connector
 
 logger = structlog.get_logger()
@@ -324,6 +325,7 @@ class AcquisitionExecutor:
                             row
                             for row in neutral_title_items
                             if is_education_policy_title(row[0].title)
+                            or is_industrial_technology_title(row[0].title)
                         ]
                         if self._settings.acquisition_education_policy_title_priority
                         else []
@@ -803,6 +805,8 @@ class AcquisitionExecutor:
                 job_id=str(claimed.job_id),
                 source_id=str(claimed.profile.source_id),
                 error_code=error.code,
+                # Static, credential-free messages; they identify which idempotency check failed.
+                error_message=error.message,
                 retryable=should_retry,
             )
         except Exception:

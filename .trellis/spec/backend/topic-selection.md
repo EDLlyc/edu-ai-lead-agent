@@ -176,6 +176,30 @@ enabled by default only inside an enabled content-selection pipeline. The global
 may explicitly disable reranking, otherwise it requires the already validated `fake` or `zhipu`
 AI provider mode.
 
+## Education policy (`.13`) and safety/industry signals (`.14`)
+
+Both build on the production `.11` identities (not `.12`). `.13`
+(`scoring-v1-preview.13-education-policy-signal`) adds `education-policy-signal-v1`: national and
+provincial education policy/reform/planning news is editorially qualified with the highest
+priority (ordering groups national -2, provincial -1, then the unchanged historical groups), may
+bypass only the numeric threshold, and may fill every slot ordinal. `.14`
+(`scoring-v1-preview.14-negative-incident-industrial-tech`, current default) keeps all of `.13` and
+adds, in `app/domain/topic_safety_signals.py`:
+
+- `negative-incident-v1`: criminal/legal enforcement or rumour text anywhere, or a people-casualty
+  headline, adds the existing `unsuitable_negative_incident` hard veto. 辟谣/反诈/防诈 context is
+  constructive; bare 死亡 in science headlines (e.g. 细胞程序性死亡) is not a casualty. Found by the
+  quality report: a rumour/arrest story mentioning AI was pushed on 2026-09-27 under `.11`.
+- `industrial-technology-v1`: an out-of-scope candidate whose headline names a national
+  industrial-technology direction (新型工业化/智能制造/先进制造业/工业互联网/新质生产力…) and whose
+  text names a national issuer (国务院/国新办/工信部/发改委/科技部…) joins the frontier cohort at
+  editorial 0.52 with reason `industrial_technology_national`, so the governed pool and qualified
+  China Government yaowen priority apply. Acquisition fetches such headlines with the
+  education-policy titles.
+
+Both rule identities are emitted in the `.14` config snapshot only. Regression evidence:
+`backend/evals/topic_golden` (`make topic-golden-eval`).
+
 ## Parallel content-slot selection
 
 “Daily Top 1” in this document is the legacy compatibility path. The optional parallel aggregate
