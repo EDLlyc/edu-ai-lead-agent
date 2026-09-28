@@ -81,3 +81,14 @@ Open gaps kept visible in `canonical-report.md`:
   log the static rule message.
 - `.14` repeat history counts provider-rejected copy (7 of 20 failed/review runs 09-21..28 were
   `provider_request_rejected`; one astronomy story was picked and rejected four days running).
+- 23:48 `d5fc861` (image `…@sha256:d0acb505fe16806b683f236e67e870ed8335b1b8aa418ac57b382c118a6dfc84`):
+  Moments brand rotation, generator prompt `moments-generator-v25-brand-rotation` (config default).
+  Cause of the repeated 「AI不直接给答案」: the fixed brand query returned the same six chunks for
+  every topic (83/84 runs since 09-18) and the most-cited interview chunk (63/84) also carries the
+  思维链 sentence. Now: topic-only query + a positioning-card (7真) lane with two reserved slots;
+  chunks cited by / sharing an 8-char phrase with brand statements of accepted copy in the last 3
+  days go last (cards cycle least-recently-used first); prompt lists ≤12 recent brand statements.
+  Read-only replay of the six 09-28 topics (simulated sequential rotation): six different angles
+  (真动手/真思考/6-8人小班/真表达/真作品/真反馈), none repeated the old line; 5 validated + audited on
+  the first draft, 1 had an unrelated `source_note_unlinked` (normal single repair). Same six
+  services recreated; backups `*.before-d5fc861-20260928T234819`.
