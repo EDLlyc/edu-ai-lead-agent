@@ -65,13 +65,33 @@
         "case_id": "g07-rumor-arrest-negative",
         "fetch_priority": "neutral_leftover",
         "label": "should_not_select"
+      },
+      {
+        "case_id": "n06-gov-yaowen-diplomatic-meeting",
+        "fetch_priority": "neutral_leftover",
+        "label": "should_not_select"
+      },
+      {
+        "case_id": "n07-gov-yaowen-water-investment",
+        "fetch_priority": "neutral_leftover",
+        "label": "should_not_select"
+      },
+      {
+        "case_id": "n08-gov-yaowen-trade-talks",
+        "fetch_priority": "neutral_leftover",
+        "label": "should_not_select"
+      },
+      {
+        "case_id": "g08-gov-yaowen-advanced-manufacturing",
+        "fetch_priority": "policy_or_industry_title",
+        "label": "must_select"
       }
     ],
-    "must_select_fetched_with_priority": "7/7"
+    "must_select_fetched_with_priority": "8/8"
   },
-  "case_count": 13,
-  "cases_sha256": "0005a85067267c6625caf962264e219657696109c19fbac56e5534de7625f165",
-  "operator_labelled_count": 7,
+  "case_count": 17,
+  "cases_sha256": "89b9f62d602221e8442faf352dbd84644348c357b6fdc79810583c72174dca36",
+  "operator_labelled_count": 11,
   "report_version": "topic-golden-v1",
   "versions": [
     {
@@ -218,6 +238,50 @@
           "priority_applied": false,
           "priority_reason": "no_topic_priority_policy",
           "total": 0.5205
+        },
+        {
+          "case_id": "n06-gov-yaowen-diplomatic-meeting",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n07-gov-yaowen-water-investment",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n08-gov-yaowen-trade-talks",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
+        },
+        {
+          "case_id": "g08-gov-yaowen-advanced-manufacturing",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
         }
       ],
       "failed_case_ids": [
@@ -227,13 +291,16 @@
         "g05-new-industrialisation-yaowen",
         "r01-provincial-exam-reform",
         "n05-trade-forum-incidental-ai",
-        "g07-rumor-arrest-negative"
+        "g07-rumor-arrest-negative",
+        "n06-gov-yaowen-diplomatic-meeting",
+        "n07-gov-yaowen-water-investment",
+        "n08-gov-yaowen-trade-talks"
       ],
-      "must_select_eligible": "2/7",
-      "must_select_priority": "1/6",
-      "passed": "6/13",
+      "must_select_eligible": "3/8",
+      "must_select_priority": "2/7",
+      "passed": "7/17",
       "scoring_version": "scoring-v1-preview.11-qualified-authoritative-priority",
-      "should_not_select_rejected": "4/6"
+      "should_not_select_rejected": "4/9"
     },
     {
       "cases": [
@@ -379,18 +446,65 @@
           "priority_applied": false,
           "priority_reason": "no_topic_priority_policy",
           "total": 0.5205
+        },
+        {
+          "case_id": "n06-gov-yaowen-diplomatic-meeting",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n07-gov-yaowen-water-investment",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n08-gov-yaowen-trade-talks",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
+        },
+        {
+          "case_id": "g08-gov-yaowen-advanced-manufacturing",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
         }
       ],
       "failed_case_ids": [
         "g05-new-industrialisation-yaowen",
         "n05-trade-forum-incidental-ai",
-        "g07-rumor-arrest-negative"
+        "g07-rumor-arrest-negative",
+        "n06-gov-yaowen-diplomatic-meeting",
+        "n07-gov-yaowen-water-investment",
+        "n08-gov-yaowen-trade-talks"
       ],
-      "must_select_eligible": "6/7",
-      "must_select_priority": "5/6",
-      "passed": "10/13",
+      "must_select_eligible": "7/8",
+      "must_select_priority": "6/7",
+      "passed": "11/17",
       "scoring_version": "scoring-v1-preview.13-education-policy-signal",
-      "should_not_select_rejected": "4/6"
+      "should_not_select_rejected": "4/9"
     },
     {
       "cases": [
@@ -536,16 +650,262 @@
           "priority_applied": false,
           "priority_reason": "hard_veto",
           "total": 0.5205
+        },
+        {
+          "case_id": "n06-gov-yaowen-diplomatic-meeting",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n07-gov-yaowen-water-investment",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.462
+        },
+        {
+          "case_id": "n08-gov-yaowen-trade-talks",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
+        },
+        {
+          "case_id": "g08-gov-yaowen-advanced-manufacturing",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
+        }
+      ],
+      "failed_case_ids": [
+        "n05-trade-forum-incidental-ai",
+        "n06-gov-yaowen-diplomatic-meeting",
+        "n07-gov-yaowen-water-investment",
+        "n08-gov-yaowen-trade-talks"
+      ],
+      "must_select_eligible": "8/8",
+      "must_select_priority": "7/7",
+      "passed": "13/17",
+      "scoring_version": "scoring-v1-preview.14-negative-incident-industrial-tech",
+      "should_not_select_rejected": "5/9"
+    },
+    {
+      "cases": [
+        {
+          "case_id": "g01-higher-education-classified-reform",
+          "cohort": "out_of_scope",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "education_policy_signal_national",
+          "total": 0.2745
+        },
+        {
+          "case_id": "g02-five-year-education-priorities",
+          "cohort": "out_of_scope",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "education_policy_signal_national",
+          "total": 0.2745
+        },
+        {
+          "case_id": "g03-higher-education-expansion",
+          "cohort": "out_of_scope",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "education_policy_signal_national",
+          "total": 0.2745
+        },
+        {
+          "case_id": "g04-zhuque3-booster-landing",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.5205
+        },
+        {
+          "case_id": "g05-new-industrialisation-yaowen",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
+        },
+        {
+          "case_id": "g06-moe-learning-by-doing",
+          "cohort": "science_technology_education_priority",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "education_policy_signal_national",
+          "total": 0.7795
+        },
+        {
+          "case_id": "r01-provincial-exam-reform",
+          "cohort": "out_of_scope",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "education_policy_signal_provincial",
+          "total": 0.2745
+        },
+        {
+          "case_id": "n01-admissions-marketing",
+          "cohort": "out_of_scope",
+          "eligible": false,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.2745
+        },
+        {
+          "case_id": "n02-campus-ceremony",
+          "cohort": "out_of_scope",
+          "eligible": false,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.2745
+        },
+        {
+          "case_id": "n03-personnel-notice",
+          "cohort": "out_of_scope",
+          "eligible": false,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.312
+        },
+        {
+          "case_id": "n04-score-line-roundup",
+          "cohort": "out_of_scope",
+          "eligible": false,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.2745
+        },
+        {
+          "case_id": "n05-trade-forum-incidental-ai",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": false,
+          "priority_applied": false,
+          "priority_reason": "no_topic_priority_policy",
+          "total": 0.4305
+        },
+        {
+          "case_id": "g07-rumor-arrest-negative",
+          "cohort": "frontier_science_technology",
+          "eligible": false,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "hard_veto",
+          "total": 0.5205
+        },
+        {
+          "case_id": "n06-gov-yaowen-diplomatic-meeting",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "government_yaowen_diplomacy_or_trade",
+          "total": 0.462
+        },
+        {
+          "case_id": "n07-gov-yaowen-water-investment",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "government_yaowen_not_science_education",
+          "total": 0.462
+        },
+        {
+          "case_id": "n08-gov-yaowen-trade-talks",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": false,
+          "label": "should_not_select",
+          "passed": true,
+          "priority_applied": false,
+          "priority_reason": "government_yaowen_diplomacy_or_trade",
+          "total": 0.468
+        },
+        {
+          "case_id": "g08-gov-yaowen-advanced-manufacturing",
+          "cohort": "frontier_science_technology",
+          "eligible": true,
+          "expect_priority": true,
+          "label": "must_select",
+          "passed": true,
+          "priority_applied": true,
+          "priority_reason": "qualified_government_yaowen_priority",
+          "total": 0.468
         }
       ],
       "failed_case_ids": [
         "n05-trade-forum-incidental-ai"
       ],
-      "must_select_eligible": "7/7",
-      "must_select_priority": "6/6",
-      "passed": "12/13",
-      "scoring_version": "scoring-v1-preview.14-negative-incident-industrial-tech",
-      "should_not_select_rejected": "5/6"
+      "must_select_eligible": "8/8",
+      "must_select_priority": "7/7",
+      "passed": "16/17",
+      "scoring_version": "scoring-v1-preview.15-gov-yaowen-topic-gate",
+      "should_not_select_rejected": "8/9"
     }
   ]
 }

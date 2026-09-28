@@ -29,6 +29,25 @@ def test_education_policy_version_recovers_operator_labelled_policy_news() -> No
         assert case_id not in current["failed_case_ids"]
 
 
+def test_gov_yaowen_gate_stops_diplomacy_and_economy_jumping_the_queue() -> None:
+    report = build_report(load_cases())
+    by_version = {version["scoring_version"]: version for version in report["versions"]}
+    previous = by_version["scoring-v1-preview.14-negative-incident-industrial-tech"]
+    current = by_version["scoring-v1-preview.15-gov-yaowen-topic-gate"]
+
+    for case_id in (
+        "n06-gov-yaowen-diplomatic-meeting",
+        "n07-gov-yaowen-water-investment",
+        "n08-gov-yaowen-trade-talks",
+    ):
+        assert case_id in previous["failed_case_ids"]
+        assert case_id not in current["failed_case_ids"]
+    # Science/industry gov.cn headlines keep their priority.
+    for case_id in ("g05-new-industrialisation-yaowen", "g08-gov-yaowen-advanced-manufacturing"):
+        assert case_id not in current["failed_case_ids"]
+    assert current["must_select_priority"] == previous["must_select_priority"]
+
+
 def _write(tmp_path: Path, **overrides: object) -> Path:
     case = {
         "case_id": "x",
@@ -55,6 +74,7 @@ def _write(tmp_path: Path, **overrides: object) -> Path:
         ({"label": "maybe"}, "unsupported label"),
         ({"source_tiers": ["C"]}, "source tiers"),
         ({"label": "should_not_select", "expect_priority": True}, "cannot expect priority"),
+        ({"reject_scope": "priority"}, "reject scope"),
     ),
 )
 def test_invalid_cases_are_rejected(

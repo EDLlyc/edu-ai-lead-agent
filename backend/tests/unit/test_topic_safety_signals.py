@@ -10,6 +10,7 @@ from app.application.services.topic_selection import build_topic_scoring_config
 from app.core.config import Settings
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.topic_safety_signals import (
+    evaluate_government_yaowen_topic,
     evaluate_industrial_technology,
     evaluate_negative_incident,
     evaluate_specialized_research,
@@ -18,6 +19,7 @@ from app.domain.topic_safety_signals import (
 from app.domain.topic_selection import (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     GOV_CN_YAOWEN_PRIORITY_POLICY,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     TopicCandidate,
     TopicScoringConfig,
@@ -93,11 +95,8 @@ def _config(version: str = SAFETY_INDUSTRY_TOPIC_SCORING_VERSION) -> TopicScorin
     return build_topic_scoring_config(Settings(_env_file=None, content_scoring_version=version))
 
 
-def test_default_is_v14_and_metadata_round_trips() -> None:
+def test_v14_metadata_round_trips() -> None:
     config = _config()
-    assert build_topic_scoring_config(Settings(_env_file=None)).version == (
-        SAFETY_INDUSTRY_TOPIC_SCORING_VERSION
-    )
     assert config.has_safety_industry_rules and config.has_education_policy_signal
     metadata = config.as_metadata()
     assert metadata["negative_incident_rule_version"] == "negative-incident-v1"
@@ -210,3 +209,76 @@ def test_v14_lowers_but_does_not_exclude_specialised_research() -> None:
     assert _config().as_metadata()["research_accessibility_rule_version"] == (
         "research-accessibility-v1"
     )
+
+
+@pytest.mark.parametrize(
+    ("title", "matched", "reason"),
+    (
+        ("习近平就发展先进制造业作出重要指示", True, "government_yaowen_science_education_topic"),
+        ("张国清出席第五届北斗规模应用国际峰会开幕式并致辞", True, None),
+        ("李强出席2026年世界技能大会开幕式并致辞", True, None),
+        ("前8个月全国完成水利建设投资近7000亿元", False, "government_yaowen_not_science_education"),
+        ("8000亿元新型政策性金融工具资金加快投放", False, None),
+        ("李强会见吉尔吉斯斯坦总理卡瑟马利耶夫", False, "government_yaowen_diplomacy_or_trade"),
+        ("中美经贸磋商在美国纽约举行", False, "government_yaowen_diplomacy_or_trade"),
+        ("金砖国家领导人第十八次会晤新德里宣言（摘要）", False, None),
+    ),
+)
+def test_government_yaowen_topic_gate_uses_the_headline(
+    title: str, matched: bool, reason: str | None
+) -> None:
+    signal = evaluate_government_yaowen_topic(title)
+    assert signal.matched is matched
+    if reason is not None:
+        assert signal.reason_code == reason
+
+
+def test_default_is_v15_with_14_day_repeat_window() -> None:
+    config = build_topic_scoring_config(Settings(_env_file=None))
+
+    assert config.version == GOV_YAOWEN_TOPIC_SCORING_VERSION
+    assert config.has_safety_industry_rules and config.has_government_yaowen_topic_gate
+    assert config.recent_selection_window_days == 14
+    assert _config().recent_selection_window_days == 7
+    metadata = config.as_metadata()
+    assert metadata["government_yaowen_topic_rule_version"] == "gov-yaowen-topic-v1"
+    assert metadata["negative_incident_rule_version"] == "negative-incident-v1"
+    assert TopicScoringConfig.from_metadata(metadata).as_metadata() == metadata
+    assert "government_yaowen_topic_rule_version" not in _config().as_metadata()
+
+
+def test_v15_keeps_yaowen_priority_only_for_science_and_industry() -> None:
+    frontier = {
+        "science_tech_editorial_cohort": ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        "editorial_priority": 0.5,
+        "topic_priority_policy": GOV_CN_YAOWEN_PRIORITY_POLICY,
+    }
+    meeting = _candidate(
+        ("李强会见吉尔吉斯斯坦总理卡瑟马利耶夫", "双方就深化各领域合作交换意见。"), **frontier
+    )
+    industry = _candidate(INDUSTRY, topic_priority_policy=GOV_CN_YAOWEN_PRIORITY_POLICY)
+    v15 = _config(GOV_YAOWEN_TOPIC_SCORING_VERSION)
+
+    assert score_topic_candidate(meeting, as_of=NOW, config=_config()).priority_applied
+    gated = score_topic_candidate(meeting, as_of=NOW, config=v15)
+    assert not gated.priority_applied
+    assert gated.priority_reason == "government_yaowen_diplomacy_or_trade"
+    kept = score_topic_candidate(industry, as_of=NOW, config=v15)
+    assert kept.priority_applied
+    assert kept.priority_reason == "qualified_government_yaowen_priority"
+
+
+def test_v15_blocks_a_story_delivered_seven_days_ago() -> None:
+    story = _candidate(
+        ("望宇登月服研制已攻克数十项关键技术", "我国望宇登月服研制工作进展顺利。"),
+        science_tech_editorial_cohort=ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY,
+        editorial_priority=0.7,
+        days_since_last_selection=7,
+    )
+
+    v14 = score_topic_candidate(story, as_of=NOW, config=_config())
+    v15 = score_topic_candidate(story, as_of=NOW, config=_config(GOV_YAOWEN_TOPIC_SCORING_VERSION))
+
+    assert TopicVetoCode.REPEATED_WITHIN_WINDOW not in v14.veto_codes
+    assert TopicVetoCode.REPEATED_WITHIN_WINDOW in v15.veto_codes
+    assert not v15.eligible

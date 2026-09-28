@@ -37,10 +37,12 @@ from app.domain.science_policy_priority import (
     evaluate_science_policy_priority,
 )
 from app.domain.topic_safety_signals import (
+    GOVERNMENT_YAOWEN_TOPIC_RULE_VERSION,
     INDUSTRIAL_TECHNOLOGY_RULE_VERSION,
     NEGATIVE_INCIDENT_RULE_VERSION,
     RESEARCH_ACCESSIBILITY_RULE_VERSION,
     SPECIALIZED_RESEARCH_FACTOR,
+    evaluate_government_yaowen_topic,
     evaluate_industrial_technology,
     evaluate_negative_incident,
     evaluate_specialized_research,
@@ -59,14 +61,21 @@ QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION = (
 EDUCATION_POLICY_TOPIC_SCORING_VERSION = "scoring-v1-preview.13-education-policy-signal"
 # `.14` = `.13` + deterministic negative-incident veto + national industrial-technology topics.
 SAFETY_INDUSTRY_TOPIC_SCORING_VERSION = "scoring-v1-preview.14-negative-incident-industrial-tech"
+# `.15` = `.14` + gov.cn 要闻 priority only for science/technology/education headlines + a
+# 14-day repeat window, so a delivered story cannot return while it is still fresh (10 days).
+GOV_YAOWEN_TOPIC_SCORING_VERSION = "scoring-v1-preview.15-gov-yaowen-topic-gate"
+GOV_YAOWEN_RECENT_SELECTION_WINDOW_DAYS = 14
+SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS = frozenset(
+    {SAFETY_INDUSTRY_TOPIC_SCORING_VERSION, GOV_YAOWEN_TOPIC_SCORING_VERSION}
+)
 EDUCATION_POLICY_TOPIC_SCORING_VERSIONS = frozenset(
-    {EDUCATION_POLICY_TOPIC_SCORING_VERSION, SAFETY_INDUSTRY_TOPIC_SCORING_VERSION}
+    {EDUCATION_POLICY_TOPIC_SCORING_VERSION, *SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS}
 )
 # `.13` and `.14` reuse every `.11` identity and add their own rules on top.
 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS = frozenset(
     {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, *EDUCATION_POLICY_TOPIC_SCORING_VERSIONS}
 )
-DEFAULT_TOPIC_SCORING_VERSION = SAFETY_INDUSTRY_TOPIC_SCORING_VERSION
+DEFAULT_TOPIC_SCORING_VERSION = GOV_YAOWEN_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -76,6 +85,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -85,6 +95,7 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
@@ -93,6 +104,7 @@ LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -361,6 +373,7 @@ class TopicScoringConfig:
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (DELIVERED_CONTENT_VETO_RULE_VERSION),
             EDUCATION_POLICY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
             SAFETY_INDUSTRY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
+            GOV_YAOWEN_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         expected_priority_rule = (
             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
@@ -433,9 +446,13 @@ class TopicScoringConfig:
     @property
     def has_safety_industry_rules(self) -> bool:
         return (
-            self.version == SAFETY_INDUSTRY_TOPIC_SCORING_VERSION
+            self.version in SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS
             and self.has_education_policy_signal
         )
+
+    @property
+    def has_government_yaowen_topic_gate(self) -> bool:
+        return self.version == GOV_YAOWEN_TOPIC_SCORING_VERSION and self.has_safety_industry_rules
 
     @property
     def penalty_weights(self) -> Mapping[str, float]:
@@ -480,10 +497,12 @@ class TopicScoringConfig:
             metadata["education_policy_signal_rule_version"] = (
                 self.effective_education_policy_signal_rule_version
             )
-        if self.version == SAFETY_INDUSTRY_TOPIC_SCORING_VERSION:
+        if self.version in SAFETY_INDUSTRY_TOPIC_SCORING_VERSIONS:
             metadata["negative_incident_rule_version"] = NEGATIVE_INCIDENT_RULE_VERSION
             metadata["industrial_technology_rule_version"] = INDUSTRIAL_TECHNOLOGY_RULE_VERSION
             metadata["research_accessibility_rule_version"] = RESEARCH_ACCESSIBILITY_RULE_VERSION
+        if self.version == GOV_YAOWEN_TOPIC_SCORING_VERSION:
+            metadata["government_yaowen_topic_rule_version"] = GOVERNMENT_YAOWEN_TOPIC_RULE_VERSION
         return metadata
 
     @classmethod
@@ -1208,6 +1227,10 @@ def _priority_state(
             return False, "government_yaowen_topic_missing"
         if not eligible_without_source_priority:
             return False, "government_yaowen_not_eligible"
+        if config.has_government_yaowen_topic_gate:
+            topic = evaluate_government_yaowen_topic(candidate.priority_title)
+            if not topic.matched:
+                return False, topic.reason_code
         return True, "qualified_government_yaowen_priority"
     if config.selection_priority_rule_version in {
         MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,

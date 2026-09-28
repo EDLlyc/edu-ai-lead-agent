@@ -103,3 +103,27 @@ def evaluate_specialized_research(title: str | None) -> TopicSignal:
     if (boilerplate and terms) or len(terms) >= 3:
         return TopicSignal(True, "specialized_research_downweighted")
     return TopicSignal(False, "research_not_specialized")
+
+
+GOVERNMENT_YAOWEN_TOPIC_RULE_VERSION = "gov-yaowen-topic-v1"
+# `.15`: a gov.cn 要闻 headline keeps its priority only when it is about science, technology,
+# industry upgrading or education. Headline only: summaries of economic news often mention 北斗 or
+# 新能源 in passing (e.g. 水利建设投资).
+_GOV_YAOWEN_TOPIC_PATTERN = re.compile(
+    r"科技|科学|科普|创新|研发|人工智能|AI|智能|机器人|算力|大模型|芯片|集成电路|半导体|量子|"
+    r"航天|航空|卫星|北斗|探月|载人|空间站|火箭|深海|极地|新能源|数字化|数字经济|数据|互联网|"
+    r"制造|工业|未来产业|新兴产业|新质生产力|"
+    r"教育|学校|高校|大学|中小学|学生|青少年|教师|课程|人才|技能|院士|实验室",
+    re.IGNORECASE,
+)
+# Diplomacy and trade talks stay out even when a headline mentions a technology word.
+_GOV_YAOWEN_DIPLOMACY_PATTERN = re.compile(r"会见|会晤|会谈|通电话|经贸|磋商|关税")
+
+
+def evaluate_government_yaowen_topic(title: str | None) -> TopicSignal:
+    headline = _normalize(title)
+    if _GOV_YAOWEN_DIPLOMACY_PATTERN.search(headline):
+        return TopicSignal(False, "government_yaowen_diplomacy_or_trade")
+    if _GOV_YAOWEN_TOPIC_PATTERN.search(headline):
+        return TopicSignal(True, "government_yaowen_science_education_topic")
+    return TopicSignal(False, "government_yaowen_not_science_education")

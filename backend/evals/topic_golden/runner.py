@@ -25,6 +25,7 @@ from app.domain.education_policy_signal import is_education_policy_title
 from app.domain.topic_safety_signals import is_industrial_technology_title
 from app.domain.topic_selection import (
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
     TopicCandidate,
@@ -40,15 +41,20 @@ CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 REPORT_VERSION = "topic-golden-v1"
 AS_OF = datetime(2026, 9, 28, 1, 0, tzinfo=UTC)
-# `.11` pre-education-policy baseline, `.13` education policy, `.14` current default.
+# `.11` pre-education-policy baseline, `.13` education policy, `.14` safety/industry,
+# `.15` current default.
 COMPARED_VERSIONS = (
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
     EDUCATION_POLICY_TOPIC_SCORING_VERSION,
     SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
 )
 _SOURCE_TRUST_WEIGHTS = {"A": 1.0, "B": 0.75}
 
 Label = Literal["must_select", "should_not_select"]
+# "eligibility": a rejected case must leave the pool. "priority": it may stay in the pool as a
+# low-ranked filler but must not jump ahead through a priority rule (e.g. gov.cn 要闻 diplomacy).
+RejectScope = Literal["eligibility", "priority"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +72,7 @@ class GoldenCase:
     source_url: str | None
     facts: tuple[str, ...] = ()
     categories: tuple[str, ...] = ()
+    reject_scope: RejectScope = "eligibility"
 
 
 def load_cases(path: Path = CASES_PATH) -> tuple[GoldenCase, ...]:
@@ -82,6 +89,11 @@ def load_cases(path: Path = CASES_PATH) -> tuple[GoldenCase, ...]:
             raise ValueError(f"line {line_number}: source tiers must be A/B")
         if label == "should_not_select" and raw["expect_priority"]:
             raise ValueError(f"line {line_number}: a rejected case cannot expect priority")
+        reject_scope = raw.get("reject_scope", "eligibility")
+        if reject_scope not in {"eligibility", "priority"} or (
+            reject_scope != "eligibility" and label != "should_not_select"
+        ):
+            raise ValueError(f"line {line_number}: unsupported reject scope {reject_scope!r}")
         cases.append(
             GoldenCase(
                 case_id=raw["case_id"],
@@ -97,6 +109,7 @@ def load_cases(path: Path = CASES_PATH) -> tuple[GoldenCase, ...]:
                 source_url=raw["source_url"],
                 facts=tuple(raw.get("facts", ())),
                 categories=tuple(raw.get("categories", ())),
+                reject_scope=reject_scope,
             )
         )
     if len({case.case_id for case in cases}) != len(cases):
@@ -163,6 +176,8 @@ def title_fetch_priority(title: str) -> str:
 
 def _case_passes(case: GoldenCase, score: TopicScore) -> bool:
     if case.label == "should_not_select":
+        if case.reject_scope == "priority":
+            return not score.priority_applied
         return not score.eligible
     return score.eligible and (score.priority_applied or not case.expect_priority)
 
@@ -199,7 +214,7 @@ def evaluate_version(cases: Sequence[GoldenCase], version: str) -> dict[str, obj
             f"{sum(bool(r['priority_applied']) for r in must_priority)}/{len(must_priority)}"
         ),
         "should_not_select_rejected": (
-            f"{sum(not r['eligible'] for r in rejected)}/{len(rejected)}"
+            f"{sum(bool(r['passed']) for r in rejected)}/{len(rejected)}"
         ),
         "passed": f"{sum(bool(r['passed']) for r in rows)}/{len(rows)}",
         "failed_case_ids": [str(row["case_id"]) for row in rows if not row["passed"]],

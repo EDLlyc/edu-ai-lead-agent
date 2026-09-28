@@ -28,6 +28,8 @@ from app.domain.topic_rerank import (
 )
 from app.domain.topic_selection import (
     DEFAULT_TOPIC_SCORING_THRESHOLD,
+    GOV_YAOWEN_RECENT_SELECTION_WINDOW_DAYS,
+    GOV_YAOWEN_TOPIC_SCORING_VERSION,
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
     LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS,
     QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
@@ -75,6 +77,11 @@ def build_topic_scoring_config(settings: Settings) -> TopicScoringConfig:
             else HISTORICAL_TOPIC_SCORING_THRESHOLD
         ),
         freshness_window_days=float(settings.content_freshness_window_days),
+        recent_selection_window_days=(
+            GOV_YAOWEN_RECENT_SELECTION_WINDOW_DAYS
+            if settings.content_scoring_version == GOV_YAOWEN_TOPIC_SCORING_VERSION
+            else 7
+        ),
     )
 
 
