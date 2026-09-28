@@ -67,3 +67,17 @@ Open gaps kept visible in `canonical-report.md`:
   `*.before-a05bc78-20260928T230211`. Report cron image repointed. First runs: 2026-09-29 07:00.
 - Rollback: restore the matching backup pair and recreate the same services with
   `sudo docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env up -d --no-deps …`.
+
+## Relaxed review (2026-09-28 late, operator: 放宽审核限制)
+
+- Copy `moments-rules-v12…`: an unbound superlative about the news is now a warning; one in a
+  sentence about the brand (赛先生/小赛/我们…) stays an error. Evidence-quoted superlatives pass.
+  This week's review_required runs (2) were both `unverified_superlative`.
+- Long image advisory layout: title prefers the real news headline (≤34 chars, 【…】 removed), the
+  child card heading is 「亲子探究：和孩子一起想一想」 (no repeated anchor), and when the only
+  topic-sharing fact is too long for the 96-char card a shorter exact fact of the same package is
+  used with an anchor from the headline (09-28 evening #3 `moments_preflight_failed`: 100-char
+  fact left 11 chars vs 16 minimum). Advisory copy/generation versions v6. Preflight failures now
+  log the static rule message.
+- `.14` repeat history counts provider-rejected copy (7 of 20 failed/review runs 09-21..28 were
+  `provider_request_rejected`; one astronomy story was picked and rejected four days running).

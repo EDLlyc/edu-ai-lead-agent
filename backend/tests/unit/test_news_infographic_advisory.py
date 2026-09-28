@@ -53,8 +53,8 @@ def test_same_package_rich_copy_pins_exact_fact_brand_and_model_painted_cards() 
     assert "不需要因担心审核不通过而返回空对象" in generation_prompt
     assert case.source_url not in generation_prompt
     assert ADVISORY_POLICY_VERSION == "wecom-news-infographic-v13-boundary-comma-advisory"
-    assert ADVISORY_COPY_VERSION == "wecom-infographic-advisory-concise-copy-v5"
-    assert ADVISORY_GENERATION_PROMPT_VERSION == "wecom-infographic-advisory-concise-generation-v5"
+    assert ADVISORY_COPY_VERSION == "wecom-infographic-advisory-concise-copy-v6"
+    assert ADVISORY_GENERATION_PROMPT_VERSION == "wecom-infographic-advisory-concise-generation-v6"
     assert ADVISORY_AUDIT_VERSION == "wecom-infographic-advisory-copy-audit-v4"
     assert ADVISORY_IMAGE_PROMPT_VERSION == "wecom-infographic-advisory-concise-painted-image-v5"
     assert generation_prompt.startswith(ADVISORY_GENERATION_PROMPT_VERSION)

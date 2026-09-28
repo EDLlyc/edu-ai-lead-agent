@@ -343,8 +343,15 @@ _PROMOTIONAL_SUPERLATIVE = re.compile(
 _SUPERLATIVE_CONTEXT_CHARS = 4
 
 
-def _has_unbound_superlative(output: str, evidence_text: str) -> bool:
+# In the relaxed production rules (operator decision 2026-09-28: 放宽审核限制) an unbound
+# superlative about the news only warns; one in a sentence about the brand still blocks.
+_BRAND_SELF_REFERENCE = re.compile(r"赛先生|小赛|我们|咱们的课|本课程|我们的课程")
+_SENTENCE_BREAK = re.compile(r"[。！？!?；;\n]")
+
+
+def _unbound_superlative_matches(output: str, evidence_text: str) -> list[re.Match[str]]:
     evidence = _SUPPORT_TEXT.sub("", evidence_text)
+    unbound: list[re.Match[str]] = []
     for match in _PROMOTIONAL_SUPERLATIVE.finditer(output):
         start, end = match.span()
         left = _SUPPORT_TEXT.sub("", output[max(0, start - _SUPERLATIVE_CONTEXT_CHARS) : end])
@@ -354,8 +361,21 @@ def _has_unbound_superlative(output: str, evidence_text: str) -> bool:
             for window in (left, right)
         )
         if not bound:
-            return True
-    return False
+            unbound.append(match)
+    return unbound
+
+
+def _has_unbound_superlative(output: str, evidence_text: str) -> bool:
+    return bool(_unbound_superlative_matches(output, evidence_text))
+
+
+def _superlative_is_brand_claim(output: str, match: re.Match[str]) -> bool:
+    start, end = match.span()
+    breaks_before = [found.end() for found in _SENTENCE_BREAK.finditer(output, 0, start)]
+    sentence_start = breaks_before[-1] if breaks_before else 0
+    following = _SENTENCE_BREAK.search(output, end)
+    sentence = output[sentence_start : following.start() if following else len(output)]
+    return _BRAND_SELF_REFERENCE.search(sentence) is not None
 
 
 _SENTENCE = re.compile(r"[^。！？!?；;]+[。！？!?；;]?")
@@ -736,11 +756,17 @@ def validate_material_draft(
     evidence_text = "\n".join(
         [topic.title or "", topic.summary or ""] + [item.exact_quote for item in topic.evidence]
     )
-    if _has_unbound_superlative(all_output, evidence_text):
+    unbound_superlatives = _unbound_superlative_matches(all_output, evidence_text)
+    if unbound_superlatives:
+        relaxed = rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS
+        brand_claim = any(
+            _superlative_is_brand_claim(all_output, match) for match in unbound_superlatives
+        )
         issues.append(
             _issue(
                 "unverified_superlative",
                 "文案不得直接使用首个、唯一或行业最高级等强宣传表述",
+                severity="warning" if relaxed and not brand_claim else "error",
             )
         )
     if _contains_dangling_clause(draft.copywriting):

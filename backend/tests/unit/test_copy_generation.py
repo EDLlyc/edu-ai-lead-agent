@@ -2878,3 +2878,49 @@ def test_superlative_is_allowed_only_when_quoted_from_evidence(
     )
 
     assert ("unverified_superlative" in {issue.code for issue in issues}) is blocked
+
+
+@pytest.mark.parametrize(
+    ("sentence", "severity"),
+    (
+        # News superlative the model paraphrased: recorded, but no longer blocks delivery.
+        ("中国代表团取得了世界第一的好成绩。", "warning"),
+        # A superlative claimed for the brand still blocks.
+        ("赛先生是全国第一的科学教育品牌。", "error"),
+        ("我们的课程是行业首个AI科学课。", "error"),
+    ),
+)
+def test_relaxed_rules_warn_on_news_superlatives_but_block_brand_claims(
+    sentence: str, severity: str
+) -> None:
+    topic = _topic()
+    fact = topic.evidence[0].exact_quote
+    draft = MaterialDraft(
+        copywriting=(
+            f"今天和家长分享：{fact}{sentence}"
+            "我们可以和孩子一起理解技术、提出问题，并从可靠信息出发形成自己的判断。"
+            "\n\n#赛先生科学 #机器人启蒙 #科学思维"
+        ),
+        parent_takeaway="用可靠信息陪伴孩子理解人工智能。",
+        interaction="你会和孩子讨论这个话题吗？",
+        source_note="信息来源：科技日报。",
+        image_prompt="蓝色科技教育插画，家长和孩子共同观察机器人，不出现真人正脸。",
+        claims=(
+            DraftClaim(
+                id="fact-1",
+                text=fact,
+                kind="external_fact",
+                evidence_ids=(EVIDENCE_ID,),
+            ),
+        ),
+    )
+
+    issues = validate_material_draft(
+        draft,
+        topic=topic,
+        brand_context=_brand(),
+        rule_version="moments-rules-v12-standalone-heading-advisory",
+    )
+
+    superlative = {issue.code: issue for issue in issues}["unverified_superlative"]
+    assert superlative.severity == severity

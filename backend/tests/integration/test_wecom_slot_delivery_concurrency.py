@@ -1395,3 +1395,84 @@ async def test_slot_copy_reconciliation_creates_one_independent_run_per_selectio
         )
         == 0
     )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_v14_counts_provider_rejected_copy_as_recently_used(
+    integration_context: IntegrationContext,
+) -> None:
+    from app.domain.topic_selection import (
+        EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+        QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+        SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+    )
+
+    target_at = datetime(2096, 8, 25, 23, 30, tzinfo=UTC)
+    _window_id, _job_ids, prior_business_date, profile = await _seed_slot_delivery_lane(
+        integration_context,
+        target_at=target_at,
+    )
+    business_date = prior_business_date + timedelta(days=1)
+
+    async with integration_context.session_factory() as session:
+        selections = tuple(
+            (
+                await session.scalars(
+                    select(ContentSlotSelectionModel)
+                    .join(
+                        ContentSlotRunModel,
+                        ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                    )
+                    .where(
+                        ContentSlotSelectionModel.business_date == prior_business_date,
+                        ContentSlotRunModel.scoring_profile == profile,
+                    )
+                    .order_by(ContentSlotSelectionModel.ordinal)
+                )
+            ).all()
+        )
+        await session.execute(
+            update(CopyGenerationRunModel)
+            .where(CopyGenerationRunModel.content_slot_selection_id == selections[0].id)
+            .values(status="failed", error_code="provider_request_rejected", completed_at=target_at)
+        )
+        await session.commit()
+
+        by_version = {}
+        for version in (
+            SAFETY_INDUSTRY_TOPIC_SCORING_VERSION,
+            EDUCATION_POLICY_TOPIC_SCORING_VERSION,
+        ):
+            config = TopicScoringConfig(
+                version=version,
+                profile=profile,
+                selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
+            )
+            by_version[version] = {
+                candidate.event_id: candidate
+                for candidate in await load_governed_topic_candidates(
+                    session,
+                    business_date=business_date,
+                    timezone="Asia/Shanghai",
+                    scoring_profile=profile,
+                    governed_event_cutoff=target_at + timedelta(days=1),
+                    config_snapshot=config.as_metadata(),
+                    include_content_slot_history=True,
+                )
+            }
+
+    rejected = selections[0].selected_event_id
+    untouched = selections[1].selected_event_id
+    assert (
+        by_version[SAFETY_INDUSTRY_TOPIC_SCORING_VERSION][rejected].days_since_last_selection == 1
+    )
+    assert (
+        by_version[SAFETY_INDUSTRY_TOPIC_SCORING_VERSION][untouched].days_since_last_selection
+        is None
+    )
+    # `.13` and older keep counting only formally delivered stories.
+    assert (
+        by_version[EDUCATION_POLICY_TOPIC_SCORING_VERSION][rejected].days_since_last_selection
+        is None
+    )

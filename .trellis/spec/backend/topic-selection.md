@@ -204,7 +204,18 @@ adds, in `app/domain/topic_safety_signals.py`:
   `specialized_research_downweighted`). A question mark, 首次/世界首/重大突破 or a child/school hook
   keeps full weight. It down-weights, never excludes.
 
-All three rule identities are emitted in the `.14` config snapshot only. Regression evidence:
+All three rule identities are emitted in the `.14` config snapshot only.
+
+`.14` repeat history (2026-09-28, 放宽审核限制): besides formally delivered stories, a content-slot
+selection whose copy run failed with `provider_request_rejected` inside the seven-day window counts
+as recently used (existing `repeated_within_window` veto), so a story the model provider refuses
+does not take a slot and fail again the next day. `.13` and older keep delivered-only history.
+
+Content slots `slot-ranking-v2-same-topic-dedup`: one story per topic per business day. A candidate
+whose governed representative-article embedding has cosine ≥ 0.66 with an already-selected
+same-day story (or a better-ranked eligible candidate of the same run), or that shares a 5-char
+headline phrase after removing 【…】 column prefixes and generic phrases, is excluded with
+`same_day_similar_topic` before the model rerank. v1 runs never read fingerprints. Regression evidence:
 `backend/evals/topic_golden` (`make topic-golden-eval`).
 
 ## Parallel content-slot selection

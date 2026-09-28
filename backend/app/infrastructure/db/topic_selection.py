@@ -757,7 +757,42 @@ async def load_governed_topic_candidates(
                     )
                 ).tuples()
             )
-        repeat_history_rows = (*daily_delivered_rows, *slot_delivered_rows)
+        provider_rejected_rows: tuple[tuple[UUID, UUID, date], ...] = ()
+        if include_content_slot_history and scoring_config.has_safety_industry_rules:
+            # `.14`: a story whose copy the model provider refused counts as used for the
+            # repeat window, so it cannot take a slot every day and fail again (seen
+            # 2026-09-24..27 for the same astronomy story).
+            provider_rejected_rows = tuple(
+                (
+                    await session.execute(
+                        select(
+                            ContentSlotSelectionModel.selected_event_id,
+                            ContentSlotSelectionModel.selected_event_version_id,
+                            ContentSlotSelectionModel.business_date,
+                        )
+                        .select_from(ContentSlotSelectionModel)
+                        .join(
+                            ContentSlotRunModel,
+                            ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                        )
+                        .join(
+                            CopyGenerationRunModel,
+                            CopyGenerationRunModel.content_slot_selection_id
+                            == ContentSlotSelectionModel.id,
+                        )
+                        .where(
+                            ContentSlotSelectionModel.business_date < business_date,
+                            ContentSlotSelectionModel.business_date >= history_start,
+                            ContentSlotSelectionModel.timezone == timezone,
+                            ContentSlotRunModel.scoring_profile == scoring_profile,
+                            CopyGenerationRunModel.status == "failed",
+                            CopyGenerationRunModel.error_code == "provider_request_rejected",
+                        )
+                        .distinct()
+                    )
+                ).tuples()
+            )
+        repeat_history_rows = (*daily_delivered_rows, *slot_delivered_rows, *provider_rejected_rows)
 
     last_selected: dict[UUID, date] = {}
     for selected_event_id, _selected_version_id, selected_business_date in repeat_history_rows:

@@ -20,6 +20,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+import structlog
 from PIL import Image
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -118,6 +119,7 @@ _OVERLAY_PROMPT_VERSION = "daily-news-infographic-overlay-prompt-v2-evidence-fir
 _POSTER_OCR_VERSION = "poster-region-ocr-v1"
 _POSTER_VISUAL_RUBRIC_VERSION = "wecom-news-poster-visual-v2-evidence-first"
 _APP_ROOT = Path(__file__).resolve().parents[3]
+logger = structlog.get_logger()
 _REFERENCE_ROOT = _APP_ROOT.parent if _APP_ROOT.name == "backend" else _APP_ROOT
 _REFERENCE_PATH = (
     _REFERENCE_ROOT / "private/brand-materials/05-visual-assets/赛先生小赛-携手奔跑.png"
@@ -1095,7 +1097,15 @@ class NewsInfographicProducer:
             )
             seed = build_moments_rich_seed(case, binding)
             copy_prompt = build_advisory_generation_prompt(case, binding)
-        except (InfographicInputError, RichCopyError, ValidationError, ValueError):
+        except (InfographicInputError, RichCopyError, ValidationError, ValueError) as exc:
+            # Static, content-free rule messages; they name which preflight check failed.
+            cause = exc.__cause__ or exc
+            logger.warning(
+                "news_infographic_preflight_failed",
+                job_id=str(job.id),
+                error_type=type(cause).__name__,
+                reason=str(cause)[:160],
+            )
             await self._finish(job.id, token, status="failed", code="moments_preflight_failed")
             return
         copy_fingerprint = stable_key(

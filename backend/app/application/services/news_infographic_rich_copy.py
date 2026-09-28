@@ -899,9 +899,18 @@ def build_moments_rich_draft_plan(
     case: ValidatedInfographicInput,
     binding: MomentsPackageBinding,
     seed: MomentsRichSeed,
+    *,
+    advisory_layout: bool = False,
 ) -> MomentsRichDraftPlan:
-    """Lock title, exact claims, headings and anchors before any model intent."""
+    """Lock title, exact claims, headings and anchors before any model intent.
+
+    With `advisory_layout` (the formal advisory long image, operator decision 2026-09-28:
+    放宽审核限制) a news whose only topic-sharing fact is too long for the card no longer drops
+    the image: a shorter exact fact of the same package is used with an anchor and title taken
+    from the news headline. The strict path keeps its original behaviour.
+    """
     seed = _validated_moments_seed(case, binding, seed)
+    headline_title = _advisory_headline_title(case.topic_title) if advisory_layout else None
     candidates: list[tuple[MomentsBoundSpan, str, str]] = []
     for fact in seed.available_bound_claims:
         if fact.kind != "external_fact" or len(fact.text) > 134:
@@ -914,6 +923,8 @@ def build_moments_rich_draft_plan(
         first_clause = re.split(r"[，。；!?！？]", fact.text, maxsplit=1)[0].strip()
         short_topic_title = f"和孩子聊聊{shared[1]}" if shared is not None else ""
         for title, anchor_source in (
+            # The advisory long image leads with the real news headline (it names the actor).
+            *(((headline_title, overlap_title),) if headline_title and overlap_title else ()),
             (overlap_title, overlap_title),
             (first_clause, first_clause),
             (short_topic_title, shared[1] if shared is not None else ""),
@@ -931,7 +942,7 @@ def build_moments_rich_draft_plan(
                 continue
             candidates.append((fact, title, anchor))
             break
-    if not candidates:
+    if not candidates and not advisory_layout:
         raise RichCopyError("Moments flat draft lacks a safe frozen news title and anchor")
     selected_brand: MomentsBoundSpan | None = None
     brand_anchor = ""
@@ -949,7 +960,7 @@ def build_moments_rich_draft_plan(
     # must not make a shorter, equally bound fact in the same package vanish.
     for selected_fact, selected_title, news_anchor in candidates:
         news_heading = f"新闻看点：{news_anchor}"
-        child_heading = f"亲子探究：{news_anchor}"
+        child_heading = _ADVISORY_CHILD_HEADING if advisory_layout else f"亲子探究：{news_anchor}"
         brand_heading = f"教学启发：{brand_anchor}"
         if any(
             not 4 <= len(heading) <= 28 or _UNSAFE.search(heading) or _NUMBERS.search(heading)
@@ -988,7 +999,94 @@ def build_moments_rich_draft_plan(
             brand_editorial_min_chars=brand_min,
             brand_editorial_max_chars=min(brand_max, 150 - len(selected_brand.text)),
         )
+    if advisory_layout:
+        fallback = _advisory_layout_plan(
+            case, seed, brand=selected_brand, brand_anchor=brand_anchor
+        )
+        if fallback is not None:
+            return fallback
     raise RichCopyError("Moments flat draft lacks measured room for substantive copy")
+
+
+_ADVISORY_FACT_MAX_CHARS = 80
+_ADVISORY_CHILD_HEADING = "亲子探究：和孩子一起想一想"
+_TITLE_COLUMN_PREFIX = re.compile(r"【[^】]{0,40}】")
+
+
+def _advisory_headline_title(topic_title: str) -> str | None:
+    """The news headline without column prefixes; word spaces are kept as written."""
+    headline = " ".join(_TITLE_COLUMN_PREFIX.sub(" ", topic_title).split())
+    if (
+        not 8 <= len(headline) <= 34
+        or _UNSAFE.search(headline)
+        or _MOMENTS_INJECTION.search(headline)
+    ):
+        return None
+    return headline
+
+
+def _advisory_layout_plan(
+    case: ValidatedInfographicInput,
+    seed: MomentsRichSeed,
+    *,
+    brand: MomentsBoundSpan,
+    brand_anchor: str,
+) -> MomentsRichDraftPlan | None:
+    headline = _advisory_headline_title(case.topic_title) or " ".join(
+        _TITLE_COLUMN_PREFIX.sub(" ", case.topic_title).split()
+    )
+    anchor = None
+    for segment in sorted(re.split(r"[：:，,、；;\s]+", headline), key=len, reverse=True):
+        anchor = _safe_draft_anchor(segment, brand=False)
+        if anchor is not None:
+            break
+    if anchor is None:
+        return None
+    title = headline if 8 <= len(headline) <= 32 else f"和孩子聊聊{anchor}"
+    if _UNSAFE.search(title) or _MOMENTS_INJECTION.search(title):
+        return None
+    news_heading = f"新闻看点：{anchor}"
+    child_heading = _ADVISORY_CHILD_HEADING
+    brand_heading = f"教学启发：{brand_anchor}"
+    if any(
+        not 4 <= len(heading) <= 28 or _UNSAFE.search(heading) or _NUMBERS.search(heading)
+        for heading in (news_heading, child_heading, brand_heading)
+    ):
+        return None
+    for fact in seed.available_bound_claims:
+        if fact.kind != "external_fact" or len(fact.text) > _ADVISORY_FACT_MAX_CHARS:
+            continue
+        child_frame, top_max, news_max, child_max, brand_max = _moments_draft_budgets(
+            fact_text=fact.text,
+            brand_text=brand.text,
+            news_anchor=anchor,
+            brand_anchor=brand_anchor,
+        )
+        # Strict budgets become advisory here; keep them internally consistent.
+        news_min = max(16, 50 - len(fact.text))
+        brand_min = max(16, 50 - len(brand.text))
+        child_min = max(
+            _MOMENTS_CHILD_FRAGMENT_SCHEMA_MIN, _MOMENTS_CARD_MIN_CHARS - len(child_frame)
+        )
+        return MomentsRichDraftPlan(
+            title=title,
+            fact=fact,
+            brand=brand,
+            news_anchor=anchor,
+            brand_anchor=brand_anchor,
+            news_heading=news_heading,
+            child_heading=child_heading,
+            brand_heading=brand_heading,
+            child_frame=child_frame,
+            top_editorial_max_chars=max(30, top_max),
+            news_editorial_min_chars=news_min,
+            news_editorial_max_chars=max(news_min, min(news_max, 150 - len(fact.text))),
+            child_editorial_min_chars=child_min,
+            child_editorial_max_chars=max(child_min, child_max),
+            brand_editorial_min_chars=brand_min,
+            brand_editorial_max_chars=max(brand_min, min(brand_max, 150 - len(brand.text))),
+        )
+    return None
 
 
 def assemble_moments_rich_proposal(

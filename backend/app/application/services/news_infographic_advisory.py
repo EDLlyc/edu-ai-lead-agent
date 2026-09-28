@@ -38,8 +38,8 @@ from app.application.services.wecom_infographic_quality import (
 from app.domain.news_infographic import ValidatedInfographicInput
 
 ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v13-boundary-comma-advisory"
-ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v5"
-ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v5"
+ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v6"
+ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v6"
 ADVISORY_AUDIT_VERSION: Final = "wecom-infographic-advisory-copy-audit-v4"
 ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v5"
 ADVISORY_NOTICE: Final = ADVISORY_NOTICE_TEXT
@@ -94,7 +94,7 @@ class AdvisoryRichCopy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    policy_version: Literal["wecom-infographic-advisory-concise-copy-v5"] = ADVISORY_COPY_VERSION
+    policy_version: Literal["wecom-infographic-advisory-concise-copy-v6"] = ADVISORY_COPY_VERSION
     package_id: UUID
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_name: str
@@ -217,7 +217,7 @@ def build_advisory_generation_prompt(
     response whenever an interpretation needs later review.
     """
     seed = build_moments_rich_seed(case, binding)
-    plan = build_moments_rich_draft_plan(case, binding, seed)
+    plan = build_moments_rich_draft_plan(case, binding, seed, advisory_layout=True)
     _preflight_plan_typography(plan)
     budgets = _text_budgets(
         fact=plan.fact.text, child_frame=plan.child_frame, brand=plan.brand.text
@@ -282,7 +282,7 @@ def build_advisory_rich_copy(
     """
     try:
         seed = build_moments_rich_seed(case, binding)
-        plan = build_moments_rich_draft_plan(case, binding, seed)
+        plan = build_moments_rich_draft_plan(case, binding, seed, advisory_layout=True)
         _preflight_plan_typography(plan)
         budgets = _text_budgets(
             fact=plan.fact.text, child_frame=plan.child_frame, brand=plan.brand.text
