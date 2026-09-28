@@ -48,3 +48,22 @@ Open gaps kept visible in `canonical-report.md`:
   (likely a site redesign) — not changed.
 - Selection too academic (3/9 niche materials-science picks on 09-27): operator chose to
   down-weight; `.14` adds `research-accessibility-v1` (×0.6 editorial/frontier, never excluded).
+
+## Production rollouts (2026-09-28 night)
+
+- 22:45 `.14` (image `…@sha256:528bd430…` = report + `.14` + SenseTime deactivation). `.env`
+  `CONTENT_SCORING_VERSION=scoring-v1-preview.14-negative-incident-industrial-tech`;
+  `python -m app.seed_sources` disabled sensetime-news (10 enabled sources). Recreated
+  acquisition-api/worker, content-scheduler/worker. Backups `*.before-v14-20260928T224526`.
+- First evening with `.13` + first formal long image (before `.14`): 3 national 教育风向 picks, two of
+  them the same 高校分类改革 story; #1 long image delivered (banner 「AI生成 · 内容/排版未核实」 on top);
+  #2 blocked in copy review by `unverified_superlative` on an official quote; #3 infographic
+  `moments_preflight_failed` (reason not logged).
+- 23:02 `a05bc78` (image `…@sha256:9cfbf9e739e63d324c9b48a70b72d7af1999d02f1ea73ca1d9013c74449b0b59`):
+  unmarked long images (notice v2, prompt v5; producer and supplement send gate both unmarked),
+  evidence-bound superlatives, `slot-ranking-v2-same-topic-dedup` (`.env`
+  `CONTENT_SLOT_RANKING_VERSION`). Recreated acquisition-api/worker, content-scheduler/worker,
+  wecom-infographic-producer, wecom-dispatcher; all healthy, infographic flags unchanged. Backups
+  `*.before-a05bc78-20260928T230211`. Report cron image repointed. First runs: 2026-09-29 07:00.
+- Rollback: restore the matching backup pair and recreate the same services with
+  `sudo docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env up -d --no-deps …`.
