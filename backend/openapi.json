@@ -3114,6 +3114,65 @@
         "title": "ContentEditionSourceResponse",
         "type": "object"
       },
+      "ContentSlotHumanPickResponse": {
+        "properties": {
+          "business_date": {
+            "format": "date",
+            "title": "Business Date",
+            "type": "string"
+          },
+          "content_slot": {
+            "enum": [
+              "morning",
+              "noon",
+              "evening"
+            ],
+            "title": "Content Slot",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          },
+          "target_at": {
+            "format": "date-time",
+            "title": "Target At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "selection_id",
+          "created",
+          "business_date",
+          "content_slot",
+          "event_id",
+          "target_at",
+          "expires_at"
+        ],
+        "title": "ContentSlotHumanPickResponse",
+        "type": "object"
+      },
       "ContentSlotRunResponse": {
         "properties": {
           "acquisition_run_id": {
@@ -3280,7 +3339,8 @@
           "trigger": {
             "enum": [
               "manual",
-              "scheduled"
+              "scheduled",
+              "human"
             ],
             "title": "Trigger",
             "type": "string"
@@ -4256,6 +4316,41 @@
           }
         },
         "title": "CreateAcquisitionRunRequest",
+        "type": "object"
+      },
+      "CreateContentSlotHumanPickRequest": {
+        "additionalProperties": false,
+        "description": "An operator approves one scored candidate; it is produced and sent right away.",
+        "properties": {
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source_run_id": {
+            "format": "uuid",
+            "title": "Source Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_run_id",
+          "event_id"
+        ],
+        "title": "CreateContentSlotHumanPickRequest",
         "type": "object"
       },
       "CreateContentSlotRunRequest": {
@@ -12986,6 +13081,358 @@
         "title": "WeComDeliveryResponse",
         "type": "object"
       },
+      "WeComInfographicAttemptResponse": {
+        "properties": {
+          "attempt_number": {
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "result_state": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "title": "Result State",
+            "type": "string"
+          },
+          "safe_response_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Response Code"
+          }
+        },
+        "required": [
+          "attempt_number",
+          "result_state",
+          "safe_response_code",
+          "created_at"
+        ],
+        "title": "WeComInfographicAttemptResponse",
+        "type": "object"
+      },
+      "WeComInfographicStatusResponse": {
+        "description": "Safe projection; an absent job is not a successful infographic send.",
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/WeComInfographicAttemptResponse"
+            },
+            "title": "Attempts",
+            "type": "array"
+          },
+          "base_job_id": {
+            "format": "uuid",
+            "title": "Base Job Id",
+            "type": "string"
+          },
+          "base_status": {
+            "enum": [
+              "queued",
+              "running",
+              "partial",
+              "delivery_unknown",
+              "delivered",
+              "failed",
+              "cancelled",
+              "delivery_window_expired"
+            ],
+            "title": "Base Status",
+            "type": "string"
+          },
+          "business_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Date"
+          },
+          "content_slot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot"
+          },
+          "content_slot_selection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Slot Selection Id"
+          },
+          "delivery_byte_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Byte Size"
+          },
+          "delivery_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Height"
+          },
+          "delivery_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Sha256"
+          },
+          "delivery_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Width"
+          },
+          "footer_ocr_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Footer Ocr Status"
+          },
+          "infographic_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Infographic Job Id"
+          },
+          "infographic_safe_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Infographic Safe Error Code"
+          },
+          "infographic_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Infographic Status"
+          },
+          "ocr_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Status"
+          },
+          "package_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Version"
+          },
+          "quality_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "strict",
+                  "advisory"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Mode"
+          },
+          "sequence_ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Ordinal"
+          },
+          "supplement_attempt_count": {
+            "title": "Supplement Attempt Count",
+            "type": "integer"
+          },
+          "supplement_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplement Expires At"
+          },
+          "supplement_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplement Id"
+          },
+          "supplement_safe_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplement Safe Error Code"
+          },
+          "supplement_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplement Status"
+          },
+          "visual_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Status"
+          },
+          "warning_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Codes",
+            "type": "array"
+          },
+          "warning_notice_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Notice Version"
+          }
+        },
+        "required": [
+          "base_job_id",
+          "base_status",
+          "infographic_job_id",
+          "infographic_status",
+          "infographic_safe_error_code",
+          "quality_mode",
+          "warning_codes",
+          "warning_notice_version",
+          "content_slot_selection_id",
+          "sequence_ordinal",
+          "business_date",
+          "content_slot",
+          "package_version",
+          "delivery_sha256",
+          "delivery_byte_size",
+          "delivery_width",
+          "delivery_height",
+          "ocr_status",
+          "footer_ocr_status",
+          "visual_status",
+          "supplement_id",
+          "supplement_status",
+          "supplement_safe_error_code",
+          "supplement_attempt_count",
+          "supplement_expires_at",
+          "attempts"
+        ],
+        "title": "WeComInfographicStatusResponse",
+        "type": "object"
+      },
       "WeComRecipientListResponse": {
         "properties": {
           "count": {
@@ -13666,6 +14113,48 @@
           }
         },
         "summary": "Read Content Edition",
+        "tags": [
+          "content-slots"
+        ]
+      }
+    },
+    "/api/v1/content-slot-human-picks": {
+      "post": {
+        "description": "Operator-approved extra item: copy, image, WeCom delivery and long image follow at once.",
+        "operationId": "create_content_slot_human_pick_api_v1_content_slot_human_picks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContentSlotHumanPickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentSlotHumanPickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Content Slot Human Pick",
         "tags": [
           "content-slots"
         ]
@@ -16819,6 +17308,50 @@
           }
         },
         "summary": "Read Wecom Delivery",
+        "tags": [
+          "wecom-deliveries"
+        ]
+      }
+    },
+    "/api/v1/wecom-deliveries/{delivery_id}/infographic": {
+      "get": {
+        "description": "Expose only lineage, checksum, gate and outcome codes; no private assets.",
+        "operationId": "read_wecom_infographic_status_api_v1_wecom_deliveries__delivery_id__infographic_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeComInfographicStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Wecom Infographic Status",
         "tags": [
           "wecom-deliveries"
         ]

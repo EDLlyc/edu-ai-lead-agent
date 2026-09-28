@@ -26,6 +26,7 @@ from app.application.ports.wecom import (
 )
 from app.core.config import Settings
 from app.core.errors import AppError, ConflictError, NotFoundError
+from app.domain.content_slots import delivery_lane_key
 from app.domain.image_generation import image_checksum, image_content_key
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
@@ -231,8 +232,10 @@ async def _ensure_slot_delivery_window(
     provider: str,
     gap_seconds: int,
 ) -> WeComDeliveryWindowModel:
+    lane_key = delivery_lane_key(trigger=run.trigger, run_id=run.id)
     values = {
         "id": uuid4(),
+        "lane_key": lane_key,
         "business_date": run.business_date,
         "timezone": run.timezone,
         "content_slot": run.content_slot,
@@ -255,6 +258,7 @@ async def _ensure_slot_delivery_window(
                 "recipient_id",
                 "provider",
                 "mode",
+                "lane_key",
             )
         )
     )
@@ -267,6 +271,7 @@ async def _ensure_slot_delivery_window(
             WeComDeliveryWindowModel.recipient_id == recipient_id,
             WeComDeliveryWindowModel.provider == provider,
             WeComDeliveryWindowModel.mode == "formal",
+            WeComDeliveryWindowModel.lane_key == lane_key,
         )
         .with_for_update()
     )

@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.topic_rerank import TopicRerankSummaryResponse
 
@@ -16,9 +16,30 @@ class CreateContentSlotRunRequest(BaseModel):
     content_slot: ContentSlotValue
 
 
+class CreateContentSlotHumanPickRequest(BaseModel):
+    """An operator approves one scored candidate; it is produced and sent right away."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_run_id: UUID
+    event_id: UUID
+    note: str | None = Field(default=None, min_length=1, max_length=280)
+
+
+class ContentSlotHumanPickResponse(BaseModel):
+    run_id: UUID
+    selection_id: UUID
+    created: bool
+    business_date: date
+    content_slot: ContentSlotValue
+    event_id: UUID
+    target_at: datetime
+    expires_at: datetime
+
+
 class ContentSlotRunResponse(BaseModel):
     id: UUID
-    trigger: Literal["manual", "scheduled"]
+    trigger: Literal["manual", "scheduled", "human"]
     business_date: date
     timezone: str
     content_slot: ContentSlotValue

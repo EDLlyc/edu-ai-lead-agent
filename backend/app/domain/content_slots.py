@@ -42,6 +42,18 @@ SUPPORTED_SLOT_RANKING_VERSIONS = frozenset(
     {DEFAULT_SLOT_RANKING_VERSION, *SAME_TOPIC_DEDUP_SLOT_RANKING_VERSIONS}
 )
 SAME_TOPIC_EXCLUSION_REASON = "same_day_similar_topic"
+# Operator human pick (2026-09-28): one already-decided item in its own slot run, delivered in its
+# own lane right away. It is extra to the scheduled 3-per-slot / 9-per-day capacity but still
+# counts as a same-day selection so scheduled slots do not re-send the story.
+HUMAN_PICK_TRIGGER = "human"
+HUMAN_PICK_POLICY_VERSION = "human-pick-v1"
+SCHEDULED_DELIVERY_LANE = "slot"
+
+
+def delivery_lane_key(*, trigger: str, run_id: UUID) -> str:
+    return f"human-{run_id.hex}" if trigger == HUMAN_PICK_TRIGGER else SCHEDULED_DELIVERY_LANE
+
+
 _SAME_TOPIC_SIMILARITY = 0.66
 _SAME_TOPIC_TITLE_OVERLAP = 5
 # Column prefixes such as 【“十五五”开好局起好步】 and generic phrases are shared by unrelated

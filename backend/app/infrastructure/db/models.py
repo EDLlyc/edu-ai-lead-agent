@@ -1933,7 +1933,9 @@ class ContentSlotRunModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        CheckConstraint("trigger IN ('manual', 'scheduled')", name="ck_content_slot_runs_trigger"),
+        CheckConstraint(
+            "trigger IN ('manual', 'scheduled', 'human')", name="ck_content_slot_runs_trigger"
+        ),
         CheckConstraint(
             "content_slot IN ('morning', 'noon', 'evening')",
             name="ck_content_slot_runs_content_slot",
@@ -4994,6 +4996,8 @@ class WeComDeliveryWindowModel(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     package_gap_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     next_allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # `slot` is the shared scheduled lane; `human-<run hex>` is one operator human pick.
+    lane_key: Mapped[str] = mapped_column(String(40), nullable=False, server_default="slot")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -5005,6 +5009,10 @@ class WeComDeliveryWindowModel(Base):
         CheckConstraint(
             "content_slot IN ('morning', 'noon', 'evening')",
             name="ck_wecom_delivery_windows_content_slot",
+        ),
+        CheckConstraint(
+            "lane_key = 'slot' OR lane_key ~ '^human-[0-9a-f]{32}$'",
+            name="ck_wecom_delivery_windows_lane_key",
         ),
         CheckConstraint(
             "provider IN ('self_built_app', 'group_webhook')",
@@ -5023,6 +5031,7 @@ class WeComDeliveryWindowModel(Base):
             "recipient_id",
             "provider",
             "mode",
+            "lane_key",
             name="uq_wecom_delivery_windows_lane",
         ),
         UniqueConstraint(
