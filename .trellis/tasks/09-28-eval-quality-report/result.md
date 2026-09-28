@@ -100,3 +100,11 @@ Open gaps kept visible in `canonical-report.md`:
   Report cron image → `…@sha256:edfe02dd7ce3aaf96f3aa91ebb194f502947e752d3b8f98b8a58e44204312c86`
   (d0acb505 + 3 report files; script backup `edu-ai-quality-report.before-9f59f93-*`);
   09-28 regenerated with v2 (v1 kept as `2026-09-28.v1.*`). No service restarted.
+- 09-29 00:36 scoring `.15` `6c8df55` (image `…@sha256:f4b0cff0c4c15c576991b17da237d86f247eb42a7d2c97456ae6e6637396b59e`
+  = human-pick image `3c89845f` + 4 topic files): gov.cn 要闻 priority only for science /
+  technology / industry / education headlines (diplomacy and trade never; 16 of the 23
+  09-19..09-28 priority picks lose priority, the 7 science/industry ones keep it); repeat window
+  14 days (水利/望宇登月服 were re-delivered 7 days apart). Operator chose to keep filling three
+  per slot, so ungated news can still fill a thin pool by score. `.env`
+  `CONTENT_SCORING_VERSION=scoring-v1-preview.15-gov-yaowen-topic-gate`; backups
+  `*.before-6c8df55-20260929T003542`. Golden set 17 cases: `.15` 16/17 (n05 pre-existing).
