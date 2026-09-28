@@ -490,6 +490,55 @@ async def test_tiered_list_order_is_education_then_frontier_then_neutral_and_sta
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("policy_priority", (True, False))
+async def test_education_policy_titles_are_fetched_before_frontier_and_neutral_titles(
+    integration_context: IntegrationContext,
+    policy_priority: bool,
+) -> None:
+    suffix = "on" if policy_priority else "off"
+    records = [
+        {
+            "TITLE": "文化产业发展规划发布",
+            "URL": f"https://www.gov.cn/zhengce/content/202607/content_policy_{suffix}_neutral.htm",
+            "DOCRELPUBTIME": "2026-07-30",
+        },
+        {
+            "TITLE": "量子计算实现重大突破",
+            "URL": f"https://www.gov.cn/zhengce/content/202607/content_policy_{suffix}_frontier.htm",
+            "DOCRELPUBTIME": "2026-07-29",
+        },
+        {
+            "TITLE": "中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》",
+            "URL": f"https://www.gov.cn/zhengce/content/202607/content_policy_{suffix}_policy.htm",
+            "DOCRELPUBTIME": "2026-07-29",
+        },
+        {
+            "TITLE": "学校科技教育课程实践成果发布",
+            "URL": f"https://www.gov.cn/zhengce/content/202607/content_policy_{suffix}_education.htm",
+            "DOCRELPUBTIME": "2026-07-28",
+        },
+    ]
+    settings = integration_context.settings.model_copy(
+        update={
+            "acquisition_first_run_item_limit": 3,
+            "acquisition_daily_item_limit": 3,
+            "acquisition_education_policy_title_priority": policy_priority,
+        }
+    )
+    fetcher = RelevanceFixtureFetcher(records)
+
+    await _execute_government_run(integration_context, fetcher, settings=settings)
+
+    detail_urls = fetcher.requested_urls[1:]
+    if policy_priority:
+        assert detail_urls == [records[3]["URL"], records[2]["URL"], records[1]["URL"]]
+    else:
+        # Disabled: the policy headline waits behind frontier titles as an ordinary neutral probe.
+        assert detail_urls == [records[3]["URL"], records[1]["URL"], records[0]["URL"]]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
 async def test_mixed_list_filters_before_detail_fetch_and_exposes_stored_handoff(
     integration_context: IntegrationContext,
 ) -> None:

@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     )
     acquisition_first_run_item_limit: int = Field(default=20, ge=1, le=100)
     acquisition_daily_item_limit: int = Field(default=10, ge=1, le=50)
+    acquisition_education_policy_title_priority: bool = True
     acquisition_first_run_scan_limit: int = Field(default=100, ge=1, le=500)
     acquisition_daily_scan_limit: int = Field(default=50, ge=1, le=200)
     acquisition_freshness_window_days: int = Field(default=10, ge=1, le=365)
@@ -138,7 +139,7 @@ class Settings(BaseSettings):
     content_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
     content_max_attempts: int = Field(default=3, ge=1, le=10)
     content_freshness_window_days: int = Field(default=10, ge=1, le=365)
-    content_scoring_version: str = "scoring-v1-preview.11-qualified-authoritative-priority"
+    content_scoring_version: str = "scoring-v1-preview.13-education-policy-signal"
     content_scoring_profile: str = "preview"
     content_selection_priority_rule_version: str | None = "qualified-authoritative-priority-v1"
     content_llm_rerank_enabled: bool = True

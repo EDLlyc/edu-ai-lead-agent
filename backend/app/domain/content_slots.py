@@ -16,6 +16,7 @@ from app.domain.topic_selection import (
     TopicScore,
     TopicScoringConfig,
     score_topic_candidate,
+    topic_priority_group,
 )
 
 CONTENT_SLOT_SCHEDULE_POLICY_VERSION = "content-slot-schedule-v1"
@@ -247,7 +248,9 @@ def slot_affinity(
         ScienceTechEditorialCohort.SCIENCE_TECHNOLOGY_EDUCATION_PRIORITY,
     }
     if slot is ContentSlot.MORNING:
-        if base_score.priority_applied:
+        if base_score.priority_applied and base_score.education_policy_level is not None:
+            signals.append(("education_policy_signal", 0.12))
+        elif base_score.priority_applied:
             signals.append(("authenticated_ministry_education_priority", 0.12))
         elif education_cohort:
             signals.append(("education_policy_or_science_education", 0.09))
@@ -302,17 +305,7 @@ def select_slot_topics(
         )
         excluded = candidate.event_id in same_day_selected_event_ids
         ordering_value = round(base.total + affinity, 8)
-        base_group = (
-            0
-            if base.priority_applied and not excluded
-            else 1
-            if base.eligible and not excluded
-            else 2
-            if excluded
-            else 3
-            if not base.veto_codes
-            else 4
-        )
+        base_group = topic_priority_group(base, excluded=excluded)
         final_key = (
             f"{base_group}:"
             f"{-ordering_value:.8f}:{-base.total:.8f}:"
@@ -334,19 +327,8 @@ def select_slot_topics(
 
     def ordering_key(score: ContentSlotScore) -> tuple[int, float, float, float, float, int]:
         candidate = candidates_by_id[score.base.event_id]
-        group = (
-            0
-            if score.base.priority_applied and not score.same_day_excluded
-            else 1
-            if score.base.eligible and not score.same_day_excluded
-            else 2
-            if score.same_day_excluded
-            else 3
-            if not score.base.veto_codes
-            else 4
-        )
         return (
-            group,
+            topic_priority_group(score.base, excluded=score.same_day_excluded),
             -score.ordering_value,
             -score.base.total,
             -score.base.normalized_features["source_trust"],

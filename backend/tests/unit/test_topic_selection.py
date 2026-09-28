@@ -11,7 +11,6 @@ from app.domain.topic_selection import (
     BROAD_HARD_TECH_POOL_POLICY_VERSION,
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     DEFAULT_TOPIC_SCORING_THRESHOLD,
-    DEFAULT_TOPIC_SCORING_VERSION,
     DELIVERED_CONTENT_VETO_RULE_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     GOV_CN_YAOWEN_PRIORITY_POLICY,
@@ -42,8 +41,11 @@ CONFIG = TopicScoringConfig(
     selection_priority_rule_version=None,
     threshold=HISTORICAL_TOPIC_SCORING_THRESHOLD,
 )
+# The `.11` contract suite pins `.11`; `.13` (the new default) is covered in
+# test_education_policy_signal.py.
 TIERED_CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+    version=QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    selection_priority_rule_version=QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
 )
 HISTORICAL_SUBSTANTIVE_CONFIG = TopicScoringConfig(
     version=SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
@@ -137,7 +139,6 @@ def test_preview_config_exposes_versioned_weights_ranges_and_tie_breaks() -> Non
 def test_current_config_exposes_broad_hard_tech_and_qualified_authoritative_rules() -> None:
     metadata = TIERED_CONFIG.as_metadata()
 
-    assert metadata["version"] == DEFAULT_TOPIC_SCORING_VERSION
     assert metadata["version"] == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
     assert metadata["threshold"] == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert metadata["veto_rule_version"] == DELIVERED_CONTENT_VETO_RULE_VERSION

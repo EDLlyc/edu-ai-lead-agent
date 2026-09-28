@@ -42,6 +42,7 @@ from app.domain.editorial_relevance import (
     evaluate_science_ai_education_relevance,
     evaluate_science_tech_editorial_relevance,
 )
+from app.domain.education_policy_signal import is_education_policy_title
 from app.domain.entities import DiscoveredItem, SourceImageReference
 from app.domain.enums import JobStatus, ObservationOutcome
 from app.domain.freshness import FreshnessDecision, evaluate_publication_freshness
@@ -315,10 +316,27 @@ class AcquisitionExecutor:
                         for row in tiered_items
                         if row[1].relevance.cohort is ScienceTechEditorialCohort.OUT_OF_SCOPE
                     ]
+                    # Education-policy headlines are out of the science/tech title cohort but
+                    # must not wait for leftover detail-fetch capacity. Only fetch order changes;
+                    # every fetched item is still evaluated on its full text below.
+                    policy_title_items = (
+                        [
+                            row
+                            for row in neutral_title_items
+                            if is_education_policy_title(row[0].title)
+                        ]
+                        if self._settings.acquisition_education_policy_title_priority
+                        else []
+                    )
+                    policy_title_ids = {id(row) for row in policy_title_items}
+                    neutral_title_items = [
+                        row for row in neutral_title_items if id(row) not in policy_title_ids
+                    ]
                     education_title_items.sort(key=_tiered_discovery_sort_key)
                     frontier_title_items.sort(key=_tiered_discovery_sort_key)
                     tiered_ordered_items = [
                         *education_title_items,
+                        *policy_title_items,
                         *frontier_title_items,
                         *neutral_title_items,
                     ]

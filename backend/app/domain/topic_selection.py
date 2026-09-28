@@ -18,6 +18,11 @@ from app.domain.editorial_relevance import (
     ScienceTechContentSignal,
     ScienceTechEditorialCohort,
 )
+from app.domain.education_policy_signal import (
+    EDUCATION_POLICY_SIGNAL_RULE_VERSION,
+    EducationPolicyLevel,
+    evaluate_education_policy_signal,
+)
 from app.domain.ministry_education_priority import (
     MINISTRY_EDUCATION_PRIORITY_RULE_VERSION,
     MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
@@ -42,7 +47,12 @@ SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION = (
 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION = (
     "scoring-v1-preview.11-qualified-authoritative-priority"
 )
-DEFAULT_TOPIC_SCORING_VERSION = QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+EDUCATION_POLICY_TOPIC_SCORING_VERSION = "scoring-v1-preview.13-education-policy-signal"
+# `.13` reuses every `.11` identity and adds the education-policy direction rule.
+QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS = frozenset(
+    {QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION, EDUCATION_POLICY_TOPIC_SCORING_VERSION}
+)
+DEFAULT_TOPIC_SCORING_VERSION = EDUCATION_POLICY_TOPIC_SCORING_VERSION
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -50,6 +60,7 @@ TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSIONS = (
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    EDUCATION_POLICY_TOPIC_SCORING_VERSION,
 )
 DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
@@ -57,12 +68,14 @@ DELIVERED_HISTORY_TOPIC_SCORING_VERSIONS = (
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    EDUCATION_POLICY_TOPIC_SCORING_VERSION,
 )
 LOWER_THRESHOLD_TOPIC_SCORING_VERSIONS = (
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+    EDUCATION_POLICY_TOPIC_SCORING_VERSION,
 )
 DEFAULT_TOPIC_SCORING_THRESHOLD = 0.59
 HISTORICAL_TOPIC_SCORING_THRESHOLD = 0.62
@@ -112,6 +125,7 @@ class TopicScoringConfig:
     science_tech_editorial_rule_version: str | None = None
     product_matrix_fit_rule_version: str | None = None
     hard_tech_pool_policy_version: str | None = None
+    education_policy_signal_rule_version: str | None = None
     source_trust_weight: float = 0.20
     source_diversity_weight: float = 0.10
     ai_relevance_weight: float = 0.20
@@ -160,6 +174,11 @@ class TopicScoringConfig:
             or len(self.hard_tech_pool_policy_version) > 80
         ):
             raise ValueError("hard-tech pool policy version must be non-blank and bounded")
+        if self.education_policy_signal_rule_version is not None and (
+            self.version != EDUCATION_POLICY_TOPIC_SCORING_VERSION
+            or self.education_policy_signal_rule_version != EDUCATION_POLICY_SIGNAL_RULE_VERSION
+        ):
+            raise ValueError("education policy signal rule is unsupported for this scoring version")
         if self.science_ai_education_rule_version and self.science_tech_editorial_rule_version:
             raise ValueError("topic scoring cannot combine historical and tiered editorial rules")
         if (
@@ -270,6 +289,7 @@ class TopicScoringConfig:
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+            EDUCATION_POLICY_TOPIC_SCORING_VERSION,
         }:
             return SCIENCE_TECH_EDITORIAL_RULE_VERSION
         return SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
@@ -282,6 +302,7 @@ class TopicScoringConfig:
             BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
             SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+            EDUCATION_POLICY_TOPIC_SCORING_VERSION,
         }:
             return BROAD_HARD_TECH_POOL_POLICY_VERSION
         return None
@@ -321,10 +342,11 @@ class TopicScoringConfig:
                 DELIVERED_CONTENT_VETO_RULE_VERSION
             ),
             QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION: (DELIVERED_CONTENT_VETO_RULE_VERSION),
+            EDUCATION_POLICY_TOPIC_SCORING_VERSION: DELIVERED_CONTENT_VETO_RULE_VERSION,
         }.get(self.version)
         expected_priority_rule = (
             QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
-            if self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+            if self.version in QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS
             else MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
             if self.version == SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION
             else MINISTRY_EDUCATION_PRIORITY_RULE_VERSION
@@ -341,6 +363,7 @@ class TopicScoringConfig:
                     BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
                     SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
                     QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+                    EDUCATION_POLICY_TOPIC_SCORING_VERSION,
                 }
                 else SCIENCE_TECH_EDITORIAL_V2_RULE_VERSION
             )
@@ -355,6 +378,7 @@ class TopicScoringConfig:
                 BROAD_HARD_TECH_TOPIC_SCORING_VERSION,
                 SUBSTANTIVE_SCIENCE_EDUCATION_TOPIC_SCORING_VERSION,
                 QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION,
+                EDUCATION_POLICY_TOPIC_SCORING_VERSION,
             }
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
@@ -365,13 +389,27 @@ class TopicScoringConfig:
     @property
     def has_qualified_authoritative_priority(self) -> bool:
         return (
-            self.version == QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSION
+            self.version in QUALIFIED_AUTHORITATIVE_TOPIC_SCORING_VERSIONS
             and self.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
             and self.effective_science_tech_editorial_rule_version
             == SCIENCE_TECH_EDITORIAL_RULE_VERSION
             and self.effective_hard_tech_pool_policy_version == BROAD_HARD_TECH_POOL_POLICY_VERSION
             and self.selection_priority_rule_version
             == QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
+        )
+
+    @property
+    def effective_education_policy_signal_rule_version(self) -> str | None:
+        if self.version != EDUCATION_POLICY_TOPIC_SCORING_VERSION:
+            return None
+        return self.education_policy_signal_rule_version or EDUCATION_POLICY_SIGNAL_RULE_VERSION
+
+    @property
+    def has_education_policy_signal(self) -> bool:
+        return (
+            self.effective_education_policy_signal_rule_version
+            == EDUCATION_POLICY_SIGNAL_RULE_VERSION
+            and self.has_qualified_authoritative_priority
         )
 
     @property
@@ -413,6 +451,10 @@ class TopicScoringConfig:
             )
         if self.effective_hard_tech_pool_policy_version is not None:
             metadata["hard_tech_pool_policy_version"] = self.effective_hard_tech_pool_policy_version
+        if self.effective_education_policy_signal_rule_version is not None:
+            metadata["education_policy_signal_rule_version"] = (
+                self.effective_education_policy_signal_rule_version
+            )
         return metadata
 
     @classmethod
@@ -435,6 +477,9 @@ class TopicScoringConfig:
             ),
             "hard_tech_pool_policy_version": _metadata_optional_str(
                 metadata, "hard_tech_pool_policy_version"
+            ),
+            "education_policy_signal_rule_version": _metadata_optional_str(
+                metadata, "education_policy_signal_rule_version"
             ),
             "threshold": _metadata_float(metadata, "threshold"),
             "recent_selection_window_days": _metadata_int(metadata, "recent_selection_window_days"),
@@ -627,6 +672,9 @@ class TopicScore:
     deterministic_rank: int | None = None
     rerank_reason_codes: tuple[str, ...] = ()
     rerank_explanation: str | None = None
+    education_policy_signal_rule_version: str | None = None
+    education_policy_level: EducationPolicyLevel | None = None
+    education_policy_reason: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "raw_features", MappingProxyType(dict(self.raw_features)))
@@ -653,7 +701,7 @@ class TopicScore:
         )
 
     def as_metadata(self) -> dict[str, object]:
-        return {
+        metadata: dict[str, object] = {
             "event_id": str(self.event_id),
             "event_version_id": str(self.event_version_id),
             "scoring_version": self.scoring_version,
@@ -697,6 +745,19 @@ class TopicScore:
             "rerank_reason_codes": list(self.rerank_reason_codes),
             "rerank_explanation": self.rerank_explanation,
         }
+        # Older scoring versions never evaluated this rule; omitting the keys keeps their
+        # persisted explanations byte-identical.
+        if self.education_policy_signal_rule_version is not None:
+            metadata["education_policy_signal_rule_version"] = (
+                self.education_policy_signal_rule_version
+            )
+            metadata["education_policy_level"] = (
+                self.education_policy_level.value
+                if self.education_policy_level is not None
+                else None
+            )
+            metadata["education_policy_reason"] = self.education_policy_reason
+        return metadata
 
 
 @dataclass(frozen=True, slots=True)
@@ -787,6 +848,14 @@ def score_topic_candidate(
     total = round(sum(positive_components.values()) - sum(penalty_components.values()), 8)
     veto_codes = _veto_codes(candidate, as_of=as_of, config=config)
     passes_threshold = total >= config.threshold
+    education_policy = (
+        evaluate_education_policy_signal(candidate.priority_title, candidate.priority_summary)
+        if config.has_education_policy_signal
+        else None
+    )
+    education_policy_priority = (
+        education_policy is not None and education_policy.is_signal and not veto_codes
+    )
     hard_tech_pool_bypass = (
         not passes_threshold
         and not veto_codes
@@ -797,26 +866,36 @@ def score_topic_candidate(
     editorially_qualified = (
         not config.uses_tiered_editorial_features
         or candidate.science_tech_editorial_cohort is not ScienceTechEditorialCohort.OUT_OF_SCOPE
+        or education_policy_priority
     )
     eligible_without_source_priority = (
         editorially_qualified and not veto_codes and (passes_threshold or hard_tech_pool_bypass)
     )
-    priority_applied, priority_reason = _priority_state(
-        candidate,
-        veto_codes=veto_codes,
-        passes_threshold=passes_threshold,
-        eligible_without_source_priority=eligible_without_source_priority,
-        config=config,
-    )
+    if education_policy_priority and education_policy is not None:
+        priority_applied, priority_reason = True, education_policy.reason_code
+    else:
+        priority_applied, priority_reason = _priority_state(
+            candidate,
+            veto_codes=veto_codes,
+            passes_threshold=passes_threshold,
+            eligible_without_source_priority=eligible_without_source_priority,
+            config=config,
+        )
+    education_policy_threshold_bypass = education_policy_priority and not passes_threshold
     ministry_threshold_bypass = (
-        priority_applied
+        not education_policy_priority
+        and priority_applied
         and candidate.topic_priority_policy == MOE_SCIENCE_TOP1_PRIORITY_POLICY
         and not passes_threshold
         and config.has_authenticated_ministry_priority
     )
-    threshold_bypass_applied = ministry_threshold_bypass or hard_tech_pool_bypass
+    threshold_bypass_applied = (
+        education_policy_threshold_bypass or ministry_threshold_bypass or hard_tech_pool_bypass
+    )
     threshold_bypass_reason = (
-        "ministry_education_priority"
+        "education_policy_signal"
+        if education_policy_threshold_bypass
+        else "ministry_education_priority"
         if ministry_threshold_bypass
         else "governed_broad_hard_tech_pool"
         if hard_tech_pool_bypass
@@ -883,6 +962,15 @@ def score_topic_candidate(
         ),
         science_tech_content_signals=(
             candidate.science_tech_content_signals if config.uses_tiered_editorial_features else ()
+        ),
+        education_policy_signal_rule_version=(
+            education_policy.rule_version if education_policy is not None else None
+        ),
+        education_policy_level=(
+            education_policy.level if education_policy_priority and education_policy else None
+        ),
+        education_policy_reason=(
+            education_policy.reason_code if education_policy is not None else None
         ),
     )
 
@@ -969,21 +1057,36 @@ def _veto_codes(
 def _score_sort_key(
     score: TopicScore, candidate: TopicCandidate
 ) -> tuple[int, float, float, float, int]:
-    if score.priority_applied:
-        eligibility_group = 0
-    elif score.eligible:
-        eligibility_group = 1
-    elif not score.veto_codes:
-        eligibility_group = 2
-    else:
-        eligibility_group = 3
     return (
-        eligibility_group,
+        topic_priority_group(score),
         -score.total,
         -score.normalized_features["source_trust"],
         -candidate.event_time.timestamp(),
         candidate.event_id.int,
     )
+
+
+def topic_priority_group(score: TopicScore, *, excluded: bool = False) -> int:
+    """Stable ordering group shared by daily and slot selection.
+
+    Historical numbering is unchanged for every score: priority 0, eligible 1, same-day excluded 2,
+    below threshold without veto 3 and vetoed 4. `.13` education-policy priority sorts ahead of
+    all of them, national (-2) before provincial (-1).
+    """
+
+    if score.priority_applied and not excluded:
+        if score.education_policy_level is EducationPolicyLevel.NATIONAL:
+            return -2
+        if score.education_policy_level is EducationPolicyLevel.PROVINCIAL:
+            return -1
+        return 0
+    if score.eligible and not excluded:
+        return 1
+    if excluded:
+        return 2
+    if not score.veto_codes:
+        return 3
+    return 4
 
 
 def _priority_state(

@@ -1055,6 +1055,12 @@ async def persist_topic_selection_decision(
                     "final_rank": rank,
                     "rerank_reason_codes": list(score.rerank_reason_codes),
                     "rerank_explanation": score.rerank_explanation,
+                    # Present only for `.13` scores, so older explanations stay unchanged.
+                    **{
+                        key: value
+                        for key, value in score.as_metadata().items()
+                        if key.startswith("education_policy_")
+                    },
                 },
             )
             .on_conflict_do_nothing(constraint="uq_topic_scores_run_event")
