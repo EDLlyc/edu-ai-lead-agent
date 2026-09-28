@@ -1,0 +1,2 @@
+# Daily read-only production quality report, after the 18:30 evening push.
+40 21 * * * root /usr/local/sbin/edu-ai-quality-report >> /var/log/edu-ai-quality-report.log 2>&1
