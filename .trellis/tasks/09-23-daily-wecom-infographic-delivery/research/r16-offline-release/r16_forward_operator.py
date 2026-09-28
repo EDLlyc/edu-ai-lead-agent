@@ -67,6 +67,8 @@ VOLUMES = (
     "edu-ai-lead-agent_wechat_mp_draft_artifacts",
     "edu-ai-lead-agent_official_account_weekly_dag_output",
 )
+MINIO_VOLUME = VOLUMES[0]
+ARCHIVE_VOLUMES = VOLUMES[1:]
 HOST_REPLACEMENTS = (
     "compose.yaml",
     "deploy/release/migration-compatibility.json",
@@ -384,15 +386,33 @@ def valid_backup(backup: dict[str, Any], baseline: dict[str, Any]) -> None:
         and all(is_sha(value) for value in source_archives.values()),
         "backup_source_receipt",
     )
+    minio = backup.get("minio")
+    require(
+        isinstance(minio, dict)
+        and minio.get("kind") == "unversioned-current-object-logical-v1"
+        and isinstance(minio.get("bucket"), str)
+        and bool(minio["bucket"])
+        and minio.get("inventory_sha256") == baseline["volumes"][MINIO_VOLUME]
+        and is_sha(minio.get("manifest_sha256"))
+        and is_sha(minio.get("readback_tree_sha256"))
+        and type(minio.get("object_count")) is int
+        and minio["object_count"] >= 0
+        and type(minio.get("bytes")) is int
+        and minio["bytes"] >= 0
+        and minio.get("source_bytes_readback") is True
+        and minio.get("local_bytes_readback") is True
+        and minio.get("metadata_readback") is True,
+        "backup_minio_receipt",
+    )
     volumes = backup.get("volumes")
     volume_readbacks = backup.get("volume_readbacks")
     require(
         isinstance(volumes, dict)
-        and set(volumes) == set(VOLUMES)
-        and all(is_sha(volumes[name]) for name in VOLUMES)
+        and set(volumes) == set(ARCHIVE_VOLUMES)
+        and all(is_sha(volumes[name]) for name in ARCHIVE_VOLUMES)
         and isinstance(volume_readbacks, dict)
-        and set(volume_readbacks) == set(VOLUMES)
-        and all(volume_readbacks[name] is True for name in VOLUMES),
+        and set(volume_readbacks) == set(ARCHIVE_VOLUMES)
+        and all(volume_readbacks[name] is True for name in ARCHIVE_VOLUMES),
         "backup_volume_receipt",
     )
 
@@ -407,12 +427,19 @@ def valid_quiescent(snapshot: dict[str, Any], baseline: dict[str, Any]) -> None:
             "brand_identity_sha256": baseline["brand_identity_sha256"],
             "recipient_fingerprint": baseline["recipient_fingerprint"],
             "protected_files": baseline["protected_files"],
-            "volumes": baseline["volumes"],
+            "volumes": snapshot.get("volumes"),
             "flags": baseline["flags"],
             "stopped_services": list(SERVICES),
             "optional_producer_absent": True,
         }
-        and is_sha(snapshot.get("business_identity_sha256")),
+        and is_sha(snapshot.get("business_identity_sha256"))
+        and isinstance(snapshot.get("volumes"), dict)
+        and set(snapshot["volumes"]) == set(VOLUMES)
+        and is_sha(snapshot["volumes"][MINIO_VOLUME])
+        and all(
+            snapshot["volumes"][name] == baseline["volumes"][name]
+            for name in ARCHIVE_VOLUMES
+        ),
         "quiescent_identity",
     )
 
@@ -424,6 +451,7 @@ def quiescent_baseline(
     valid_quiescent(snapshot, live_baseline)
     result = json.loads(canonical(live_baseline))
     result["business_identity_sha256"] = snapshot["business_identity_sha256"]
+    result["volumes"][MINIO_VOLUME] = snapshot["volumes"][MINIO_VOLUME]
     valid_baseline(result)
     return cast(dict[str, Any], result)
 
@@ -452,6 +480,7 @@ class SimulatedHost(Protocol):
         self, live_baseline: dict[str, Any], snapshot: dict[str, Any]
     ) -> None: ...
     def backup(self) -> dict[str, Any]: ...
+    def verify_backup_materials(self, backup: dict[str, Any]) -> None: ...
     def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]: ...
     def stop_writers(self) -> None: ...
     def verify_writers_stopped(self) -> bool: ...
@@ -579,6 +608,7 @@ def simulate(
             clone = host.rehearse_clone(backup["pg_dump_sha256"])
             valid_fresh_clone(clone, authoritative_baseline, backup)
             write_new(attempt_dir / "clone-receipt.json", clone)
+            host.verify_backup_materials(backup)
             require(
                 host.capture_quiescent() == before_backup,
                 "pre_migration_quiescent_drift",
@@ -705,6 +735,7 @@ def apply_release(
             clone = host.rehearse_clone(backup["pg_dump_sha256"])
             valid_fresh_clone(clone, authoritative_baseline, backup)
             write_new(attempt_dir / "clone-receipt.json", clone)
+            host.verify_backup_materials(backup)
             require(
                 host.capture_quiescent() == before_backup,
                 "pre_migration_quiescent_drift",

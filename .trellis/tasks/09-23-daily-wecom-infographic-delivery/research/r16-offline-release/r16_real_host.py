@@ -25,12 +25,14 @@ from r16_forward_operator import (
     ALEMBIC_ONLY_COMMAND,
     APPROVED_RECIPIENT_FINGERPRINT,
     APPROVED_RECIPIENT_KEY_SHA256,
+    ARCHIVE_VOLUMES,
     ATTEMPT_NAME,
     BASE_IMAGE,
     BASE_REF,
     BASE_REVISION,
     BASE_SCHEMA,
     HOST_REPLACEMENTS,
+    MINIO_VOLUME,
     OFF_FLAGS,
     PROTECTED_FILES,
     SERVICES,
@@ -38,9 +40,11 @@ from r16_forward_operator import (
     VOLUMES,
     ReleaseBlocked,
     canonical,
+    is_sha,
     quiescent_baseline,
     require,
     sha,
+    valid_backup,
     valid_baseline,
     valid_production_manifest,
 )
@@ -137,6 +141,17 @@ print(json.dumps({'files':len(files),'sha256':hashlib.sha256(body).hexdigest()})
 PG_CLONE_DB = "edu_ai_r16_clone"
 PG_CLONE_USER = "r16_clone"
 SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z")
+MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-04-16T18-13-26Z"
+MINIO_MC_IMAGE_ID = (
+    "sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3"
+)
+MAX_MINIO_OBJECTS = 10_000
+MAX_MINIO_SOURCE_BYTES = 3 * 1024**3
+MAX_MINIO_INVENTORY_BYTES = 64 * 1024**2
+MINIO_MIRROR_TIMEOUT = 600
+MINIO_INVENTORY_TIMEOUT = 180
+SAFE_BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{2,62}\Z")
+SAFE_OBJECT_PART = re.compile(r"[A-Za-z0-9_.-]+\Z")
 
 
 class Runner(Protocol):
@@ -277,6 +292,19 @@ def _safe_archive_name(name: str) -> None:
         and str(relative) == name
         and not any(ord(c) < 32 or ord(c) == 127 for c in name),
         "unsafe_archive_name",
+    )
+
+
+def _safe_object_key(key: str) -> None:
+    """Reject keys that cannot be restored from an exact local path."""
+    parts = key.split("/")
+    require(
+        bool(parts)
+        and all(
+            part not in ("", ".", "..") and SAFE_OBJECT_PART.fullmatch(part) is not None
+            for part in parts
+        ),
+        "minio_object_key_unsafe",
     )
 
 
@@ -435,6 +463,7 @@ class RealHostAdapter:
         self._baseline: dict[str, Any] | None = None
         self._service_env: dict[str, dict[str, str]] = {}
         self._volume_paths: dict[str, Path] = {}
+        self._minio_preflight_size: tuple[int, int] | None = None
         self._table_identity: dict[str, dict[str, int | str]] = {}
         self._live_table_names: frozenset[str] | None = None
         self._stopped = False
@@ -786,8 +815,350 @@ class RealHostAdapter:
             path = Path(result[0]["Mountpoint"])
             require(path.is_absolute() and not path.is_symlink(), "volume_mountpoint")
             self._volume_paths[name] = path
-            volumes[name] = _tree_hash(path)
+            # MinIO's live .minio.sys is service control state, not a stable
+            # application-object identity. It must never be raw-archived while
+            # MinIO remains online.
+            if name == MINIO_VOLUME:
+                snapshot = self._minio_snapshot()
+                entries = snapshot["objects"]
+                self._minio_preflight_size = (
+                    len(entries),
+                    sum(item["size"] for item in entries.values()),
+                )
+                volumes[name] = sha(canonical(snapshot))
+            else:
+                volumes[name] = _tree_hash(path)
         return protected, brand, volumes
+
+    def _mc(
+        self,
+        *args: str,
+        code: str,
+        timeout: int = 180,
+        output_file: Path | None = None,
+        backup_mount: Path | None = None,
+    ) -> bytes:
+        """Run the pinned client with credentials in process environment only."""
+        settings = _parse_env(self.paths.app / ".env")
+        user = settings.get("MINIO_ROOT_USER", "")
+        password = settings.get("MINIO_ROOT_PASSWORD", "")
+        bucket = settings.get("MINIO_BUCKET", "")
+        require(
+            bool(user)
+            and bool(password)
+            and SAFE_BUCKET.fullmatch(bucket) is not None
+            and all(
+                "\n" not in value and "\r" not in value for value in (user, password)
+            ),
+            "minio_configuration",
+        )
+        require(
+            self._image(MINIO_MC_IMAGE).get("Id") == MINIO_MC_IMAGE_ID,
+            "minio_client_image_unpinned",
+        )
+        command = [
+            "docker",
+            "run",
+            "--rm",
+            "--pull",
+            "never",
+            "--network",
+            self._production_network(),
+            "--user",
+            "0:0",
+            "--entrypoint",
+            "/usr/bin/mc",
+            "--env",
+            "MC_HOST_r16",
+        ]
+        if backup_mount is not None:
+            require(
+                backup_mount.is_dir()
+                and not backup_mount.is_symlink()
+                and backup_mount.is_relative_to(self.attempt_dir),
+                "minio_backup_mount",
+            )
+            command.extend(("-v", str(backup_mount) + ":/backup"))
+        command.extend((MINIO_MC_IMAGE_ID, *args))
+        # Docker's --env NAME forwards the value from the client environment;
+        # neither argv nor release logs contain the secret URL.
+        env = {
+            **HOST_COMMAND_ENV,
+            "MC_HOST_r16": "http://"
+            + quote(user, safe="")
+            + ":"
+            + quote(password, safe="")
+            + "@minio:9000",
+        }
+        return self._run(
+            *command, code=code, timeout=timeout, output_file=output_file, env=env
+        )
+
+    def _minio_bucket(self) -> str:
+        bucket = _parse_env(self.paths.app / ".env").get("MINIO_BUCKET", "")
+        require(SAFE_BUCKET.fullmatch(bucket) is not None, "minio_bucket")
+        return bucket
+
+    def _require_minio_capacity(self, object_count: int, object_bytes: int) -> None:
+        """Reserve both local copies at the current free-space watermark."""
+        if not self._production_paths:
+            return
+        free = os.statvfs(self.paths.backup_root)
+        require(
+            free.f_bavail * free.f_frsize
+            >= max(MIN_RELEASE_FREE_BYTES, 2 * object_bytes + 4 * 1024**3)
+            and free.f_favail
+            >= max(MIN_RELEASE_FREE_INODES, 2 * object_count + 10_000),
+            "minio_logical_backup_capacity",
+        )
+
+    def _mc_json_lines(self, *args: str, code: str) -> list[dict[str, Any]]:
+        """Stream a bounded inventory to a private file, never into logs/stdout."""
+        # Sealed preflight intentionally has no attempt directory yet. Its
+        # temporary inventory lives under the existing private backup root
+        # and is unlinked before preflight returns.
+        directory = (
+            self.attempt_dir if self.attempt_dir.is_dir() else self.paths.backup_root
+        )
+        info = directory.lstat()
+        require(
+            stat.S_ISDIR(info.st_mode)
+            and not directory.is_symlink()
+            and stat.S_IMODE(info.st_mode) == 0o700
+            and info.st_uid == os.geteuid(),
+            "minio_inventory_directory",
+        )
+        path = directory / (".minio-inventory-" + secrets.token_hex(12))
+        try:
+            self._mc(
+                *args, code=code, timeout=MINIO_INVENTORY_TIMEOUT, output_file=path
+            )
+            info = _regular_file(path, private=True)
+            require(
+                info.st_size <= MAX_MINIO_INVENTORY_BYTES, "minio_inventory_too_large"
+            )
+            result: list[dict[str, Any]] = []
+            with path.open("rb") as stream:
+                for line in stream:
+                    require(len(line) <= 64 * 1024, "minio_inventory_line_too_large")
+                    item = _json(line, "minio_inventory_json")
+                    require(isinstance(item, dict), "minio_inventory_shape")
+                    result.append(item)
+            return result
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def _minio_snapshot(self) -> dict[str, Any]:
+        """Exact current-object inventory; unsupported S3 features fail closed."""
+        bucket = self._minio_bucket()
+        target = "r16/" + bucket
+        version = _json(
+            self._mc("version", "info", "--json", target, code="minio_version_info"),
+            "minio_version_json",
+        )
+        require(
+            isinstance(version, dict)
+            and version.get("status") == "success"
+            and isinstance(version.get("versioning"), dict)
+            and version["versioning"].get("status") == ""
+            and version["versioning"].get("MFADelete") == "",
+            "minio_versioning_unsupported",
+        )
+        listing = self._mc_json_lines(
+            "stat", "--recursive", "--json", target + "/", code="minio_stat_recursive"
+        )
+        objects: dict[str, dict[str, Any]] = {}
+        total_bytes = 0
+        for item in listing:
+            require(
+                item.get("status") == "success"
+                and item.get("type") == "file"
+                and isinstance(item.get("name"), str)
+                and type(item.get("size")) is int
+                and item["size"] >= 0
+                and isinstance(item.get("etag"), str)
+                and bool(item["etag"])
+                and isinstance(item.get("lastModified"), str)
+                and isinstance(item.get("metadata"), dict)
+                and all(
+                    isinstance(meta_key, str) and isinstance(meta_value, str)
+                    for meta_key, meta_value in item["metadata"].items()
+                )
+                and any(
+                    meta_key.lower() == "content-type" and bool(meta_value)
+                    for meta_key, meta_value in item["metadata"].items()
+                )
+                and all(
+                    meta_key.lower() == "content-type"
+                    or meta_key.lower().startswith("x-amz-meta-")
+                    for meta_key in item["metadata"]
+                )
+                and not any(
+                    field in item
+                    for field in ("versionID", "retention", "legalHold", "tags")
+                )
+                and not any(
+                    forbidden in meta_key.lower()
+                    for meta_key in item["metadata"]
+                    for forbidden in (
+                        "object-lock",
+                        "retention",
+                        "legal-hold",
+                        "server-side-encryption",
+                    )
+                ),
+                "minio_stat_shape_or_metadata",
+            )
+            key = item["name"]
+            _safe_object_key(key)
+            require(key not in objects, "minio_duplicate_object")
+            objects[key] = {
+                "size": item["size"],
+                "etag": item["etag"],
+                "last_modified": item["lastModified"],
+                "metadata": item["metadata"],
+            }
+            total_bytes += item["size"]
+            require(
+                len(objects) <= MAX_MINIO_OBJECTS
+                and total_bytes <= MAX_MINIO_SOURCE_BYTES,
+                "minio_preflight_size_limit",
+            )
+        # A flat file and a child prefix cannot both map to the local mirror.
+        for key in objects:
+            parts = key.split("/")
+            require(
+                all(
+                    "/".join(parts[:index]) not in objects
+                    for index in range(1, len(parts))
+                ),
+                "minio_key_path_collision",
+            )
+        tags_listing = self._mc_json_lines(
+            "tag",
+            "list",
+            "--recursive",
+            "--json",
+            target + "/",
+            code="minio_tags_recursive",
+        )
+        seen_tags: set[str] = set()
+        for tags in tags_listing:
+            url = tags.get("url")
+            require(
+                tags.get("status") == "success"
+                and isinstance(url, str)
+                and urlsplit(url).path.startswith("/" + bucket + "/")
+                and tags.get("versionID") in (None, "")
+                and tags.get("tags") in (None, {}, []),
+                "minio_tags_unsupported",
+            )
+            assert isinstance(url, str)
+            key = urlsplit(url).path[len(bucket) + 2 :]
+            _safe_object_key(key)
+            require(key in objects and key not in seen_tags, "minio_tags_inventory")
+            seen_tags.add(key)
+        require(seen_tags == set(objects), "minio_tags_inventory")
+        return {
+            "version": "r16-minio-current-objects-v1",
+            "bucket": bucket,
+            "objects": dict(sorted(objects.items())),
+        }
+
+    def _backup_minio_objects(self, expected_identity: str) -> dict[str, Any]:
+        before = self._minio_snapshot()
+        require(sha(canonical(before)) == expected_identity, "minio_prebackup_drift")
+        self._require_minio_capacity(
+            len(before["objects"]),
+            sum(item["size"] for item in before["objects"].values()),
+        )
+        bucket = before["bucket"]
+        target_dir = self.attempt_dir / "minio-objects"
+        target_dir.mkdir(mode=0o700)
+        self._mc(
+            "mirror",
+            "--preserve",
+            "--quiet",
+            "r16/" + bucket,
+            "/backup",
+            code="minio_mirror",
+            timeout=MINIO_MIRROR_TIMEOUT,
+            backup_mount=target_dir,
+        )
+        local = _tree(target_dir)
+        keys = set(before["objects"])
+        require(
+            {name for name, meta in local.items() if meta["type"] == "file"} == keys,
+            "minio_mirror_inventory",
+        )
+        # A fresh second mirror performs an independent remote GET of every
+        # current object; it is retained as readback evidence, not an archive
+        # of MinIO's live internal files.
+        readback_dir = self.attempt_dir / "minio-objects-readback"
+        readback_dir.mkdir(mode=0o700)
+        self._mc(
+            "mirror",
+            "--preserve",
+            "--quiet",
+            "r16/" + bucket,
+            "/backup",
+            code="minio_mirror_readback",
+            timeout=MINIO_MIRROR_TIMEOUT,
+            backup_mount=readback_dir,
+        )
+        readback_tree = _tree(readback_dir)
+        require(
+            {name for name, meta in readback_tree.items() if meta["type"] == "file"}
+            == keys,
+            "minio_readback_inventory",
+        )
+        manifest_objects: dict[str, dict[str, Any]] = {}
+        total_bytes = 0
+        for key, item in before["objects"].items():
+            copied = _metadata(target_dir / key)
+            require(copied["size"] == item["size"], "minio_mirror_size")
+            source = _metadata(readback_dir / key)
+            require(
+                source["sha256"] == copied["sha256"]
+                and source["size"] == copied["size"],
+                "minio_object_byte_drift",
+            )
+            manifest_objects[key] = {
+                "sha256": copied["sha256"],
+                "size": copied["size"],
+                "metadata": item["metadata"],
+            }
+            total_bytes += int(copied["size"])
+        require(self._minio_snapshot() == before, "minio_postbackup_drift")
+        manifest = {
+            "version": "r16-minio-logical-backup-v1",
+            "bucket": bucket,
+            "inventory_sha256": expected_identity,
+            "objects": manifest_objects,
+        }
+        manifest_path = self.attempt_dir / "minio-objects-manifest.json"
+        self._write_private(manifest_path, canonical(manifest))
+        require(
+            _json(manifest_path.read_bytes(), "minio_manifest_json") == manifest,
+            "minio_manifest_readback",
+        )
+        _fsync_directories(target_dir)
+        _fsync_directories(readback_dir)
+        return {
+            "kind": "unversioned-current-object-logical-v1",
+            "bucket": bucket,
+            "inventory_sha256": expected_identity,
+            "manifest_sha256": _metadata(manifest_path)["sha256"],
+            "object_count": len(keys),
+            "bytes": total_bytes,
+            "readback_tree_sha256": sha(
+                canonical({key: readback_tree[key]["sha256"] for key in sorted(keys)})
+            ),
+            "source_bytes_readback": True,
+            "local_bytes_readback": True,
+            "metadata_readback": True,
+        }
 
     def capture(self) -> dict[str, Any]:
         app = self.paths.app
@@ -973,6 +1344,11 @@ class RealHostAdapter:
         self._production_db_url()
         self._production_network()
         protected, brand, volumes = self._common_identity()
+        if self._production_paths:
+            require(self._minio_preflight_size is not None, "minio_preflight_size")
+            assert self._minio_preflight_size is not None
+            object_count, object_bytes = self._minio_preflight_size
+            self._require_minio_capacity(object_count, object_bytes)
         dispatcher_env = self._service_env["wecom-dispatcher"]
         require(
             dispatcher_env.get("WECOM_DELIVERY_PROVIDER") == "group_webhook"
@@ -1165,8 +1541,9 @@ class RealHostAdapter:
             == protected_metadata,
             "protected_metadata_readback",
         )
+        minio_receipt = self._backup_minio_objects(baseline["volumes"][MINIO_VOLUME])
         volume_archives: dict[str, str] = {}
-        for name in VOLUMES:
+        for name in ARCHIVE_VOLUMES:
             digest, _ = _archive_tree(
                 self._volume_paths[name], self.attempt_dir / (name + ".tar.gz")
             )
@@ -1199,9 +1576,82 @@ class RealHostAdapter:
             "brand_archive_sha256": brand_digest,
             "source_config_readback": len(source_digests) == len(SOURCE_DIRS),
             "source_config_archives": source_digests,
+            "minio": minio_receipt,
             "volumes": volume_archives,
-            "volume_readbacks": dict.fromkeys(VOLUMES, True),
+            "volume_readbacks": dict.fromkeys(ARCHIVE_VOLUMES, True),
         }
+
+    def verify_backup_materials(self, backup: dict[str, Any]) -> None:
+        """Rehash both retained MinIO copies immediately before migration intent.
+
+        The receipt records the backup-time result; it cannot itself prove that
+        the private on-disk recovery material still exists after clone work.
+        """
+        self._require_mutation_review()
+        baseline = self._required_baseline()
+        require(
+            self._stopped
+            and self.verify_writers_stopped()
+            and not (self.attempt_dir / "migration-intent.json").exists(),
+            "minio_materials_verification_order",
+        )
+        valid_backup(backup, baseline)
+        minio = backup["minio"]
+        manifest_path = self.attempt_dir / "minio-objects-manifest.json"
+        info = _regular_file(manifest_path, private=True)
+        require(info.st_uid == os.geteuid(), "minio_manifest_owner")
+        body = manifest_path.read_bytes()
+        require(sha(body) == minio["manifest_sha256"], "minio_manifest_drift")
+        manifest = _json(body, "minio_manifest_json")
+        require(
+            isinstance(manifest, dict)
+            and canonical(manifest) == body
+            and set(manifest) == {"version", "bucket", "inventory_sha256", "objects"}
+            and manifest["version"] == "r16-minio-logical-backup-v1"
+            and manifest["bucket"] == minio["bucket"]
+            and manifest["inventory_sha256"] == minio["inventory_sha256"]
+            and isinstance(manifest["objects"], dict),
+            "minio_manifest_contract",
+        )
+        objects = manifest["objects"]
+        require(len(objects) == minio["object_count"], "minio_manifest_count")
+        expected_bytes = 0
+        for key, item in objects.items():
+            require(isinstance(key, str), "minio_manifest_key")
+            _safe_object_key(key)
+            require(
+                isinstance(item, dict)
+                and set(item) == {"sha256", "size", "metadata"}
+                and is_sha(item["sha256"])
+                and type(item["size"]) is int
+                and item["size"] >= 0
+                and isinstance(item["metadata"], dict),
+                "minio_manifest_object",
+            )
+            expected_bytes += item["size"]
+        require(expected_bytes == minio["bytes"], "minio_manifest_bytes")
+        first = _tree(self.attempt_dir / "minio-objects")
+        second = _tree(self.attempt_dir / "minio-objects-readback")
+        keys = set(objects)
+        require(
+            {key for key, item in first.items() if item["type"] == "file"} == keys
+            and {key for key, item in second.items() if item["type"] == "file"} == keys,
+            "minio_materials_inventory_drift",
+        )
+        for key, item in objects.items():
+            require(
+                all(
+                    tree[key]["sha256"] == item["sha256"]
+                    and tree[key]["size"] == item["size"]
+                    for tree in (first, second)
+                ),
+                "minio_materials_byte_drift",
+            )
+        require(
+            sha(canonical({key: second[key]["sha256"] for key in sorted(keys)}))
+            == minio["readback_tree_sha256"],
+            "minio_materials_readback_drift",
+        )
 
     def stage_candidate_image(self, manifest: dict[str, Any]) -> str:
         self._require_mutation_review()
@@ -1645,9 +2095,11 @@ class RealHostAdapter:
             != baseline["brand_identity_sha256"]
         ):
             return False
+        if sha(canonical(self._minio_snapshot())) != baseline["volumes"][MINIO_VOLUME]:
+            return False
         if any(
             _tree_hash(self._volume_paths[name]) != baseline["volumes"][name]
-            for name in VOLUMES
+            for name in ARCHIVE_VOLUMES
         ):
             return False
         if self._db_identity() != baseline["business_identity_sha256"]:
@@ -1771,7 +2223,11 @@ class RealHostAdapter:
             all(
                 baseline.get(key) == live_baseline.get(key)
                 for key in live_baseline
-                if key != "business_identity_sha256"
+                if key not in ("business_identity_sha256", "volumes")
+            )
+            and all(
+                baseline["volumes"][name] == live_baseline["volumes"][name]
+                for name in ARCHIVE_VOLUMES
             ),
             "pre_migration_baseline_identity",
         )
@@ -1783,7 +2239,7 @@ class RealHostAdapter:
             }
             == live_baseline["protected_files"]
             and brand == live_baseline["brand_identity_sha256"]
-            and volumes == live_baseline["volumes"]
+            and volumes == baseline["volumes"]
             and self._work_counts() == (0, 0),
             "pre_migration_data_or_file_drift",
         )

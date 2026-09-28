@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import stat
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 import r16_real_host as real
@@ -50,6 +54,12 @@ class FakeCommands:
             f"{i + 1:012x}": name
             for i, name in enumerate((*SERVICES, "postgres", "minio"))
         }
+        self.minio_objects: dict[str, bytes] = {
+            "source-snapshots/sha256/ab/abcd": b"persisted-object"
+        }
+        self.minio_metadata: dict[str, str] = {"Content-Type": "application/json"}
+        self.minio_version_status = ""
+        self.minio_tags: dict[str, str] = {}
 
     def _sql(self, sql: str, *, clone: bool) -> bytes:
         if sql == "SELECT version_num FROM alembic_version":
@@ -74,13 +84,74 @@ class FakeCommands:
         timeout: int = 60,
         input_file: Path | None = None,
         output_file: Path | None = None,
-        env: dict[str, str] | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> bytes:
         del timeout
         self.calls.append(argv)
         self.envs.append(dict(env) if env is not None else None)
         if code == self.fail_code:
             raise ReleaseBlocked(code)
+        if argv[:2] == ("docker", "run") and real.MINIO_MC_IMAGE_ID in argv:
+            index = argv.index(real.MINIO_MC_IMAGE_ID)
+            mc = argv[index + 1 :]
+            assert env is not None and env["MC_HOST_r16"].startswith("http://")
+            assert "--pull" in argv and "never" in argv
+            if mc[:2] == ("version", "info"):
+                return json.dumps(
+                    {
+                        "status": "success",
+                        "versioning": {
+                            "status": self.minio_version_status,
+                            "MFADelete": "",
+                        },
+                    }
+                ).encode()
+            if mc[:1] == ("stat",):
+                result = b"".join(
+                    json.dumps(
+                        {
+                            "status": "success",
+                            "type": "file",
+                            "name": key,
+                            "size": len(body),
+                            "etag": hashlib.sha256(body).hexdigest(),
+                            "lastModified": "2026-09-27T00:00:00Z",
+                            "metadata": self.minio_metadata,
+                        }
+                    ).encode()
+                    + b"\n"
+                    for key, body in sorted(self.minio_objects.items())
+                )
+                assert output_file is not None
+                output_file.write_bytes(result)
+                output_file.chmod(0o600)
+                return b""
+            if mc[:2] == ("tag", "list"):
+                result = b"".join(
+                    json.dumps(
+                        {
+                            "status": "success",
+                            "versionID": "",
+                            "url": "http://minio:9000/edu-ai-materials/" + key,
+                            "tags": self.minio_tags,
+                        }
+                    ).encode()
+                    + b"\n"
+                    for key in sorted(self.minio_objects)
+                )
+                assert output_file is not None
+                output_file.write_bytes(result)
+                output_file.chmod(0o600)
+                return b""
+            if mc[:1] == ("mirror",):
+                mount = next(arg for arg in argv if arg.endswith(":/backup"))
+                root = Path(mount.removesuffix(":/backup"))
+                for key, body in self.minio_objects.items():
+                    target = root / key
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(body)
+                return b""
+            raise AssertionError(f"unexpected mc command: {mc}")
         if output_file is not None:
             output_file.write_bytes(b"PGDMP" + b"x" * 2048)
             output_file.chmod(0o600)
@@ -93,6 +164,8 @@ class FakeCommands:
             self.clone_schema = BASE_SCHEMA
             return b""
         if argv[:3] == ("docker", "image", "inspect"):
+            if argv[3] == real.MINIO_MC_IMAGE:
+                return json.dumps([{"Id": real.MINIO_MC_IMAGE_ID}]).encode()
             candidate = argv[3] != BASE_REF
             digest = self.candidate_image if candidate else BASE_IMAGE
             revision = "1" * 40 if candidate else BASE_REVISION
@@ -260,7 +333,7 @@ def _fixture(
         elif name == ".release.env":
             body = ("APP_IMAGE=" + BASE_REF + "\n").encode()
         elif name == ".env":
-            body = b"WECOM_DELIVERY_PROVIDER=group_webhook\nWECOM_GROUP_WEBHOOK_KEY=fake-group-key\nPOSTGRES_USER=edu_ai\nPOSTGRES_PASSWORD=fake-db-password\nPOSTGRES_DB=edu_ai\n"
+            body = b"WECOM_DELIVERY_PROVIDER=group_webhook\nWECOM_GROUP_WEBHOOK_KEY=fake-group-key\nPOSTGRES_USER=edu_ai\nPOSTGRES_PASSWORD=fake-db-password\nPOSTGRES_DB=edu_ai\nMINIO_ROOT_USER=fake-minio-user\nMINIO_ROOT_PASSWORD=fake-minio-password\nMINIO_BUCKET=edu-ai-materials\n"
         else:
             body = b"baseline-file\n"
         target.write_bytes(body)
@@ -318,7 +391,7 @@ def test_only_exact_historical_work_cohort_is_exempted(
                 "official_account_article_runs\nwecom_delivery_jobs"
             )
         if sql == real.HISTORICAL_WORK_COHORT_SQL:
-            return state["cohort"]
+            return cast(str, state["cohort"])
         if sql.startswith("SELECT count(*) FROM public."):
             table = sql.split("public.", 1)[1].split(" ", 1)[0]
             if "delivery_unknown" in sql:
@@ -439,7 +512,15 @@ def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
     backup = adapter.backup()
     valid_backup(backup, baseline)
     assert stat.S_IMODE((adapter.attempt_dir / "postgres.dump").stat().st_mode) == 0o600
-    assert len(list(adapter.attempt_dir.glob("*.tar.gz"))) == 4
+    assert len(list(adapter.attempt_dir.glob("*.tar.gz"))) == 3
+    assert not (adapter.attempt_dir / (VOLUMES[0] + ".tar.gz")).exists()
+    assert (adapter.attempt_dir / "minio-objects-manifest.json").exists()
+    assert backup["minio"]["object_count"] == 1
+    assert backup["minio"]["bytes"] == len(b"persisted-object")
+    assert len([call for call in commands.calls if "mirror" in call]) == 2
+    assert all("fake-minio-password" not in " ".join(call) for call in commands.calls)
+    assert not list(adapter.attempt_dir.glob(".minio-inventory-*"))
+    adapter.verify_backup_materials(backup)
     assert adapter.stage_candidate_image(manifest) == manifest["image"]
     clone = adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
     valid_fresh_clone(clone, baseline, backup)
@@ -550,10 +631,205 @@ def test_non_postgres_volume_drift_blocks_old_container_restart(tmp_path: Path) 
     adapter, commands, _ = _fixture(tmp_path)
     live = adapter.capture()
     adapter.stop_writers()
-    (commands.volume_paths[VOLUMES[0]] / "content.bin").write_bytes(b"changed")
+    (commands.volume_paths[VOLUMES[1]] / "content.bin").write_bytes(b"changed")
     with pytest.raises(ReleaseBlocked, match="pre_migration_data_or_file_drift"):
         adapter.verify_original_recoverable(live)
     assert not any("start" in call for call in commands.calls)
+
+
+def test_minio_control_churn_does_not_block_original_recovery(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    control = commands.volume_paths[VOLUMES[0]] / ".minio.sys"
+    control.mkdir()
+    (control / "metadata.bin").write_bytes(b"changed")
+    assert adapter.verify_original_recoverable(live)["verified"] is True
+
+
+def test_minio_object_drift_blocks_original_recovery(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    commands.minio_objects["source-snapshots/sha256/ab/abcd"] = b"changed"
+    with pytest.raises(ReleaseBlocked, match="pre_migration_data_or_file_drift"):
+        adapter.verify_original_recoverable(live)
+
+
+@pytest.mark.parametrize("key", ["../escape", "a//b", "a/./b", "a/../b", "a\\b"])
+def test_unsafe_minio_key_blocks_preflight(tmp_path: Path, key: str) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.minio_objects = {key: b"payload"}
+    with pytest.raises(ReleaseBlocked, match="minio_object_key_unsafe"):
+        adapter.capture()
+    assert not commands.stopped
+
+
+def test_versioned_minio_bucket_blocks_preflight(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.minio_version_status = "Enabled"
+    with pytest.raises(ReleaseBlocked, match="minio_versioning_unsupported"):
+        adapter.capture()
+    assert not commands.stopped
+
+
+def test_minio_preflight_uses_private_root_without_attempt_directory(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.attempt_dir.rmdir()
+    baseline = adapter.capture()
+    assert baseline["volumes"][VOLUMES[0]]
+    assert not adapter.attempt_dir.exists()
+    assert not list(adapter.paths.backup_root.glob(".minio-inventory-*"))
+    assert not commands.stopped
+
+
+def test_tagged_minio_object_blocks_preflight(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.minio_tags = {"governance": "retained"}
+    with pytest.raises(ReleaseBlocked, match="minio_tags_unsupported"):
+        adapter.capture()
+    assert not commands.stopped
+
+
+def test_unsupported_minio_metadata_blocks_preflight(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.minio_metadata["Cache-Control"] = "private"
+    with pytest.raises(ReleaseBlocked, match="minio_stat_shape_or_metadata"):
+        adapter.capture()
+    assert not commands.stopped
+
+
+def test_stop_window_minio_object_change_becomes_quiescent_baseline(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    live = adapter.capture()
+    adapter.stop_writers()
+    commands.minio_objects["new/sha256/ef/ef01"] = b"new-object"
+    quiet = adapter.capture_quiescent()
+    valid_quiescent(quiet, live)
+    adapter._mutation_armed = True
+    adapter.adopt_quiescent_baseline(live, quiet)
+    assert adapter._baseline is not None
+    assert adapter._baseline["volumes"][VOLUMES[0]] == quiet["volumes"][VOLUMES[0]]
+    assert adapter.verify_original_recoverable(live)["verified"] is True
+    backup = adapter.backup()
+    valid_backup(backup, adapter._baseline)
+    assert backup["minio"]["object_count"] == 2
+
+
+def test_minio_object_deletion_during_mirror_blocks_backup(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    original_run = commands.run
+
+    def delete_object(*args: Any, **kwargs: Any) -> bytes:
+        result = original_run(*args, **kwargs)
+        if kwargs.get("code") == "minio_mirror_readback":
+            commands.minio_objects.clear()
+        return result
+
+    commands.run = delete_object  # type: ignore[method-assign]
+    with pytest.raises(ReleaseBlocked, match="minio_postbackup_drift"):
+        adapter.backup()
+
+
+def test_empty_minio_bucket_has_explicit_zero_object_manifest(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    commands.minio_objects.clear()
+    baseline = adapter.capture()
+    adapter.stop_writers()
+    backup = adapter.backup()
+    valid_backup(backup, baseline)
+    assert backup["minio"]["object_count"] == 0
+    manifest = json.loads(
+        (adapter.attempt_dir / "minio-objects-manifest.json").read_text()
+    )
+    assert manifest["objects"] == {}
+
+
+def test_minio_mirror_byte_drift_blocks_backup(tmp_path: Path) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    original_run = commands.run
+
+    def corrupt_mirror(*args: Any, **kwargs: Any) -> bytes:
+        result = original_run(*args, **kwargs)
+        if kwargs.get("code") == "minio_mirror":
+            copied = (
+                adapter.attempt_dir / "minio-objects/source-snapshots/sha256/ab/abcd"
+            )
+            copied.write_bytes(b"wrong-bytes-1234")
+        return result
+
+    commands.run = corrupt_mirror  # type: ignore[method-assign]
+    with pytest.raises(ReleaseBlocked, match="minio_object_byte_drift"):
+        adapter.backup()
+
+
+def test_minio_capacity_is_rechecked_before_first_mirror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    baseline = adapter.capture()
+    adapter._production_paths = True
+    monkeypatch.setattr(
+        os,
+        "statvfs",
+        lambda path: SimpleNamespace(f_bavail=1, f_frsize=4096, f_favail=100_000),
+    )
+    with pytest.raises(ReleaseBlocked, match="minio_logical_backup_capacity"):
+        adapter._backup_minio_objects(baseline["volumes"][VOLUMES[0]])
+    assert not any("mirror" in call for call in commands.calls)
+    assert not (adapter.attempt_dir / "minio-objects").exists()
+
+
+@pytest.mark.parametrize(
+    ("relative", "expected"),
+    [
+        ("minio-objects-manifest.json", "minio_manifest_drift"),
+        (
+            "minio-objects/source-snapshots/sha256/ab/abcd",
+            "minio_materials_byte_drift",
+        ),
+        (
+            "minio-objects-readback/source-snapshots/sha256/ab/abcd",
+            "minio_materials_byte_drift",
+        ),
+    ],
+)
+def test_minio_material_corruption_after_receipt_blocks_migration(
+    tmp_path: Path, relative: str, expected: str
+) -> None:
+    adapter, _, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    backup = adapter.backup()
+    (adapter.attempt_dir / relative).write_bytes(b"corrupted after receipt")
+    with pytest.raises(ReleaseBlocked, match=expected):
+        adapter.verify_backup_materials(backup)
+
+
+@pytest.mark.parametrize("copy", ["minio-objects", "minio-objects-readback"])
+@pytest.mark.parametrize("mutation", ["missing", "extra"])
+def test_minio_material_missing_or_extra_key_after_receipt_blocks_migration(
+    tmp_path: Path, copy: str, mutation: str
+) -> None:
+    adapter, _, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    backup = adapter.backup()
+    key = adapter.attempt_dir / copy / "source-snapshots/sha256/ab/abcd"
+    if mutation == "missing":
+        key.unlink()
+    else:
+        (key.parent / "unexpected").write_bytes(b"not in manifest")
+    with pytest.raises(ReleaseBlocked, match="minio_materials_inventory_drift"):
+        adapter.verify_backup_materials(backup)
 
 
 def test_clone_rejects_different_dump_bytes_before_docker_mutation(

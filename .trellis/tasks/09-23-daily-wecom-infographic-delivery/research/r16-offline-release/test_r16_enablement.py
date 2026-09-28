@@ -857,8 +857,20 @@ def _production_fixture(
         "source_config_archives": dict.fromkeys(
             ("backend", "deploy", "scripts", "infra"), HEX
         ),
-        "volumes": dict.fromkeys(release_operator.VOLUMES, HEX),
-        "volume_readbacks": dict.fromkeys(release_operator.VOLUMES, True),
+        "minio": {
+            "kind": "unversioned-current-object-logical-v1",
+            "bucket": "edu-ai-materials",
+            "inventory_sha256": pre_stop["volumes"][release_operator.MINIO_VOLUME],
+            "manifest_sha256": HEX,
+            "readback_tree_sha256": HEX,
+            "object_count": 1,
+            "bytes": 8,
+            "source_bytes_readback": True,
+            "local_bytes_readback": True,
+            "metadata_readback": True,
+        },
+        "volumes": dict.fromkeys(release_operator.ARCHIVE_VOLUMES, HEX),
+        "volume_readbacks": dict.fromkeys(release_operator.ARCHIVE_VOLUMES, True),
     }
     clone: dict[str, Any] = {
         "chain": release_operator.MIGRATION_CHAIN,

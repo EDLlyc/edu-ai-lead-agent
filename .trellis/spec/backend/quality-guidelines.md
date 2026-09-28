@@ -859,6 +859,25 @@ release artifacts, or production deployment automation change.
   contents in release logs. For MinIO, bind the user-object namespace and exclude the
   implementation-owned `.minio.sys` control tree, whose internal metadata may rotate without a
   business-object mutation.
+- When MinIO remains running during a stopped-application-writer release, do not fingerprint or
+  archive its raw live volume as if it were a cold snapshot. Use a separately identified logical
+  backup of the configured application bucket's **current objects**: prove the bucket and its
+  versioning/metadata mode are supported before quiescence, enumerate exact keys and metadata,
+  download and independently read back every object's bytes, then compare the source inventory
+  again before accepting the backup receipt. Use bounded bulk inventory and two independent
+  downloads rather than one backup-client container per object. Preflight must reserve enough
+  bytes and inodes for both copies plus other release artifacts before stopping writers; each
+  transfer has a hard timeout, and no short-outage claim is made without a source-only speed
+  measurement. Bind the manifest digest, object count, byte count,
+  bucket identity and per-object evidence to that receipt; reject unsafe key-to-path mappings,
+  incomplete copies, drift and unreadable objects. Re-read the persisted manifest and both local
+  object copies against the accepted receipt immediately before migration intent; a receipt's
+  success booleans alone do not prove that retained backup bytes are still present. Pin the local
+  backup-client image identity and
+  prohibit an implicit pull while writers are stopped; credentials stay in protected input, not
+  process arguments or logs. This release-scoped object backup does **not** claim to preserve MinIO
+  server configuration or object version history. If either is needed for recovery, use a
+  separately reviewed cold/replication procedure rather than marking the logical receipt complete.
 - A stopped Compose one-shot may be removed before its replacement only after proving there is
   exactly one container, it is exited with restart count zero, and its image plus project/service/
   container-number labels match the captured previous release. Never remove a running, ambiguous,
@@ -917,6 +936,7 @@ release artifacts, or production deployment automation change.
 | Existing source has group/world write, a special/unknown mode, ownership drift, a symlink/path escape, or executable-class mismatch | Fail before quiesce or again at the overlay TOCTOU recheck; do not create a new destination path. The sole f20 bootstrap exception is the exact three named app-owned `0664` metadata files under the bound `292:12:3` distribution. |
 | A backup inventory depends on a utility absent from the service image, the named-volume identity/mountpoint drifts, or the read-only helper rejects an entry/race | Fail the backup before activation, retain partial evidence as non-restorable, and restore the captured prior service set; never accept an empty or partial manifest. |
 | MinIO `.minio.sys` metadata rotates while the user-object manifest is byte-exact | Do not report a business-object mutation; compare only the validated user-object namespace and retain aggregate internal-metadata diagnostics separately. |
+| Online MinIO object listing, bytes, supported metadata, or pinned backup-client identity drifts | Reject the backup or preflight before migration; preserve any partial copy as non-restorable and do not promote a raw live-volume archive as fallback. |
 | A prior migration one-shot exists | Remove it only when its unique exited identity matches the captured previous release; otherwise fail before migration and do not guess which container is stale. |
 | Existing `.release.env` uses a tag, is not attached to the captured image, or resolves elsewhere | Reject before quiescence. Correct it to the proven current RepoDigest while services remain active, recapture the exact baseline, and require a new one-shot candidate identity. |
 | Lock is already held | Typed preflight failure; concurrent release is rejected |

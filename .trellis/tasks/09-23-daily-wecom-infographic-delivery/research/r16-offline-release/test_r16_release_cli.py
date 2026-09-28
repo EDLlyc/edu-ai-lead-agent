@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -253,7 +254,7 @@ def test_cli_crash_attempt_refuses_before_bundle_or_host_access(
     attempt.mkdir()
     (attempt / "migration-intent.json").write_bytes(b"{}")
     monkeypatch.setattr(cli, "require_isolated", lambda: None)
-    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
     monkeypatch.setattr(
         sys,
         "argv",

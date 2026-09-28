@@ -37,6 +37,82 @@ string, still rejects other CTEs/semicolon-bearing SQL, and has a regression
 test through the real adapter SQL guard. This is another operator-byte change,
 so only a new full image/manifest from the later commit can be considered.
 
+Two later R16 live attempts stopped before backup or migration. The first
+rejected a changed business identity; the second rejected a post-stop
+data/file identity and its automatic recovery could not verify the previous
+runtime. Operators reconciled the original 12 R15 application containers and
+started those same containers in place. Neither attempt created a backup,
+clone, migration or release receipt. Both attempt directories are single-use
+forensics and must not be replayed. The second failure exposed an invalid
+assumption: the MinIO server remains active after application writers stop,
+so its `.minio.sys` control tree is not a stable business-data fingerprint.
+The exact mismatched component was not recorded and must not be asserted.
+
+For a subsequent candidate, the selected release boundary is an **online
+logical backup of the current application bucket objects** with MinIO kept
+running. The backup must independently verify object inventory and bytes and
+fail closed if its supported recovery scope cannot represent the bucket.
+This is not a complete MinIO instance cold backup or a guarantee of object
+version history and server configuration recovery. No third live apply is
+authorized by this design choice: review the new operator, rebuild the full
+image and sealed bundle from its exact commit, and obtain fresh approval
+before another production attempt.
+
+The candidate uses the exact locally observed `minio/mc` image ID
+`sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3`
+with `--pull never`; the production host's pre-existing image ID must match
+in a read-only preflight. The pinned client was exercised locally against
+`minio/minio:RELEASE.2025-04-22T22-12-26Z`, including the unversioned,
+recursive-stat and recursive-tag JSON shapes. This is not yet evidence that
+the production bucket meets the same constraints.
+
+The logical backup accepts one unversioned configured bucket, up to 10,000
+current objects and 3 GiB of object bytes. It rejects unsafe/colliding keys,
+tags, non-standard metadata, versioning, object-lock/retention and non-default
+server-side encryption. Recursive object-stat and tag inventories are sorted
+and bound as the MinIO business identity, including an empty bucket. MinIO's
+`.minio.sys` does not enter that identity. Each bounded inventory is streamed
+into a temporary private file, removed after parsing, and never printed in a
+release log. The release backup retains **two independent fresh mirror
+downloads** in `minio-objects/` and `minio-objects-readback/`; per-key size and
+SHA-256 must agree between them, and the complete remote metadata/tag
+inventory must match before and after. The accepted
+`minio-objects-manifest.json` binds exact key, byte SHA-256, size and supported
+metadata; the backup receipt binds its digest and object count. Only the two
+inactive non-MinIO volumes are raw-archived.
+After the clone rehearsal and before migration intent, the operator rehashes
+the manifest and every file in **both** retained MinIO copies, rejects missing
+or extra keys and checks each SHA-256/size against the accepted manifest. The
+final stopped-writer capture then rechecks the source inventory. A corrupted
+copy is a pre-migration failure eligible only for verified original-runtime
+recovery, never a complete backup receipt. This extra full local readback can
+also lengthen the stopped application window; it is not included in either
+mirror's ten-minute timeout.
+
+This is a **manual recovery contract**, not a callable automatic restore or
+permission to roll back an attempted migration. In an isolated empty bucket,
+an operator would first verify each local file against the manifest, then
+`PutObject` under the exact key with the recorded `Content-Type` and every
+`x-amz-meta-*` user-metadata entry (without altering their values). A separate
+readback must list precisely the manifest's keys, GET and SHA-256 every object,
+and compare HEAD metadata before any controlled cutover. A plain `mc mirror`
+back to MinIO is **not** an adequate restore because it would not faithfully
+recreate all object metadata. Bucket policy, accounts, credentials, server
+configuration and historic object versions are outside this backup; those
+require another recovery source. A tagged/versioned or otherwise unsupported
+bucket fails before writers are stopped.
+
+The preflight checks available bytes for both copies plus a 4 GiB margin and
+inodes for both key trees plus 10,000; the operator repeats that capacity
+check against the stopped-writer source inventory before the first mirror.
+Each mirror has a hard 10-minute
+timeout; each inventory has a 3-minute timeout. With repeated stopped-state
+checks, the worst-case application pause is **not proven short**. Before a
+third live attempt, obtain a measured read-only/source-only inventory and
+throughput estimate, confirm the actual production image ID and capacity,
+and review a bounded downtime/recovery window with the user. No production
+speed probe or release mutation was performed for this candidate.
+
 ## Frozen starting identity
 
 Read-only inspection on 2026-09-26 found:
@@ -165,8 +241,9 @@ Under both locks, recapture rather than trust the 2026-09-26 observation:
    must preserve existing text/original-image and Official Account settings.
 3. Database head `0048`, business/job counts and identity hashes, current
    active/unknown/pending work, scheduled window, active brand pointers,
-   character-reference SHA, private brand-material tree, three persistent
-   non-PostgreSQL volumes, PostgreSQL/MinIO identities and backup timer.
+   character-reference SHA, private brand-material tree, the two non-MinIO
+   persistent artifact volumes, the configured MinIO bucket's logical
+   user-object inventory, PostgreSQL/MinIO identities and backup timer.
    Capture all original application services and prove the optional
    infographic producer is absent. Do not start or backfill it at capture.
 4. The configured fixed internal group must be checked without displaying
@@ -191,9 +268,12 @@ Under both locks, recapture the idle 0048 baseline, write a single-attempt
 pause intent, then stop and verify **all application writers**. While they
 remain stopped, capture a quiescent baseline and take a *new* PostgreSQL `-Fc`
 dump, validating it with `pg_restore -l` and an isolated clone restore.
-Inventory/copy all three non-PostgreSQL volumes, private brand assets,
+Archive the two inactive non-MinIO artifact volumes, private brand assets,
 protected host files and source/configuration, with SHA-256, size, metadata
-and separate readbacks. Recapture the same quiescent identity after backup.
+and separate readbacks. Keep MinIO running, but capture a logical current-
+object inventory of its configured bucket and independently download/read
+back each object. The live `.minio.sys` directory is never a release backup
+or business-data identity. Recapture the same quiescent identity after backup.
 No backup from live writers is a coherent release backup; the R15 backup is
 historical evidence, not a backup of the current 0048 state.
 
@@ -263,9 +343,12 @@ digest is an admission snapshot, not the expected post-stop digest: an
 in-flight transaction may commit while Docker stops the containers. The
 operator accepts that transition only once, after every original service is
 verified stopped, while requiring unchanged schema, recipient, protected
-files, brand, volumes and flags, plus the exact idle/work gate. It then
+files, brand, two inactive artifact volumes and flags, plus the exact idle/work
+gate. A changed MinIO user-object inventory is admitted only into that one
+authoritative stopped-writer baseline, not silently refreshed later. It then
 requires two identical quiescent captures around a backup receipt that accounts for a
-readable PostgreSQL dump/TOC, all three volume readbacks, private
+readable PostgreSQL dump/TOC, the MinIO logical object readback, both artifact
+volume archive readbacks, private
 brand-material readback, complete source/config archives and exact protected-
 file metadata. It then stages the exact candidate image, rehearses isolated
 restore and `0048→0049→0050` upgrade from that **same newly captured dump**,
@@ -296,8 +379,9 @@ rehearsal and production upgrade must preserve existing source/business rows.
 `r16_real_host.py` implements the host operations behind the separately
 sealed `r16_release_cli.py`; it is not a standalone command.
 It computes a live admission baseline from release markers, image/container
-inspection, protected file metadata, per-table business row hashes, brand and
-named volume trees. It does not latch the live row hashes. The first verified
+inspection, protected file metadata, per-table business row hashes, brand,
+two inactive named-volume trees and the MinIO user-object inventory. It does
+not latch the live row hashes. The first verified
 stopped-writer capture binds the business rows for the private custom PostgreSQL
 dump, clone, migration and final receipt. `quiescent-baseline.json` records
 both baseline hashes, the exact stopped snapshot and their self-hash;
@@ -305,8 +389,9 @@ the backup, clone, release and enablement receipts cross-check that chain;
 enablement revalidates the complete backup and clone receipt contracts, not
 only their hashes.
 The dump receives a TOC readback,
-protected/source/config and all three volume/brand archives with per-entry
-byte/owner/mode readback; stages an exact archive SHA/image digest; and models
+protected/source/config, two inactive volume/brand archives with per-entry
+byte/owner/mode readback, and a separately verified current-object MinIO
+manifest; stages an exact archive SHA/image digest; and models
 an internal-network, unpublished-port clone using the same dump. Its only
 migration command is candidate-image Alembic to `0050`, never
 `backend-migrate`, `seed_sources` or `minio-init`. It then has hash-checked

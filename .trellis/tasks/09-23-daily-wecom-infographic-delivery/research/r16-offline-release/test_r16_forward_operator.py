@@ -221,9 +221,27 @@ class FakeHost:
             "source_config_archives": dict.fromkeys(
                 ("backend", "deploy", "scripts", "infra"), HEX
             ),
-            "volumes": dict.fromkeys(operator.VOLUMES, HEX),
-            "volume_readbacks": dict.fromkeys(operator.VOLUMES, True),
+            "minio": {
+                "kind": "unversioned-current-object-logical-v1",
+                "bucket": "edu-ai-materials",
+                "inventory_sha256": self.baseline["volumes"][operator.MINIO_VOLUME],
+                "manifest_sha256": HEX,
+                "readback_tree_sha256": HEX,
+                "object_count": 1,
+                "bytes": 8,
+                "source_bytes_readback": True,
+                "local_bytes_readback": True,
+                "metadata_readback": True,
+            },
+            "volumes": dict.fromkeys(operator.ARCHIVE_VOLUMES, HEX),
+            "volume_readbacks": dict.fromkeys(operator.ARCHIVE_VOLUMES, True),
         }
+
+    def verify_backup_materials(self, backup: dict[str, Any]) -> None:
+        self.calls.append("verify_backup_materials")
+        assert backup["minio"]["manifest_sha256"] == HEX
+        if self.failure == "backup_materials_drift":
+            raise operator.ReleaseBlocked("minio_materials_byte_drift")
 
     def rehearse_clone(self, dump_sha256: str) -> dict[str, Any]:
         self.calls.append("rehearse_clone")
@@ -263,7 +281,7 @@ class FakeHost:
         self.calls.append("stage_candidate_image")
         if self.failure == "stage":
             raise RuntimeError("image_stage_unknown")
-        return manifest["image"]
+        return str(manifest["image"])
 
     def migrate_forward(self, command: tuple[str, ...], chain: list[str]) -> None:
         assert command == operator.ALEMBIC_ONLY_COMMAND
@@ -276,7 +294,7 @@ class FakeHost:
 
     def read_schema_head(self) -> str:
         self.calls.append("read_schema_head")
-        return (
+        return str(
             operator.BASE_SCHEMA
             if self.failure == "schema_verify"
             else operator.TARGET_SCHEMA
@@ -468,6 +486,7 @@ def test_fake_one_attempt_is_forward_only(tmp_path: Path) -> None:
         "capture_quiescent",
         "stage_candidate_image",
         "rehearse_clone",
+        "verify_backup_materials",
         "capture_quiescent",
         "migrate_forward",
         "read_schema_head",
@@ -572,7 +591,9 @@ def test_backup_failure_after_quiescence_requires_forward_recovery(
         (("brand_archive_sha256",), "not-a-sha", "backup_receipt"),
         (("source_config_readback",), False, "backup_receipt"),
         (("source_config_archives", "backend"), "not-a-sha", "backup_source_receipt"),
-        (("volumes", operator.VOLUMES[0]), "not-a-sha", "backup_volume_receipt"),
+        (("minio", "manifest_sha256"), "not-a-sha", "backup_minio_receipt"),
+        (("minio", "readback_tree_sha256"), "not-a-sha", "backup_minio_receipt"),
+        (("volumes", operator.VOLUMES[1]), "not-a-sha", "backup_volume_receipt"),
         (("volume_readbacks", operator.VOLUMES[1]), False, "backup_volume_receipt"),
     ],
 )
@@ -952,7 +973,9 @@ def test_post_clone_business_drift_fails_before_migration_intent(
     assert host.calls[-1] == "stop_all"
 
 
-@pytest.mark.parametrize("failure", ["stop", "backup", "stage", "clone"])
+@pytest.mark.parametrize(
+    "failure", ["stop", "backup", "stage", "clone", "backup_materials_drift"]
+)
 def test_actual_operator_pre_migration_failure_recovers_original(
     tmp_path: Path, failure: str
 ) -> None:
@@ -985,6 +1008,26 @@ def test_actual_operator_pre_migration_failure_recovers_original(
     assert not (attempt / "migration-intent.json").exists()
     assert not (attempt / "release-receipt.json").exists()
     assert host.calls.count("migrate_forward") <= 1
+
+
+def test_backup_material_drift_is_caught_before_migration_intent(
+    tmp_path: Path,
+) -> None:
+    manifest, baseline = production_fixture()
+    host = FakeHost(baseline, failure="backup_materials_drift")
+    attempt = tmp_path / "r16-forward-fake1"
+    with pytest.raises(operator.ReleaseBlocked, match="minio_materials_byte_drift"):
+        operator.apply_release(
+            host,
+            manifest,
+            "d" * 64,
+            attempt,
+            (tmp_path / "deploy.lock", tmp_path / "backup.lock"),
+        )
+    assert "verify_backup_materials" in host.calls
+    assert "migrate_forward" not in host.calls
+    assert not (attempt / "migration-intent.json").exists()
+    assert (attempt / "pre-migration-recovery-receipt.json").exists()
 
 
 @pytest.mark.parametrize("failure", ["migration", "verify"])
