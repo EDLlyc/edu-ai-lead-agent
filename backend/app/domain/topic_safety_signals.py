@@ -9,6 +9,8 @@ from app.domain.editorial_relevance import normalize_editorial_text
 
 NEGATIVE_INCIDENT_RULE_VERSION = "negative-incident-v1"
 INDUSTRIAL_TECHNOLOGY_RULE_VERSION = "industrial-technology-v1"
+RESEARCH_ACCESSIBILITY_RULE_VERSION = "research-accessibility-v1"
+SPECIALIZED_RESEARCH_FACTOR = 0.6
 _TEXT_LIMIT = 6_000
 
 # Criminal/legal enforcement and rumour cases are never brand-suitable, wherever they appear.
@@ -73,3 +75,31 @@ def is_industrial_technology_title(title: str | None) -> bool:
     """Lenient headline check used only to order which listing items get a detail fetch."""
 
     return _INDUSTRIAL_TECH_HEADLINE_PATTERN.search(_normalize(title)) is not None
+
+
+# Lab-report boilerplate typical of narrow, incremental papers.
+_RESEARCH_BOILERPLATE_PATTERN = re.compile(
+    r"研究揭示|揭示.{0,24}(?:机制|机理)|机理研究|(?:研究|研制)取得(?:新)?进展|取得系列进展|"
+    r"(?:协同|调控|作用)机制"
+)
+# Specialist materials/chemistry/physics vocabulary a parent audience rarely recognises.
+_SPECIALIST_TERM_PATTERN = re.compile(
+    r"催化|吸附|扩散|分子筛|微孔|多孔|氧空位|羟基|晶格|异质结|载流子|能带|声子|自旋|"
+    r"配体|前驱体|掺杂|单原子|位点|钙钛矿|压电|陶瓷|氧化锰|活性氯|电化学|光电催化|"
+    r"金属有机框架|共价有机框架|溶剂|界面|表面|信号通路|表观遗传"
+)
+# Hooks that make a research story accessible keep its normal weight (input is NFKC-normalised).
+_ACCESSIBLE_HOOK_PATTERN = re.compile(r"\?|首次|全球首|世界首|重大突破|里程碑|孩子|中小学")
+
+
+def evaluate_specialized_research(title: str | None) -> TopicSignal:
+    """Narrow lab-mechanism headlines are down-weighted (not excluded) for a parent audience."""
+
+    headline = _normalize(title)
+    if _ACCESSIBLE_HOOK_PATTERN.search(headline):
+        return TopicSignal(False, "research_accessible_hook")
+    terms = set(_SPECIALIST_TERM_PATTERN.findall(headline))
+    boilerplate = _RESEARCH_BOILERPLATE_PATTERN.search(headline) is not None
+    if (boilerplate and terms) or len(terms) >= 3:
+        return TopicSignal(True, "specialized_research_downweighted")
+    return TopicSignal(False, "research_not_specialized")

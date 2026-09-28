@@ -197,7 +197,14 @@ adds, in `app/domain/topic_safety_signals.py`:
   China Government yaowen priority apply. Acquisition fetches such headlines with the
   education-policy titles.
 
-Both rule identities are emitted in the `.14` config snapshot only. Regression evidence:
+- `research-accessibility-v1` (operator decision 2026-09-28: 降低很专业的科研新闻权重): a headline with
+  lab-report boilerplate (研究揭示…机制, …研究/研制取得进展) plus specialist vocabulary (催化, 吸附,
+  分子筛, 氧空位, 压电陶瓷…), or three specialist terms, keeps eligibility but its editorial
+  priority and frontier significance are multiplied by 0.6 (reason
+  `specialized_research_downweighted`). A question mark, 首次/世界首/重大突破 or a child/school hook
+  keeps full weight. It down-weights, never excludes.
+
+All three rule identities are emitted in the `.14` config snapshot only. Regression evidence:
 `backend/evals/topic_golden` (`make topic-golden-eval`).
 
 ## Parallel content-slot selection

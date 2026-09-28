@@ -39,8 +39,11 @@ from app.domain.science_policy_priority import (
 from app.domain.topic_safety_signals import (
     INDUSTRIAL_TECHNOLOGY_RULE_VERSION,
     NEGATIVE_INCIDENT_RULE_VERSION,
+    RESEARCH_ACCESSIBILITY_RULE_VERSION,
+    SPECIALIZED_RESEARCH_FACTOR,
     evaluate_industrial_technology,
     evaluate_negative_incident,
+    evaluate_specialized_research,
 )
 
 TIERED_SCIENCE_TECH_TOPIC_SCORING_VERSION = "scoring-v1-preview.6-tiered-science-tech-priority"
@@ -480,6 +483,7 @@ class TopicScoringConfig:
         if self.version == SAFETY_INDUSTRY_TOPIC_SCORING_VERSION:
             metadata["negative_incident_rule_version"] = NEGATIVE_INCIDENT_RULE_VERSION
             metadata["industrial_technology_rule_version"] = INDUSTRIAL_TECHNOLOGY_RULE_VERSION
+            metadata["research_accessibility_rule_version"] = RESEARCH_ACCESSIBILITY_RULE_VERSION
         return metadata
 
     @classmethod
@@ -825,6 +829,25 @@ def score_topic_candidate(
                 science_tech_editorial_reason_codes=(
                     *candidate.science_tech_editorial_reason_codes,
                     industrial.reason_code,
+                ),
+            )
+
+    if config.has_safety_industry_rules:
+        specialized = evaluate_specialized_research(candidate.priority_title)
+        if specialized.matched:
+            # Down-weight, never exclude: a narrow lab-mechanism story still fills a slot when
+            # nothing more accessible is eligible.
+            candidate = replace(
+                candidate,
+                editorial_priority=round(
+                    candidate.editorial_priority * SPECIALIZED_RESEARCH_FACTOR, 4
+                ),
+                frontier_significance=round(
+                    candidate.frontier_significance * SPECIALIZED_RESEARCH_FACTOR, 4
+                ),
+                science_tech_editorial_reason_codes=(
+                    *candidate.science_tech_editorial_reason_codes,
+                    specialized.reason_code,
                 ),
             )
 

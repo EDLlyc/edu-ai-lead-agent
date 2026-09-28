@@ -12,6 +12,7 @@ from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.topic_safety_signals import (
     evaluate_industrial_technology,
     evaluate_negative_incident,
+    evaluate_specialized_research,
     is_industrial_technology_title,
 )
 from app.domain.topic_selection import (
@@ -151,3 +152,61 @@ def test_negative_education_policy_news_is_still_vetoed() -> None:
     score = score_topic_candidate(news, as_of=NOW, config=_config())
 
     assert not score.eligible and not score.priority_applied
+
+
+@pytest.mark.parametrize(
+    "title",
+    (
+        # Real 2026-09-27 production picks the operator judged too specialised.
+        "研究揭示溶剂占据调控分子筛微孔催化扩散机制",
+        "研究揭示氧化锰表面羟基和氧空位增强一氧化碳吸附协同机制",
+        "大气活性氯来源研究取得进展",
+        "新型多孔压电陶瓷研制取得进展",
+    ),
+)
+def test_specialised_lab_headlines_are_downweighted(title: str) -> None:
+    assert evaluate_specialized_research(title).matched
+
+
+@pytest.mark.parametrize(
+    "title",
+    (
+        "84个神秘天体，就是一直在找的“发胖星”？",
+        "朱雀三号遥二运载火箭发射成功 一子级成功着陆预定位置",
+        "古老颜料为钙钛矿光伏提出稳定性新解",
+        "我国首次实现催化剂单原子位点精准调控",
+        "研究揭示细胞程序性死亡新机制",
+    ),
+)
+def test_accessible_research_keeps_its_weight(title: str) -> None:
+    assert not evaluate_specialized_research(title).matched
+
+
+def test_v14_lowers_but_does_not_exclude_specialised_research() -> None:
+    frontier = ScienceTechEditorialCohort.FRONTIER_SCIENCE_TECHNOLOGY
+    specialised = _candidate(
+        ("研究揭示溶剂占据调控分子筛微孔催化扩散机制", "研究团队揭示了扩散机制。"),
+        science_tech_editorial_cohort=frontier,
+        editorial_priority=0.78,
+        frontier_significance=0.78,
+    )
+    accessible = replace(
+        specialised,
+        event_id=UUID(int=3),
+        event_version_id=UUID(int=4),
+        priority_title="84个神秘天体，就是一直在找的“发胖星”？",
+    )
+
+    v13 = score_topic_candidate(
+        specialised, as_of=NOW, config=_config(EDUCATION_POLICY_TOPIC_SCORING_VERSION)
+    )
+    lowered = score_topic_candidate(specialised, as_of=NOW, config=_config())
+    kept = score_topic_candidate(accessible, as_of=NOW, config=_config())
+
+    assert lowered.eligible
+    assert lowered.total < v13.total
+    assert lowered.total < kept.total
+    assert "specialized_research_downweighted" in lowered.science_tech_editorial_reason_codes
+    assert _config().as_metadata()["research_accessibility_rule_version"] == (
+        "research-accessibility-v1"
+    )

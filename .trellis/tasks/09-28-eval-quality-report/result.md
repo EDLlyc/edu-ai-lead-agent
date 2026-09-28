@@ -46,5 +46,5 @@ Open gaps kept visible in `canonical-report.md`:
   HTTP). The failure log did not say which check; `acquisition_job_failed` now logs the static
   `error_message` so the next run identifies it. sensetime-news `parse_failure` since 09-12
   (likely a site redesign) — not changed.
-- Selection too academic (3/9 niche materials-science picks on 09-27): left for the operator to
-  decide.
+- Selection too academic (3/9 niche materials-science picks on 09-27): operator chose to
+  down-weight; `.14` adds `research-accessibility-v1` (×0.6 editorial/frontier, never excluded).
