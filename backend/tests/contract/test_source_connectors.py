@@ -13,9 +13,10 @@ BNU_ARTICLE_ID = "822c744c15a54dc1828c554b06d18313"
 BNU_ARTICLE_URL = f"https://news.bnu.edu.cn/zx/ttgz/{BNU_ARTICLE_ID}.htm"
 
 
-def test_registry_keeps_two_fixture_ready_profiles_outside_the_eleven_active_seeds() -> None:
-    assert len(SOURCE_SEEDS) == 11
+def test_registry_keeps_inactive_profiles_outside_the_ten_active_seeds() -> None:
+    assert len(SOURCE_SEEDS) == 10
     assert {seed.slug for seed in PENDING_SOURCE_SEEDS} == {
+        "sensetime-news",
         "cast-science-education",
         "edsurge-ai-education",
     }

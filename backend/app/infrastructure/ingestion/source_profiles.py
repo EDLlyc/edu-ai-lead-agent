@@ -89,18 +89,6 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
         parser_version="1.0.1",
     ),
     SourceSeed(
-        "sensetime-news",
-        "商汤科技新闻中心",
-        "ai_company",
-        SourceTier.A,
-        "sensetime_news_v1",
-        "https://www.sensetime.com/cn/news",
-        ("www.sensetime.com", "sensetime.com"),
-        ("/cn/news",),
-        "allowed",
-        3.0,
-    ),
-    SourceSeed(
         "xinhua-tech",
         "新华网科技",
         "authoritative_media",
@@ -198,6 +186,20 @@ SOURCE_SEEDS: tuple[SourceSeed, ...] = (
 # These profiles have fixture/connector approval but are deliberately excluded from SOURCE_SEEDS.
 # A future activation must pass a production-safe bounded live entry + one-detail smoke first.
 PENDING_SOURCE_SEEDS: tuple[SourceSeed, ...] = (
+    # Deactivated 2026-09-28 by the operator: every run since 2026-09-12 ended in parse_failure
+    # (likely a site redesign). Keep the reviewed profile so it can be repaired and re-activated.
+    SourceSeed(
+        "sensetime-news",
+        "商汤科技新闻中心",
+        "ai_company",
+        SourceTier.A,
+        "sensetime_news_v1",
+        "https://www.sensetime.com/cn/news",
+        ("www.sensetime.com", "sensetime.com"),
+        ("/cn/news",),
+        "allowed",
+        3.0,
+    ),
     SourceSeed(
         "cast-science-education",
         "中国科协科普与科学教育",

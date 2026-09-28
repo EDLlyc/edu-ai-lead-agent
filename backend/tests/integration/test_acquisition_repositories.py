@@ -89,7 +89,7 @@ async def _claim_sources(context: IntegrationContext, source_indexes: list[int])
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-async def test_source_seed_is_idempotent_and_exposes_eleven_active_versions(
+async def test_source_seed_is_idempotent_and_exposes_ten_active_versions(
     integration_context: IntegrationContext,
 ) -> None:
     async with integration_context.session_factory() as session:
@@ -114,8 +114,8 @@ async def test_source_seed_is_idempotent_and_exposes_eleven_active_versions(
     active_versions = [version for version in versions if version.id in active_version_ids]
     assert first in {0, 1, 3, 10, 11}
     assert second == 0
-    assert source_count == 11
-    assert len(active_versions) == 11
+    assert source_count == 10
+    assert len(active_versions) == 10
     assert all(
         source.enabled is False and source.active_version_id is None for source in pending_sources
     )
