@@ -1457,11 +1457,19 @@ backup identity: an in-flight worker may commit during `docker compose stop`.
 - Recheck that same stopped snapshot after backup and after the long clone
   rehearsal; recheck work and business identity immediately before Alembic.
   The database dump and clone must be from the stopped authoritative state.
+- A row fingerprint that renders `timestamptz` through `to_jsonb(t)::text`
+  depends on the PostgreSQL client session timezone. Verify the production
+  session zone and set the isolated clone's `PGTZ` to that same reviewed zone
+  before comparing full-row digests; identical restored rows must not fail
+  merely because the clone server defaults to UTC. Fail before clone network
+  creation if the production zone differs from the frozen contract.
 - Before migration intent, a failure may restart only the same existing R15
   containers after read-only proof of original schema, markers, image, IDs,
   configuration, recipient, protected/brand/volume identities and idle work.
   Persist recovery intent and verified recovery receipt. If proof/postcheck
-  fails, leave writers stopped and require operator reconciliation.
+  fails, leave writers stopped and require operator reconciliation. Restart
+  by the captured container IDs, not `docker compose start`: Compose may
+  traverse dependencies and run a one-shot initializer unrelated to recovery.
 - Docker inspect may enumerate a container's mount list in a different order
   after stop/start. Bind the complete mount **multiset** with a deterministic
   sort of canonical mount records at capture, recovery and candidate checks;
@@ -1503,7 +1511,8 @@ backup identity: an in-flight worker may commit during `docker compose stop`.
   forward-only behavior with distinct one-attempt directories.
 - `test_r16_real_host.py` covers table inventory, stopped-state identity,
   pre-Alembic work/business gates, exact original-container proof and restart,
-  including multi-mount order changes and real mount-content drift.
+  including multi-mount order changes, real mount-content drift, clone
+  timezone binding and dependency-free exact-ID recovery.
 - `test_r16_enablement.py` recomputes backup/release hashes and still rejects
   altered backup content; it also rejects mismatched clone business identity.
   Run the complete R16 release suite, Ruff,

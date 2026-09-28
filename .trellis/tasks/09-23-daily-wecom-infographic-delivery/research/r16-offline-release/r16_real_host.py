@@ -140,6 +140,7 @@ print(json.dumps({'files':len(files),'sha256':hashlib.sha256(body).hexdigest()})
 """
 PG_CLONE_DB = "edu_ai_r16_clone"
 PG_CLONE_USER = "r16_clone"
+CLONE_PG_TIMEZONE = "Asia/Shanghai"
 SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z")
 MINIO_MC_IMAGE = "minio/mc:RELEASE.2025-04-16T18-13-26Z"
 MINIO_MC_IMAGE_ID = (
@@ -1762,6 +1763,12 @@ class RealHostAdapter:
         baseline = self._required_baseline()
         dump = self.attempt_dir / "postgres.dump"
         require(_metadata(dump)["sha256"] == dump_sha256, "clone_dump_bytes")
+        # to_jsonb(t)::text renders timestamptz in the psql session timezone.
+        # Clone/source fingerprints are comparable only under one fixed zone.
+        require(
+            self._sql("SELECT current_setting('TimeZone')") == CLONE_PG_TIMEZONE,
+            "source_timezone_drift",
+        )
         suffix = self.attempt_dir.name.removeprefix("r16-forward-")
         require(
             SAFE_NAME.fullmatch(suffix) is not None and len(suffix) <= 32, "clone_name"
@@ -1777,6 +1784,7 @@ class RealHostAdapter:
                 f"POSTGRES_USER={PG_CLONE_USER}\n"
                 f"POSTGRES_PASSWORD={password}\n"
                 f"POSTGRES_DB={PG_CLONE_DB}\n"
+                f"PGTZ={CLONE_PG_TIMEZONE}\n"
             ).encode(),
         )
         url = (
@@ -2317,8 +2325,20 @@ class RealHostAdapter:
             and (self.attempt_dir / "pre-migration-recovery-intent.json").is_file(),
             "pre_migration_restart_gate",
         )
-        # `start` uses the existing containers and cannot recreate from new code.
-        self._compose("start", *SERVICES, code="start_original", timeout=180)
+        # Compose may start dependencies (including the one-shot minio-init).
+        # Start only the exact previously verified application container IDs.
+        baseline = self._required_baseline()
+        container_ids = tuple(
+            cast(str, baseline["services"][name]["container_id"]) for name in SERVICES
+        )
+        require(
+            all(
+                re.fullmatch(r"[0-9a-f]{64}", value) is not None
+                for value in container_ids
+            ),
+            "pre_migration_restart_ids",
+        )
+        self._run("docker", "start", *container_ids, code="start_original", timeout=180)
         self._stopped = False
 
     def verify_original_recovered(self, live_baseline: dict[str, Any]) -> bool:

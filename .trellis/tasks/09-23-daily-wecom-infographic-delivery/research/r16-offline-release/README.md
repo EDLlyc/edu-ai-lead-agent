@@ -59,6 +59,18 @@ health. The single-use attempt and its backup are retained. See
 order-insensitive, content-preserving mount identity fix. A fresh full image,
 bundle, preflight and attempt are required before another release action.
 
+The next fresh attempt also stopped before migration, this time during the
+isolated clone. Production PostgreSQL sessions used `Asia/Shanghai`, while
+the clone defaulted to UTC; `to_jsonb(t)::text` yielded different hashes for
+the same rows. The clone's complete business fingerprint matched the stopped
+baseline exactly when queried with `PGTZ=Asia/Shanghai`. A separate automatic
+recovery `docker compose start` failed after touching `minio-init`, so the
+same original R15 container IDs were verified and started manually; production
+health and schema `0048` were reconfirmed. See
+`../r16-fourth-production-attempt-incident-20260928.md`. The clone timezone
+and exact-ID recovery fixes require yet another full-image candidate and
+single-use attempt, not a replay of either failed directory.
+
 For a subsequent candidate, the selected release boundary is an **online
 logical backup of the current application bucket objects** with MinIO kept
 running. The backup must independently verify object inventory and bytes and

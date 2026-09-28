@@ -45,6 +45,7 @@ class FakeCommands:
         self.candidate_started = False
         self.clone_schema = BASE_SCHEMA
         self.production_schema = BASE_SCHEMA
+        self.production_timezone = real.CLONE_PG_TIMEZONE
         self.fail_code: str | None = None
         self.runtime_tree_sha = real.R15_RUNTIME_TREE_SHA256
         self.dispatcher_key = "fake-group-key"
@@ -70,6 +71,8 @@ class FakeCommands:
         self.minio_tags: dict[str, str] = {}
 
     def _sql(self, sql: str, *, clone: bool) -> bytes:
+        if sql == "SELECT current_setting('TimeZone')":
+            return self.production_timezone.encode()
         if sql == "SELECT version_num FROM alembic_version":
             return (self.clone_schema if clone else self.production_schema).encode()
         if sql.startswith("SELECT tablename FROM pg_tables"):
@@ -275,6 +278,9 @@ class FakeCommands:
                 ]
             ).encode()
         if argv[:2] == ("docker", "ps"):
+            return b""
+        if argv[:2] == ("docker", "start"):
+            self.stopped = False
             return b""
         if argv[:2] == ("docker", "exec"):
             if len(argv) >= 6 and argv[3:5] == ("python", "-c"):
@@ -534,6 +540,10 @@ def test_capture_backup_clone_and_default_off_fake_host(tmp_path: Path) -> None:
     assert adapter.stage_candidate_image(manifest) == manifest["image"]
     clone = adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
     valid_fresh_clone(clone, baseline, backup)
+    assert (
+        "PGTZ=Asia/Shanghai\n"
+        in (adapter.attempt_dir / "clone-postgres.env").read_text()
+    )
     assert not any(
         "minio-init" in call or "backend-migrate" in call for call in commands.calls
     )
@@ -628,7 +638,28 @@ def test_original_containers_restart_only_after_pre_migration_proof(
     (adapter.attempt_dir / "pre-migration-recovery-intent.json").write_bytes(b"test")
     adapter.start_original(SERVICES)
     assert adapter.verify_original_recovered(live)
-    assert any("start" in call for call in commands.calls)
+    starts = [call for call in commands.calls if call[:2] == ("docker", "start")]
+    assert len(starts) == 1
+    assert starts[0][2:] == tuple(
+        live["services"][name]["container_id"] for name in SERVICES
+    )
+    assert not any("start" in call and "compose" in call for call in commands.calls)
+
+
+def test_clone_requires_production_timezone_match_before_network(
+    tmp_path: Path,
+) -> None:
+    adapter, commands, _ = _fixture(tmp_path)
+    adapter.capture()
+    adapter.stop_writers()
+    backup = adapter.backup()
+    adapter.stage_candidate_image(adapter.manifest)
+    commands.production_timezone = "Etc/UTC"
+    with pytest.raises(ReleaseBlocked, match="source_timezone_drift"):
+        adapter.rehearse_clone(str(backup["pg_dump_sha256"]))
+    assert not any(
+        call[:3] == ("docker", "network", "create") for call in commands.calls
+    )
 
 
 def test_mount_order_change_preserves_exact_original_container_proof(
