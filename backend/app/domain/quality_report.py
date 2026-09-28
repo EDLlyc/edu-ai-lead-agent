@@ -26,12 +26,32 @@ class SelectedTopicRow:
     priority_reason: str | None
     education_policy_level: str | None
     cohort: str | None
+    summary: str | None = None
+    human_pick: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SameTopicPair:
+    """Two same-day selections that the same-topic rule would treat as one story."""
+
+    left: str
+    right: str
 
 
 @dataclass(frozen=True, slots=True)
 class BrandUsageRow:
     label: str
     runs: int
+
+
+@dataclass(frozen=True, slots=True)
+class BrandStatementRow:
+    """One brand statement of an accepted copy; `label` is e.g. "morning#1" when slotted."""
+
+    run_id: str
+    business_date: date
+    label: str | None
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,14 +76,18 @@ class QualitySnapshot:
     acquisition_new_items: int = 0
     acquisition_failed_jobs: int = 0
     acquisition_error_codes: Counter[str] = field(default_factory=Counter)
+    acquisition_failed_sources: Counter[str] = field(default_factory=Counter)
     slot_runs: list[SlotRunRow] = field(default_factory=list)
     selected_topics: list[SelectedTopicRow] = field(default_factory=list)
+    same_topic_pairs: list[SameTopicPair] = field(default_factory=list)
     copy_status: Counter[str] = field(default_factory=Counter)
+    copy_prompt_versions: Counter[str] = field(default_factory=Counter)
     copy_first_pass_accepted: int = 0
     copy_error_codes: Counter[str] = field(default_factory=Counter)
     copy_issue_codes: Counter[str] = field(default_factory=Counter)
     brand_window_accepted_runs: int = 0
     brand_usage: list[BrandUsageRow] = field(default_factory=list)
+    brand_statements: list[BrandStatementRow] = field(default_factory=list)
     image_status: Counter[str] = field(default_factory=Counter)
     image_repairs: int = 0
     delivery_status: Counter[str] = field(default_factory=Counter)

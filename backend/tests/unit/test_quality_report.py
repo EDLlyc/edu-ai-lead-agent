@@ -9,14 +9,17 @@ import pytest
 from app.application.services.quality_report import (
     Severity,
     assess,
+    most_repeated_brand_phrase,
     overall_status,
     render_json,
     render_markdown,
 )
 from app.domain.quality_report import (
+    BrandStatementRow,
     BrandUsageRow,
     ModelUsage,
     QualitySnapshot,
+    SameTopicPair,
     SelectedTopicRow,
     SlotRunRow,
 )
@@ -144,7 +147,7 @@ def test_json_output_is_complete_and_parseable() -> None:
     snapshot = _healthy()
     payload = json.loads(render_json(snapshot, assess(snapshot)))
 
-    assert payload["report_version"] == "production-quality-daily-v1"
+    assert payload["report_version"] == "production-quality-daily-v2"
     assert payload["overall_status"] == "正常"
     assert payload["snapshot"]["copy_first_pass_accepted"] == 4
 
@@ -171,3 +174,96 @@ def test_lookback_must_be_positive(lookback: int) -> None:
                 lookback_days=lookback,
             )
         )
+
+
+def _statement(
+    run: str, text: str, *, day: int = 28, label: str | None = None
+) -> BrandStatementRow:
+    return BrandStatementRow(run_id=run, business_date=date(2026, 9, day), label=label, text=text)
+
+
+def test_repeated_brand_phrase_ignores_brand_names_and_expands_to_the_shared_wording() -> None:
+    statements = [
+        _statement(
+            "a", "在赛先生，我们用思维链教学法引导孩子——AI不直接给答案，而是展示完整的思考过程"
+        ),
+        _statement("b", "赛先生科学用思维链教学法引导孩子自己拆解问题，AI不直接给答案"),
+        _statement("c", "在赛先生科学，AI不直接给答案，而是一步步引导孩子"),
+        _statement("d", "在赛先生科学，我们让孩子亲自接触材料、尝试操作并观察现象"),
+    ]
+
+    phrase = most_repeated_brand_phrase(statements)
+
+    assert phrase is not None
+    assert phrase.phrase == "ai不直接给答案"
+    assert phrase.runs == 3
+    # Brand names alone never count as repeated wording.
+    assert (
+        most_repeated_brand_phrase(
+            [_statement("x", "在赛先生科学"), _statement("y", "在赛先生科学")]
+        )
+        is None
+    )
+
+
+def test_selection_audit_flags_negative_incident_and_same_day_same_topic() -> None:
+    snapshot = _healthy()
+    snapshot.selected_topics.append(
+        SelectedTopicRow(
+            "morning",
+            3,
+            "男子编造“某院士窃取他人科研成果”谣言，已被刑拘",
+            None,
+            None,
+            "frontier_science_technology",
+            summary="警方通报",
+        )
+    )
+    snapshot.same_topic_pairs = [SameTopicPair("evening#1", "evening#3")]
+
+    findings = assess(snapshot)
+    codes = {finding.code: finding for finding in findings}
+    markdown = render_markdown(snapshot, findings)
+
+    assert codes["selected_negative_incident"].severity is Severity.CRITICAL
+    assert "早间#3" in codes["selected_negative_incident"].message
+    assert codes["selected_same_topic"].message == "同一天选中了同一件事：晚间#1 与 晚间#3。"
+    assert "已被刑拘 ⚠负面事件" in markdown
+    assert "- 同题：晚间#1 与 晚间#3" in markdown
+
+
+def test_brand_phrase_repetition_and_todays_angles_are_reported() -> None:
+    snapshot = _healthy()
+    snapshot.brand_window_accepted_runs = 13
+    snapshot.brand_statements = [
+        _statement(str(index), "在赛先生，AI不直接给答案，而是展示完整的思考过程", day=27)
+        for index in range(4)
+    ] + [
+        _statement("t1", "我们让孩子亲自接触材料、尝试操作并观察现象", label="morning#1"),
+        _statement("t2", "我们鼓励孩子说清观察、做法与发现", label="human"),
+    ]
+    snapshot.copy_prompt_versions = Counter({"moments-generator-v25-brand-rotation": 2})
+    snapshot.acquisition_failed_sources = Counter({"cas-research:conflict": 3})
+
+    findings = assess(snapshot)
+    markdown = render_markdown(snapshot, findings)
+
+    assert [finding.code for finding in findings] == ["brand_phrase_repetition"]
+    assert (
+        "4/13 篇文案重复使用品牌话术「ai不直接给答案而是展示完整的思考过程」" in findings[0].message
+    )
+    assert "  - 早间#1：我们让孩子亲自接触材料、尝试操作并观察现象" in markdown
+    assert "  - 人工加推：我们鼓励孩子说清观察、做法与发现" in markdown
+    assert "文案版本：moments-generator-v25-brand-rotation×2" in markdown
+    assert "失败信源：cas-research:conflict×3" in markdown
+
+
+def test_human_pick_topics_are_labelled_separately() -> None:
+    snapshot = _healthy()
+    snapshot.selected_topics.append(
+        SelectedTopicRow("noon", 1, "青少年科技创新大赛开幕", None, None, None, human_pick=True)
+    )
+
+    markdown = render_markdown(snapshot, assess(snapshot))
+
+    assert "  - 人工加推 [其他] 青少年科技创新大赛开幕" in markdown
