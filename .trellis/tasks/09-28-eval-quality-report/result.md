@@ -92,3 +92,11 @@ Open gaps kept visible in `canonical-report.md`:
   (真动手/真思考/6-8人小班/真表达/真作品/真反馈), none repeated the old line; 5 validated + audited on
   the first draft, 1 had an unrelated `source_note_unlinked` (normal single repair). Same six
   services recreated; backups `*.before-d5fc861-20260928T234819`.
+- 09-29 00:2x report v2 `9f59f93` (`production-quality-daily-v2`): fixed the brand_usage inner join
+  on brand_sections that hid section-less chunks (v1 showed 真助力 5; actual top chunk 37/52);
+  added brand-phrase repetition, today's brand angle per copy, selection audit
+  (negative incident → critical, same-day same-topic pairs, specialised-research tag), copy
+  prompt versions, failure codes and failing sources; folded in the human-pick report hunks.
+  Report cron image → `…@sha256:edfe02dd7ce3aaf96f3aa91ebb194f502947e752d3b8f98b8a58e44204312c86`
+  (d0acb505 + 3 report files; script backup `edu-ai-quality-report.before-9f59f93-*`);
+  09-28 regenerated with v2 (v1 kept as `2026-09-28.v1.*`). No service restarted.
