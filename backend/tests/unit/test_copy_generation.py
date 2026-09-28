@@ -14,15 +14,19 @@ from app.application.ports.copy_generation import (
     DraftAuditResult,
     DraftGenerationRequest,
     DraftGenerationResult,
+    RecentBrandUsage,
     StoredDraft,
 )
 from app.application.services.copy_generation import (
+    BRAND_ROTATION_GENERATOR_PROMPT_VERSION,
     STANDALONE_HEADING_AUDITOR_PROMPT_VERSION,
     STANDALONE_HEADING_GENERATOR_PROMPT_VERSION,
     CopyGenerationExecutor,
     build_auditor_prompt,
     build_copy_version_bundle,
     build_generator_prompt,
+    generator_request_fingerprint,
+    select_rotated_brand_hits,
 )
 from app.application.services.copy_generation_graph import copy_generation_graph_input
 from app.core.config import Settings
@@ -30,6 +34,12 @@ from app.core.errors import (
     InvalidProviderOutputError,
     ProviderRejectedError,
     ProviderValidationIssue,
+)
+from app.domain.brand_knowledge import (
+    BrandAudience,
+    BrandContentType,
+    BrandDocumentKind,
+    BrandRetrievalHit,
 )
 from app.domain.content_slots import ContentSlot
 from app.domain.copy_generation import (
@@ -239,9 +249,13 @@ def _copy_without_paragraph_breaks(draft: MaterialDraft) -> MaterialDraft:
 class FakeBrandRetriever:
     def __init__(self) -> None:
         self.calls = 0
+        self.recent_usages: list[RecentBrandUsage | None] = []
 
-    async def retrieve_for_copy(self, topic: LockedTopicContext) -> tuple[ActiveBrandContext, ...]:
+    async def retrieve_for_copy(
+        self, topic: LockedTopicContext, recent_usage: RecentBrandUsage | None = None
+    ) -> tuple[ActiveBrandContext, ...]:
         self.calls += 1
+        self.recent_usages.append(recent_usage)
         assert topic.decision_kind == "selected"
         return _brand()
 
@@ -277,6 +291,15 @@ class FakeCopyRepository:
         self.persisted_draft_bundles: list[CopyVersionBundle] = []
         self.persisted_audit_bundles: list[CopyVersionBundle] = []
         self.claim_business_dates: list[date] = []
+        self.recent_usage = RecentBrandUsage()
+        self.recent_usage_calls = 0
+
+    async def load_recent_brand_usage(
+        self, claimed: ClaimedCopyGenerationJob, *, lookback_days: int, claim_limit: int
+    ) -> RecentBrandUsage:
+        assert claimed.run_id == RUN_ID and lookback_days > 0 and claim_limit > 0
+        self.recent_usage_calls += 1
+        return self.recent_usage
 
     async def enqueue_for_daily_topic(self, **_kwargs: object) -> UUID:
         return RUN_ID
@@ -726,7 +749,7 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
     )
 
     assert preview.rule_version == "preview-v12-standalone-heading-advisory"
-    assert preview.generator_prompt_version == STANDALONE_HEADING_GENERATOR_PROMPT_VERSION
+    assert preview.generator_prompt_version == BRAND_ROTATION_GENERATOR_PROMPT_VERSION
     assert preview.auditor_prompt_version == STANDALONE_HEADING_AUDITOR_PROMPT_VERSION
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
@@ -2924,3 +2947,166 @@ def test_relaxed_rules_warn_on_news_superlatives_but_block_brand_claims(
 
     superlative = {issue.code: issue for issue in issues}["unverified_superlative"]
     assert superlative.severity == severity
+
+
+def _hit(
+    text: str, *, positioning: bool = False, chunk_id: UUID | None = None
+) -> BrandRetrievalHit:
+    return BrandRetrievalHit(
+        chunk_id=chunk_id or uuid4(),
+        document_id=uuid4(),
+        version_id=uuid4(),
+        document_title="赛先生科学｜卡片" if positioning else "创始人访谈",
+        document_kind=BrandDocumentKind.POSITIONING,
+        audience=BrandAudience.PARENTS,
+        text=text,
+        tone_tags=(),
+        safety_tags=(),
+        visual_tags=(),
+        full_text_score=0.0,
+        vector_score=0.5,
+        fused_score=0.5,
+        content_type=BrandContentType.POSITIONING if positioning else BrandContentType.OTHER,
+    )
+
+
+def test_brand_rotation_moves_recently_used_chunks_and_sentences_last() -> None:
+    cited = _hit("第二层，能力被看见。孩子开始问为什么了。")
+    same_sentence = _hit("思维链教学法的核心是：AI不直接给答案，而是展示完整的思考过程。")
+    fresh_topic = _hit("我们设置了理科培优和科技特长双线并行，对接升学路径。")
+    fresh_other = _hit("真人直播小班课，老师与孩子互动提问。")
+    used_card = _hit("“真思考”重视问题意识与推理过程。", positioning=True)
+    fresh_card = _hit("“真动手”强调孩子亲自接触材料、尝试操作并观察现象。", positioning=True)
+    other_card = _hit("“真表达”重视孩子说清观察、做法与发现的机会。", positioning=True)
+    recent = RecentBrandUsage(
+        chunk_ids=(cited.chunk_id,),
+        claim_texts=(
+            "在赛先生，我们用思维链教学法引导孩子——AI不直接给答案，而是展示完整的思考过程",
+            "赛先生的“真思考”重视问题意识与推理过程",
+        ),
+    )
+
+    selected = select_rotated_brand_hits(
+        (cited, same_sentence, used_card, fresh_topic, fresh_other),
+        (fresh_card, other_card),
+        recent_usage=recent,
+        limit=5,
+        rotation_key="event-1",
+    )
+
+    ids = [hit.chunk_id for hit in selected]
+    assert ids[:2] == [fresh_topic.chunk_id, fresh_other.chunk_id]
+    assert set(ids[2:4]) == {fresh_card.chunk_id, other_card.chunk_id}
+    # Two fresh cards fill the card slots; one stale topic chunk fills the last slot.
+    assert ids[4] in {cited.chunk_id, same_sentence.chunk_id}
+    assert used_card.chunk_id not in ids
+
+
+def test_brand_rotation_cycles_least_recently_used_cards_when_all_are_stale() -> None:
+    cards = [
+        _hit(f"“真{name}”是赛先生科学课堂方式之{name}。", positioning=True) for name in "甲乙丙"
+    ]
+    topic = _hit("AI不直接给答案，而是展示完整的思考过程。")
+    recent = RecentBrandUsage(
+        # Newest first: 甲 was used last, 丙 longest ago.
+        chunk_ids=(cards[0].chunk_id, topic.chunk_id, cards[1].chunk_id, cards[2].chunk_id)
+    )
+
+    selected = select_rotated_brand_hits((topic,), cards, recent_usage=recent, limit=3)
+
+    assert [hit.chunk_id for hit in selected] == [
+        topic.chunk_id,
+        cards[2].chunk_id,
+        cards[1].chunk_id,
+    ]
+    assert select_rotated_brand_hits((topic,), cards, recent_usage=recent, limit=0) == ()
+
+
+def test_brand_rotation_orders_fresh_cards_per_topic() -> None:
+    cards = [_hit(f"“真{name}”课堂方式。", positioning=True) for name in "甲乙丙丁戊己庚"]
+    firsts = {
+        select_rotated_brand_hits(
+            (), cards, recent_usage=RecentBrandUsage(), limit=2, rotation_key=f"event-{index}"
+        )[0].chunk_id
+        for index in range(12)
+    }
+
+    assert len(firsts) >= 3
+
+
+def test_brand_rotation_prompt_lists_recent_claims_and_old_prompt_is_unchanged() -> None:
+    rotation = build_copy_version_bundle(Settings())
+    previous = replace(
+        rotation, generator_prompt_version=STANDALONE_HEADING_GENERATOR_PROMPT_VERSION
+    )
+    claims = ("AI不直接给答案，而是展示完整的思考过程",)
+
+    def request(bundle: CopyVersionBundle, recent: tuple[str, ...]) -> DraftGenerationRequest:
+        return DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=_topic(),
+            brand_context=_brand(),
+            version_bundle=bundle,
+            draft_version=1,
+            max_output_tokens=2048,
+            recent_brand_claims=recent,
+        )
+
+    prompt = build_generator_prompt(request(rotation, claims))
+    old_prompt = build_generator_prompt(request(previous, ()))
+
+    assert rotation.generator_prompt_version == BRAND_ROTATION_GENERATOR_PROMPT_VERSION
+    assert '<RECENT_BRAND_CLAIMS>["AI不直接给答案，而是展示完整的思考过程"]' in prompt
+    assert "必须换一个角度" in prompt
+    assert "逐字符可审计的一致性" in prompt
+    assert "RECENT_BRAND_CLAIMS" not in old_prompt
+    assert "换一个角度" not in old_prompt
+    assert generator_request_fingerprint(
+        request(previous, ()), "p", "m"
+    ) != generator_request_fingerprint(request(previous, claims), "p", "m")
+
+
+@pytest.mark.asyncio
+async def test_brand_rotation_executor_passes_recent_usage_to_retrieval_and_prompt() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    repository = FakeCopyRepository(_topic(), version_bundle=bundle)
+    repository.recent_usage = RecentBrandUsage(
+        chunk_ids=(uuid4(),), claim_texts=("赛先生用思维链教学法引导孩子",)
+    )
+    retriever = FakeBrandRetriever()
+    generator = CountingGenerator()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=retriever,
+        generator=generator,
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("rotation-worker") is True
+    assert repository.status == "accepted"
+    assert retriever.recent_usages == [repository.recent_usage]
+    assert generator.requests[0].recent_brand_claims == ("赛先生用思维链教学法引导孩子",)
+
+
+@pytest.mark.asyncio
+async def test_previous_prompt_version_does_not_read_recent_brand_usage() -> None:
+    settings = Settings(
+        ai_provider_mode="fake",
+        ai_chat_model="fake-copy",
+        copy_generator_prompt_version=STANDALONE_HEADING_GENERATOR_PROMPT_VERSION,
+    )
+    repository = FakeCopyRepository(_topic(), version_bundle=build_copy_version_bundle(settings))
+    retriever = FakeBrandRetriever()
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=retriever,
+        generator=CountingGenerator(),
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("previous-worker") is True
+    assert repository.status == "accepted"
+    assert repository.recent_usage_calls == 0
+    assert retriever.recent_usages == [None]

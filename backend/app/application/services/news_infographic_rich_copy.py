@@ -176,7 +176,9 @@ class MomentsRichSeed(BaseModel):
 _MOMENTS_HEADING = "小赛洞察："
 _MOMENTS_STANDALONE_HEADING = "🔎 小赛洞察"
 _MOMENTS_INLINE_PROMPT_VERSION = "moments-generator-v19-exact-claim-span"
-_MOMENTS_STANDALONE_PROMPT_VERSION = "moments-generator-v24-standalone-heading"
+_MOMENTS_STANDALONE_PROMPT_VERSIONS = frozenset(
+    {"moments-generator-v24-standalone-heading", "moments-generator-v25-brand-rotation"}
+)
 _MOMENTS_SOURCE = "新闻来源："
 _MOMENTS_LINK = "原文链接："
 _MOMENTS_HASHTAGS = re.compile(r"(?:#[\w\u4e00-\u9fff]+)(?:\s+#[\w\u4e00-\u9fff]+)*")
@@ -237,7 +239,7 @@ def _moments_body(case: ValidatedInfographicInput) -> str:
         body_lines[0] = body_lines[0].removeprefix(_MOMENTS_HEADING).strip()
         if not body_lines[0]:
             raise RichCopyError("Moments platform heading has no inline body")
-    elif case.copy_prompt_version == _MOMENTS_STANDALONE_PROMPT_VERSION:
+    elif case.copy_prompt_version in _MOMENTS_STANDALONE_PROMPT_VERSIONS:
         if (
             len(body_lines) < 3
             or body_lines[0] != _MOMENTS_STANDALONE_HEADING

@@ -223,7 +223,7 @@ class Settings(BaseSettings):
     brand_ocr_timeout_seconds: float = Field(default=180.0, gt=0, le=360)
     brand_ocr_max_pages: int = Field(default=100, ge=1, le=100)
     copy_pipeline_version: str = ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
-    copy_generator_prompt_version: str = "moments-generator-v24-standalone-heading"
+    copy_generator_prompt_version: str = "moments-generator-v25-brand-rotation"
     copy_draft_schema_version: str = "moments-draft-schema-v1"
     copy_auditor_prompt_version: str = "moments-auditor-v19-standalone-heading"
     copy_audit_schema_version: str = "moments-audit-schema-v1"

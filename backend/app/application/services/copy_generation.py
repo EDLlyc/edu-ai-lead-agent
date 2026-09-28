@@ -3,6 +3,9 @@ from __future__ import annotations
 # ruff: noqa: RUF001
 import asyncio
 import json
+import re
+import unicodedata
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -20,6 +23,7 @@ from app.application.ports.copy_generation import (
     DraftGenerationRequest,
     MaterialDraftAuditor,
     MaterialDraftGenerator,
+    RecentBrandUsage,
     StoredDraft,
 )
 from app.application.services.brand_knowledge import retrieve_brand_context
@@ -39,7 +43,12 @@ from app.core.errors import (
     ProviderValidationIssue,
     provider_validation_issues_metadata,
 )
-from app.domain.brand_knowledge import BrandAudience, BrandDocumentKind
+from app.domain.brand_knowledge import (
+    BrandAudience,
+    BrandContentType,
+    BrandDocumentKind,
+    BrandRetrievalHit,
+)
 from app.domain.copy_generation import (
     ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION,
     STANDALONE_HEADING_COPY_RULE_VERSIONS,
@@ -67,8 +76,30 @@ logger = structlog.get_logger()
 
 STANDALONE_HEADING_GENERATOR_PROMPT_VERSION = "moments-generator-v24-standalone-heading"
 STANDALONE_HEADING_AUDITOR_PROMPT_VERSION = "moments-auditor-v19-standalone-heading"
+# Same standalone-heading output as v24; the brand context is retrieved per topic, rotates away
+# from brand chunks and sentences used by recently accepted copy, and the prompt lists those
+# sentences so a new copy picks a different angle.
+BRAND_ROTATION_GENERATOR_PROMPT_VERSION = "moments-generator-v25-brand-rotation"
+STANDALONE_HEADING_GENERATOR_PROMPT_VERSIONS = frozenset(
+    {STANDALONE_HEADING_GENERATOR_PROMPT_VERSION, BRAND_ROTATION_GENERATOR_PROMPT_VERSION}
+)
 _EXACT_CLAIM_SPAN_GENERATOR_PROMPT_VERSIONS = frozenset(
-    {"moments-generator-v19-exact-claim-span", STANDALONE_HEADING_GENERATOR_PROMPT_VERSION}
+    {"moments-generator-v19-exact-claim-span", *STANDALONE_HEADING_GENERATOR_PROMPT_VERSIONS}
+)
+BRAND_ROTATION_LOOKBACK_DAYS = 3
+BRAND_ROTATION_CLAIM_LIMIT = 12
+BRAND_ROTATION_POOL_LIMIT = 10
+BRAND_ROTATION_POSITIONING_SLOTS = 2
+_BRAND_PHRASE_WINDOW = 8
+_BRAND_COMPACT_PATTERN = re.compile(r"[^0-9a-z\u4e00-\u9fff]")
+_COPY_BRAND_QUERY = (
+    "面向家长生成赛先生人工智能与科学教育朋友圈文案，"
+    "召回品牌语气、理念、产品边界、禁用表达和视觉规范。"
+)
+_ROTATION_TOPIC_QUERY = "赛先生科学的课程与理念如何回应这条新闻里的教育需求："
+_ROTATION_POSITIONING_QUERY = (
+    "赛先生科学课堂方式（真小班、真动手、真思考、真表达、真作品、真反馈、真助力）"
+    "中最贴合这条新闻的一点："
 )
 
 
@@ -107,26 +138,36 @@ class BrandRagContextRetriever(BrandContextRetriever):
         self._limit = limit
         self._retrieval_version = retrieval_version
 
-    async def retrieve_for_copy(self, topic: LockedTopicContext) -> tuple[ActiveBrandContext, ...]:
-        query = "\n".join(
-            value
-            for value in (
-                "面向家长生成赛先生人工智能与科学教育朋友圈文案，召回品牌语气、理念、产品边界、禁用表达和视觉规范。",
-                topic.title,
-                topic.summary,
+    async def retrieve_for_copy(
+        self, topic: LockedTopicContext, recent_usage: RecentBrandUsage | None = None
+    ) -> tuple[ActiveBrandContext, ...]:
+        if recent_usage is None:
+            hits = await self._retrieve(
+                "\n".join(
+                    value for value in (_COPY_BRAND_QUERY, topic.title, topic.summary) if value
+                ),
+                topic,
+                limit=self._limit,
             )
-            if value
-        )
-        hits = await retrieve_brand_context(
-            repository=self._repository,
-            embeddings=self._embeddings,
-            query=query,
-            audience=BrandAudience.PARENTS,
-            document_kinds=tuple(BrandDocumentKind),
-            valid_on=topic.business_date,
-            limit=self._limit,
-            retrieval_version=self._retrieval_version,
-        )
+        else:
+            topic_text = "\n".join(value for value in (topic.title, topic.summary) if value)
+            topic_hits = await self._retrieve(
+                f"{_ROTATION_TOPIC_QUERY}\n{topic_text}"[:2_000],
+                topic,
+                limit=BRAND_ROTATION_POOL_LIMIT,
+            )
+            positioning_hits = await self._retrieve(
+                f"{_ROTATION_POSITIONING_QUERY}\n{topic.title or ''}"[:2_000],
+                topic,
+                limit=BRAND_ROTATION_POOL_LIMIT,
+            )
+            hits = select_rotated_brand_hits(
+                topic_hits,
+                positioning_hits,
+                recent_usage=recent_usage,
+                limit=self._limit,
+                rotation_key=str(topic.selected_event_version_id or topic.title),
+            )
         return tuple(
             ActiveBrandContext(
                 chunk_id=hit.chunk_id,
@@ -150,6 +191,115 @@ class BrandRagContextRetriever(BrandContextRetriever):
             )
             for hit in hits
         )
+
+    async def _retrieve(
+        self, query: str, topic: LockedTopicContext, *, limit: int
+    ) -> tuple[BrandRetrievalHit, ...]:
+        return await retrieve_brand_context(
+            repository=self._repository,
+            embeddings=self._embeddings,
+            query=query,
+            audience=BrandAudience.PARENTS,
+            document_kinds=tuple(BrandDocumentKind),
+            valid_on=topic.business_date,
+            limit=limit,
+            retrieval_version=self._retrieval_version,
+        )
+
+
+def _compact_brand_text(value: str) -> str:
+    return _BRAND_COMPACT_PATTERN.sub("", unicodedata.normalize("NFKC", value).lower())
+
+
+def _phrase_windows(text: str) -> frozenset[str]:
+    compact = _compact_brand_text(text)
+    return frozenset(
+        compact[start : start + _BRAND_PHRASE_WINDOW]
+        for start in range(len(compact) - _BRAND_PHRASE_WINDOW + 1)
+    )
+
+
+def select_rotated_brand_hits(
+    topic_hits: Sequence[BrandRetrievalHit],
+    positioning_hits: Sequence[BrandRetrievalHit],
+    *,
+    recent_usage: RecentBrandUsage,
+    limit: int,
+    rotation_key: str = "",
+    positioning_slots: int = BRAND_ROTATION_POSITIONING_SLOTS,
+) -> tuple[BrandRetrievalHit, ...]:
+    """Topic-relevant brand context that rotates away from what recent accepted copy used.
+
+    Curated positioning cards get reserved slots so each copy can pick a concrete classroom
+    angle. A chunk is stale when a recent copy cited it or when it contains an 8-character
+    run of a recent brand sentence (overlapping chunks carry the same sentence). Fresh chunks
+    come first: topic chunks by relevance, cards in a per-topic order. Stale chunks only fill
+    the remaining slots, least recently used first, so the cards cycle.
+    """
+
+    if limit < 1:
+        return ()
+    claim_windows = [_phrase_windows(text) for text in recent_usage.claim_texts]
+    chunk_recency = {chunk_id: index for index, chunk_id in enumerate(recent_usage.chunk_ids)}
+    unused = len(chunk_recency) + len(claim_windows)
+
+    def recency(hit: BrandRetrievalHit) -> int | None:
+        """Position of the most recent use (0 = newest), or None when unused."""
+
+        ranks = [chunk_recency[hit.chunk_id]] if hit.chunk_id in chunk_recency else []
+        compact = _compact_brand_text(hit.text)
+        ranks += [
+            index
+            for index, windows in enumerate(claim_windows)
+            if any(window in compact for window in windows)
+        ]
+        return min(ranks) if ranks else None
+
+    def order(hits: list[BrandRetrievalHit], *, shuffle: bool) -> list[BrandRetrievalHit]:
+        def key(item: tuple[int, BrandRetrievalHit]) -> tuple[int, int, str]:
+            position, hit = item
+            used = recency(hit)
+            tie = stable_key("brand-rotation", rotation_key, hit.chunk_id) if shuffle else ""
+            if used is None:
+                return (0, 0 if shuffle else position, tie)
+            return (1, unused - used, tie)
+
+        return [hit for _position, hit in sorted(enumerate(hits), key=key)]
+
+    def unique(hits: Sequence[BrandRetrievalHit]) -> list[BrandRetrievalHit]:
+        seen: set[UUID] = set()
+        result: list[BrandRetrievalHit] = []
+        for hit in hits:
+            if hit.chunk_id not in seen:
+                seen.add(hit.chunk_id)
+                result.append(hit)
+        return result
+
+    cards = order(
+        unique(
+            [
+                hit
+                for hit in (*topic_hits, *positioning_hits)
+                if hit.content_type is BrandContentType.POSITIONING
+            ]
+        ),
+        shuffle=True,
+    )
+    others = order(
+        unique([hit for hit in topic_hits if hit.content_type is not BrandContentType.POSITIONING]),
+        shuffle=False,
+    )
+    chosen_cards = cards[: min(positioning_slots, limit)]
+    selected = [*others[: limit - len(chosen_cards)], *chosen_cards]
+    selected_ids = {hit.chunk_id for hit in selected}
+    for hit in (*others, *cards):
+        if len(selected) >= limit:
+            break
+        if hit.chunk_id not in selected_ids:
+            selected_ids.add(hit.chunk_id)
+            selected.append(hit)
+    # Fresh context first; stale context keeps its least-recently-used order at the end.
+    return tuple(sorted(selected, key=lambda hit: recency(hit) is not None))
 
 
 class CopyGenerationExecutor:
@@ -274,8 +424,14 @@ class CopyGenerationExecutor:
             return
         drafts = await self._repository.load_drafts(claimed)
         current = _draft_by_version(drafts, 1)
+        recent_usage = await self._recent_brand_usage(claimed)
+        self._ensure_lease(lease_lost)
         if current is None:
-            brand_context = await self._brand_retriever.retrieve_for_copy(topic)
+            brand_context = (
+                await self._brand_retriever.retrieve_for_copy(topic)
+                if recent_usage is None
+                else await self._brand_retriever.retrieve_for_copy(topic, recent_usage=recent_usage)
+            )
         else:
             brand_context = await self._repository.load_brand_context_for_draft(
                 claimed=claimed,
@@ -296,6 +452,7 @@ class CopyGenerationExecutor:
                 repair_of=None,
                 repair_issues=(),
                 previous_draft=None,
+                recent_usage=recent_usage,
                 lease_lost=lease_lost,
             )
             if current is None:
@@ -335,6 +492,7 @@ class CopyGenerationExecutor:
                     repair_of=current.id,
                     repair_issues=repair_issues,
                     previous_draft=current.draft,
+                    recent_usage=recent_usage,
                     lease_lost=lease_lost,
                 )
             except (InvalidProviderOutputError, ProviderRejectedError) as error:
@@ -380,6 +538,20 @@ class CopyGenerationExecutor:
             draft_id=repaired.id,
         )
 
+    async def _recent_brand_usage(
+        self, claimed: ClaimedCopyGenerationJob
+    ) -> RecentBrandUsage | None:
+        if (
+            claimed.version_bundle.generator_prompt_version
+            != BRAND_ROTATION_GENERATOR_PROMPT_VERSION
+        ):
+            return None
+        return await self._repository.load_recent_brand_usage(
+            claimed,
+            lookback_days=BRAND_ROTATION_LOOKBACK_DAYS,
+            claim_limit=BRAND_ROTATION_CLAIM_LIMIT,
+        )
+
     async def _generate_and_persist(
         self,
         *,
@@ -391,6 +563,7 @@ class CopyGenerationExecutor:
         repair_issues: tuple[CopyIssue, ...],
         previous_draft: MaterialDraft | None,
         lease_lost: asyncio.Event,
+        recent_usage: RecentBrandUsage | None = None,
     ) -> StoredDraft | None:
         if self._generator is None:
             raise RuntimeError("copy generator is unavailable")
@@ -404,6 +577,7 @@ class CopyGenerationExecutor:
             max_output_tokens=self._settings.copy_max_output_tokens,
             repair_issues=repair_issues,
             previous_draft=previous_draft,
+            recent_brand_claims=recent_usage.claim_texts if recent_usage is not None else (),
         )
         result = await self._generator.generate(request)
         _ensure_provider_identity(
@@ -720,6 +894,23 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         if _uses_exact_claim_span_contract(request.version_bundle.generator_prompt_version)
         else ""
     )
+    brand_rotation = (
+        request.version_bundle.generator_prompt_version == BRAND_ROTATION_GENERATOR_PROMPT_VERSION
+    )
+    brand_rotation_contract = (
+        "“为什么在赛先生学习”只写一处，从BRAND中挑一个与本条新闻最贴合的具体角度"
+        "（某种课堂方式、学习体验或课程设计），用一到两句说清它和这条新闻的联系；BRAND按新鲜度排序，"
+        "优先使用排在前面的内容。<RECENT_BRAND_CLAIMS>是近几天已发布文案用过的品牌说法，"
+        "本条不得原样或换词重复其中的说法、教学法名称和标志性句子，必须换一个角度。"
+        if brand_rotation
+        else ""
+    )
+    recent_brand_claims_section = (
+        f"<RECENT_BRAND_CLAIMS>{_prompt_json(list(request.recent_brand_claims))}"
+        "</RECENT_BRAND_CLAIMS>\n"
+        if brand_rotation
+        else ""
+    )
     evidence_language_contract = (
         "EVIDENCE中的exact_quote始终是可追溯的原文引文；governed_statement是可选的中文治理事实，"
         "只可用于支持中文表达，不得写成原文引语，也不得取代evidence_id、exact_quote或原文URL。"
@@ -739,6 +930,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         "正文逻辑必须回答两个问题：孩子为什么值得学习科学、科创、"
         "人工智能或机器人（例如培养提问、理解世界、动手解决问题的能力），以及为什么在赛先生学习（必须"
         "结合BRAND中的真实课程方式、学习体验或品牌原则，不能只写空泛口号）。emoji不能代替解释。"
+        f"{brand_rotation_contract}"
         "copywriting末尾必须另起一行输出2到3个标签，标签之间用空格分隔，首个"
         "固定为#赛先生科学，另外提炼1到2个与本条内容直接相关的标签。hashtags只能出现在正文末行。\n"
         f"版本:{request.version_bundle.generator_prompt_version}/"
@@ -749,6 +941,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         f"<BRAND>{_prompt_json(brand)}</BRAND>\n"
         f"<REPAIR>{_prompt_json(repair)}</REPAIR>\n"
         f"{required_exact_claims_section}"
+        f"{recent_brand_claims_section}"
         f"<PREVIOUS>{_prompt_json(previous)}</PREVIOUS>"
     )
 
@@ -843,6 +1036,7 @@ def generator_request_fingerprint(
         *(item.chunk_id for item in request.brand_context),
         _prompt_json(_bounded_repair_issue_payload(request.repair_issues)),
         _prompt_json(previous),
+        *request.recent_brand_claims,
     )
 
 

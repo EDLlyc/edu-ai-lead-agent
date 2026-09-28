@@ -19,6 +19,7 @@ from app.application.ports.copy_generation import (
     CopyGenerationRepository,
     DraftAuditResult,
     DraftGenerationResult,
+    RecentBrandUsage,
     StoredDraft,
 )
 from app.core.errors import (
@@ -338,6 +339,23 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         async with self._session_factory() as session:
             await _require_fenced_job(session, claimed)
             return await _load_stored_drafts(session, claimed.run_id)
+
+    async def load_recent_brand_usage(
+        self, claimed: ClaimedCopyGenerationJob, *, lookback_days: int, claim_limit: int
+    ) -> RecentBrandUsage:
+        async with self._session_factory() as session:
+            await _require_fenced_job(session, claimed)
+            run = await session.get(CopyGenerationRunModel, claimed.run_id)
+            if run is None:
+                raise CopyGenerationLeaseLostError()
+            return await load_recent_brand_usage_before(
+                session,
+                run_id=run.id,
+                business_date=run.business_date,
+                timezone=run.timezone,
+                lookback_days=lookback_days,
+                claim_limit=claim_limit,
+            )
 
     async def load_brand_context_for_draft(
         self, *, claimed: ClaimedCopyGenerationJob, draft: StoredDraft
@@ -1446,6 +1464,59 @@ def _add_issues(
                 safe_message=issue.message,
             )
         )
+
+
+async def load_recent_brand_usage_before(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    business_date: date,
+    timezone: str,
+    lookback_days: int,
+    claim_limit: int,
+) -> RecentBrandUsage:
+    """Brand statements of other accepted runs in the lookback window, newest first.
+
+    Runs of one content slot share a creation timestamp, so recency follows completion time;
+    a later ordinal therefore sees the brand angle an earlier ordinal just used.
+    """
+
+    rows = (
+        await session.execute(
+            select(CopyDraftClaimModel.text, CopyClaimBrandBindingModel.brand_chunk_id)
+            .join(
+                CopyGenerationRunModel,
+                CopyGenerationRunModel.active_draft_version_id
+                == CopyDraftClaimModel.draft_version_id,
+            )
+            .outerjoin(
+                CopyClaimBrandBindingModel,
+                CopyClaimBrandBindingModel.claim_id == CopyDraftClaimModel.id,
+            )
+            .where(
+                CopyGenerationRunModel.id != run_id,
+                CopyGenerationRunModel.status == CopyRunStatus.ACCEPTED.value,
+                CopyGenerationRunModel.timezone == timezone,
+                CopyGenerationRunModel.business_date.between(
+                    business_date - timedelta(days=lookback_days), business_date
+                ),
+                CopyDraftClaimModel.kind == "brand_statement",
+            )
+            .order_by(
+                CopyGenerationRunModel.completed_at.desc().nulls_last(),
+                CopyGenerationRunModel.created_at.desc(),
+                CopyDraftClaimModel.ordinal,
+            )
+        )
+    ).all()
+    chunk_ids: list[UUID] = []
+    claim_texts: list[str] = []
+    for claim_text, chunk_id in rows:
+        if chunk_id is not None and chunk_id not in chunk_ids:
+            chunk_ids.append(chunk_id)
+        if claim_text not in claim_texts and len(claim_texts) < claim_limit:
+            claim_texts.append(claim_text)
+    return RecentBrandUsage(chunk_ids=tuple(chunk_ids), claim_texts=tuple(claim_texts))
 
 
 async def _require_fenced_job(

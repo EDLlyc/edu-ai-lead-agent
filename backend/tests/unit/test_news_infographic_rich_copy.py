@@ -293,12 +293,16 @@ def test_v2_accepts_only_exact_same_package_claim_sentences_as_local_seed() -> N
     assert build_rich_copy_proposal(case).policy_version == RICH_COPY_POLICY_VERSION
 
 
-def test_v24_standalone_heading_extracts_body_without_promoting_footer() -> None:
+@pytest.mark.parametrize(
+    "version",
+    ("moments-generator-v24-standalone-heading", "moments-generator-v25-brand-rotation"),
+)
+def test_standalone_heading_extracts_body_without_promoting_footer(version: str) -> None:
     case = _case()
     claims = [claim.text for claim in case.claims if claim.kind != "opinion"]
     body = "\n".join(claims)
     payload = case.model_dump(mode="python")
-    payload["copy_prompt_version"] = "moments-generator-v24-standalone-heading"
+    payload["copy_prompt_version"] = version
     payload["copywriting"] = f"🔎 小赛洞察\n\n{body}\n\n{case.source_footer}\n#赛先生科学 #科学思维"
     standalone = ValidatedInfographicInput.model_validate(payload)
     seed = build_moments_rich_seed(standalone, _binding(standalone))

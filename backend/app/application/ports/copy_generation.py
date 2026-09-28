@@ -34,6 +34,15 @@ class DraftGenerationRequest:
     max_output_tokens: int
     repair_issues: tuple[CopyIssue, ...] = ()
     previous_draft: MaterialDraft | None = None
+    recent_brand_claims: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RecentBrandUsage:
+    """Brand chunks and brand sentences of recently accepted copy, both newest first."""
+
+    chunk_ids: tuple[UUID, ...] = ()
+    claim_texts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +109,7 @@ class MaterialDraftAuditor(Protocol):
 
 class BrandContextRetriever(Protocol):
     async def retrieve_for_copy(
-        self, topic: LockedTopicContext
+        self, topic: LockedTopicContext, recent_usage: RecentBrandUsage | None = None
     ) -> tuple[ActiveBrandContext, ...]: ...
 
 
@@ -151,6 +160,10 @@ class CopyGenerationRepository(Protocol):
     async def load_topic_context(self, claimed: ClaimedCopyGenerationJob) -> LockedTopicContext: ...
 
     async def load_drafts(self, claimed: ClaimedCopyGenerationJob) -> tuple[StoredDraft, ...]: ...
+
+    async def load_recent_brand_usage(
+        self, claimed: ClaimedCopyGenerationJob, *, lookback_days: int, claim_limit: int
+    ) -> RecentBrandUsage: ...
 
     async def load_brand_context_for_draft(
         self, *, claimed: ClaimedCopyGenerationJob, draft: StoredDraft
