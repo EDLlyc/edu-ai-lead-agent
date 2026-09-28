@@ -30,7 +30,7 @@ from app.application.services.news_infographic import build_evidence_first_copy
 from app.application.services.news_infographic_advisory import (
     ADVISORY_AUDIT_VERSION,
     ADVISORY_GENERATION_PROMPT_VERSION,
-    render_advisory_notice,
+    prepare_unmarked_advisory_raster,
 )
 from app.application.services.news_infographic_footer import (
     render_exact_source_footer,
@@ -413,7 +413,7 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         package = await session.get(MaterialPackageModel, base.material_package_id)
         assert package is not None
         case = _input_from_package(package)
-        marked = render_advisory_notice(blobs[poster.raw_sha256])
+        marked = prepare_unmarked_advisory_raster(blobs[poster.raw_sha256])
         assert sha256(marked).hexdigest() == poster.composite_sha256
         formal = render_exact_source_footer(marked, case, mode="formal")
         assert sha256(formal.image_bytes).hexdigest() == poster.footer_sha256
@@ -425,9 +425,10 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         with Image.open(BytesIO(expected)) as image:
             image.load()
             assert image.size == (1152, 2048)
-            notice_pixel = image.getpixel((5, 5))
-            assert isinstance(notice_pixel, tuple)
-            assert notice_pixel[0] > notice_pixel[1] * 2
+            top_pixel = image.getpixel((5, 5))
+            assert isinstance(top_pixel, tuple)
+            # No painted warning banner since advisory-notice-v2: the top stays the image itself.
+            assert not top_pixel[0] > top_pixel[1] * 2
         base = await session.get(WeComDeliveryJobModel, job_ids[0])
         assert base is not None
         base.status = "delivered"

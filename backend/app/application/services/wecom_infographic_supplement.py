@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.wecom import WeComDeliveryClient, WeComProviderError
-from app.application.services.news_infographic_advisory import render_advisory_notice
+from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
 from app.application.services.news_infographic_footer import render_exact_source_footer
 from app.core.config import Settings
 from app.domain.news_infographic import InfographicInputError
@@ -62,8 +62,8 @@ def _valid_ready_pair(
             and poster.visual_status == "passed"
         )
     else:
-        # Review warnings may be advisory, but a known wrong source footer,
-        # missing image, or absent visible warning is never a sendable poster.
+        # Review warnings may be advisory, but a known wrong source footer, missing image or
+        # a poster not built under the current (unmarked) notice version is never sendable.
         quality_ready = bool(
             poster.warning_notice_version == ADVISORY_NOTICE_VERSION
             and advisory_gate_warnings_match(
@@ -414,7 +414,7 @@ class WeComInfographicSupplementExecutor:
             if len(raw) != poster.raw_byte_size or sha256(raw).hexdigest() != poster.raw_sha256:
                 await self._record_unknown(supplement_id, token, "supplement_raw_image_changed")
                 return
-            warned = render_advisory_notice(raw)
+            warned = prepare_unmarked_advisory_raster(raw)
             if (
                 sha256(warned).hexdigest() != poster.composite_sha256
                 or len(warned) != poster.composite_byte_size

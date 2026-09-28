@@ -41,7 +41,7 @@ ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v13-boundary-comma-advi
 ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v5"
 ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v5"
 ADVISORY_AUDIT_VERSION: Final = "wecom-infographic-advisory-copy-audit-v4"
-ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v4"
+ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v5"
 ADVISORY_NOTICE: Final = ADVISORY_NOTICE_TEXT
 _NOTICE_FONT_PATH = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 _GEOMETRY = (1152, 2048)
@@ -483,7 +483,7 @@ def build_advisory_image_prompt(case: ValidatedInfographicInput, copy: AdvisoryR
             "每卡只讲一个重点：蓝卡一条新闻事实，绿卡一个亲子活动，紫卡一个教学动作。"
             "按参考图的舒展密度排版，不缩小字号、不复制句子、不追加正文；"
             "不添加未经给定的新闻、数字、品牌承诺或原文链接。",
-            "顶部 y0–100 必须留给程序画醒目的AI未核实提示，不画任何标题或装饰文字；"
+            "顶部 y0–100 自然延续画面背景（天空或浅色渐变），不画任何标题、文字或装饰；"
             "y1858–2048 完全留白，供程序绘制精确新闻日期、来源和完整原文链接。"
             "顶部标题和导语在 y520 前结束；蓝卡 y1050–1288、绿卡 y1308–1546、"
             "紫卡 y1566–1816，各卡正文最多四行并保留内边距。"
@@ -510,6 +510,23 @@ def advisory_notice_font_sha256() -> str:
     if not _NOTICE_FONT_PATH.is_file() or _NOTICE_FONT_PATH.is_symlink():
         raise AdvisoryCopyError("advisory notice font is unavailable")
     return sha256(_NOTICE_FONT_PATH.read_bytes()).hexdigest()
+
+
+def prepare_unmarked_advisory_raster(source_png: bytes) -> bytes:
+    """Validate the generated raster and re-encode it unchanged; no banner is painted."""
+    try:
+        with Image.open(BytesIO(source_png)) as source:
+            source.load()
+            if source.size != _GEOMETRY or getattr(source, "n_frames", 1) != 1:
+                raise AdvisoryCopyError("advisory source has wrong geometry")
+            canvas = source.convert("RGB")
+    except AdvisoryCopyError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise AdvisoryCopyError("advisory source raster is invalid") from exc
+    target = BytesIO()
+    canvas.save(target, format="PNG")
+    return target.getvalue()
 
 
 def render_advisory_notice(source_png: bytes) -> bytes:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from enum import StrEnum
@@ -21,6 +23,23 @@ from app.domain.topic_selection import (
 
 CONTENT_SLOT_SCHEDULE_POLICY_VERSION = "content-slot-schedule-v1"
 DEFAULT_SLOT_RANKING_VERSION: Literal["slot-ranking-v1"] = "slot-ranking-v1"
+# v2 (operator decision 2026-09-28): one story per business day. A candidate that is the same
+# topic as an already-selected same-day story, or as a better-ranked eligible candidate in the
+# same run, is excluded before the model rerank so the model cannot pick it back.
+SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION: Literal["slot-ranking-v2-same-topic-dedup"] = (
+    "slot-ranking-v2-same-topic-dedup"
+)
+SUPPORTED_SLOT_RANKING_VERSIONS = frozenset(
+    {DEFAULT_SLOT_RANKING_VERSION, SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION}
+)
+SAME_TOPIC_EXCLUSION_REASON = "same_day_similar_topic"
+_SAME_TOPIC_SIMILARITY = 0.66
+_SAME_TOPIC_TITLE_OVERLAP = 5
+# Column prefixes such as 【“十五五”开好局起好步】 and generic phrases are shared by unrelated
+# stories, so they never count as a common topic.
+_TITLE_COLUMN_PREFIX = re.compile(r"【[^】]{0,40}】")
+_TITLE_GENERIC_PHRASES = re.compile(r"新闻发布会|中国科学院|国务院新闻办|研究取得进展|取得新进展")
+_TITLE_NON_WORD = re.compile(r"[\W_]+", re.UNICODE)
 
 
 class ContentSlot(StrEnum):
@@ -150,18 +169,27 @@ class SlotRankingPolicy:
     maximum_affinity: float = 0.12
 
     def __post_init__(self) -> None:
-        if self.version != DEFAULT_SLOT_RANKING_VERSION:
+        if self.version not in SUPPORTED_SLOT_RANKING_VERSIONS:
             raise ValueError("unsupported content slot ranking policy")
         if not 0 <= self.maximum_affinity <= 0.25 or not math.isfinite(self.maximum_affinity):
             raise ValueError("content slot affinity bound is invalid")
 
+    @property
+    def dedups_same_topic(self) -> bool:
+        return self.version == SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION
+
     def as_metadata(self) -> dict[str, object]:
-        return {
+        metadata: dict[str, object] = {
             "version": self.version,
             "maximum_affinity": self.maximum_affinity,
             "signal_source": "stored_governed_editorial_and_product_projections",
             "eligibility_effect": "none",
         }
+        if self.dedups_same_topic:
+            metadata["same_topic_similarity_threshold"] = _SAME_TOPIC_SIMILARITY
+            metadata["same_topic_title_overlap_chars"] = _SAME_TOPIC_TITLE_OVERLAP
+            metadata["same_topic_scope"] = "business_date"
+        return metadata
 
     @property
     def fingerprint(self) -> str:
@@ -169,6 +197,50 @@ class SlotRankingPolicy:
             self.as_metadata(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
         return hashlib.sha256(payload).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class TopicFingerprint:
+    """Headline plus the governed representative-article embedding of one event."""
+
+    event_id: UUID
+    title: str
+    embedding: tuple[float, ...] | None = None
+
+
+def _normalized_title(title: str) -> str:
+    stripped = _TITLE_GENERIC_PHRASES.sub(" ", _TITLE_COLUMN_PREFIX.sub(" ", title))
+    return _TITLE_NON_WORD.sub(" ", stripped)
+
+
+def _share_title_phrase(left: str, right: str, length: int) -> bool:
+    right_words = _normalized_title(right).split()
+    for word in _normalized_title(left).split():
+        for start in range(0, len(word) - length + 1):
+            fragment = word[start : start + length]
+            if any(fragment in other for other in right_words):
+                return True
+    return False
+
+
+def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
+    if len(left) != len(right) or not left:
+        return 0.0
+    dot = sum(a * b for a, b in zip(left, right, strict=True))
+    norm = math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right))
+    return dot / norm if norm else 0.0
+
+
+def is_same_topic(left: TopicFingerprint, right: TopicFingerprint) -> bool:
+    if left.event_id == right.event_id:
+        return True
+    if (
+        left.embedding is not None
+        and right.embedding is not None
+        and _cosine(left.embedding, right.embedding) >= _SAME_TOPIC_SIMILARITY
+    ):
+        return True
+    return _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP)
 
 
 class SlotUnfilledReason(StrEnum):
@@ -287,6 +359,8 @@ def select_slot_topics(
     policy: SlotRankingPolicy,
     max_items: int,
     same_day_selected_event_ids: frozenset[UUID] = frozenset(),
+    topic_fingerprints: Mapping[UUID, TopicFingerprint] | None = None,
+    same_day_selected_topics: tuple[TopicFingerprint, ...] = (),
 ) -> ContentSlotDecision:
     if not 1 <= max_items <= 3:
         raise ValueError("content slot selection limit must be in [1, 3]")
@@ -294,16 +368,43 @@ def select_slot_topics(
     if len(candidates_by_id) != len(candidates):
         raise ValueError("content slot candidates must have unique event IDs")
 
+    base_scores = {
+        candidate.event_id: score_topic_candidate(candidate, as_of=as_of, config=config)
+        for candidate in candidates
+    }
+    affinities = {
+        candidate.event_id: slot_affinity(
+            candidate, base_scores[candidate.event_id], slot=slot, policy=policy
+        )
+        for candidate in candidates
+    }
+    similar_topic_ids = (
+        _same_topic_exclusions(
+            candidates,
+            base_scores,
+            ordering_values={
+                event_id: round(base_scores[event_id].total + affinity, 8)
+                for event_id, (affinity, _reasons) in affinities.items()
+            },
+            fingerprints=topic_fingerprints or {},
+            same_day_selected_topics=same_day_selected_topics,
+            same_day_selected_event_ids=same_day_selected_event_ids,
+        )
+        if policy.dedups_same_topic
+        else frozenset()
+    )
     scored: list[ContentSlotScore] = []
     for candidate in candidates:
-        base = score_topic_candidate(candidate, as_of=as_of, config=config)
-        affinity, affinity_reasons = slot_affinity(
-            candidate,
-            base,
-            slot=slot,
-            policy=policy,
+        base = base_scores[candidate.event_id]
+        affinity, affinity_reasons = affinities[candidate.event_id]
+        exclusion_reason = (
+            "same_day_already_selected"
+            if candidate.event_id in same_day_selected_event_ids
+            else SAME_TOPIC_EXCLUSION_REASON
+            if candidate.event_id in similar_topic_ids
+            else None
         )
-        excluded = candidate.event_id in same_day_selected_event_ids
+        excluded = exclusion_reason is not None
         ordering_value = round(base.total + affinity, 8)
         base_group = topic_priority_group(base, excluded=excluded)
         final_key = (
@@ -319,7 +420,7 @@ def select_slot_topics(
                 affinity=affinity,
                 affinity_reasons=affinity_reasons,
                 same_day_excluded=excluded,
-                same_day_exclusion_reason=("same_day_already_selected" if excluded else None),
+                same_day_exclusion_reason=exclusion_reason,
                 ordering_value=ordering_value,
                 final_ordering_key=final_key,
             )
@@ -378,3 +479,41 @@ def select_slot_topics(
         unfilled_count=unfilled_count,
         unfilled_reason_codes=tuple(dict.fromkeys(unfilled_reasons)),
     )
+
+
+def _same_topic_exclusions(
+    candidates: tuple[TopicCandidate, ...],
+    base_scores: Mapping[UUID, TopicScore],
+    *,
+    ordering_values: Mapping[UUID, float],
+    fingerprints: Mapping[UUID, TopicFingerprint],
+    same_day_selected_topics: tuple[TopicFingerprint, ...],
+    same_day_selected_event_ids: frozenset[UUID],
+) -> frozenset[UUID]:
+    """Walk eligible candidates in slot order and keep one per topic for the business day."""
+
+    def order(candidate: TopicCandidate) -> tuple[int, float, float, float, float, int]:
+        base = base_scores[candidate.event_id]
+        return (
+            topic_priority_group(base),
+            -ordering_values[candidate.event_id],
+            -base.total,
+            -base.normalized_features["source_trust"],
+            -candidate.event_time.timestamp(),
+            candidate.event_id.int,
+        )
+
+    anchors = list(same_day_selected_topics)
+    excluded: set[UUID] = set()
+    for candidate in sorted(candidates, key=order):
+        base = base_scores[candidate.event_id]
+        if not base.eligible or candidate.event_id in same_day_selected_event_ids:
+            continue
+        fingerprint = fingerprints.get(candidate.event_id) or TopicFingerprint(
+            event_id=candidate.event_id, title=candidate.priority_title
+        )
+        if any(is_same_topic(fingerprint, anchor) for anchor in anchors):
+            excluded.add(candidate.event_id)
+        else:
+            anchors.append(fingerprint)
+    return frozenset(excluded)

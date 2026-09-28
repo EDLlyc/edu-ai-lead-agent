@@ -2,7 +2,7 @@
 # Daily read-only production quality report (see backend/app/quality_report_main.py).
 # Runs a one-off container of the pinned report image; no service is restarted or modified.
 set -eu
-IMAGE="offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:48f090443254506de19a33ba2e6fbb33b698a1accc7e97d1dafb5ce8e3c79f4c"
+IMAGE="offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:528bd43002703e02c41c315a3be4d3ece0e39c48ee6019c53f069d8b239b214e"
 DAY="${1:-$(TZ=Asia/Shanghai date +%F)}"
 OUT=/opt/edu-ai-lead-agent/reports/quality
 mkdir -p "$OUT"

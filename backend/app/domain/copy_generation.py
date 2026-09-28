@@ -337,6 +337,27 @@ _PROMOTIONAL_SUPERLATIVE = re.compile(
     r"(?:行业|国内|全球|全国|世界)?首个|唯一(?:的)?|遥遥领先|"
     r"(?:行业|全球|全国|世界)(?:最大|最高|最强|第一)"
 )
+# A superlative quoted from the locked news evidence (e.g. an official "世界最大…教育体系") is a
+# fact, not brand promotion: it is allowed only when the phrase together with at least four
+# characters of its surrounding wording appears verbatim in the evidence text.
+_SUPERLATIVE_CONTEXT_CHARS = 4
+
+
+def _has_unbound_superlative(output: str, evidence_text: str) -> bool:
+    evidence = _SUPPORT_TEXT.sub("", evidence_text)
+    for match in _PROMOTIONAL_SUPERLATIVE.finditer(output):
+        start, end = match.span()
+        left = _SUPPORT_TEXT.sub("", output[max(0, start - _SUPERLATIVE_CONTEXT_CHARS) : end])
+        right = _SUPPORT_TEXT.sub("", output[start : end + _SUPERLATIVE_CONTEXT_CHARS])
+        bound = any(
+            len(window) >= len(match.group()) + _SUPERLATIVE_CONTEXT_CHARS and window in evidence
+            for window in (left, right)
+        )
+        if not bound:
+            return True
+    return False
+
+
 _SENTENCE = re.compile(r"[^。！？!?；;]+[。！？!?；;]?")
 _DANGLING_DEPENDENT_CLAUSE = re.compile(
     r"^(?:当|在|进入|完成|经过|随着|如果|为了|通过).{0,60}(?:后|时|中|下|前|以来|之后|之时)$"
@@ -712,7 +733,10 @@ def validate_material_draft(
     _append_phrase_issues(issues, all_output, _PUBLISHING, "automatic_publishing")
     if _PROMPT_CONTROL.search(all_output):
         issues.append(_issue("prompt_injection_echo", "文案回显了提示词控制标记"))
-    if _PROMOTIONAL_SUPERLATIVE.search(all_output):
+    evidence_text = "\n".join(
+        [topic.title or "", topic.summary or ""] + [item.exact_quote for item in topic.evidence]
+    )
+    if _has_unbound_superlative(all_output, evidence_text):
         issues.append(
             _issue(
                 "unverified_superlative",
@@ -735,9 +759,6 @@ def validate_material_draft(
     ):
         issues.append(_issue("personal_data", "文案不得包含个人联系信息或身份信息"))
 
-    evidence_text = "\n".join(
-        [topic.title or "", topic.summary or ""] + [item.exact_quote for item in topic.evidence]
-    )
     narrative_output = "\n".join((draft.copywriting, draft.parent_takeaway, draft.interaction))
     for date_token in set(_DATE.findall(narrative_output)):
         if date_token not in evidence_text and date_token != _business_date_zh(topic.business_date):

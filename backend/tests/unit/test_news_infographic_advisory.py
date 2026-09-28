@@ -56,7 +56,7 @@ def test_same_package_rich_copy_pins_exact_fact_brand_and_model_painted_cards() 
     assert ADVISORY_COPY_VERSION == "wecom-infographic-advisory-concise-copy-v5"
     assert ADVISORY_GENERATION_PROMPT_VERSION == "wecom-infographic-advisory-concise-generation-v5"
     assert ADVISORY_AUDIT_VERSION == "wecom-infographic-advisory-copy-audit-v4"
-    assert ADVISORY_IMAGE_PROMPT_VERSION == "wecom-infographic-advisory-concise-painted-image-v4"
+    assert ADVISORY_IMAGE_PROMPT_VERSION == "wecom-infographic-advisory-concise-painted-image-v5"
     assert generation_prompt.startswith(ADVISORY_GENERATION_PROMPT_VERSION)
     assert '"final_visible_max_chars"' in generation_prompt
     copy = build_advisory_rich_copy(case, binding, fields)
@@ -349,3 +349,24 @@ def test_final_source_footer_and_notice_survive_exact_group_jpeg() -> None:
         assert opened.format == "JPEG" and opened.size == (1152, 2048)
         red = opened.getpixel((5, 5))
         assert red[0] > red[1] * 2 and red[0] > red[2] * 2
+
+
+def test_formal_raster_is_unmarked_and_pixel_identical() -> None:
+    from app.application.services.news_infographic_advisory import (
+        prepare_unmarked_advisory_raster,
+    )
+    from app.application.services.wecom_infographic_quality import ADVISORY_NOTICE_VERSION
+
+    source = Image.new("RGB", (1152, 2048), "#a8d5ef")
+    raw = BytesIO()
+    source.save(raw, format="PNG")
+    unmarked = prepare_unmarked_advisory_raster(raw.getvalue())
+    with Image.open(BytesIO(unmarked)) as opened:
+        opened.load()
+        assert opened.size == (1152, 2048)
+        assert ImageChops.difference(opened.convert("RGB"), source).getbbox() is None
+    assert ADVISORY_NOTICE_VERSION.endswith("-unmarked")
+    with pytest.raises(AdvisoryCopyError, match="geometry"):
+        tiny = BytesIO()
+        Image.new("RGB", (10, 10)).save(tiny, format="PNG")
+        prepare_unmarked_advisory_raster(tiny.getvalue())

@@ -10,6 +10,7 @@ from app.domain.content_slots import (
     ContentSlotDecision,
     ContentSlotSchedule,
     SlotRankingPolicy,
+    TopicFingerprint,
 )
 from app.domain.topic_rerank import TopicRerankConfig, TopicRerankOutcome
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
@@ -73,6 +74,12 @@ class ContentSlotRepository(Protocol):
     async def load_candidates(self, run_id: UUID) -> tuple[TopicCandidate, ...]: ...
 
     async def same_day_selected_event_ids(self, run_id: UUID) -> frozenset[UUID]: ...
+
+    async def topic_fingerprints(
+        self, candidates: tuple[TopicCandidate, ...]
+    ) -> dict[UUID, TopicFingerprint]: ...
+
+    async def same_day_selected_topics(self, run_id: UUID) -> tuple[TopicFingerprint, ...]: ...
 
     async def persist_decision(
         self,

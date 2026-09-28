@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.wecom import WeComDeliveryClient, WeComProviderError
-from app.application.services.news_infographic_advisory import render_advisory_notice
+from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
 from app.application.services.news_infographic_footer import (
     render_exact_source_footer,
     validate_exact_source_footer_layout,
@@ -181,7 +181,7 @@ async def _materials(
     # Formal and visible-test variants must carry the same deterministic
     # warning pixels. The test variant then gets its separate exact test footer.
     if poster.quality_mode == "advisory":
-        notice_raster = render_advisory_notice(raw)
+        notice_raster = prepare_unmarked_advisory_raster(raw)
         if poster.composite_sha256 != sha256(
             notice_raster
         ).hexdigest() or poster.composite_byte_size != len(notice_raster):

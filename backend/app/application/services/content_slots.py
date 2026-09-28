@@ -149,6 +149,17 @@ class ContentSlotExecutor:
             candidates = await self._repository.load_candidates(claimed.run_id)
             self._ensure_lease(lease_lost)
             same_day_ids = await self._repository.same_day_selected_event_ids(claimed.run_id)
+            # v1 runs never read fingerprints, so their replay stays byte-identical.
+            fingerprints = (
+                await self._repository.topic_fingerprints(candidates)
+                if policy.dedups_same_topic
+                else {}
+            )
+            same_day_topics = (
+                await self._repository.same_day_selected_topics(claimed.run_id)
+                if policy.dedups_same_topic
+                else ()
+            )
             decision = select_slot_topics(
                 candidates,
                 as_of=claimed.cutoff_at,
@@ -157,6 +168,8 @@ class ContentSlotExecutor:
                 policy=policy,
                 max_items=claimed.item_limit,
                 same_day_selected_event_ids=same_day_ids,
+                topic_fingerprints=fingerprints,
+                same_day_selected_topics=same_day_topics,
             )
             pool = build_slot_rerank_pool(
                 decision,

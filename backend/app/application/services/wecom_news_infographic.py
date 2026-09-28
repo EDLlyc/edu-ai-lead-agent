@@ -62,7 +62,7 @@ from app.application.services.news_infographic_advisory import (
     build_advisory_generation_prompt,
     build_advisory_image_prompt,
     build_advisory_rich_copy,
-    render_advisory_notice,
+    prepare_unmarked_advisory_raster,
 )
 from app.application.services.news_infographic_footer import (
     DELIVERY_FOOTER_VERSION,
@@ -1217,7 +1217,7 @@ class NewsInfographicProducer:
             return
         _validate_raster(result)
         raw = await self._store.put_immutable(result.image_bytes, media_type=result.media_type)
-        notice_png = render_advisory_notice(result.image_bytes)
+        notice_png = prepare_unmarked_advisory_raster(result.image_bytes)
         composite = await self._store.put_immutable(notice_png, media_type="image/png")
         footer = render_exact_source_footer(notice_png, case, mode="formal")
         derived = await self._store.put_immutable(footer.image_bytes, media_type="image/png")

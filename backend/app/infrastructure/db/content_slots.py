@@ -23,6 +23,7 @@ from app.domain.content_slots import (
     ContentSlotSchedule,
     ContentSlotScore,
     SlotRankingPolicy,
+    TopicFingerprint,
 )
 from app.domain.topic_rerank import (
     TopicRerankConfig,
@@ -32,6 +33,7 @@ from app.domain.topic_rerank import (
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
 from app.infrastructure.db.models import (
     AcquisitionRunModel,
+    ArticleEmbeddingModel,
     ContentSlotJobModel,
     ContentSlotRunModel,
     ContentSlotScoreModel,
@@ -368,6 +370,73 @@ async def load_content_slot_candidates(
         config_snapshot=run.config_snapshot,
         include_content_slot_history=True,
     )
+
+
+async def _fingerprints_for_versions(
+    session: AsyncSession, version_ids: list[UUID]
+) -> dict[UUID, TopicFingerprint]:
+    """Headline + latest representative-article embedding per event version (read-only)."""
+
+    if not version_ids:
+        return {}
+    versions = (
+        await session.execute(
+            select(
+                EventClusterVersionModel.id,
+                EventClusterVersionModel.event_id,
+                EventClusterVersionModel.representative_title,
+                EventClusterVersionModel.representative_article_id,
+            ).where(EventClusterVersionModel.id.in_(version_ids))
+        )
+    ).all()
+    article_ids = [row.representative_article_id for row in versions]
+    vectors: dict[UUID, tuple[float, ...]] = {}
+    for article_id, vector in (
+        await session.execute(
+            select(ArticleEmbeddingModel.normalized_article_id, ArticleEmbeddingModel.vector)
+            .where(ArticleEmbeddingModel.normalized_article_id.in_(article_ids))
+            .order_by(ArticleEmbeddingModel.created_at)
+        )
+    ).all():
+        # Later rows overwrite earlier ones, so the newest embedding wins.
+        vectors[article_id] = tuple(float(value) for value in vector)
+    return {
+        row.id: TopicFingerprint(
+            event_id=row.event_id,
+            title=row.representative_title,
+            embedding=vectors.get(row.representative_article_id),
+        )
+        for row in versions
+    }
+
+
+async def load_content_slot_topic_fingerprints(
+    session: AsyncSession, candidates: tuple[TopicCandidate, ...]
+) -> dict[UUID, TopicFingerprint]:
+    by_version = await _fingerprints_for_versions(
+        session, [candidate.event_version_id for candidate in candidates]
+    )
+    return {fingerprint.event_id: fingerprint for fingerprint in by_version.values()}
+
+
+async def get_same_day_selected_topics(
+    session: AsyncSession, run_id: UUID
+) -> tuple[TopicFingerprint, ...]:
+    run = await session.get(ContentSlotRunModel, run_id)
+    if run is None:
+        raise NotFoundError("content slot run")
+    version_ids = list(
+        (
+            await session.scalars(
+                select(ContentSlotSelectionModel.selected_event_version_id).where(
+                    ContentSlotSelectionModel.business_date == run.business_date,
+                    ContentSlotSelectionModel.timezone == run.timezone,
+                    ContentSlotSelectionModel.run_id != run.id,
+                )
+            )
+        ).all()
+    )
+    return tuple((await _fingerprints_for_versions(session, version_ids)).values())
 
 
 async def load_content_slot_config(session: AsyncSession, run_id: UUID) -> TopicScoringConfig:
@@ -900,6 +969,16 @@ class PostgresContentSlotRepository:
     async def same_day_selected_event_ids(self, run_id: UUID) -> frozenset[UUID]:
         async with self._session_factory() as session:
             return await get_same_day_selected_event_ids(session, run_id)
+
+    async def topic_fingerprints(
+        self, candidates: tuple[TopicCandidate, ...]
+    ) -> dict[UUID, TopicFingerprint]:
+        async with self._session_factory() as session:
+            return await load_content_slot_topic_fingerprints(session, candidates)
+
+    async def same_day_selected_topics(self, run_id: UUID) -> tuple[TopicFingerprint, ...]:
+        async with self._session_factory() as session:
+            return await get_same_day_selected_topics(session, run_id)
 
     async def persist_decision(
         self,

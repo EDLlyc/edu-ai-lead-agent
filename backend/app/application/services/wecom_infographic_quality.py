@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-ADVISORY_NOTICE_VERSION = "wecom-infographic-advisory-notice-v1"
+# v2 (operator decision 2026-09-28): advisory warnings stay durable in the job record, but no
+# visible banner is painted on the delivered image any more.
+ADVISORY_NOTICE_VERSION = "wecom-infographic-advisory-notice-v2-unmarked"
 ADVISORY_NOTICE_TEXT = "AI生成 · 内容/排版未核实"
 ADVISORY_WARNING_CODES = frozenset(
     {

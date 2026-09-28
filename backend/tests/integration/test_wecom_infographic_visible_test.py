@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from app.application.ports.wecom import SendResult, WeComUnknownTimeoutError
-from app.application.services.news_infographic_advisory import render_advisory_notice
+from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
 from app.application.services.news_infographic_footer import render_exact_source_footer
 from app.application.services.wecom_infographic_quality import ADVISORY_NOTICE_VERSION
 from app.application.services.wecom_infographic_supplement import (
@@ -188,7 +188,7 @@ async def _seed(
         image.media_type = "image/png"
         case = _input_from_package(package)
         advisory = settings.wecom_infographic_review_mode == "advisory"
-        notice = render_advisory_notice(raw) if advisory else raw
+        notice = prepare_unmarked_advisory_raster(raw) if advisory else raw
         formal = render_exact_source_footer(notice, case, mode="formal")
         formal_jpeg = prepare_infographic_group_jpeg(
             formal.image_bytes, max_bytes=settings.wecom_group_max_image_bytes
@@ -372,7 +372,8 @@ async def test_advisory_visible_test_requires_same_warning_marked_approved_jpeg(
         opened.load()
         assert opened.size == (1152, 2048)
         red, green, blue = opened.getpixel((10, 10))
-        assert red > green * 1.5 and red > blue * 1.5
+        # Advisory warnings stay in the durable record; the image carries no red banner.
+        assert not (red > green * 1.5 and red > blue * 1.5)
     with pytest.raises(ConflictError, match="approved test artifact"):
         await service.enqueue(
             run.id,
