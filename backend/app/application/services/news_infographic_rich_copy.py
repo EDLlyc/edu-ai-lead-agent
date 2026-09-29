@@ -24,6 +24,7 @@ from PIL import ImageFont
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.news_infographic import BoundClaim, ValidatedInfographicInput
+from app.schemas.copy_generation import split_news_headline
 
 RICH_COPY_POLICY_VERSION: Final[Literal["daily-news-infographic-rich-copy-proposal-v1"]] = (
     "daily-news-infographic-rich-copy-proposal-v1"
@@ -68,6 +69,12 @@ _MOMENTS_CHILD_FRAGMENT_SCHEMA_MIN = 24
 _MOMENTS_CARD_MIN_CHARS = 50
 _NUMBERS = re.compile(r"\d+(?:[.,]\d+)*")
 _UNSAFE = re.compile(r"[<>\x00-\x1f\x7f]")
+_ASCII_ALNUM = re.compile(r"[0-9A-Za-z]")
+_COMPOUND_JOINERS = ("－", "-", "·")
+_MEASURE_WORDS = "年月日号届个项条名次人家所位台款种倍亿万千百元米秒分时点度"
+_AFTER_NUMBER_PHRASE_MIN_CHARS = 6
+_CONNECTIVE_OPENINGS = ("而是", "而", "并且", "但是", "但", "以及", "同样", "还", "也", "则")
+_LATIN_COMPOUND_TAILS = ("时代", "化", "级", "型", "版", "端")
 _SUMMARY_INTERPRETATION = "小赛解读：把新闻事实与自己的判断分开看。"
 _NEWS_INTERPRETATION = "小赛解读：先分清发生的事与报道中的主张。"
 _CHILD_ACTIVITY = (
@@ -221,7 +228,16 @@ _MOMENTS_UNBOUND_MECHANISM = re.compile(
 )
 
 
-def _moments_body(case: ValidatedInfographicInput) -> str:
+# Relaxed advisory preflight (operator decision 2026-09-29, 长图审核再放开): Moments prose and
+# guidance only guide the poster's editorial text. When they trip a content check they are
+# replaced by these neutral sentences, so the questionable text never reaches a model and the
+# poster is still produced. Package, source and claim provenance checks stay hard.
+ADVISORY_NEUTRAL_BODY = "这条新闻适合和孩子一起读一读、聊一聊。"
+ADVISORY_NEUTRAL_PARENT_GUIDANCE = "陪孩子围绕这条新闻提出问题，再一起查找原文依据。"
+ADVISORY_NEUTRAL_INTERACTION = "你会请孩子先观察什么，再记录哪些猜想？"
+
+
+def _moments_body(case: ValidatedInfographicInput, *, advisory: bool = False) -> str:
     """Remove only the exact platform prefix, terminal hashtags and locked footer."""
     lines = [line.strip() for line in case.copywriting.splitlines()]
     while lines and not lines[-1]:
@@ -262,6 +278,15 @@ def _moments_body(case: ValidatedInfographicInput) -> str:
     else:
         raise RichCopyError("Moments platform heading prompt version is unsupported")
     body = "\n".join(line for line in body_lines if line)
+    if advisory:
+        try:
+            return _checked_moments_body(body)
+        except RichCopyError:
+            return ADVISORY_NEUTRAL_BODY
+    return _checked_moments_body(body)
+
+
+def _checked_moments_body(body: str) -> str:
     if not 16 <= len(body) <= 6000:
         raise RichCopyError("Moments body is sparse or overlong")
     if any(
@@ -299,6 +324,13 @@ def _guidance(value: str) -> str:
     return text
 
 
+def _advisory_guidance(value: str, neutral: str) -> str:
+    try:
+        return _guidance(value)
+    except RichCopyError:
+        return neutral
+
+
 def _bound_moments_span(claim: BoundClaim) -> MomentsBoundSpan:
     if claim.kind == "opinion":
         raise RichCopyError("Moments seed cannot promote an opinion to a bound claim")
@@ -314,7 +346,7 @@ def _bound_moments_span(claim: BoundClaim) -> MomentsBoundSpan:
 
 
 def build_moments_rich_seed(
-    case: ValidatedInfographicInput, binding: MomentsPackageBinding
+    case: ValidatedInfographicInput, binding: MomentsPackageBinding, *, advisory: bool = False
 ) -> MomentsRichSeed:
     """Separate same-package bound claims from review-only Moments prose.
 
@@ -353,9 +385,13 @@ def build_moments_rich_seed(
         or not binding.audit_accepted
     ):
         raise RichCopyError("Moments draft does not match accepted package and source")
-    body = _moments_body(case)
-    parent = _guidance(snapshot.parent_takeaway)
-    interaction = _guidance(snapshot.interaction)
+    body = _moments_body(case, advisory=advisory)
+    if advisory:
+        parent = _advisory_guidance(snapshot.parent_takeaway, ADVISORY_NEUTRAL_PARENT_GUIDANCE)
+        interaction = _advisory_guidance(snapshot.interaction, ADVISORY_NEUTRAL_INTERACTION)
+    else:
+        parent = _guidance(snapshot.parent_takeaway)
+        interaction = _guidance(snapshot.interaction)
     # The structured package claims remain independently available even when
     # the Moments prose embeds them in commentary. Never promote such embedded
     # text (including negation, opinion, or extra factual clauses) to an exact
@@ -375,6 +411,9 @@ def build_moments_rich_seed(
             or source_evidence[claim.claim_id, evidence_id].published_at != case.source_published_at
             for evidence_id in claim.evidence_ids
         ):
+            continue
+        if advisory and _UNSAFE.search(claim.text):
+            # One claim with markup-like characters must not cost the whole poster.
             continue
         available.append(claim)
     available_by_text = {claim.text.strip(): claim for claim in available}
@@ -768,29 +807,64 @@ def _validated_moments_seed(
     case: ValidatedInfographicInput,
     binding: MomentsPackageBinding,
     seed: MomentsRichSeed,
+    *,
+    advisory: bool = False,
 ) -> MomentsRichSeed:
     """Recreate the seed so model_copy or a foreign package cannot retarget it."""
     try:
         parsed = MomentsRichSeed.model_validate(seed.model_dump(mode="python"))
     except (AttributeError, TypeError, ValueError) as exc:
         raise RichCopyError("Moments rich seed schema is invalid") from exc
-    expected = build_moments_rich_seed(case, binding)
+    expected = build_moments_rich_seed(case, binding, advisory=advisory)
     if parsed != expected:
         raise RichCopyError("Moments rich seed differs from accepted package")
     return expected
 
 
-def _safe_draft_anchor(value: str, *, brand: bool) -> str | None:
-    """Use only a whole CJK run from a frozen claim/title, never a made-up label."""
+def _whole_phrase(value: str, match: re.Match[str], *, brand: bool) -> str | None:
+    """A CJK run that reads as a phrase, or None when it is the head or tail of one.
+
+    丁薛祥出席第|23届 and 数贸会遇见|AI未来 are cut before a number or Latin word; a run joined
+    by a hyphen is half of a compound; AI|时代大学教育 completes the Latin word. After a number
+    the measure word is dropped (6到8|人小班直播的方式 -> 小班直播的方式) and the rest must be
+    long enough to stand alone.
+    """
+    before = value[match.start() - 1 : match.start()]
+    after = value[match.end() : match.end() + 1]
+    phrase = match.group(0)
+    if _ASCII_ALNUM.match(after) or after in _COMPOUND_JOINERS or before in _COMPOUND_JOINERS:
+        return None
+    if before.isdigit():
+        phrase = phrase.lstrip(_MEASURE_WORDS)
+        if len(phrase) < _AFTER_NUMBER_PHRASE_MIN_CHARS:
+            return None
+    elif _ASCII_ALNUM.match(before) and phrase.startswith(_LATIN_COMPOUND_TAILS):
+        return None
+    return None if phrase.startswith(_CONNECTIVE_OPENINGS) else phrase
+
+
+def _safe_draft_anchor(value: str, *, brand: bool, whole_phrase: bool = False) -> str | None:
+    """Use only a whole CJK run from a frozen claim/title, never a made-up label.
+
+    With `whole_phrase` (advisory posters) a run that is only part of a phrase is skipped.
+    """
     for match in re.finditer(r"[\u4e00-\u9fff]+", value):
         anchor = match.group(0)
+        if whole_phrase:
+            phrase = _whole_phrase(value, match, brand=brand)
+            if phrase is None:
+                continue
+            anchor = phrase
         if brand:
             for prefix in ("赛先生", "我们的目标是", "我们", "用"):
                 if anchor.startswith(prefix):
                     anchor = anchor.removeprefix(prefix)
-                    break
+                    if not whole_phrase:
+                        break
         else:
-            anchor = anchor.lstrip("年月日于在就为并")
+            anchor = anchor.lstrip(
+                "年月日于在就为并同与和及跟对向从把被将" if whole_phrase else "年月日于在就为并"
+            )
         if (
             4 <= len(anchor) <= 20
             and "赛先生" not in anchor
@@ -802,18 +876,28 @@ def _safe_draft_anchor(value: str, *, brand: bool) -> str | None:
     return None
 
 
-def _shared_topic_fact_anchor(topic_title: str, fact_text: str) -> tuple[str, str] | None:
+def _shared_topic_fact_anchor(
+    topic_title: str, fact_text: str, *, whole_phrase: bool = False
+) -> tuple[str, str] | None:
     """Find an exact shared topical noun, never compose an unsupported fact."""
     match = SequenceMatcher(None, topic_title, fact_text, autojunk=False).find_longest_match()
     shared = fact_text[match.b : match.b + match.size].strip()
-    anchor = _safe_draft_anchor(shared, brand=False)
+    if whole_phrase and (
+        _ASCII_ALNUM.match(topic_title[match.a - 1 : match.a] if match.a else "")
+        or _ASCII_ALNUM.match(topic_title[match.a + match.size : match.a + match.size + 1])
+    ):
+        # The shared text is cut out of a longer headline phrase (AI|时代…, …出席第|23届).
+        return None
+    anchor = _safe_draft_anchor(shared, brand=False, whole_phrase=whole_phrase)
     if anchor is None:
         # A bound headline may begin with an action verb (e.g. an agreement).
         # Removing that one leading verb leaves an exact shared noun phrase;
         # the omitted action is still displayed only in the full frozen fact.
         action = _MOMENTS_ASSERTIVE_ACTION.match(shared)
         if action is not None:
-            anchor = _safe_draft_anchor(shared[action.end() :], brand=False)
+            anchor = _safe_draft_anchor(
+                shared[action.end() :], brand=False, whole_phrase=whole_phrase
+            )
     if anchor is None or anchor not in topic_title or anchor not in fact_text:
         return None
     return shared, anchor
@@ -846,7 +930,12 @@ def _moments_measured_character_budget(
 
 
 def _moments_draft_budgets(
-    *, fact_text: str, brand_text: str, news_anchor: str, brand_anchor: str
+    *,
+    fact_text: str,
+    brand_text: str,
+    news_anchor: str,
+    brand_anchor: str,
+    child_frame: str | None = None,
 ) -> tuple[str, int, int, int, int]:
     if _FONT_PATH.is_symlink() or not _FONT_PATH.is_file():
         raise RichCopyError("approved CJK font unavailable")
@@ -861,7 +950,7 @@ def _moments_draft_budgets(
     top_prefix = f"解读：{news_anchor}"
     news_prefix = f"解读：{news_anchor}"
     brand_prefix = f"例如，{brand_anchor}"
-    child_frame = f"和孩子围绕“{news_anchor}”讨论："
+    child_frame = child_frame or f"和孩子围绕“{news_anchor}”讨论："
     top_max = min(
         100,
         len(top_prefix)
@@ -922,13 +1011,16 @@ def build_moments_rich_draft_plan(
     the image: a shorter exact fact of the same package is used with an anchor and title taken
     from the news headline. The strict path keeps its original behaviour.
     """
-    seed = _validated_moments_seed(case, binding, seed)
+    seed = _validated_moments_seed(case, binding, seed, advisory=advisory_layout)
     headline_title = _advisory_headline_title(case.topic_title) if advisory_layout else None
+    fact_limit = _ADVISORY_FACT_MAX_CHARS if advisory_layout else 134
     candidates: list[tuple[MomentsBoundSpan, str, str]] = []
     for fact in seed.available_bound_claims:
-        if fact.kind != "external_fact" or len(fact.text) > 134:
+        if fact.kind != "external_fact" or len(fact.text) > fact_limit:
             continue
-        shared = _shared_topic_fact_anchor(case.topic_title, fact.text)
+        shared = _shared_topic_fact_anchor(
+            case.topic_title, fact.text, whole_phrase=advisory_layout
+        )
         overlap_title = shared[0] if shared is not None else ""
         # Prefer a complete exact fact phrase. If topic and fact share only a
         # short noun phrase, a neutral editorial title may name that same
@@ -950,7 +1042,7 @@ def build_moments_rich_draft_plan(
                 or _MOMENTS_INJECTION.search(title)
             ):
                 continue
-            anchor = _safe_draft_anchor(anchor_source, brand=False)
+            anchor = _safe_draft_anchor(anchor_source, brand=False, whole_phrase=advisory_layout)
             if anchor is None or anchor not in fact.text or anchor not in case.topic_title:
                 continue
             candidates.append((fact, title, anchor))
@@ -959,7 +1051,7 @@ def build_moments_rich_draft_plan(
         raise RichCopyError("Moments flat draft lacks a safe frozen news title and anchor")
     selected_brand: MomentsBoundSpan | None = None
     brand_anchor = ""
-    for brand in seed.available_bound_claims:
+    for brand in () if advisory_layout else seed.available_bound_claims:
         if brand.kind != "brand_statement" or len(brand.text) > 134:
             continue
         anchor = _safe_draft_anchor(brand.text, brand=True)
@@ -967,6 +1059,8 @@ def build_moments_rich_draft_plan(
             selected_brand = brand
             brand_anchor = anchor
             break
+    if advisory_layout:
+        selected_brand, brand_anchor = _advisory_brand(seed)
     if selected_brand is None:
         raise RichCopyError("Moments flat draft lacks a safe frozen brand anchor")
     # Try only claims already bound to this same source. A long first fact
@@ -975,8 +1069,12 @@ def build_moments_rich_draft_plan(
         news_heading = f"新闻看点：{news_anchor}"
         child_heading = _ADVISORY_CHILD_HEADING if advisory_layout else f"亲子探究：{news_anchor}"
         brand_heading = f"教学启发：{brand_anchor}"
+        # The advisory poster paints one-line headings; longer ones use the neutral fallback.
+        heading_max = _ADVISORY_HEADING_MAX_CHARS if advisory_layout else 28
         if any(
-            not 4 <= len(heading) <= 28 or _UNSAFE.search(heading) or _NUMBERS.search(heading)
+            not 4 <= len(heading) <= heading_max
+            or _UNSAFE.search(heading)
+            or _NUMBERS.search(heading)
             for heading in (news_heading, child_heading, brand_heading)
         ):
             continue
@@ -1021,9 +1119,38 @@ def build_moments_rich_draft_plan(
     raise RichCopyError("Moments flat draft lacks measured room for substantive copy")
 
 
-_ADVISORY_FACT_MAX_CHARS = 80
+# The advisory cards show at most 96 (news) and 108 (brand) characters including the editorial
+# continuation. A fact leaves that continuation at least 20 characters; a longer frozen claim
+# is shown by its verbatim leading clause, and only as a last resort whole (up to 87).
+_ADVISORY_FACT_MAX_CHARS = 76
+_ADVISORY_VISIBLE_FACT_MAX_CHARS = 87
+_ADVISORY_VISIBLE_BRAND_MAX_CHARS = 95
+_ADVISORY_CLAUSE_MIN_CHARS = 16
+_ADVISORY_SPLIT_ANCHOR_MAX_CHARS = 14
+_ADVISORY_HEADING_MAX_CHARS = 25
+_ADVISORY_TITLE_MAX_CHARS = 38
 _ADVISORY_CHILD_HEADING = "亲子探究：和孩子一起想一想"
+_ADVISORY_GENERIC_TITLE = "和孩子聊聊这条新闻"
+_ADVISORY_GENERIC_NEWS_ANCHOR = "这条新闻"
+_ADVISORY_GENERIC_NEWS_HEADING = "新闻看点：发生了什么"
+_ADVISORY_GENERIC_CHILD_FRAME = "和孩子围绕这条新闻讨论："
+_ADVISORY_GENERIC_BRAND_ANCHOR = "课堂上的做法"
 _TITLE_COLUMN_PREFIX = re.compile(r"【[^】]{0,40}】")
+_SENTENCE_BOUNDARIES = "。；;！？!?"
+_CLAUSE_BOUNDARIES = _SENTENCE_BOUNDARIES + "，,"
+_DEPENDENT_OPENING = re.compile(
+    r"^(?:当|如果|若|假如|为了|为|通过|随着|经过|由于|虽然|尽管|因为|在|对于|关于|根据|按照|基于|"
+    r"除了|不仅|无论)"
+)
+_BRAND_CARD_NAME = re.compile(r"[“\"「](真[\u4e00-\u9fff]{2})[”\"」]")
+_PAIRED_MARKS = (("“", "”"), ("‘", "’"), ("《", "》"), ("（", "）"), ("(", ")"), ("「", "」"))
+_NEWS_ANCHOR_SPLIT = re.compile(
+    r"[：:，,、；;\s“”\"《》（）()]+|研究揭示|揭示|发现|发布|印发|举行|举办|启动|亮相|研制|"
+    r"开展|推进|推动|建立|出席"
+)
+_BRAND_ANCHOR_SPLIT = re.compile(
+    r"[：:，,、；;\s“”\"《》（）()]+|引导|带领|帮助|鼓励|强调|重视|关注|让"
+)
 
 
 def _advisory_headline_title(topic_title: str) -> str | None:
@@ -1038,6 +1165,117 @@ def _advisory_headline_title(topic_title: str) -> str | None:
     return headline
 
 
+def leading_clause(
+    text: str, *, max_chars: int, min_chars: int = _ADVISORY_CLAUSE_MIN_CHARS
+) -> str | None:
+    """Longest verbatim leading part of a text that ends at a clause boundary.
+
+    A sentence boundary is preferred over a comma. The part must read as a statement: balanced
+    quotes and brackets, and not a lone dependent clause (当…/在…/如果…).
+    """
+
+    sentence: str | None = None
+    clause: str | None = None
+    for index, char in enumerate(text[: max_chars + 1]):
+        if char not in _CLAUSE_BOUNDARIES or index < min_chars:
+            continue
+        if char in ",，" and text[index - 1].isdigit() and text[index + 1 : index + 2].isdigit():
+            continue
+        candidate = text[:index]
+        if any(candidate.count(left) != candidate.count(right) for left, right in _PAIRED_MARKS):
+            continue
+        if candidate.count('"') % 2:
+            continue
+        if char in _SENTENCE_BOUNDARIES:
+            sentence = candidate
+        elif _DEPENDENT_OPENING.match(candidate) and not any(
+            mark in candidate for mark in _CLAUSE_BOUNDARIES
+        ):
+            continue
+        else:
+            clause = candidate
+    return sentence or clause
+
+
+def is_frozen_claim_text(text: str, claim_texts: set[str] | frozenset[str]) -> bool:
+    """An exact frozen claim, or its verbatim leading clause cut at a clause boundary."""
+
+    return text in claim_texts or any(
+        len(claim) > len(text) >= _ADVISORY_CLAUSE_MIN_CHARS
+        and claim.startswith(text)
+        and claim[len(text)] in _CLAUSE_BOUNDARIES
+        for claim in claim_texts
+    )
+
+
+def _shown_span(span: MomentsBoundSpan, *, max_chars: int) -> MomentsBoundSpan | None:
+    if len(span.text) <= max_chars:
+        return span
+    shown = leading_clause(span.text, max_chars=max_chars)
+    return span.model_copy(update={"text": shown}) if shown is not None else None
+
+
+def _split_anchor(value: str, pattern: re.Pattern[str], *, brand: bool) -> str | None:
+    for segment in sorted(pattern.split(value), key=len, reverse=True):
+        anchor = _safe_draft_anchor(segment, brand=brand, whole_phrase=True)
+        if anchor is not None and len(anchor) <= _ADVISORY_SPLIT_ANCHOR_MAX_CHARS:
+            return anchor
+    return None
+
+
+def _advisory_brand_anchor(text: str) -> str | None:
+    """Name the curated classroom card (“真动手”…), else a whole phrase of the statement."""
+    card = _BRAND_CARD_NAME.search(text)
+    if card is not None:
+        return card.group(1)
+    anchor = _safe_draft_anchor(text, brand=True, whole_phrase=True) or _split_anchor(
+        text, _BRAND_ANCHOR_SPLIT, brand=True
+    )
+    return anchor if anchor is not None and anchor in text else None
+
+
+def _advisory_brand(seed: MomentsRichSeed) -> tuple[MomentsBoundSpan | None, str]:
+    """The first brand statement that names its own heading, else the first with a neutral one."""
+
+    shown_brands = [
+        shown
+        for brand in seed.available_bound_claims
+        if brand.kind == "brand_statement"
+        and (shown := _shown_span(brand, max_chars=_ADVISORY_VISIBLE_BRAND_MAX_CHARS)) is not None
+    ]
+    for shown in shown_brands:
+        anchor = _advisory_brand_anchor(shown.text)
+        if anchor is not None:
+            return shown, anchor
+    if shown_brands:
+        return shown_brands[0], _ADVISORY_GENERIC_BRAND_ANCHOR
+    return None, ""
+
+
+def _fits_poster_title(title: str) -> bool:
+    if _FONT_PATH.is_symlink() or not _FONT_PATH.is_file():
+        raise RichCopyError("approved CJK font unavailable")
+    try:
+        font = ImageFont.truetype(str(_FONT_PATH), _TITLE_FONT_PX)
+    except OSError as exc:
+        raise RichCopyError("approved CJK font could not be loaded") from exc
+    return _line_count(title, font, _TITLE_WIDTH_PX) <= _TITLE_MAX_LINES
+
+
+def _advisory_title(topic_title: str, anchor: str | None) -> str:
+    """The real headline when it fits two title lines, else its main line, else a neutral one."""
+    full = " ".join(_TITLE_COLUMN_PREFIX.sub(" ", topic_title).split())
+    for candidate in (full, split_news_headline(topic_title)[0]):
+        if (
+            8 <= len(candidate) <= _ADVISORY_TITLE_MAX_CHARS
+            and not _UNSAFE.search(candidate)
+            and not _MOMENTS_INJECTION.search(candidate)
+            and _fits_poster_title(candidate)
+        ):
+            return candidate
+    return f"和孩子聊聊{anchor}" if anchor else _ADVISORY_GENERIC_TITLE
+
+
 def _advisory_layout_plan(
     case: ValidatedInfographicInput,
     seed: MomentsRichSeed,
@@ -1045,47 +1283,77 @@ def _advisory_layout_plan(
     brand: MomentsBoundSpan,
     brand_anchor: str,
 ) -> MomentsRichDraftPlan | None:
-    headline = _advisory_headline_title(case.topic_title) or " ".join(
-        _TITLE_COLUMN_PREFIX.sub(" ", case.topic_title).split()
-    )
+    """Always plan a poster when the package has one displayable fact and brand statement.
+
+    Headings fall back to neutral wording when the headline offers no short safe phrase, and a
+    long claim is shown by its verbatim leading clause (relaxed advisory review, 2026-09-29).
+    """
+    headline = " ".join(_TITLE_COLUMN_PREFIX.sub(" ", case.topic_title).split())
     anchor = None
     for segment in sorted(re.split(r"[：:，,、；;\s]+", headline), key=len, reverse=True):
-        anchor = _safe_draft_anchor(segment, brand=False)
+        anchor = _safe_draft_anchor(segment, brand=False, whole_phrase=True)
         if anchor is not None:
             break
     if anchor is None:
-        return None
-    title = headline if 8 <= len(headline) <= 32 else f"和孩子聊聊{anchor}"
+        anchor = _split_anchor(headline, _NEWS_ANCHOR_SPLIT, brand=False)
+    title = _advisory_title(case.topic_title, anchor)
     if _UNSAFE.search(title) or _MOMENTS_INJECTION.search(title):
-        return None
-    news_heading = f"新闻看点：{anchor}"
+        title = _ADVISORY_GENERIC_TITLE
+    news_heading = f"新闻看点：{anchor}" if anchor else _ADVISORY_GENERIC_NEWS_HEADING
+    child_frame = None if anchor else _ADVISORY_GENERIC_CHILD_FRAME
     child_heading = _ADVISORY_CHILD_HEADING
     brand_heading = f"教学启发：{brand_anchor}"
-    if any(
-        not 4 <= len(heading) <= 28 or _UNSAFE.search(heading) or _NUMBERS.search(heading)
-        for heading in (news_heading, child_heading, brand_heading)
-    ):
-        return None
-    for fact in seed.available_bound_claims:
-        if fact.kind != "external_fact" or len(fact.text) > _ADVISORY_FACT_MAX_CHARS:
-            continue
+
+    def unusable(heading: str) -> bool:
+        return bool(
+            not 4 <= len(heading) <= _ADVISORY_HEADING_MAX_CHARS
+            or _UNSAFE.search(heading)
+            or _NUMBERS.search(heading)
+        )
+
+    if unusable(news_heading):
+        anchor, news_heading = None, _ADVISORY_GENERIC_NEWS_HEADING
+        child_frame = _ADVISORY_GENERIC_CHILD_FRAME
+    if unusable(brand_heading):
+        brand_anchor = _ADVISORY_GENERIC_BRAND_ANCHOR
+        brand_heading = f"教学启发：{brand_anchor}"
+    shown_brand = brand
+    facts = [item for item in seed.available_bound_claims if item.kind == "external_fact"]
+    # Whole short facts first, then the leading clause of a longer one, then a whole fact that
+    # leaves only a few characters for the continuation.
+    shown_facts = (
+        [item for item in facts if len(item.text) <= _ADVISORY_FACT_MAX_CHARS]
+        + [
+            shown
+            for item in facts
+            if len(item.text) > _ADVISORY_FACT_MAX_CHARS
+            and (shown := _shown_span(item, max_chars=_ADVISORY_FACT_MAX_CHARS)) is not None
+        ]
+        + [
+            item
+            for item in facts
+            if _ADVISORY_FACT_MAX_CHARS < len(item.text) <= _ADVISORY_VISIBLE_FACT_MAX_CHARS
+        ]
+    )
+    for fact in shown_facts:
         child_frame, top_max, news_max, child_max, brand_max = _moments_draft_budgets(
             fact_text=fact.text,
-            brand_text=brand.text,
-            news_anchor=anchor,
+            brand_text=shown_brand.text,
+            news_anchor=anchor or _ADVISORY_GENERIC_NEWS_ANCHOR,
             brand_anchor=brand_anchor,
+            child_frame=child_frame,
         )
         # Strict budgets become advisory here; keep them internally consistent.
         news_min = max(16, 50 - len(fact.text))
-        brand_min = max(16, 50 - len(brand.text))
+        brand_min = max(16, 50 - len(shown_brand.text))
         child_min = max(
             _MOMENTS_CHILD_FRAGMENT_SCHEMA_MIN, _MOMENTS_CARD_MIN_CHARS - len(child_frame)
         )
         return MomentsRichDraftPlan(
             title=title,
             fact=fact,
-            brand=brand,
-            news_anchor=anchor,
+            brand=shown_brand,
+            news_anchor=anchor or _ADVISORY_GENERIC_NEWS_ANCHOR,
             brand_anchor=brand_anchor,
             news_heading=news_heading,
             child_heading=child_heading,
@@ -1097,7 +1365,7 @@ def _advisory_layout_plan(
             child_editorial_min_chars=child_min,
             child_editorial_max_chars=max(child_min, child_max),
             brand_editorial_min_chars=brand_min,
-            brand_editorial_max_chars=max(brand_min, min(brand_max, 150 - len(brand.text))),
+            brand_editorial_max_chars=max(brand_min, min(brand_max, 150 - len(shown_brand.text))),
         )
     return None
 

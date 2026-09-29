@@ -282,19 +282,23 @@ def _install_synthetic_reference(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("audit_shape", ["rejected", "invalid"])
+@pytest.mark.parametrize("audit_shape", ["rejected", "invalid", "copy_model_down"])
 async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpeg(
     integration_context: IntegrationContext,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     audit_shape: str,
 ) -> None:
-    """A bad content verdict does not veto v11, but identity and bytes still bind."""
+    """A bad content verdict does not veto v11, but identity and bytes still bind.
+
+    Since the resilient advisory copy (v14) an unavailable copy model does not either: the
+    poster keeps the exact fact and brand statement with neutral wording.
+    """
     _install_synthetic_reference(monkeypatch, tmp_path)
     target = datetime(
         2026,
         10,
-        13 if audit_shape == "rejected" else 14,
+        {"rejected": 13, "invalid": 14, "copy_model_down": 15}[audit_shape],
         7,
         30,
         tzinfo=ZoneInfo("Asia/Shanghai"),
@@ -341,6 +345,8 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         async def complete_json(self, prompt: str) -> dict[str, object]:
             self.prompts.append(prompt)
             if prompt.startswith(ADVISORY_GENERATION_PROMPT_VERSION):
+                if audit_shape == "copy_model_down":
+                    raise RuntimeError("infographic chat transport outcome unknown")
                 return {
                     "top": "科学课里的动手探究启发我们先分清新闻原句和自己的推断。",
                     "news": "科学课里的动手探究意味着所有孩子都能在100小时内成为科学家。",
@@ -348,7 +354,7 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
                     "brand": "借科学课里的动手探究，赛先生会请孩子比较自己的解释和原文。",
                 }
             assert prompt.startswith(ADVISORY_AUDIT_VERSION)
-            if audit_shape == "invalid":
+            if audit_shape != "rejected":
                 return {"accepted": False, "issues": ["unsupported_assertion"]}
             return {
                 "schema_version": "daily-news-infographic-moments-rich-audit-v1",
@@ -393,18 +399,24 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         assert poster.copy_intent_at and poster.audit_intent_at and poster.image_intent_at
         assert len(models.prompts) == 2 and len(models.image_requests) == 1
         assert poster.copy_candidate_snapshot is not None
-        assert "100小时" in poster.copy_candidate_snapshot["news_body"]
-        assert poster.copy_audit_snapshot is not None
-        if audit_shape == "invalid":
-            assert poster.copy_audit_snapshot["status"] == "schema_invalid"
+        if audit_shape == "copy_model_down":
+            assert poster.copy_candidate_snapshot["news_body"] == (
+                fact + "值得追问的是，这件事和我们的生活有什么关系？"
+            )
+            assert "layout_overflow" in poster.warning_codes
         else:
+            assert "100小时" in poster.copy_candidate_snapshot["news_body"]
+        assert poster.copy_audit_snapshot is not None
+        if audit_shape == "rejected":
             assert poster.copy_audit_snapshot["accepted"] is False
+        else:
+            assert poster.copy_audit_snapshot["status"] == "schema_invalid"
         assert {
             "advisory_unverified",
             "layout_unverified",
             "body_ocr_unavailable",
             "visual_failed",
-            "copy_audit_schema_invalid" if audit_shape == "invalid" else "copy_audit_rejected",
+            "copy_audit_rejected" if audit_shape == "rejected" else "copy_audit_schema_invalid",
             # Footer v6 carries no text, so the advisory footer OCR is recorded as unchecked.
             "footer_ocr_unavailable",
         } <= set(poster.warning_codes)

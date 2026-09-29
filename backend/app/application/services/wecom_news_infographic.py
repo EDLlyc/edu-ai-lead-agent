@@ -60,7 +60,7 @@ from app.application.services.news_infographic_advisory import (
     build_advisory_audit_prompt,
     build_advisory_generation_prompt,
     build_advisory_image_prompt,
-    build_advisory_rich_copy,
+    build_resilient_advisory_rich_copy,
     prepare_unmarked_advisory_raster,
 )
 from app.application.services.news_infographic_footer import (
@@ -203,6 +203,7 @@ def _moments_binding_from_accepted_models(
     package: MaterialPackageModel,
     run: CopyGenerationRunModel,
     active_draft: CopyDraftVersionModel,
+    advisory: bool = False,
 ) -> MomentsPackageBinding:
     """Bind the future rich route to its actual active draft, not latest-by-date prose."""
     copy = package.copy_snapshot
@@ -248,7 +249,7 @@ def _moments_binding_from_accepted_models(
                 "copy_snapshot": copy,
             }
         )
-        build_moments_rich_seed(case, binding)
+        build_moments_rich_seed(case, binding, advisory=advisory)
     except (ValidationError, RichCopyError, ValueError, TypeError) as exc:
         raise InfographicInputError("accepted Moments binding is invalid") from exc
     return binding
@@ -1093,9 +1094,9 @@ class NewsInfographicProducer:
             return
         try:
             binding = _moments_binding_from_accepted_models(
-                case=case, package=package, run=run, active_draft=active
+                case=case, package=package, run=run, active_draft=active, advisory=True
             )
-            seed = build_moments_rich_seed(case, binding)
+            seed = build_moments_rich_seed(case, binding, advisory=True)
             copy_prompt = build_advisory_generation_prompt(case, binding)
         except (InfographicInputError, RichCopyError, ValidationError, ValueError) as exc:
             # Static, content-free rule messages; they name which preflight check failed.
@@ -1121,10 +1122,27 @@ class NewsInfographicProducer:
                 job.id, token, status="result_unknown", code="copy_intent_unavailable"
             )
             return
-        raw_draft = await self._models.complete_json(copy_prompt)
+        raw_draft: object
         try:
-            rich = build_advisory_rich_copy(case, binding, raw_draft)
-        except (AdvisoryCopyError, ValidationError, ValueError):
+            raw_draft = await self._models.complete_json(copy_prompt)
+        except Exception as exc:
+            # The poster can still carry the exact fact, brand statement and neutral wording.
+            logger.warning(
+                "news_infographic_copy_model_unavailable",
+                job_id=str(job.id),
+                error_type=type(exc).__name__,
+            )
+            raw_draft = None
+        try:
+            rich = build_resilient_advisory_rich_copy(case, binding, raw_draft)
+        except (AdvisoryCopyError, ValidationError, ValueError) as exc:
+            cause = exc.__cause__ or exc
+            logger.warning(
+                "news_infographic_rich_copy_unusable",
+                job_id=str(job.id),
+                error_type=type(cause).__name__,
+                reason=str(cause)[:160],
+            )
             await self._finish(job.id, token, status="failed", code="rich_copy_unusable")
             return
         warnings = {

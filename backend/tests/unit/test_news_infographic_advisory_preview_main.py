@@ -62,7 +62,7 @@ def test_preflight_pins_new_policy_and_makes_no_intent(tmp_path: Path) -> None:
     assert preflight.safe_projection()["image_intents"] == 0
     assert (
         preflight.safe_projection()["policy_version"]
-        == "wecom-news-infographic-v13-boundary-comma-advisory"
+        == "wecom-news-infographic-v14-resilient-advisory"
     )
     assert preflight.safe_projection()["reference_contract"] == "formal_v13_character_only"
     assert preflight.safe_projection()["trial_version"] == (

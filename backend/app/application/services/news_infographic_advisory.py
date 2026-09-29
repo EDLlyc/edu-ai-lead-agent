@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.application.services.news_infographic_rich_copy import (
+    ADVISORY_NEUTRAL_BODY,
     MOMENTS_AUDIT_VERSION,
     MomentsPackageBinding,
     MomentsRichDraft,
@@ -30,6 +31,8 @@ from app.application.services.news_infographic_rich_copy import (
     assemble_moments_rich_proposal,
     build_moments_rich_draft_plan,
     build_moments_rich_seed,
+    is_frozen_claim_text,
+    leading_clause,
     preflight_moments_rich_layout,
 )
 from app.application.services.wecom_infographic_quality import (
@@ -37,9 +40,13 @@ from app.application.services.wecom_infographic_quality import (
 )
 from app.domain.news_infographic import ValidatedInfographicInput
 
-ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v13-boundary-comma-advisory"
-ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v6"
-ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v6"
+# v14 / copy v7 (operator decision 2026-09-29, 长图审核再放开): layout and wording findings no
+# longer drop a poster. Headings fall back to neutral wording, a long frozen claim is shown by
+# its verbatim leading clause, and an unusable model field is repaired or replaced by a neutral
+# sentence. Package, source and claim provenance stay hard.
+ADVISORY_POLICY_VERSION: Final = "wecom-news-infographic-v14-resilient-advisory"
+ADVISORY_COPY_VERSION: Final = "wecom-infographic-advisory-concise-copy-v7"
+ADVISORY_GENERATION_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-generation-v7"
 ADVISORY_AUDIT_VERSION: Final = "wecom-infographic-advisory-copy-audit-v4"
 ADVISORY_IMAGE_PROMPT_VERSION: Final = "wecom-infographic-advisory-concise-painted-image-v5"
 ADVISORY_NOTICE: Final = ADVISORY_NOTICE_TEXT
@@ -94,7 +101,7 @@ class AdvisoryRichCopy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    policy_version: Literal["wecom-infographic-advisory-concise-copy-v6"] = ADVISORY_COPY_VERSION
+    policy_version: Literal["wecom-infographic-advisory-concise-copy-v7"] = ADVISORY_COPY_VERSION
     package_id: UUID
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_name: str
@@ -216,7 +223,7 @@ def build_advisory_generation_prompt(
     source. Unlike the strict local v7 prompt this does not ask for an empty
     response whenever an interpretation needs later review.
     """
-    seed = build_moments_rich_seed(case, binding)
+    seed = build_moments_rich_seed(case, binding, advisory=True)
     plan = build_moments_rich_draft_plan(case, binding, seed, advisory_layout=True)
     _preflight_plan_typography(plan)
     budgets = _text_budgets(
@@ -230,11 +237,15 @@ def build_advisory_generation_prompt(
         "exact_news_fact": plan.fact.text,
         "exact_brand_statement": plan.brand.text,
         "child_frame": plan.child_frame,
+        # Models overrun a character limit by a few characters; ask for a little less than fits.
         "editorial_max_chars": {
-            "top": budgets.top,
-            "news": budgets.news,
-            "child": budgets.child,
-            "brand": budgets.brand,
+            role: max(_MIN_EDITORIAL_CHARS[role], limit - max(3, limit // 8))
+            for role, limit in (
+                ("top", budgets.top),
+                ("news", budgets.news),
+                ("child", budgets.child),
+                ("brand", budgets.brand),
+            )
         },
         "final_visible_max_chars": _VISIBLE_TEXT_LIMITS,
         "accepted_moments_body_editorial_input": seed.body_text_review_only,
@@ -281,7 +292,7 @@ def build_advisory_rich_copy(
     source lineage. We intentionally do not replace v8's strict validator.
     """
     try:
-        seed = build_moments_rich_seed(case, binding)
+        seed = build_moments_rich_seed(case, binding, advisory=True)
         plan = build_moments_rich_draft_plan(case, binding, seed, advisory_layout=True)
         _preflight_plan_typography(plan)
         budgets = _text_budgets(
@@ -386,19 +397,168 @@ def build_advisory_rich_copy(
     )
 
 
+def _claim_texts(
+    case: ValidatedInfographicInput, kind: Literal["external_fact", "brand_statement"]
+) -> frozenset[str]:
+    return frozenset(claim.text for claim in case.claims if claim.kind == kind)
+
+
+_EMOJI = re.compile("[\U0001f000-\U0001faff\u2600-\u27bf\u2b00-\u2bff\ufe0f\u200d]")
+_HEADLINE_HOOK_PROMPT_VERSIONS: Final = frozenset({"moments-generator-v26-headline-hook"})
+# Neutral sentences for a field the model left unusable, longest first; none states a fact.
+_NEUTRAL_EDITORIAL: Final = {
+    "top": ("这条新闻里有不少值得和孩子一起聊的地方。",),
+    "news": (
+        "值得追问的是，这件事和我们的生活有什么关系？",
+        "这件事和我们有什么关系？",
+        "这件事说明了什么",
+    ),
+    "child": (
+        "请孩子说一说最想弄明白的一个问题，再一起查资料找答案。",
+        "请孩子说说最想弄明白的一个问题。",
+    ),
+    "brand": ("把这条新闻变成一次可以动手验证的小探究。", "把问题变成一次动手小探究"),
+}
+
+
+def _moments_hook(case: ValidatedInfographicInput, body: str) -> str | None:
+    """The accepted parent-child hook of a headline-hook Moments copy, without emoji."""
+    if case.copy_prompt_version not in _HEADLINE_HOOK_PROMPT_VERSIONS or (
+        body == ADVISORY_NEUTRAL_BODY
+    ):
+        return None
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    return _EMOJI.sub("", lines[-1]).strip() if len(lines) >= 2 else None
+
+
+def _repaired_editorial(
+    value: object, *, fixed: str, separator: str, minimum: int, budget: int
+) -> str | None:
+    """Make one model field displayable, or report that it cannot be used."""
+    if not isinstance(value, str):
+        return None
+    text = "".join(char for char in value if ord(char) >= 32 and ord(char) != 127).strip()
+    if fixed:
+        try:
+            text, _normalized = _normalize_exact_prefix(text, fixed=fixed, separator=separator)
+        except AdvisoryCopyError:
+            return None
+    text = text.replace("…", "").replace("...", "")
+    text = text.lstrip("".join(_LEADING_PUNCTUATION) + " \u3000").strip()
+    if _UNLOCKED_SOURCE.search(text):
+        return None
+    if len(text) > budget:
+        shortened = leading_clause(text, max_chars=budget - 1, min_chars=minimum)
+        if shortened is None:
+            return None
+        text = shortened + "。"
+    return text if minimum <= len(text) <= budget else None
+
+
+def _neutral_editorial(role: str, *, budget: int, avoid: tuple[str, ...] = ()) -> str:
+    for sentence in _NEUTRAL_EDITORIAL[role]:
+        if _MIN_EDITORIAL_CHARS[role] <= len(sentence) <= budget and sentence not in avoid:
+            return sentence
+    raise AdvisoryCopyError("no neutral advisory sentence fits the card budget")
+
+
+def build_resilient_advisory_rich_copy(
+    case: ValidatedInfographicInput,
+    binding: MomentsPackageBinding,
+    raw_draft: object,
+) -> AdvisoryRichCopy:
+    """Never drop a poster for the model's wording.
+
+    A usable draft is kept as written. Otherwise each field is repaired (exact prefix, leading
+    punctuation, ellipsis, overlong text cut at a clause boundary) or replaced by the accepted
+    Moments hook / a neutral sentence, and the candidate carries `copy_layout_warning`.
+    """
+    try:
+        return build_advisory_rich_copy(case, binding, raw_draft)
+    except AdvisoryCopyError:
+        pass
+    try:
+        seed = build_moments_rich_seed(case, binding, advisory=True)
+        plan = build_moments_rich_draft_plan(case, binding, seed, advisory_layout=True)
+        _preflight_plan_typography(plan)
+        budgets = _text_budgets(
+            fact=plan.fact.text, child_frame=plan.child_frame, brand=plan.brand.text
+        )
+    except (RichCopyError, ValueError, TypeError) as exc:
+        raise AdvisoryCopyError("same-package advisory copy is unavailable") from exc
+    draft = raw_draft if isinstance(raw_draft, dict) else {}
+    fixed = {
+        "top": ("", ""),
+        "news": (plan.fact.text, _sentence_separator(plan.fact.text)),
+        "child": (plan.child_frame, ""),
+        "brand": (plan.brand.text, _sentence_separator(plan.brand.text)),
+    }
+    fields: dict[str, str | None] = {
+        role: _repaired_editorial(
+            draft.get(role),
+            fixed=fixed[role][0],
+            separator=fixed[role][1],
+            minimum=_MIN_EDITORIAL_CHARS[role],
+            budget=getattr(budgets, role),
+        )
+        for role in ("top", "news", "child", "brand")
+    }
+    fact_numbers = set(_NUMERIC_TOKENS.findall(plan.fact.text))
+    top = fields["top"]
+    if top is None or fact_numbers & set(_NUMERIC_TOKENS.findall(top)) or plan.fact.text in top:
+        hook = _repaired_editorial(
+            _moments_hook(case, seed.body_text_review_only),
+            fixed="",
+            separator="",
+            minimum=_MIN_EDITORIAL_CHARS["top"],
+            budget=budgets.top,
+        )
+        usable_hook = hook is not None and not (
+            fact_numbers & set(_NUMERIC_TOKENS.findall(hook)) or plan.fact.text in hook
+        )
+        top = hook if usable_hook and hook else _neutral_editorial("top", budget=budgets.top)
+    news = fields["news"]
+    if news is None or news == top or news in top or top in news:
+        news = _neutral_editorial("news", budget=budgets.news, avoid=(top,))
+    child = fields["child"] or _neutral_editorial("child", budget=budgets.child)
+    brand = fields["brand"] or _neutral_editorial("brand", budget=budgets.brand)
+    repaired = {"top": top, "news": news, "child": child, "brand": brand}
+    try:
+        copy = build_advisory_rich_copy(case, binding, repaired)
+    except AdvisoryCopyError:
+        neutral_top = _neutral_editorial("top", budget=budgets.top)
+        copy = build_advisory_rich_copy(
+            case,
+            binding,
+            {
+                "top": neutral_top,
+                "news": _neutral_editorial("news", budget=budgets.news, avoid=(neutral_top,)),
+                "child": _neutral_editorial("child", budget=budgets.child),
+                "brand": _neutral_editorial("brand", budget=budgets.brand),
+            },
+        )
+    raw_sha256 = sha256(
+        json.dumps(raw_draft, ensure_ascii=False, sort_keys=True, default=str).encode()
+    ).hexdigest()
+    return copy.model_copy(
+        update={
+            "raw_draft_sha256": raw_sha256,
+            "warning_codes": tuple(dict.fromkeys((*copy.warning_codes, "copy_layout_warning"))),
+        }
+    )
+
+
 def build_advisory_audit_prompt(
     case: ValidatedInfographicInput,
     binding: MomentsPackageBinding,
     copy: AdvisoryRichCopy,
 ) -> str:
     """Ask for observation even when deterministic copy review warned."""
-    seed = build_moments_rich_seed(case, binding)
+    seed = build_moments_rich_seed(case, binding, advisory=True)
     if (
         copy.policy_version != ADVISORY_COPY_VERSION
-        or copy.exact_fact
-        not in {claim.text for claim in case.claims if claim.kind == "external_fact"}
-        or copy.exact_brand
-        not in {claim.text for claim in case.claims if claim.kind == "brand_statement"}
+        or not is_frozen_claim_text(copy.exact_fact, _claim_texts(case, "external_fact"))
+        or not is_frozen_claim_text(copy.exact_brand, _claim_texts(case, "brand_statement"))
         or not copy.news_body.startswith(copy.exact_fact + _sentence_separator(copy.exact_fact))
         or not copy.brand_body.startswith(copy.exact_brand + _sentence_separator(copy.exact_brand))
         or copy.package_id != case.package_id
@@ -442,10 +602,8 @@ def build_advisory_image_prompt(case: ValidatedInfographicInput, copy: AdvisoryR
     )
     if (
         copy.policy_version != ADVISORY_COPY_VERSION
-        or copy.exact_fact
-        not in {claim.text for claim in case.claims if claim.kind == "external_fact"}
-        or copy.exact_brand
-        not in {claim.text for claim in case.claims if claim.kind == "brand_statement"}
+        or not is_frozen_claim_text(copy.exact_fact, _claim_texts(case, "external_fact"))
+        or not is_frozen_claim_text(copy.exact_brand, _claim_texts(case, "brand_statement"))
         or copy.source_name != case.source_name
         or copy.title.strip() != copy.title
         or not copy.news_body.startswith(news_prefix)

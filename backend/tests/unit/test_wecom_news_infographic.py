@@ -164,7 +164,7 @@ def test_advisory_policy_is_distinct_from_v8_and_pins_visible_notice_font() -> N
     assert strict != advisory
     assert infographic_service.POLICY_VERSION == "wecom-news-infographic-v8-evidence-first-copy"
     assert infographic_service.ADVISORY_POLICY_VERSION == (
-        "wecom-news-infographic-v13-boundary-comma-advisory"
+        "wecom-news-infographic-v14-resilient-advisory"
     )
 
 
