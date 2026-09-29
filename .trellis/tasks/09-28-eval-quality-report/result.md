@@ -167,5 +167,8 @@ Open gaps kept visible in `canonical-report.md`:
   raise to 12 (this session) and 人工加推不受限 (exhibit session). Production before the change:
   the ceiling was never hit, no human-pick runs yet. Overlay image built and smoke-tested on the
   server: `…@sha256:b3ee53d5b055633ae81aa793ceb6d79beac314b7041458ee25e9c7c03b0ad963` = 52411a2d +
-  wecom_news_infographic.py + config.py. **Not switched yet** — production still runs 52411a2d;
-  the service switch waits for the operator's go-ahead.
+  wecom_news_infographic.py + config.py.
+- 09-29 16:19 daily long-image allowance DEPLOYED on the operator's go-ahead: six app services on
+  `…@sha256:b3ee53d5b055633ae81aa793ceb6d79beac314b7041458ee25e9c7c03b0ad963`; backups
+  `*.before-80018cf-20260929T161923`; no job was running; services healthy, no errors in the
+  first logs; effective settings 12 / 30, review mode advisory, max ordinal 3.
