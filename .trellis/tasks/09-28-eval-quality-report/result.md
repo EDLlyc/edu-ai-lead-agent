@@ -154,3 +154,10 @@ Open gaps kept visible in `canonical-report.md`:
   backups `*.before-cd2cb51-20260929T114150`): operator asked to also drop 新闻日期/新闻来源 — delivered
   long images carry no footer text and end on the model's reserved background band; advisory footer
   OCR recorded as footer_ocr_unavailable; send gates accept v6/v5/v4 (byte-identical to originals).
+- 09-29 15:08 relaxed long-image review `87b7e75` (advisory policy v14 / copy v7 / generation
+  prompt v7; image `…@sha256:52411a2d804991baa10988f985aafa4bab8b0d122ac274b840654bf01bf8eadd` =
+  e6b3ebf9 + rich_copy / advisory / producer; backups `*.before-87b7e75-20260929T150808`).
+  Operator asked to loosen long-image review. Replay on 09-15..09-29 packages: preflight 90/99 →
+  98/99 (remaining refusal = real source mismatch), copy step 39/40 → 60/60 (3 repaired). Preview
+  of the 09-29 noon#2 poster (refused at noon) generated with the new path and reviewed.
+  Not changed: daily image ceiling (9 image intents per day, shared with human picks).
