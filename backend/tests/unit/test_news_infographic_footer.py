@@ -1,6 +1,6 @@
 """Exact local footer repair preserves the provider image and attribution identity."""
 
-# ruff: noqa: RUF001 -- frozen Chinese attribution uses native punctuation.
+
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ _REAL_SOURCE_URL = "http://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202608/t20260
 
 def test_footer_copy_and_url_size_have_distinct_local_and_delivery_versions() -> None:
     assert FOOTER_VERSION == "daily-news-infographic-footer-v2"
-    assert DELIVERY_FOOTER_VERSION == "daily-news-infographic-footer-v5-no-link"
+    assert DELIVERY_FOOTER_VERSION == "daily-news-infographic-footer-v6-none"
 
 
 @pytest.mark.parametrize("mode", ["local", "test", "formal"])
@@ -98,34 +98,23 @@ def test_footer_rejects_long_url_instead_of_truncating_or_shrinking() -> None:
 
 
 @pytest.mark.parametrize("mode", ["formal", "test"])
-def test_delivered_footer_shows_date_and_source_but_no_link(
-    mode: Literal["formal", "test"],
-) -> None:
-    """Operator request 2026-09-29: 图片上不放链接 (the link stays in the Moments text)."""
+def test_delivered_footer_has_no_link_date_or_source(mode: Literal["formal", "test"]) -> None:
+    """Operator request 2026-09-29: no link, news date or source on delivered images."""
     import app.application.services.news_infographic_footer as footer
 
     case = validate_package_snapshot(package_payload()).model_copy(
         update={"source_url": _REAL_SOURCE_URL}
     )
     raw = _png()
-    local = render_exact_source_footer(raw, case)
     with patch.object(footer, "_draw_fitted", wraps=footer._draw_fitted) as draw_fitted:
         rendered = render_exact_source_footer(raw, case, mode=mode)
     drawn_text = tuple(call.args[1] for call in draw_fitted.call_args_list)
-    assert f"新闻日期：{case.source_date.isoformat()}" in drawn_text
-    assert f"新闻来源：{case.source_name}" in drawn_text
-    assert not any("原文链接" in text or "http" in text for text in drawn_text)
+    assert drawn_text == (("【测试消息】",) if mode == "test" else ())
     assert rendered.source_url_lines == ()
-    assert local.source_url_lines == (_REAL_SOURCE_URL,)
-    expected = delivery_footer_text(case, mode=mode)
-    assert "".join(drawn_text) == expected
+    assert delivery_footer_text(case, mode=mode) == "".join(drawn_text)
     with Image.open(BytesIO(raw)) as original, Image.open(BytesIO(rendered.image_bytes)) as image:
-        assert (
-            ImageChops.difference(
-                original.crop((0, 0, 1152, FOOTER_TOP)), image.crop((0, 0, 1152, FOOTER_TOP))
-            ).getbbox()
-            is None
-        )
+        crop = (0, 0, 1152, 2048 if mode == "formal" else 1960)
+        assert ImageChops.difference(original.crop(crop), image.crop(crop)).getbbox() is None
 
 
 @pytest.mark.asyncio
@@ -275,8 +264,8 @@ def test_send_gates_can_still_verify_posters_made_with_the_linked_v4_footer() ->
     case = validate_package_snapshot(package_payload()).model_copy(
         update={"source_url": _REAL_SOURCE_URL}
     )
-    current, legacy = render_delivery_footer_variants(_png(), case)
+    current, date_source, linked = render_delivery_footer_variants(_png(), case)
 
-    assert current.source_url_lines == ()
-    assert "".join(legacy.source_url_lines) == _REAL_SOURCE_URL
-    assert current.image_sha256 != legacy.image_sha256
+    assert current.source_url_lines == date_source.source_url_lines == ()
+    assert "".join(linked.source_url_lines) == _REAL_SOURCE_URL
+    assert len({current.image_sha256, date_source.image_sha256, linked.image_sha256}) == 3

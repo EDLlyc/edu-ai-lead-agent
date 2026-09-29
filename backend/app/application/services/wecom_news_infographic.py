@@ -5,8 +5,6 @@ Every paid stage has a committed intent. An interrupted running job is unknown a
 never automatically restarted, even if the image POST was only possibly dispatched.
 """
 
-
-
 from __future__ import annotations
 
 import asyncio
@@ -432,11 +430,16 @@ def _poster_ocr_regions(
 def _poster_region_text_matches(
     result: ImageTextRecognitionResult | None, *, fingerprint: str, expected_text: str
 ) -> bool:
-    """Preserve every non-space character while allowing visual line wrapping."""
+    """Preserve every non-space character while allowing visual line wrapping.
+
+    An empty expectation (the v6 formal footer band) requires a blank region.
+    """
     if result is None or result.request_fingerprint != fingerprint:
         return False
     observed = "".join("".join(line.split()) for line in result.recognized_lines)
     expected = "".join(expected_text.split())
+    if not expected:
+        return not observed
     return bool(observed and observed == expected)
 
 
@@ -1273,7 +1276,8 @@ class NewsInfographicProducer:
         # construction, and a configured footer OCR disagreement is still hard.
         issue_codes.add("body_ocr_unavailable")
         footer_text = delivery_footer_text(case)
-        if self._models.ocr_enabled:
+        # v6 draws no footer text, so there is nothing to read back; record it as unchecked.
+        if self._models.ocr_enabled and footer_text:
             with Image.open(BytesIO(jpeg)) as opened:
                 opened.load()
                 footer_region = _encode_ocr_crop(opened, (0, FOOTER_TOP, *GEOMETRY))

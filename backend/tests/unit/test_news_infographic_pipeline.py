@@ -297,7 +297,7 @@ async def test_exact_text_quality_trial_uses_formal_prompt_and_final_group_jpeg(
     assert outcome["generation"] == "generated"
     assert outcome["overlay"] == "passed"
     assert outcome["footer"] == "passed"
-    assert outcome["footer_version"] == "daily-news-infographic-footer-v5-no-link"
+    assert outcome["footer_version"] == "daily-news-infographic-footer-v6-none"
     assert outcome["poster_region_ocr"] == "not_checked"
     assert outcome["ocr"] == "not_checked_region_gate"
     assert not models.ocr_requests
@@ -307,7 +307,9 @@ async def test_exact_text_quality_trial_uses_formal_prompt_and_final_group_jpeg(
     footer = (run_dir / str(outcome["derived_image"])).read_bytes()
     group = (run_dir / str(outcome["group_image"])).read_bytes()
     phone = (run_dir / str(outcome["phone_preview"])).read_bytes()
-    assert len({sha256(item).hexdigest() for item in (raw, composite, footer, group)}) == 4
+    # Footer v6 draws nothing, so the footer step leaves the composite unchanged.
+    assert len({sha256(item).hexdigest() for item in (raw, composite, group)}) == 3
+    assert footer == composite
     assert len(group) <= 2 * 1024 * 1024
     assert sha256(group).hexdigest() == outcome["group_image_sha256"]
     assert sha256(phone).hexdigest() == outcome["phone_preview_sha256"]

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.application.ports.wecom import WeComDeliveryClient, WeComProviderError
 from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
 from app.application.services.news_infographic_footer import (
+    render_delivery_footer_variants,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
@@ -189,11 +190,22 @@ async def _materials(
     else:
         notice_raster = raw
     formal_footer = render_exact_source_footer(notice_raster, context.case, mode="formal")
-    if poster.quality_mode == "advisory" and (
-        poster.footer_sha256 != sha256(formal_footer.image_bytes).hexdigest()
-        or poster.footer_byte_size != len(formal_footer.image_bytes)
-    ):
-        raise ConflictError("advisory formal footer changed")
+    if poster.quality_mode == "advisory":
+        # Posters produced before footer-v6 still verify against their own footer version.
+        matched = next(
+            (
+                candidate
+                for candidate in render_delivery_footer_variants(
+                    notice_raster, context.case, mode="formal"
+                )
+                if poster.footer_sha256 == sha256(candidate.image_bytes).hexdigest()
+                and poster.footer_byte_size == len(candidate.image_bytes)
+            ),
+            None,
+        )
+        if matched is None:
+            raise ConflictError("advisory formal footer changed")
+        formal_footer = matched
     formal_body = prepare_infographic_group_jpeg(
         formal_footer.image_bytes, max_bytes=settings.wecom_group_max_image_bytes
     )

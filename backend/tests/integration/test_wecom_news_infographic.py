@@ -225,8 +225,8 @@ class _Models:
         if request.region_id == "footer":
             # Footer text is deterministic, but the fake has no package snapshot;
             # its real bytes are checked separately in the footer unit tests.
-            # 图片上不放链接: the delivered footer shows the date and source only.
-            lines = ("新闻日期：2026-08-04新闻来源：教育部科学新闻",)
+            # Footer v6 draws no text: the band must read back blank.
+            lines = ()
         return ImageTextRecognitionResult(
             recognized_lines=lines,
             request_fingerprint=request.request_fingerprint,
@@ -405,10 +405,12 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
             "body_ocr_unavailable",
             "visual_failed",
             "copy_audit_schema_invalid" if audit_shape == "invalid" else "copy_audit_rejected",
+            # Footer v6 carries no text, so the advisory footer OCR is recorded as unchecked.
+            "footer_ocr_unavailable",
         } <= set(poster.warning_codes)
         assert poster.ocr_status == "not_checked"
         assert poster.visual_status == "failed"
-        assert poster.footer_ocr_status == "passed"
+        assert poster.footer_ocr_status == "not_checked"
         assert poster.raw_sha256 and poster.composite_sha256 and poster.footer_sha256
         assert poster.delivery_sha256 and poster.delivery_byte_size
         package = await session.get(MaterialPackageModel, base.material_package_id)
@@ -866,16 +868,17 @@ async def test_three_siblings_reconcile_independently_and_unknown_is_not_replaye
         )
         assert first.image_intent_at is not None
         assert first.ocr_status == first.footer_ocr_status == first.visual_status == "passed"
+        # Footer v6 draws nothing on a formal poster: footer bytes equal the composite.
+        assert first.footer_sha256 == first.composite_sha256
         assert (
             len(
                 {
                     first.raw_sha256,
                     first.composite_sha256,
-                    first.footer_sha256,
                     first.delivery_sha256,
                 }
             )
-            == 4
+            == 3
         )
         assert first.composite_sha256 is not None
         assert first.composite_byte_size == len(generated[first.composite_sha256])
