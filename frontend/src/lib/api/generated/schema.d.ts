@@ -232,6 +232,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/content-slot-human-picks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Content Slot Human Pick
+         * @description Operator-approved extra item: copy, image, WeCom delivery and long image follow at once.
+         */
+        post: operations["create_content_slot_human_pick_api_v1_content_slot_human_picks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/content-slot-runs": {
         parameters: {
             query?: never;
@@ -1237,6 +1257,26 @@ export interface paths {
         };
         /** Read Wecom Delivery */
         get: operations["read_wecom_delivery_api_v1_wecom_deliveries__delivery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wecom-deliveries/{delivery_id}/infographic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Wecom Infographic Status
+         * @description Expose only lineage, checksum, gate and outcome codes; no private assets.
+         */
+        get: operations["read_wecom_infographic_status_api_v1_wecom_deliveries__delivery_id__infographic_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2414,6 +2454,46 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** ContentSlotHumanPickResponse */
+        ContentSlotHumanPickResponse: {
+            /**
+             * Business Date
+             * Format: date
+             */
+            business_date: string;
+            /**
+             * Content Slot
+             * @enum {string}
+             */
+            content_slot: "morning" | "noon" | "evening";
+            /** Created */
+            created: boolean;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Selection Id
+             * Format: uuid
+             */
+            selection_id: string;
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+        };
         /** ContentSlotRunResponse */
         ContentSlotRunResponse: {
             /**
@@ -2512,7 +2592,7 @@ export interface components {
              * Trigger
              * @enum {string}
              */
-            trigger: "manual" | "scheduled";
+            trigger: "manual" | "scheduled" | "human";
             /** Unfilled Count */
             unfilled_count: number;
             /** Unfilled Reason Codes */
@@ -2826,6 +2906,24 @@ export interface components {
             business_date?: string | null;
             /** Source Ids */
             source_ids?: string[] | null;
+        };
+        /**
+         * CreateContentSlotHumanPickRequest
+         * @description An operator approves one scored candidate; it is produced and sent right away.
+         */
+        CreateContentSlotHumanPickRequest: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Source Run Id
+             * Format: uuid
+             */
+            source_run_id: string;
         };
         /** CreateContentSlotRunRequest */
         CreateContentSlotRunRequest: {
@@ -6061,6 +6159,87 @@ export interface components {
              */
             text_status: "pending" | "running" | "delivered" | "failed" | "unknown" | "skipped";
         };
+        /** WeComInfographicAttemptResponse */
+        WeComInfographicAttemptResponse: {
+            /** Attempt Number */
+            attempt_number: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Result State
+             * @enum {string}
+             */
+            result_state: "succeeded" | "failed" | "unknown";
+            /** Safe Response Code */
+            safe_response_code: string | null;
+        };
+        /**
+         * WeComInfographicStatusResponse
+         * @description Safe projection; an absent job is not a successful infographic send.
+         */
+        WeComInfographicStatusResponse: {
+            /** Attempts */
+            attempts: components["schemas"]["WeComInfographicAttemptResponse"][];
+            /**
+             * Base Job Id
+             * Format: uuid
+             */
+            base_job_id: string;
+            /**
+             * Base Status
+             * @enum {string}
+             */
+            base_status: "queued" | "running" | "partial" | "delivery_unknown" | "delivered" | "failed" | "cancelled" | "delivery_window_expired";
+            /** Business Date */
+            business_date: string | null;
+            /** Content Slot */
+            content_slot: string | null;
+            /** Content Slot Selection Id */
+            content_slot_selection_id: string | null;
+            /** Delivery Byte Size */
+            delivery_byte_size: number | null;
+            /** Delivery Height */
+            delivery_height: number | null;
+            /** Delivery Sha256 */
+            delivery_sha256: string | null;
+            /** Delivery Width */
+            delivery_width: number | null;
+            /** Footer Ocr Status */
+            footer_ocr_status: string | null;
+            /** Infographic Job Id */
+            infographic_job_id: string | null;
+            /** Infographic Safe Error Code */
+            infographic_safe_error_code: string | null;
+            /** Infographic Status */
+            infographic_status: string | null;
+            /** Ocr Status */
+            ocr_status: string | null;
+            /** Package Version */
+            package_version: number | null;
+            /** Quality Mode */
+            quality_mode: ("strict" | "advisory") | null;
+            /** Sequence Ordinal */
+            sequence_ordinal: number | null;
+            /** Supplement Attempt Count */
+            supplement_attempt_count: number;
+            /** Supplement Expires At */
+            supplement_expires_at: string | null;
+            /** Supplement Id */
+            supplement_id: string | null;
+            /** Supplement Safe Error Code */
+            supplement_safe_error_code: string | null;
+            /** Supplement Status */
+            supplement_status: string | null;
+            /** Visual Status */
+            visual_status: string | null;
+            /** Warning Codes */
+            warning_codes: string[];
+            /** Warning Notice Version */
+            warning_notice_version: string | null;
+        };
         /** WeComRecipientListResponse */
         WeComRecipientListResponse: {
             /** Count */
@@ -6510,6 +6689,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContentEditionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_content_slot_human_pick_api_v1_content_slot_human_picks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateContentSlotHumanPickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentSlotHumanPickResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8506,6 +8718,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WeComDeliveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_wecom_infographic_status_api_v1_wecom_deliveries__delivery_id__infographic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeComInfographicStatusResponse"];
                 };
             };
             /** @description Validation Error */

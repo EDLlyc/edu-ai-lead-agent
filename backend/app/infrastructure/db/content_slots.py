@@ -18,6 +18,7 @@ from app.application.ports.content_slots import (
 from app.application.services.topic_reranking import topic_rerank_outcome_metadata
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.content_slots import (
+    HUMAN_PICK_TRIGGER,
     ContentSlot,
     ContentSlotDecision,
     ContentSlotSchedule,
@@ -496,6 +497,42 @@ async def get_same_day_selected_event_ids(session: AsyncSession, run_id: UUID) -
     return frozenset(value for value in (*slot_ids, *legacy_ids) if value is not None)
 
 
+async def _count_same_day_scheduled_selections(
+    session: AsyncSession, run: ContentSlotRunModel
+) -> int:
+    """Distinct same-day selected events (as in the same-day exclusion) minus human picks."""
+    slot_ids = set(
+        (
+            await session.scalars(
+                select(ContentSlotSelectionModel.selected_event_id)
+                .join(
+                    ContentSlotRunModel,
+                    ContentSlotRunModel.id == ContentSlotSelectionModel.run_id,
+                )
+                .where(
+                    ContentSlotSelectionModel.business_date == run.business_date,
+                    ContentSlotSelectionModel.timezone == run.timezone,
+                    ContentSlotSelectionModel.run_id != run.id,
+                    ContentSlotRunModel.trigger != HUMAN_PICK_TRIGGER,
+                )
+            )
+        ).all()
+    )
+    legacy_ids = set(
+        (
+            await session.scalars(
+                select(DailyTopicSelectionModel.selected_event_id).where(
+                    DailyTopicSelectionModel.business_date == run.business_date,
+                    DailyTopicSelectionModel.timezone == run.timezone,
+                    DailyTopicSelectionModel.decision_kind == "selected",
+                    DailyTopicSelectionModel.selected_event_id.is_not(None),
+                )
+            )
+        ).all()
+    )
+    return len({value for value in (*slot_ids, *legacy_ids) if value is not None})
+
+
 def _validate_content_slot_decision(
     decision: ContentSlotDecision,
     *,
@@ -596,7 +633,9 @@ async def persist_content_slot_decision(
     if overlap:
         await session.rollback()
         raise ConflictError("content slot decision contains a newly selected same-day event")
-    if len(current_same_day) + len(selected_scores) > _MAX_DAILY_SLOT_SELECTIONS:
+    # Human picks are extra: they are excluded above but never consume scheduled capacity.
+    scheduled_same_day = await _count_same_day_scheduled_selections(session, run)
+    if scheduled_same_day + len(selected_scores) > _MAX_DAILY_SLOT_SELECTIONS:
         await session.rollback()
         raise ConflictError("content slot decision exceeds the nine-item daily limit")
 
@@ -848,6 +887,8 @@ async def list_content_slot_runs_for_date(
                     ContentSlotRunModel.business_date == business_date,
                     ContentSlotRunModel.timezone == timezone,
                     ContentSlotRunModel.scoring_profile == scoring_profile,
+                    # Human picks are extra items, never "the" run that owns a slot's edition.
+                    ContentSlotRunModel.trigger != HUMAN_PICK_TRIGGER,
                 )
                 .order_by(ContentSlotRunModel.target_at)
             )

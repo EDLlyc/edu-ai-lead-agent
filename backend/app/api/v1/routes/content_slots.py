@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.core.errors import PolicyRejectedError
 from app.core.security import normalize_https_url
 from app.domain.content_slots import ContentSlot
+from app.infrastructure.db.content_slot_human_picks import create_human_pick
 from app.infrastructure.db.content_slots import (
     ContentSlotRunProjection,
     ContentSlotScoreProjection,
@@ -37,9 +38,11 @@ from app.schemas.content_slots import (
     ContentEditionSelectionResponse,
     ContentEditionSlotResponse,
     ContentEditionSourceResponse,
+    ContentSlotHumanPickResponse,
     ContentSlotRunResponse,
     ContentSlotScoreListResponse,
     ContentSlotScoreResponse,
+    CreateContentSlotHumanPickRequest,
     CreateContentSlotRunRequest,
 )
 
@@ -72,6 +75,44 @@ async def create_content_slot_run(
     )
     response.headers["Location"] = projected.status_url
     return projected
+
+
+@router.post(
+    "/content-slot-human-picks",
+    response_model=ContentSlotHumanPickResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_content_slot_human_pick(
+    payload: CreateContentSlotHumanPickRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ContentSlotHumanPickResponse:
+    """Operator-approved extra item: copy, image, WeCom delivery and long image follow at once."""
+    settings: Settings = request.app.state.settings
+    if not settings.content_enabled or not settings.content_slot_mode_enabled:
+        raise PolicyRejectedError("content_slot_disabled", "content slot mode is disabled")
+    result = await create_human_pick(
+        session,
+        source_run_id=payload.source_run_id,
+        event_id=payload.event_id,
+        note=payload.note,
+        now=datetime.now(UTC),
+        timezone=settings.business_timezone,
+        scoring_profile=settings.content_scoring_profile,
+    )
+    if not result.created:
+        response.status_code = status.HTTP_200_OK
+    return ContentSlotHumanPickResponse(
+        run_id=result.run.id,
+        selection_id=result.selection.id,
+        created=result.created,
+        business_date=result.run.business_date,
+        content_slot=cast(Any, result.run.content_slot),
+        event_id=result.selection.selected_event_id,
+        target_at=result.run.target_at,
+        expires_at=result.run.expires_at,
+    )
 
 
 @router.get("/content-slot-runs/{run_id}", response_model=ContentSlotRunResponse)
