@@ -108,3 +108,17 @@ Open gaps kept visible in `canonical-report.md`:
   per slot, so ungated news can still fill a thin pool by score. `.env`
   `CONTENT_SCORING_VERSION=scoring-v1-preview.15-gov-yaowen-topic-gate`; backups
   `*.before-6c8df55-20260929T003542`. Golden set 17 cases: `.15` 16/17 (n05 pre-existing).
+- 09-29 ~01:30 evaluation suite (`29071d7`, `1b14217`, this commit):
+  - `evals/selection_replay` (production data, read-only, no LLM): 09-19..09-28, 30 slot runs.
+    gov.cn priority production 28 / `.14` 22 / `.15` 6 (off-topic 21/16/0); 14-day same-event
+    repeats 18/11/0; similar-article cross-day repeats remain ~11 (same theme on consecutive days,
+    e.g. 先进制造业 ×3) — candidate for a cross-day theme rule (operator decision).
+  - `evals/same_topic_golden`: production headline clause precision 0.438 on 20 real pairs
+    (开幕式并致辞, years/amounts, issuing bodies, 北京师范大学, column prefixes); a
+    boilerplate-stripping candidate 1.0 at equal recall — not deployed, awaiting decision.
+  - Quality report v3 (cron image `…@sha256:f354b56e88b1300eb3d4552fc4f93f652b791c7c8eb5bbb92049df073732f9e4`
+    = f4b0cff0 + report files; script backup `edu-ai-quality-report.before-1b14217-*`): repeats vs
+    delivered news, gov priority off-topic check, match kinds, 7-day trend. 09-28 regenerated
+    (v2 kept as `.v2.*`).
+  - `evals/copy_replay`: v24 vs v25 on 09-28 — recent brand phrase reuse 6/6 vs 2/6.
+  - `make eval` runs the offline suites (topic golden, same-topic, brand retrieval).
