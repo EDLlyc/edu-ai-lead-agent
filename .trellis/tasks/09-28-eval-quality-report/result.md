@@ -122,3 +122,11 @@ Open gaps kept visible in `canonical-report.md`:
     (v2 kept as `.v2.*`).
   - `evals/copy_replay`: v24 vs v25 on 09-28 — recent brand phrase reuse 6/6 vs 2/6.
   - `make eval` runs the offline suites (topic golden, same-topic, brand retrieval).
+- 09-29 10:00 slot-ranking v3 `ed390cf` (image `…@sha256:00aedca2caf80082e9abbe4dec260a02fb8d88d64fd36e77db864af3cd1fbebc`
+  = f4b0cff0 + config.py + content_slots.py; the overlaid content_slots.py is the human-pick
+  0d3742c version + the ed390cf patch). `.env` CONTENT_SLOT_RANKING_VERSION=slot-ranking-v3-strict-headline-dedup;
+  backups `*.before-ed390cf-20260929T100027`. Headline same-topic clause precision 0.44 → 1.0 on
+  the golden pairs. Operator declined a cross-day same-theme rule. Report cron image
+  `…@sha256:518b16d8f88eae7311d7638969241625ce47c018deeaea2685fff77e44f49141`.
+- 09-29 07:00 first run with v25 copy + `.15`: 3 picks, 3/3 copy accepted first pass with three
+  different brand angles (小班直播 / 真表达 / 真思考), 3 WeCom deliveries, 3 long images.
