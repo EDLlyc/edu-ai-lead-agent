@@ -130,3 +130,10 @@ Open gaps kept visible in `canonical-report.md`:
   `…@sha256:518b16d8f88eae7311d7638969241625ce47c018deeaea2685fff77e44f49141`.
 - 09-29 07:00 first run with v25 copy + `.15`: 3 picks, 3/3 copy accepted first pass with three
   different brand angles (小班直播 / 真表达 / 真思考), 3 WeCom deliveries, 3 long images.
+- 09-29 10:20 acquisition fix `f1a45bd` (image `…@sha256:d89e8ed7f7152707cbb762bdd0d7e20781bee9ac7830feb49ec09c91ee3ced77`
+  = 00aedca2 + execute_acquisition.py / ports/acquisition.py / db/repositories.py; backups
+  `*.before-f1a45bd-20260929T102041`). Root cause of the bnu-news / cas-research / stdaily-tech
+  `conflict` since 09-24: source-image discovery ran for re-fetched known articles against a new
+  detail snapshot (page HTML changed) → "source image detail lineage is invalid" aborted the job.
+  Images now follow only the candidate's own snapshot. Integration test reproduces the production
+  error without the fix.
