@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.domain.content_slots import (
     SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION,
     SAME_TOPIC_EXCLUSION_REASON,
+    STRICT_HEADLINE_SLOT_RANKING_VERSION,
     ContentSlot,
     SlotRankingPolicy,
     TopicFingerprint,
@@ -141,3 +142,62 @@ def test_v1_is_unchanged_and_ignores_topics() -> None:
     v2 = SlotRankingPolicy(version=SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION).as_metadata()
     assert v2["same_topic_similarity_threshold"] == 0.66
     assert v2["same_topic_title_overlap_chars"] == 5
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    (
+        (
+            "张国清出席第五届北斗规模应用国际峰会开幕式并致辞",
+            "李强出席2026年世界技能大会开幕式并致辞",
+        ),
+        ("8000亿元新型政策性金融工具资金加快投放", "前8个月全国完成水利建设投资近7000亿元"),
+        (
+            "北京师范大学党委理论学习中心组：系统性重塑师范育人新范式",
+            "国际爱护动物基金会一行访问北京师范大学",
+        ),
+        (
+            "中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》",
+            "中共中央办公厅 国务院办公厅 中央军委办公厅印发《退役军人服务和保障“十五五”规划》",
+        ),
+    ),
+)
+def test_v3_headline_ignores_boilerplate_that_v2_matched(left: str, right: str) -> None:
+    assert is_same_topic(_fp(1, left), _fp(2, right))
+    assert not is_same_topic(_fp(1, left), _fp(2, right), strict_headline=True)
+
+
+def test_v3_still_dedups_real_same_topic_headlines_and_is_the_default() -> None:
+    policy = SlotRankingPolicy(version=STRICT_HEADLINE_SLOT_RANKING_VERSION)
+    decision = _select(policy)
+
+    assert policy.dedups_same_topic and policy.strict_headline
+    assert decision.selected_event_ids == (UUID(int=1), UUID(int=3), UUID(int=4))
+    assert policy.as_metadata()["same_topic_headline_rule"] == "headline-boilerplate-stripped-v1"
+    assert (
+        "same_topic_headline_rule"
+        not in SlotRankingPolicy(version=SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION).as_metadata()
+    )
+    assert Settings(_env_file=None).content_slot_ranking_version == (
+        STRICT_HEADLINE_SLOT_RANKING_VERSION
+    )
+
+
+def test_v3_keeps_two_different_opening_ceremony_stories_on_one_day() -> None:
+    candidates = (
+        _candidate(1, "张国清出席第五届北斗规模应用国际峰会开幕式并致辞", 0.9),
+        _candidate(2, "李强出席2026年世界技能大会开幕式并致辞", 0.8),
+    )
+
+    def select(version: str) -> tuple[UUID, ...]:
+        return select_slot_topics(
+            candidates,
+            as_of=NOW,
+            config=build_topic_scoring_config(Settings(_env_file=None)),
+            slot=ContentSlot.NOON,
+            policy=SlotRankingPolicy(version=version),
+            max_items=3,
+        ).selected_event_ids
+
+    assert select(SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION) == (UUID(int=1),)
+    assert select(STRICT_HEADLINE_SLOT_RANKING_VERSION) == (UUID(int=1), UUID(int=2))

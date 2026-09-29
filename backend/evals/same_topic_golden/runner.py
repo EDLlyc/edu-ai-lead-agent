@@ -1,9 +1,8 @@
-
 """Precision/recall of the same-topic headline rule on labelled real headline pairs.
 
 Only the headline clause is evaluated here: the embedding clause needs stored article vectors
-(see `evals.selection_replay` for the production-data view). `candidate` is a proposed stricter
-normalisation that strips numbers and boilerplate shared by unrelated news before matching.
+(see `evals.selection_replay` for the production-data view). v3 strips numbers and boilerplate
+shared by unrelated news before matching; v2 is the previous production clause.
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -24,15 +22,6 @@ PAIRS_PATH = FEATURE_ROOT / "pairs.v1.jsonl"
 CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 REPORT_VERSION = "same-topic-golden-v1"
-
-# Column prefixes (e.g. 总编辑圈点丨), issuing bodies, ceremony words, development slogans and a
-# source's own institution name recur in unrelated headlines.
-_CANDIDATE_BOILERPLATE = re.compile(
-    r"总编辑圈点|中共中央办公厅|国务院办公厅|中央军委办公厅|印发|开幕式|闭幕式|致辞|出席|会见|"
-    r"座谈会|举行|高质量发展|北京师范大学|中国科学院|新闻发布会|国务院新闻办|研究取得进展|"
-    r"取得新进展|\d+"
-)
-_COLUMN_PREFIX = re.compile(r"【[^】]{0,40}】")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,22 +55,17 @@ def load_pairs(path: Path = PAIRS_PATH) -> tuple[TopicPair, ...]:
     return tuple(pairs)
 
 
-def current_rule(left: str, right: str) -> bool:
+def v2_rule(left: str, right: str) -> bool:
     return left == right or _share_title_phrase(left, right, _SAME_TOPIC_TITLE_OVERLAP)
 
 
-def candidate_rule(left: str, right: str) -> bool:
-    def clean(title: str) -> str:
-        return _CANDIDATE_BOILERPLATE.sub(" ", _COLUMN_PREFIX.sub(" ", title))
-
-    return left == right or _share_title_phrase(
-        clean(left), clean(right), _SAME_TOPIC_TITLE_OVERLAP
-    )
+def v3_rule(left: str, right: str) -> bool:
+    return left == right or _share_title_phrase(left, right, _SAME_TOPIC_TITLE_OVERLAP, strict=True)
 
 
 RULES: dict[str, Callable[[str, str], bool]] = {
-    "current": current_rule,
-    "candidate": candidate_rule,
+    "slot-ranking-v2": v2_rule,
+    "slot-ranking-v3": v3_rule,
 }
 
 

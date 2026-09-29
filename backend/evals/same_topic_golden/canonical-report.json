@@ -3,25 +3,7 @@
   "pairs_sha256": "c433edb8b6ebe9505e17d271b73c7d1bcbfb30ff690232ed598fbeae8ffee6d6",
   "report_version": "same-topic-golden-v1",
   "rules": {
-    "candidate": {
-      "errors": [
-        {
-          "error": "missed_same_topic",
-          "pair_id": "s02-university-classified-reform"
-        },
-        {
-          "error": "missed_same_topic",
-          "pair_id": "s05-beidou-industry"
-        }
-      ],
-      "false_negative": 2,
-      "false_positive": 0,
-      "precision": 1.0,
-      "recall": 0.778,
-      "true_negative": 11,
-      "true_positive": 7
-    },
-    "current": {
+    "slot-ranking-v2": {
       "errors": [
         {
           "error": "missed_same_topic",
@@ -73,6 +55,24 @@
       "precision": 0.438,
       "recall": 0.778,
       "true_negative": 2,
+      "true_positive": 7
+    },
+    "slot-ranking-v3": {
+      "errors": [
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s02-university-classified-reform"
+        },
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s05-beidou-industry"
+        }
+      ],
+      "false_negative": 2,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 0.778,
+      "true_negative": 11,
       "true_positive": 7
     }
   },

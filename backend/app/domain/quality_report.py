@@ -14,8 +14,8 @@ from app.domain.content_slots import (
     _share_title_phrase,
 )
 
-# Which clause of the same-topic rule matched, strongest first. Headline-only matches are weak:
-# on labelled real pairs the headline clause has precision 0.44 (evals/same_topic_golden).
+# Which clause of the same-topic rule matched, strongest first. Headline-only matches are the
+# weakest evidence (evals/same_topic_golden), so they are shown but never raised.
 SAME_EVENT = "same_event"
 SIMILAR_ARTICLE = "similar_article"
 TITLE_PHRASE = "title_phrase"
@@ -32,7 +32,8 @@ def topic_match_kind(left: TopicFingerprint, right: TopicFingerprint) -> str | N
         and _cosine(left.embedding, right.embedding) >= _SAME_TOPIC_SIMILARITY
     ):
         return SIMILAR_ARTICLE
-    if _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP):
+    # The production headline clause since slot-ranking-v3 (boilerplate stripped).
+    if _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP, strict=True):
         return TITLE_PHRASE
     return None
 

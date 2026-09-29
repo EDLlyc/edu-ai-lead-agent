@@ -5,10 +5,10 @@
 
 | Rule | Precision | Recall | False same-topic | Missed |
 |---|---|---|---|---|
-| `current` | 0.438 | 0.778 | 9 | 2 |
-| `candidate` | 1.0 | 0.778 | 0 | 2 |
+| `slot-ranking-v2` | 0.438 | 0.778 | 9 | 2 |
+| `slot-ranking-v3` | 1.0 | 0.778 | 0 | 2 |
 
-## `current` errors
+## `slot-ranking-v2` errors
 
 - `s02-university-classified-reform` missed_same_topic: 中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》 ~ 教育部：建立分类评价机制 推进各类高校特色发展
 - `s05-beidou-industry` missed_same_topic: 从“天上星座”到身边“时空底座” 北斗产业规模加速向万亿级跃升 ~ AI加速渗透、从卖产品到卖服务、出海成关键增量 冲刺万亿 北斗产业发展呈三大新动向
@@ -22,7 +22,7 @@
 - `d08-high-quality-development` false_same_topic: “扎实推进先进制造业高质量发展”——习近平总书记引领我国加快向制造强国迈进 ~ 北京师范大学—山西省乡宁县基础教育高质量发展行动计划座谈会举行
 - `d09-column-prefix` false_same_topic: 总编辑圈点丨首个月球模型发布并开源，将数十年观测数据转化为可复用工具 ~ 总编辑圈点 | 63℃仍能分裂繁殖，火变形虫改写真核生物耐热上限
 
-## `candidate` errors
+## `slot-ranking-v3` errors
 
 - `s02-university-classified-reform` missed_same_topic: 中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》 ~ 教育部：建立分类评价机制 推进各类高校特色发展
 - `s05-beidou-industry` missed_same_topic: 从“天上星座”到身边“时空底座” 北斗产业规模加速向万亿级跃升 ~ AI加速渗透、从卖产品到卖服务、出海成关键增量 冲刺万亿 北斗产业发展呈三大新动向

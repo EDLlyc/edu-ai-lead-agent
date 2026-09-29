@@ -29,8 +29,17 @@ DEFAULT_SLOT_RANKING_VERSION: Literal["slot-ranking-v1"] = "slot-ranking-v1"
 SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION: Literal["slot-ranking-v2-same-topic-dedup"] = (
     "slot-ranking-v2-same-topic-dedup"
 )
+# v3 (operator decision 2026-09-29): v2 with a stricter headline clause. On labelled real pairs
+# (evals/same_topic_golden) the v2 headline clause had precision 0.44: numbers, issuing bodies,
+# ceremony words and a source's own institution name matched unrelated stories.
+STRICT_HEADLINE_SLOT_RANKING_VERSION: Literal["slot-ranking-v3-strict-headline-dedup"] = (
+    "slot-ranking-v3-strict-headline-dedup"
+)
+SAME_TOPIC_DEDUP_SLOT_RANKING_VERSIONS = frozenset(
+    {SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION, STRICT_HEADLINE_SLOT_RANKING_VERSION}
+)
 SUPPORTED_SLOT_RANKING_VERSIONS = frozenset(
-    {DEFAULT_SLOT_RANKING_VERSION, SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION}
+    {DEFAULT_SLOT_RANKING_VERSION, *SAME_TOPIC_DEDUP_SLOT_RANKING_VERSIONS}
 )
 SAME_TOPIC_EXCLUSION_REASON = "same_day_similar_topic"
 _SAME_TOPIC_SIMILARITY = 0.66
@@ -39,6 +48,11 @@ _SAME_TOPIC_TITLE_OVERLAP = 5
 # stories, so they never count as a common topic.
 _TITLE_COLUMN_PREFIX = re.compile(r"【[^】]{0,40}】")
 _TITLE_GENERIC_PHRASES = re.compile(r"新闻发布会|中国科学院|国务院新闻办|研究取得进展|取得新进展")
+STRICT_HEADLINE_RULE_VERSION = "headline-boilerplate-stripped-v1"
+_STRICT_TITLE_BOILERPLATE = re.compile(
+    r"总编辑圈点|中共中央办公厅|国务院办公厅|中央军委办公厅|印发|开幕式|闭幕式|致辞|出席|会见|"
+    r"座谈会|举行|高质量发展|北京师范大学|\d+"
+)
 _TITLE_NON_WORD = re.compile(r"[\W_]+", re.UNICODE)
 
 
@@ -176,7 +190,11 @@ class SlotRankingPolicy:
 
     @property
     def dedups_same_topic(self) -> bool:
-        return self.version == SAME_TOPIC_DEDUP_SLOT_RANKING_VERSION
+        return self.version in SAME_TOPIC_DEDUP_SLOT_RANKING_VERSIONS
+
+    @property
+    def strict_headline(self) -> bool:
+        return self.version == STRICT_HEADLINE_SLOT_RANKING_VERSION
 
     def as_metadata(self) -> dict[str, object]:
         metadata: dict[str, object] = {
@@ -189,6 +207,8 @@ class SlotRankingPolicy:
             metadata["same_topic_similarity_threshold"] = _SAME_TOPIC_SIMILARITY
             metadata["same_topic_title_overlap_chars"] = _SAME_TOPIC_TITLE_OVERLAP
             metadata["same_topic_scope"] = "business_date"
+        if self.strict_headline:
+            metadata["same_topic_headline_rule"] = STRICT_HEADLINE_RULE_VERSION
         return metadata
 
     @property
@@ -208,14 +228,16 @@ class TopicFingerprint:
     embedding: tuple[float, ...] | None = None
 
 
-def _normalized_title(title: str) -> str:
+def _normalized_title(title: str, *, strict: bool = False) -> str:
     stripped = _TITLE_GENERIC_PHRASES.sub(" ", _TITLE_COLUMN_PREFIX.sub(" ", title))
+    if strict:
+        stripped = _STRICT_TITLE_BOILERPLATE.sub(" ", stripped)
     return _TITLE_NON_WORD.sub(" ", stripped)
 
 
-def _share_title_phrase(left: str, right: str, length: int) -> bool:
-    right_words = _normalized_title(right).split()
-    for word in _normalized_title(left).split():
+def _share_title_phrase(left: str, right: str, length: int, *, strict: bool = False) -> bool:
+    right_words = _normalized_title(right, strict=strict).split()
+    for word in _normalized_title(left, strict=strict).split():
         for start in range(0, len(word) - length + 1):
             fragment = word[start : start + length]
             if any(fragment in other for other in right_words):
@@ -231,7 +253,9 @@ def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     return dot / norm if norm else 0.0
 
 
-def is_same_topic(left: TopicFingerprint, right: TopicFingerprint) -> bool:
+def is_same_topic(
+    left: TopicFingerprint, right: TopicFingerprint, *, strict_headline: bool = False
+) -> bool:
     if left.event_id == right.event_id:
         return True
     if (
@@ -240,7 +264,9 @@ def is_same_topic(left: TopicFingerprint, right: TopicFingerprint) -> bool:
         and _cosine(left.embedding, right.embedding) >= _SAME_TOPIC_SIMILARITY
     ):
         return True
-    return _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP)
+    return _share_title_phrase(
+        left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP, strict=strict_headline
+    )
 
 
 class SlotUnfilledReason(StrEnum):
@@ -389,6 +415,7 @@ def select_slot_topics(
             fingerprints=topic_fingerprints or {},
             same_day_selected_topics=same_day_selected_topics,
             same_day_selected_event_ids=same_day_selected_event_ids,
+            strict_headline=policy.strict_headline,
         )
         if policy.dedups_same_topic
         else frozenset()
@@ -489,6 +516,7 @@ def _same_topic_exclusions(
     fingerprints: Mapping[UUID, TopicFingerprint],
     same_day_selected_topics: tuple[TopicFingerprint, ...],
     same_day_selected_event_ids: frozenset[UUID],
+    strict_headline: bool = False,
 ) -> frozenset[UUID]:
     """Walk eligible candidates in slot order and keep one per topic for the business day."""
 
@@ -512,7 +540,10 @@ def _same_topic_exclusions(
         fingerprint = fingerprints.get(candidate.event_id) or TopicFingerprint(
             event_id=candidate.event_id, title=candidate.priority_title
         )
-        if any(is_same_topic(fingerprint, anchor) for anchor in anchors):
+        if any(
+            is_same_topic(fingerprint, anchor, strict_headline=strict_headline)
+            for anchor in anchors
+        ):
             excluded.add(candidate.event_id)
         else:
             anchors.append(fingerprint)

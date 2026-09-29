@@ -68,7 +68,7 @@ def topic_match_kind(left: ReplayPick, right: ReplayPick) -> str | None:
         and _cosine(left.embedding, right.embedding) >= _SAME_TOPIC_SIMILARITY
     ):
         return "similar_article"
-    if _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP):
+    if _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP, strict=True):
         return "title_phrase"
     return None
 

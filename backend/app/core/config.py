@@ -161,9 +161,11 @@ class Settings(BaseSettings):
     content_slot_prepare_lead_minutes: int = Field(default=90, ge=30, le=180)
     content_slot_delivery_late_minutes: int = Field(default=60, ge=0, le=120)
     content_slot_max_items: int = Field(default=3, ge=1, le=3)
-    content_slot_ranking_version: Literal["slot-ranking-v1", "slot-ranking-v2-same-topic-dedup"] = (
-        "slot-ranking-v2-same-topic-dedup"
-    )
+    content_slot_ranking_version: Literal[
+        "slot-ranking-v1",
+        "slot-ranking-v2-same-topic-dedup",
+        "slot-ranking-v3-strict-headline-dedup",
+    ] = "slot-ranking-v3-strict-headline-dedup"
 
     wecom_enabled: bool = False
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com"
