@@ -13,6 +13,7 @@ from app.domain.brand_knowledge import BrandClaimScope, BrandContentType, BrandS
 from app.domain.content_slots import ContentSlot
 from app.domain.value_objects import stable_key
 from app.schemas.copy_generation import (
+    COPY_HEADLINE_HOOK_HEADING,
     COPY_OPENING_PREFIX,
     COPY_STANDALONE_HEADING,
     AuditVerdict,
@@ -21,11 +22,13 @@ from app.schemas.copy_generation import (
     count_emojis,
     count_hanzi,
     extract_copy_body,
+    extract_headline_hook,
     extract_trailing_hashtags,
     has_copy_news_framing,
     has_copy_news_source_footer,
     has_copy_paragraph_format,
     has_copy_standalone_heading,
+    has_headline_hook_heading,
     has_non_trailing_hashtags,
 )
 
@@ -385,12 +388,20 @@ _DANGLING_DEPENDENT_CLAUSE = re.compile(
 _SUPPORT_TEXT = re.compile(r"[\W_]+", re.UNICODE)
 _NUMBER_TOKEN = re.compile(r"\d+(?:\.\d+)?%?")
 _PREVIEW_PROFILES = frozenset({"preview", "preview-v1", "preview-v2"})
+# v13 (operator template, 2026-09-29): 🔎【小赛洞察】 + news headline + one parent-child hook
+# sentence + source + tags. Facts and the brand sentence stay structured material for the long
+# image and are no longer written into the Moments text. It keeps every v12 review relaxation.
+HEADLINE_HOOK_COPY_RULE_VERSIONS = frozenset(
+    {"moments-rules-v13-headline-hook", "preview-v13-headline-hook"}
+)
 STANDALONE_HEADING_COPY_RULE_VERSIONS = frozenset(
     {
         "moments-rules-v12-standalone-heading-advisory",
         "preview-v12-standalone-heading-advisory",
+        *HEADLINE_HOOK_COPY_RULE_VERSIONS,
     }
 )
+HEADLINE_HOOK_MAX_HANZI = 50
 _PREVIEW_RULE_VERSIONS = frozenset(
     {
         "preview-v1",
@@ -405,6 +416,7 @@ _PREVIEW_RULE_VERSIONS = frozenset(
         "preview-v10-compact-content-warning-recovery",
         "preview-v11-compact-content-warning-recovery",
         "preview-v12-standalone-heading-advisory",
+        "preview-v13-headline-hook",
     }
 )
 _LOCAL_PREVIEW_RULE_VERSIONS = frozenset(
@@ -634,9 +646,26 @@ def validate_material_draft(
     evidence_by_id = {item.evidence_id: item for item in topic.evidence}
     brand_by_id = {item.chunk_id: item for item in brand_context}
     standalone_heading = rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS
-    copy_body = extract_copy_body(draft.copywriting, exclude_standalone_heading=standalone_heading)
+    headline_hook = rule_version in HEADLINE_HOOK_COPY_RULE_VERSIONS
+    # In the headline-hook format the heading and verbatim news headline are system-rendered; only
+    # the model's hook sentence is Moments prose to check.
+    copy_body = (
+        extract_headline_hook(draft.copywriting, title=topic.title or "")
+        if headline_hook
+        else extract_copy_body(draft.copywriting, exclude_standalone_heading=standalone_heading)
+    )
     hanzi_count = count_hanzi(copy_body)
-    if hanzi_count > 260:
+    if headline_hook:
+        if not 8 <= hanzi_count <= HEADLINE_HOOK_MAX_HANZI or "\n" in copy_body:
+            issues.append(
+                _issue(
+                    "copy_length",
+                    f"引导句应为一句8到{HEADLINE_HOOK_MAX_HANZI}个汉字的话，当前为{hanzi_count}个",
+                    field="copywriting",
+                    severity="warning",
+                )
+            )
+    elif hanzi_count > 260:
         issues.append(
             _issue(
                 "copy_length",
@@ -646,7 +675,17 @@ def validate_material_draft(
             )
         )
     emoji_count = count_emojis(copy_body)
-    if not 2 <= emoji_count <= 5:
+    if headline_hook:
+        if not 1 <= emoji_count <= 2:
+            issues.append(
+                _issue(
+                    "copy_emoji_count",
+                    f"引导句末尾建议1个emoji，当前为{emoji_count}个",
+                    field="copywriting",
+                    severity="warning",
+                )
+            )
+    elif not 2 <= emoji_count <= 5:
         issues.append(
             _issue(
                 "copy_emoji_count",
@@ -655,7 +694,7 @@ def validate_material_draft(
                 severity="warning",
             )
         )
-    if not has_copy_paragraph_format(
+    if not headline_hook and not has_copy_paragraph_format(
         draft.copywriting, exclude_standalone_heading=standalone_heading
     ):
         issues.append(
@@ -667,7 +706,9 @@ def validate_material_draft(
             )
         )
     if not (
-        has_copy_standalone_heading(draft.copywriting)
+        has_headline_hook_heading(draft.copywriting, title=topic.title or "")
+        if headline_hook
+        else has_copy_standalone_heading(draft.copywriting)
         if standalone_heading
         else has_copy_news_framing(draft.copywriting)
     ):
@@ -675,7 +716,9 @@ def validate_material_draft(
             _issue(
                 "copy_news_framing",
                 (
-                    f"朋友圈正文必须以独立标题“{COPY_STANDALONE_HEADING}”开头"
+                    f"朋友圈正文必须以“{COPY_HEADLINE_HOOK_HEADING}”和新闻标题开头"
+                    if headline_hook
+                    else f"朋友圈正文必须以独立标题“{COPY_STANDALONE_HEADING}”开头"
                     if standalone_heading
                     else f"朋友圈正文必须以“{COPY_OPENING_PREFIX}”开头并直接进入核心事实"
                 ),
@@ -737,9 +780,12 @@ def validate_material_draft(
             )
         )
 
+    # The verbatim news headline is governed source text, not generated prose.
+    moments_prose = copy_body if headline_hook else draft.copywriting
     all_output = "\n".join(
         (
-            draft.copywriting,
+            moments_prose,
+            *(claim.text for claim in draft.claims if headline_hook),
             draft.parent_takeaway,
             draft.interaction,
             draft.source_note,
@@ -769,7 +815,7 @@ def validate_material_draft(
                 severity="warning" if relaxed and not brand_claim else "error",
             )
         )
-    if _contains_dangling_clause(draft.copywriting):
+    if _contains_dangling_clause(moments_prose):
         issues.append(
             _issue(
                 "incomplete_sentence",
@@ -785,14 +831,15 @@ def validate_material_draft(
     ):
         issues.append(_issue("personal_data", "文案不得包含个人联系信息或身份信息"))
 
-    narrative_output = "\n".join((draft.copywriting, draft.parent_takeaway, draft.interaction))
+    narrative_output = "\n".join((moments_prose, draft.parent_takeaway, draft.interaction))
     for date_token in set(_DATE.findall(narrative_output)):
         if date_token not in evidence_text and date_token != _business_date_zh(topic.business_date):
             issues.append(_issue("unbound_date", "文案日期不在已锁定事实证据中"))
 
     external_fact_count = 0
     for claim in draft.claims:
-        if claim.text not in draft.copywriting:
+        # Headline-hook claims are long-image material; they are validated but not displayed.
+        if not headline_hook and claim.text not in draft.copywriting:
             issues.append(
                 _issue(
                     "claim_not_in_copy",
@@ -882,7 +929,17 @@ def validate_material_draft(
     external_claim_texts = tuple(
         claim.text for claim in draft.claims if claim.kind == "external_fact"
     )
-    if _contains_unclaimed_fact_like_sentence(draft.copywriting, external_claim_texts):
+    if headline_hook and not (
+        external_claim_texts and any(claim.kind == "brand_statement" for claim in draft.claims)
+    ):
+        issues.append(
+            _issue(
+                "long_image_material_missing",
+                "长图素材需要至少一条外部事实和一条品牌主张（不显示在朋友圈文字中）",
+                severity="warning",
+            )
+        )
+    if _contains_unclaimed_fact_like_sentence(moments_prose, external_claim_texts):
         issues.append(
             _issue(
                 "unclaimed_external_fact",
@@ -945,6 +1002,7 @@ def apply_copy_audit_policy(
         issue.model_copy(update={"severity": "warning"})
         if not (
             rule_version in STANDALONE_HEADING_COPY_RULE_VERSIONS
+            and rule_version not in HEADLINE_HOOK_COPY_RULE_VERSIONS
             and issue.code == "brand_value"
             and issue.severity == "error"
         )

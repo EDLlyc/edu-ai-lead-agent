@@ -44,6 +44,85 @@ def normalize_copy_standalone_heading(text: str) -> str:
     return f"{COPY_STANDALONE_HEADING}\n\n{body}"
 
 
+# Headline-hook format (operator template, 2026-09-29): a fixed heading, the news headline on one
+# or two lines, one parent-child hook sentence, the bound source footer and the tags, with no
+# blank lines. The heading and headline are rendered by the system, never by the model.
+COPY_HEADLINE_HOOK_HEADING = "🔎【小赛洞察】"
+_HEADLINE_COLUMN_PREFIX = re.compile(r"^\s*【[^】]{0,40}】\s*")
+_HEADLINE_SHORT_COLUMN = re.compile(r"^[^丨|\uff5c\s]{1,8}\s*[丨|\uff5c]\s*")
+_HEADLINE_BREAKS = (re.compile(r"\s*(?:——|—{2}|--)\s*"), re.compile(r"\s+"))
+_HEADLINE_PART_MIN_CHARS = 4
+# "中共中央办公厅 国务院办公厅印发《…》": the space separates issuing bodies, not a sub-title.
+_HEADLINE_ISSUING_BODY = re.compile(
+    r"^(?:中共中央|国务院|中央军委|全国人大常委会|教育部|科技部|工业和信息化部|国家发展改革委)"
+    r"(?:办公厅|办公室)?$"
+)
+
+
+def split_news_headline(title: str) -> tuple[str, ...]:
+    """Render a news headline as one line, or a main line plus a 「sub line」."""
+
+    text = " ".join(_HEADLINE_COLUMN_PREFIX.sub("", title).split())
+    text = _HEADLINE_SHORT_COLUMN.sub("", text, count=1).strip()
+    for pattern in _HEADLINE_BREAKS:
+        parts = pattern.split(text, maxsplit=1)
+        if (
+            len(parts) == 2
+            and all(len(part.strip()) >= _HEADLINE_PART_MIN_CHARS for part in parts)
+            and not _HEADLINE_ISSUING_BODY.match(parts[0].strip())
+        ):
+            return parts[0].strip(), f"「{parts[1].strip()}」"
+    return (text,)
+
+
+def extract_headline_hook(text: str, *, title: str) -> str:
+    """The hook sentence of a headline-hook copy (heading, headline, footer and tags removed)."""
+
+    lines = [line.strip() for line in extract_copy_body(text).splitlines() if line.strip()]
+    rendered = {COPY_HEADLINE_HOOK_HEADING, *split_news_headline(title)}
+    return "\n".join(line for line in lines if line not in rendered)
+
+
+def has_headline_hook_heading(text: str, *, title: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    expected = [COPY_HEADLINE_HOOK_HEADING, *split_news_headline(title)]
+    return lines[: len(expected)] == expected
+
+
+def render_headline_hook_copy(
+    model_text: str, *, title: str, source_name: str, source_url: str
+) -> str:
+    """Assemble the operator template around the model's hook line and tags."""
+
+    normalized_name = " ".join(source_name.split())
+    normalized_url = source_url.strip()
+    if not normalized_name or not normalized_url or any(c in normalized_url for c in "\r\n"):
+        raise ValueError("news source footer requires one safe source name and URL")
+    headline = split_news_headline(title)
+    rendered = {COPY_HEADLINE_HOOK_HEADING, COPY_STANDALONE_HEADING, title.strip(), *headline}
+    hashtags = extract_trailing_hashtags(model_text)
+    hook = ""
+    for raw in model_text.splitlines():
+        line = raw.strip().removeprefix("🔎").strip().removeprefix("【小赛洞察】").strip()
+        line = _LEADING_INSIGHT_HEADING.sub("", line).strip()
+        if (
+            not line
+            or line in rendered
+            or _is_hashtag_candidate_line(line)
+            or _MODEL_SOURCE_LINE.match(line)
+        ):
+            continue
+        hook = line
+        break
+    lines = [COPY_HEADLINE_HOOK_HEADING, *headline]
+    if hook:
+        lines.append(hook)
+    lines += [f"{_NEWS_SOURCE_PREFIX}{normalized_name}", f"{_NEWS_LINK_PREFIX}{normalized_url}"]
+    if hashtags:
+        lines.append(" ".join(hashtags))
+    return "\n".join(lines)
+
+
 def extract_trailing_hashtags(text: str) -> tuple[str, ...]:
     """Read a bounded hashtag line from the end of a copy without changing the copy."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]

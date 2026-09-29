@@ -28,7 +28,7 @@ from app.application.ports.copy_generation import (
 )
 from app.application.services.copy_generation import (
     BRAND_ROTATION_CLAIM_LIMIT,
-    BRAND_ROTATION_GENERATOR_PROMPT_VERSION,
+    BRAND_ROTATION_GENERATOR_PROMPT_VERSIONS,
     BRAND_ROTATION_LOOKBACK_DAYS,
     BrandRagContextRetriever,
     _compact_brand_text,
@@ -39,6 +39,7 @@ from app.application.services.quality_report import most_repeated_brand_phrase
 from app.core.config import get_settings
 from app.domain.copy_generation import (
     ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION,
+    HEADLINE_HOOK_COPY_RULE_VERSIONS,
     STANDALONE_HEADING_COPY_RULE_VERSIONS,
     LockedTopicContext,
     apply_copy_audit_policy,
@@ -61,11 +62,27 @@ from app.infrastructure.db.session import create_engine, create_session_factory
 from app.schemas.copy_generation import (
     append_copy_news_source_footer,
     normalize_copy_standalone_heading,
+    render_headline_hook_copy,
 )
 from pydantic import SecretStr
 from sqlalchemy import select, text
 
 REPORT_VERSION = "copy-replay-v1"
+# Each generator prompt runs with the auditor and preview rule it shipped with.
+_PAIRED_VERSIONS = {
+    "moments-generator-v24-standalone-heading": (
+        "moments-auditor-v19-standalone-heading",
+        "preview-v12-standalone-heading-advisory",
+    ),
+    "moments-generator-v25-brand-rotation": (
+        "moments-auditor-v19-standalone-heading",
+        "preview-v12-standalone-heading-advisory",
+    ),
+    "moments-generator-v26-headline-hook": (
+        "moments-auditor-v20-headline-hook",
+        "preview-v13-headline-hook",
+    ),
+}
 
 
 @dataclass(slots=True)
@@ -216,8 +233,16 @@ async def run_replay(
         base_bundle = build_copy_version_bundle(settings, scoring_profile="preview")
         results = []
         for prompt_version in prompt_versions:
-            bundle = replace(base_bundle, generator_prompt_version=prompt_version)
-            rotation = prompt_version == BRAND_ROTATION_GENERATOR_PROMPT_VERSION
+            auditor_version, rule_version = _PAIRED_VERSIONS.get(
+                prompt_version, (base_bundle.auditor_prompt_version, base_bundle.rule_version)
+            )
+            bundle = replace(
+                base_bundle,
+                generator_prompt_version=prompt_version,
+                auditor_prompt_version=auditor_version,
+                rule_version=rule_version,
+            )
+            rotation = prompt_version in BRAND_ROTATION_GENERATOR_PROMPT_VERSIONS
             result = VariantResult(prompt_version=prompt_version)
             used_claims: list[str] = []
             used_chunks: list[UUID] = []
@@ -247,7 +272,14 @@ async def run_replay(
                 evidence = topic.evidence[0]
                 draft = generated.draft.model_copy(
                     update={
-                        "copywriting": append_copy_news_source_footer(
+                        "copywriting": render_headline_hook_copy(
+                            generated.draft.copywriting,
+                            title=topic.title or "",
+                            source_name=evidence.source_name,
+                            source_url=evidence.source_url,
+                        )
+                        if bundle.rule_version in HEADLINE_HOOK_COPY_RULE_VERSIONS
+                        else append_copy_news_source_footer(
                             normalize_copy_standalone_heading(generated.draft.copywriting),
                             source_name=evidence.source_name,
                             source_url=evidence.source_url,

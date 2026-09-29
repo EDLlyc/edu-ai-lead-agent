@@ -19,7 +19,6 @@ from app.application.ports.copy_generation import (
 )
 from app.application.services.copy_generation import (
     BRAND_ROTATION_GENERATOR_PROMPT_VERSION,
-    STANDALONE_HEADING_AUDITOR_PROMPT_VERSION,
     STANDALONE_HEADING_GENERATOR_PROMPT_VERSION,
     CopyGenerationExecutor,
     build_auditor_prompt,
@@ -71,6 +70,8 @@ from app.schemas.copy_generation import (
     has_copy_paragraph_format,
     has_copy_standalone_heading,
     normalize_copy_standalone_heading,
+    render_headline_hook_copy,
+    split_news_headline,
 )
 from structlog.testing import capture_logs
 
@@ -91,6 +92,19 @@ def _historical_settings(**overrides: object) -> Settings:
             **overrides,
         }
     )
+
+
+# The v12/v25 standalone-heading format (default until 2026-09-29); still valid for stored runs.
+_STANDALONE_VERSIONS = {
+    "copy_generator_prompt_version": "moments-generator-v25-brand-rotation",
+    "copy_auditor_prompt_version": "moments-auditor-v19-standalone-heading",
+    "copy_rule_version": "moments-rules-v12-standalone-heading-advisory",
+    "copy_preview_policy_version": "preview-v12-standalone-heading-advisory",
+}
+
+
+def _standalone_settings(**overrides: object) -> Settings:
+    return Settings.model_validate({**_STANDALONE_VERSIONS, **overrides})
 
 
 def _topic(
@@ -748,18 +762,18 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
         scoring_profile="preview",
     )
 
-    assert preview.rule_version == "preview-v12-standalone-heading-advisory"
-    assert preview.generator_prompt_version == BRAND_ROTATION_GENERATOR_PROMPT_VERSION
-    assert preview.auditor_prompt_version == STANDALONE_HEADING_AUDITOR_PROMPT_VERSION
+    assert preview.rule_version == "preview-v13-headline-hook"
+    assert preview.generator_prompt_version == "moments-generator-v26-headline-hook"
+    assert preview.auditor_prompt_version == "moments-auditor-v20-headline-hook"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
-    assert strict.rule_version == "moments-rules-v12-standalone-heading-advisory"
-    assert manual_strict.rule_version == "moments-rules-v12-standalone-heading-advisory"
-    assert manual_preview.rule_version == "preview-v12-standalone-heading-advisory"
+    assert strict.rule_version == "moments-rules-v13-headline-hook"
+    assert manual_strict.rule_version == "moments-rules-v13-headline-hook"
+    assert manual_preview.rule_version == "preview-v13-headline-hook"
 
 
 def test_new_default_prompt_preserves_exact_claims_and_source_boundary() -> None:
-    bundle = build_copy_version_bundle(Settings())
+    bundle = build_copy_version_bundle(_standalone_settings())
     topic = _topic()
     brand = _brand()
     prompt = build_generator_prompt(
@@ -888,7 +902,7 @@ def test_standalone_footer_removes_partial_model_source_metadata(
 async def test_new_default_executor_normalizes_heading_without_repair(profile: str) -> None:
     topic = replace(_topic(), scoring_profile=profile)
     bundle = build_copy_version_bundle(
-        Settings(
+        _standalone_settings(
             ai_provider_mode="fake", ai_chat_model="fake-copy", content_scoring_profile=profile
         )
     )
@@ -1556,7 +1570,9 @@ async def test_advisory_only_format_repair_provider_failure_accepts_original_dra
 
 @pytest.mark.asyncio
 async def test_new_rule_accepts_editorial_warnings_without_spending_repair() -> None:
-    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    bundle = build_copy_version_bundle(
+        _standalone_settings(ai_provider_mode="fake", ai_chat_model="fake-copy")
+    )
     repository = FakeCopyRepository(_topic(), version_bundle=bundle)
     generator = ScriptedGenerator((_contract_draft(hanzi_count=270, emojis=("🧪",)),))
     auditor = AdvisoryRejectingAuditor()
@@ -1635,7 +1651,9 @@ async def test_new_rule_repairs_hard_evidence_error_once() -> None:
 
 @pytest.mark.asyncio
 async def test_new_preview_rule_keeps_privacy_injection_and_marketing_hard() -> None:
-    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    bundle = build_copy_version_bundle(
+        _standalone_settings(ai_provider_mode="fake", ai_chat_model="fake-copy")
+    )
     repository = FakeCopyRepository(_topic(), version_bundle=bundle)
     generator = PreviewContentWarningOnlyGenerator()
     executor = CopyGenerationExecutor(
@@ -1672,7 +1690,7 @@ def test_prompt_data_cannot_close_its_delimited_section() -> None:
         run_id=RUN_ID,
         topic=replace(topic, evidence=(evidence,)),
         brand_context=_brand(),
-        version_bundle=build_copy_version_bundle(Settings()),
+        version_bundle=build_copy_version_bundle(_standalone_settings()),
         draft_version=1,
         max_output_tokens=2048,
     )
@@ -1888,7 +1906,7 @@ def test_v19_repair_prompt_includes_only_bounded_failed_exact_claims_and_escapes
         run_id=RUN_ID,
         topic=_topic(),
         brand_context=_brand(),
-        version_bundle=build_copy_version_bundle(Settings()),
+        version_bundle=build_copy_version_bundle(_standalone_settings()),
         draft_version=2,
         max_output_tokens=2048,
         repair_issues=issues,
@@ -2197,7 +2215,9 @@ def test_new_rule_preserves_brand_and_safety_errors(rule_version: str) -> None:
 
 @pytest.mark.asyncio
 async def test_new_rule_brand_value_error_uses_one_repair_then_review() -> None:
-    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    bundle = build_copy_version_bundle(
+        _standalone_settings(ai_provider_mode="fake", ai_chat_model="fake-copy")
+    )
     repository = FakeCopyRepository(_topic(), version_bundle=bundle)
     generator = CountingGenerator()
     auditor = BrandValueErrorAuditor()
@@ -3035,7 +3055,7 @@ def test_brand_rotation_orders_fresh_cards_per_topic() -> None:
 
 
 def test_brand_rotation_prompt_lists_recent_claims_and_old_prompt_is_unchanged() -> None:
-    rotation = build_copy_version_bundle(Settings())
+    rotation = build_copy_version_bundle(_standalone_settings())
     previous = replace(
         rotation, generator_prompt_version=STANDALONE_HEADING_GENERATOR_PROMPT_VERSION
     )
@@ -3068,7 +3088,9 @@ def test_brand_rotation_prompt_lists_recent_claims_and_old_prompt_is_unchanged()
 
 @pytest.mark.asyncio
 async def test_brand_rotation_executor_passes_recent_usage_to_retrieval_and_prompt() -> None:
-    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    bundle = build_copy_version_bundle(
+        _standalone_settings(ai_provider_mode="fake", ai_chat_model="fake-copy")
+    )
     repository = FakeCopyRepository(_topic(), version_bundle=bundle)
     repository.recent_usage = RecentBrandUsage(
         chunk_ids=(uuid4(),), claim_texts=("赛先生用思维链教学法引导孩子",)
@@ -3110,3 +3132,172 @@ async def test_previous_prompt_version_does_not_read_recent_brand_usage() -> Non
     assert repository.status == "accepted"
     assert repository.recent_usage_calls == 0
     assert retriever.recent_usages == [None]
+
+
+TEMPLATE_TITLE = "世界技能大赛标准引领职教课堂 技能人才培养提质进行时"
+TEMPLATE_HOOK = "当职业教育的标准走进课堂，正好和孩子聊聊学东西到底该追求什么✨"
+
+
+def test_headline_hook_renders_the_operator_template_exactly() -> None:
+    rendered = render_headline_hook_copy(
+        f"🔎【小赛洞察】\n{TEMPLATE_HOOK}\n\n#赛先生科学 #AI教育 #科学思维",
+        title=TEMPLATE_TITLE,
+        source_name="光明网教育",
+        source_url="https://edu.gmw.cn/2026-09/28/content_39023521.htm",
+    )
+
+    assert rendered == (
+        "🔎【小赛洞察】\n"
+        "世界技能大赛标准引领职教课堂\n"
+        "「技能人才培养提质进行时」\n"
+        "当职业教育的标准走进课堂，正好和孩子聊聊学东西到底该追求什么✨\n"
+        "新闻来源：光明网教育\n"
+        "原文链接：https://edu.gmw.cn/2026-09/28/content_39023521.htm\n"
+        "#赛先生科学 #AI教育 #科学思维"
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "lines"),
+    (
+        (TEMPLATE_TITLE, ("世界技能大赛标准引领职教课堂", "「技能人才培养提质进行时」")),
+        (
+            "用技能为青春加冕——第48届世界技能大赛中国代表团创历史最好成绩",
+            ("用技能为青春加冕", "「第48届世界技能大赛中国代表团创历史最好成绩」"),
+        ),
+        ("【“十五五”开好局起好步】锚定蓝图 加快建设教育强国", ("锚定蓝图", "「加快建设教育强国」")),
+        ("AI时代，为啥还要拼技能？世赛现场即答案", ("AI时代，为啥还要拼技能？世赛现场即答案",)),
+        ("全球最大打桩船启航赴巴西", ("全球最大打桩船启航赴巴西",)),
+        (
+            "中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》",
+            ("中共中央办公厅 国务院办公厅印发《关于分类推进高校改革的意见》",),
+        ),
+    ),
+)
+def test_news_headline_is_split_into_main_and_sub_line(title: str, lines: tuple[str, ...]) -> None:
+    assert split_news_headline(title) == lines
+
+
+def _headline_hook_draft(topic: LockedTopicContext, hook: str) -> MaterialDraft:
+    base = _contract_draft()
+    evidence = topic.evidence[0]
+    return base.model_copy(
+        update={
+            "copywriting": render_headline_hook_copy(
+                f"{hook}\n#赛先生科学 #科学思维",
+                title=topic.title or "",
+                source_name=evidence.source_name,
+                source_url=evidence.source_url,
+            ),
+            "claims": (
+                DraftClaim(
+                    id="fact-1",
+                    text=evidence.exact_quote,
+                    kind="external_fact",
+                    evidence_ids=(evidence.evidence_id,),
+                ),
+                DraftClaim(
+                    id="brand-1",
+                    text="赛先生重视科学精神、好奇心、思考力和创造力。",
+                    kind="brand_statement",
+                    brand_chunk_ids=(BRAND_CHUNK_ID,),
+                ),
+            ),
+        }
+    )
+
+
+def test_headline_hook_validation_checks_the_hook_not_the_headline() -> None:
+    topic = replace(_topic(), title="全球最大打桩船启航赴巴西 研究团队发布进展")
+    draft = _headline_hook_draft(topic, "当大船远航去造桥，正好和孩子聊聊工程师怎么解决难题🚢")
+
+    issues = validate_material_draft(
+        draft, topic=topic, brand_context=_brand(), rule_version="preview-v13-headline-hook"
+    )
+    codes = {issue.code for issue in issues}
+
+    assert draft.copywriting.startswith("🔎【小赛洞察】\n全球最大打桩船启航赴巴西\n")
+    # Facts and the brand sentence are long-image material, not required in the Moments text.
+    assert "claim_not_in_copy" not in codes
+    # "全球最大" is the verbatim headline, not generated prose.
+    assert "unverified_superlative" not in codes
+    assert "copy_paragraph_format" not in codes
+    assert not [issue for issue in issues if issue.severity == "error"]
+
+
+def test_headline_hook_validation_flags_a_long_hook_and_missing_material() -> None:
+    topic = _topic()
+    draft = _headline_hook_draft(topic, "这是一句非常长的引导语" * 6 + "✨").model_copy(
+        update={"claims": _contract_draft().claims[:1]}
+    )
+
+    issues = validate_material_draft(
+        draft, topic=topic, brand_context=_brand(), rule_version="preview-v13-headline-hook"
+    )
+    by_code = {issue.code: issue for issue in issues}
+
+    assert by_code["copy_length"].severity == "warning"
+    assert by_code["long_image_material_missing"].severity == "warning"
+
+
+def test_headline_hook_prompts_ask_for_hook_and_material_only() -> None:
+    bundle = build_copy_version_bundle(Settings())
+    topic = _topic()
+    prompt = build_generator_prompt(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=_brand(),
+            version_bundle=bundle,
+            draft_version=1,
+            max_output_tokens=2048,
+            recent_brand_claims=("赛先生用思维链教学法引导孩子",),
+        )
+    )
+    auditor_prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=topic,
+            brand_context=_brand(),
+            draft=_headline_hook_draft(topic, TEMPLATE_HOOK),
+            version_bundle=bundle,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert "copywriting只输出两行" in prompt
+    assert "正文逻辑必须回答两个问题" not in prompt
+    assert "REQUIRED_EXACT_CLAIMS" not in prompt
+    assert "<RECENT_BRAND_CLAIMS>" in prompt
+    assert "不得因此报learning_value或brand_value" in auditor_prompt
+    verdict = apply_copy_audit_policy(
+        AuditVerdict(
+            accepted=False,
+            issues=(CopyIssue(code="brand_value", message="没有解释为什么在赛先生学"),),
+        ),
+        rule_version=bundle.rule_version,
+    )
+    assert verdict.accepted
+
+
+@pytest.mark.asyncio
+async def test_default_executor_delivers_the_headline_hook_format() -> None:
+    bundle = build_copy_version_bundle(Settings(ai_provider_mode="fake", ai_chat_model="fake-copy"))
+    topic = _topic()
+    repository = FakeCopyRepository(topic, version_bundle=bundle)
+    executor = CopyGenerationExecutor(
+        repository=repository,
+        brand_retriever=FakeBrandRetriever(),
+        generator=CountingGenerator(),
+        auditor=CountingAuditor(),
+        settings=Settings(),
+    )
+
+    assert await executor.execute_next("headline-hook-worker") is True
+    copywriting = repository.drafts[-1].draft.copywriting
+    lines = copywriting.splitlines()
+    assert repository.status == "accepted"
+    assert lines[:2] == ["🔎【小赛洞察】", topic.title]
+    assert lines[-3] == f"新闻来源：{topic.evidence[0].source_name}"
+    assert "" not in lines

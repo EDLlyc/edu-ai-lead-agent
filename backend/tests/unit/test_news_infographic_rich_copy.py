@@ -1440,3 +1440,27 @@ def test_v2_requires_anchored_headings_and_distinct_top_news_interpretation() ->
         validate_moments_rich_proposal(
             case, binding, seed, MomentsRichProposal.model_validate(payload)
         )
+
+
+def test_headline_hook_copy_keeps_long_image_material_outside_the_moments_text() -> None:
+    case = _case()
+    hook = "当新闻走进课堂，正好和孩子聊聊学东西到底该追求什么✨"
+    payload = case.model_dump(mode="python")
+    payload["copy_prompt_version"] = "moments-generator-v26-headline-hook"
+    payload["copywriting"] = (
+        f"🔎【小赛洞察】\n{case.topic_title}\n{hook}\n{case.source_footer}\n#赛先生科学 #科学思维"
+    )
+    headline_hook = ValidatedInfographicInput.model_validate(payload)
+    binding = _binding(headline_hook)
+
+    seed = build_moments_rich_seed(headline_hook, binding)
+    plan = build_moments_rich_draft_plan(headline_hook, binding, seed, advisory_layout=True)
+
+    assert seed.body_text_review_only == f"{case.topic_title}\n{hook}"
+    # Facts and brand sentences are not in the text but stay available for the long image.
+    assert seed.fact_claim_ids == () and seed.brand_claim_ids == ()
+    assert {span.kind for span in seed.available_bound_claims} == {
+        "external_fact",
+        "brand_statement",
+    }
+    assert plan.brand_heading.startswith("教学启发：")
