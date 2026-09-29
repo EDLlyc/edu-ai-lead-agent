@@ -150,3 +150,7 @@ Open gaps kept visible in `canonical-report.md`:
   the switch (image `…@sha256:10a455e78a9bb4c971926384ffd3108d482402b16a9107e83049a0ee4587c233`;
   backups `*.before-f2eaa42-20260929T112126`). Operator requests (teacher): copy template and
   图片上不放链接.
+- 09-29 11:42 footer v6 `cd2cb51` (image `…@sha256:e6b3ebf9a87d05c589334f42afad20b7c432aaf47ffd8683817188e946c673cf`;
+  backups `*.before-cd2cb51-20260929T114150`): operator asked to also drop 新闻日期/新闻来源 — delivered
+  long images carry no footer text and end on the model's reserved background band; advisory footer
+  OCR recorded as footer_ocr_unavailable; send gates accept v6/v5/v4 (byte-identical to originals).
