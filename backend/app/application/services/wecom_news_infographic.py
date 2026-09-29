@@ -95,6 +95,7 @@ from app.application.services.wecom_infographic_quality import (
     normalize_advisory_warnings,
 )
 from app.core.config import Settings
+from app.domain.content_slots import HUMAN_PICK_TRIGGER
 from app.domain.news_infographic import (
     InfographicInputError,
     ValidatedInfographicInput,
@@ -102,6 +103,7 @@ from app.domain.news_infographic import (
 )
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
+    ContentSlotRunModel,
     ContentSlotSelectionModel,
     CopyDraftVersionModel,
     CopyGenerationRunModel,
@@ -705,18 +707,46 @@ class NewsInfographicProducer:
             ):
                 return False
             if stage == "image":
-                # A transaction-scoped date lock makes the nine-call ceiling durable across
+                # A transaction-scoped date lock makes the daily ceiling durable across
                 # all producer processes, including simultaneous morning/noon/evening workers.
                 await session.execute(
                     select(func.pg_advisory_xact_lock(9947, job.business_date.toordinal()))
                 )
+                # An operator human pick neither uses nor waits for the scheduled allowance.
+                human_pick = (
+                    await session.scalar(
+                        select(ContentSlotRunModel.trigger)
+                        .join(
+                            ContentSlotSelectionModel,
+                            ContentSlotSelectionModel.run_id == ContentSlotRunModel.id,
+                        )
+                        .where(ContentSlotSelectionModel.id == job.content_slot_selection_id)
+                    )
+                ) == HUMAN_PICK_TRIGGER
+                human_lane = ContentSlotRunModel.trigger == HUMAN_PICK_TRIGGER
                 count = await session.scalar(
-                    select(func.count(NewsInfographicJobModel.id)).where(
+                    select(func.count(NewsInfographicJobModel.id))
+                    .join(
+                        ContentSlotSelectionModel,
+                        NewsInfographicJobModel.content_slot_selection_id
+                        == ContentSlotSelectionModel.id,
+                    )
+                    .join(
+                        ContentSlotRunModel,
+                        ContentSlotSelectionModel.run_id == ContentSlotRunModel.id,
+                    )
+                    .where(
                         NewsInfographicJobModel.business_date == job.business_date,
                         NewsInfographicJobModel.image_intent_at.is_not(None),
+                        human_lane if human_pick else ~human_lane,
                     )
                 )
-                if count is None or count >= 9:
+                limit = (
+                    self._settings.wecom_infographic_human_pick_daily_image_limit
+                    if human_pick
+                    else self._settings.wecom_infographic_daily_image_limit
+                )
+                if count is None or count >= limit:
                     return False
             field = {
                 "copy": "copy_intent_at",

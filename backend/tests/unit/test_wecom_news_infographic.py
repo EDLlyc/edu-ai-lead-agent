@@ -251,6 +251,12 @@ def _enabled_settings() -> Settings:
     )
 
 
+def test_daily_image_allowance_leaves_room_beyond_nine_scheduled_posters() -> None:
+    defaults = Settings(_env_file=None)
+    assert defaults.wecom_infographic_daily_image_limit == 12
+    assert defaults.wecom_infographic_human_pick_daily_image_limit == 30
+
+
 def test_feature_is_default_off_and_requires_group_and_quality_gates() -> None:
     defaults = Settings(_env_file=None)
     assert not defaults.wecom_infographic_producer_enabled

@@ -1068,8 +1068,8 @@ async def test_three_siblings_reconcile_independently_and_unknown_is_not_replaye
         assert unknown_projection.supplement_status == "result_unknown"
         assert [item.result_state for item in unknown_projection.attempts] == ["unknown"]
 
-    # The nine-call date ceiling is enforced by a PostgreSQL advisory lock and the
-    # committed intent count, independently of which slot/package supplied the rows.
+    # The date ceiling is enforced by a PostgreSQL advisory lock and the committed intent
+    # count of the scheduled slots, independently of which slot/package supplied the rows.
     over_limit_id = None
     over_limit_token = None
     async with integration_context.session_factory() as session:
@@ -1125,7 +1125,14 @@ async def test_three_siblings_reconcile_independently_and_unknown_is_not_replaye
                     over_limit_id, over_limit_token = candidate.id, token
         await session.commit()
     assert over_limit_id is not None and over_limit_token is not None
-    assert not await trial_producer._intent(over_limit_id, over_limit_token, "image", "b" * 64)
+    quota_producer = NewsInfographicProducer(
+        session_factory=integration_context.session_factory,
+        image_store=_Objects(generated),
+        models=fake_models,
+        settings=settings.model_copy(update={"wecom_infographic_daily_image_limit": 9}),
+        clock=lambda: now,
+    )
+    assert not await quota_producer._intent(over_limit_id, over_limit_token, "image", "b" * 64)
     async with integration_context.session_factory() as session:
         stale = await session.get(NewsInfographicJobModel, over_limit_id)
         assert stale is not None

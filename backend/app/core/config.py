@@ -199,6 +199,10 @@ class Settings(BaseSettings):
     wecom_infographic_evening_enabled: bool = False
     wecom_infographic_max_ordinal: int = Field(default=1, ge=1, le=3)
     wecom_infographic_append_minutes: int = Field(default=30, ge=1, le=60)
+    # Image calls per business date for the scheduled slots. Operator human picks do not use
+    # this allowance; their own number is only a guard against a runaway caller.
+    wecom_infographic_daily_image_limit: int = Field(default=12, ge=1, le=30)
+    wecom_infographic_human_pick_daily_image_limit: int = Field(default=30, ge=1, le=100)
 
     brand_upload_max_bytes: int = Field(
         default=25 * 1024 * 1024,
