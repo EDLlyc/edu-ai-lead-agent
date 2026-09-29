@@ -137,3 +137,16 @@ Open gaps kept visible in `canonical-report.md`:
   detail snapshot (page HTML changed) → "source image detail lineage is invalid" aborted the job.
   Images now follow only the candidate's own snapshot. Integration test reproduces the production
   error without the fix.
+- 09-29 11:00 acquisition fix verified: noon fetch — bnu-news, cas-research (7 new), stdaily-tech (7 new)
+  all succeeded; all 10 sources succeeded.
+- 09-29 11:02 Moments headline-hook template `73fbc5c` (image `…@sha256:4244fb81…`; backups
+  `*.before-73fbc5c-20260929T110241`): 🔎【小赛洞察】 + headline (main + 「sub」) + one hook + source +
+  tags; facts/brand stay structured long-image material. Noon 09-29 was the first run: 2 accepted,
+  1 `invalid_provider_output` (model added an extra claim field), long images 1 ready / 1
+  `moments_preflight_failed` (pre-existing layout limitation). 72c9ce1: no split at a space before a
+  quoted term.
+- 09-29 11:15 no link on delivered long images `33dcfd8` (footer-v5-no-link; image `…3f2af5b3…`),
+  11:21 `f2eaa42` supplement gate also accepts the byte-identical footer-v4 for posters made before
+  the switch (image `…@sha256:10a455e78a9bb4c971926384ffd3108d482402b16a9107e83049a0ee4587c233`;
+  backups `*.before-f2eaa42-20260929T112126`). Operator requests (teacher): copy template and
+  图片上不放链接.
