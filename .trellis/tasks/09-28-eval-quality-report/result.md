@@ -161,3 +161,11 @@ Open gaps kept visible in `canonical-report.md`:
   98/99 (remaining refusal = real source mismatch), copy step 39/40 → 60/60 (3 repaired). Preview
   of the 09-29 noon#2 poster (refused at noon) generated with the new path and reviewed.
   Not changed: daily image ceiling (9 image intents per day, shared with human picks).
+- 09-29 15:53 daily long-image allowance `80018cf` (branch `fix/infographic-daily-ceiling`):
+  scheduled limit is a setting, default 12 (was a fixed 9); posters of operator human picks are
+  neither counted nor skipped by it and only have a runaway guard of 30. Operator decisions:
+  raise to 12 (this session) and 人工加推不受限 (exhibit session). Production before the change:
+  the ceiling was never hit, no human-pick runs yet. Overlay image built and smoke-tested on the
+  server: `…@sha256:b3ee53d5b055633ae81aa793ceb6d79beac314b7041458ee25e9c7c03b0ad963` = 52411a2d +
+  wecom_news_infographic.py + config.py. **Not switched yet** — production still runs 52411a2d;
+  the service switch waits for the operator's go-ahead.

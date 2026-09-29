@@ -32,6 +32,11 @@
   leading clause, unusable model text is repaired or replaced by a neutral sentence and recorded
   as a warning. Only lineage (package / source / claim), ineligible packages, control characters,
   provider identity, raster checks and the daily image ceiling still stop a poster.
+- **Daily long-image allowance** (2026-09-29): the scheduled slots share
+  `WECOM_INFOGRAPHIC_DAILY_IMAGE_LIMIT` paid image calls per business date (default 12; nine
+  posters plus room for re-versioned packages). Operator human picks are outside it: their
+  posters are neither counted nor skipped by it. `WECOM_INFOGRAPHIC_HUMAN_PICK_DAILY_IMAGE_LIMIT`
+  (default 30) is only a guard against a runaway caller, not a business limit.
 - Changing this standard needs the operator's approval.
 
 ## Work not yet on mainline
