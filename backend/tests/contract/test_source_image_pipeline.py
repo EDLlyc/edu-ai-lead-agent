@@ -407,3 +407,23 @@ async def test_unknown_image_failure_is_rethrown_and_leaves_intent_retryable() -
         )
 
     assert repository.failures == 0
+
+
+def test_images_only_follow_the_candidate_own_detail_snapshot() -> None:
+    from app.application.ports.acquisition import PersistedCandidate
+    from app.application.services.execute_acquisition import owns_detail_snapshot
+    from app.domain.enums import ObservationOutcome
+
+    snapshot, older = uuid4(), uuid4()
+    assert owns_detail_snapshot(PersistedCandidate(uuid4(), ObservationOutcome.NEW), snapshot)
+    # Re-fetch of byte-identical HTML: same snapshot, so an interrupted image step can resume.
+    assert owns_detail_snapshot(
+        PersistedCandidate(uuid4(), ObservationOutcome.UNCHANGED, snapshot), snapshot
+    )
+    # Known article whose page HTML changed, and another source's exact duplicate: skip.
+    assert not owns_detail_snapshot(
+        PersistedCandidate(uuid4(), ObservationOutcome.UNCHANGED, older), snapshot
+    )
+    assert not owns_detail_snapshot(
+        PersistedCandidate(uuid4(), ObservationOutcome.EXACT_DUPLICATE, older), snapshot
+    )

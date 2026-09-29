@@ -38,6 +38,9 @@ class CursorState:
 class PersistedCandidate:
     candidate_id: UUID
     outcome: ObservationOutcome
+    # The detail snapshot the candidate was first stored from; a re-fetch of a page whose HTML
+    # changed (counters, timestamps) yields a different snapshot for the same unchanged text.
+    primary_snapshot_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

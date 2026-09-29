@@ -1233,7 +1233,7 @@ class PostgresAcquisitionRepository:
                 snapshot_id=snapshot_id,
                 fetched_at=fetched_at,
             )
-            return PersistedCandidate(candidate.id, outcome)
+            return PersistedCandidate(candidate.id, outcome, candidate.primary_snapshot_id)
 
     async def reserve_source_image(
         self,

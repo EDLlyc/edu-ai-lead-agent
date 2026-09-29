@@ -13,6 +13,7 @@ from app.application.ports.acquisition import (
     AcquisitionRepository,
     ClaimedJob,
     Fetcher,
+    PersistedCandidate,
     SnapshotStore,
     SourceImageFetcher,
 )
@@ -73,6 +74,20 @@ class _EditorialDiscoveryEvaluation:
 class _TieredDiscoveryEvaluation:
     relevance: ScienceTechEditorialResult
     product_fit: ProductMatrixFitResult
+
+
+def owns_detail_snapshot(persisted: PersistedCandidate, snapshot_id: UUID) -> bool:
+    """Whether this detail snapshot is the one the candidate's images belong to.
+
+    Source images hang off the candidate's primary detail snapshot. A known article whose page
+    HTML changed since its first fetch, or another source's exact duplicate, must not re-run
+    image discovery against the new snapshot: that lineage check raised `conflict` and aborted
+    the whole source job (bnu-news / cas-research / stdaily-tech since 2026-09-24).
+    """
+
+    return (
+        persisted.outcome is ObservationOutcome.NEW or persisted.primary_snapshot_id == snapshot_id
+    )
 
 
 class AcquisitionExecutor:
@@ -577,7 +592,11 @@ class AcquisitionExecutor:
                         http_status=detail_response.status_code,
                         metadata=relevance_metadata,
                     )
-                    if self._source_image_fetcher is not None and document.source_images:
+                    if (
+                        self._source_image_fetcher is not None
+                        and document.source_images
+                        and owns_detail_snapshot(persisted, snapshot_id)
+                    ):
                         image_bytes = await self._acquire_source_images(
                             claimed=claimed,
                             lease_lost=lease_lost,
