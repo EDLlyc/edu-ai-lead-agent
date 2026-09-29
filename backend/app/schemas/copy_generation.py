@@ -52,6 +52,9 @@ _HEADLINE_COLUMN_PREFIX = re.compile(r"^\s*【[^】]{0,40}】\s*")
 _HEADLINE_SHORT_COLUMN = re.compile(r"^[^丨|\uff5c\s]{1,8}\s*[丨|\uff5c]\s*")
 _HEADLINE_BREAKS = (re.compile(r"\s*(?:——|—{2}|--)\s*"), re.compile(r"\s+"))
 _HEADLINE_PART_MIN_CHARS = 4
+_HEADLINE_SUB_MIN_CHARS = 5
+_HEADLINE_QUOTE_OPENERS = ("\u201c", '"', "\u300c", "\u300e", "\u300a", "\u2018", "'")
+_HEADLINE_NON_WORD = re.compile(r"[\W_]+", re.UNICODE)
 # "中共中央办公厅 国务院办公厅印发《…》": the space separates issuing bodies, not a sub-title.
 _HEADLINE_ISSUING_BODY = re.compile(
     r"^(?:中共中央|国务院|中央军委|全国人大常委会|教育部|科技部|工业和信息化部|国家发展改革委)"
@@ -70,6 +73,9 @@ def split_news_headline(title: str) -> tuple[str, ...]:
             len(parts) == 2
             and all(len(part.strip()) >= _HEADLINE_PART_MIN_CHARS for part in parts)
             and not _HEADLINE_ISSUING_BODY.match(parts[0].strip())
+            # A space before a quoted term (着力培养 “三有” 人才) is typography, not a break.
+            and not parts[1].lstrip().startswith(_HEADLINE_QUOTE_OPENERS)
+            and len(_HEADLINE_NON_WORD.sub("", parts[1])) >= _HEADLINE_SUB_MIN_CHARS
         ):
             return parts[0].strip(), f"「{parts[1].strip()}」"
     return (text,)
