@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.wecom import WeComDeliveryClient, WeComProviderError
 from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
-from app.application.services.news_infographic_footer import render_exact_source_footer
+from app.application.services.news_infographic_footer import render_delivery_footer_variants
 from app.core.config import Settings
 from app.domain.news_infographic import InfographicInputError
 from app.domain.value_objects import stable_key
@@ -421,11 +421,19 @@ class WeComInfographicSupplementExecutor:
             ):
                 await self._record_unknown(supplement_id, token, "supplement_warning_changed")
                 return
-            footer = render_exact_source_footer(warned, _input_from_package(package), mode="formal")
-            if (
-                sha256(footer.image_bytes).hexdigest() != poster.footer_sha256
-                or len(footer.image_bytes) != poster.footer_byte_size
-                or prepare_infographic_group_jpeg(
+            footer = next(
+                (
+                    candidate
+                    for candidate in render_delivery_footer_variants(
+                        warned, _input_from_package(package), mode="formal"
+                    )
+                    if sha256(candidate.image_bytes).hexdigest() == poster.footer_sha256
+                    and len(candidate.image_bytes) == poster.footer_byte_size
+                ),
+                None,
+            )
+            if footer is None or (
+                prepare_infographic_group_jpeg(
                     footer.image_bytes, max_bytes=self._settings.wecom_group_max_image_bytes
                 )
                 != body

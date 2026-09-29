@@ -173,8 +173,88 @@ def _draw_phone_readable_footer(
     return ()
 
 
+def _draw_legacy_link_footer(
+    draw: ImageDraw.ImageDraw,
+    case: ValidatedInfographicInput,
+    font_bytes: bytes,
+    *,
+    mode: Literal["test", "formal"],
+) -> tuple[str, ...]:
+    """footer-v4 (with the original link), kept only to verify posters produced before v5."""
+    metadata_font = _load_font(font_bytes, 30)
+    notice_font = _load_font(font_bytes, 29)
+    label_font = _load_font(font_bytes, 28)
+    url_font = _load_font(font_bytes, 34)
+    url_x = 206 if mode == "test" else 48
+    lines = _wrap_exact_url(
+        case.source_url,
+        url_font,
+        1056,
+        first_line_width=1104 - url_x,
+        prefer_path_boundary=True,
+    )
+    ink = "#164777"
+    _draw_fitted(
+        draw,
+        f"新闻日期：{case.source_date.isoformat()}",
+        x=48,
+        y=1870,
+        right=398,
+        bottom=1905,
+        font=metadata_font,
+        fill=ink,
+    )
+    _draw_fitted(
+        draw,
+        f"新闻来源：{case.source_name}",
+        x=414,
+        y=1870,
+        right=1104,
+        bottom=1905,
+        font=metadata_font,
+        fill=ink,
+    )
+    if mode == "test":
+        _draw_fitted(
+            draw,
+            "【测试消息】",
+            x=48,
+            y=1909,
+            right=1104,
+            bottom=1939,
+            font=notice_font,
+            fill=ink,
+        )
+    _draw_fitted(
+        draw,
+        "原文链接：",
+        x=48,
+        y=1942 if mode == "test" else 1909,
+        right=url_x - 6 if mode == "test" else 1104,
+        bottom=1979 if mode == "test" else 1939,
+        font=label_font,
+        fill=ink,
+    )
+    for index, line in enumerate(lines):
+        _draw_fitted(
+            draw,
+            line,
+            x=url_x if index == 0 else 48,
+            y=1940 + index * 45,
+            right=1104,
+            bottom=1983 + index * 45,
+            font=url_font,
+            fill="#075a9e",
+        )
+    return lines
+
+
 def _draw_exact_source_footer(
-    image: Image.Image, case: ValidatedInfographicInput, *, mode: FooterMode = "local"
+    image: Image.Image,
+    case: ValidatedInfographicInput,
+    *,
+    mode: FooterMode = "local",
+    legacy_link: bool = False,
 ) -> tuple[str, tuple[str, ...]]:
     """Use one layout for both the paid-call preflight and the final raster."""
     if not case.source_url or not case.source_name:
@@ -192,7 +272,8 @@ def _draw_exact_source_footer(
     draw.rectangle((0, FOOTER_TOP, 1151, FOOTER_TOP + 2), fill="#46bfe6")
     draw.rectangle((0, 2042, 1151, 2047), fill="#30afe1")
     if mode != "local":
-        return font_hash, _draw_phone_readable_footer(draw, case, font_bytes, mode=mode)
+        drawer = _draw_legacy_link_footer if legacy_link else _draw_phone_readable_footer
+        return font_hash, drawer(draw, case, font_bytes, mode=mode)
     ink = "#164777"
     _draw_fitted(
         draw,
@@ -258,7 +339,11 @@ def validate_exact_source_footer_layout(
 
 
 def render_exact_source_footer(
-    original_bytes: bytes, case: ValidatedInfographicInput, *, mode: FooterMode = "local"
+    original_bytes: bytes,
+    case: ValidatedInfographicInput,
+    *,
+    mode: FooterMode = "local",
+    legacy_link: bool = False,
 ) -> RenderedFooter:
     """Return a new PNG; the provider raster stays untouched and traceable."""
     if not original_bytes or len(original_bytes) > _MAX_IMAGE_BYTES:
@@ -276,7 +361,7 @@ def render_exact_source_footer(
             raise
         raise FooterRenderError("original image cannot be decoded") from exc
 
-    font_hash, lines = _draw_exact_source_footer(image, case, mode=mode)
+    font_hash, lines = _draw_exact_source_footer(image, case, mode=mode, legacy_link=legacy_link)
     result = BytesIO()
     image.save(result, format="PNG", optimize=False)
     body = result.getvalue()
@@ -285,4 +370,19 @@ def render_exact_source_footer(
         image_sha256=sha256(body).hexdigest(),
         font_sha256=font_hash,
         source_url_lines=lines,
+    )
+
+
+def render_delivery_footer_variants(
+    original_bytes: bytes, case: ValidatedInfographicInput, *, mode: FooterMode = "formal"
+) -> tuple[RenderedFooter, ...]:
+    """The current delivered footer first, then footer-v4 for posters produced before v5.
+
+    Send gates re-render a stored poster byte-for-byte; a poster produced with the linked v4
+    footer on the day of the switch must still verify instead of being withheld.
+    """
+
+    return (
+        render_exact_source_footer(original_bytes, case, mode=mode),
+        render_exact_source_footer(original_bytes, case, mode=mode, legacy_link=True),
     )

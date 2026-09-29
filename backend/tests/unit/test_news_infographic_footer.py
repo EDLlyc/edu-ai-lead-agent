@@ -21,6 +21,7 @@ from app.application.services.news_infographic_footer import (
     FOOTER_VERSION,
     FooterRenderError,
     delivery_footer_text,
+    render_delivery_footer_variants,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
@@ -268,3 +269,14 @@ async def test_offline_repair_rejects_checksum_path_and_input_tampering_before_w
     with pytest.raises(ValueError, match="does not match"):
         await local_main._run(args)
     assert not args.output_dir.exists()
+
+
+def test_send_gates_can_still_verify_posters_made_with_the_linked_v4_footer() -> None:
+    case = validate_package_snapshot(package_payload()).model_copy(
+        update={"source_url": _REAL_SOURCE_URL}
+    )
+    current, legacy = render_delivery_footer_variants(_png(), case)
+
+    assert current.source_url_lines == ()
+    assert "".join(legacy.source_url_lines) == _REAL_SOURCE_URL
+    assert current.image_sha256 != legacy.image_sha256
