@@ -1,0 +1,80 @@
+{
+  "pair_count": 20,
+  "pairs_sha256": "c433edb8b6ebe9505e17d271b73c7d1bcbfb30ff690232ed598fbeae8ffee6d6",
+  "report_version": "same-topic-golden-v1",
+  "rules": {
+    "candidate": {
+      "errors": [
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s02-university-classified-reform"
+        },
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s05-beidou-industry"
+        }
+      ],
+      "false_negative": 2,
+      "false_positive": 0,
+      "precision": 1.0,
+      "recall": 0.778,
+      "true_negative": 11,
+      "true_positive": 7
+    },
+    "current": {
+      "errors": [
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s02-university-classified-reform"
+        },
+        {
+          "error": "missed_same_topic",
+          "pair_id": "s05-beidou-industry"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d01-opening-speech-boilerplate"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d02-year-number"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d03-money-figures"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d04-summit-opening"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d05-issuing-bodies"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d06-bnu-name-a"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d07-bnu-name-b"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d08-high-quality-development"
+        },
+        {
+          "error": "false_same_topic",
+          "pair_id": "d09-column-prefix"
+        }
+      ],
+      "false_negative": 2,
+      "false_positive": 9,
+      "precision": 0.438,
+      "recall": 0.778,
+      "true_negative": 2,
+      "true_positive": 7
+    }
+  },
+  "same_topic_count": 9
+}

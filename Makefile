@@ -3,7 +3,7 @@ SHELL := /bin/bash
 CONDA_ENV ?= edu-ai
 PY_RUN ?= conda run --name $(CONDA_ENV)
 
-.PHONY: topic-golden-eval quality-report env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
+.PHONY: topic-golden-eval same-topic-eval eval quality-report env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	content-scheduler content-worker content-stack-up \
@@ -184,6 +184,12 @@ topic-rerank-eval:
 
 topic-golden-eval:
 	cd backend && $(PY_RUN) python -m evals.topic_golden.runner --check
+
+same-topic-eval:
+	cd backend && $(PY_RUN) python -m evals.same_topic_golden.runner --check
+
+# Offline evaluation suites that need no database or model access.
+eval: topic-golden-eval same-topic-eval brand-retrieval-eval
 
 quality-report:
 	cd backend && $(PY_RUN) python -m app.quality_report_main $(if $(DATE),--date $(DATE),)
