@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from datetime import date
+from uuid import uuid4
 
 import pytest
 from app.application.services.quality_report import (
@@ -14,14 +15,18 @@ from app.application.services.quality_report import (
     render_json,
     render_markdown,
 )
+from app.domain.content_slots import TopicFingerprint
 from app.domain.quality_report import (
     BrandStatementRow,
     BrandUsageRow,
+    DailyTrendRow,
     ModelUsage,
     QualitySnapshot,
+    RepeatedStoryRow,
     SameTopicPair,
     SelectedTopicRow,
     SlotRunRow,
+    topic_match_kind,
 )
 from app.infrastructure.db.quality_report import business_day_bounds
 
@@ -147,7 +152,7 @@ def test_json_output_is_complete_and_parseable() -> None:
     snapshot = _healthy()
     payload = json.loads(render_json(snapshot, assess(snapshot)))
 
-    assert payload["report_version"] == "production-quality-daily-v2"
+    assert payload["report_version"] == "production-quality-daily-v3"
     assert payload["overall_status"] == "正常"
     assert payload["snapshot"]["copy_first_pass_accepted"] == 4
 
@@ -219,7 +224,10 @@ def test_selection_audit_flags_negative_incident_and_same_day_same_topic() -> No
             summary="警方通报",
         )
     )
-    snapshot.same_topic_pairs = [SameTopicPair("evening#1", "evening#3")]
+    snapshot.same_topic_pairs = [
+        SameTopicPair("evening#1", "evening#3", kind="similar_article"),
+        SameTopicPair("noon#1", "noon#2", kind="title_phrase"),
+    ]
 
     findings = assess(snapshot)
     codes = {finding.code: finding for finding in findings}
@@ -229,7 +237,9 @@ def test_selection_audit_flags_negative_incident_and_same_day_same_topic() -> No
     assert "早间#3" in codes["selected_negative_incident"].message
     assert codes["selected_same_topic"].message == "同一天选中了同一件事：晚间#1 与 晚间#3。"
     assert "已被刑拘 ⚠负面事件" in markdown
-    assert "- 同题：晚间#1 与 晚间#3" in markdown
+    assert "- 同题：晚间#1 与 晚间#3\n" in markdown
+    # Headline-only matches are shown but never raised as a finding (low precision).
+    assert "- 同题：午间#1 与 午间#2（仅标题相似，可能误判）" in markdown
 
 
 def test_brand_phrase_repetition_and_todays_angles_are_reported() -> None:
@@ -267,3 +277,71 @@ def test_human_pick_topics_are_labelled_separately() -> None:
     markdown = render_markdown(snapshot, assess(snapshot))
 
     assert "  - 人工加推 [其他] 青少年科技创新大赛开幕" in markdown
+
+
+def test_topic_match_kind_orders_clauses() -> None:
+    event = uuid4()
+    same = TopicFingerprint(event_id=event, title="甲")
+    assert topic_match_kind(same, TopicFingerprint(event_id=event, title="乙")) == "same_event"
+    left = TopicFingerprint(event_id=uuid4(), title="火箭发射", embedding=(1.0, 0.0))
+    right = TopicFingerprint(event_id=uuid4(), title="大熊猫", embedding=(0.95, 0.05))
+    assert topic_match_kind(left, right) == "similar_article"
+    title_only = TopicFingerprint(event_id=uuid4(), title="世界技能大赛闭幕")
+    assert topic_match_kind(TopicFingerprint(uuid4(), "世界技能大赛开幕"), title_only) == (
+        "title_phrase"
+    )
+
+
+def test_repeat_of_a_delivered_story_and_off_topic_gov_priority_are_flagged() -> None:
+    snapshot = _healthy()
+    snapshot.selected_topics.append(
+        SelectedTopicRow(
+            "morning",
+            1,
+            "中美经贸磋商在美国纽约举行",
+            "qualified_government_yaowen_priority",
+            None,
+            "frontier_science_technology",
+        )
+    )
+    snapshot.repeated_stories = [
+        RepeatedStoryRow(
+            "morning#2",
+            "望宇登月服研制已攻克数十项关键技术",
+            date(2026, 9, 21),
+            "望宇登月服研制已攻克数十项关键技术",
+            "same_event",
+        ),
+        RepeatedStoryRow(
+            "noon#1",
+            "世界技能大赛标准引领职教课堂",
+            date(2026, 9, 24),
+            "李强出席2026年世界技能大会开幕式并致辞",
+            "title_phrase",
+        ),
+    ]
+
+    findings = assess(snapshot)
+    codes = {finding.code: finding for finding in findings}
+    markdown = render_markdown(snapshot, findings)
+
+    assert "早间#2「望宇登月服" in codes["repeated_delivered_story"].message
+    assert "世界技能大赛标准" not in codes["repeated_delivered_story"].message
+    assert "早间#1「中美经贸磋商" in codes["gov_priority_off_topic"].message
+    assert (
+        "与已推重复：午间#1 ≈ 09-24「李强出席2026年世界技能大会开幕式并致辞」（仅标题相似"
+        in markdown
+    )
+
+
+def test_daily_trend_is_rendered_as_a_table() -> None:
+    snapshot = _healthy()
+    snapshot.daily_trend = [
+        DailyTrendRow(date(2026, 9, 27), 9, 7, 2, 6, 0),
+        DailyTrendRow(date(2026, 9, 28), 9, 6, 3, 4, 1),
+    ]
+
+    markdown = render_markdown(snapshot, assess(snapshot))
+
+    assert "**近 2 天趋势**" in markdown
+    assert "| 09-28 | 9 | 6 | 3 | 4 | 1 |" in markdown

@@ -11,15 +11,18 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.content_slots import is_same_topic
 from app.domain.quality_report import (
+    MATCH_KIND_ORDER,
     BrandStatementRow,
     BrandUsageRow,
+    DailyTrendRow,
     ModelUsage,
     QualitySnapshot,
+    RepeatedStoryRow,
     SameTopicPair,
     SelectedTopicRow,
     SlotRunRow,
+    topic_match_kind,
 )
 from app.infrastructure.db.content_slots import _fingerprints_for_versions
 
@@ -67,6 +70,9 @@ async def _model_usage(
     )
 
 
+REPEAT_LOOKBACK_DAYS = 14
+
+
 async def _same_topic_pairs(
     session: AsyncSession, selection_rows: list[Any]
 ) -> list[SameTopicPair]:
@@ -80,9 +86,111 @@ async def _same_topic_pairs(
     pairs: list[SameTopicPair] = []
     for index, (left_label, left) in enumerate(ordered):
         for right_label, right in ordered[index + 1 :]:
-            if left is not None and right is not None and is_same_topic(left, right):
-                pairs.append(SameTopicPair(left=left_label, right=right_label))
+            if left is None or right is None:
+                continue
+            kind = topic_match_kind(left, right)
+            if kind is not None:
+                pairs.append(SameTopicPair(left=left_label, right=right_label, kind=kind))
     return pairs
+
+
+async def _repeated_stories(
+    session: AsyncSession, *, business_date: date, timezone: str, selection_rows: list[Any]
+) -> list[RepeatedStoryRow]:
+    """Today's picks that match a story formally delivered in the preceding 14 days."""
+
+    delivered = await _rows(
+        session,
+        """
+        SELECT DISTINCT s.business_date, s.selected_event_version_id, v.representative_title
+        FROM content_slot_selections s
+        JOIN event_cluster_versions v ON v.id = s.selected_event_version_id
+        JOIN wecom_delivery_jobs j
+          ON j.content_slot_selection_id = s.id AND j.mode = 'formal' AND j.status = 'delivered'
+        WHERE s.business_date >= :repeat_start AND s.business_date < :business_date
+          AND s.timezone = :timezone
+        """,
+        repeat_start=business_date - timedelta(days=REPEAT_LOOKBACK_DAYS),
+        business_date=business_date,
+        timezone=timezone,
+    )
+    if not delivered or not selection_rows:
+        return []
+    fingerprints = await _fingerprints_for_versions(
+        session,
+        [UUID(str(row[7])) for row in selection_rows] + [UUID(str(row[1])) for row in delivered],
+    )
+    repeats: list[RepeatedStoryRow] = []
+    for row in selection_rows:
+        today = fingerprints.get(UUID(str(row[7])))
+        if today is None:
+            continue
+        best: tuple[int, date, str, str] | None = None
+        for earlier_date, earlier_version_id, earlier_title in delivered:
+            earlier = fingerprints.get(UUID(str(earlier_version_id)))
+            kind = topic_match_kind(earlier, today) if earlier is not None else None
+            if kind is not None and (best is None or MATCH_KIND_ORDER.index(kind) < best[0]):
+                best = (MATCH_KIND_ORDER.index(kind), earlier_date, earlier_title, kind)
+        if best is not None:
+            repeats.append(
+                RepeatedStoryRow(
+                    today="human" if row[8] else f"{row[0]}#{row[1]}",
+                    today_title=row[2],
+                    earlier_date=best[1],
+                    earlier_title=best[2],
+                    kind=best[3],
+                )
+            )
+    return repeats
+
+
+async def _daily_trend(
+    session: AsyncSession, *, window_start: date, business_date: date, timezone: str
+) -> list[DailyTrendRow]:
+    rows = await _rows(
+        session,
+        """
+        SELECT d.day,
+               (SELECT count(*) FROM content_slot_selections s
+                 WHERE s.business_date = d.day AND s.timezone = :timezone),
+               (SELECT count(*) FROM content_slot_selections s
+                 WHERE s.business_date = d.day AND s.timezone = :timezone
+                   AND EXISTS (SELECT 1 FROM copy_generation_runs r
+                                WHERE r.content_slot_selection_id = s.id
+                                  AND r.status = 'accepted')),
+               (SELECT count(*) FROM content_slot_selections s
+                 WHERE s.business_date = d.day AND s.timezone = :timezone
+                   AND NOT EXISTS (SELECT 1 FROM copy_generation_runs r
+                                    WHERE r.content_slot_selection_id = s.id
+                                      AND r.status = 'accepted')),
+               (SELECT count(*) FROM wecom_delivery_jobs j
+                  JOIN wecom_delivery_windows w ON w.id = j.delivery_window_id
+                 WHERE w.business_date = d.day AND w.timezone = :timezone
+                   AND j.mode = 'formal' AND j.status = 'delivered'),
+               (SELECT count(*) FROM news_infographic_jobs n
+                 WHERE n.business_date = d.day AND n.status = 'failed')
+        FROM (
+            SELECT CAST(generate_series(
+                CAST(:window_start AS date), CAST(:business_date AS date), interval '1 day'
+            ) AS date) AS day
+        ) d
+        ORDER BY d.day
+        """,
+        window_start=window_start,
+        business_date=business_date,
+        timezone=timezone,
+    )
+    return [
+        DailyTrendRow(
+            business_date=row[0],
+            selected=int(row[1]),
+            copy_accepted=int(row[2]),
+            copy_not_accepted=int(row[3]),
+            delivered=int(row[4]),
+            infographic_failed=int(row[5]),
+        )
+        for row in rows
+    ]
 
 
 async def load_quality_snapshot(
@@ -204,6 +312,9 @@ async def load_quality_snapshot(
         for row in selection_rows
     ]
     snapshot.same_topic_pairs = await _same_topic_pairs(session, selection_rows)
+    snapshot.repeated_stories = await _repeated_stories(
+        session, business_date=business_date, timezone=timezone, selection_rows=selection_rows
+    )
 
     copy_filter = """
         FROM copy_generation_runs r
@@ -257,6 +368,9 @@ async def load_quality_snapshot(
 
     window_start = business_date - timedelta(days=lookback_days - 1)
     window_params = {**params, "window_start": window_start}
+    snapshot.daily_trend = await _daily_trend(
+        session, window_start=window_start, business_date=business_date, timezone=timezone
+    )
     snapshot.brand_window_accepted_runs = int(
         (
             await session.execute(

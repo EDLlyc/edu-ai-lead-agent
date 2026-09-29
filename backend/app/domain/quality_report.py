@@ -6,6 +6,36 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 
+from app.domain.content_slots import (
+    _SAME_TOPIC_SIMILARITY,
+    _SAME_TOPIC_TITLE_OVERLAP,
+    TopicFingerprint,
+    _cosine,
+    _share_title_phrase,
+)
+
+# Which clause of the same-topic rule matched, strongest first. Headline-only matches are weak:
+# on labelled real pairs the headline clause has precision 0.44 (evals/same_topic_golden).
+SAME_EVENT = "same_event"
+SIMILAR_ARTICLE = "similar_article"
+TITLE_PHRASE = "title_phrase"
+STRONG_TOPIC_MATCHES = frozenset({SAME_EVENT, SIMILAR_ARTICLE})
+MATCH_KIND_ORDER = (SAME_EVENT, SIMILAR_ARTICLE, TITLE_PHRASE)
+
+
+def topic_match_kind(left: TopicFingerprint, right: TopicFingerprint) -> str | None:
+    if left.event_id == right.event_id:
+        return SAME_EVENT
+    if (
+        left.embedding is not None
+        and right.embedding is not None
+        and _cosine(left.embedding, right.embedding) >= _SAME_TOPIC_SIMILARITY
+    ):
+        return SIMILAR_ARTICLE
+    if _share_title_phrase(left.title, right.title, _SAME_TOPIC_TITLE_OVERLAP):
+        return TITLE_PHRASE
+    return None
+
 
 @dataclass(frozen=True, slots=True)
 class SlotRunRow:
@@ -36,6 +66,28 @@ class SameTopicPair:
 
     left: str
     right: str
+    kind: str = TITLE_PHRASE
+
+
+@dataclass(frozen=True, slots=True)
+class RepeatedStoryRow:
+    """A pick today that matches a story delivered in the preceding days."""
+
+    today: str
+    today_title: str
+    earlier_date: date
+    earlier_title: str
+    kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class DailyTrendRow:
+    business_date: date
+    selected: int
+    copy_accepted: int
+    copy_not_accepted: int
+    delivered: int
+    infographic_failed: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +132,8 @@ class QualitySnapshot:
     slot_runs: list[SlotRunRow] = field(default_factory=list)
     selected_topics: list[SelectedTopicRow] = field(default_factory=list)
     same_topic_pairs: list[SameTopicPair] = field(default_factory=list)
+    repeated_stories: list[RepeatedStoryRow] = field(default_factory=list)
+    daily_trend: list[DailyTrendRow] = field(default_factory=list)
     copy_status: Counter[str] = field(default_factory=Counter)
     copy_prompt_versions: Counter[str] = field(default_factory=Counter)
     copy_first_pass_accepted: int = 0

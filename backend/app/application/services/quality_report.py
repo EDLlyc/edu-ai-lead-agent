@@ -11,13 +11,21 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from enum import StrEnum
 
-from app.domain.quality_report import BrandStatementRow, QualitySnapshot, SelectedTopicRow
+from app.domain.quality_report import (
+    SAME_EVENT,
+    SIMILAR_ARTICLE,
+    STRONG_TOPIC_MATCHES,
+    BrandStatementRow,
+    QualitySnapshot,
+    SelectedTopicRow,
+)
 from app.domain.topic_safety_signals import (
+    evaluate_government_yaowen_topic,
     evaluate_negative_incident,
     evaluate_specialized_research,
 )
 
-QUALITY_REPORT_VERSION = "production-quality-daily-v2"
+QUALITY_REPORT_VERSION = "production-quality-daily-v3"
 COPY_FAILURE_WARN_RATE = 0.2
 BRAND_REPEAT_WARN_SHARE = 0.5
 BRAND_REPEAT_MIN_RUNS = 4
@@ -165,7 +173,8 @@ def assess(snapshot: QualitySnapshot) -> list[Finding]:
                     f"选中了不适合家长的负面事件新闻：{_topic_label(topic)}「{topic.title}」。",
                 )
             )
-    if snapshot.same_topic_pairs:
+    strong_pairs = [pair for pair in snapshot.same_topic_pairs if pair.kind in STRONG_TOPIC_MATCHES]
+    if strong_pairs:
         findings.append(
             Finding(
                 Severity.WARNING,
@@ -173,8 +182,41 @@ def assess(snapshot: QualitySnapshot) -> list[Finding]:
                 "同一天选中了同一件事："
                 + "；".join(
                     f"{_slot_label(pair.left)} 与 {_slot_label(pair.right)}"
-                    for pair in snapshot.same_topic_pairs
+                    for pair in strong_pairs
                 )
+                + "。",
+            )
+        )
+    # Only a re-picked event is certain; similar articles are often the same theme but a new
+    # story, so they are listed in the body for review instead of raised.
+    strong_repeats = [row for row in snapshot.repeated_stories if row.kind == SAME_EVENT]
+    if strong_repeats:
+        findings.append(
+            Finding(
+                Severity.WARNING,
+                "repeated_delivered_story",
+                "今天又选中了近 14 天已推送过的同一条新闻："
+                + "；".join(
+                    f"{_slot_label(row.today)}「{row.today_title}」≈ "
+                    f"{row.earlier_date:%m-%d}「{row.earlier_title}」"
+                    for row in strong_repeats
+                )
+                + "。",
+            )
+        )
+    off_topic_gov = [
+        topic
+        for topic in snapshot.selected_topics
+        if topic.priority_reason == "qualified_government_yaowen_priority"
+        and not evaluate_government_yaowen_topic(topic.title).matched
+    ]
+    if off_topic_gov:
+        findings.append(
+            Finding(
+                Severity.WARNING,
+                "gov_priority_off_topic",
+                "政府网要闻以优先级插队，但标题不是科技/教育类："
+                + "；".join(f"{_topic_label(topic)}「{topic.title}」" for topic in off_topic_gov)
                 + "。",
             )
         )
@@ -312,7 +354,16 @@ def render_markdown(snapshot: QualitySnapshot, findings: list[Finding]) -> str:
         flags = "".join(f" ⚠{flag}" for flag in _topic_flags(topic))
         lines.append(f"  - {_topic_label(topic)} [{kind}] {topic.title}{flags}")
     for pair in snapshot.same_topic_pairs:
-        lines.append(f"- 同题：{_slot_label(pair.left)} 与 {_slot_label(pair.right)}")
+        weak = "" if pair.kind in STRONG_TOPIC_MATCHES else "（仅标题相似，可能误判）"
+        lines.append(f"- 同题：{_slot_label(pair.left)} 与 {_slot_label(pair.right)}{weak}")
+    for row in snapshot.repeated_stories:
+        weak = {SAME_EVENT: "", SIMILAR_ARTICLE: "（主题相近，请人工判断）"}.get(
+            row.kind, "（仅标题相似，可能误判）"
+        )
+        lines.append(
+            f"- 与已推重复：{_slot_label(row.today)} ≈ {row.earlier_date:%m-%d}"
+            f"「{row.earlier_title}」{weak}"
+        )
     lines.append("")
 
     copy_total = sum(snapshot.copy_status.values())
@@ -354,6 +405,19 @@ def render_markdown(snapshot: QualitySnapshot, findings: list[Finding]) -> str:
         f"Token {snapshot.governance_model_usage.total_tokens:,}",
         "",
     ]
+    if snapshot.daily_trend:
+        lines += [
+            f"**近 {len(snapshot.daily_trend)} 天趋势**",
+            "",
+            "| 日期 | 选题 | 文案通过 | 文案未通过 | 企微送达 | 长图失败 |",
+            "|---|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {row.business_date:%m-%d} | {row.selected} | {row.copy_accepted} | "
+            f"{row.copy_not_accepted} | {row.delivered} | {row.infographic_failed} |"
+            for row in snapshot.daily_trend
+        ]
+        lines.append("")
     return "\n".join(lines)
 
 
