@@ -20,10 +20,10 @@ from app.application.services.news_infographic_footer import (
     FOOTER_TOP,
     FOOTER_VERSION,
     FooterRenderError,
+    delivery_footer_text,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
-from app.application.services.wecom_news_infographic import prepare_infographic_group_jpeg
 from app.domain.news_infographic import validate_package_snapshot
 from app.infrastructure.news_infographic_local import write_frozen_input_bundle
 from PIL import Image, ImageChops
@@ -35,7 +35,7 @@ _REAL_SOURCE_URL = "http://www.moe.gov.cn/jyb_xwfb/gzdt_gzdt/s5987/202608/t20260
 
 def test_footer_copy_and_url_size_have_distinct_local_and_delivery_versions() -> None:
     assert FOOTER_VERSION == "daily-news-infographic-footer-v2"
-    assert DELIVERY_FOOTER_VERSION == "daily-news-infographic-footer-v4"
+    assert DELIVERY_FOOTER_VERSION == "daily-news-infographic-footer-v5-no-link"
 
 
 @pytest.mark.parametrize("mode", ["local", "test", "formal"])
@@ -91,15 +91,16 @@ def test_footer_rejects_long_url_instead_of_truncating_or_shrinking() -> None:
         render_exact_source_footer(_png(), long_case)
     with pytest.raises(FooterRenderError, match="does not fit"):
         validate_exact_source_footer_layout(long_case)
+    # Delivered footers carry no link, so a long URL no longer blocks them.
     for mode in ("formal", "test"):
-        with pytest.raises(FooterRenderError, match="does not fit"):
-            validate_exact_source_footer_layout(long_case, mode=mode)
+        assert validate_exact_source_footer_layout(long_case, mode=mode) == ()
 
 
 @pytest.mark.parametrize("mode", ["formal", "test"])
-def test_delivery_footer_wraps_exact_real_url_at_a_path_boundary_for_phone(
+def test_delivered_footer_shows_date_and_source_but_no_link(
     mode: Literal["formal", "test"],
 ) -> None:
+    """Operator request 2026-09-29: 图片上不放链接 (the link stays in the Moments text)."""
     import app.application.services.news_infographic_footer as footer
 
     case = validate_package_snapshot(package_payload()).model_copy(
@@ -112,48 +113,18 @@ def test_delivery_footer_wraps_exact_real_url_at_a_path_boundary_for_phone(
     drawn_text = tuple(call.args[1] for call in draw_fitted.call_args_list)
     assert f"新闻日期：{case.source_date.isoformat()}" in drawn_text
     assert f"新闻来源：{case.source_name}" in drawn_text
+    assert not any("原文链接" in text or "http" in text for text in drawn_text)
+    assert rendered.source_url_lines == ()
     assert local.source_url_lines == (_REAL_SOURCE_URL,)
-    assert rendered.source_url_lines == validate_exact_source_footer_layout(case, mode=mode)
-    assert len(rendered.source_url_lines) == 2
-    assert rendered.source_url_lines[0].endswith("/")
-    assert "".join(rendered.source_url_lines) == _REAL_SOURCE_URL
-    url_calls = [
-        call for call in draw_fitted.call_args_list if call.args[1] in rendered.source_url_lines
-    ]
-    assert tuple(call.args[1] for call in url_calls) == rendered.source_url_lines
-    assert all(call.kwargs["font"].size == 34 for call in url_calls)
+    expected = delivery_footer_text(case, mode=mode)
+    assert "".join(drawn_text) == expected
     with Image.open(BytesIO(raw)) as original, Image.open(BytesIO(rendered.image_bytes)) as image:
-        assert image.size == (1152, 2048)
         assert (
             ImageChops.difference(
-                original.crop((0, 0, 1152, FOOTER_TOP)),
-                image.crop((0, 0, 1152, FOOTER_TOP)),
+                original.crop((0, 0, 1152, FOOTER_TOP)), image.crop((0, 0, 1152, FOOTER_TOP))
             ).getbbox()
             is None
         )
-    reviewed_jpeg = prepare_infographic_group_jpeg(rendered.image_bytes, max_bytes=2 * 1024 * 1024)
-    assert len(reviewed_jpeg) <= 2 * 1024 * 1024
-    with Image.open(BytesIO(reviewed_jpeg)) as reviewed:
-        phone = reviewed.resize((390, 693), Image.Resampling.LANCZOS).convert("RGB")
-
-    def colored_url_rows(start: int, stop: int) -> int:
-        visible_rows = 0
-        for y in range(start, stop):
-            blue_pixels = 0
-            for x in range(16, 374):
-                pixel = phone.getpixel((x, y))
-                assert isinstance(pixel, tuple) and len(pixel) >= 3
-                red, green, blue = pixel[:3]
-                if red < 70 and green > 55 and blue > 120 and blue > green * 1.35:
-                    blue_pixels += 1
-            if blue_pixels >= 8:
-                visible_rows += 1
-        return visible_rows
-
-    # The exact group JPEG retains two legible phone-width lines without the old 40px dominance.
-    # This deterministic glyph-height guard does not replace human visual acceptance.
-    assert 8 <= colored_url_rows(657, 671) <= 9
-    assert 8 <= colored_url_rows(672, 683) <= 9
 
 
 @pytest.mark.asyncio

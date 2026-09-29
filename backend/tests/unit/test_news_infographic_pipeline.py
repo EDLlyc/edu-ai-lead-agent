@@ -297,11 +297,11 @@ async def test_exact_text_quality_trial_uses_formal_prompt_and_final_group_jpeg(
     assert outcome["generation"] == "generated"
     assert outcome["overlay"] == "passed"
     assert outcome["footer"] == "passed"
-    assert outcome["footer_version"] == "daily-news-infographic-footer-v4"
+    assert outcome["footer_version"] == "daily-news-infographic-footer-v5-no-link"
     assert outcome["poster_region_ocr"] == "not_checked"
     assert outcome["ocr"] == "not_checked_region_gate"
     assert not models.ocr_requests
-    assert "".join(outcome["footer_source_url_lines"]) == case.source_url
+    assert outcome["footer_source_url_lines"] == []  # 图片上不放链接
     raw = (run_dir / str(outcome["image"])).read_bytes()
     composite = (run_dir / str(outcome["composite_image"])).read_bytes()
     footer = (run_dir / str(outcome["derived_image"])).read_bytes()
@@ -475,7 +475,7 @@ async def test_model_rendered_trial_draws_body_without_overlay_and_stays_unready
     assert outcome["footer"] == "passed"
     assert "composite_image" not in outcome
     assert not list((run_dir / "images").glob("*composite*"))
-    assert "".join(outcome["footer_source_url_lines"]) == case.source_url
+    assert outcome["footer_source_url_lines"] == []  # 图片上不放链接
     raw = (run_dir / str(outcome["image"])).read_bytes()
     final = (run_dir / str(outcome["group_image"])).read_bytes()
     assert sha256(raw).hexdigest() == outcome["image_sha256"]

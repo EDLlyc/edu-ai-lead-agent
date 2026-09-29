@@ -5,7 +5,7 @@ Every paid stage has a committed intent. An interrupted running job is unknown a
 never automatically restarted, even if the image POST was only possibly dispatched.
 """
 
-# ruff: noqa: RUF001 -- Exact Chinese footer labels are part of the OCR contract.
+
 
 from __future__ import annotations
 
@@ -69,6 +69,7 @@ from app.application.services.news_infographic_footer import (
     DELIVERY_FOOTER_VERSION,
     FOOTER_TOP,
     FooterRenderError,
+    delivery_footer_text,
     footer_font_sha256,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
@@ -946,11 +947,7 @@ class NewsInfographicProducer:
             )
             locked.delivery_media_type = delivered.media_type
             locked.delivery_width, locked.delivery_height = GEOMETRY
-        footer_text = (
-            f"新闻日期：{case.source_date.isoformat()}"
-            f"新闻来源：{case.source_name}"
-            "原文链接：" + "".join(footer.source_url_lines)
-        )
+        footer_text = delivery_footer_text(case)
         regions = _poster_ocr_regions(prepared.body, copy, footer_text)
         if not self._models.ocr_enabled or not self._models.visual_audit_enabled:
             await self._finish(job_id, token, status="failed", code="quality_service_unavailable")
@@ -1275,11 +1272,7 @@ class NewsInfographicProducer:
         # instead of setting a false pass. The source footer remains exact by
         # construction, and a configured footer OCR disagreement is still hard.
         issue_codes.add("body_ocr_unavailable")
-        footer_text = (
-            f"新闻日期：{case.source_date.isoformat()}"
-            f"新闻来源：{case.source_name}"
-            "原文链接：" + "".join(footer.source_url_lines)
-        )
+        footer_text = delivery_footer_text(case)
         if self._models.ocr_enabled:
             with Image.open(BytesIO(jpeg)) as opened:
                 opened.load()

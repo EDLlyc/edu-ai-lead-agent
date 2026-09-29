@@ -225,7 +225,8 @@ class _Models:
         if request.region_id == "footer":
             # Footer text is deterministic, but the fake has no package snapshot;
             # its real bytes are checked separately in the footer unit tests.
-            lines = ("新闻日期：2026-08-04新闻来源：教育部科学新闻原文链接：" + URL,)
+            # 图片上不放链接: the delivered footer shows the date and source only.
+            lines = ("新闻日期：2026-08-04新闻来源：教育部科学新闻",)
         return ImageTextRecognitionResult(
             recognized_lines=lines,
             request_fingerprint=request.request_fingerprint,

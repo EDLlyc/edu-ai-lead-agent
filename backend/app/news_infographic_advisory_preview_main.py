@@ -531,8 +531,8 @@ async def execute_advisory_preview(
         _safe_file(images_dir / "notice.png", notice_png, private=True)
         failure_step = "footer_render_failed"
         footer = render_exact_source_footer(notice_png, preflight.frozen.case, mode="formal")
-        if "".join(footer.source_url_lines) != preflight.frozen.case.source_url:
-            raise ValueError("exact frozen source footer differs")
+        if footer.source_url_lines:
+            raise ValueError("delivered footer must not carry the source link")
         _safe_file(images_dir / "footer.png", footer.image_bytes, private=True)
         failure_step = "group_jpeg_failed"
         group = prepare_infographic_group_jpeg(footer.image_bytes, max_bytes=_MAX_GROUP_BYTES)

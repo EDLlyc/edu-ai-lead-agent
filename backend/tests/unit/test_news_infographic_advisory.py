@@ -343,7 +343,7 @@ def test_final_source_footer_and_notice_survive_exact_group_jpeg() -> None:
     marked = render_advisory_notice(source.getvalue())
     footer = render_exact_source_footer(marked, case, mode="formal")
     jpeg = prepare_infographic_group_jpeg(footer.image_bytes, max_bytes=2 * 1024 * 1024)
-    assert "".join(footer.source_url_lines) == case.source_url
+    assert footer.source_url_lines == ()
     with Image.open(BytesIO(jpeg)) as opened:
         opened.load()
         assert opened.format == "JPEG" and opened.size == (1152, 2048)

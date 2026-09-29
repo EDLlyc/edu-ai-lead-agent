@@ -298,7 +298,9 @@ def test_footer_modes_keep_source_and_raw_pixels_but_never_reuse_local_marker() 
     formal = render_exact_source_footer(source, case, mode="formal")
     test = render_exact_source_footer(source, case, mode="test")
     assert len({local.image_sha256, formal.image_sha256, test.image_sha256}) == 3
-    assert all("".join(item.source_url_lines) == case.source_url for item in (local, formal, test))
+    assert "".join(local.source_url_lines) == case.source_url
+    # 图片上不放链接: delivered footers carry the date and source only.
+    assert formal.source_url_lines == () and test.source_url_lines == ()
     with Image.open(BytesIO(source)) as original, Image.open(BytesIO(formal.image_bytes)) as final:
         assert (
             ImageChops.difference(

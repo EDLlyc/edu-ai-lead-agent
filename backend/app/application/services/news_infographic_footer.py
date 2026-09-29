@@ -15,7 +15,9 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from app.domain.news_infographic import ValidatedInfographicInput
 
 FOOTER_VERSION = "daily-news-infographic-footer-v2"
-DELIVERY_FOOTER_VERSION = "daily-news-infographic-footer-v4"
+# v5 (operator request 2026-09-29, 图片上不放链接): delivered images show the news date and source
+# only; the original link stays in the Moments text.
+DELIVERY_FOOTER_VERSION = "daily-news-infographic-footer-v5-no-link"
 FOOTER_TOP = 1858
 _GEOMETRY = (1152, 2048)
 _FONT_PATH = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
@@ -118,6 +120,13 @@ def _draw_fitted(
 FooterMode = Literal["local", "test", "formal"]
 
 
+def delivery_footer_text(case: ValidatedInfographicInput, *, mode: FooterMode = "formal") -> str:
+    """The exact text drawn in a delivered footer, for the footer OCR comparison."""
+
+    text = f"新闻日期：{case.source_date.isoformat()}新闻来源：{case.source_name}"
+    return f"{text}【测试消息】" if mode == "test" else text
+
+
 def _draw_phone_readable_footer(
     draw: ImageDraw.ImageDraw,
     case: ValidatedInfographicInput,
@@ -125,37 +134,28 @@ def _draw_phone_readable_footer(
     *,
     mode: Literal["test", "formal"],
 ) -> tuple[str, ...]:
-    """Keep the exact citation large enough for a two-line phone-width review."""
-    metadata_font = _load_font(font_bytes, 30)
-    notice_font = _load_font(font_bytes, 29)
-    label_font = _load_font(font_bytes, 28)
-    url_font = _load_font(font_bytes, 34)
-    url_x = 206 if mode == "test" else 48
-    lines = _wrap_exact_url(
-        case.source_url,
-        url_font,
-        1056,
-        first_line_width=1104 - url_x,
-        prefer_path_boundary=True,
-    )
+    """News date and source, large enough for a phone; no link on delivered images."""
+    metadata_font = _load_font(font_bytes, 34)
+    notice_font = _load_font(font_bytes, 30)
     ink = "#164777"
+    top = 1905 if mode == "test" else 1930
     _draw_fitted(
         draw,
         f"新闻日期：{case.source_date.isoformat()}",
         x=48,
-        y=1870,
-        right=398,
-        bottom=1905,
+        y=top,
+        right=430,
+        bottom=top + 42,
         font=metadata_font,
         fill=ink,
     )
     _draw_fitted(
         draw,
         f"新闻来源：{case.source_name}",
-        x=414,
-        y=1870,
+        x=450,
+        y=top,
         right=1104,
-        bottom=1905,
+        bottom=top + 42,
         font=metadata_font,
         fill=ink,
     )
@@ -164,34 +164,13 @@ def _draw_phone_readable_footer(
             draw,
             "【测试消息】",
             x=48,
-            y=1909,
+            y=1965,
             right=1104,
-            bottom=1939,
+            bottom=2002,
             font=notice_font,
             fill=ink,
         )
-    _draw_fitted(
-        draw,
-        "原文链接：",
-        x=48,
-        y=1942 if mode == "test" else 1909,
-        right=url_x - 6 if mode == "test" else 1104,
-        bottom=1979 if mode == "test" else 1939,
-        font=label_font,
-        fill=ink,
-    )
-    for index, line in enumerate(lines):
-        _draw_fitted(
-            draw,
-            line,
-            x=url_x if index == 0 else 48,
-            y=1940 + index * 45,
-            right=1104,
-            bottom=1983 + index * 45,
-            font=url_font,
-            fill="#075a9e",
-        )
-    return lines
+    return ()
 
 
 def _draw_exact_source_footer(
