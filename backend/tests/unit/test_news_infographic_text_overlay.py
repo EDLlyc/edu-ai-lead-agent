@@ -165,22 +165,19 @@ def test_local_runner_writes_distinct_review_assets_without_provider_calls(
         result["group_jpeg_sha256"]
         == sha256((output_dir / "exact-group.jpg").read_bytes()).hexdigest()
     )
-    assert "".join(result["footer_url_lines"]) == case.source_url
+    assert result["footer_url_lines"] == []  # delivered footer v6 carries no link
     assert json.loads((output_dir / "manifest.json").read_text(encoding="utf-8")) == result
     assert (
         len(
             {
                 result[name]
-                for name in (
-                    "raw_image_sha256",
-                    "composite_image_sha256",
-                    "formal_footer_image_sha256",
-                    "group_jpeg_sha256",
-                )
+                for name in ("raw_image_sha256", "composite_image_sha256", "group_jpeg_sha256")
             }
         )
-        == 4
+        == 3
     )
+    # Footer v6 draws no text, so the formal footer image is the composite.
+    assert result["formal_footer_image_sha256"] == result["composite_image_sha256"]
     with Image.open(output_dir / "exact-group.jpg") as group:
         expected_phone = group.resize((390, 693), Image.Resampling.LANCZOS)
     expected_bytes = BytesIO()

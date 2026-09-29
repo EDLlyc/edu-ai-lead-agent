@@ -69,8 +69,9 @@ def run_local_text_overlay(
     phone_bytes = phone_buffer.getvalue()
     raw_sha = sha256(raw).hexdigest()
     jpeg_sha = sha256(exact_jpeg).hexdigest()
-    if len({raw_sha, rendered.image_sha256, footer.image_sha256, jpeg_sha}) != 4:
-        raise ValueError("the raw, composite, footer and group assets must be distinct")
+    # Footer v6 draws no text on a formal poster, so the footer may equal the composite.
+    if len({raw_sha, rendered.image_sha256, jpeg_sha}) != 3:
+        raise ValueError("the raw, composite and group assets must be distinct")
     if ".." in output_dir.parts or any(
         parent.is_symlink() for parent in (output_dir, *output_dir.parents)
     ):

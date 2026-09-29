@@ -170,7 +170,7 @@ async def test_rich_trial_is_one_image_attempt_and_not_send_ready(
     assert summary.cases[0]["generation"] == "generated"
     assert summary.cases[0]["footer"] == "passed"
     assert summary.cases[0]["group_image_sha256"]
-    assert "".join(summary.cases[0]["footer_source_url_lines"]) == case.source_url
+    assert summary.cases[0]["footer_source_url_lines"] == []  # delivered footer: no link
     assert (
         sha256((summary.run_dir / str(summary.cases[0]["image"])).read_bytes()).hexdigest()
         == summary.cases[0]["image_sha256"]
