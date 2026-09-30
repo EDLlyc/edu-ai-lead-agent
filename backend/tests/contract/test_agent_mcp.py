@@ -109,13 +109,14 @@ async def test_mcp_projects_invalid_unknown_and_timeout_errors_without_raw_input
 
     invalid_text = " ".join(getattr(block, "text", "") for block in invalid.content)
     assert invalid.is_error is True
-    assert invalid_text == "agent_tool_invalid_arguments: tool arguments failed validation"
+    assert json.loads(invalid_text) == invalid.structured_content
     assert invalid.structured_content == {
         "ok": False,
         "error_code": "agent_tool_invalid_arguments",
         "retryable": True,
         "hint": "fix the listed fields to match the input schema",
         "fields": ["event_id:uuid_parsing", "unexpected_field"],
+        "message": "agent_tool_invalid_arguments: tool arguments failed validation",
     }
     serialized = json.dumps(invalid.structured_content) + invalid_text
     for private in ("private-invalid-value", "do-not-echo", 'unexpected"'):
@@ -148,7 +149,7 @@ async def test_mcp_projects_invalid_unknown_and_timeout_errors_without_raw_input
 
     timeout_text = " ".join(getattr(block, "text", "") for block in timeout.content)
     assert timeout.is_error is True
-    assert timeout_text == "agent_tool_timeout: tool execution timed out"
+    assert json.loads(timeout_text)["message"] == "agent_tool_timeout: tool execution timed out"
     assert timeout.structured_content is not None
     assert timeout.structured_content["retryable"] is True
     assert "AssertionError" not in timeout_text

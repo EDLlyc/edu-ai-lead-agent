@@ -44,7 +44,7 @@ from app.mcp_registry_server import (
     call_budget_from_environment,
     stderr_json_logger,
 )
-from app.schemas.copy_generation import MaterialDraft
+from app.schemas.copy_generation import MaterialDraft, render_headline_hook_copy
 
 MCP_SERVER_NAME = "edu-ai-copy-repair"
 REPAIR_INSTRUCTIONS = (
@@ -77,15 +77,33 @@ def _brand_chunk_ids(draft: MaterialDraft) -> tuple[UUID, ...]:
     return tuple(dict.fromkeys(chunk for claim in draft.claims for chunk in claim.brand_chunk_ids))
 
 
+# The rule version production copy runs store; the shared workbench fixture keeps an older one.
+FIXTURE_RULE_VERSION = "preview-v13-headline-hook"
+FIXTURE_HOOK = "人工智能走进课堂，正好和孩子聊聊怎样核对一条信息的来源🔍"
+
+
 async def load_fixture_workspace() -> RepairWorkspace:
-    draft = build_fixture_material_draft()
+    """The offline fixture draft, rendered in today's headline-hook template and rules."""
+
+    fixture = build_fixture_material_draft()
     context = await build_fixture_reader().load_copy_validation_context(
-        copy_run_id=FIXTURE_COPY_RUN_ID, brand_chunk_ids=_brand_chunk_ids(draft)
+        copy_run_id=FIXTURE_COPY_RUN_ID, brand_chunk_ids=_brand_chunk_ids(fixture)
+    )
+    evidence = context.topic.evidence[0]
+    draft = fixture.model_copy(
+        update={
+            "copywriting": render_headline_hook_copy(
+                f"{FIXTURE_HOOK}\n#赛先生科学 #人工智能教育 #科学思维",
+                title=context.topic.title or "",
+                source_name=evidence.source_name,
+                source_url=evidence.source_url,
+            )
+        }
     )
     return RepairWorkspace(
         topic=context.topic,
         brand_context=context.brand_context,
-        rule_version=context.rule_version,
+        rule_version=FIXTURE_RULE_VERSION,
         draft=draft,
     )
 

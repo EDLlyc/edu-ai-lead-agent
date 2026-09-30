@@ -1,3 +1,5 @@
+# ruff: noqa: RUF001
+
 from __future__ import annotations
 
 import sys
@@ -11,6 +13,7 @@ from app.application.services.copy_repair_tools import (
     build_repair_tool_registry,
 )
 from app.copy_repair_mcp_main import build_copy_repair_mcp_server, load_fixture_workspace
+from app.domain.copy_generation import HEADLINE_HOOK_COPY_RULE_VERSIONS
 from mcp import Client, StdioServerParameters, stdio_client
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -103,3 +106,20 @@ async def test_stdio_repair_server_runs_offline_and_logs_to_stderr_only() -> Non
     assert '"event":"mcp_tool_call"' in stderr_text
     assert '"tool":"check_draft"' in stderr_text
     assert "Traceback" not in stderr_text
+
+
+async def test_fixture_uses_production_hook_rules_and_refuses_an_anxious_hook() -> None:
+    workspace = await load_fixture_workspace()
+    server = build_copy_repair_mcp_server(workspace, call_logger=None)
+
+    async with Client(server) as client:
+        before = await client.call_tool("check_draft", {})
+        anxious = await client.call_tool(
+            "rewrite_hook", {"text": "全国87%的家长都焦虑，别让孩子输在起跑线😟"}
+        )
+
+    assert workspace.rule_version in HEADLINE_HOOK_COPY_RULE_VERSIONS
+    assert before.structured_content is not None and before.structured_content["passed"] is True
+    assert anxious.structured_content is not None
+    assert anxious.structured_content["error_code"] == "hook_breaks_rules"
+    assert workspace.edits == []

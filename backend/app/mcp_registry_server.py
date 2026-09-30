@@ -6,8 +6,8 @@ adapter adds only what an MCP process needs around it:
 
 - server instructions (the routing rules a client model should follow);
 - tool annotations derived from the registry (read-only, or edits an in-memory workspace only);
-- structured tool errors: `isError` with `{error_code, retryable, hint, fields?}` content, and an
-  unknown tool as a JSON-RPC invalid-params protocol error;
+- structured tool errors: `isError` with `{error_code, retryable, hint, fields?, message}` in both
+  structuredContent and the text block, and an unknown tool as a JSON-RPC invalid-params error;
 - one JSON log line per call on stderr (never raw arguments), and a per-process call budget.
 """
 
@@ -171,10 +171,13 @@ class RegistryMCPServer(MCPServer[None]):
         self._call_logger(record)
 
 
-def _error_result(text: str, payload: Mapping[str, object]) -> CallToolResult:
+def _error_result(message: str, payload: Mapping[str, object]) -> CallToolResult:
+    # Some clients (Claude Code among them) show a model only the text of an error result, so
+    # the text carries the same JSON as structuredContent, as the MCP spec recommends.
+    structured = {**payload, "message": message}
     return CallToolResult(
-        content=[TextContent(type="text", text=text)],
-        structured_content=dict(payload),
+        content=[TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))],
+        structured_content=structured,
         is_error=True,
     )
 
