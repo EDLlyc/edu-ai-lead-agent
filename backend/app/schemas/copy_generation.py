@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# ruff: noqa: RUF001
 import re
 from datetime import date, datetime
 from typing import Literal, Self
@@ -414,6 +415,74 @@ class AuditVerdict(_StrictModel):
         if not self.accepted and not any(issue.severity == "error" for issue in self.issues):
             raise ValueError("rejected audit requires at least one error issue")
         return self
+
+
+# Auditor v22: the model may only name issues from this closed set; the system, not the model,
+# decides whether each code blocks (AUDIT_CODE_SEVERITY). Descriptions are part of the prompt.
+AUDIT_CODES: tuple[tuple[str, str], ...] = (
+    ("hook_off_topic", "引导语说的不是这条新闻，换到别的新闻下也成立，或者借新闻引出无关话题"),
+    ("outcome_promise", "承诺学习效果、提分或录取，夸大课程作用，或引导报名购买"),
+    ("education_anxiety", "制造教育焦虑、同龄比较、恐吓式或贩卖紧迫感的表达"),
+    ("unsupported_fact", "正文或claims里出现EVIDENCE无法支持的事实、数字、政策或说法"),
+    ("evidence_mismatch", "claim与所引证据原文不符：数字、主体、时间或含义被改动"),
+    ("unsupported_brand_claim", "brand_statement编造了BRAND没有直接支持的课程、主体、能力或效果"),
+    ("copy_fluency", "引导语生硬、拗口或不像人说的话，但不影响事实与合规"),
+    ("brand_fit", "品牌语气不贴切，但没有编造或违规"),
+    ("tag_quality", "标签不贴切或不规范"),
+    ("other_quality", "其他不影响发布的小问题"),
+)
+AUDIT_CODE_SEVERITY: dict[str, Literal["warning", "error"]] = {
+    "hook_off_topic": "error",
+    "outcome_promise": "error",
+    "education_anxiety": "error",
+    "unsupported_fact": "error",
+    "evidence_mismatch": "error",
+    "unsupported_brand_claim": "error",
+    "copy_fluency": "warning",
+    "brand_fit": "warning",
+    "tag_quality": "warning",
+    "other_quality": "warning",
+}
+AuditCode = Literal[
+    "hook_off_topic",
+    "outcome_promise",
+    "education_anxiety",
+    "unsupported_fact",
+    "evidence_mismatch",
+    "unsupported_brand_claim",
+    "copy_fluency",
+    "brand_fit",
+    "tag_quality",
+    "other_quality",
+]
+
+
+class EnumeratedAuditIssue(_StrictModel):
+    code: AuditCode
+    message: str = Field(min_length=1, max_length=240)
+    field: str | None = Field(default=None, max_length=80)
+    claim_id: str | None = Field(default=None, max_length=80)
+
+
+class EnumeratedAuditVerdict(_StrictModel):
+    """What auditor v22 returns: issues only. Acceptance follows from AUDIT_CODE_SEVERITY."""
+
+    issues: tuple[EnumeratedAuditIssue, ...] = Field(default=(), max_length=24)
+
+    def to_audit_verdict(self) -> AuditVerdict:
+        issues = tuple(
+            CopyIssue(
+                code=issue.code,
+                message=issue.message,
+                severity=AUDIT_CODE_SEVERITY[issue.code],
+                field=issue.field,
+                claim_id=issue.claim_id,
+            )
+            for issue in self.issues
+        )
+        return AuditVerdict(
+            accepted=not any(issue.severity == "error" for issue in issues), issues=issues
+        )
 
 
 class CreateCopyGenerationRunRequest(BaseModel):

@@ -27,6 +27,7 @@ from app.infrastructure.ai.agent_retrieval import (
 )
 from app.infrastructure.ai.factory import create_brand_embedding_model
 from app.infrastructure.db.session import create_engine, create_session_factory
+from app.mcp_registry_server import call_budget_from_environment
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _PLANNER_CONNECT_TIMEOUT_SECONDS = 0.5
@@ -85,7 +86,11 @@ def build_real_data_mcp_server(
     """Attach owned real-data resources to the canonical MCP adapter lifecycle."""
 
     resources = _RealDataMCPResources(engine=engine, embedding_client=embedding_client)
-    return build_agent_mcp_server(registry, lifespan=resources.lifespan)
+    return build_agent_mcp_server(
+        registry,
+        lifespan=resources.lifespan,
+        call_budget=call_budget_from_environment(os.environ),
+    )
 
 
 def create_real_data_mcp_server(

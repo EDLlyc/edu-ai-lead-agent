@@ -38,10 +38,53 @@ _QUERY_HASH_PREFIX = 16
 ToolHandler = Callable[[BaseModel], Awaitable[BaseModel]]
 
 
+_MAX_FAILURE_FIELDS = 8
+_RETRYABLE_CODES = frozenset(
+    {
+        AgentToolErrorCode.INVALID_ARGUMENTS,
+        AgentToolErrorCode.TIMEOUT,
+        AgentToolErrorCode.UNAVAILABLE,
+    }
+)
+
+
 class AgentToolFailure(Exception):
-    def __init__(self, code: AgentToolErrorCode) -> None:
+    """A bounded tool failure. It never carries raw argument values or provider text."""
+
+    def __init__(self, code: AgentToolErrorCode, *, fields: tuple[str, ...] = ()) -> None:
         super().__init__(code.value)
         self.code = code
+        # For invalid arguments only: "<declared field>:<pydantic error type>" pairs, so a model
+        # can correct its call. Undeclared keys are reported as "unexpected_field".
+        self.fields = fields[:_MAX_FAILURE_FIELDS]
+
+    @property
+    def retryable(self) -> bool:
+        """True when the same tool may succeed on a corrected or later call."""
+
+        return self.code in _RETRYABLE_CODES
+
+    @property
+    def hint(self) -> str:
+        return {
+            AgentToolErrorCode.INVALID_ARGUMENTS: "fix the listed fields to match the input schema",
+            AgentToolErrorCode.UNKNOWN: "call only a tool from the listed tools",
+            AgentToolErrorCode.TIMEOUT: "retry once; if it times out again, narrow the request",
+            AgentToolErrorCode.UNAVAILABLE: "retry once later; do not guess the result",
+            AgentToolErrorCode.NOT_FOUND: "the id does not exist; do not retry with the same id",
+            AgentToolErrorCode.OUTPUT_TOO_LARGE: "ask for fewer items or a narrower query",
+        }[self.code]
+
+    def payload(self) -> dict[str, object]:
+        """The one structured error shape sent to both function-calling models and MCP clients."""
+
+        return {
+            "ok": False,
+            "error_code": self.code.value,
+            "retryable": self.retryable,
+            "hint": self.hint,
+            **({"fields": list(self.fields)} if self.fields else {}),
+        }
 
     @property
     def safe_message(self) -> str:
@@ -67,6 +110,9 @@ class ToolDefinition:
     max_result_bytes: int = 32 * 1024
     read_only: bool = True
     open_world: bool = False
+    # A non-read-only tool may only edit a caller-owned in-memory workspace (for example a draft
+    # being repaired); it never writes a database, a file or an external service.
+    workspace_only: bool = False
 
     def __post_init__(self) -> None:
         if _TOOL_NAME.fullmatch(self.name) is None:
@@ -79,8 +125,10 @@ class ToolDefinition:
             raise ValueError("tool argument limit exceeds the workbench contract")
         if not 1 <= self.max_result_bytes <= 32 * 1024:
             raise ValueError("tool result limit exceeds the workbench contract")
-        if not self.read_only or self.open_world:
-            raise ValueError("agent workbench tools must be closed-world and read-only")
+        if self.open_world:
+            raise ValueError("agent workbench tools must be closed-world")
+        if not self.read_only and not self.workspace_only:
+            raise ValueError("a writing tool must be limited to an in-memory workspace")
 
     def input_schema(self) -> dict[str, object]:
         return cast(dict[str, object], self.argument_model.model_json_schema(mode="validation"))
@@ -141,6 +189,8 @@ class TypedToolRegistry:
                     "annotations": {
                         "read_only": definition.read_only,
                         "open_world": definition.open_world,
+                        # Present only for workspace tools so existing registry hashes stay stable.
+                        **({"workspace_only": True} if definition.workspace_only else {}),
                     },
                 }
                 for definition in self._definitions
@@ -192,8 +242,11 @@ class TypedToolRegistry:
         arguments_json = _arguments_json(arguments, definition.max_argument_bytes)
         try:
             validated_arguments = definition.argument_model.model_validate_json(arguments_json)
-        except ValidationError:
-            raise AgentToolFailure(AgentToolErrorCode.INVALID_ARGUMENTS) from None
+        except ValidationError as error:
+            raise AgentToolFailure(
+                AgentToolErrorCode.INVALID_ARGUMENTS,
+                fields=_safe_error_fields(definition.argument_model, error),
+            ) from None
         try:
             async with asyncio.timeout(definition.timeout_seconds):
                 raw_result = await definition.handler(validated_arguments)
@@ -404,8 +457,8 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
                 name="get_event",
                 description=(
                     "Read one governed event's bounded current summary and source overview "
-                    "by its exact event UUID. This read-only tool does not provide factual "
-                    "citations."
+                    "by its exact event UUID. Use it first to see what the news is about. It "
+                    "does not provide factual citations; use search_evidence for those."
                 ),
                 argument_model=GetEventArguments,
                 result_model=GetEventResult,
@@ -415,7 +468,8 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
                 name="retrieve_brand_context",
                 description=(
                     "Retrieve bounded internal brand-expression context for the parents audience. "
-                    "Every returned chunk is explicitly ineligible as factual evidence."
+                    "Use it for tone and the brand sentence only: every returned chunk is "
+                    "ineligible as factual evidence and must never back a news fact."
                 ),
                 argument_model=RetrieveBrandContextArguments,
                 result_model=RetrieveBrandContextResult,
@@ -425,8 +479,8 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
                 name="search_evidence",
                 description=(
                     "Search accepted, validated Tier A/B evidence attached to governed current "
-                    "event versions. Returns bounded HTTPS citations and never fetches arbitrary "
-                    "URLs."
+                    "event versions. Use it before stating any news fact; cite only what it "
+                    "returns. Returns bounded HTTPS citations and never fetches arbitrary URLs."
                 ),
                 argument_model=SearchEvidenceArguments,
                 result_model=SearchEvidenceResult,
@@ -436,8 +490,8 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
                 name="validate_copy",
                 description=(
                     "Run the existing deterministic copy and evidence validator against one "
-                    "bounded draft and an immutable copy-run context. It never repairs, writes, "
-                    "or enqueues."
+                    "bounded draft and an immutable copy-run context. Use it last, before "
+                    "calling a draft done. It never repairs, writes, or enqueues."
                 ),
                 argument_model=ValidateCopyArguments,
                 result_model=ValidateCopyResult,
@@ -445,6 +499,20 @@ def build_agent_tool_registry(reader: AgentKnowledgeReader) -> TypedToolRegistry
             ),
         )
     )
+
+
+def _safe_error_fields(model: type[BaseModel], error: ValidationError) -> tuple[str, ...]:
+    """Field names and error types only; an undeclared key is never echoed back."""
+
+    fields: list[str] = []
+    for item in error.errors(include_input=False, include_url=False, include_context=False):
+        location = item.get("loc", ())
+        head = location[0] if location else None
+        name = head if isinstance(head, str) and head in model.model_fields else None
+        entry = f"{name}:{item.get('type', 'invalid')}" if name else "unexpected_field"
+        if entry not in fields:
+            fields.append(entry)
+    return tuple(sorted(fields))
 
 
 def _arguments_json(arguments: Mapping[str, object] | str, max_bytes: int) -> str:

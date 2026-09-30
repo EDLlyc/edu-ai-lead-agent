@@ -18,6 +18,7 @@ from app.application.ports.copy_generation import (
     DraftGenerationResult,
 )
 from app.application.services.copy_generation import (
+    ENUMERATED_AUDITOR_PROMPT_VERSION,
     auditor_request_fingerprint,
     build_auditor_prompt,
     build_generator_prompt,
@@ -42,6 +43,7 @@ from app.schemas.copy_generation import (
     AuditVerdict,
     CopyIssue,
     DraftClaim,
+    EnumeratedAuditVerdict,
     MaterialDraft,
     append_copy_news_source_footer,
 )
@@ -330,7 +332,7 @@ class ZhipuMaterialDraftAuditor:
         total_latency_ms = 0
         while True:
             correction = (
-                "\n上一次输出未通过AuditVerdict结构校验。请仅按既定Schema重新输出合法JSON。"
+                "\n上一次输出未通过结构校验（code只能取表中的值）。请仅按既定Schema重新输出合法JSON。"
                 f"<VALIDATION_ERRORS>{validation_errors}</VALIDATION_ERRORS>"
                 if corrections
                 else ""
@@ -346,7 +348,14 @@ class ZhipuMaterialDraftAuditor:
             total_latency_ms += latency_ms
             try:
                 normalized_content = extract_provider_json_object(content)
-                verdict = AuditVerdict.model_validate_json(normalized_content)
+                verdict = (
+                    EnumeratedAuditVerdict.model_validate_json(
+                        normalized_content
+                    ).to_audit_verdict()
+                    if request.version_bundle.auditor_prompt_version
+                    == ENUMERATED_AUDITOR_PROMPT_VERSION
+                    else AuditVerdict.model_validate_json(normalized_content)
+                )
                 break
             except (ProviderJsonEnvelopeError, ValidationError) as error:
                 validation_issues = _safe_provider_output_issues(error)

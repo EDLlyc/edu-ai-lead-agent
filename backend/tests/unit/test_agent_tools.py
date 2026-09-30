@@ -239,7 +239,7 @@ def test_registry_rejects_duplicate_or_mutating_definitions() -> None:
     )
     with pytest.raises(ValueError, match="duplicate"):
         TypedToolRegistry((definition, definition))
-    with pytest.raises(ValueError, match="read-only"):
+    with pytest.raises(ValueError, match="in-memory workspace"):
         ToolDefinition(
             name="write_database",
             description="Forbidden mutating test tool.",
@@ -248,6 +248,26 @@ def test_registry_rejects_duplicate_or_mutating_definitions() -> None:
             handler=handler,
             read_only=False,
         )
+    with pytest.raises(ValueError, match="closed-world"):
+        ToolDefinition(
+            name="fetch_web",
+            description="Forbidden open-world test tool.",
+            argument_model=SearchEvidenceArguments,
+            result_model=SearchEvidenceResult,
+            handler=handler,
+            open_world=True,
+        )
+    workspace_tool = ToolDefinition(
+        name="edit_draft",
+        description="Edits only a caller-owned in-memory draft.",
+        argument_model=SearchEvidenceArguments,
+        result_model=SearchEvidenceResult,
+        handler=handler,
+        read_only=False,
+        workspace_only=True,
+    )
+    annotations = TypedToolRegistry((workspace_tool,)).canonical_schema()["tools"][0]["annotations"]  # type: ignore[index]
+    assert annotations == {"read_only": False, "open_world": False, "workspace_only": True}
 
 
 def test_event_result_enforces_one_global_eight_source_budget() -> None:

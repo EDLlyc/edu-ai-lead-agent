@@ -1,0 +1,157 @@
+"""Local stdio MCP server for the copy repair tools.
+
+It serves the exact registry the repair agent calls through function calling
+(`build_repair_tool_registry`), so an operator's MCP client and the online agent use the same
+tools, schemas, limits and refusals. The workspace is loaded once at start: the offline fixture
+draft by default, or with `--copy-run-id` the newest draft of a copy run from a local development
+database (read-only). Edits stay in this process's memory; nothing is written back.
+"""
+
+# ruff: noqa: RUF001
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+from collections.abc import Sequence
+from uuid import UUID
+
+from sqlalchemy import text
+
+from app.application.ports.brand_knowledge import BrandEmbeddingRequest, BrandEmbeddingResult
+from app.application.services.copy_repair_tools import (
+    REPAIR_TOOL_RULES,
+    REPAIR_TOOLSET_VERSION,
+    RepairWorkspace,
+    build_repair_tool_registry,
+)
+from app.core.agent_workbench_config import get_agent_workbench_settings
+from app.core.config import get_settings
+from app.core.errors import NotFoundError
+from app.infrastructure.agent_workbench_fixture import (
+    FIXTURE_COPY_RUN_ID,
+    build_fixture_material_draft,
+    build_fixture_reader,
+)
+from app.infrastructure.db.agent_workbench import PostgresAgentKnowledgeReader
+from app.infrastructure.db.copy_generation import load_latest_stored_draft
+from app.infrastructure.db.session import create_engine, create_session_factory
+from app.mcp_registry_server import (
+    DEFAULT_MCP_CALL_BUDGET,
+    CallLogger,
+    RegistryMCPServer,
+    call_budget_from_environment,
+    stderr_json_logger,
+)
+from app.schemas.copy_generation import MaterialDraft
+
+MCP_SERVER_NAME = "edu-ai-copy-repair"
+REPAIR_INSTRUCTIONS = (
+    "修复一份被拦下的朋友圈草稿（工作稿只在本进程内存里，不会写回数据库）。"
+    "先调用 check_draft 看有哪些 error，再按下面的规则修复：\n"
+    + REPAIR_TOOL_RULES
+    + "\n每个服务进程有调用次数上限。"
+)
+
+
+def build_copy_repair_mcp_server(
+    workspace: RepairWorkspace,
+    *,
+    call_budget: int = DEFAULT_MCP_CALL_BUDGET,
+    call_logger: CallLogger | None = stderr_json_logger,
+) -> RegistryMCPServer:
+    return RegistryMCPServer(
+        build_repair_tool_registry(workspace),
+        name=MCP_SERVER_NAME,
+        title="Copy Repair Tools",
+        description="The copy repair agent's five tools over one in-memory draft workspace.",
+        instructions=REPAIR_INSTRUCTIONS,
+        version=REPAIR_TOOLSET_VERSION,
+        call_budget=call_budget,
+        call_logger=call_logger,
+    )
+
+
+def _brand_chunk_ids(draft: MaterialDraft) -> tuple[UUID, ...]:
+    return tuple(dict.fromkeys(chunk for claim in draft.claims for chunk in claim.brand_chunk_ids))
+
+
+async def load_fixture_workspace() -> RepairWorkspace:
+    draft = build_fixture_material_draft()
+    context = await build_fixture_reader().load_copy_validation_context(
+        copy_run_id=FIXTURE_COPY_RUN_ID, brand_chunk_ids=_brand_chunk_ids(draft)
+    )
+    return RepairWorkspace(
+        topic=context.topic,
+        brand_context=context.brand_context,
+        rule_version=context.rule_version,
+        draft=draft,
+    )
+
+
+class _NoBrandSearch:
+    """This server never searches brand text; it only loads the chunks a draft already cites."""
+
+    async def embed_brand(self, request: BrandEmbeddingRequest) -> BrandEmbeddingResult:
+        del request
+        raise RuntimeError("brand search is not part of the copy repair server")
+
+
+async def load_run_workspace(copy_run_id: UUID) -> RepairWorkspace:
+    workbench = get_agent_workbench_settings()
+    settings = get_settings()
+    if workbench.app_env != "development" or settings.app_env != "development":
+        raise RuntimeError("the copy repair MCP server reads real runs only in development")
+    if not workbench.agent_mcp_real_data_enabled:
+        raise RuntimeError("real-data agent MCP requires explicit enablement")
+    engine = create_engine(settings)
+    try:
+        session_factory = create_session_factory(engine)
+        async with session_factory() as session:
+            await session.execute(text("SET TRANSACTION READ ONLY"))
+            stored = await load_latest_stored_draft(session, copy_run_id)
+            await session.rollback()
+        if stored is None:
+            raise RuntimeError("the copy run has no draft")
+        reader = PostgresAgentKnowledgeReader(
+            session_factory,
+            brand_embeddings=_NoBrandSearch(),
+            brand_retrieval_version=settings.brand_retrieval_version,
+        )
+        try:
+            context = await reader.load_copy_validation_context(
+                copy_run_id=copy_run_id, brand_chunk_ids=_brand_chunk_ids(stored.draft)
+            )
+        except NotFoundError:
+            raise RuntimeError(
+                "the run or a brand chunk its draft cites is not active on the run's date"
+            ) from None
+    finally:
+        await engine.dispose()
+    return RepairWorkspace(
+        topic=context.topic,
+        brand_context=context.brand_context,
+        rule_version=context.rule_version,
+        draft=stored.draft,
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Copy repair tools over stdio MCP.")
+    parser.add_argument("--copy-run-id", type=UUID, default=None)
+    args = parser.parse_args(argv)
+    if get_agent_workbench_settings().app_env == "production":
+        raise RuntimeError("the copy repair MCP server is local-only")
+    workspace = asyncio.run(
+        load_run_workspace(args.copy_run_id)
+        if args.copy_run_id is not None
+        else load_fixture_workspace()
+    )
+    build_copy_repair_mcp_server(
+        workspace, call_budget=call_budget_from_environment(os.environ)
+    ).run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

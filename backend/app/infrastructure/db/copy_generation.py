@@ -1601,3 +1601,10 @@ async def get_copy_generation_run(session: AsyncSession, run_id: UUID) -> CopyGe
 async def get_copy_generation_projection(session: AsyncSession, run_id: UUID) -> CopyRunProjection:
     run = await get_copy_generation_run(session, run_id)
     return CopyRunProjection(run=run, drafts=await _load_stored_drafts(session, run_id))
+
+
+async def load_latest_stored_draft(session: AsyncSession, run_id: UUID) -> StoredDraft | None:
+    """The newest draft version of one copy run, or None when the run has no draft yet."""
+
+    drafts = await _load_stored_drafts(session, run_id)
+    return drafts[-1] if drafts else None

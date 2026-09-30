@@ -50,9 +50,16 @@ class _StrictModel(BaseModel):
 
 
 class SearchEvidenceArguments(_StrictModel):
-    query: str = Field(min_length=1, max_length=500)
-    limit: int = Field(default=5, ge=1, le=5)
-    candidate_id: UUID | None = None
+    query: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Keywords or a short question about the news fact to cite, in Chinese.",
+    )
+    limit: int = Field(default=5, ge=1, le=5, description="How many evidence items to return.")
+    candidate_id: UUID | None = Field(
+        default=None,
+        description="Restrict the search to one news candidate, from get_event members.",
+    )
 
 
 class EvidenceToolItem(_StrictModel):
@@ -75,7 +82,7 @@ class SearchEvidenceResult(_StrictModel):
 
 
 class GetEventArguments(_StrictModel):
-    event_id: UUID
+    event_id: UUID = Field(description="The exact governed event UUID; never a guessed value.")
 
 
 class EventMemberToolItem(_StrictModel):
@@ -110,11 +117,17 @@ class GetEventResult(_StrictModel):
 
 
 class RetrieveBrandContextArguments(_StrictModel):
-    query: str = Field(min_length=1, max_length=500)
-    valid_on: date
-    audience: Literal["parents"] = "parents"
-    document_kinds: tuple[BrandDocumentKind, ...] = Field(default=(), max_length=4)
-    limit: int = Field(default=5, ge=1, le=5)
+    query: str = Field(
+        min_length=1,
+        max_length=500,
+        description="What the copy needs from the brand, e.g. tone for a science topic.",
+    )
+    valid_on: date = Field(description="Business date (YYYY-MM-DD); only brand text valid then.")
+    audience: Literal["parents"] = Field(default="parents", description="Always parents.")
+    document_kinds: tuple[BrandDocumentKind, ...] = Field(
+        default=(), max_length=4, description="Optional brand document kinds; empty means any."
+    )
+    limit: int = Field(default=5, ge=1, le=5, description="How many brand chunks to return.")
 
     @field_validator("document_kinds")
     @classmethod
@@ -152,9 +165,11 @@ class RetrieveBrandContextResult(_StrictModel):
 
 
 class ValidateCopyArguments(_StrictModel):
-    copy_run_id: UUID
-    draft: MaterialDraft
-    brand_chunk_ids: tuple[UUID, ...] = Field(default=(), max_length=16)
+    copy_run_id: UUID = Field(description="The copy run whose locked topic and rules apply.")
+    draft: MaterialDraft = Field(description="The complete draft to check, claims included.")
+    brand_chunk_ids: tuple[UUID, ...] = Field(
+        default=(), max_length=16, description="Brand chunks the draft's brand claims cite."
+    )
 
     @field_validator("brand_chunk_ids")
     @classmethod

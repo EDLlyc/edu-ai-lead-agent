@@ -61,6 +61,7 @@ from app.schemas.copy_generation import (
     AuditVerdict,
     CopyIssue,
     DraftClaim,
+    EnumeratedAuditVerdict,
     MaterialDraft,
     append_copy_news_source_footer,
     count_emojis,
@@ -73,6 +74,7 @@ from app.schemas.copy_generation import (
     render_headline_hook_copy,
     split_news_headline,
 )
+from pydantic import ValidationError
 from structlog.testing import capture_logs
 
 RUN_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -3379,3 +3381,69 @@ def test_headline_hook_v26_and_v20_prompts_keep_their_full_context() -> None:
     assert bundle.auditor_prompt_version == "moments-auditor-v20-headline-hook"
     assert "tone_tags" in auditor_prompt
     assert f"主题:{topic.title}" not in auditor_prompt
+
+
+def test_enumerated_auditor_prompt_lists_the_closed_code_set() -> None:
+    bundle = replace(
+        build_copy_version_bundle(Settings()),
+        auditor_prompt_version="moments-auditor-v22-enumerated-codes",
+    )
+    topic = _topic()
+    prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=topic,
+            brand_context=_brand(),
+            draft=_headline_hook_draft(topic, TEMPLATE_HOOK),
+            version_bundle=bundle,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert "只输出EnumeratedAuditVerdict JSON" in prompt
+    assert "<CODES>hook_off_topic：" in prompt
+    assert "outcome_promise：" in prompt
+    assert f"主题:{topic.title}" in prompt
+    assert '"enum"' in prompt
+
+
+def test_enumerated_verdict_takes_severity_from_the_code_table() -> None:
+    blocked = EnumeratedAuditVerdict.model_validate(
+        {
+            "issues": [
+                {"code": "hook_off_topic", "message": "引导语与新闻无关"},
+                {"code": "copy_fluency", "message": "有点生硬"},
+            ]
+        }
+    ).to_audit_verdict()
+    warned = EnumeratedAuditVerdict.model_validate(
+        {"issues": [{"code": "copy_fluency", "message": "有点生硬"}]}
+    ).to_audit_verdict()
+
+    assert blocked.accepted is False
+    assert [issue.severity for issue in blocked.issues] == ["error", "warning"]
+    assert warned.accepted is True
+    with pytest.raises(ValidationError):
+        EnumeratedAuditVerdict.model_validate(
+            {"issues": [{"code": "marketing_violation", "message": "自造的代码"}]}
+        )
+
+
+def test_headline_hook_policy_keeps_the_new_blocking_codes_as_errors() -> None:
+    verdict = EnumeratedAuditVerdict.model_validate(
+        {
+            "issues": [
+                {"code": "outcome_promise", "message": "承诺提分"},
+                {"code": "brand_fit", "message": "语气一般"},
+            ]
+        }
+    ).to_audit_verdict()
+
+    applied = apply_copy_audit_policy(verdict, rule_version="preview-v13-headline-hook")
+
+    assert applied.accepted is False
+    assert {issue.code: issue.severity for issue in applied.issues} == {
+        "outcome_promise": "error",
+        "brand_fit": "warning",
+    }

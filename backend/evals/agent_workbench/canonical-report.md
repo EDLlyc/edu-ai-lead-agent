@@ -3,7 +3,7 @@
 > This offline deterministic policy measures contracts, grounding, and safety invariants; it is not a live-LLM intelligence or provider-quality score.
 
 - Dataset: `agent-workbench-eval-case-v1:cad0bac0d2ebc706` (42 cases)
-- Registry schema SHA-256: `b302e43be41ad049cc6a981717bce24343f4bc461674ead254ad7d0e13f6f99b`
+- Registry schema SHA-256: `72ee4dec4de10d2958b0f00a2ae5e9139eb70defde10191d36c615673d4a1007`
 - Volatile wall-clock latency and token diagnostics are intentionally excluded here.
 
 ## Aggregate contract metrics
