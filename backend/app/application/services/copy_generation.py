@@ -88,8 +88,19 @@ BRAND_ROTATION_GENERATOR_PROMPT_VERSION = "moments-generator-v25-brand-rotation"
 # still applies to that material.
 HEADLINE_HOOK_GENERATOR_PROMPT_VERSION = "moments-generator-v26-headline-hook"
 HEADLINE_HOOK_AUDITOR_PROMPT_VERSION = "moments-auditor-v20-headline-hook"
+# v27/v21 (lean context, 2026-09-30): the same headline-hook contract with less context. The
+# generator's BRAND drops tag/page metadata the model never uses. The auditor sees only the
+# evidence and brand chunks the draft's claims cite, plus the topic title and summary.
+LEAN_CONTEXT_GENERATOR_PROMPT_VERSION = "moments-generator-v27-lean-context"
+LEAN_CONTEXT_AUDITOR_PROMPT_VERSION = "moments-auditor-v21-lean-context"
+HEADLINE_HOOK_GENERATOR_PROMPT_VERSIONS = frozenset(
+    {HEADLINE_HOOK_GENERATOR_PROMPT_VERSION, LEAN_CONTEXT_GENERATOR_PROMPT_VERSION}
+)
+HEADLINE_HOOK_AUDITOR_PROMPT_VERSIONS = frozenset(
+    {HEADLINE_HOOK_AUDITOR_PROMPT_VERSION, LEAN_CONTEXT_AUDITOR_PROMPT_VERSION}
+)
 BRAND_ROTATION_GENERATOR_PROMPT_VERSIONS = frozenset(
-    {BRAND_ROTATION_GENERATOR_PROMPT_VERSION, HEADLINE_HOOK_GENERATOR_PROMPT_VERSION}
+    {BRAND_ROTATION_GENERATOR_PROMPT_VERSION, *HEADLINE_HOOK_GENERATOR_PROMPT_VERSIONS}
 )
 STANDALONE_HEADING_GENERATOR_PROMPT_VERSIONS = frozenset(
     {STANDALONE_HEADING_GENERATOR_PROMPT_VERSION, BRAND_ROTATION_GENERATOR_PROMPT_VERSION}
@@ -872,6 +883,16 @@ def _copy_format_contract(rule_version: str) -> str:
     )
 
 
+def _lean_brand_payload(item: ActiveBrandContext) -> dict[str, object]:
+    return {
+        "brand_chunk_id": str(item.chunk_id),
+        "section_title": item.section_title,
+        "claim_scope": item.claim_scope.value if item.claim_scope is not None else None,
+        "verification_required": item.verification_required,
+        "text": item.text,
+    }
+
+
 def build_generator_prompt(request: DraftGenerationRequest) -> str:
     evidence = []
     for item in request.topic.evidence:
@@ -889,8 +910,13 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         ):
             payload["governed_statement"] = item.governed_statement
         evidence.append(payload)
+    lean_generator = (
+        request.version_bundle.generator_prompt_version == LEAN_CONTEXT_GENERATOR_PROMPT_VERSION
+    )
     brand = [
-        {
+        _lean_brand_payload(item)
+        if lean_generator
+        else {
             "brand_chunk_id": str(item.chunk_id),
             "document_kind": item.document_kind,
             "tone_tags": item.tone_tags,
@@ -930,7 +956,7 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
     )
     generator_version = request.version_bundle.generator_prompt_version
     brand_rotation = generator_version in BRAND_ROTATION_GENERATOR_PROMPT_VERSIONS
-    headline_hook = generator_version == HEADLINE_HOOK_GENERATOR_PROMPT_VERSION
+    headline_hook = generator_version in HEADLINE_HOOK_GENERATOR_PROMPT_VERSIONS
     brand_rotation_contract = (
         "长图素材里的brand_statement只写一条，从BRAND中挑一个与本条新闻最贴合的具体课堂方式或学习体验；"
         "BRAND按新鲜度排序，优先使用排在前面的内容。<RECENT_BRAND_CLAIMS>是近几天已用过的品牌说法，"
@@ -991,8 +1017,21 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
 
 
 def build_auditor_prompt(request: DraftAuditRequest) -> str:
+    lean_auditor = (
+        request.version_bundle.auditor_prompt_version == LEAN_CONTEXT_AUDITOR_PROMPT_VERSION
+    )
+    cited_evidence = {
+        evidence_id for claim in request.draft.claims for evidence_id in claim.evidence_ids
+    }
+    cited_brand = {chunk_id for claim in request.draft.claims for chunk_id in claim.brand_chunk_ids}
+    audited_evidence = (
+        tuple(item for item in request.topic.evidence if item.evidence_id in cited_evidence)
+        or request.topic.evidence[:1]
+        if lean_auditor
+        else request.topic.evidence
+    )
     evidence = []
-    for item in request.topic.evidence:
+    for item in audited_evidence:
         payload = {
             "evidence_id": str(item.evidence_id),
             "source_name": item.source_name,
@@ -1006,25 +1045,35 @@ def build_auditor_prompt(request: DraftAuditRequest) -> str:
         ):
             payload["governed_statement"] = item.governed_statement
         evidence.append(payload)
-    brand = [
-        {
-            "brand_chunk_id": str(item.chunk_id),
-            "document_kind": item.document_kind,
-            "tone_tags": item.tone_tags,
-            "safety_tags": item.safety_tags,
-            "visual_tags": item.visual_tags,
-            "section_title": item.section_title,
-            "section_kind": item.section_kind.value if item.section_kind is not None else None,
-            "source_page": item.source_page,
-            "question_number": item.question_number,
-            "question_text": item.question_text,
-            "content_type": item.content_type.value if item.content_type is not None else None,
-            "claim_scope": item.claim_scope.value if item.claim_scope is not None else None,
-            "verification_required": item.verification_required,
-            "text": item.text,
-        }
-        for item in request.brand_context
-    ]
+    brand = (
+        [
+            _lean_brand_payload(item)
+            for item in request.brand_context
+            if item.chunk_id in cited_brand
+        ]
+        if lean_auditor
+        else [
+            {
+                "brand_chunk_id": str(item.chunk_id),
+                "document_kind": item.document_kind,
+                "tone_tags": item.tone_tags,
+                "safety_tags": item.safety_tags,
+                "visual_tags": item.visual_tags,
+                "section_title": item.section_title,
+                "section_kind": item.section_kind.value if item.section_kind is not None else None,
+                "source_page": item.source_page,
+                "question_number": item.question_number,
+                "question_text": item.question_text,
+                "content_type": (
+                    item.content_type.value if item.content_type is not None else None
+                ),
+                "claim_scope": item.claim_scope.value if item.claim_scope is not None else None,
+                "verification_required": item.verification_required,
+                "text": item.text,
+            }
+            for item in request.brand_context
+        ]
+    )
     format_contract = _copy_format_contract(request.version_bundle.rule_version)
     evidence_language_contract = (
         "EVIDENCE中的exact_quote是原文引文；governed_statement是可选的中文治理事实，"
@@ -1046,7 +1095,7 @@ def build_auditor_prompt(request: DraftAuditRequest) -> str:
             "若正文编造了BRAND未直接支持的具体课程、教学主体、能力或效果，"
             "必须使用unsupported_brand_claim error，不能使用brand_value代替。"
         )
-    elif request.version_bundle.auditor_prompt_version == HEADLINE_HOOK_AUDITOR_PROMPT_VERSION:
+    elif request.version_bundle.auditor_prompt_version in HEADLINE_HOOK_AUDITOR_PROMPT_VERSIONS:
         review_scope = (
             "确定性校验已经通过。朋友圈文字只有系统生成的标题、一句引导语、来源和标签；claims是只给长图用的素材。"
             "你只能评价引导语是否自然、贴合新闻、面向亲子交流，claims素材的事实与品牌支持，品牌语气与标签质量。"
@@ -1071,7 +1120,13 @@ def build_auditor_prompt(request: DraftAuditRequest) -> str:
         f"版本:{request.version_bundle.auditor_prompt_version}/"
         f"{request.version_bundle.audit_schema_version}\n"
         f"<OUTPUT_SCHEMA>{_prompt_json(AuditVerdict.model_json_schema())}</OUTPUT_SCHEMA>\n"
-        f"<EVIDENCE>{_prompt_json(evidence)}</EVIDENCE>\n"
+        + (
+            f"主题:{request.topic.title}\n摘要:{request.topic.summary or ''}\n"
+            "EVIDENCE和BRAND只包含草稿claims引用的条目。\n"
+            if lean_auditor
+            else ""
+        )
+        + f"<EVIDENCE>{_prompt_json(evidence)}</EVIDENCE>\n"
         f"<BRAND>{_prompt_json(brand)}</BRAND>\n"
         f"<DRAFT>{_prompt_json(request.draft.model_dump(mode='json'))}</DRAFT>"
     )
