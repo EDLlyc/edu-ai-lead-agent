@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, literal, or_, select, update
+from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -446,6 +446,12 @@ async def load_topic_candidates(
     )
 
 
+# At most this many events are scored per run; the pool is the freshest events, newest first.
+CANDIDATE_POOL_LIMIT = 500
+# Extra days kept beyond the freshness window, so nothing the stale veto would accept is left out.
+CANDIDATE_POOL_FRESHNESS_MARGIN_DAYS = 1.0
+
+
 async def load_governed_topic_candidates(
     session: AsyncSession,
     *,
@@ -487,6 +493,20 @@ async def load_governed_topic_candidates(
         .correlate(EventClusterModel)
         .scalar_subquery()
     )
+    # Same time basis as the candidate's event_time below, which the stale veto measures.
+    pool_event_time = func.coalesce(
+        EventClusterVersionModel.event_time_start,
+        EventClusterVersionModel.event_time_end,
+        EvidenceCandidateModel.published_at,
+        EvidenceCandidateModel.first_fetched_at,
+    )
+    # Events older than the freshness window are always vetoed as stale, so they only take
+    # places under the cap. Until 2026-09-30 the pool was the first 500 active events by
+    # (hash-derived) id: about 45% of the news fetched in the last three days was never scored
+    # while events months old were re-scored every run.
+    oldest_event_time = governed_event_cutoff - timedelta(
+        days=scoring_config.freshness_window_days + CANDIDATE_POOL_FRESHNESS_MARGIN_DAYS
+    )
     version_rows = tuple(
         (
             await session.execute(
@@ -505,9 +525,9 @@ async def load_governed_topic_candidates(
                     EvidenceCandidateModel,
                     EvidenceCandidateModel.id == NormalizedArticleModel.candidate_id,
                 )
-                .where(EventClusterModel.status == "active")
-                .order_by(EventClusterModel.id)
-                .limit(500)
+                .where(EventClusterModel.status == "active", pool_event_time >= oldest_event_time)
+                .order_by(pool_event_time.desc(), EventClusterModel.id)
+                .limit(CANDIDATE_POOL_LIMIT)
             )
         ).tuples()
     )

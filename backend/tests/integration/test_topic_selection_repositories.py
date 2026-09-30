@@ -46,6 +46,7 @@ from app.domain.topic_selection import (
     select_daily_topic,
 )
 from app.infrastructure.ai.topic_rerank import DeterministicFakeTopicReranker
+from app.infrastructure.db import topic_selection as topic_selection_repository
 from app.infrastructure.db.content_slots import (
     claim_content_slot_job,
     complete_content_slot_job,
@@ -77,7 +78,9 @@ from app.infrastructure.db.topic_selection import (
     persist_topic_selection_decision,
 )
 from app.infrastructure.ingestion.source_profiles import SOURCE_SEEDS
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .conftest import IntegrationContext
 from .governance_graph_support import FakeEmbeddingModel, FakeFactualAnalysisModel
@@ -989,3 +992,119 @@ async def test_v4_rerank_applied_and_finalization_fallback_are_atomic(
     assert slot_record.policy_version == rerank_config.policy_version
     assert slot_record.failure_code is None
     assert len(slot_record.reasons) == 2
+
+
+async def _clone_event(
+    session: AsyncSession, source: EventClusterVersionModel, *, event_time: datetime
+) -> UUID:
+    """A second active event sharing ``source``'s article, dated ``event_time``."""
+
+    event_id = uuid4()
+    session.add(EventClusterModel(id=event_id, status="active"))
+    await session.flush()
+    fields = {
+        attribute.key: getattr(source, attribute.key)
+        for attribute in sa_inspect(EventClusterVersionModel).column_attrs
+    }
+    version = EventClusterVersionModel(
+        **{
+            **fields,
+            "id": uuid4(),
+            "event_id": event_id,
+            "version": 1,
+            "event_time_start": event_time,
+            "event_time_end": event_time,
+        }
+    )
+    session.add(version)
+    await session.flush()
+    cluster = await session.get(EventClusterModel, event_id)
+    assert cluster is not None
+    cluster.current_version_id = version.id
+    return event_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_candidate_pool_is_the_freshest_events_newest_first(
+    integration_context: IntegrationContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stale events (always vetoed) never take a place under the cap; the newest win it."""
+
+    acquisition_run_id, _ = await _create_acquisition_fixture(
+        integration_context, candidate_count=1
+    )
+    bundle = build_governance_version_bundle(integration_context.settings)
+    async with integration_context.session_factory() as session:
+        await create_governance_run_for_acquisition(
+            session,
+            acquisition_run_id=acquisition_run_id,
+            bundle=bundle,
+            timezone="Asia/Shanghai",
+        )
+    claimed = await _claim(integration_context, worker_id="topic-fresh-pool")
+    now = datetime.now(UTC)
+    graph = _build_graph(
+        integration_context,
+        bundle=bundle,
+        analysis_model=FakeFactualAnalysisModel(
+            category=FactualCategory.AI_EDUCATION_POLICY, entity_name="教育部"
+        ),
+        embedding_model=FakeEmbeddingModel(),
+        now=now,
+    )
+    seeded_event_id = (await graph.ainvoke(governance_graph_input(claimed)))["event_id"]
+    assert isinstance(seeded_event_id, UUID)
+
+    config = TopicScoringConfig(
+        version=THRESHOLD_059_TOPIC_SCORING_VERSION,
+        profile=f"fresh-pool-{uuid4().hex[:12]}",
+        threshold=0.59,
+    )
+    assert config.freshness_window_days == 10
+    cutoff = now + timedelta(minutes=1)
+    ages = {"1d": 1, "3d": 3, "10.5d": 10.5, "11.5d": 11.5, "40d": 40}
+    async with integration_context.session_factory() as session:
+        seeded_version = await session.scalar(
+            select(EventClusterVersionModel).where(
+                EventClusterVersionModel.event_id == seeded_event_id
+            )
+        )
+        assert seeded_version is not None
+        # Park the seeded event far in the past so only the dated clones are in question.
+        seeded_version.event_time_start = cutoff - timedelta(days=90)
+        seeded_version.event_time_end = seeded_version.event_time_start
+        clones = {
+            label: await _clone_event(
+                session, seeded_version, event_time=cutoff - timedelta(days=age)
+            )
+            for label, age in ages.items()
+        }
+        await session.commit()
+
+    async def pool() -> list[UUID]:
+        async with integration_context.session_factory() as session:
+            candidates = await load_governed_topic_candidates(
+                session,
+                business_date=now.date(),
+                timezone="Asia/Shanghai",
+                scoring_profile=config.profile,
+                governed_event_cutoff=cutoff,
+                config_snapshot=config.as_metadata(),
+            )
+        return [candidate.event_id for candidate in candidates]
+
+    # Other tests share this database; look only at the events dated here.
+    mine = set(clones.values()) | {seeded_event_id}
+    full = await pool()
+    # Within the 10-day window plus one day of margin, newest first; older ones are left out.
+    assert [event_id for event_id in full if event_id in mine] == [
+        clones["1d"],
+        clones["3d"],
+        clones["10.5d"],
+    ]
+
+    # With more fresh events than places, the cap keeps the newest and drops the oldest.
+    places = full.index(clones["3d"]) + 1
+    monkeypatch.setattr(topic_selection_repository, "CANDIDATE_POOL_LIMIT", places)
+    assert await pool() == full[:places]
