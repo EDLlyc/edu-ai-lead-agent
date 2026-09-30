@@ -172,3 +172,10 @@ Open gaps kept visible in `canonical-report.md`:
   `…@sha256:b3ee53d5b055633ae81aa793ceb6d79beac314b7041458ee25e9c7c03b0ad963`; backups
   `*.before-80018cf-20260929T161923`; no job was running; services healthy, no errors in the
   first logs; effective settings 12 / 30, review mode advisory, max ordinal 3.
+- 09-30 10:08 long-image blank bottom trimmed `6912996` (trim-v1; image
+  `…@sha256:797dc3063388365bb8f0f5613bb652333e8d1225c26cbba5ea8ee3270c159fab` = b3ee53d5 +
+  footer / producer / supplement + the 4 files that had drifted (3 quality_report, text-overlay
+  tool), so the service app/ now equals mainline; backups `*.before-6912996-20260930T100805`).
+  Operator asked to remove the empty band left by footer-v6: formal posters end 36 px below the
+  last painted row (1600–2048 high), painted bottoms kept, send gates accept untrimmed v6. On 11
+  real posters the 6 v6 ones trimmed 2048 → 1879–1954. No job was running; services healthy.
