@@ -40,6 +40,7 @@ _ALLOWED_METADATA_FIELDS = {
     "priority",
     "approved",
     "manual_review_note",
+    "props",
 }
 
 # These labels are deliberately small and human-readable. The manifest is a private catalog, so
@@ -202,6 +203,40 @@ _KNOWN_METADATA: dict[str, dict[str, Any]] = {
         "scene_tags": ["robotics_lab", "classroom"],
         "priority": 82,
     },
+}
+
+
+# Props each reviewed action image carries (empty = pose only), read by the gated-rotation
+# selector v3. Drafted from visual inspection on 2026-09-30 and approved by the owner. An action
+# image missing from this table gets no `props` key, which keeps selector v3 on its v2 fallback
+# until someone labels it.
+_KNOWN_PROPS: dict[str, list[str]] = {
+    "天文-赛先生.png": ["telescope"],
+    "小赛举个例子.png": ["specimen"],
+    "小赛向上指.png": [],
+    "小赛和赛先生在时光机里看书.png": ["time_machine"],
+    "小赛和赛先生思考.png": [],
+    "小赛和赛先生时光穿越书.png": ["book"],
+    "小赛和赛先生讨论.png": [],
+    "小赛开课欢迎.png": [],
+    "小赛探测.png": ["detector"],
+    "小赛疑惑.png": [],
+    "小赛疑问.png": [],
+    "小赛看书.png": ["book"],
+    "小赛讨论（朝右）.png": [],
+    "小赛赛先生时光机.png": ["time_machine"],
+    "赛先生-专业团队.png": ["brand_team"],
+    "赛先生-伸手指.png": [],
+    "赛先生-宇航员1.png": ["astronaut"],
+    "赛先生-宇航员2.PNG": ["astronaut"],
+    "赛先生-宇航员地球仪.png": ["astronaut"],
+    "赛先生-探险.png": ["explorer"],
+    "赛先生-显微镜.png": ["microscope"],
+    "赛先生小赛-双向奔赴.png": ["astronaut"],
+    "赛先生小赛-携手奔跑.png": ["astronaut"],
+    "赛先生小赛-空间站.png": ["astronaut"],
+    "赛先生开课欢迎.png": [],
+    "赛先生讨论（朝左）.png": [],
 }
 
 
@@ -377,6 +412,8 @@ def _asset_metadata(
             "approved": True,
         }
     metadata.update(_KNOWN_METADATA.get(filename, {}))
+    if asset_kind == "action" and filename in _KNOWN_PROPS:
+        metadata["props"] = list(_KNOWN_PROPS[filename])
     metadata.update(overrides)
     asset_kind = metadata.get("asset_kind", asset_kind)
     if not isinstance(asset_kind, str) or asset_kind not in _ASSET_KINDS:
@@ -448,6 +485,8 @@ def _asset_metadata(
             *metadata["scene_tags"],
         ]
     metadata["selection_tags"] = _tag_list(selection_tags, field_name="selection_tags")
+    if "props" in metadata:
+        metadata["props"] = _tag_list(metadata["props"], field_name="props")
     return metadata
 
 

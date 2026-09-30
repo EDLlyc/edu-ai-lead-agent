@@ -18,8 +18,19 @@ from app.application.services.material_package import (
     enqueue_material_package,
 )
 from app.core.config import Settings
-from app.domain.visual_diversity import ControlledVisualPlan
+from app.domain.visual_assets import VisualAssetCatalog
+from app.domain.visual_diversity import (
+    SUBJECT_ALLOWED_PROPS,
+    VISUAL_SELECTOR_V3_VERSION,
+    ControlledVisualPlan,
+)
+from app.domain.visual_retrieval import (
+    VisualEmbeddingIdentity,
+    VisualSemanticRanking,
+    VisualSemanticScore,
+)
 from app.infrastructure.ai.image_generation import _solid_png
+from app.infrastructure.brand.visual_catalog import load_visual_catalog
 from app.infrastructure.db.models import (
     CopyGenerationRunModel,
     ImageArtifactModel,
@@ -367,3 +378,175 @@ async def test_concurrent_plan_reservation_replay_and_warning_delivery_contract(
     assert generator.requests[1].provider_request_fingerprint is not None
     assert store.calls == 1
     assert ControlledVisualPlan.from_metadata(reservations[0].plan_snapshot).fingerprint
+
+
+def _write_v3_catalog(root: Path) -> Path:
+    asset_root = root / "05-visual-assets"
+    asset_root.mkdir(parents=True)
+    definitions: tuple[tuple[str, str, list[str], list[str]], ...] = (
+        ("v3-xiaosai-identity.png", "identity_reference", ["xiao-sai"], []),
+        ("v3-sai-identity.png", "identity_reference", ["sai-xiansheng"], []),
+        ("v3-xiaosai-pose-a.png", "action_reference", ["xiao-sai"], []),
+        ("v3-xiaosai-pose-b.png", "action_reference", ["xiao-sai"], []),
+        ("v3-xiaosai-pose-c.png", "action_reference", ["xiao-sai"], []),
+        ("v3-sai-pose-a.png", "action_reference", ["sai-xiansheng"], []),
+        ("v3-sai-pose-b.png", "action_reference", ["sai-xiansheng"], []),
+        ("v3-sai-pose-c.png", "action_reference", ["sai-xiansheng"], []),
+        ("v3-sai-telescope.png", "action_reference", ["sai-xiansheng"], ["telescope"]),
+    )
+    entries: list[dict[str, object]] = []
+    for filename, role, characters, props in definitions:
+        body = _solid_png(filename, "visual-selector-v3-integration")
+        (asset_root / filename).write_bytes(body)
+        digest = hashlib.sha256(body).hexdigest()
+        entries.append(
+            {
+                "asset_id": digest,
+                "sha256": digest,
+                "checksum": digest,
+                "relative_path": f"05-visual-assets/{filename}",
+                "category": "visual-asset",
+                "filename": filename,
+                "byte_size": len(body),
+                "media_type": "image/png",
+                "width": 1024,
+                "height": 1024,
+                "has_alpha": False,
+                "characters": characters,
+                "roles": [role],
+                "topics": ["science", "robotics", "ai", "astronomy", "reading", "experiment"],
+                "poses": ["observation"],
+                "scene_tags": ["science_lab"],
+                "priority": 50,
+                "approved": True,
+                "props": props,
+            }
+        )
+    manifest = root / "visual-assets.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "brand-visual-assets-v2",
+                "catalog_version": "visual-selector-v3-integration-v1",
+                "private": True,
+                "text_rag_eligible": False,
+                "asset_count": len(entries),
+                "assets": entries,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+class _SubjectRankingService:
+    """Complete deterministic rankings; records every query text."""
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def search_text(self, *, text: str, catalog: VisualAssetCatalog) -> VisualSemanticRanking:
+        self.queries.append(text)
+        approved = sorted(asset.asset_id for asset in catalog.assets if asset.approved)
+        scores = tuple(
+            VisualSemanticScore(
+                asset_id=asset_id,
+                similarity=int(hashlib.sha256(f"{text}:{asset_id}".encode()).hexdigest()[:4], 16)
+                / 65_535,
+            )
+            for asset_id in approved
+        )
+        return VisualSemanticRanking(
+            catalog_version=catalog.catalog_version,
+            identity=VisualEmbeddingIdentity(),
+            query_fingerprint=hashlib.sha256(text.encode()).hexdigest(),
+            scores=scores,
+            indexed_asset_count=len(approved),
+            catalog_asset_count=len(approved),
+            complete=True,
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_selector_v3_reserves_gated_rotated_references_with_subject_rankings(
+    integration_context: IntegrationContext,
+    tmp_path: Path,
+) -> None:
+    target_at = datetime(2098, 8, 15, 1, 0, tzinfo=UTC)
+    _window_id, _job_ids, business_date, _profile = await _seed_slot_delivery_lane(
+        integration_context,
+        target_at=target_at,
+    )
+    first_run_id, second_run_id = await _remove_seeded_materials(
+        integration_context,
+        business_date=business_date,
+    )
+    manifest = _write_v3_catalog(tmp_path / "brand-materials")
+    catalog = load_visual_catalog(str(manifest)).catalog
+    props = {asset.asset_id: asset.props for asset in catalog.assets}
+    characters = {asset.asset_id: set(asset.characters) for asset in catalog.assets}
+    service = _SubjectRankingService()
+    enqueue_options = {
+        "session_factory": integration_context.session_factory,
+        "reference_asset": None,
+        "image_provider": "fake",
+        "image_model": "gpt-image-2",
+        "image_asset_manifest": str(manifest),
+        "image_selector_enabled": True,
+        "image_max_reference_images": 3,
+        "image_reference_budget_bytes": 6 * 1024 * 1024,
+        "image_diversity_enabled": True,
+        "image_diversity_selector_version": VISUAL_SELECTOR_V3_VERSION,
+        "visual_semantic_enabled": True,
+        "visual_retrieval_service": service,
+    }
+
+    first = await enqueue_material_package(run_id=first_run_id, **enqueue_options)
+    first_queries = len(service.queries)
+    second = await enqueue_material_package(run_id=second_run_id, **enqueue_options)
+
+    assert first_queries == 3
+    assert all('"subject":' in query for query in service.queries)
+    assert first.image.visual_brief_snapshot["semantic_retrieval"]["ranking_source"] == (
+        "semantic_in_tier"
+    )
+    async with integration_context.session_factory() as session:
+        plans = {
+            (row.image_artifact_id, row.attempt_ordinal): ControlledVisualPlan.from_metadata(
+                row.plan_snapshot
+            )
+            for row in (
+                await session.scalars(
+                    select(ImageVisualPlanReservationModel).where(
+                        ImageVisualPlanReservationModel.image_artifact_id.in_(
+                            (first.image.id, second.image.id)
+                        )
+                    )
+                )
+            ).all()
+        }
+        references = tuple(
+            (
+                await session.scalars(
+                    select(ImageArtifactReferenceModel).where(
+                        ImageArtifactReferenceModel.image_artifact_id.in_(
+                            (first.image.id, second.image.id)
+                        )
+                    )
+                )
+            ).all()
+        )
+    assert {row.selector_version for row in references} == {VISUAL_SELECTOR_V3_VERSION}
+    actions = {
+        (row.image_artifact_id, row.attempt_ordinal): row.asset_id
+        for row in references
+        if row.reference_role == "action_reference"
+    }
+    assert len(actions) == 4
+    for key, asset_id in actions.items():
+        plan = plans[key]
+        assert characters[asset_id] <= set(plan.characters)
+        assert set(props[asset_id] or ()) <= SUBJECT_ALLOWED_PROPS[plan.subject]
+    first_actions = {actions[(first.image.id, 1)], actions[(first.image.id, 2)]}
+    assert actions[(second.image.id, 1)] not in first_actions

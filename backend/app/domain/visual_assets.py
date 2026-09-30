@@ -12,7 +12,14 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Self
 
-from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
+from app.domain.visual_diversity import (
+    ACTION_COOLDOWN_REFERENCES,
+    KNOWN_VISUAL_PROPS,
+    SUBJECT_ALLOWED_PROPS,
+    VISUAL_SELECTOR_V2_VERSION,
+    VISUAL_SELECTOR_V3_VERSION,
+    VisualSubject,
+)
 from app.domain.visual_retrieval import VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION
 
 VISUAL_ASSET_SCHEMA_VERSION = "brand-visual-assets-v2"
@@ -26,6 +33,8 @@ MAX_VISUAL_ASSET_DIMENSION = 8_192
 MAX_VISUAL_ASSET_PIXELS = 32_000_000
 DEFAULT_MAX_REFERENCE_ASSETS = 3
 DEFAULT_MAX_REFERENCE_BYTES = 20 * 1024 * 1024
+MAX_RECENT_ACTION_SEQUENCE = 2_000
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class VisualAssetRole(StrEnum):
@@ -201,6 +210,8 @@ class VisualAsset:
     sha256: str | None = None
     catalog_schema_version: str = VISUAL_ASSET_SCHEMA_VERSION
     manual_review_note: str | None = None
+    # None = the catalog has not labelled this asset; () = pose only, no prop.
+    props: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         relative_path = validate_relative_asset_path(self.relative_path)
@@ -275,6 +286,11 @@ class VisualAsset:
                 field_name="selection_tags",
             )
         object.__setattr__(self, "selection_tags", selection_tags)
+        if self.props is not None:
+            props = _safe_tag_tuple(self.props, field_name="props")
+            if not set(props) <= KNOWN_VISUAL_PROPS:
+                raise VisualAssetError("visual asset props contain an unknown prop")
+            object.__setattr__(self, "props", props)
 
     @property
     def checksum(self) -> str:
@@ -345,6 +361,11 @@ class VisualAsset:
             sha256=checksum,
             catalog_schema_version=catalog_schema_version,
             manual_review_note=note,
+            props=(
+                None
+                if raw.get("props") is None
+                else _safe_tag_tuple(raw.get("props"), field_name="props")
+            ),
         )
 
 
@@ -587,10 +608,18 @@ class AssetSelectionRequest:
     recent_action_asset_ids: tuple[str, ...] = ()
     recent_style_asset_ids: tuple[str, ...] = ()
     recent_variant_groups: tuple[str, ...] = ()
+    # Chronological action-reference history, oldest first, repeats kept (selector v3 only).
+    recent_action_sequence: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_references < 1 or self.max_references > 3:
             raise VisualAssetError("visual asset reference count must be in [1, 3]")
+        sequence = tuple(self.recent_action_sequence)
+        if len(sequence) > MAX_RECENT_ACTION_SEQUENCE or any(
+            not isinstance(item, str) or _SHA256.fullmatch(item) is None for item in sequence
+        ):
+            raise VisualAssetError("visual asset recent action sequence is invalid")
+        object.__setattr__(self, "recent_action_sequence", sequence)
         if self.max_reference_bytes < 1 or self.max_reference_bytes > 100 * 1024 * 1024:
             raise VisualAssetError("visual asset reference byte budget is invalid")
         roles = tuple(dict.fromkeys(self.reference_roles))
@@ -673,7 +702,16 @@ class AssetSelectionRequest:
             recent_action_asset_ids=_object_string_tuple(raw.get("recent_action_asset_ids")),
             recent_style_asset_ids=_object_string_tuple(raw.get("recent_style_asset_ids")),
             recent_variant_groups=_object_string_tuple(raw.get("recent_variant_groups")),
+            recent_action_sequence=_ordered_string_tuple(raw.get("recent_action_sequence")),
         )
+
+
+def _ordered_string_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
+        raise VisualAssetError("visual asset recent action sequence must be strings")
+    return tuple(value)
 
 
 def _object_string_tuple(value: object) -> tuple[str, ...]:
@@ -820,7 +858,9 @@ class AssetSelector:
         self._max_references = max_references
         self._max_reference_bytes = max_reference_bytes
         self._semantic_scores: dict[str, float] | None
-        if selector_version == VISUAL_SEMANTIC_SELECTOR_VERSION:
+        if selector_version == VISUAL_SEMANTIC_SELECTOR_VERSION or (
+            selector_version == VISUAL_SELECTOR_V3_VERSION and semantic_scores is not None
+        ):
             if semantic_scores is None:
                 raise VisualAssetSelectionError("complete semantic scores are required")
             approved_ids = {asset.asset_id for asset in self._catalog.assets if asset.approved}
@@ -886,7 +926,18 @@ class AssetSelector:
                 and self._action_match_score(item.asset, selection_request) > 0
                 for item in selected
             )
-            if not action_satisfied and len(selected) < selection_request.max_references:
+            if (
+                self._selector_version == VISUAL_SELECTOR_V3_VERSION
+                and len(selected) < selection_request.max_references
+            ):
+                gated = self._select_gated_action(selection_request, selected, remaining_bytes)
+                if gated is None:
+                    fallback_used = True
+                else:
+                    selected.append(gated)
+                    remaining_bytes -= gated.asset.byte_size
+                    fallback_used = fallback_used or gated.fallback
+            elif not action_satisfied and len(selected) < selection_request.max_references:
                 ranked = self._rank(selection_request, VisualAssetRole.ACTION_REFERENCE, set())
                 candidate = self._first_fitting(ranked, selected, remaining_bytes)
                 action_fallback = False
@@ -968,6 +1019,7 @@ class AssetSelector:
                 "recent_action_asset_ids": request.recent_action_asset_ids,
                 "recent_style_asset_ids": request.recent_style_asset_ids,
                 "recent_variant_groups": request.recent_variant_groups,
+                "recent_action_sequence": request.recent_action_sequence,
             }
             raw.update(overrides)
             return AssetSelectionRequest.from_mapping(raw)
@@ -993,6 +1045,7 @@ class AssetSelector:
                 "recent_action_asset_ids",
                 "recent_style_asset_ids",
                 "recent_variant_groups",
+                "recent_action_sequence",
             )
             if hasattr(request, key)
         }
@@ -1063,6 +1116,7 @@ class AssetSelector:
             if self._selector_version in {
                 VISUAL_SELECTOR_V2_VERSION,
                 VISUAL_SEMANTIC_SELECTOR_VERSION,
+                VISUAL_SELECTOR_V3_VERSION,
             }:
                 if role == VisualAssetRole.ACTION_REFERENCE:
                     novelty_repeated = asset.asset_id in request.recent_action_asset_ids
@@ -1081,6 +1135,7 @@ class AssetSelector:
                     semantic_similarity=(
                         self._semantic_scores.get(asset.asset_id)
                         if self._semantic_scores is not None
+                        and self._selector_version == VISUAL_SEMANTIC_SELECTOR_VERSION
                         else None
                     ),
                 )
@@ -1096,6 +1151,124 @@ class AssetSelector:
                     item.asset.asset_id,
                 ),
             )
+        )
+
+    def _select_gated_action(
+        self,
+        request: AssetSelectionRequest,
+        selected: Sequence[SelectedVisualAsset],
+        remaining_bytes: int,
+    ) -> SelectedVisualAsset | None:
+        """Selector v3: gate by prop and cast, rotate by recency, order within a tier.
+
+        Tiers: an image whose prop suits the plan subject and that is outside the cooldown;
+        then a pose-only image outside the cooldown; then the least recently used image.
+        Inside a tier, semantic similarity (when complete scores were supplied) or the rule
+        score decides. Semantic similarity never admits an image the gates excluded.
+        """
+
+        try:
+            allowed = SUBJECT_ALLOWED_PROPS[VisualSubject(request.subject)]
+        except ValueError as error:
+            raise VisualAssetSelectionError(
+                "selector v3 requires a controlled plan subject"
+            ) from error
+        catalog_actions = self._approved_candidates(VisualAssetRole.ACTION_REFERENCE)
+        if any(asset.props is None for asset in catalog_actions):
+            raise VisualAssetSelectionError(
+                "selector v3 requires prop labels on every action asset"
+            )
+        selected_ids = {item.asset.asset_id for item in selected}
+
+        def fit(asset: VisualAsset) -> int:
+            props = set(asset.props or ())
+            if not props:
+                return 1
+            return 2 if props <= allowed else 0
+
+        gated = [
+            asset
+            for asset in catalog_actions
+            if asset.asset_id not in selected_ids
+            and asset.byte_size <= remaining_bytes
+            and fit(asset) > 0
+        ]
+        cast = set(request.characters)
+        # An image showing exactly the plan cast doubles as an identity anchor: the Xiaosai
+        # identity sheet is small, and a Sai-only prop image in a two-character plan let the
+        # model dress Xiaosai as Sai (sample review 2026-09-30). Subsets are a fallback only.
+        exact_cast = [asset for asset in gated if set(asset.characters) == cast]
+        in_cast = [asset for asset in gated if set(asset.characters) <= cast]
+        pool = exact_cast or in_cast or gated
+        if not pool:
+            return None
+        cast_subset = not exact_cast and bool(in_cast)
+        cast_relaxed = not in_cast
+        sequence = request.recent_action_sequence
+        last_seen = {asset_id: index for index, asset_id in enumerate(sequence)}
+
+        def gap(asset: VisualAsset) -> int | None:
+            index = last_seen.get(asset.asset_id)
+            return None if index is None else len(sequence) - index
+
+        def rule_score(asset: VisualAsset) -> int:
+            return self._action_match_score(asset, request) * 100 + asset.priority
+
+        def preference(asset: VisualAsset) -> float:
+            if self._semantic_scores is not None:
+                return self._semantic_scores[asset.asset_id]
+            return float(rule_score(asset))
+
+        def key(asset: VisualAsset) -> tuple[int, int, float, str, str]:
+            since = gap(asset)
+            variant = self._variant_sort_key(asset, request.selection_seed)
+            if since is None or since > ACTION_COOLDOWN_REFERENCES:
+                tier = 0 if fit(asset) == 2 else 1
+                return (tier, 0, -preference(asset), variant, asset.asset_id)
+            return (2, -since, -preference(asset), variant, asset.asset_id)
+
+        chosen = min(pool, key=key)
+        chosen_gap = gap(chosen)
+        reasons = [
+            f"{VisualAssetRole.ACTION_REFERENCE.value} selected",
+            "prop suits subject" if fit(chosen) == 2 else "pose only",
+        ]
+        if chosen_gap is not None and chosen_gap <= ACTION_COOLDOWN_REFERENCES:
+            reasons.append("cooldown exhausted; least recently used")
+        if cast_subset:
+            reasons.append("cast subset")
+        if cast_relaxed:
+            reasons.append("cast relaxed; controlled fallback")
+        if self._semantic_scores is not None:
+            reasons.append("semantic in-tier order")
+        requested_tags = self._requested_tags(request)
+        matched_tags = tuple(
+            sorted(
+                requested_tags
+                & (
+                    set(chosen.selection_tags)
+                    | set(chosen.topics)
+                    | set(chosen.poses)
+                    | set(chosen.scene_tags)
+                )
+            )
+        )
+        return SelectedVisualAsset(
+            asset=chosen,
+            role=VisualAssetRole.ACTION_REFERENCE,
+            score=rule_score(chosen),
+            reason="; ".join(reasons),
+            fallback=cast_relaxed,
+            matched_tags=matched_tags,
+            semantic_similarity=(
+                self._semantic_scores[chosen.asset_id]
+                if self._semantic_scores is not None
+                else None
+            ),
+            rule_score=rule_score(chosen),
+            ranking_source=(
+                "semantic_in_tier" if self._semantic_scores is not None else "gated_rotation"
+            ),
         )
 
     def _variant_sort_key(self, asset: VisualAsset, selection_seed: str) -> str:

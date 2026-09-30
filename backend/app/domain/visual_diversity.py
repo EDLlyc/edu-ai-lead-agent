@@ -24,6 +24,10 @@ from app.domain.visual_brief import (
 VISUAL_DIVERSITY_POLICY_VERSION = "visual-diversity-policy-v1"
 VISUAL_BRIEF_V2_VERSION = CONTROLLED_VISUAL_BRIEF_VERSION
 VISUAL_SELECTOR_V2_VERSION = "brand-visual-selector-v2-novelty"
+# v3 gates the action reference by prop/subject and plan cast, then rotates by recency; the
+# identity references stay rule-selected. Semantic similarity, when available, only orders the
+# images inside one rotation tier.
+VISUAL_SELECTOR_V3_VERSION = "brand-visual-selector-v3-gated-rotation"
 VISUAL_PROMPT_V3_VERSION = "image-prompt-v3-controlled-diversity"
 VISUAL_PIPELINE_V3_VERSION = "image-pipeline-v3-controlled-diversity"
 IMAGE_PERCEPTUAL_HASH_VERSION = "image-perceptual-hash-v1"
@@ -161,6 +165,46 @@ _CATEGORY_SUBJECTS: Final[dict[VisualCategory, tuple[VisualSubject, ...]]] = {
         VisualSubject.SCIENCE_BOOK_MODEL,
     ),
 }
+
+# Props an approved action image may carry (catalog field `props`; empty means pose only).
+KNOWN_VISUAL_PROPS: Final[frozenset[str]] = frozenset(
+    {
+        "astronaut",
+        "book",
+        "brand_team",
+        "detector",
+        "explorer",
+        "microscope",
+        "specimen",
+        "telescope",
+        "time_machine",
+    }
+)
+
+# Which props may appear with each plan subject; a prop outside the set would paint the wrong
+# object into the scene. Pose-only images suit every subject.
+SUBJECT_ALLOWED_PROPS: Final[dict[VisualSubject, frozenset[str]]] = {
+    VisualSubject.ROBOT_ARM: frozenset({"detector"}),
+    VisualSubject.AI_SENSOR_CONSOLE: frozenset({"detector"}),
+    VisualSubject.COMPETITION_PROTOTYPE: frozenset({"detector"}),
+    VisualSubject.TELESCOPE_STAR_MAP: frozenset({"telescope", "astronaut"}),
+    VisualSubject.ROCKET_SATELLITE_MODEL: frozenset({"astronaut", "telescope"}),
+    VisualSubject.MICROSCOPE_SAMPLE: frozenset({"microscope", "specimen"}),
+    VisualSubject.EXPERIMENT_APPARATUS: frozenset(
+        {"microscope", "specimen", "detector", "explorer"}
+    ),
+    VisualSubject.SCIENCE_BOOK_MODEL: frozenset({"book", "time_machine"}),
+}
+
+# Each post reserves a primary and an alternate plan, so twelve history rows is about six posts.
+ACTION_COOLDOWN_REFERENCES: Final = 12
+
+
+def category_subjects(category: VisualCategory) -> tuple[VisualSubject, ...]:
+    """Plan subjects a governed category may use (the only subjects a plan can carry)."""
+
+    return _CATEGORY_SUBJECTS[category]
+
 
 _SLOT_TONES: Final[dict[ContentSlot, VisualSlotTone]] = {
     ContentSlot.MORNING: VisualSlotTone.FRESH_START,

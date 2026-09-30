@@ -51,6 +51,7 @@ from app.domain.visual_diversity import (
     VISUAL_PIPELINE_V3_VERSION,
     VISUAL_PROMPT_V3_VERSION,
     VISUAL_SELECTOR_V2_VERSION,
+    VISUAL_SELECTOR_V3_VERSION,
 )
 from app.domain.visual_retrieval import VisualEmbeddingIdentity
 
@@ -1069,6 +1070,15 @@ class Settings(BaseSettings):
             raise ValueError("visual semantic retrieval requires an embedding provider")
         if self.visual_semantic_enabled and not self.image_selector_enabled:
             raise ValueError("visual semantic retrieval requires approved asset selection")
+        if self.visual_semantic_enabled and not (
+            self.image_diversity_enabled
+            and self.image_diversity_selector_version == VISUAL_SELECTOR_V3_VERSION
+        ):
+            # Selector v2-multimodal ranks identity sheets by similarity and can exhaust the
+            # reference budget; semantic order is only reviewed inside selector v3's tiers.
+            raise ValueError(
+                "visual semantic retrieval requires image diversity with the v3 selector"
+            )
         if self.visual_index_lease_seconds <= self.visual_embedding_timeout_seconds:
             raise ValueError("visual index lease must outlast the embedding timeout")
         if (
@@ -1119,10 +1129,6 @@ class Settings(BaseSettings):
                     self.image_visual_brief_version,
                     VISUAL_BRIEF_V2_VERSION,
                 ),
-                "image_diversity_selector_version": (
-                    self.image_diversity_selector_version,
-                    VISUAL_SELECTOR_V2_VERSION,
-                ),
                 "image_diversity_prompt_version": (
                     self.image_diversity_prompt_version,
                     VISUAL_PROMPT_V3_VERSION,
@@ -1143,6 +1149,11 @@ class Settings(BaseSettings):
             mismatched = [
                 name for name, (actual, expected) in reviewed_versions.items() if actual != expected
             ]
+            if self.image_diversity_selector_version not in {
+                VISUAL_SELECTOR_V2_VERSION,
+                VISUAL_SELECTOR_V3_VERSION,
+            }:
+                mismatched.append("image_diversity_selector_version")
             if mismatched:
                 raise ValueError(
                     "image diversity versions must match the reviewed bundle: "

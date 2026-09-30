@@ -27,8 +27,12 @@ reference set. It does not combine sibling news items or authorize a new publish
   `visual-brief-v2-controlled-diversity`, `brand-visual-selector-v2-novelty`,
   `image-prompt-v3-controlled-diversity`, `image-pipeline-v3-controlled-diversity`,
   `image-perceptual-hash-v1`, and `image-similarity-policy-v1`.
-- When approved multimodal retrieval is ready, selector
-  `brand-visual-selector-v2-multimodal` preserves the same novelty rules while placing semantic
+- `IMAGE_DIVERSITY_SELECTOR_VERSION` may also be `brand-visual-selector-v3-gated-rotation`. It
+  gates the action reference by catalog `props` against the plan subject and by the plan cast, then
+  rotates by recency, and it needs `props` on every approved action asset. The full contract is in
+  `visual-retrieval.md` under *Selector v3*. Semantic retrieval requires selector v3.
+- Historical: when approved multimodal retrieval was ready, selector
+  `brand-visual-selector-v2-multimodal` preserved the same novelty rules while placing semantic
   similarity before rule score inside each already-eligible role pool. An incomplete/mismatched
   index or provider failure records `semantic_unavailable` and replays the configured diversity
   selector without blocking image generation.

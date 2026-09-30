@@ -151,3 +151,18 @@ def test_manifest_output_must_stay_private_and_reject_symbolic_links(tmp_path: P
         assert "symbolic link" in str(error)
     else:
         raise AssertionError("symbolic-link manifest output must be rejected")
+
+
+def test_manifest_carries_reviewed_props_only_for_labelled_action_images(tmp_path: Path) -> None:
+    builder = _load_builder()
+    visual = tmp_path / "materials" / "05-visual-assets"
+    visual.mkdir(parents=True)
+    for name in ("赛先生-显微镜.png", "小赛疑惑.png", "新动作.png"):
+        (visual / name).write_bytes(_png())
+
+    manifest = builder.build_manifest(tmp_path / "materials")
+
+    by_name = {asset["filename"]: asset for asset in manifest["assets"]}
+    assert by_name["赛先生-显微镜.png"]["props"] == ["microscope"]
+    assert by_name["小赛疑惑.png"]["props"] == []
+    assert "props" not in by_name["新动作.png"]

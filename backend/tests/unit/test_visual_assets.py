@@ -16,9 +16,14 @@ from app.domain.visual_assets import (
     VisualAssetKind,
     VisualAssetReferenceMode,
     VisualAssetRole,
+    VisualAssetSelection,
     VisualAssetSelectionError,
 )
-from app.domain.visual_diversity import VISUAL_SELECTOR_V2_VERSION
+from app.domain.visual_diversity import (
+    ACTION_COOLDOWN_REFERENCES,
+    VISUAL_SELECTOR_V2_VERSION,
+    VISUAL_SELECTOR_V3_VERSION,
+)
 from app.domain.visual_retrieval import VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION
 
 
@@ -50,6 +55,7 @@ def _asset(
     approved: bool = True,
     asset_kind: VisualAssetKind | None = None,
     variant_group: str | None = None,
+    props: tuple[str, ...] | None = None,
 ) -> VisualAsset:
     digest = hashlib.sha256(name.encode()).hexdigest()
     return VisualAsset(
@@ -71,6 +77,7 @@ def _asset(
         scene_tags=scene_tags,
         priority=priority,
         approved=approved,
+        props=props,
     )
 
 
@@ -639,3 +646,271 @@ def test_selector_rejects_requests_without_identity_role() -> None:
                 reference_roles=(VisualAssetRole.STYLE_REFERENCE,),
             )
         )
+
+
+def _action(
+    name: str,
+    *,
+    props: tuple[str, ...] | None = (),
+    characters: tuple[str, ...] = ("xiao-sai", "sai-xiansheng"),
+    priority: int = 50,
+    byte_size: int = 100,
+) -> VisualAsset:
+    return _asset(
+        name,
+        characters=characters,
+        roles=(VisualAssetRole.ACTION_REFERENCE,),
+        asset_kind=VisualAssetKind.ACTION,
+        props=props,
+        priority=priority,
+        byte_size=byte_size,
+    )
+
+
+def _v3_request(
+    subject: str,
+    *,
+    characters: tuple[str, ...] = ("xiao-sai", "sai-xiansheng"),
+    sequence: tuple[str, ...] = (),
+    max_reference_bytes: int = 1_000,
+) -> AssetSelectionRequest:
+    return AssetSelectionRequest(
+        category="science",
+        subject=subject,
+        characters=characters,
+        reference_roles=(VisualAssetRole.IDENTITY_REFERENCE, VisualAssetRole.ACTION_REFERENCE),
+        max_references=3,
+        max_reference_bytes=max_reference_bytes,
+        recent_action_sequence=sequence,
+    )
+
+
+def _v3_action(selection: VisualAssetSelection) -> VisualAsset | None:
+    return next(
+        (
+            item.asset
+            for item in selection.selected_assets
+            if item.role == VisualAssetRole.ACTION_REFERENCE
+        ),
+        None,
+    )
+
+
+DUO_SHEET = _asset("v3-duo-sheet", byte_size=100)
+
+
+def test_v3_never_selects_a_prop_the_subject_forbids() -> None:
+    telescope = _action("v3-telescope", props=("telescope",), priority=1_000)
+    microscope = _action("v3-microscope", props=("microscope",), priority=1)
+    pose = _action("v3-pose", priority=500)
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, telescope, microscope, pose),
+        selector_version=VISUAL_SELECTOR_V3_VERSION,
+    )
+
+    microscope_pick = _v3_action(selector.select(_v3_request("microscope_sample")))
+    robot_pick = _v3_action(selector.select(_v3_request("robot_arm")))
+
+    assert microscope_pick == microscope
+    assert robot_pick == pose
+
+
+def test_v3_keeps_the_action_image_inside_the_plan_cast() -> None:
+    xiaosai = _asset("v3-xiaosai-sheet", characters=("xiao-sai",))
+    duo_pose = _action("v3-duo-pose", priority=1_000)
+    solo_pose = _action("v3-solo-pose", characters=("xiao-sai",), priority=1)
+    selection = AssetSelector(
+        _catalog(xiaosai, duo_pose, solo_pose), selector_version=VISUAL_SELECTOR_V3_VERSION
+    ).select(_v3_request("robot_arm", characters=("xiao-sai",)))
+
+    assert _v3_action(selection) == solo_pose
+    assert selection.fallback_used is False
+
+
+def test_v3_prefers_an_action_image_showing_the_whole_two_character_cast() -> None:
+    microscope = _action("v3-duo-microscope", props=("microscope",), characters=("sai-xiansheng",))
+    duo_pose = _action("v3-duo-exact-pose", priority=1)
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, microscope, duo_pose), selector_version=VISUAL_SELECTOR_V3_VERSION
+    )
+
+    duo_pick = selector.select(_v3_request("microscope_sample"))
+    solo_pick = selector.select(_v3_request("microscope_sample", characters=("sai-xiansheng",)))
+
+    assert _v3_action(duo_pick) == duo_pose
+    assert _v3_action(solo_pick) == microscope
+
+
+def test_v3_uses_a_cast_subset_only_when_no_whole_cast_image_fits() -> None:
+    microscope = _action(
+        "v3-subset-microscope", props=("microscope",), characters=("sai-xiansheng",)
+    )
+    big_duo = _action("v3-subset-big-duo", byte_size=10_000)
+    selection = AssetSelector(
+        _catalog(DUO_SHEET, microscope, big_duo), selector_version=VISUAL_SELECTOR_V3_VERSION
+    ).select(_v3_request("microscope_sample"))
+
+    assert _v3_action(selection) == microscope
+    assert "cast subset" in selection.selected_assets[-1].reason
+    assert selection.fallback_used is False
+
+
+def test_v3_relaxes_the_cast_only_when_no_in_cast_image_exists() -> None:
+    xiaosai = _asset("v3-relax-sheet", characters=("xiao-sai",))
+    duo_pose = _action("v3-relax-duo-pose")
+    selection = AssetSelector(
+        _catalog(xiaosai, duo_pose), selector_version=VISUAL_SELECTOR_V3_VERSION
+    ).select(_v3_request("robot_arm", characters=("xiao-sai",)))
+
+    assert _v3_action(selection) == duo_pose
+    assert selection.fallback_used is True
+    assert "cast relaxed" in selection.selected_assets[-1].reason
+
+
+def test_v3_rotates_away_from_recently_used_images() -> None:
+    favourite = _action("v3-favourite", priority=1_000)
+    other = _action("v3-other", priority=1)
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, favourite, other), selector_version=VISUAL_SELECTOR_V3_VERSION
+    )
+
+    fresh = _v3_action(selector.select(_v3_request("robot_arm")))
+    after_use = _v3_action(
+        selector.select(_v3_request("robot_arm", sequence=(favourite.asset_id,)))
+    )
+    long_ago = _v3_action(
+        selector.select(
+            _v3_request(
+                "robot_arm",
+                sequence=(favourite.asset_id,) + (other.asset_id,) * ACTION_COOLDOWN_REFERENCES,
+            )
+        )
+    )
+
+    assert fresh == favourite
+    assert after_use == other
+    assert long_ago == favourite
+
+
+def test_v3_rotation_survives_request_overrides() -> None:
+    favourite = _action("v3-override-favourite", priority=1_000)
+    other = _action("v3-override-other", priority=1)
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, favourite, other), selector_version=VISUAL_SELECTOR_V3_VERSION
+    )
+
+    selection = selector.select(
+        _v3_request("robot_arm", sequence=(favourite.asset_id,)),
+        max_references=3,
+        max_reference_bytes=1_000,
+    )
+
+    assert _v3_action(selection) == other
+
+
+def test_v3_picks_the_least_recently_used_image_when_all_are_in_cooldown() -> None:
+    first = _action("v3-lru-first", priority=1_000)
+    second = _action("v3-lru-second", priority=1)
+    selection = AssetSelector(
+        _catalog(DUO_SHEET, first, second), selector_version=VISUAL_SELECTOR_V3_VERSION
+    ).select(_v3_request("robot_arm", sequence=(second.asset_id, first.asset_id)))
+
+    assert _v3_action(selection) == second
+    assert "least recently used" in selection.selected_assets[-1].reason
+
+
+def test_v3_prefers_a_suitable_prop_over_a_pose_only_image() -> None:
+    detector = _action("v3-detector", props=("detector",), priority=1)
+    pose = _action("v3-pose-high", priority=1_000)
+    selection = AssetSelector(
+        _catalog(DUO_SHEET, detector, pose), selector_version=VISUAL_SELECTOR_V3_VERSION
+    ).select(_v3_request("ai_sensor_console"))
+
+    assert _v3_action(selection) == detector
+    assert "prop suits subject" in selection.selected_assets[-1].reason
+
+
+def test_v3_semantic_scores_order_inside_a_tier_but_never_admit_a_forbidden_prop() -> None:
+    telescope = _action("v3-sem-telescope", props=("telescope",))
+    pose_low = _action("v3-sem-pose-low", priority=1_000)
+    pose_high = _action("v3-sem-pose-high", priority=1)
+    scores = {
+        DUO_SHEET.asset_id: 0.5,
+        telescope.asset_id: 0.99,
+        pose_low.asset_id: 0.1,
+        pose_high.asset_id: 0.4,
+    }
+    selection = AssetSelector(
+        _catalog(DUO_SHEET, telescope, pose_low, pose_high),
+        selector_version=VISUAL_SELECTOR_V3_VERSION,
+        semantic_scores=scores,
+    ).select(_v3_request("robot_arm"))
+
+    chosen = selection.selected_assets[-1]
+    assert chosen.asset == pose_high
+    assert chosen.ranking_source == "semantic_in_tier"
+    assert chosen.semantic_similarity == pytest.approx(0.4)
+
+
+def test_v3_identity_ignores_semantic_scores_and_keeps_the_budget() -> None:
+    small_duo = _asset("v3-small-duo", byte_size=100, priority=1)
+    big_xiaosai = _asset("v3-big-xiaosai", characters=("xiao-sai",), byte_size=900, priority=1)
+    big_sai = _asset("v3-big-sai", characters=("sai-xiansheng",), byte_size=900, priority=1)
+    pose = _action("v3-budget-pose", byte_size=300)
+    scores = {
+        small_duo.asset_id: 0.1,
+        big_xiaosai.asset_id: 0.9,
+        big_sai.asset_id: 0.9,
+        pose.asset_id: 0.2,
+    }
+    selection = AssetSelector(
+        _catalog(small_duo, big_xiaosai, big_sai, pose),
+        selector_version=VISUAL_SELECTOR_V3_VERSION,
+        semantic_scores=scores,
+    ).select(_v3_request("robot_arm", max_reference_bytes=1_000))
+
+    identity = [
+        item
+        for item in selection.selected_assets
+        if item.role == VisualAssetRole.IDENTITY_REFERENCE
+    ]
+    assert [item.asset for item in identity] == [small_duo]
+    assert identity[0].semantic_similarity is None
+    assert _v3_action(selection) == pose
+
+
+def test_v3_requires_prop_labels_on_every_action_asset() -> None:
+    unlabelled = _action("v3-unlabelled", props=None)
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, unlabelled), selector_version=VISUAL_SELECTOR_V3_VERSION
+    )
+
+    with pytest.raises(VisualAssetSelectionError, match="prop labels"):
+        selector.select(_v3_request("robot_arm"))
+
+
+def test_v3_requires_a_controlled_subject() -> None:
+    selector = AssetSelector(
+        _catalog(DUO_SHEET, _action("v3-subjectless")), selector_version=VISUAL_SELECTOR_V3_VERSION
+    )
+
+    with pytest.raises(VisualAssetSelectionError, match="subject"):
+        selector.select(_v3_request("not-a-subject"))
+
+
+def test_asset_props_are_validated_against_the_known_vocabulary() -> None:
+    assert _action("props-known", props=("telescope",)).props == ("telescope",)
+    assert _action("props-empty", props=()).props == ()
+    assert _asset("props-absent").props is None
+    with pytest.raises(VisualAssetError, match="unknown prop"):
+        _action("props-unknown", props=("laser",))
+
+
+def test_recent_action_sequence_keeps_order_and_repeats() -> None:
+    first = "a" * 64
+    second = "b" * 64
+    request = AssetSelectionRequest(recent_action_sequence=(second, first, second))
+
+    assert request.recent_action_sequence == (second, first, second)
+    with pytest.raises(VisualAssetError, match="recent action sequence"):
+        AssetSelectionRequest(recent_action_sequence=("not-a-digest",))

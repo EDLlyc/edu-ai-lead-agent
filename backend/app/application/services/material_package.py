@@ -83,10 +83,13 @@ from app.domain.visual_diversity import (
     VISUAL_PIPELINE_V3_VERSION,
     VISUAL_PROMPT_V3_VERSION,
     VISUAL_SELECTOR_V2_VERSION,
+    VISUAL_SELECTOR_V3_VERSION,
     ControlledVisualPlan,
     RecentVisualPlan,
+    VisualSubject,
     build_controlled_visual_prompt_bundle,
     build_visual_plan_bundle,
+    category_subjects,
     controlled_image_request_fingerprint,
     controlled_plan_prompt_lines,
     diversity_retry_request_fingerprint,
@@ -426,6 +429,56 @@ async def _resolve_semantic_ranking_for_catalog(
     }
 
 
+def _subject_visual_query(brief: VisualBrief, subject: VisualSubject) -> str:
+    return canonical_visual_query({"category": brief.category.value, "subject": subject.value})
+
+
+def _catalog_has_prop_labels(loaded_catalog: LoadedVisualCatalog) -> bool:
+    return all(
+        asset.props is not None
+        for asset in loaded_catalog.catalog.assets
+        if asset.approved and VisualAssetRole.ACTION_REFERENCE in asset.roles
+    )
+
+
+async def _resolve_subject_rankings(
+    *,
+    enabled: bool,
+    service: VisualRetrievalService | None,
+    loaded_catalog: LoadedVisualCatalog,
+    brief: VisualBrief,
+) -> tuple[dict[VisualSubject, VisualSemanticRanking], dict[str, Any]]:
+    """Selector v3: one complete ranking per subject the brief's category may plan.
+
+    The calls happen before the history lock. Any failure drops every ranking so a post never
+    mixes semantic and rule ordering between its primary and alternate plans.
+    """
+
+    if not enabled:
+        return {}, {}
+    if service is None:
+        return {}, {"status": "semantic_unavailable", "reason": "provider_unavailable"}
+    rankings: dict[VisualSubject, VisualSemanticRanking] = {}
+    for subject in category_subjects(brief.category):
+        try:
+            rankings[subject] = await service.search_text(
+                text=_subject_visual_query(brief, subject), catalog=loaded_catalog.catalog
+            )
+        except VisualIndexUnavailableError as error:
+            return {}, {"status": "semantic_unavailable", "reason": error.reason.value}
+        except Exception:
+            return {}, {"status": "semantic_unavailable", "reason": "provider_unavailable"}
+    first = next(iter(rankings.values()))
+    return rankings, {
+        "status": "ready",
+        "ranking_source": "semantic_in_tier",
+        "query_shape": "category_subject",
+        "catalog_version": first.catalog_version,
+        "indexed_asset_count": first.indexed_asset_count,
+        "subject_count": len(rankings),
+    }
+
+
 async def enqueue_material_package(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -702,6 +755,7 @@ def _prepare_controlled_plan_input(
     recent_variant_groups: tuple[str, ...],
     selection_seed: str,
     semantic_ranking: VisualSemanticRanking | None = None,
+    recent_action_sequence: tuple[str, ...] = (),
 ) -> PreparedControlledPlanInput:
     selection = select_visual_assets(
         loaded_catalog,
@@ -722,6 +776,7 @@ def _prepare_controlled_plan_input(
             recent_action_asset_ids=recent_action_asset_ids,
             recent_style_asset_ids=recent_style_asset_ids,
             recent_variant_groups=recent_variant_groups,
+            recent_action_sequence=recent_action_sequence,
         ),
         selector_version=selector_version,
         max_references=image_max_reference_images,
@@ -807,13 +862,15 @@ async def _enqueue_controlled_material_package(
     reviewed_versions = (
         (policy_version, VISUAL_DIVERSITY_POLICY_VERSION),
         (brief_version, VISUAL_BRIEF_V2_VERSION),
-        (selector_version, VISUAL_SELECTOR_V2_VERSION),
         (prompt_version, VISUAL_PROMPT_V3_VERSION),
         (pipeline_version, VISUAL_PIPELINE_V3_VERSION),
         (hash_version, IMAGE_PERCEPTUAL_HASH_VERSION),
         (similarity_policy_version, IMAGE_SIMILARITY_POLICY_VERSION),
     )
-    if any(actual != expected for actual, expected in reviewed_versions):
+    reviewed_selectors = {VISUAL_SELECTOR_V2_VERSION, VISUAL_SELECTOR_V3_VERSION}
+    if selector_version not in reviewed_selectors or any(
+        actual != expected for actual, expected in reviewed_versions
+    ):
         raise ConflictError("controlled visual diversity version bundle is not supported")
     if not 1 <= history_days <= 30 or not 1 <= history_limit <= 1_000:
         raise ConflictError("controlled visual diversity history bounds are invalid")
@@ -826,13 +883,33 @@ async def _enqueue_controlled_material_package(
     except ValueError as error:
         raise ConflictError("controlled visual diversity input is invalid") from error
 
-    semantic_ranking, semantic_snapshot = await _resolve_semantic_ranking_for_catalog(
-        enabled=visual_semantic_enabled,
-        service=visual_retrieval_service,
-        loaded_catalog=loaded_catalog,
-        brief=brief,
+    use_v3 = selector_version == VISUAL_SELECTOR_V3_VERSION
+    if use_v3 and not _catalog_has_prop_labels(loaded_catalog):
+        # The prop gate cannot run on an unlabelled catalog; keep posting with the reviewed v2
+        # selector. Reference rows persist the effective selector version.
+        logger.warning("visual_selector_v3_fallback", reason="prop_labels_incomplete")
+        use_v3 = False
+        selector_version = VISUAL_SELECTOR_V2_VERSION
+    subject_rankings: dict[VisualSubject, VisualSemanticRanking] = {}
+    semantic_ranking: VisualSemanticRanking | None = None
+    if use_v3:
+        subject_rankings, semantic_snapshot = await _resolve_subject_rankings(
+            enabled=visual_semantic_enabled,
+            service=visual_retrieval_service,
+            loaded_catalog=loaded_catalog,
+            brief=brief,
+        )
+    else:
+        semantic_ranking, semantic_snapshot = await _resolve_semantic_ranking_for_catalog(
+            enabled=visual_semantic_enabled,
+            service=visual_retrieval_service,
+            loaded_catalog=loaded_catalog,
+            brief=brief,
+        )
+    rankings_to_check = (
+        list(subject_rankings.values()) if use_v3 else [r for r in (semantic_ranking,) if r]
     )
-    if semantic_ranking is not None:
+    if rankings_to_check:
         try:
             refreshed_catalog = await asyncio.to_thread(load_visual_catalog, image_asset_manifest)
         except (OSError, ValueError) as error:
@@ -840,19 +917,30 @@ async def _enqueue_controlled_material_package(
         approved_ids = {
             asset.asset_id for asset in refreshed_catalog.catalog.assets if asset.approved
         }
-        if (
-            refreshed_catalog.catalog.catalog_version != semantic_ranking.catalog_version
-            or set(semantic_ranking.score_map) != approved_ids
+        if any(
+            refreshed_catalog.catalog.catalog_version != ranking.catalog_version
+            or set(ranking.score_map) != approved_ids
+            for ranking in rankings_to_check
         ):
             semantic_ranking = None
+            subject_rankings = {}
             semantic_snapshot = {
                 "status": "semantic_unavailable",
                 "reason": "catalog_changed",
             }
         loaded_catalog = refreshed_catalog
-    effective_selector_version = (
-        VISUAL_SEMANTIC_SELECTOR_VERSION if semantic_ranking is not None else selector_version
-    )
+        if use_v3 and not _catalog_has_prop_labels(loaded_catalog):
+            logger.warning("visual_selector_v3_fallback", reason="prop_labels_incomplete")
+            use_v3 = False
+            selector_version = VISUAL_SELECTOR_V2_VERSION
+            subject_rankings = {}
+            semantic_snapshot = {"status": "semantic_unavailable", "reason": "catalog_changed"}
+    if use_v3:
+        effective_selector_version = VISUAL_SELECTOR_V3_VERSION
+    else:
+        effective_selector_version = (
+            VISUAL_SEMANTIC_SELECTOR_VERSION if semantic_ranking is not None else selector_version
+        )
 
     business_date = accepted.run.business_date
     timezone = accepted.run.timezone
@@ -924,12 +1012,21 @@ async def _enqueue_controlled_material_package(
                     await session.scalars(
                         select(ImageArtifactReferenceModel)
                         .where(ImageArtifactReferenceModel.plan_reservation_id.in_(history_ids))
-                        .order_by(ImageArtifactReferenceModel.created_at)
+                        .order_by(
+                            ImageArtifactReferenceModel.created_at,
+                            ImageArtifactReferenceModel.attempt_ordinal,
+                            ImageArtifactReferenceModel.ordinal,
+                        )
                     )
                 ).all()
             )
             if history_ids
             else ()
+        )
+        recent_action_sequence = tuple(
+            row.asset_id
+            for row in historical_references
+            if row.reference_role == VisualReferenceRole.ACTION_REFERENCE.value
         )
         recent_action_asset_ids = tuple(
             row.asset_id
@@ -976,7 +1073,10 @@ async def _enqueue_controlled_material_package(
                 recent_style_asset_ids=recent_style_asset_ids,
                 recent_variant_groups=recent_variant_groups,
                 selection_seed=f"{accepted.run.id}:primary:{bundle.primary.fingerprint}",
-                semantic_ranking=semantic_ranking,
+                semantic_ranking=(
+                    subject_rankings.get(bundle.primary.subject) if use_v3 else semantic_ranking
+                ),
+                recent_action_sequence=recent_action_sequence,
             )
             alternate = _prepare_controlled_plan_input(
                 brief=brief,
@@ -993,7 +1093,10 @@ async def _enqueue_controlled_material_package(
                 recent_style_asset_ids=recent_style_asset_ids,
                 recent_variant_groups=recent_variant_groups,
                 selection_seed=f"{accepted.run.id}:alternate:{bundle.alternate.fingerprint}",
-                semantic_ranking=semantic_ranking,
+                semantic_ranking=(
+                    subject_rankings.get(bundle.alternate.subject) if use_v3 else semantic_ranking
+                ),
+                recent_action_sequence=recent_action_sequence,
             )
         except (OSError, ValueError) as error:
             raise ConflictError("controlled visual reference selection is invalid") from error
