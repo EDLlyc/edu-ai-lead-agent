@@ -21,6 +21,7 @@ from app.domain.topic_selection import (
     DELIVERED_CONTENT_VETO_RULE_VERSION,
     DELIVERED_HISTORY_TOPIC_SCORING_VERSION,
     HISTORICAL_TOPIC_SCORING_THRESHOLD,
+    QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION,
     THRESHOLD_059_TOPIC_SCORING_VERSION,
     DailyTopicDecision,
     TopicCandidate,
@@ -178,9 +179,8 @@ async def test_manual_enqueue_uses_shanghai_business_date_and_preview_config() -
     assert config.version == DEFAULT_TOPIC_SCORING_VERSION
     assert config.threshold == DEFAULT_TOPIC_SCORING_THRESHOLD
     assert config.effective_veto_rule_version == DELIVERED_CONTENT_VETO_RULE_VERSION
-    assert config.selection_priority_rule_version == (
-        "ministry-education-priority-v4-substantive-science-education"
-    )
+    # The default scoring version (.11 onward) uses the qualified-authoritative priority rule.
+    assert config.selection_priority_rule_version == QUALIFIED_AUTHORITATIVE_PRIORITY_RULE_VERSION
 
 
 def test_historical_delivered_scoring_version_keeps_original_threshold() -> None:

@@ -11,13 +11,15 @@ from app.application.services.topic_reranking import (
     execute_topic_rerank,
     topic_rerank_outcome_metadata,
 )
-from app.application.services.topic_selection import build_topic_rerank_config
+from app.application.services.topic_selection import (
+    build_topic_rerank_config,
+    build_topic_scoring_config,
+)
 from app.core.config import Settings
 from app.core.errors import ProviderTimeoutError, TopicRerankInvalidProviderOutputError
 from app.domain.content_slots import ContentSlot, SlotRankingPolicy, select_slot_topics
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
 from app.domain.ministry_education_priority import (
-    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
     MOE_SCIENCE_TOP1_PRIORITY_POLICY,
 )
 from app.domain.topic_rerank import (
@@ -40,13 +42,13 @@ from app.domain.topic_rerank import (
     finalize_content_slot_rerank,
     finalize_daily_topic_rerank,
 )
-from app.domain.topic_selection import TopicCandidate, TopicScoringConfig, select_daily_topic
+from app.domain.topic_selection import TopicCandidate, select_daily_topic
 from app.infrastructure.ai.topic_rerank import DeterministicFakeTopicReranker
 
 NOW = datetime(2026, 8, 18, 1, 0, tzinfo=UTC)
-CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
-)
+# The production default config: pairing the default scoring version with an older priority rule
+# disables priority and leaves the barrier cases without a priority candidate.
+CONFIG = build_topic_scoring_config(Settings(_env_file=None))
 RERANK_CONFIG = TopicRerankConfig(enabled=True, provider="fake", model="fake-rerank-v1")
 
 

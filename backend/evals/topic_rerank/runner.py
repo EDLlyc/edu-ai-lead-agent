@@ -14,6 +14,8 @@ from typing import Literal
 from uuid import UUID
 
 from app.application.services.topic_reranking import execute_topic_rerank
+from app.application.services.topic_selection import build_topic_scoring_config
+from app.core.config import Settings
 from app.domain.content_slots import (
     ContentSlot,
     ContentSlotDecision,
@@ -21,10 +23,7 @@ from app.domain.content_slots import (
     select_slot_topics,
 )
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
-from app.domain.ministry_education_priority import (
-    MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION,
-    MOE_SCIENCE_TOP1_PRIORITY_POLICY,
-)
+from app.domain.ministry_education_priority import MOE_SCIENCE_TOP1_PRIORITY_POLICY
 from app.domain.topic_rerank import (
     TopicRerankCandidate,
     TopicRerankConfig,
@@ -35,12 +34,7 @@ from app.domain.topic_rerank import (
     finalize_content_slot_rerank,
     finalize_daily_topic_rerank,
 )
-from app.domain.topic_selection import (
-    DailyTopicDecision,
-    TopicCandidate,
-    TopicScoringConfig,
-    select_daily_topic,
-)
+from app.domain.topic_selection import DailyTopicDecision, TopicCandidate, select_daily_topic
 from app.infrastructure.ai.topic_rerank import DeterministicFakeTopicReranker
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -49,9 +43,9 @@ CASES_PATH = FEATURE_ROOT / "cases.v1.jsonl"
 CANONICAL_JSON_PATH = FEATURE_ROOT / "canonical-report.json"
 CANONICAL_MARKDOWN_PATH = FEATURE_ROOT / "canonical-report.md"
 NOW = datetime(2026, 8, 18, 1, 0, tzinfo=UTC)
-CONFIG = TopicScoringConfig(
-    selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
-)
+# The production default scoring config. A hand-built config pairing the default scoring version
+# with an older priority rule silently disables priority, so the barrier case stops testing it.
+CONFIG = build_topic_scoring_config(Settings(_env_file=None))
 RERANK_CONFIG = TopicRerankConfig(
     enabled=True,
     provider="fake",

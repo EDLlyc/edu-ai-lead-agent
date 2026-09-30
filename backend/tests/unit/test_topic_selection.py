@@ -1117,6 +1117,22 @@ def test_ministry_v3_cannot_be_reused_by_a_non_tiered_scoring_config() -> None:
     assert score.threshold_bypass_applied is False
 
 
+def test_ministry_v4_rule_is_disabled_on_the_default_scoring_version() -> None:
+    # A hand-built config that pairs the default scoring version with the older Ministry rule
+    # gives no priority at all. Fixtures that need a priority candidate must use
+    # build_topic_scoring_config(Settings(...)), which pairs the version with its own rule.
+    config = TopicScoringConfig(
+        selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
+    )
+    ministry = _candidate(topic_priority_policy=MOE_SCIENCE_TOP1_PRIORITY_POLICY)
+
+    score = score_topic_candidate(ministry, as_of=NOW, config=config)
+
+    assert config.version == TopicScoringConfig().version
+    assert score.priority_applied is False
+    assert score.priority_reason == "ministry_priority_disabled_for_config"
+
+
 def test_tiered_ranking_places_education_above_equivalent_frontier() -> None:
     education = _candidate(
         event_id="22222222-2222-4222-8222-222222222222",

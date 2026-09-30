@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from uuid import UUID
 
 import pytest
+from app.application.services.topic_selection import build_topic_scoring_config
 from app.core.config import Settings
 from app.domain.content_slots import (
     ContentSlot,
@@ -15,7 +16,6 @@ from app.domain.content_slots import (
     select_slot_topics,
 )
 from app.domain.editorial_relevance import ScienceTechEditorialCohort
-from app.domain.ministry_education_priority import MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
 from app.domain.topic_selection import TopicCandidate, TopicScoringConfig
 from app.infrastructure.db.content_slots import _validate_content_slot_decision
 from pydantic import ValidationError
@@ -285,9 +285,9 @@ def test_ministry_priority_is_global_and_same_day_events_are_excluded() -> None:
     morning = select_slot_topics(
         (ordinary, ministry),
         as_of=NOW,
-        config=TopicScoringConfig(
-            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
-        ),
+        # Production default config; an older priority rule on the default scoring version
+        # disables Ministry priority.
+        config=build_topic_scoring_config(Settings(_env_file=None)),
         slot=ContentSlot.EVENING,
         policy=SlotRankingPolicy(),
         max_items=2,
@@ -295,9 +295,9 @@ def test_ministry_priority_is_global_and_same_day_events_are_excluded() -> None:
     later = select_slot_topics(
         (ordinary, ministry),
         as_of=NOW,
-        config=TopicScoringConfig(
-            selection_priority_rule_version=MINISTRY_EDUCATION_PRIORITY_V4_RULE_VERSION
-        ),
+        # Production default config; an older priority rule on the default scoring version
+        # disables Ministry priority.
+        config=build_topic_scoring_config(Settings(_env_file=None)),
         slot=ContentSlot.NOON,
         policy=SlotRankingPolicy(),
         max_items=2,

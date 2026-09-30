@@ -3,7 +3,7 @@ SHELL := /bin/bash
 CONDA_ENV ?= edu-ai
 PY_RUN ?= conda run --name $(CONDA_ENV)
 
-.PHONY: topic-golden-eval same-topic-eval eval quality-report env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
+.PHONY: topic-golden-eval same-topic-eval eval predeploy-check predeploy-check-fast human-review-report hook-agreement quality-report env-init setup setup-backend setup-frontend backend-dev migrate seed-sources \
 	acquisition-api acquisition-scheduler acquisition-worker source-smoke \
 	governance-scheduler governance-worker governance-fake-check governance-live-smoke \
 	content-scheduler content-worker content-stack-up \
@@ -190,6 +190,24 @@ same-topic-eval:
 
 # Offline evaluation suites that need no database or model access.
 eval: topic-golden-eval same-topic-eval brand-retrieval-eval
+
+# Gate for every production image build: all provider-free evaluations plus unit and contract
+# tests against backend/tests/known-failures.txt. See backend/evals/gate/README.md.
+predeploy-check:
+	cd backend && $(PY_RUN) python -m evals.gate.runner
+
+predeploy-check-fast:
+	cd backend && $(PY_RUN) python -m evals.gate.runner --skip-tests
+
+# AI-vs-operator agreement from the exhibit's local review store (read-only).
+# Judge-versus-human agreement from a filled hooks-sheet.csv (evals/copy_quality).
+hook-agreement:
+	@test -n "$(SHEET)" || { echo "SHEET=<hooks-sheet.csv> is required" >&2; exit 2; }
+	cd backend && $(PY_RUN) python -m evals.copy_quality.runner agreement --sheet "$(SHEET)"
+
+human-review-report:
+	@test -n "$(STORE)" || { echo "STORE=<news-reviews.sqlite3> is required" >&2; exit 2; }
+	cd backend && $(PY_RUN) python -m evals.human_review.runner --store "$(STORE)"
 
 quality-report:
 	cd backend && $(PY_RUN) python -m app.quality_report_main $(if $(DATE),--date $(DATE),)

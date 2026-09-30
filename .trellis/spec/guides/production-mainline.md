@@ -12,6 +12,13 @@
 
 ## Deploying
 
+- **Gate first**: on the commit you are about to deploy run `make predeploy-check` (all
+  provider-free evaluations plus unit and contract tests against
+  `backend/tests/known-failures.txt`, about five minutes) and paste its last line
+  (`predeploy gate PASS @ <commit> …`) into the rollout note. A failed gate blocks the deploy
+  unless the owner waives it for that release. The baseline may only shrink.
+- When a copy prompt, rule or model version changes, also run `evals/copy_quality` (seeded
+  defects and hook rubric; spends model calls) outside slot hours and keep the dated report.
 - Quick change (Python only): build an overlay image on the server `FROM` the running digest,
   verify the overlaid base files match the parent commit, run an offline smoke test, back up
   `.env`/`.release.env`, set `APP_IMAGE` and recreate the six app services with
