@@ -763,8 +763,8 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
     )
 
     assert preview.rule_version == "preview-v13-headline-hook"
-    assert preview.generator_prompt_version == "moments-generator-v26-headline-hook"
-    assert preview.auditor_prompt_version == "moments-auditor-v20-headline-hook"
+    assert preview.generator_prompt_version == "moments-generator-v27-lean-context"
+    assert preview.auditor_prompt_version == "moments-auditor-v21-lean-context"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
     assert strict.rule_version == "moments-rules-v13-headline-hook"
@@ -3358,7 +3358,11 @@ def test_lean_context_prompts_send_only_what_each_step_needs() -> None:
 
 
 def test_headline_hook_v26_and_v20_prompts_keep_their_full_context() -> None:
-    bundle = build_copy_version_bundle(Settings())
+    bundle = replace(
+        build_copy_version_bundle(Settings()),
+        generator_prompt_version="moments-generator-v26-headline-hook",
+        auditor_prompt_version="moments-auditor-v20-headline-hook",
+    )
     topic = _topic()
     auditor_prompt = build_auditor_prompt(
         DraftAuditRequest(
