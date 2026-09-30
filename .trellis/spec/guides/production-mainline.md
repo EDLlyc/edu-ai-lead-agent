@@ -59,6 +59,10 @@
   posters plus room for re-versioned packages). Operator human picks are outside it: their
   posters are neither counted nor skipped by it. `WECOM_INFOGRAPHIC_HUMAN_PICK_DAILY_IMAGE_LIMIT`
   (default 30) is only a guard against a runaway caller, not a business limit.
+- **Copy prompts** (2026-09-30): generator `moments-generator-v28-shared-quotes` (v27 lean
+  context + each evidence quote written once) with auditor `moments-auditor-v21-lean-context`.
+  Zhipu content-filter refusals (HTTP 400 code 1301) get one identical retry; the provider code
+  is kept in the copy attempt's `safe_metadata.provider_error_code`.
 - Changing this standard needs the operator's approval.
 
 ## Work not yet on mainline

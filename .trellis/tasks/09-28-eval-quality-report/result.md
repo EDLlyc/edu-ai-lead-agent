@@ -179,3 +179,9 @@ Open gaps kept visible in `canonical-report.md`:
   Operator asked to remove the empty band left by footer-v6: formal posters end 36 px below the
   last painted row (1600–2048 high), painted bottoms kept, send gates accept untrimmed v6. On 11
   real posters the 6 v6 ones trimmed 2048 → 1879–1954. No job was running; services healthy.
+- 09-30 15:56 copy call stability `ba78146` (generator v28 shared quotes + auditor v21; zhipu
+  1301 retried once, provider code kept): image
+  `…@sha256:30f6cd0e176b6b1645282f1654472ad4d4882b77a2b39a4c93888921dcd3c25e` = 21c63fc9 + 8 app
+  files; backups `*.before-ba78146-20260930T155556`; gate PASS; no job running; six services
+  healthy, no errors; live bundle v28/v21. Owner: "现在就上线吧". Details and measurements:
+  `.trellis/tasks/09-30-copy-call-stability/prd.md`.
