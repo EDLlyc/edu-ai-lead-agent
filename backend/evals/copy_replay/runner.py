@@ -86,6 +86,10 @@ _PAIRED_VERSIONS = {
         "moments-auditor-v21-lean-context",
         "preview-v13-headline-hook",
     ),
+    "moments-generator-v28-shared-quotes": (
+        "moments-auditor-v21-lean-context",
+        "preview-v13-headline-hook",
+    ),
 }
 
 

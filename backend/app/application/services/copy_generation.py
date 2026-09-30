@@ -93,8 +93,19 @@ HEADLINE_HOOK_AUDITOR_PROMPT_VERSION = "moments-auditor-v20-headline-hook"
 # evidence and brand chunks the draft's claims cite, plus the topic title and summary.
 LEAN_CONTEXT_GENERATOR_PROMPT_VERSION = "moments-generator-v27-lean-context"
 LEAN_CONTEXT_AUDITOR_PROMPT_VERSION = "moments-auditor-v21-lean-context"
+# v28 (shared quotes, 2026-09-30): v27 plus each distinct exact_quote written once. The loader
+# returns one binding per governed fact, and a long article repeats the same ~1,100-character
+# passage for every fact (24 bindings, 1-4 distinct quotes): 19 runs in 30 days failed the
+# 40,000-character input limit. A repeated quote now points at the first binding that carries it;
+# every binding keeps its own evidence_id and governed_statement.
+SHARED_QUOTE_GENERATOR_PROMPT_VERSION = "moments-generator-v28-shared-quotes"
+LEAN_CONTEXT_GENERATOR_PROMPT_VERSIONS = frozenset(
+    {LEAN_CONTEXT_GENERATOR_PROMPT_VERSION, SHARED_QUOTE_GENERATOR_PROMPT_VERSION}
+)
+# Safety net for v28: evidence beyond this many characters is dropped from the end.
+SHARED_QUOTE_EVIDENCE_CHAR_BUDGET = 24_000
 HEADLINE_HOOK_GENERATOR_PROMPT_VERSIONS = frozenset(
-    {HEADLINE_HOOK_GENERATOR_PROMPT_VERSION, LEAN_CONTEXT_GENERATOR_PROMPT_VERSION}
+    {HEADLINE_HOOK_GENERATOR_PROMPT_VERSION, *LEAN_CONTEXT_GENERATOR_PROMPT_VERSIONS}
 )
 HEADLINE_HOOK_AUDITOR_PROMPT_VERSIONS = frozenset(
     {HEADLINE_HOOK_AUDITOR_PROMPT_VERSION, LEAN_CONTEXT_AUDITOR_PROMPT_VERSION}
@@ -779,11 +790,13 @@ class CopyGenerationExecutor:
         validation_issues = (
             error.validation_issues if isinstance(error, InvalidProviderOutputError) else ()
         )
+        provider_code = error.provider_code if isinstance(error, ProviderRejectedError) else None
         logger.warning(
             "copy_generation_typed_failure",
             copy_run_id=str(claimed.run_id),
             job_id=str(claimed.job_id),
             error_code=error.code,
+            provider_error_code=provider_code,
             retry_scheduled=retry,
             provider_validation_issues=provider_validation_issues_metadata(validation_issues),
         )
@@ -793,6 +806,7 @@ class CopyGenerationExecutor:
             retry_at=retry_at,
             capability="copy_generation",
             provider_validation_issues=validation_issues,
+            provider_error_code=provider_code,
         )
 
     async def _heartbeat_loop(
@@ -893,25 +907,43 @@ def _lean_brand_payload(item: ActiveBrandContext) -> dict[str, object]:
     }
 
 
-def build_generator_prompt(request: DraftGenerationRequest) -> str:
-    evidence = []
+def _generator_evidence_payload(request: DraftGenerationRequest) -> list[dict[str, object]]:
+    shared_quotes = (
+        request.version_bundle.generator_prompt_version == SHARED_QUOTE_GENERATOR_PROMPT_VERSION
+    )
+    first_with_quote: dict[str, str] = {}
+    evidence: list[dict[str, object]] = []
     for item in request.topic.evidence:
-        payload = {
-            "evidence_id": str(item.evidence_id),
+        evidence_id = str(item.evidence_id)
+        payload: dict[str, object] = {
+            "evidence_id": evidence_id,
             "source_name": item.source_name,
             "source_tier": item.source_tier,
             "published_at": item.published_at.isoformat() if item.published_at else None,
             "source_url": item.source_url,
-            "exact_quote": item.exact_quote,
         }
+        if shared_quotes and item.exact_quote in first_with_quote:
+            payload["exact_quote_same_as"] = first_with_quote[item.exact_quote]
+        else:
+            payload["exact_quote"] = item.exact_quote
+            first_with_quote.setdefault(item.exact_quote, evidence_id)
         if (
             request.version_bundle.pipeline_version == ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
             and item.governed_statement is not None
         ):
             payload["governed_statement"] = item.governed_statement
         evidence.append(payload)
+    if shared_quotes:
+        # Trailing items go first; a kept item never points at a dropped one.
+        while len(evidence) > 1 and len(_prompt_json(evidence)) > SHARED_QUOTE_EVIDENCE_CHAR_BUDGET:
+            evidence.pop()
+    return evidence
+
+
+def build_generator_prompt(request: DraftGenerationRequest) -> str:
+    evidence = _generator_evidence_payload(request)
     lean_generator = (
-        request.version_bundle.generator_prompt_version == LEAN_CONTEXT_GENERATOR_PROMPT_VERSION
+        request.version_bundle.generator_prompt_version in LEAN_CONTEXT_GENERATOR_PROMPT_VERSIONS
     )
     brand = [
         _lean_brand_payload(item)
@@ -992,6 +1024,11 @@ def build_generator_prompt(request: DraftGenerationRequest) -> str:
         "EVIDENCE中的exact_quote始终是可追溯的原文引文；governed_statement是可选的中文治理事实，"
         "只可用于支持中文表达，不得写成原文引语，也不得取代evidence_id、exact_quote或原文URL。"
         if request.version_bundle.pipeline_version == ENGLISH_EVIDENCE_COPY_PIPELINE_VERSION
+        else ""
+    ) + (
+        "同一段原文只写一次：exact_quote_same_as给出的evidence_id已写出与本条完全相同的exact_quote，"
+        "引用本条事实时仍使用本条自己的evidence_id。"
+        if request.version_bundle.generator_prompt_version == SHARED_QUOTE_GENERATOR_PROMPT_VERSION
         else ""
     )
     return (

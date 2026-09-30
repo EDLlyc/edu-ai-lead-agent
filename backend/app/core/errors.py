@@ -210,12 +210,14 @@ class ProviderAuthenticationError(ProviderError):
 
 
 class ProviderRejectedError(ProviderError):
-    def __init__(self) -> None:
+    def __init__(self, provider_code: str | None = None) -> None:
         super().__init__(
             "provider_request_rejected",
             "factual-analysis provider rejected the bounded request",
             422,
         )
+        # The provider's own short error code (e.g. Zhipu "1301" = content filter); never text.
+        self.provider_code = provider_code
 
 
 class ProviderRateLimitError(ProviderError):

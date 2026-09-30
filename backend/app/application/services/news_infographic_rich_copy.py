@@ -189,7 +189,11 @@ _MOMENTS_STANDALONE_PROMPT_VERSIONS = frozenset(
 # Operator template (2026-09-29): 🔎【小赛洞察】 then the headline and one hook, no blank line.
 _MOMENTS_HEADLINE_HOOK_HEADING = "🔎【小赛洞察】"
 _MOMENTS_HEADLINE_HOOK_PROMPT_VERSIONS = frozenset(
-    {"moments-generator-v26-headline-hook", "moments-generator-v27-lean-context"}
+    {
+        "moments-generator-v26-headline-hook",
+        "moments-generator-v27-lean-context",
+        "moments-generator-v28-shared-quotes",
+    }
 )
 _MOMENTS_SOURCE = "新闻来源："
 _MOMENTS_LINK = "原文链接："

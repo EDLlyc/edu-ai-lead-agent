@@ -795,6 +795,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         retry_at: datetime | None,
         capability: str,
         provider_validation_issues: tuple[ProviderValidationIssue, ...] = (),
+        provider_error_code: str | None = None,
     ) -> bool:
         async with self._session_factory() as session:
             job = await _locked_fenced_job(session, claimed)
@@ -817,6 +818,8 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             run.error_code = safe_error
             run.completed_at = None if retrying else now
             safe_metadata: dict[str, object] = {"retry_scheduled": retrying}
+            if provider_error_code is not None:
+                safe_metadata["provider_error_code"] = provider_error_code
             if provider_validation_issues:
                 safe_metadata["provider_validation_issues"] = provider_validation_issues_metadata(
                     provider_validation_issues

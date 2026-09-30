@@ -439,11 +439,16 @@ def test_outputs_and_date_range(tmp_path: Path) -> None:
             budget=budget,
         )
     )
-    summary = summarize_run([case], bundle=BUNDLE, budget=budget, partial=True)
+    skipped = [{"case_id": "t02", "headline": "x", "code": "InvalidProviderOutputError"}]
+    summary = summarize_run([case], bundle=BUNDLE, budget=budget, partial=True, skipped=skipped)
     write_outputs(tmp_path / "out", summary=summary, cases=[case])
     names = sorted(path.name for path in (tmp_path / "out").iterdir())
     assert names == ["defects-report.md", "hooks-report.md", "hooks-sheet.csv", "results.json"]
-    assert "结果不完整" in (tmp_path / "out" / "defects-report.md").read_text("utf-8")
+    report = (tmp_path / "out" / "defects-report.md").read_text("utf-8")
+    assert "结果不完整" in report
+    # A topic whose model call failed is reported and kept out of the ratios.
+    assert "另有 1 条选题在调用模型时出错（InvalidProviderOutputError×1）" in report
+    assert summary["topics"] == 1 and summary["skipped_topics"] == skipped
     assert hooks_sheet([case]).count("\n") == 2
     write_outputs(None, summary=summary, cases=[case])
 

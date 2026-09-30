@@ -29,6 +29,7 @@ from app.application.ports.copy_generation import (
     MaterialDraftGenerator,
     RecentBrandUsage,
 )
+from app.core.errors import ProviderError
 from app.domain.copy_generation import (
     HEADLINE_HOOK_COPY_RULE_VERSIONS,
     ActiveBrandContext,
@@ -314,7 +315,12 @@ def summarize_defects(cases: Sequence[CaseResult]) -> list[dict[str, Any]]:
 
 
 def summarize_run(
-    cases: Sequence[CaseResult], *, bundle: CopyVersionBundle, budget: CallBudget, partial: bool
+    cases: Sequence[CaseResult],
+    *,
+    bundle: CopyVersionBundle,
+    budget: CallBudget,
+    partial: bool,
+    skipped: Sequence[dict[str, str]] = (),
 ) -> dict[str, Any]:
     controls = [case.control for case in cases if case.control is not None]
     judgments = [case.hook_judgment for case in cases if case.hook_judgment is not None]
@@ -324,6 +330,8 @@ def summarize_run(
         "partial": partial,
         "bundle": bundle.as_metadata(),
         "topics": len(cases),
+        # Topics whose model call failed (production retries or repairs these); not in the ratios.
+        "skipped_topics": [dict(item) for item in skipped],
         "calls": {
             "limit": budget.limit,
             "generation": budget.generation,
@@ -377,8 +385,16 @@ def _header(summary: dict[str, Any]) -> list[str]:
         f"输入 {calls['prompt_tokens']:,} token，输出 {calls['completion_tokens']:,} token。",
         "- 每份文案只跑一次，没有重复试验；比例的分母写在每一格里。",
     ]
+    skipped = summary.get("skipped_topics", [])
+    if skipped:
+        codes = Counter(item["code"] for item in skipped)
+        lines.append(
+            f"- 另有 {len(skipped)} 条选题在调用模型时出错（"
+            + "、".join(f"{code}×{count}" for code, count in sorted(codes.items()))
+            + "），已跳过，不计入下面的比例；生产上这类情况会自动重试或修复。"
+        )
     if summary["partial"]:
-        lines.append("- **本次运行达到调用上限后提前结束，结果不完整。**")
+        lines.append("- **本次运行提前结束（达到调用上限或意外错误），结果不完整。**")
     return lines
 
 
@@ -557,6 +573,7 @@ async def _run_live(args: argparse.Namespace) -> int:
     client = httpx.AsyncClient(follow_redirects=False)
     budget = CallBudget(limit=args.max_calls)
     cases: list[CaseResult] = []
+    skipped: list[dict[str, str]] = []
     partial = False
     try:
         topics: list[tuple[UUID, LockedTopicContext]] = []
@@ -653,12 +670,27 @@ async def _run_live(args: argparse.Namespace) -> int:
                 print(str(error), file=sys.stderr)
                 partial = True
                 break
+            except ProviderError as error:
+                # One bad model answer must not discard the topics already evaluated.
+                skipped.append(
+                    {
+                        "case_id": f"t{index:02d}-{topic.business_date:%m%d}",
+                        "headline": topic.title or "",
+                        "code": type(error).__name__,
+                    }
+                )
+                print(f"[{index}/{len(topics)}] skipped: {type(error).__name__}", file=sys.stderr)
+                continue
+            except Exception as error:  # write what was evaluated before stopping
+                print(f"stopping on unexpected error: {error!r}", file=sys.stderr)
+                partial = True
+                break
             cases.append(case)
             print(f"[{index}/{len(topics)}] {topic.title} ({budget.used} calls)", file=sys.stderr)
     finally:
         await client.aclose()
         await engine.dispose()
-    summary = summarize_run(cases, bundle=bundle, budget=budget, partial=partial)
+    summary = summarize_run(cases, bundle=bundle, budget=budget, partial=partial, skipped=skipped)
     write_outputs(args.output_dir, summary=summary, cases=cases)
     print(render_defects_markdown(summary, cases), end="")
     print()

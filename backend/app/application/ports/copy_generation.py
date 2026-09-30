@@ -210,6 +210,7 @@ class CopyGenerationRepository(Protocol):
         retry_at: datetime | None,
         capability: str,
         provider_validation_issues: tuple[ProviderValidationIssue, ...] = (),
+        provider_error_code: str | None = None,
     ) -> bool: ...
 
     async def update_checkpoint(

@@ -763,7 +763,7 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
     )
 
     assert preview.rule_version == "preview-v13-headline-hook"
-    assert preview.generator_prompt_version == "moments-generator-v27-lean-context"
+    assert preview.generator_prompt_version == "moments-generator-v28-shared-quotes"
     assert preview.auditor_prompt_version == "moments-auditor-v21-lean-context"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint

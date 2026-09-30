@@ -13,6 +13,7 @@ from typing import Annotated, Any, TypeAlias
 from urllib.parse import urlsplit
 
 import httpx
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from app.application.ports.brand_knowledge import (
@@ -62,6 +63,7 @@ from app.domain.image_validation import validate_exact_visual_text, validate_ima
 from app.domain.value_objects import sha256_bytes, stable_key
 from app.schemas.governance_analysis import FactualAnalysisOutput
 
+logger = structlog.get_logger()
 _Sleep = Callable[[float], Awaitable[None]]
 _TEMPERATURE = 0.0
 _ACCEPT_ENCODING = "gzip"
@@ -1423,9 +1425,14 @@ async def _post_json_with_retries(
 ) -> httpx.Response:
     if max_response_bytes < 1:
         raise ValueError("provider response byte limit must be positive")
-    last_error: ProviderRateLimitError | ProviderTimeoutError | ProviderUnavailableError | None = (
-        None
-    )
+    last_error: (
+        ProviderRateLimitError
+        | ProviderTimeoutError
+        | ProviderUnavailableError
+        | ProviderRejectedError
+        | None
+    ) = None
+    content_filter_retries = 0
     for attempt in range(1, max_attempts + 1):
         try:
             async with semaphore:
@@ -1445,7 +1452,11 @@ async def _post_json_with_retries(
                             response = httpx.Response(
                                 status_code=streamed_response.status_code,
                                 headers=streamed_response.headers,
-                                content=b"",
+                                content=(
+                                    await _read_error_prefix(streamed_response)
+                                    if streamed_response.status_code == 400
+                                    else b""
+                                ),
                                 request=streamed_response.request,
                             )
                         else:
@@ -1465,7 +1476,23 @@ async def _post_json_with_retries(
             elif 500 <= response.status_code <= 599:
                 last_error = ProviderUnavailableError()
             elif response.status_code >= 400:
-                raise ProviderRejectedError()
+                provider_code = _provider_error_code(response)
+                if (
+                    provider_code not in _RETRYABLE_REJECTION_CODES
+                    or content_filter_retries >= _CONTENT_FILTER_RETRIES
+                    or attempt >= max_attempts
+                ):
+                    raise ProviderRejectedError(provider_code)
+                # The filter is not deterministic: on 2026-09-30 one identical prompt returned
+                # 200, 400, 400 and another 400 three times. One identical retry recovers the
+                # former without spending the whole attempt budget on the latter.
+                content_filter_retries += 1
+                logger.warning(
+                    "provider_content_filter_retry",
+                    provider_error_code=provider_code,
+                    attempt=attempt,
+                )
+                last_error = ProviderRejectedError(provider_code)
             else:
                 return response
         if attempt < max_attempts:
@@ -1473,6 +1500,32 @@ async def _post_json_with_retries(
     if last_error is None:
         raise ProviderUnavailableError()
     raise last_error
+
+
+# Zhipu "1301": the content-safety filter flagged the input or the generated output.
+_RETRYABLE_REJECTION_CODES = frozenset({"1301"})
+_CONTENT_FILTER_RETRIES = 1
+_ERROR_PREFIX_BYTES = 4_096
+_PROVIDER_CODE = re.compile(r"^[A-Za-z0-9_]{1,12}$")
+
+
+async def _read_error_prefix(response: httpx.Response) -> bytes:
+    """Only enough of a 400 body to read the provider's error code; the rest is discarded."""
+    prefix = bytearray()
+    async for chunk in response.aiter_bytes():
+        prefix.extend(chunk[: _ERROR_PREFIX_BYTES - len(prefix)])
+        if len(prefix) >= _ERROR_PREFIX_BYTES:
+            break
+    return bytes(prefix)
+
+
+def _provider_error_code(response: httpx.Response) -> str | None:
+    try:
+        error = json.loads(response.content).get("error")
+    except (ValueError, AttributeError):
+        return None
+    code = str(error.get("code")) if isinstance(error, dict) else ""
+    return code if _PROVIDER_CODE.match(code) else None
 
 
 async def _read_bounded_response(
