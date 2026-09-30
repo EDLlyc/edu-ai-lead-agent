@@ -15,7 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.ports.wecom import WeComDeliveryClient, WeComProviderError
 from app.application.services.news_infographic_advisory import prepare_unmarked_advisory_raster
-from app.application.services.news_infographic_footer import render_delivery_footer_variants
+from app.application.services.news_infographic_footer import (
+    is_delivery_geometry,
+    render_delivery_footer_variants,
+)
 from app.core.config import Settings
 from app.domain.news_infographic import InfographicInputError
 from app.domain.value_objects import stable_key
@@ -96,7 +99,7 @@ def _valid_ready_pair(
         and poster.delivery_byte_size
         and poster.delivery_media_type == "image/jpeg"
         and poster.delivery_byte_size <= settings.wecom_group_max_image_bytes
-        and (poster.delivery_width, poster.delivery_height) == (1152, 2048)
+        and is_delivery_geometry((poster.delivery_width, poster.delivery_height))
         and poster.base_job_id == base.id
         and poster.material_package_id == base.material_package_id
         and poster.package_version == base.package_version

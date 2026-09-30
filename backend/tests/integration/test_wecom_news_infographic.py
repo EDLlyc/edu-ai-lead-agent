@@ -33,6 +33,7 @@ from app.application.services.news_infographic_advisory import (
     prepare_unmarked_advisory_raster,
 )
 from app.application.services.news_infographic_footer import (
+    TRIM_MARGIN,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
@@ -64,7 +65,7 @@ from app.infrastructure.db.models import (
     WeComInfographicSupplementModel,
 )
 from app.infrastructure.storage.minio_image_store import ImageObjectDescriptor
-from PIL import Image
+from PIL import Image, ImageDraw
 from pydantic import SecretStr
 from sqlalchemy import func, select
 from tests.unit.test_news_infographic import URL, package_payload
@@ -192,7 +193,10 @@ class _Models:
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         self.image_requests.append(request)
         stream = BytesIO()
-        Image.new("RGB", (1152, 2048), "#d3e6f5").save(stream, format="PNG")
+        poster = Image.new("RGB", (1152, 2048), "#d3e6f5")
+        # Like the real model: cards end above the bottom band it was asked to keep blank.
+        ImageDraw.Draw(poster).rectangle((40, 900, 1111, 1799), fill="#5b6fd6")
+        poster.save(stream, format="PNG")
         return ImageGenerationResult(
             provider="comfly",
             model=self.image_model,
@@ -430,7 +434,7 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         case = _input_from_package(package)
         marked = prepare_unmarked_advisory_raster(blobs[poster.raw_sha256])
         assert sha256(marked).hexdigest() == poster.composite_sha256
-        formal = render_exact_source_footer(marked, case, mode="formal")
+        formal = render_exact_source_footer(marked, case, mode="formal", trim=True)
         assert sha256(formal.image_bytes).hexdigest() == poster.footer_sha256
         expected = prepare_infographic_group_jpeg(
             formal.image_bytes, max_bytes=settings.wecom_group_max_image_bytes
@@ -439,7 +443,9 @@ async def test_advisory_rich_poster_persists_warnings_and_sends_exact_marked_jpe
         assert blobs[poster.delivery_sha256] == expected
         with Image.open(BytesIO(expected)) as image:
             image.load()
-            assert image.size == (1152, 2048)
+            # The blank bottom band is trimmed to the side margin below the last card.
+            assert image.size == (1152, 1800 + TRIM_MARGIN)
+            assert (poster.delivery_width, poster.delivery_height) == image.size
             top_pixel = image.getpixel((5, 5))
             assert isinstance(top_pixel, tuple)
             # No painted warning banner since advisory-notice-v2: the top stays the image itself.

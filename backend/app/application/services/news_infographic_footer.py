@@ -10,7 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat, UnidentifiedImageError
 
 from app.domain.news_infographic import ValidatedInfographicInput
 
@@ -20,9 +20,21 @@ FOOTER_VERSION = "daily-news-infographic-footer-v2"
 # the Moments text. Test sends keep only the 【测试消息】 label. v5 (date + source) and v4 (with
 # link) remain renderable so send gates can verify posters produced before the switch.
 DELIVERY_FOOTER_VERSION = "daily-news-infographic-footer-v6-none"
+# Operator request 2026-09-30: with no footer text, the band the image model keeps blank for it
+# is just empty space. A formal delivery now ends an even margin below the last painted row.
+DELIVERY_TRIM_VERSION = "daily-news-infographic-trim-v1-blank-bottom"
 LegacyFooter = Literal["v4", "v5"]
 FOOTER_TOP = 1858
 _GEOMETRY = (1152, 2048)
+# Same as the cards' side margin, so the poster ends like it begins.
+TRIM_MARGIN = 36
+# Never cut higher than this, whatever the model painted.
+TRIM_MIN_HEIGHT = 1600
+_TRIM_MIN_CUT = 24
+_TRIM_TOLERANCE = 20
+# A row with more off-colour pixels than this is painted, not blank.
+_TRIM_MAX_STRAY_PIXELS = 6
+_TRIM_BAND_SAMPLE_ROWS = 8
 _FONT_PATH = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 _MAX_IMAGE_BYTES = 24 * 1024 * 1024
 
@@ -269,6 +281,43 @@ def _draw_legacy_link_footer(
     return lines
 
 
+def is_delivery_geometry(size: tuple[int | None, int | None]) -> bool:
+    """A delivered poster is full width and at most trimmed to the minimum height."""
+    width, height = size
+    return (
+        width == _GEOMETRY[0] and height is not None and TRIM_MIN_HEIGHT <= height <= _GEOMETRY[1]
+    )
+
+
+def _trim_blank_bottom(image: Image.Image) -> Image.Image:
+    """Cut the uniform band below the last painted row, keeping ``TRIM_MARGIN``.
+
+    The band colour is the median of the bottom rows. Scanning up, the first row with more than a
+    few pixels off that colour is painted; it and everything above it stay. A painted, textured
+    or gradient bottom has no such band and is returned unchanged.
+    """
+    width, height = image.size
+    top = TRIM_MIN_HEIGHT - TRIM_MARGIN
+    region = image.convert("RGB").crop((0, top, width, height))
+    sample = region.crop((0, region.height - _TRIM_BAND_SAMPLE_ROWS, width, region.height))
+    band = tuple(int(value) for value in ImageStat.Stat(sample).median)
+    diff = ImageChops.difference(region, Image.new("RGB", region.size, band))
+    red, green, blue = diff.split()
+    off_colour = ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
+        lambda value: 255 if value > _TRIM_TOLERANCE else 0
+    )
+    mask = off_colour.tobytes()
+    last_painted = top - 1
+    for row in range(region.height - 1, -1, -1):
+        if mask.count(255, row * width, (row + 1) * width) > _TRIM_MAX_STRAY_PIXELS:
+            last_painted = top + row
+            break
+    new_height = max(TRIM_MIN_HEIGHT, last_painted + 1 + TRIM_MARGIN)
+    if height - new_height < _TRIM_MIN_CUT:
+        return image
+    return image.crop((0, 0, width, new_height))
+
+
 def _draw_exact_source_footer(
     image: Image.Image,
     case: ValidatedInfographicInput,
@@ -366,8 +415,12 @@ def render_exact_source_footer(
     *,
     mode: FooterMode = "local",
     legacy: LegacyFooter | None = None,
+    trim: bool = False,
 ) -> RenderedFooter:
-    """Return a new PNG; the provider raster stays untouched and traceable."""
+    """Return a new PNG; the provider raster stays untouched and traceable.
+
+    ``trim`` applies only to the current formal footer, which draws nothing.
+    """
     if not original_bytes or len(original_bytes) > _MAX_IMAGE_BYTES:
         raise FooterRenderError("original image is missing or too large")
     try:
@@ -384,6 +437,8 @@ def render_exact_source_footer(
         raise FooterRenderError("original image cannot be decoded") from exc
 
     font_hash, lines = _draw_exact_source_footer(image, case, mode=mode, legacy=legacy)
+    if trim and mode == "formal" and legacy is None:
+        image = _trim_blank_bottom(image)
     result = BytesIO()
     image.save(result, format="PNG", optimize=False)
     body = result.getvalue()
@@ -398,13 +453,14 @@ def render_exact_source_footer(
 def render_delivery_footer_variants(
     original_bytes: bytes, case: ValidatedInfographicInput, *, mode: FooterMode = "formal"
 ) -> tuple[RenderedFooter, ...]:
-    """The current delivered footer first, then v5 and v4 for posters produced before v6.
+    """The trimmed current footer first, then untrimmed v6, v5 and v4 for older posters.
 
     Send gates re-render a stored poster byte-for-byte; a poster produced with the linked v4
     footer on the day of the switch must still verify instead of being withheld.
     """
 
     return (
+        render_exact_source_footer(original_bytes, case, mode=mode, trim=True),
         render_exact_source_footer(original_bytes, case, mode=mode),
         render_exact_source_footer(original_bytes, case, mode=mode, legacy="v5"),
         render_exact_source_footer(original_bytes, case, mode=mode, legacy="v4"),

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal
 from unittest.mock import patch
 
+import app.application.services.news_infographic_footer as footer_service
 import app.news_infographic_local_main as local_main
 import pytest
 from app.application.services.news_infographic import run_local_batch
@@ -17,15 +18,18 @@ from app.application.services.news_infographic_footer import (
     DELIVERY_FOOTER_VERSION,
     FOOTER_TOP,
     FOOTER_VERSION,
+    TRIM_MARGIN,
+    TRIM_MIN_HEIGHT,
     FooterRenderError,
     delivery_footer_text,
+    is_delivery_geometry,
     render_delivery_footer_variants,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
 from app.domain.news_infographic import validate_package_snapshot
 from app.infrastructure.news_infographic_local import write_frozen_input_bundle
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 from test_news_infographic import package_payload
 from test_news_infographic_pipeline import _Models, _png, _reference
 
@@ -262,8 +266,109 @@ def test_send_gates_can_still_verify_posters_made_with_the_linked_v4_footer() ->
     case = validate_package_snapshot(package_payload()).model_copy(
         update={"source_url": _REAL_SOURCE_URL}
     )
-    current, date_source, linked = render_delivery_footer_variants(_png(), case)
+    trimmed, current, date_source, linked = render_delivery_footer_variants(
+        _painted_poster(1799), case
+    )
 
-    assert current.source_url_lines == date_source.source_url_lines == ()
+    assert trimmed.source_url_lines == current.source_url_lines == ()
+    assert date_source.source_url_lines == ()
     assert "".join(linked.source_url_lines) == _REAL_SOURCE_URL
-    assert len({current.image_sha256, date_source.image_sha256, linked.image_sha256}) == 3
+    hashes = {item.image_sha256 for item in (trimmed, current, date_source, linked)}
+    assert len(hashes) == 4
+    # Posters made before the trim still verify: the untrimmed v6 render is unchanged.
+    assert current == render_exact_source_footer(_painted_poster(1799), case, mode="formal")
+
+
+def _painted_poster(
+    last_painted_row: int, *, band: tuple[int, int, int] = (253, 253, 253)
+) -> bytes:
+    """A model raster: cards down to ``last_painted_row``, a uniform band below."""
+    image = Image.new("RGB", (1152, 2048), band)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 1151, 800), fill=(120, 180, 230))
+    draw.rectangle((28, 820, 1123, last_painted_row), fill=(150, 120, 220))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _height(png: bytes) -> int:
+    with Image.open(BytesIO(png)) as image:
+        return image.size[1]
+
+
+def test_trim_ends_the_poster_one_margin_below_the_last_painted_row() -> None:
+    case = validate_package_snapshot(package_payload())
+    original = _painted_poster(1823)
+    trimmed = render_exact_source_footer(original, case, mode="formal", trim=True)
+    assert _height(trimmed.image_bytes) == 1824 + TRIM_MARGIN
+    with Image.open(BytesIO(original)) as full, Image.open(BytesIO(trimmed.image_bytes)) as cut:
+        kept = (0, 0, 1152, cut.size[1])
+        assert (
+            ImageChops.difference(full.convert("RGB").crop(kept), cut.convert("RGB")).getbbox()
+            is None
+        )
+    # Deterministic (send gates re-render it), and a second pass finds nothing more to cut.
+    assert render_exact_source_footer(original, case, mode="formal", trim=True) == trimmed
+    with Image.open(BytesIO(trimmed.image_bytes)) as cut:
+        assert footer_service._trim_blank_bottom(cut).size == cut.size
+
+
+def test_trim_keeps_a_painted_bottom_and_never_cuts_above_the_minimum() -> None:
+    case = validate_package_snapshot(package_payload())
+    painted = _painted_poster(2047)
+    assert (
+        render_exact_source_footer(painted, case, mode="formal", trim=True).image_bytes
+        == render_exact_source_footer(painted, case, mode="formal").image_bytes
+    )
+    # A cut smaller than the minimum is not worth changing the poster for.
+    nearly_full = _painted_poster(2047 - TRIM_MARGIN - 10)
+    assert (
+        _height(render_exact_source_footer(nearly_full, case, mode="formal", trim=True).image_bytes)
+        == 2048
+    )
+    short = _painted_poster(1000)
+    assert (
+        _height(render_exact_source_footer(short, case, mode="formal", trim=True).image_bytes)
+        == TRIM_MIN_HEIGHT
+    )
+
+
+def test_trim_follows_a_coloured_band_and_ignores_a_few_stray_pixels() -> None:
+    case = validate_package_snapshot(package_payload())
+    image = Image.open(BytesIO(_painted_poster(1790, band=(211, 230, 245)))).convert("RGB")
+    for x in (100, 400, 700):  # three specks in the band are not content
+        image.putpixel((x, 1950), (0, 0, 0))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    trimmed = render_exact_source_footer(buffer.getvalue(), case, mode="formal", trim=True)
+    assert _height(trimmed.image_bytes) == 1791 + TRIM_MARGIN
+    # A row with real content in the band is kept.
+    ImageDraw.Draw(image).line((100, 1950, 400, 1950), fill=(0, 0, 0))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    kept = render_exact_source_footer(buffer.getvalue(), case, mode="formal", trim=True)
+    assert _height(kept.image_bytes) == 1951 + TRIM_MARGIN
+
+
+def test_only_the_formal_current_footer_is_trimmed() -> None:
+    case = validate_package_snapshot(package_payload())
+    original = _painted_poster(1799)
+    for mode, legacy in (("test", None), ("formal", "v5"), ("formal", "v4")):
+        assert (
+            _height(
+                render_exact_source_footer(
+                    original, case, mode=mode, legacy=legacy, trim=True
+                ).image_bytes
+            )
+            == 2048
+        )
+
+
+def test_delivery_geometry_allows_trimmed_full_width_posters_only() -> None:
+    assert is_delivery_geometry((1152, 2048))
+    assert is_delivery_geometry((1152, TRIM_MIN_HEIGHT))
+    assert not is_delivery_geometry((1152, TRIM_MIN_HEIGHT - 1))
+    assert not is_delivery_geometry((1152, 2049))
+    assert not is_delivery_geometry((1024, 1900))
+    assert not is_delivery_geometry((1152, None))

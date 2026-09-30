@@ -26,7 +26,9 @@
   in one emoji / 新闻来源 / 原文链接 / `#赛先生科学 #… #…`, no blank lines, no brand sentence in the
   text. Facts and one rotated brand sentence stay structured claims for the long image only.
 - **Long image**: 新闻看点 / 亲子探究 / 教学启发 cards and **no footer text** (footer-v6-none: no
-  link, news date or source).
+  link, news date or source). Since 2026-09-30 (operator request) the empty band below the last
+  card is trimmed: a formal poster ends 36 px (the side margin) below its last painted row
+  (`daily-news-infographic-trim-v1-blank-bottom`, height 1600–2048). A painted bottom is kept.
 - **Long-image review** (advisory policy v14, 2026-09-29): layout and wording findings never drop
   a poster. Headings fall back to neutral wording, a long frozen claim is shown by its verbatim
   leading clause, unusable model text is repaired or replaced by a neutral sentence and recorded

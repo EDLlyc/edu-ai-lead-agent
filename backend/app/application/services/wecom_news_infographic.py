@@ -65,10 +65,12 @@ from app.application.services.news_infographic_advisory import (
 )
 from app.application.services.news_infographic_footer import (
     DELIVERY_FOOTER_VERSION,
+    DELIVERY_TRIM_VERSION,
     FOOTER_TOP,
     FooterRenderError,
     delivery_footer_text,
     footer_font_sha256,
+    is_delivery_geometry,
     render_exact_source_footer,
     validate_exact_source_footer_layout,
 )
@@ -144,6 +146,7 @@ def _policy_fingerprint(image_model: str, audit_model: str, *, quality_mode: str
             ADVISORY_NOTICE_VERSION,
             advisory_notice_font_sha256(),
             DELIVERY_FOOTER_VERSION,
+            DELIVERY_TRIM_VERSION,
             footer_font_sha256(),
             image_model,
             audit_model,
@@ -369,14 +372,15 @@ def _approved_reference(*, asset_root: Path | None = None) -> tuple[ImageReferen
 
 
 def prepare_infographic_group_jpeg(footer_png: bytes, *, max_bytes: int) -> bytes:
-    """Materialize the exact 1152x2048 JPEG that OCR and the webhook will see.
+    """Materialize the exact full-width JPEG that OCR and the webhook will see.
 
     Unlike the generic group adapter this never downscales a poster. OCR and a
     separate phone-width visual gate decide whether any allowed JPEG is legible.
+    A formal advisory poster may be shorter than 2048: its blank bottom is trimmed.
     """
     with Image.open(BytesIO(footer_png)) as opened:
         opened.load()
-        if opened.size != GEOMETRY or getattr(opened, "n_frames", 1) != 1:
+        if not is_delivery_geometry(opened.size) or getattr(opened, "n_frames", 1) != 1:
             raise ValueError("infographic footer has wrong geometry")
         raster = opened.convert("RGB")
     for quality in (92, 88, 84, 80, 76, 72):
@@ -1277,7 +1281,7 @@ class NewsInfographicProducer:
         raw = await self._store.put_immutable(result.image_bytes, media_type=result.media_type)
         notice_png = prepare_unmarked_advisory_raster(result.image_bytes)
         composite = await self._store.put_immutable(notice_png, media_type="image/png")
-        footer = render_exact_source_footer(notice_png, case, mode="formal")
+        footer = render_exact_source_footer(notice_png, case, mode="formal", trim=True)
         derived = await self._store.put_immutable(footer.image_bytes, media_type="image/png")
         jpeg = prepare_infographic_group_jpeg(
             footer.image_bytes, max_bytes=self._settings.wecom_group_max_image_bytes
@@ -1293,7 +1297,8 @@ class NewsInfographicProducer:
             return
         with Image.open(BytesIO(jpeg)) as opened:
             opened.load()
-            if opened.size != GEOMETRY or opened.format != "JPEG":
+            delivery_size = opened.size
+            if not is_delivery_geometry(delivery_size) or opened.format != "JPEG":
                 await self._finish(
                     job.id, token, status="failed", code="delivery_geometry_degraded"
                 )
@@ -1318,7 +1323,7 @@ class NewsInfographicProducer:
                 delivered.byte_size,
             )
             locked.delivery_media_type = delivered.media_type
-            locked.delivery_width, locked.delivery_height = GEOMETRY
+            locked.delivery_width, locked.delivery_height = delivery_size
         # Body OCR has no fixed model-painted card positions; record its absence
         # instead of setting a false pass. The source footer remains exact by
         # construction, and a configured footer OCR disagreement is still hard.
@@ -1328,7 +1333,7 @@ class NewsInfographicProducer:
         if self._models.ocr_enabled and footer_text:
             with Image.open(BytesIO(jpeg)) as opened:
                 opened.load()
-                footer_region = _encode_ocr_crop(opened, (0, FOOTER_TOP, *GEOMETRY))
+                footer_region = _encode_ocr_crop(opened, (0, FOOTER_TOP, *opened.size))
             footer_fingerprint = stable_key(
                 ADVISORY_POLICY_VERSION,
                 delivered.sha256,
