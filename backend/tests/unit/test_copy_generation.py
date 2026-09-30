@@ -3305,3 +3305,73 @@ async def test_default_executor_delivers_the_headline_hook_format() -> None:
     assert lines[:2] == ["🔎【小赛洞察】", topic.title]
     assert lines[-3] == f"新闻来源：{topic.evidence[0].source_name}"
     assert "" not in lines
+
+
+def test_lean_context_prompts_send_only_what_each_step_needs() -> None:
+    lean = replace(
+        build_copy_version_bundle(Settings()),
+        generator_prompt_version="moments-generator-v27-lean-context",
+        auditor_prompt_version="moments-auditor-v21-lean-context",
+    )
+    base = _topic()
+    uncited = replace(
+        base.evidence[0],
+        evidence_id=uuid4(),
+        exact_quote="另一段没有被草稿引用的原文，审查时不需要再看一遍。",
+    )
+    topic = replace(base, evidence=(*base.evidence, uncited))
+    extra_brand = replace(_brand()[0], chunk_id=uuid4(), text="一段没有被引用的品牌资料。")
+    brand = (*_brand(), extra_brand)
+    generator_prompt = build_generator_prompt(
+        DraftGenerationRequest(
+            run_id=RUN_ID,
+            topic=topic,
+            brand_context=brand,
+            version_bundle=lean,
+            draft_version=1,
+            max_output_tokens=2048,
+            recent_brand_claims=(),
+        )
+    )
+    auditor_prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=topic,
+            brand_context=brand,
+            draft=_headline_hook_draft(topic, TEMPLATE_HOOK),
+            version_bundle=lean,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert "copywriting只输出两行" in generator_prompt
+    assert "tone_tags" not in generator_prompt
+    assert "一段没有被引用的品牌资料" in generator_prompt
+    assert uncited.exact_quote in generator_prompt
+    assert "不得因此报learning_value或brand_value" in auditor_prompt
+    assert f"主题:{topic.title}" in auditor_prompt
+    assert base.evidence[0].exact_quote in auditor_prompt
+    assert uncited.exact_quote not in auditor_prompt
+    assert "一段没有被引用的品牌资料" not in auditor_prompt
+    assert "tone_tags" not in auditor_prompt
+
+
+def test_headline_hook_v26_and_v20_prompts_keep_their_full_context() -> None:
+    bundle = build_copy_version_bundle(Settings())
+    topic = _topic()
+    auditor_prompt = build_auditor_prompt(
+        DraftAuditRequest(
+            run_id=RUN_ID,
+            draft_version_id=uuid4(),
+            topic=topic,
+            brand_context=_brand(),
+            draft=_headline_hook_draft(topic, TEMPLATE_HOOK),
+            version_bundle=bundle,
+            max_output_tokens=1024,
+        )
+    )
+
+    assert bundle.auditor_prompt_version == "moments-auditor-v20-headline-hook"
+    assert "tone_tags" in auditor_prompt
+    assert f"主题:{topic.title}" not in auditor_prompt

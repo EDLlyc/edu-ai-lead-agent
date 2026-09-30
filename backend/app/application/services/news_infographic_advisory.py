@@ -404,7 +404,9 @@ def _claim_texts(
 
 
 _EMOJI = re.compile("[\U0001f000-\U0001faff\u2600-\u27bf\u2b00-\u2bff\ufe0f\u200d]")
-_HEADLINE_HOOK_PROMPT_VERSIONS: Final = frozenset({"moments-generator-v26-headline-hook"})
+_HEADLINE_HOOK_PROMPT_VERSIONS: Final = frozenset(
+    {"moments-generator-v26-headline-hook", "moments-generator-v27-lean-context"}
+)
 # Neutral sentences for a field the model left unusable, longest first; none states a fact.
 _NEUTRAL_EDITORIAL: Final = {
     "top": ("这条新闻里有不少值得和孩子一起聊的地方。",),
