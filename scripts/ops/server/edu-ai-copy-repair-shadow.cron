@@ -1,0 +1,2 @@
+# Nightly shadow run of the copy repair agent, after the 18:30 push and before the 21:40 quality report.
+10 21 * * * root /usr/local/sbin/edu-ai-copy-repair-shadow >> /var/log/edu-ai-copy-repair-shadow.log 2>&1

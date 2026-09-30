@@ -1,0 +1,21 @@
+#!/bin/sh
+# Nightly shadow run of the copy repair agent (see backend/app/copy_repair_shadow_main.py).
+# Replays the repair agent on the drafts production blocked yesterday and today, gates the result
+# with production's rules and auditor, and appends one JSON line per run next to production's
+# own outcome. Runs a one-off container of the pinned image; no service is restarted or modified.
+# Reads the database only through the SELECT-only ops role; model calls are capped.
+set -eu
+IMAGE="__SHADOW_IMAGE__"
+OUT=/opt/edu-ai-lead-agent/reports/copy-repair-shadow
+ENV_FILE=/opt/edu-ai-lead-agent/scripts/ops-readonly.env   # OPS_DATABASE_URL, root 0600
+mkdir -p "$OUT"
+chown 999:999 "$OUT"   # the image's app user writes the JSON lines
+chmod 700 "$OUT"
+set -a
+. "$ENV_FILE"
+set +a
+cd /opt/edu-ai-lead-agent
+APP_IMAGE="$IMAGE" timeout 1800 docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+  run --rm --no-deps -T -e OPS_DATABASE_URL -v "$OUT:/out" --entrypoint python content-worker \
+  -m app.copy_repair_shadow_main --output-dir /out --max-runs 12 --max-calls 120 "$@"
+echo "copy repair shadow done: $OUT/summary.md"

@@ -4,7 +4,8 @@ It serves the exact registry the repair agent calls through function calling
 (`build_repair_tool_registry`), so an operator's MCP client and the online agent use the same
 tools, schemas, limits and refusals. The workspace is loaded once at start: the offline fixture
 draft by default, or with `--copy-run-id` the newest draft of a copy run from a local development
-database (read-only). Edits stay in this process's memory; nothing is written back.
+database, or through the read-only ops role when OPS_DATABASE_URL is set. Edits stay in
+this process's memory; nothing is written back.
 """
 
 # ruff: noqa: RUF001
@@ -14,12 +15,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.application.ports.brand_knowledge import BrandEmbeddingRequest, BrandEmbeddingResult
 from app.application.services.copy_repair_tools import (
     REPAIR_TOOL_RULES,
     REPAIR_TOOLSET_VERSION,
@@ -28,15 +28,18 @@ from app.application.services.copy_repair_tools import (
 )
 from app.core.agent_workbench_config import get_agent_workbench_settings
 from app.core.config import get_settings
-from app.core.errors import NotFoundError
 from app.infrastructure.agent_workbench_fixture import (
     FIXTURE_COPY_RUN_ID,
     build_fixture_material_draft,
     build_fixture_reader,
 )
-from app.infrastructure.db.agent_workbench import PostgresAgentKnowledgeReader
-from app.infrastructure.db.copy_generation import load_latest_stored_draft
-from app.infrastructure.db.session import create_engine, create_session_factory
+from app.infrastructure.db.copy_repair_workspace import brand_chunk_ids, load_repair_workspace
+from app.infrastructure.db.ops_reader import (
+    create_ops_engine,
+    ops_database_url,
+    verify_read_only_role,
+)
+from app.infrastructure.db.session import create_engine
 from app.mcp_registry_server import (
     DEFAULT_MCP_CALL_BUDGET,
     CallLogger,
@@ -44,7 +47,7 @@ from app.mcp_registry_server import (
     call_budget_from_environment,
     stderr_json_logger,
 )
-from app.schemas.copy_generation import MaterialDraft, render_headline_hook_copy
+from app.schemas.copy_generation import render_headline_hook_copy
 
 MCP_SERVER_NAME = "edu-ai-copy-repair"
 REPAIR_INSTRUCTIONS = (
@@ -73,10 +76,6 @@ def build_copy_repair_mcp_server(
     )
 
 
-def _brand_chunk_ids(draft: MaterialDraft) -> tuple[UUID, ...]:
-    return tuple(dict.fromkeys(chunk for claim in draft.claims for chunk in claim.brand_chunk_ids))
-
-
 # The rule version production copy runs store; the shared workbench fixture keeps an older one.
 FIXTURE_RULE_VERSION = "preview-v13-headline-hook"
 FIXTURE_HOOK = "人工智能走进课堂，正好和孩子聊聊怎样核对一条信息的来源🔍"
@@ -87,7 +86,7 @@ async def load_fixture_workspace() -> RepairWorkspace:
 
     fixture = build_fixture_material_draft()
     context = await build_fixture_reader().load_copy_validation_context(
-        copy_run_id=FIXTURE_COPY_RUN_ID, brand_chunk_ids=_brand_chunk_ids(fixture)
+        copy_run_id=FIXTURE_COPY_RUN_ID, brand_chunk_ids=brand_chunk_ids(fixture)
     )
     evidence = context.topic.evidence[0]
     draft = fixture.model_copy(
@@ -108,51 +107,36 @@ async def load_fixture_workspace() -> RepairWorkspace:
     )
 
 
-class _NoBrandSearch:
-    """This server never searches brand text; it only loads the chunks a draft already cites."""
+async def load_run_workspace(
+    copy_run_id: UUID, environ: Mapping[str, str] = os.environ
+) -> RepairWorkspace:
+    """The newest draft of one copy run, read in READ ONLY transactions.
 
-    async def embed_brand(self, request: BrandEmbeddingRequest) -> BrandEmbeddingResult:
-        del request
-        raise RuntimeError("brand search is not part of the copy repair server")
+    With OPS_DATABASE_URL set it reads through the SELECT-only ops role (production through an
+    SSH tunnel) after checking that the role cannot write. Otherwise it reads the local
+    development database, which needs explicit real-data enablement.
+    """
 
-
-async def load_run_workspace(copy_run_id: UUID) -> RepairWorkspace:
-    workbench = get_agent_workbench_settings()
-    settings = get_settings()
-    if workbench.app_env != "development" or settings.app_env != "development":
-        raise RuntimeError("the copy repair MCP server reads real runs only in development")
-    if not workbench.agent_mcp_real_data_enabled:
-        raise RuntimeError("real-data agent MCP requires explicit enablement")
-    engine = create_engine(settings)
+    if environ.get("OPS_DATABASE_URL", "").strip():
+        engine = create_ops_engine(ops_database_url(environ))
+        needs_role_check = True
+    else:
+        workbench = get_agent_workbench_settings()
+        settings = get_settings()
+        if workbench.app_env != "development" or settings.app_env != "development":
+            raise RuntimeError("the copy repair MCP server reads real runs only in development")
+        if not workbench.agent_mcp_real_data_enabled:
+            raise RuntimeError("real-data agent MCP requires explicit enablement")
+        engine = create_engine(settings)
+        needs_role_check = False
     try:
-        session_factory = create_session_factory(engine)
-        async with session_factory() as session:
-            await session.execute(text("SET TRANSACTION READ ONLY"))
-            stored = await load_latest_stored_draft(session, copy_run_id)
-            await session.rollback()
-        if stored is None:
-            raise RuntimeError("the copy run has no draft")
-        reader = PostgresAgentKnowledgeReader(
-            session_factory,
-            brand_embeddings=_NoBrandSearch(),
-            brand_retrieval_version=settings.brand_retrieval_version,
+        if needs_role_check:
+            await verify_read_only_role(engine)
+        return await load_repair_workspace(
+            async_sessionmaker(engine, expire_on_commit=False), copy_run_id
         )
-        try:
-            context = await reader.load_copy_validation_context(
-                copy_run_id=copy_run_id, brand_chunk_ids=_brand_chunk_ids(stored.draft)
-            )
-        except NotFoundError:
-            raise RuntimeError(
-                "the run or a brand chunk its draft cites is not active on the run's date"
-            ) from None
     finally:
         await engine.dispose()
-    return RepairWorkspace(
-        topic=context.topic,
-        brand_context=context.brand_context,
-        rule_version=context.rule_version,
-        draft=stored.draft,
-    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
