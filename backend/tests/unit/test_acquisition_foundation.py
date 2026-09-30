@@ -136,12 +136,35 @@ def test_visual_embedding_defaults_are_provider_free_and_enabled_mode_is_closed(
     with pytest.raises(ValidationError, match="requires an embedding provider"):
         Settings(_env_file=None, visual_semantic_enabled=True)
 
+    v3_diversity = {
+        "image_enabled": True,
+        "image_provider_mode": "fake",
+        "image_diversity_enabled": True,
+        "image_diversity_selector_version": "brand-visual-selector-v3-gated-rotation",
+    }
     fake = Settings(
         _env_file=None,
         visual_semantic_enabled=True,
         visual_embedding_provider_mode="fake",
+        **v3_diversity,
     )
     assert fake.visual_embedding_model == "qwen3-vl-embedding"
+
+    with pytest.raises(ValidationError, match="v3 selector"):
+        Settings(
+            _env_file=None, visual_semantic_enabled=True, visual_embedding_provider_mode="fake"
+        )
+
+    with pytest.raises(ValidationError, match="v3 selector"):
+        Settings(
+            _env_file=None,
+            visual_semantic_enabled=True,
+            visual_embedding_provider_mode="fake",
+            **{
+                **v3_diversity,
+                "image_diversity_selector_version": "brand-visual-selector-v2-novelty",
+            },
+        )
 
     with pytest.raises(ValidationError, match="approved asset selection"):
         Settings(
@@ -163,6 +186,7 @@ def test_visual_embedding_defaults_are_provider_free_and_enabled_mode_is_closed(
             _env_file=None,
             visual_semantic_enabled=True,
             visual_embedding_provider_mode="alibaba",
+            **v3_diversity,
         )
 
     with pytest.raises(ValidationError, match="endpoint and API key"):

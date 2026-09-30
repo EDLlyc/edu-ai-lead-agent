@@ -1715,3 +1715,19 @@ def test_visual_diversity_requires_the_reviewed_image_bundle() -> None:
             image_ocr_enabled=True,
             image_ocr_model="other-ocr",
         )
+    v3 = Settings(
+        _env_file=None,
+        image_enabled=True,
+        image_provider_mode="fake",
+        image_diversity_enabled=True,
+        image_diversity_selector_version="brand-visual-selector-v3-gated-rotation",
+    )
+    assert v3.image_diversity_selector_version == "brand-visual-selector-v3-gated-rotation"
+    with pytest.raises(ValueError, match="image_diversity_selector_version"):
+        Settings(
+            _env_file=None,
+            image_enabled=True,
+            image_provider_mode="fake",
+            image_diversity_enabled=True,
+            image_diversity_selector_version="brand-visual-selector-v2-multimodal",
+        )

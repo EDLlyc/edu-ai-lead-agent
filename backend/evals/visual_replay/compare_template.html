@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>配图参考对比</title>
+<style>
+:root { --bg:#f6f4ef; --card:#fff; --ink:#1f1d1a; --muted:#6b665e; --line:#e4dfd5; --accent:#0f6e56; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+header { position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; z-index:2; }
+header b { font-size:16px; }
+header button { border:1px solid var(--line); background:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; }
+main { max-width:1100px; margin:0 auto; padding:16px; }
+.pair { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:18px; }
+.meta { color:var(--muted); font-size:13px; margin-bottom:4px; }
+.headline { font-weight:600; margin-bottom:10px; }
+.sides { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.side { border:1px solid var(--line); border-radius:8px; padding:10px; }
+.side h4 { margin:0 0 8px; font-size:14px; color:var(--muted); }
+.action img { width:100%; max-width:420px; border-radius:6px; display:block; }
+.ids { display:flex; gap:8px; margin-top:8px; }
+.ids img { width:96px; height:96px; object-fit:contain; border-radius:6px; border:1px solid var(--line); background:#fff; }
+.role { font-size:12px; color:var(--muted); }
+.choices { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.choices button { border:1px solid var(--line); background:#fff; padding:8px 14px; border-radius:8px; cursor:pointer; }
+.choices button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+.done { border-color:var(--accent); }
+@media (max-width: 720px) { .sides { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <b>配图参考对比</b>
+  <span id="progress"></span>
+  <button id="export">导出判断结果</button>
+  <span class="meta">快捷键：1 左更贴 · 2 右更贴 · 3 差不多 · 4 都不行 · J/K 上下</span>
+</header>
+<main id="main"></main>
+<script>
+const DATA = __PAYLOAD__;
+const KEY = "visual-replay-" + DATA.report_id;
+let answers = {};
+try { answers = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { answers = {}; }
+const CHOICES = [["left","左更贴"],["right","右更贴"],["tie","差不多"],["neither","都不行"]];
+function img(asset, cls) { return '<img class="' + cls + '" src="data:image/jpeg;base64,' + DATA.thumbs[asset] + '" alt="">'; }
+function side(title, refs) {
+  const action = refs.find(r => r.role === "action_reference");
+  return '<div class="side"><h4>' + title + '</h4>' +
+    (action ? '<div class="action">' + img(action.asset, "") + '<div class="role">动作参考图</div></div>' : '<div class="role">（无动作参考）</div>') + '</div>';
+}
+function render() {
+  const main = document.getElementById("main");
+  main.innerHTML = DATA.items.map(item => {
+    const a = answers[item.pair];
+    return '<section class="pair' + (a ? " done" : "") + '" id="p' + item.pair + '">' +
+      '<div class="meta">#' + item.pair + ' · ' + item.date + ' · ' + item.category + ' · 构图：' + item.plan + '</div>' +
+      '<div class="headline">' + item.headline + '</div>' +
+      '<div class="sides">' + side("左", item.left) + side("右", item.right) + '</div>' +
+      '<div class="choices">' + CHOICES.map(([v, label]) => '<button data-pair="' + item.pair + '" data-v="' + v + '" class="' + (a === v ? "on" : "") + '">' + label + '</button>').join("") + '</div>' +
+      '</section>';
+  }).join("");
+  document.getElementById("progress").textContent = "已判 " + Object.keys(answers).length + " / " + DATA.items.length;
+}
+function choose(pair, v) {
+  answers[pair] = v;
+  try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch (e) {}
+  render();
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-pair]");
+  if (b) choose(Number(b.dataset.pair), b.dataset.v);
+});
+let cursor = 0;
+document.addEventListener("keydown", ev => {
+  const map = {"1":"left","2":"right","3":"tie","4":"neither"};
+  if (map[ev.key]) { choose(DATA.items[cursor].pair, map[ev.key]); cursor = Math.min(cursor + 1, DATA.items.length - 1); scrollTo(cursor); }
+  if (ev.key === "j" || ev.key === "J") { cursor = Math.min(cursor + 1, DATA.items.length - 1); scrollTo(cursor); }
+  if (ev.key === "k" || ev.key === "K") { cursor = Math.max(cursor - 1, 0); scrollTo(cursor); }
+});
+function scrollTo(i) { const el = document.getElementById("p" + DATA.items[i].pair); if (el) el.scrollIntoView({behavior:"smooth", block:"start"}); }
+document.getElementById("export").addEventListener("click", () => {
+  const rows = DATA.items.map(item => ({pair: item.pair, choice: answers[item.pair] || null}));
+  const blob = new Blob([JSON.stringify({report_id: DATA.report_id, judged_at: new Date().toISOString(), answers: rows}, null, 2)], {type: "application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "judgments-" + DATA.report_id + ".json"; a.click();
+});
+render();
+</script>
+</body>
+</html>

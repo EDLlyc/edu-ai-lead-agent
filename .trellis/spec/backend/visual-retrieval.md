@@ -23,7 +23,9 @@ source checksums from normalized embedding-input hashes. The embedding table rem
 - Compose/environment input uses the ordinary string `"2048"`; Settings normalizes only that exact
   representation to integer `2048` and rejects every other dimension.
 - Canonical query/selector: `brand-visual-query-v1` /
-  `brand-visual-selector-v2-multimodal`.
+  `brand-visual-selector-v2-multimodal` (historical) and `brand-visual-selector-v3-gated-rotation`
+  (current; see *Selector v3* below). Selector v3 queries once per subject the brief's category may
+  plan, with the canonical `{category, subject}` shape.
 - An asset derivation includes catalog version, asset ID/source checksum, actual embedding-input
   checksum, provider, model, dimensions, and input policy. Rows are immutable and are never reused
   across a mismatched identity.
@@ -69,6 +71,41 @@ source checksums from normalized embedding-input hashes. The embedding table rem
 Identity coverage, approved state, role, PNG/integrity bounds, reference count, and byte budget run
 before semantic ranking. Inside each eligible role pool, order by cosine similarity, existing rule
 score, priority/novelty, then stable asset ID. A semantic score can never admit an ineligible asset.
+
+`VISUAL_SEMANTIC_ENABLED=true` is valid only with `IMAGE_DIVERSITY_ENABLED=true` and
+`IMAGE_DIVERSITY_SELECTOR_VERSION=brand-visual-selector-v3-gated-rotation`. Selector
+v2-multimodal ranked identity sheets by similarity: in a 186-brief production replay
+(2026-09-30) it picked large single-character sheets for two-character plans and exhausted the
+6 MiB budget in 56 of 62 such plans. The worker logs that ConflictError at info level and
+skips the post, so the failure is silent. It must not be re-enabled.
+
+#### Selector v3 (gated rotation)
+
+- Identity references: deterministic rules only, never semantic order.
+- Action reference pool: approved, fits the remaining budget, every catalog `props` entry allowed
+  for the plan subject (`SUBJECT_ALLOWED_PROPS`; an empty list means pose only and suits every
+  subject), and characters matching the plan cast.
+  - It prefers images that show exactly the cast. A subset of the cast is used only when no
+    whole-cast image fits; any other image only when no in-cast image exists, recorded as a
+    controlled fallback.
+  - Reason: `小赛.png` is a flat 281x276 logo, so the 3D Xiaosai comes from the action image. In a
+    2026-09-30 sample, a two-character plan given a Sai-only microscope image drew Xiaosai in Sai's
+    goggles and coat.
+  - Catalog `characters` must match the picture, not the file name. `小赛看书.png` shows Sai; it is
+    corrected in the private `visual-assets.metadata.json` override, which wins over the builder's
+    defaults.
+- Order: suitable-prop image outside the cooldown → pose-only image outside the cooldown → least
+  recently used. The cooldown is `ACTION_COOLDOWN_REFERENCES=12` history rows (primary and
+  alternate plan rows, about six posts). History arrives as `recent_action_sequence`, oldest
+  first with repeats kept; every request rebuild must carry it.
+- Inside a tier: cosine similarity when complete per-subject scores exist, otherwise rule score,
+  then the seeded variant key and asset ID.
+- Every approved action asset must declare `props`. A catalog without labels falls back to
+  selector v2-novelty with a warning log. Reference rows persist the effective selector version.
+- Evidence (same replay, drafted labels): v3 had 0 errors, 0 wrong props and 0 cast conflicts, and
+  used 15 distinct action images (top image 13% of posts). Production rules had 63% cast
+  conflicts and 5 images (top 61%). Qwen3-VL order without the prop gate put 19% wrong props, so
+  the gate is mandatory.
 
 On disabled provider, authentication/timeout, malformed output, identity mismatch, partial index, or
 catalog change, persist only `semantic_unavailable` plus a closed reason and execute the previous
