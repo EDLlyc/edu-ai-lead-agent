@@ -26,9 +26,22 @@
 - Avoid restarting workers while an acquisition, copy or long-image job is running.
 - Several sessions may deploy: tell the others the new digest and build only `FROM` the running one.
 
+## Live since 2026-09-30 15:21 (image `sha256:21c63fc9…`, release d6e6772)
+
+- Copy prompts are `moments-generator-v27-lean-context` / `moments-auditor-v21-lean-context`. They
+  are the code defaults; compose does not pass copy prompt versions. The auditor sees only the
+  evidence and brand chunks the draft cites, plus the topic title and summary.
+- Paired seeded-defect evaluation (`backend/evals/copy_cost/reports/`): audit input −67%, per
+  post ≈−34%; blocks for the right reason 59 → 65 of 77.
+- Reference selector `brand-visual-selector-v3-gated-rotation` is set by `.env`
+  `IMAGE_DIVERSITY_SELECTOR_VERSION`. It needs `props` on every approved action asset in the
+  private manifest; the host manifest and `visual-assets.metadata.json` were updated, with backups
+  `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
+  `VISUAL_SEMANTIC_ENABLED` stays false.
+
 ## Output standard (operator-approved 2026-09-29)
 
-- **Moments copy** (`moments-generator-v26-headline-hook`, rules v13): `🔎【小赛洞察】` / news headline
+- **Moments copy** (`moments-generator-v26-headline-hook`, rules v13; since 2026-09-30 15:21 the lean-context versions v27/v21 run the same contract): `🔎【小赛洞察】` / news headline
   (main line + 「sub line」 when it splits at a space or 破折号) / one parent-child hook sentence ending
   in one emoji / 新闻来源 / 原文链接 / `#赛先生科学 #… #…`, no blank lines, no brand sentence in the
   text. Facts and one rotated brand sentence stay structured claims for the long image only.
