@@ -1,6 +1,6 @@
-# Python-only overlay on the image production runs since 2026-09-30 15:56 (app = mainline 3a79c22).
-# Release f4ff3a4 = selection fresh pool (db69ffd) + human-pick review/push (f4ff3a4), on d7de3c4.
-FROM offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:30f6cd0e176b6b1645282f1654472ad4d4882b77a2b39a4c93888921dcd3c25e
+# Python-only overlay on the image production runs since 2026-10-01 22:30 (app = mainline 1d4d8b2).
+# Release on 1d4d8b2: selection fresh pool + human-pick review/push + before/after edit pairs.
+FROM offline.local/edu-ai/edu-ai-lead-agent-backend@sha256:7bffe4edfe8cc073b081e7e4d71eb175697f99383745472f0ec407000cff5646
 COPY app/api/v1/routes/content_slots.py /app/app/api/v1/routes/content_slots.py
 COPY app/application/services/human_pick_review.py /app/app/application/services/human_pick_review.py
 COPY app/application/services/wecom_delivery.py /app/app/application/services/wecom_delivery.py
