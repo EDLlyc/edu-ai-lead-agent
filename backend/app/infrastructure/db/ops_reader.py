@@ -614,6 +614,15 @@ OPS_READ_COLUMNS: dict[str, tuple[str, ...]] = {
         "created_at",
         "completed_at",
     ),
+    # copy_snapshot carries the operator edit history (before/after pairs) of human picks.
+    "material_packages": (
+        "id",
+        "run_id",
+        "draft_version_id",
+        "review_status",
+        "copy_snapshot",
+        "created_at",
+    ),
     "news_infographic_jobs": (
         "id",
         "copy_generation_run_id",

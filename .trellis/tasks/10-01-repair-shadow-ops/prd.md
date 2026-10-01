@@ -73,3 +73,22 @@ then the rest of the list (4: prompt-injection eval).
   followed 0 of 30 injected instructions; the auditor's block rate was unchanged by "approve this"
   (one off-topic case 1→0 of 5). Auditor v21 alone blocks 1/5 off-topic hooks and 3/5 paraphrased
   marketing hooks.
+
+## Follow-up (2026-10-01 evening): ops assistant and the operator-edit feedback loop
+
+- Ops assistant (`app/ops_assistant_main.py`, `app/application/services/ops_assistant.py`): one registry
+  holds the five ops tools, `open_draft` and the repair tools bound to a sandbox draft. Reads run at
+  once; draft edits pause for operator approval with a before/after preview. Nothing writes production.
+  Live check on the server (one-off container, real model, ops role): three questions were answered
+  correctly from tool results. They covered today's three slots delivered on time, the one blocked
+  09-30 draft with its causes and its repair, and opening that draft and proposing a closer hook,
+  which was approved and applied in the sandbox. About 24k input tokens for the three turns. The
+  transcript is kept local (it quotes brand material).
+- Feedback loop: the human-pick release (f4ff3a4 + 0e2fa3d, not yet deployed) stores every operator
+  edit in `material_packages.copy_snapshot['operator_edits']` (model_copywriting, previous, copywriting)
+  and the pushed text in `['operator_push']`. The ops role now has a column grant on
+  material_packages (id, run_id, draft_version_id, review_status, copy_snapshot, created_at). The
+  earlier probe that refused copy_snapshot is superseded by this deliberate grant; brand_snapshot stays
+  ungranted. `evals/operator_edits/extract.py` turns edits into before/after examples; on production it
+  ran and found 0 edits so far (the release is not live).
+
