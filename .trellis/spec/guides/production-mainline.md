@@ -39,6 +39,26 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Read-only ops role and repair shadow job (since 2026-10-01 11:43)
+
+- Database role `edu_ai_ops_ro` (`scripts/ops/ops_readonly_role.py`, idempotent): SELECT on 25
+  tables and on six more column by column, without recipient identifiers or raw payloads. It is
+  NOINHERIT, cannot CREATE or use TEMP (`REVOKE TEMPORARY ON DATABASE edu_ai FROM PUBLIC`; every
+  application role is a superuser), and has read-only default transactions with 5 s statement,
+  1 s lock and 30 s idle-in-transaction timeouts and 4 connections. Its connection string is in
+  `/opt/edu-ai-lead-agent/scripts/ops-readonly.env` (root 0600, compose network) and locally in
+  `~/.config/edu-ai/ops-db.production.env` (0600, SSH tunnel to 127.0.0.1:15432). Every consumer
+  checks the role first and refuses one that can write.
+- Copy repair shadow job: `/etc/cron.d/edu-ai-copy-repair-shadow` runs
+  `/usr/local/sbin/edu-ai-copy-repair-shadow` at 21:10. It is a one-off container of the pinned
+  image `…@sha256:2e43a0784a9fbc25596d52296b47d74e1c78778ad563a4a6104e671c1e0c3523`
+  (30f6cd0e + 19 app files of c9d12f9; service defaults unchanged). It replays the repair agent on
+  drafts production blocked yesterday and today (headline-hook rules only) and writes JSON lines
+  plus `summary.md` to `/opt/edu-ai-lead-agent/reports/copy-repair-shadow/`. It caps model calls
+  at 120 per night and never writes production data. The six services stay on 30f6cd0e.
+- Local MCP servers (`scripts/ops/run_mcp.sh ops|repair|workbench`) and the day trace dashboard
+  (`python -m app.ops_trace_report_main`) read production only through this role.
+
 ## Output standard (operator-approved 2026-09-29)
 
 - **Moments copy** (`moments-generator-v26-headline-hook`, rules v13; since 2026-09-30 15:21 the lean-context versions v27/v21 run the same contract): `🔎【小赛洞察】` / news headline

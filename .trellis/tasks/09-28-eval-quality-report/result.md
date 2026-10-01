@@ -185,3 +185,11 @@ Open gaps kept visible in `canonical-report.md`:
   files; backups `*.before-ba78146-20260930T155556`; gate PASS; no job running; six services
   healthy, no errors; live bundle v28/v21. Owner: "现在就上线吧". Details and measurements:
   `.trellis/tasks/09-30-copy-call-stability/prd.md`.
+- 10-01 11:32–11:43 read-only ops role + repair shadow job `c9d12f9` (feat/repair-agent-20260930):
+  role `edu_ai_ops_ro` created outside delivery, after the noon slot's content was finished; seven
+  write and privacy probes refused through the tunnel. Shadow image
+  `…@sha256:2e43a0784a9fbc25596d52296b47d74e1c78778ad563a4a6104e671c1e0c3523` (30f6cd0e + 19 app
+  files, base hashes verified 8/8). Gate `predeploy gate PASS @ c9d12f9`. Cron 21:10 installed, no
+  service restarted. First replay: 6 blocked drafts since 09-24; 5 on v12 rules are now refused as
+  not applicable; 1 valid (both arms passed). Owner: "现在就处理，不用等". Details:
+  `.trellis/tasks/10-01-repair-shadow-ops/prd.md`.

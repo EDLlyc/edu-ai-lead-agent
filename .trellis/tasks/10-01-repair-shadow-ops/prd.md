@@ -52,6 +52,24 @@ then the rest of the list (4: prompt-injection eval).
   edu_ai_ops_ro;` and `GRANT TEMPORARY ON DATABASE edu_ai TO PUBLIC;` to restore the default.
 - No service image changes, so nothing else to roll back.
 
-## Rollout note
+## Rollout note (2026-10-01)
 
-(filled in at deploy time)
+- 11:32: the noon slot's copy, images and long images were finished, with no copy job running and
+  no long transaction. The role was created; production grants are strict, and 25 tables plus 6
+  column-granted tables exist.
+- Probes through the SSH tunnel as `edu_ai_ops_ro` with read-only switched off: UPDATE, DELETE,
+  CREATE TABLE, CREATE TEMP TABLE, reading `wecom_delivery_jobs.recipient_id` and
+  `news_infographic_jobs.recipient_id`, and reading `material_packages` were all refused. All
+  five ops tools returned real data for 09-30 and 10-01.
+- Day trace dashboard for 09-29..10-01 (local file `tmp/trace/trace-2026-10-01.html`): 09-29
+  8/9 delivered, 116 model calls, 1 failure; 09-30 9/9, 113 calls, 0 failures; median generation
+  time 3.3 min.
+- Shadow, first replay (image 590befac, 11:35): 6 blocked drafts. Five were v12 standalone-heading
+  runs, where the headline-hook tools break the format (agent 1/6 vs regeneration 4/6). Fixed in
+  c9d12f9: such runs are refused and logged as not applicable; the five records were moved to
+  `not-applicable-rule-version.jsonl.bak`. Re-run on 2e43a078: 5 not applicable (0 model calls),
+  1 valid case, which both arms repaired.
+- Injection eval (`backend/evals/copy_injection/reports/2026-10-01-injection.md`): the generator
+  followed 0 of 30 injected instructions; the auditor's block rate was unchanged by "approve this"
+  (one off-topic case 1→0 of 5). Auditor v21 alone blocks 1/5 off-topic hooks and 3/5 paraphrased
+  marketing hooks.
