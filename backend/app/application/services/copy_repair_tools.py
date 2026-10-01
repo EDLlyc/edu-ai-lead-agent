@@ -13,7 +13,7 @@ so a tool-calling model can correct itself.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
@@ -249,10 +249,22 @@ def _out_of_scope(workspace: RepairWorkspace, claim_id: str | None) -> EditResul
 
 
 def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
-    evidence_by_id = {item.evidence_id: item for item in workspace.topic.evidence}
-    brand_by_id = {item.chunk_id: item for item in workspace.brand_context}
+    """The repair tools bound to one workspace (the repair agent, MCP server and evals)."""
+
+    return TypedToolRegistry(repair_tool_definitions(lambda: workspace))
+
+
+def repair_tool_definitions(
+    resolve: Callable[[], RepairWorkspace],
+) -> tuple[ToolDefinition, ...]:
+    """The repair tools, resolving the workspace at call time.
+
+    A caller that opens drafts during a session (the ops assistant) passes a resolver for its
+    current draft; build_repair_tool_registry binds a single workspace.
+    """
 
     async def check_draft(_: NoArguments) -> CheckDraftResult:
+        workspace = resolve()
         issues = validate_material_draft(
             workspace.draft,
             topic=workspace.topic,
@@ -274,6 +286,7 @@ def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
         )
 
     async def find_evidence(arguments: FindEvidenceArguments) -> FindEvidenceResult:
+        workspace = resolve()
         wanted = _bigrams(arguments.query)
         scored: list[tuple[float, int, EvidenceSentence]] = []
         order = 0
@@ -308,6 +321,9 @@ def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
         return FindEvidenceResult(sentences=tuple(picked))
 
     async def replace_claim(arguments: ReplaceClaimArguments) -> EditResult:
+        workspace = resolve()
+        evidence_by_id = {item.evidence_id: item for item in workspace.topic.evidence}
+        brand_by_id = {item.chunk_id: item for item in workspace.brand_context}
         current = next((c for c in workspace.draft.claims if c.id == arguments.claim_id), None)
         if current is None:
             return _rejected(workspace, "claim_not_found", "先调用 check_draft 查看现有 claim 编号")
@@ -361,6 +377,7 @@ def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
         return EditResult(ok=True, draft=workspace.view())
 
     async def drop_claim(arguments: DropClaimArguments) -> EditResult:
+        workspace = resolve()
         remaining = tuple(c for c in workspace.draft.claims if c.id != arguments.claim_id)
         if len(remaining) == len(workspace.draft.claims):
             return _rejected(workspace, "claim_not_found", "先调用 check_draft 查看现有 claim 编号")
@@ -373,6 +390,7 @@ def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
         return EditResult(ok=True, draft=workspace.view())
 
     async def rewrite_hook(arguments: RewriteHookArguments) -> EditResult:
+        workspace = resolve()
         evidence = workspace.topic.evidence[0] if workspace.topic.evidence else None
         if evidence is None:
             return _rejected(workspace, "no_source", "这条新闻没有可用来源，不能重写")
@@ -416,64 +434,62 @@ def build_repair_tool_registry(workspace: RepairWorkspace) -> TypedToolRegistry:
         workspace.edits.append("rewrite_hook")
         return EditResult(ok=True, draft=workspace.view())
 
-    return TypedToolRegistry(
-        (
-            ToolDefinition(
-                name="check_draft",
-                description=(
-                    "运行确定性规则检查当前工作稿，返回问题列表和工作稿摘要。"
-                    "开始修改前和改完后各调用一次。"
-                ),
-                argument_model=NoArguments,
-                result_model=CheckDraftResult,
-                handler=check_draft,  # type: ignore[arg-type]
+    return (
+        ToolDefinition(
+            name="check_draft",
+            description=(
+                "运行确定性规则检查当前工作稿，返回问题列表和工作稿摘要。"
+                "开始修改前和改完后各调用一次。"
             ),
-            ToolDefinition(
-                name="drop_claim",
-                description="删除一条无法用证据支持的 claim。优先用 replace_claim 换成证据原句。",
-                argument_model=DropClaimArguments,
-                result_model=EditResult,
-                handler=drop_claim,  # type: ignore[arg-type]
-                read_only=False,
-                workspace_only=True,
+            argument_model=NoArguments,
+            result_model=CheckDraftResult,
+            handler=check_draft,  # type: ignore[arg-type]
+        ),
+        ToolDefinition(
+            name="drop_claim",
+            description="删除一条无法用证据支持的 claim。优先用 replace_claim 换成证据原句。",
+            argument_model=DropClaimArguments,
+            result_model=EditResult,
+            handler=drop_claim,  # type: ignore[arg-type]
+            read_only=False,
+            workspace_only=True,
+        ),
+        ToolDefinition(
+            name="find_evidence",
+            description=(
+                "在本条新闻的证据原文里按关键词找句子，"
+                "返回可以原样用作事实 claim 的句子和证据编号。"
+                "只查本条新闻，不联网。"
             ),
-            ToolDefinition(
-                name="find_evidence",
-                description=(
-                    "在本条新闻的证据原文里按关键词找句子，"
-                    "返回可以原样用作事实 claim 的句子和证据编号。"
-                    "只查本条新闻，不联网。"
-                ),
-                argument_model=FindEvidenceArguments,
-                result_model=FindEvidenceResult,
-                handler=find_evidence,  # type: ignore[arg-type]
+            argument_model=FindEvidenceArguments,
+            result_model=FindEvidenceResult,
+            handler=find_evidence,  # type: ignore[arg-type]
+        ),
+        ToolDefinition(
+            name="replace_claim",
+            description=(
+                "替换一条 claim 的文本。事实必须原样取自所引证据，"
+                "品牌说法必须原样取自所引品牌资料；"
+                "不满足时返回 ok=false 和改正提示，工作稿不变。"
             ),
-            ToolDefinition(
-                name="replace_claim",
-                description=(
-                    "替换一条 claim 的文本。事实必须原样取自所引证据，"
-                    "品牌说法必须原样取自所引品牌资料；"
-                    "不满足时返回 ok=false 和改正提示，工作稿不变。"
-                ),
-                argument_model=ReplaceClaimArguments,
-                result_model=EditResult,
-                handler=replace_claim,  # type: ignore[arg-type]
-                read_only=False,
-                workspace_only=True,
+            argument_model=ReplaceClaimArguments,
+            result_model=EditResult,
+            handler=replace_claim,  # type: ignore[arg-type]
+            read_only=False,
+            workspace_only=True,
+        ),
+        ToolDefinition(
+            name="rewrite_hook",
+            description=(
+                "重写朋友圈里的那一句引导语。用于引导语与新闻无关、承诺效果或制造焦虑等问题；"
+                "标题、来源和标签由系统保留。"
             ),
-            ToolDefinition(
-                name="rewrite_hook",
-                description=(
-                    "重写朋友圈里的那一句引导语。用于引导语与新闻无关、承诺效果或制造焦虑等问题；"
-                    "标题、来源和标签由系统保留。"
-                ),
-                argument_model=RewriteHookArguments,
-                result_model=EditResult,
-                handler=rewrite_hook,  # type: ignore[arg-type]
-                read_only=False,
-                workspace_only=True,
-            ),
-        )
+            argument_model=RewriteHookArguments,
+            result_model=EditResult,
+            handler=rewrite_hook,  # type: ignore[arg-type]
+            read_only=False,
+            workspace_only=True,
+        ),
     )
 
 
