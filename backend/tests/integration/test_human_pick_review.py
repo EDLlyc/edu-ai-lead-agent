@@ -358,6 +358,9 @@ async def test_held_pick_is_sent_only_by_the_operator_push(
         assert window is not None
         assert window.lane_key == f"human-{run_id.hex}"
         assert (package.review_status, package.status) == ("approved", "completed")
+        push = package.copy_snapshot["operator_push"]
+        assert (push["edited"], push["reviewer"]) == (False, "展示台审核")
+        assert push["copywriting"] == ORIGINAL
         review = await session.scalar(
             select(MaterialReviewModel).where(MaterialReviewModel.package_id == package_id)
         )
@@ -485,7 +488,12 @@ async def test_an_edit_updates_draft_validation_and_package_together(
         assert package.validation_snapshot["operator_edited"] is True
         assert [issue["code"] for issue in package.validation_snapshot["issues"]] == ["copy_length"]
         (edit,) = package.copy_snapshot["operator_edits"]
-        assert edit["previous_copywriting"] == ORIGINAL
+        # A before/after pair for evaluation and few-shot use.
+        assert edit["model_copywriting"] == edit["previous_copywriting"] == ORIGINAL
+        assert edit["copywriting"] == EDITED
+        assert edit["draft_version_id"] == str(draft_id)
+        assert edit["copy_run_id"] == str(package.run_id)
+        assert edit["rule_issue_codes"] == ["copy_length"]
         assert edit["reviewer"] == "展示台审核"
         assert edit["llm_audit_repeated"] is False
         # Still held: an edit is not a push.
@@ -505,12 +513,10 @@ async def test_an_edit_updates_draft_validation_and_package_together(
     async with integration_context.session_factory() as session:
         package = await session.get(MaterialPackageModel, package_id)
         assert package is not None
-        assert [
-            edit["previous_copywriting"] for edit in package.copy_snapshot["operator_edits"]
-        ] == [
-            ORIGINAL,
-            EDITED,
-        ]
+        edits = package.copy_snapshot["operator_edits"]
+        assert [edit["previous_copywriting"] for edit in edits] == [ORIGINAL, EDITED]
+        # The model's text stays the first one, however many edits follow.
+        assert [edit["model_copywriting"] for edit in edits] == [ORIGINAL, ORIGINAL]
 
     # Once pushed, the copy can no longer change.
     async with integration_context.session_factory() as session:

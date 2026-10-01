@@ -24,6 +24,13 @@ until 22:30 business time on its day, after that it lapses.
   draft, its deterministic issues and validation result, and the package copy/validation snapshots
   together (the long image requires draft and package to agree); every edit and the previous text
   are kept in `copy_snapshot.operator_edits` with `llm_audit_repeated: false`.
+- Before/after pairs for the owner-approved feedback loop (gold set, few-shot; read later through
+  the read-only ops role): each `material_packages.copy_snapshot.operator_edits[]` entry has
+  `edited_at`, `reviewer`, `copy_run_id`, `draft_version_id`, `model_copywriting` (the model's
+  accepted text), `previous_copywriting`, `copywriting` (after), `hook`, `hashtags`,
+  `rule_issue_codes`, `llm_audit_repeated`. The push writes `copy_snapshot.operator_push`
+  (`pushed_at`, `reviewer`, `edited`, `copywriting` = the text sent). No reason field: the UI has
+  none.
 - API (production loopback): `POST /api/v1/content-slot-human-picks/{run_id}/copy`
   (`hook`, `hashtags`, `reviewer`, `dry_run`) and `POST /api/v1/content-slot-human-picks/{run_id}/push`
   (`reviewer`, `note`). Push approves the package (`material_reviews`) and enqueues the formal

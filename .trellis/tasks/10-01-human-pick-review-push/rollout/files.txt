@@ -1,11 +1,11 @@
 # Overlay on the running image 30f6cd0e (= mainline 3a79c22 app). base = sha256 in the running container, new = sha256 after the overlay.
 # path | base | new
 app/api/v1/routes/content_slots.py | a61573e3d14230cbc0d23fecfc8b1eb2a2aad40947b02e7ad61ee2145a58dd6a | 16302e2389e8e4564b3997f89309e88580edc48d04233a502d7aab8aa3e3fdca
-app/application/services/human_pick_review.py | absent | 9963e5d94e123fe2dca8a1c756571bd09b4d0eaf9b4c16074b53948d84ddf190
+app/application/services/human_pick_review.py | absent | 65058fba9cacb818edb0d2660721413760dbe777e692c99d8e15b73e9275439a
 app/application/services/wecom_delivery.py | 502b6612a66a5d9a72b2debf31d9f40826933be93cf4235c6c78fc69534a6739 | c708ad81eb551dce9d24dc72859b2298688775628827a18b0eb3ab7ad41737f2
 app/domain/human_pick_review.py | absent | 664bd8233d0a37db02e83bd1ce73bc696c662ae929eaef264cf1c01fdbc51c3e
 app/infrastructure/db/content_slot_human_picks.py | 7df8f82d254fd98794df5e1be93a6a44569f1c5ea9d997d6dbd2c226f732b86c | 49013cce1983efd714ea87afcffa55afa9cece602a12953cf4ade96e86a144cf
 app/infrastructure/db/copy_generation.py | ac03e3ffdfd6528d3303bfb6f8d222a12054fac7e3e0f6fff32fd329f390b552 | 5441a07ae48ed563d4412d75bb07e26189255991f224cc6ecff8695b18e0ad56
-app/infrastructure/db/human_pick_review.py | absent | 613665705812958ec28cbcb419b693928667103563a58f03184a2562b077aee9
+app/infrastructure/db/human_pick_review.py | absent | 97fb9e2dc9e78006177535520d7339808a504059cdf23b6f7682bfc7bd6e3c85
 app/infrastructure/db/topic_selection.py | aae3c0509c6a50682124a495f71c1f4556bfa56ea0ff02fb999ed8b7e2d4564b | 27111f884557fa5fc80edcf9e233d52d49d3fb90c57904a90ae3d027ea124bad
 app/schemas/content_slots.py | 28803f4b3e9d6645832382c27a559765b7620e3293c5db9524e43eef59b873c0 | b6f78d0f4f5c6fab1dc5b4bdcdb458dcf145ca9fb15fd32f21e8ddff006e4f1c

@@ -3,9 +3,12 @@
 A human pick's package is held (no automatic WeCom delivery, see `wecom_delivery`) until the
 operator pushes it. Until then the operator may replace the hook sentence and hashtags; the
 accepted draft, its deterministic validation and the package snapshot are updated together, so
-the long infographic (which requires the draft and the package to agree) still works. The first
-AI text and every edit are kept in `copy_snapshot["operator_edits"]`; the LLM audit is not
-repeated for an edit.
+the long infographic (which requires the draft and the package to agree) still works. The LLM
+audit is not repeated for an edit.
+
+Every edit is kept as a before/after pair in `material_packages.copy_snapshot["operator_edits"]`
+(model text, text before and after this edit, copy run and draft ids, time, reviewer) and the push
+in `copy_snapshot["operator_push"]`; evaluation and few-shot work read them from there.
 """
 
 from __future__ import annotations
@@ -213,13 +216,25 @@ async def save_copy_revision(
     draft_row, package = pick.draft_row, pick.package
     rule_version = draft_row.rule_version
     history = list(package.copy_snapshot.get("operator_edits") or [])
+    first = history[0] if history and isinstance(history[0], dict) else None
+    model_copywriting = (
+        first.get("model_copywriting") or first.get("previous_copywriting")
+        if first is not None
+        else draft_row.copywriting
+    )
     history.append(
         {
             "edited_at": now.isoformat(),
             "reviewer": reviewer,
+            "copy_run_id": str(pick.copy_run.id),
+            "draft_version_id": str(draft_row.id),
+            # The model's accepted text, the text this edit replaced, and the result.
+            "model_copywriting": model_copywriting,
+            "previous_copywriting": draft_row.copywriting,
+            "copywriting": revision.copywriting,
             "hook": revision.hook,
             "hashtags": list(revision.hashtags),
-            "previous_copywriting": draft_row.copywriting,
+            "rule_issue_codes": [issue.code for issue in revision.issues],
             "llm_audit_repeated": False,
         }
     )

@@ -88,6 +88,17 @@ async def push_human_pick(
         raise HumanPickRejectedError(
             "human_pick_copy_invalid", "the copy has a rule error; fix it before pushing"
         )
+    edits = pick.package.copy_snapshot.get("operator_edits")
+    # Marks which text went out: the last edit if any, else the model's text unchanged.
+    pick.package.copy_snapshot = {
+        **pick.package.copy_snapshot,
+        "operator_push": {
+            "pushed_at": now.isoformat(),
+            "reviewer": reviewer,
+            "edited": bool(edits),
+            "copywriting": pick.draft_row.copywriting,
+        },
+    }
     await review_material_package(
         session=session,
         package_id=pick.package.id,
