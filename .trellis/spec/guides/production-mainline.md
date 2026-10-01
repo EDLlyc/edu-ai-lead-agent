@@ -39,6 +39,15 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-01 23:12 (image `sha256:5887bce7…`, release 765fe1e)
+
+- Selection scores the freshest events (about 200), not the first 500 by id.
+- A human pick is held at 待审核 until an operator reviews, optionally edits the hook and tags, and
+  pushes it from the exhibit's review mode. Each edit is kept as a before/after pair in
+  `material_packages.copy_snapshot` (`operator_edits`, `operator_push`). Daily slot pushes are
+  unchanged.
+- The exhibit connector must pin this digest before its restart (owner go-ahead required).
+
 ## Live since 2026-10-01 22:30 (image `sha256:7bffe4ed…`, mainline 72a4930 app)
 
 - Copy auditor `moments-auditor-v22-enumerated-codes` (closed code table, severity decided by the

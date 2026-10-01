@@ -199,4 +199,11 @@ Open gaps kept visible in `canonical-report.md`:
   `predeploy gate PASS @ 72a4930` with an empty known-failure baseline; no job running; six
   services running, 0 restarts, 0 errors; live bundle v28/v22/v13. Backups
   `*.before-v22-20261001T223016`. Watchdog test run: evening OK (log only, no alert key yet).
+- 10-01 23:12 fresh candidate pool + held human picks, release head 765fe1e (b564e95 selection,
+  cdbbfb8 + 779e019 human pick; owner: "确认部署选题修复"): image
+  `…@sha256:5887bce7440dee1bea94a9a32026e58403a78ccd7e4a0d2016fbace8d768980e` = 7bffe4ed + 9 app
+  files; base hashes 9/9 matched the running image; gate `predeploy gate PASS @ 765fe1e` (0 known
+  failures); offline smoke ok; no job running, 0 human picks ever; six services healthy, 0
+  restarts, 0 errors; push route 422 (validation only). Backups `*.before-765fe1e-20261001T231206`.
+  Cron images (watchdog, shadow, regression, quality report) unchanged, as the runbook says.
 
