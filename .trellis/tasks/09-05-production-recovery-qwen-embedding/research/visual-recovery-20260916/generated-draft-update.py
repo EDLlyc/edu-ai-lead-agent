@@ -102,16 +102,8 @@ class NormalizedComflyGenerator(OpenAICompatibleImageGenerator):
     """Keep the existing network/security boundary; normalize only decoded raster."""
 
     def _normalize_image_bytes(
-        self,
-        body,
-        *,
-        expected_dimensions,
-        output_geometry_policy=None,
-        declared_media_type=None,
+        self, body, *, expected_dimensions, declared_media_type=None
     ):
-        # The base generator now passes its output-geometry policy. This recovery operator always
-        # normalizes to exactly 1536x1024 JPEG, so the policy does not change its result.
-        del output_geometry_policy
         if not body or len(body) > self._max_download_bytes:
             raise ImageOutputValidationError("image_download_too_large")
         media_type = _detect_image_media_type(body)
