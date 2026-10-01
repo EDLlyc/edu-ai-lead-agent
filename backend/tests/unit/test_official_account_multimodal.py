@@ -474,6 +474,7 @@ def test_v7_version_constants_are_exact_and_separate_from_v6() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_real_approved_41_catalog_produces_bounded_metadata_free_publication() -> None:
     manifest = Path("private/brand-materials/visual-assets.manifest.json")
     provider = LocalOfficialAccountCatalogMediaProvider(manifest)

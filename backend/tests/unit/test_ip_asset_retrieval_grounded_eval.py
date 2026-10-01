@@ -87,6 +87,7 @@ def test_grounded_loader_rejects_prohibited_fields(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 def test_grounded_snapshot_fails_closed_on_identity_drift() -> None:
     bundle = load_grounded_bundle()
     drifted = bundle.assets.model_copy(update={"asset_set_fingerprint": "f" * 64})

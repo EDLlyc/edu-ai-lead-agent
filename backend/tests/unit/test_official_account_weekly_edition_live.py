@@ -70,6 +70,7 @@ def _page(
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_live_weekly_mock_transport_builds_three_distinct_news_children() -> None:
     live_input = load_live_weekly_input(_INPUT)
     image_payloads = {
@@ -195,6 +196,7 @@ async def test_live_weekly_mock_transport_builds_three_distinct_news_children() 
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_live_theme_clusters_bind_six_sources_without_leakage() -> None:
     live_input = load_live_weekly_input(_THEME_INPUT)
     assert live_input.theme == "AI教育从普及走向真实学习场景"

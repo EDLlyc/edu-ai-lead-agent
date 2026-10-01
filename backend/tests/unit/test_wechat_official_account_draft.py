@@ -191,6 +191,7 @@ async def _finalized_directories(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_service_prepares_all_local_media_then_creates_independent_drafts(
     tmp_path: Path,
 ) -> None:
@@ -251,6 +252,7 @@ async def test_weekly_service_prepares_all_local_media_then_creates_independent_
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_pure_preparer_validates_all_three_without_constructing_a_client(
     tmp_path: Path,
 ) -> None:
@@ -268,6 +270,7 @@ async def test_pure_preparer_validates_all_three_without_constructing_a_client(
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_third_child_tamper_blocks_every_weekly_provider_call(tmp_path: Path) -> None:
     paths = await _finalized_directories(tmp_path)
     tampered = paths[2] / "assets/body-00.jpg"
@@ -288,6 +291,7 @@ async def test_third_child_tamper_blocks_every_weekly_provider_call(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_symlinked_media_blocks_before_provider_call(tmp_path: Path) -> None:
     paths = await _finalized_directories(tmp_path)
     target = paths[0] / "assets/body-00.jpg"
@@ -312,6 +316,7 @@ async def test_symlinked_media_blocks_before_provider_call(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_naive_receipt_clock_blocks_before_provider_call(tmp_path: Path) -> None:
     paths = await _finalized_directories(tmp_path)
     fake = _FakeDraftClient()
@@ -334,6 +339,7 @@ async def test_naive_receipt_clock_blocks_before_provider_call(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_corrupt_child_zip_is_a_typed_preflight_failure(tmp_path: Path) -> None:
     paths = await _finalized_directories(tmp_path)
     child_zip = next(paths[0].glob("wechat-editor-handoff-v2-*.zip"))

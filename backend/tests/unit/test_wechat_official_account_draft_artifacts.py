@@ -101,6 +101,7 @@ async def _live_weekly_directory(output_root: Path) -> Path:
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_live_loader_stages_resolves_and_discovers_only_opaque_sources(
     tmp_path: Path,
 ) -> None:
@@ -148,6 +149,7 @@ async def test_live_loader_stages_resolves_and_discovers_only_opaque_sources(
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_loader_rejects_fixture_and_discovery_reports_same_safe_code(
     tmp_path: Path,
 ) -> None:
@@ -204,6 +206,7 @@ async def test_loader_rejects_fixture_and_discovery_reports_same_safe_code(
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_manifest_week_cutoff_blocks_explicit_and_discovered_historical_source(
     tmp_path: Path,
 ) -> None:
@@ -228,6 +231,7 @@ async def test_manifest_week_cutoff_blocks_explicit_and_discovered_historical_so
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_cutoff_accepts_the_authenticated_minimum_monday(tmp_path: Path) -> None:
     inbox = tmp_path / "inbox"
     source = await _live_weekly_directory(inbox)

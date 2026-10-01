@@ -325,6 +325,7 @@ def test_renderer_keeps_v3_rhythm_and_adds_two_safe_block_bound_cutaways() -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_real_approved_catalog_resolves_exact_two_publication_derivatives(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

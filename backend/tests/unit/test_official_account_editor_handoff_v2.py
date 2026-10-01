@@ -691,6 +691,10 @@ async def test_v2_api_projection_exposes_release_placement_and_honest_mobile_sta
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts(
+    "output/official-account-editor-handoff-v2-reference-conditioned-source-20260827",
+    "output/official-account-news-ip-editorial-news-context-20260825-v6",
+)
 async def test_news_demo_uses_source_bound_semantic_context_placements() -> None:
     artifact = await build_demo_artifact()
     article = json.loads(artifact.files["article.json"])
@@ -725,6 +729,10 @@ async def test_news_demo_uses_source_bound_semantic_context_placements() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts(
+    "output/official-account-editor-handoff-v2-reference-conditioned-source-20260827",
+    "output/official-account-news-ip-editorial-news-context-20260825-v6",
+)
 async def test_news_demo_uses_exact_block_reference_conditioned_body_visuals() -> None:
     artifact = await build_demo_artifact()
     article = json.loads(artifact.files["article.json"])
@@ -772,6 +780,10 @@ async def test_news_demo_uses_exact_block_reference_conditioned_body_visuals() -
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts(
+    "output/official-account-editor-handoff-v2-reference-conditioned-source-20260827",
+    "output/official-account-news-ip-editorial-news-context-20260825-v6",
+)
 async def test_news_demo_rejects_tampered_body_visual_source(tmp_path: Path) -> None:
     source = _DEFAULT_BODY_VISUAL_DIR.resolve()
     target = tmp_path / "body-visuals"
@@ -792,6 +804,10 @@ async def test_news_demo_rejects_tampered_body_visual_source(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts(
+    "output/official-account-editor-handoff-v2-reference-conditioned-source-20260827",
+    "output/official-account-news-ip-editorial-news-context-20260825-v6",
+)
 async def test_news_demo_rejects_symlinked_body_visual_directories(tmp_path: Path) -> None:
     source = _DEFAULT_BODY_VISUAL_DIR.resolve()
     target = tmp_path / "body-visuals"
@@ -809,6 +825,10 @@ async def test_news_demo_rejects_symlinked_body_visual_directories(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts(
+    "output/official-account-editor-handoff-v2-reference-conditioned-source-20260827",
+    "output/official-account-news-ip-editorial-news-context-20260825-v6",
+)
 async def test_news_demo_rejects_duplicate_map_fields_and_jpeg_metadata(
     tmp_path: Path,
 ) -> None:

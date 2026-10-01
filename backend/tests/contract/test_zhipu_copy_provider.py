@@ -29,8 +29,25 @@ from app.infrastructure.ai.copy_generation import (
 from app.schemas.copy_generation import DraftClaim, MaterialDraft
 from pydantic import SecretStr, ValidationError
 
+V21 = "moments-auditor-v21-lean-context"
+V22 = "moments-auditor-v22-enumerated-codes"
+# v21 lets the model state accepted/severity (the system strips that authority afterwards); v22's
+# output schema has only coded issues, so a verdict field is itself a schema error.
+AUDIT_FORMATS = pytest.mark.parametrize(
+    ("auditor_version", "invalid_audit", "valid_audit", "schema_marker"),
+    [
+        (
+            V21,
+            '{"accepted":true,"issues":[],"evidence_ids":["not-allowed"]}',
+            '{"accepted":true,"issues":[]}',
+            '"accepted"',
+        ),
+        (V22, '{"issues":[],"evidence_ids":["not-allowed"]}', '{"issues":[]}', '"hook_off_topic"'),
+    ],
+)
 
-def _request() -> DraftGenerationRequest:
+
+def _request(auditor_version: str | None = None) -> DraftGenerationRequest:
     evidence_id = uuid4()
     topic = LockedTopicContext(
         origin=LegacyDailyTopicOrigin(
@@ -77,6 +94,7 @@ def _request() -> DraftGenerationRequest:
             Settings(
                 ai_provider_mode="zhipu",
                 ai_platform_base_url="https://provider.test/v4",
+                **({"copy_auditor_prompt_version": auditor_version} if auditor_version else {}),
             )
         ),
         draft_version=1,
@@ -221,16 +239,17 @@ def test_provider_json_envelope_does_not_relax_material_draft_schema() -> None:
 
 
 @pytest.mark.asyncio
-async def test_zhipu_copy_provider_performs_one_schema_correction_and_strips_audit_authority() -> (
-    None
-):
-    request = _request()
+@AUDIT_FORMATS
+async def test_zhipu_copy_provider_performs_one_schema_correction_and_strips_audit_authority(
+    auditor_version: str, invalid_audit: str, valid_audit: str, schema_marker: str
+) -> None:
+    request = _request(auditor_version)
     draft = _valid_draft(request)
     responses = [
         "not-json",
         draft.model_dump_json(),
-        '{"accepted":true,"issues":[],"evidence_ids":["not-allowed"]}',
-        '{"accepted":true,"issues":[]}',
+        invalid_audit,
+        valid_audit,
     ]
     request_bodies: list[str] = []
 
@@ -285,7 +304,7 @@ async def test_zhipu_copy_provider_performs_one_schema_correction_and_strips_aud
     assert "not-json" not in generator_correction
 
     assert "<OUTPUT_SCHEMA>" in audit_prompt
-    assert '"accepted"' in audit_prompt
+    assert schema_marker in audit_prompt
     assert request.topic.evidence[0].exact_quote in audit_prompt
     assert request.brand_context[0].text in audit_prompt
     assert '"type":"extra_forbidden"' in audit_correction
@@ -370,12 +389,16 @@ async def test_zhipu_copy_provider_retains_only_bounded_final_validation_locatio
 
 
 @pytest.mark.asyncio
-async def test_zhipu_copy_provider_accepts_fenced_and_explained_json_objects() -> None:
-    request = _request()
+@AUDIT_FORMATS
+async def test_zhipu_copy_provider_accepts_fenced_and_explained_json_objects(
+    auditor_version: str, invalid_audit: str, valid_audit: str, schema_marker: str
+) -> None:
+    del invalid_audit, schema_marker
+    request = _request(auditor_version)
     draft = _valid_draft(request)
     responses = [
         f"```json\n{draft.model_dump_json()}\n```",
-        '审校结果如下：\n{"accepted":true,"issues":[]}\n请进入内部审核。',
+        f"审校结果如下：\n{valid_audit}\n请进入内部审核。",
     ]
 
     def handler(http_request: httpx.Request) -> httpx.Response:

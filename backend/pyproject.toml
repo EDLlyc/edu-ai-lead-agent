@@ -71,6 +71,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
   "integration: requires local PostgreSQL and/or MinIO services",
+  "local_artifacts(*paths): needs files kept out of git (private assets, earlier outputs); skipped when missing",
 ]
 
 [tool.coverage.run]

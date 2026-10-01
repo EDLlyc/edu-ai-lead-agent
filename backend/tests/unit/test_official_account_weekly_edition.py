@@ -384,6 +384,7 @@ def test_weekly_selection_rejects_inconsistent_projection_truth() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_fixture_articles_have_role_specific_full_copy() -> None:
     artifacts = await build_fixture_children()
     articles = [json.loads(artifact.files["article.json"]) for artifact in artifacts]
@@ -401,6 +402,7 @@ async def test_weekly_fixture_articles_have_role_specific_full_copy() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_fixture_has_distinct_decoded_role_visuals_and_truthful_lineage() -> None:
     artifacts = await build_fixture_children()
     cover_hashes: list[str] = []
@@ -461,6 +463,7 @@ async def test_weekly_fixture_has_distinct_decoded_role_visuals_and_truthful_lin
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_aggregate_is_deterministic_byte_preserving_and_zero_network(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -630,6 +633,7 @@ async def test_weekly_aggregate_is_deterministic_byte_preserving_and_zero_networ
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_aggregate_rejects_duplicate_role_cover_pixels_and_body_sets() -> None:
     staged = await build_fixture_children()
     reports = {
@@ -884,6 +888,7 @@ def test_weekly_operator_reference_is_safe_and_opaque(actor_reference: str) -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_loader_rejects_tampered_child_and_writer_never_overwrites(
     tmp_path: Path,
 ) -> None:
@@ -926,6 +931,7 @@ async def test_weekly_loader_rejects_tampered_child_and_writer_never_overwrites(
 
 
 @pytest.mark.asyncio
+@pytest.mark.local_artifacts("private/brand-materials/visual-assets.manifest.json")
 async def test_weekly_aggregate_rejects_duplicate_or_cross_wired_children() -> None:
     staged = await build_fixture_children()
     reports = {
