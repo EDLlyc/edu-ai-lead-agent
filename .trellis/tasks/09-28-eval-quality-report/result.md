@@ -193,3 +193,10 @@ Open gaps kept visible in `canonical-report.md`:
   service restarted. First replay: 6 blocked drafts since 09-24; 5 on v12 rules are now refused as
   not applicable; 1 valid (both arms passed). Owner: "现在就处理，不用等". Details:
   `.trellis/tasks/10-01-repair-shadow-ops/prd.md`.
+- 10-01 22:30 auditor v22 + brand-repeat check + delivery watchdog + eval regression (mainline
+  72a4930; owner: "确认"): image `…@sha256:7bffe4edfe8cc073b081e7e4d71eb175697f99383745472f0ec407000cff5646`
+  = 30f6cd0e + app files of d9b534b + backend/evals; base hashes 10/10 verified; gate
+  `predeploy gate PASS @ 72a4930` with an empty known-failure baseline; no job running; six
+  services running, 0 restarts, 0 errors; live bundle v28/v22/v13. Backups
+  `*.before-v22-20261001T223016`. Watchdog test run: evening OK (log only, no alert key yet).
+

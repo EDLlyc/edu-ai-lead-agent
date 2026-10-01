@@ -39,6 +39,24 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-01 22:30 (image `sha256:7bffe4ed…`, mainline 72a4930 app)
+
+- Copy auditor `moments-auditor-v22-enumerated-codes` (closed code table, severity decided by the
+  system; off-topic hooks and outcome promises block) is the code default; generator v28 and rules
+  v13 are unchanged. On the same seeded drafts, v22 blocks 26/26 vs v21's 18/26 with 0/5 clean
+  drafts blocked. The regression on this image: 16/16 blocked, 0/3 clean blocked, 0/19 inconsistent
+  over three audits each. On 20 accepted production drafts it would block 3, all for one
+  paraphrased brand sentence.
+- Brand-repeat check: a first draft whose brand sentence repeats a recent accepted one (similarity
+  >= 0.85) gets `brand_claim_repeated` as an error and so one repair; on the repair it only warns.
+- Scheduled one-off jobs, all on the pinned image `…@sha256:7bffe4edfe8cc073b081e7e4d71eb175697f99383745472f0ec407000cff5646`:
+  `edu-ai-delivery-watchdog` (07:42/12:42/18:42; alerts go to `OPS_ALERT_WEBHOOK_KEY` from
+  `scripts/ops-alert.env` once it exists, log only until then), `edu-ai-copy-repair-shadow` (21:10),
+  and `edu-ai-eval-regression` (21:25; runs when copy versions change or weekly; reports and
+  trend.csv in reports/eval-regression).
+- Backups `*.before-v22-20261001T223016`. Rollback: restore both env files and recreate the six
+  services.
+
 ## Read-only ops role and repair shadow job (since 2026-10-01 11:43)
 
 - Database role `edu_ai_ops_ro` (`scripts/ops/ops_readonly_role.py`, idempotent): SELECT on 25
