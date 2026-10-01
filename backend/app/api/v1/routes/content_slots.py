@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_session
 from app.api.v1.routes.topic_selection_views import topic_rerank_summary
 from app.application.services.content_slots import enqueue_manual_content_slot
+from app.application.services.human_pick_review import push_human_pick, revise_human_pick_copy
 from app.core.config import Settings
 from app.core.errors import PolicyRejectedError
 from app.core.security import normalize_https_url
@@ -44,6 +45,11 @@ from app.schemas.content_slots import (
     ContentSlotScoreResponse,
     CreateContentSlotHumanPickRequest,
     CreateContentSlotRunRequest,
+    HumanPickCopyIssueResponse,
+    HumanPickCopyResponse,
+    PushHumanPickRequest,
+    PushHumanPickResponse,
+    ReviseHumanPickCopyRequest,
 )
 
 router = APIRouter(tags=["content-slots"])
@@ -88,7 +94,7 @@ async def create_content_slot_human_pick(
     response: Response,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ContentSlotHumanPickResponse:
-    """Operator-approved extra item: copy, image, WeCom delivery and long image follow at once."""
+    """Operator-approved extra item: copy and image are produced, then held for the push."""
     settings: Settings = request.app.state.settings
     if not settings.content_enabled or not settings.content_slot_mode_enabled:
         raise PolicyRejectedError("content_slot_disabled", "content slot mode is disabled")
@@ -113,6 +119,66 @@ async def create_content_slot_human_pick(
         target_at=result.run.target_at,
         expires_at=result.run.expires_at,
     )
+
+
+@router.post(
+    "/content-slot-human-picks/{run_id}/copy",
+    response_model=HumanPickCopyResponse,
+)
+async def revise_content_slot_human_pick_copy(
+    run_id: UUID,
+    payload: ReviseHumanPickCopyRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HumanPickCopyResponse:
+    """Check (``dry_run``) or save the operator's hook and hashtags for a held human pick."""
+    result = await revise_human_pick_copy(
+        session,
+        run_id=run_id,
+        hook=payload.hook,
+        hashtags=tuple(payload.hashtags),
+        reviewer=payload.reviewer.strip(),
+        dry_run=payload.dry_run,
+        now=datetime.now(UTC),
+    )
+    revision = result.revision
+    return HumanPickCopyResponse(
+        run_id=run_id,
+        copywriting=revision.copywriting,
+        hook=revision.hook,
+        hashtags=list(revision.hashtags),
+        passed=revision.passed,
+        saved=result.saved,
+        issues=[
+            HumanPickCopyIssueResponse(
+                code=issue.code, severity=issue.severity, field=issue.field, message=issue.message
+            )
+            for issue in revision.issues
+        ],
+        push_deadline=result.push_deadline,
+    )
+
+
+@router.post(
+    "/content-slot-human-picks/{run_id}/push",
+    response_model=PushHumanPickResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def push_content_slot_human_pick(
+    run_id: UUID,
+    payload: PushHumanPickRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PushHumanPickResponse:
+    """Send a held human pick to the formal WeCom group now (the long image follows)."""
+    job = await push_human_pick(
+        session,
+        run_id=run_id,
+        reviewer=payload.reviewer.strip(),
+        note=payload.note,
+        settings=request.app.state.settings,
+        now=datetime.now(UTC),
+    )
+    return PushHumanPickResponse(run_id=run_id, delivery_id=job.id, delivery_status=job.status)
 
 
 @router.get("/content-slot-runs/{run_id}", response_model=ContentSlotRunResponse)

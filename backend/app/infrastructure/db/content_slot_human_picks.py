@@ -1,9 +1,10 @@
 """Operator human picks: one already-decided news item that runs the full slot pipeline.
 
 A pick is persisted as a one-item slot run (`trigger='human'`) with a copy of the AI score row and
-one selection. The existing reconcilers then generate copy, image/material package, a WeCom
-delivery in the pick's own lane (immediately, not in a scheduled window) and the long infographic;
-the package also enters the single-edition candidate scan. Nothing here calls a provider.
+one selection. The existing reconcilers then generate copy and the image/material package; the
+package also enters the single-edition candidate scan. Since 2026-09-30 the package is held for
+the operator (review, optional hook/tag edit, push; `human_pick_review`): only a pushed pick gets
+its WeCom delivery in its own lane and then the long infographic. Nothing here calls a provider.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -32,10 +33,11 @@ from app.infrastructure.db.models import (
     WeComDeliveryJobModel,
 )
 
-# Copy + image + package usually take 5-15 minutes; retries fit comfortably in three hours.
-HUMAN_PICK_DELIVERY_WINDOW = timedelta(hours=3)
-# Downstream reconcilers only look at the current business date, so a pick must finish that day.
-HUMAN_PICK_LATEST_LOCAL_TIME = time(23, 0)
+# A held pick waits for the operator and can be pushed until 22:30 business time. Downstream
+# reconcilers only look at the current business date, and the long infographic follows the push
+# by a few minutes, so the whole pick must finish that day. Picks close at the same time.
+HUMAN_PICK_PUSH_DEADLINE_LOCAL_TIME = time(22, 30)
+HUMAN_PICK_LATEST_LOCAL_TIME = HUMAN_PICK_PUSH_DEADLINE_LOCAL_TIME
 _BLOCKING_DELIVERY_STATUSES = ("queued", "running", "partial", "delivery_unknown", "delivered")
 _BLOCKING_CHILD_STATUSES = ("running", "delivered", "unknown")
 _SCORE_OVERRIDES = frozenset(
@@ -87,7 +89,7 @@ async def create_human_pick(
         return existing
     if local_now.time() >= HUMAN_PICK_LATEST_LOCAL_TIME:
         raise HumanPickRejectedError(
-            "human_pick_too_late", "human picks close at 23:00 business time"
+            "human_pick_too_late", "human picks close at 22:30 business time"
         )
 
     source = await session.scalar(
@@ -175,7 +177,7 @@ async def create_human_pick(
         slot_policy_snapshot=policy_snapshot,
         preparation_at=now - timedelta(seconds=1),
         target_at=now,
-        expires_at=now + HUMAN_PICK_DELIVERY_WINDOW,
+        expires_at=human_pick_push_deadline(business_date, timezone),
         item_limit=1,
         status="succeeded",
         total_scores=1,
@@ -315,14 +317,23 @@ def _policy_snapshot(
     }
 
 
+def human_pick_push_deadline(business_date: date, timezone: str) -> datetime:
+    """The last moment a held pick of ``business_date`` may be pushed (22:30 business time)."""
+
+    return datetime.combine(
+        business_date, HUMAN_PICK_PUSH_DEADLINE_LOCAL_TIME, tzinfo=ZoneInfo(timezone)
+    ).astimezone(UTC)
+
+
 def _fingerprint(snapshot: dict[str, Any]) -> str:
     encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 __all__ = [
-    "HUMAN_PICK_DELIVERY_WINDOW",
+    "HUMAN_PICK_PUSH_DEADLINE_LOCAL_TIME",
     "HumanPickRejectedError",
     "HumanPickResult",
     "create_human_pick",
+    "human_pick_push_deadline",
 ]

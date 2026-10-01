@@ -26,7 +26,7 @@ from app.application.ports.wecom import (
 )
 from app.core.config import Settings
 from app.core.errors import AppError, ConflictError, NotFoundError
-from app.domain.content_slots import delivery_lane_key
+from app.domain.content_slots import HUMAN_PICK_TRIGGER, delivery_lane_key
 from app.domain.image_generation import image_checksum, image_content_key
 from app.domain.value_objects import stable_key
 from app.infrastructure.db.models import (
@@ -140,6 +140,10 @@ async def enqueue_wecom_delivery(
                 or slot_run.content_slot != slot_selection.content_slot
             ):
                 raise ConflictError("material package slot lineage is inconsistent")
+            # An operator human pick waits for the operator's push (human_pick_review), which
+            # approves the package first; nothing else may send it.
+            if slot_run.trigger == HUMAN_PICK_TRIGGER and package.review_status != "approved":
+                raise ConflictError("human pick is held for the operator's review")
             slot_window = await _ensure_slot_delivery_window(
                 session,
                 run=slot_run,
@@ -1060,6 +1064,11 @@ def _slot_auto_delivery_candidate_statement(
             ContentSlotRunModel.content_slot.in_(enabled_slots),
             ContentSlotRunModel.status == "succeeded",
             ContentSlotRunModel.expires_at > now,
+            # Held human picks go out only after the operator's push approved the package.
+            or_(
+                ContentSlotRunModel.trigger != HUMAN_PICK_TRIGGER,
+                MaterialPackageModel.review_status == "approved",
+            ),
             MaterialPackageModel.status.in_(_delivery_package_statuses(settings)),
             ~exists().where(
                 WeComDeliveryJobModel.material_package_id == MaterialPackageModel.id,

@@ -9,9 +9,9 @@ import pytest_asyncio
 from app.application.services.copy_generation import build_copy_version_bundle
 from app.application.services.wecom_delivery import _ensure_slot_delivery_window
 from app.infrastructure.db.content_slot_human_picks import (
-    HUMAN_PICK_DELIVERY_WINDOW,
     HumanPickRejectedError,
     create_human_pick,
+    human_pick_push_deadline,
 )
 from app.infrastructure.db.content_slots import (
     _count_same_day_scheduled_selections,
@@ -203,7 +203,8 @@ async def test_human_pick_creates_extra_one_item_run_with_own_lane(
         assert run.governance_run_id == base.governance_run_id
         assert (run.item_limit, run.selected_count, run.unfilled_count) == (1, 1, 0)
         assert run.target_at == now
-        assert run.expires_at == now + HUMAN_PICK_DELIVERY_WINDOW
+        # Held for the operator until 22:30 business time on the pick's day.
+        assert run.expires_at == human_pick_push_deadline(business_date, "Asia/Shanghai")
         assert run.slot_policy_version == "human-pick-v1"
         assert run.slot_policy_snapshot["note"] == "运营认为值得推"
         assert run.slot_policy_snapshot["ai_verdict"]["eligible"] is False
@@ -335,8 +336,8 @@ async def test_human_pick_refuses_duplicates_busy_slots_and_late_or_unknown_item
         await pick(uuid4())
     assert getattr(unknown.value, "status_code", None) == 404
 
-    # 23:10 business time: downstream would roll over to the next business date.
-    late = datetime(2096, 3, 10, 15, 10, tzinfo=UTC)
+    # 22:40 business time: picks close with the 22:30 push deadline.
+    late = datetime(2096, 3, 10, 14, 40, tzinfo=UTC)
     with pytest.raises(HumanPickRejectedError) as too_late:
         await pick(event_id, at=late)
     assert too_late.value.code == "human_pick_too_late"

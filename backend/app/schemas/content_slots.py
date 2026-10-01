@@ -17,7 +17,7 @@ class CreateContentSlotRunRequest(BaseModel):
 
 
 class CreateContentSlotHumanPickRequest(BaseModel):
-    """An operator approves one scored candidate; it is produced and sent right away."""
+    """An operator approves one scored candidate; it is produced, then held for review and push."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -35,6 +35,48 @@ class ContentSlotHumanPickResponse(BaseModel):
     event_id: UUID
     target_at: datetime
     expires_at: datetime
+
+
+class ReviseHumanPickCopyRequest(BaseModel):
+    """The operator's hook sentence and hashtags; the rest of the copy stays system-owned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hook: str = Field(max_length=500)
+    hashtags: list[str] = Field(default_factory=list, max_length=6)
+    reviewer: str = Field(min_length=1, max_length=80)
+    dry_run: bool = False
+
+
+class HumanPickCopyIssueResponse(BaseModel):
+    code: str
+    severity: Literal["warning", "error"]
+    field: str | None
+    message: str
+
+
+class HumanPickCopyResponse(BaseModel):
+    run_id: UUID
+    copywriting: str | None
+    hook: str
+    hashtags: list[str]
+    passed: bool
+    saved: bool
+    issues: list[HumanPickCopyIssueResponse]
+    push_deadline: datetime
+
+
+class PushHumanPickRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer: str = Field(min_length=1, max_length=80)
+    note: str | None = Field(default=None, min_length=1, max_length=280)
+
+
+class PushHumanPickResponse(BaseModel):
+    run_id: UUID
+    delivery_id: UUID
+    delivery_status: str
 
 
 class ContentSlotRunResponse(BaseModel):

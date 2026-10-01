@@ -375,63 +375,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             raw_ids = attempt.safe_metadata.get("brand_chunk_ids")
             if not isinstance(raw_ids, list) or not raw_ids:
                 return ()
-            try:
-                ordered_ids = tuple(UUID(value) for value in raw_ids if isinstance(value, str))
-            except ValueError:
-                return ()
-            if len(ordered_ids) != len(raw_ids) or len(set(ordered_ids)) != len(ordered_ids):
-                return ()
-            rows = tuple(
-                (
-                    await session.execute(
-                        select(
-                            BrandChunkModel,
-                            BrandDocumentVersionModel,
-                            BrandDocumentModel,
-                            BrandSectionModel,
-                        )
-                        .join(
-                            BrandDocumentVersionModel,
-                            BrandDocumentVersionModel.id == BrandChunkModel.version_id,
-                        )
-                        .join(
-                            BrandDocumentModel,
-                            BrandDocumentModel.id == BrandDocumentVersionModel.document_id,
-                        )
-                        .outerjoin(
-                            BrandSectionModel,
-                            BrandSectionModel.id == BrandChunkModel.section_id,
-                        )
-                        .where(BrandChunkModel.id.in_(ordered_ids))
-                    )
-                ).tuples()
-            )
-            by_id = {
-                chunk.id: ActiveBrandContext(
-                    chunk_id=chunk.id,
-                    document_id=document.id,
-                    version_id=version.id,
-                    document_title=document.title,
-                    document_kind=document.document_kind,
-                    text=chunk.text,
-                    tone_tags=tuple(version.tone_tags),
-                    safety_tags=tuple(version.safety_tags),
-                    visual_tags=tuple(version.visual_tags),
-                    section_id=section.id if section is not None else None,
-                    section_title=section.title if section is not None else None,
-                    section_kind=(BrandSectionKind(section.kind) if section is not None else None),
-                    source_page=section.source_page if section is not None else None,
-                    question_number=section.question_number if section is not None else None,
-                    question_text=section.question_text if section is not None else None,
-                    content_type=BrandContentType(chunk.content_type),
-                    claim_scope=BrandClaimScope(chunk.claim_scope),
-                    verification_required=chunk.verification_required,
-                )
-                for chunk, version, document, section in rows
-            }
-            if set(by_id) != set(ordered_ids):
-                return ()
-            return tuple(by_id[chunk_id] for chunk_id in ordered_ids)
+            return await load_brand_context_by_chunk_ids(session, raw_ids)
 
     async def persist_no_topic(self, claimed: ClaimedCopyGenerationJob) -> bool:
         async with self._session_factory() as session:
@@ -882,6 +826,73 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
             )
             await session.commit()
             return True
+
+
+async def load_brand_context_by_chunk_ids(
+    session: AsyncSession, raw_ids: list[object]
+) -> tuple[ActiveBrandContext, ...]:
+    """Brand context for the chunk ids a generation attempt recorded, in their order.
+
+    Empty when the ids are malformed, repeated or no longer all present.
+    """
+
+    try:
+        ordered_ids = tuple(UUID(value) for value in raw_ids if isinstance(value, str))
+    except ValueError:
+        return ()
+    if len(ordered_ids) != len(raw_ids) or len(set(ordered_ids)) != len(ordered_ids):
+        return ()
+    rows = tuple(
+        (
+            await session.execute(
+                select(
+                    BrandChunkModel,
+                    BrandDocumentVersionModel,
+                    BrandDocumentModel,
+                    BrandSectionModel,
+                )
+                .join(
+                    BrandDocumentVersionModel,
+                    BrandDocumentVersionModel.id == BrandChunkModel.version_id,
+                )
+                .join(
+                    BrandDocumentModel,
+                    BrandDocumentModel.id == BrandDocumentVersionModel.document_id,
+                )
+                .outerjoin(
+                    BrandSectionModel,
+                    BrandSectionModel.id == BrandChunkModel.section_id,
+                )
+                .where(BrandChunkModel.id.in_(ordered_ids))
+            )
+        ).tuples()
+    )
+    by_id = {
+        chunk.id: ActiveBrandContext(
+            chunk_id=chunk.id,
+            document_id=document.id,
+            version_id=version.id,
+            document_title=document.title,
+            document_kind=document.document_kind,
+            text=chunk.text,
+            tone_tags=tuple(version.tone_tags),
+            safety_tags=tuple(version.safety_tags),
+            visual_tags=tuple(version.visual_tags),
+            section_id=section.id if section is not None else None,
+            section_title=section.title if section is not None else None,
+            section_kind=(BrandSectionKind(section.kind) if section is not None else None),
+            source_page=section.source_page if section is not None else None,
+            question_number=section.question_number if section is not None else None,
+            question_text=section.question_text if section is not None else None,
+            content_type=BrandContentType(chunk.content_type),
+            claim_scope=BrandClaimScope(chunk.claim_scope),
+            verification_required=chunk.verification_required,
+        )
+        for chunk, version, document, section in rows
+    }
+    if set(by_id) != set(ordered_ids):
+        return ()
+    return tuple(by_id[chunk_id] for chunk_id in ordered_ids)
 
 
 async def load_locked_topic_origin(
