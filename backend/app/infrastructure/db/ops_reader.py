@@ -536,11 +536,18 @@ class PostgresOpsReader:
             span = _span(
                 spans, ("delivery", delivery_row.content_slot_selection_id), "delivery", None
             )
-            for attempt_row in attempts_by_job.get(delivery_row.id, []):
+            sends = attempts_by_job.get(delivery_row.id, [])
+            for attempt_row in sends:
                 span.calls += 1
                 span.failures += int(attempt_row.result_state != "succeeded")
                 span.latency_ms += int(attempt_row.latency_ms or 0)
-            span.touch(delivery_row.created_at, delivery_row.completed_at, delivery_row.status)
+            # The job waits in the queue until the slot time; the span is the sending itself.
+            first_send = min((item.created_at for item in sends), default=None)
+            span.touch(
+                first_send or delivery_row.created_at,
+                delivery_row.completed_at,
+                delivery_row.status,
+            )
             if delivery_row.completed_at is not None:
                 previous = delivered_at.get(delivery_row.content_slot_selection_id)
                 delivered_at[delivery_row.content_slot_selection_id] = max(
@@ -764,7 +771,13 @@ def _add(
     span.prompt_tokens += int(getattr(row, "prompt_tokens", 0) or 0)
     span.completion_tokens += int(getattr(row, "completion_tokens", 0) or 0)
     span.latency_ms += int(getattr(row, "latency_ms", 0) or 0)
-    span.touch(getattr(row, "created_at", None), getattr(row, "completed_at", None), None)
+    started = getattr(row, "created_at", None)
+    ended = getattr(row, "completed_at", None)
+    latency = int(getattr(row, "latency_ms", 0) or 0)
+    if started is not None and latency:
+        by_latency = started + timedelta(milliseconds=latency)
+        ended = by_latency if ended is None or ended < by_latency else ended
+    span.touch(started, ended, None)
     span.status = "succeeded" if ok and span.failures == 0 else "has_failures"
 
 

@@ -51,6 +51,18 @@ STAGE_COLORS = {
     "delivery": "#db2777",
 }
 Prices = Mapping[str, Mapping[str, float]]
+ON_TIME_SECONDS = 300
+
+
+def _build_minutes(post: PostTrace) -> float | None:
+    """From the first stage to the last non-delivery stage: the time spent producing the post."""
+
+    work = [stage for stage in post.stages if stage.stage != "delivery"]
+    starts = [stage.started_at for stage in work if stage.started_at is not None]
+    ends = [stage.ended_at for stage in work if stage.ended_at is not None]
+    if not starts or not ends:
+        return None
+    return (max(ends) - min(starts)).total_seconds() / 60
 
 
 def _e(value: object) -> str:
@@ -79,8 +91,6 @@ def _waterfall(post: PostTrace) -> str:
         for moment in (stage.started_at, stage.ended_at)
         if moment is not None
     ]
-    if post.prepared_at is not None:
-        points.append(post.prepared_at)
     if not points:
         return '<p class="muted">没有时间数据</p>'
     start, end = min(points), max(points)
@@ -139,10 +149,15 @@ def _day(day: DayTraceResult, prices: Prices) -> str:
     ]
     known = [cost for cost in costs if cost is not None]
     delivered = [post for post in day.posts if post.delivered_at is not None]
-    lead_times = sorted(
-        (post.delivered_at - post.prepared_at).total_seconds() / 60
+    on_time = sum(
+        1
         for post in delivered
-        if post.delivered_at is not None and post.prepared_at is not None
+        if post.delivered_at is not None
+        and post.target_at is not None
+        and (post.delivered_at - post.target_at).total_seconds() <= ON_TIME_SECONDS
+    )
+    build_minutes = sorted(
+        minutes for post in day.posts if (minutes := _build_minutes(post)) is not None
     )
     usage_rows = "".join(
         "<tr>"
@@ -166,7 +181,7 @@ def _day(day: DayTraceResult, prices: Prices) -> str:
         if known
         else "未配置单价"
     )
-    median_lead = f"{lead_times[len(lead_times) // 2]:.0f} 分钟" if lead_times else "—"
+    median_build = f"{build_minutes[len(build_minutes) // 2]:.1f} 分钟" if build_minutes else "—"
     return f"""
 <section class="day">
   <h2>{day.business_date.isoformat()}</h2>
@@ -175,7 +190,8 @@ def _day(day: DayTraceResult, prices: Prices) -> str:
     <div class="card"><div class="k">模型调用</div><div class="v">{calls}</div><div class="s">失败 {failures}</div></div>
     <div class="card"><div class="k">token</div><div class="v">{(prompt + completion) / 1000:,.0f}k</div><div class="s">输入 {prompt:,} · 输出 {completion:,}</div></div>
     <div class="card"><div class="k">成本</div><div class="v">{_e(cost_text)}</div><div class="s">按单价文件计算</div></div>
-    <div class="card"><div class="k">准备到送达</div><div class="v">{median_lead}</div><div class="s">中位数</div></div>
+    <div class="card"><div class="k">生成耗时</div><div class="v">{median_build}</div><div class="s">重排到长图完成，中位数</div></div>
+    <div class="card"><div class="k">准时送达</div><div class="v">{on_time}/{len(day.posts)}</div><div class="s">计划时间后 5 分钟内</div></div>
   </div>
   <h3>按环节和模型汇总</h3>
   <table><thead><tr><th>环节</th><th>模型</th><th>调用</th><th>失败</th><th>输入 token</th>

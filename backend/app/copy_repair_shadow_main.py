@@ -34,7 +34,11 @@ from app.application.services.copy_repair_agent import (
     CopyRepairAgent,
     RepairChatModel,
 )
-from app.application.services.copy_repair_tools import REPAIR_TOOLSET_VERSION, RepairWorkspace
+from app.application.services.copy_repair_tools import (
+    REPAIR_TOOLSET_VERSION,
+    RepairWorkspace,
+    UnsupportedRuleVersionError,
+)
 from app.domain.copy_generation import apply_copy_audit_policy, validate_material_draft
 from app.infrastructure.db.copy_repair_workspace import BlockedCase
 from app.schemas.copy_generation import MaterialDraft, extract_headline_hook
@@ -311,6 +315,14 @@ async def run(args: argparse.Namespace, *, output_dir: Path, done: set[str]) -> 
             except CallCapReachedError:
                 _log(event="copy_repair_shadow_cap_reached", used=cap.used)
                 break
+            except UnsupportedRuleVersionError as error:
+                # Not a repair failure: the tools do not apply to this copy template.
+                _log(
+                    event="copy_repair_shadow_not_applicable",
+                    run_id=str(run_id),
+                    rule_version=error.rule_version,
+                )
+                continue
             except Exception as error:  # one bad run must not stop the others
                 _log(event="copy_repair_shadow_case_failed", error=type(error).__name__)
                 continue

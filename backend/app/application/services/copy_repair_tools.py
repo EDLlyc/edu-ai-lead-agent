@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.application.services.agent_tools import ToolDefinition, TypedToolRegistry
 from app.domain.copy_generation import (
+    HEADLINE_HOOK_COPY_RULE_VERSIONS,
     ActiveBrandContext,
     LockedTopicContext,
     validate_material_draft,
@@ -149,6 +150,14 @@ class RewriteHookArguments(_Model):
     )
 
 
+class UnsupportedRuleVersionError(ValueError):
+    """The repair tools support only the headline-hook copy rules (v13 and later)."""
+
+    def __init__(self, rule_version: str) -> None:
+        super().__init__(f"copy repair does not support rule version {rule_version}")
+        self.rule_version = rule_version
+
+
 @dataclass(slots=True)
 class RepairWorkspace:
     topic: LockedTopicContext
@@ -160,6 +169,12 @@ class RepairWorkspace:
     # repair agent sets both from the blocking issues so it cannot wander into unflagged text.
     editable_claim_ids: frozenset[str] | None = None
     hook_editable: bool = True
+
+    def __post_init__(self) -> None:
+        # rewrite_hook renders the headline-hook template; older templates put facts and the brand
+        # sentence in the Moments text, where these tools would break the format.
+        if self.rule_version not in HEADLINE_HOOK_COPY_RULE_VERSIONS:
+            raise UnsupportedRuleVersionError(self.rule_version)
 
     def scope_to(self, flagged: Sequence[tuple[str | None, str]]) -> None:
         """Limit edits to flagged claims, and to the hook when an issue names no claim."""

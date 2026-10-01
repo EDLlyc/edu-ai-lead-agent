@@ -325,3 +325,16 @@ async def test_rewrite_hook_refuses_a_hook_that_breaks_the_hook_rules() -> None:
     assert isinstance(result, EditResult) and result.ok is False
     assert result.error_code == "hook_breaks_rules"
     assert workspace.draft == before and workspace.edits == []
+
+
+def test_workspace_refuses_copy_templates_the_tools_cannot_edit() -> None:
+    from app.application.services.copy_repair_tools import UnsupportedRuleVersionError
+
+    workspace = _workspace()
+    with pytest.raises(UnsupportedRuleVersionError):
+        RepairWorkspace(
+            topic=workspace.topic,
+            brand_context=workspace.brand_context,
+            rule_version="preview-v12-standalone-heading-advisory",
+            draft=workspace.draft,
+        )
