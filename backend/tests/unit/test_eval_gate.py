@@ -57,8 +57,9 @@ def test_known_failures_file_ignores_comments_and_is_repository_relative(tmp_pat
     path.write_text("# why\n\nbackend/tests/unit/a.py::old\n", encoding="utf-8")
     assert load_known_failures(path) == frozenset({"backend/tests/unit/a.py::old"})
     assert load_known_failures(tmp_path / "missing.txt") == frozenset()
+    # The committed baseline may be empty once every old failure is fixed (2026-10-01); any entry
+    # it still lists must be a repository-relative node id.
     committed = load_known_failures()
-    assert committed, "the committed baseline should exist while old failures remain"
     assert all(node.startswith("backend/tests/") for node in committed)
 
 
