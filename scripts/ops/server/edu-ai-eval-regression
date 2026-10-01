@@ -1,0 +1,15 @@
+#!/bin/sh
+# Copy auditor regression (backend/evals/copy_audit_compare/regression.py). It runs the seeded-defect
+# check, three audits per draft, when the production copy versions changed or the last run is a
+# week old; otherwise it only logs "not due". Model calls are capped at 160. One-off container of
+# the pinned image; no service is restarted. Reports and trend.csv go to reports/eval-regression.
+set -eu
+IMAGE="__IMAGE__"
+OUT=/opt/edu-ai-lead-agent/reports/eval-regression
+mkdir -p "$OUT"
+chown 999:999 "$OUT"
+chmod 700 "$OUT"
+cd /opt/edu-ai-lead-agent
+APP_IMAGE="$IMAGE" timeout 3000 docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+  run --rm --no-deps -T -v "$OUT:/out" -e PYTHONPATH=/app \
+  --entrypoint python content-worker -m evals.copy_audit_compare.regression --output-dir /out "$@"

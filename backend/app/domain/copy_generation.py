@@ -2,9 +2,10 @@ from __future__ import annotations
 
 # ruff: noqa: RUF001
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from difflib import SequenceMatcher
 from enum import StrEnum
 from typing import Literal, cast
 from uuid import UUID
@@ -631,6 +632,45 @@ def copy_repair_codes_for_rule(rule_version: str | None) -> frozenset[str]:
     if rule_version in _PREVIEW_CONTENT_WARNING_RULE_VERSIONS:
         return COPY_QUALITY_REPAIR_CODES | COPY_CONTENT_WARNING_CODES
     return COPY_QUALITY_REPAIR_CODES
+
+
+BRAND_REPEAT_SIMILARITY = 0.85
+_BRAND_REPEAT_STRIP = re.compile(r"[\s，。、；：！？,.;:!?“”\"'（）()]+")
+
+
+def repeated_brand_claim_issues(
+    draft: MaterialDraft,
+    recent_claims: Sequence[str],
+    *,
+    severity: Literal["warning", "error"],
+) -> tuple[CopyIssue, ...]:
+    """Brand sentences that repeat one used by another recent accepted copy.
+
+    The prompt already lists recent brand sentences, but the model can still return one of them
+    word for word (09-30: one sentence in three of nine posts). This makes the repeat a checked
+    issue: an error on a first draft triggers one repair, a warning on the repair never blocks.
+    """
+
+    recent = [_BRAND_REPEAT_STRIP.sub("", text) for text in recent_claims if text.strip()]
+    issues: list[CopyIssue] = []
+    for claim in draft.claims:
+        if claim.kind != "brand_statement":
+            continue
+        text = _BRAND_REPEAT_STRIP.sub("", claim.text)
+        if any(
+            text == other or SequenceMatcher(None, text, other).ratio() >= BRAND_REPEAT_SIMILARITY
+            for other in recent
+        ):
+            issues.append(
+                CopyIssue(
+                    code="brand_claim_repeated",
+                    message="品牌句与最近已发布的文案重复，请从所引品牌资料里换一个角度",
+                    severity=severity,
+                    field="claims",
+                    claim_id=claim.id,
+                )
+            )
+    return tuple(issues)
 
 
 def validate_material_draft(

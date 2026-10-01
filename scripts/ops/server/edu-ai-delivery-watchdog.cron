@@ -1,0 +1,4 @@
+# Delivery watchdog: 12 minutes after each slot's target time (07:30, 12:30, 18:30).
+42 7 * * * root /usr/local/sbin/edu-ai-delivery-watchdog morning >> /var/log/edu-ai-delivery-watchdog.log 2>&1
+42 12 * * * root /usr/local/sbin/edu-ai-delivery-watchdog noon >> /var/log/edu-ai-delivery-watchdog.log 2>&1
+42 18 * * * root /usr/local/sbin/edu-ai-delivery-watchdog evening >> /var/log/edu-ai-delivery-watchdog.log 2>&1

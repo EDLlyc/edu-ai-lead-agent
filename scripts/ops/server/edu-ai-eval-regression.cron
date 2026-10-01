@@ -1,0 +1,2 @@
+# Copy auditor regression: checked nightly after the shadow job, runs when versions changed or weekly.
+25 21 * * * root /usr/local/sbin/edu-ai-eval-regression >> /var/log/edu-ai-eval-regression.log 2>&1

@@ -60,6 +60,7 @@ from app.domain.copy_generation import (
     apply_copy_audit_policy,
     copy_repair_codes_for_rule,
     is_preview_copy_profile,
+    repeated_brand_claim_issues,
     validate_material_draft,
 )
 from app.domain.value_objects import stable_key
@@ -663,6 +664,17 @@ class CopyGenerationExecutor:
             brand_context=brand_context,
             rule_version=claimed.version_bundle.rule_version,
         )
+        if recent_usage is not None and rule_version in HEADLINE_HOOK_COPY_RULE_VERSIONS:
+            # A first draft that repeats a recent brand sentence gets one repair; a repair that
+            # still repeats it only warns, so a repeat can never stop a post.
+            issues = (
+                *issues,
+                *repeated_brand_claim_issues(
+                    result.draft,
+                    recent_usage.claim_texts,
+                    severity="error" if draft_version == 1 else "warning",
+                ),
+            )
         stored = await self._repository.persist_draft(
             claimed=claimed,
             result=result,

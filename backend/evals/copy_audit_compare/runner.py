@@ -51,6 +51,9 @@ class ConfigTally:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latencies: list[int] = field(default_factory=list)
+    # With --repeats > 1: drafts judged, and drafts whose repeated verdicts disagreed.
+    judged: int = 0
+    inconsistent: int = 0
     by_defect: dict[str, list[int]] = field(default_factory=lambda: defaultdict(lambda: [0, 0]))
 
 
@@ -77,17 +80,19 @@ def render(
     *,
     topics: int,
     budget: CallBudget,
+    repeats: int = 1,
 ) -> str:
     lines = [
         "# 审查配置对比：同一批埋雷稿",
         "",
         f"- 选题 {topics} 条（生产上真实通过的），用线上写稿版本生成初稿再埋入已知缺陷。",
         "- 只统计规则没拦下、真正交给审查的稿子；每种配置看的是完全相同的稿子。",
-        f"- 模型调用共 {budget.used} 次；单次运行；审查结论是模型判断，不是人工标注。",
+        f"- 模型调用共 {budget.used} 次；每份稿子每种配置审 {repeats} 遍，按多数结论计；"
+        "审查结论是模型判断，不是人工标注。",
         "",
-        "| 配置 | 提示词 | 模型 | 缺陷拦下 | 干净稿误拦 | 每次输入 token | 每次输出 token "
-        "| p50 | p95 | 调用失败 |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| 配置 | 提示词 | 模型 | 缺陷拦下 | 干净稿误拦 | 重复审结论不一致 | 每次输入 token "
+        "| 每次输出 token | p50 | p95 | 调用失败 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for config in configs:
         tally = tallies[config.name]
@@ -95,6 +100,7 @@ def render(
         lines.append(
             f"| {config.name} | {config.prompt_version} | {config.model} | "
             f"{tally.blocked}/{tally.defects} | {tally.controls_blocked}/{tally.controls} | "
+            f"{(f'{tally.inconsistent}/{tally.judged}' if repeats > 1 else '—')} | "
             f"{tally.prompt_tokens / calls:,.0f} | {tally.completion_tokens / calls:,.0f} | "
             f"{_percentile(tally.latencies, 0.5) / 1000:.1f}s | "
             f"{_percentile(tally.latencies, 0.95) / 1000:.1f}s | {tally.failures} |"
@@ -241,6 +247,19 @@ async def run(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             verdict = apply_copy_audit_policy(result.verdict, rule_version=bundle.rule_version)
             return not verdict.accepted
 
+        async def judge(config: AuditorConfig, draft: Any, topic: Any, brand: Any) -> bool | None:
+            verdicts = [
+                verdict
+                for _ in range(args.repeats)
+                if (verdict := await audit(config, draft, topic, brand)) is not None
+            ]
+            if not verdicts:
+                return None
+            tally = tallies[config.name]
+            tally.judged += 1
+            tally.inconsistent += len(set(verdicts)) > 1
+            return sum(verdicts) * 2 > len(verdicts)
+
         for index, (run_id, topic) in enumerate(topics, start=1):
             recent = history.get(topic.business_date, RecentBrandUsage())
             try:
@@ -273,7 +292,7 @@ async def run(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
                 continue
             case: dict[str, Any] = {"headline": topic.title, "control": {}, "defects": []}
             for config in configs:
-                blocked = await audit(config, control, topic, brand)
+                blocked = await judge(config, control, topic, brand)
                 if blocked is not None:
                     tallies[config.name].controls += 1
                     tallies[config.name].controls_blocked += blocked
@@ -288,7 +307,7 @@ async def run(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
                     continue
                 row: dict[str, Any] = {"defect": defect.code}
                 for config in configs:
-                    blocked = await audit(config, mutant, topic, brand)
+                    blocked = await judge(config, mutant, topic, brand)
                     if blocked is None:
                         continue
                     tally = tallies[config.name]
@@ -305,7 +324,20 @@ async def run(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     finally:
         await client.aclose()
         await engine.dispose()
-    return render(configs, tallies, topics=len(topics), budget=budget), {"cases": cases}
+    report = render(configs, tallies, topics=len(topics), budget=budget, repeats=args.repeats)
+    summary = {
+        name: {
+            "defects_blocked": tally.blocked,
+            "defects": tally.defects,
+            "controls_blocked": tally.controls_blocked,
+            "controls": tally.controls,
+            "inconsistent": tally.inconsistent,
+            "judged": tally.judged,
+            "failures": tally.failures,
+        }
+        for name, tally in tallies.items()
+    }
+    return report, {"cases": cases, "summary": summary, "calls": budget.used}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -314,6 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--to", dest="date_to", type=date.fromisoformat, required=True)
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--max-calls", type=int, default=220)
+    parser.add_argument("--repeats", type=int, default=1, help="audits per draft and config")
     parser.add_argument(
         "--config",
         action="append",

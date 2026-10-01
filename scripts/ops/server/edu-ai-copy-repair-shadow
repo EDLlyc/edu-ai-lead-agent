@@ -5,7 +5,7 @@
 # own outcome. Runs a one-off container of the pinned image; no service is restarted or modified.
 # Reads the database only through the SELECT-only ops role; model calls are capped.
 set -eu
-IMAGE="__SHADOW_IMAGE__"
+IMAGE="__IMAGE__"
 OUT=/opt/edu-ai-lead-agent/reports/copy-repair-shadow
 ENV_FILE=/opt/edu-ai-lead-agent/scripts/ops-readonly.env   # OPS_DATABASE_URL, root 0600
 mkdir -p "$OUT"

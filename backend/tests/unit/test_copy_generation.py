@@ -766,7 +766,7 @@ def test_copy_version_bundle_marks_preview_policy_without_relaxing_strict_profil
 
     assert preview.rule_version == "preview-v13-headline-hook"
     assert preview.generator_prompt_version == "moments-generator-v28-shared-quotes"
-    assert preview.auditor_prompt_version == "moments-auditor-v21-lean-context"
+    assert preview.auditor_prompt_version == "moments-auditor-v22-enumerated-codes"
     assert historical_preview.rule_version == "preview-v1"
     assert preview.fingerprint != historical_preview.fingerprint
     assert strict.rule_version == "moments-rules-v13-headline-hook"
@@ -3276,7 +3276,10 @@ def test_headline_hook_prompts_ask_for_hook_and_material_only() -> None:
     assert "正文逻辑必须回答两个问题" not in prompt
     assert "REQUIRED_EXACT_CLAIMS" not in prompt
     assert "<RECENT_BRAND_CLAIMS>" in prompt
-    assert "不得因此报learning_value或brand_value" in auditor_prompt
+    # The default auditor v22 may only use the closed code table, which has no learning_value or
+    # brand_value code at all.
+    assert "<CODES>" in auditor_prompt and "hook_off_topic" in auditor_prompt
+    assert "learning_value" not in auditor_prompt
     verdict = apply_copy_audit_policy(
         AuditVerdict(
             accepted=False,
@@ -3447,3 +3450,37 @@ def test_headline_hook_policy_keeps_the_new_blocking_codes_as_errors() -> None:
         "outcome_promise": "error",
         "brand_fit": "warning",
     }
+
+
+def test_a_repeated_recent_brand_sentence_is_an_error_first_and_a_warning_on_repair() -> None:
+    from app.domain.copy_generation import repeated_brand_claim_issues
+
+    used = "在赛先生科学，孩子从生活中的真实问题出发，像科学家一样思考。"
+    draft = MaterialDraft(
+        copywriting="当机器人开始理解世界，正好和孩子聊聊怎样观察🔭\n#赛先生科学 #人工智能",
+        parent_takeaway="和孩子一起观察。",
+        interaction="你觉得机器人怎样认识世界？",
+        source_note="科技日报",
+        image_prompt="小赛和赛先生观察机器人",
+        claims=(
+            DraftClaim(id="fact-1", text=used, kind="opinion"),
+            DraftClaim(
+                id="brand-1",
+                text="在赛先生科学, 孩子从生活中的真实问题出发, 像科学家一样思考",
+                kind="brand_statement",
+                brand_chunk_ids=(uuid4(),),
+            ),
+        ),
+    )
+
+    first = repeated_brand_claim_issues(draft, (used,), severity="error")
+    repair = repeated_brand_claim_issues(draft, (used,), severity="warning")
+    fresh = repeated_brand_claim_issues(
+        draft, ("赛先生重视孩子的提问和动手实践。",), severity="error"
+    )
+
+    assert [(i.code, i.severity, i.claim_id) for i in first] == [
+        ("brand_claim_repeated", "error", "brand-1")
+    ]
+    assert [i.severity for i in repair] == ["warning"]
+    assert fresh == ()  # a different sentence, and an opinion with the same words, pass

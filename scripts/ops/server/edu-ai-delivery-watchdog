@@ -1,0 +1,21 @@
+#!/bin/sh
+# Delivery watchdog (backend/app/delivery_watchdog_main.py): a few minutes after a slot's target
+# time, check that the slot was selected in full, every copy was accepted and every message was
+# delivered; alert once per slot and day otherwise. One-off container of the pinned image; reads
+# the database only through the SELECT-only ops role. The alert goes to OPS_ALERT_WEBHOOK_KEY (a
+# dedicated internal group) when /opt/edu-ai-lead-agent/scripts/ops-alert.env exists, else log only.
+set -eu
+IMAGE="__IMAGE__"
+SLOT="${1:?usage: edu-ai-delivery-watchdog morning|noon|evening}"
+OUT=/opt/edu-ai-lead-agent/reports/delivery-watchdog
+mkdir -p "$OUT"
+chown 999:999 "$OUT"
+chmod 700 "$OUT"
+set -a
+. /opt/edu-ai-lead-agent/scripts/ops-readonly.env
+[ -r /opt/edu-ai-lead-agent/scripts/ops-alert.env ] && . /opt/edu-ai-lead-agent/scripts/ops-alert.env
+set +a
+cd /opt/edu-ai-lead-agent
+APP_IMAGE="$IMAGE" timeout 300 docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+  run --rm --no-deps -T -e OPS_DATABASE_URL -e OPS_ALERT_WEBHOOK_KEY -v "$OUT:/out" \
+  --entrypoint python content-worker -m app.delivery_watchdog_main --slot "$SLOT" --output-dir /out
