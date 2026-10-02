@@ -1,0 +1,5 @@
+# Watchdog-only overlay on the running app image 32c89fe6 (= mainline 8915673 app). base = sha256 in the running image, new = after the overlay.
+# path | base | new
+app/application/services/agent_tracing.py | absent | 557a8392d9c8d327b439224aa42cc6ef5790e6ad520eddc80bb564eed01ec845
+app/application/services/ops_diagnosis.py | absent | 1e229bc7b0dd6c2ec7958740bf294b4df5bfbf3969a43c320728357bf41d8d1e
+app/delivery_watchdog_main.py | cb087b83a0cc2cfa2d425f5d49bad0a0510a4cd49f7eaef722be7c89cc1ef3ea | 5cf860e8a964fa310292dc7e97fd7aa891b29fa25d1176225171d603e3d06b89
