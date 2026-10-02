@@ -6,6 +6,12 @@ tools, schemas, limits and refusals. The workspace is loaded once at start: the 
 draft by default, or with `--copy-run-id` the newest draft of a copy run from a local development
 database, or through the read-only ops role when OPS_DATABASE_URL is set. Edits stay in
 this process's memory; nothing is written back.
+
+Before an edit (replace_claim, drop_claim, rewrite_hook) the server asks the operator to confirm
+through MCP form elicitation, showing the before/after of a dry run on a copy of the workspace.
+Declining or cancelling returns `operator_declined` and leaves the draft unchanged. An edit the
+tool would refuse anyway is not asked about. A client that cannot elicit gets today's behaviour,
+marked `not_supported` in the result's `_meta`; `--require-confirmation` refuses it instead.
 """
 
 # ruff: noqa: RUF001
@@ -14,17 +20,21 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import os
 from collections.abc import Mapping, Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.application.services.agent_tools import AgentToolFailure
 from app.application.services.copy_repair_tools import (
     REPAIR_TOOL_RULES,
     REPAIR_TOOLSET_VERSION,
     RepairWorkspace,
     build_repair_tool_registry,
+    claim_by_id,
 )
 from app.core.agent_workbench_config import get_agent_workbench_settings
 from app.core.config import get_settings
@@ -43,6 +53,7 @@ from app.infrastructure.db.session import create_engine
 from app.mcp_registry_server import (
     DEFAULT_MCP_CALL_BUDGET,
     CallLogger,
+    ConfirmationMessage,
     RegistryMCPServer,
     call_budget_from_environment,
     stderr_json_logger,
@@ -58,11 +69,16 @@ REPAIR_INSTRUCTIONS = (
 )
 
 
+EDIT_TOOLS = ("replace_claim", "drop_claim", "rewrite_hook")
+_PREVIEW_CHARACTERS = 300
+
+
 def build_copy_repair_mcp_server(
     workspace: RepairWorkspace,
     *,
     call_budget: int = DEFAULT_MCP_CALL_BUDGET,
     call_logger: CallLogger | None = stderr_json_logger,
+    require_confirmation: bool = False,
 ) -> RegistryMCPServer:
     return RegistryMCPServer(
         build_repair_tool_registry(workspace),
@@ -73,7 +89,50 @@ def build_copy_repair_mcp_server(
         version=REPAIR_TOOLSET_VERSION,
         call_budget=call_budget,
         call_logger=call_logger,
+        confirmations=edit_confirmations(workspace),
+        require_confirmation=require_confirmation,
     )
+
+
+def edit_confirmations(workspace: RepairWorkspace) -> dict[str, ConfirmationMessage]:
+    """For each edit tool: the before/after an operator confirms, from a dry run on a copy."""
+
+    def for_tool(name: str) -> ConfirmationMessage:
+        async def message(arguments: Mapping[str, Any]) -> str | None:
+            trial = copy.deepcopy(workspace)
+            try:
+                result = await build_repair_tool_registry(trial).invoke(name, dict(arguments))
+            except AgentToolFailure:
+                return None  # invalid arguments: the real call refuses the same way
+            if not getattr(result, "ok", False):
+                return None  # the tool refuses this edit; nothing to confirm
+            return describe_edit(name, dict(arguments), before=workspace, after=trial)
+
+        return message
+
+    return {name: for_tool(name) for name in EDIT_TOOLS}
+
+
+def describe_edit(
+    name: str, arguments: Mapping[str, Any], *, before: RepairWorkspace, after: RepairWorkspace
+) -> str:
+    def clip(text: str) -> str:
+        return text if len(text) <= _PREVIEW_CHARACTERS else text[:_PREVIEW_CHARACTERS] + "…"
+
+    header = "确认修改工作稿（只改本进程内存里的草稿，不会写回数据库）：\n"
+    if name == "rewrite_hook":
+        return (
+            header
+            + f"改写引导语\n改前：{clip(before.view().hook)}\n改后：{clip(after.view().hook)}"
+        )
+    claim_id = str(arguments.get("claim_id", ""))
+    old = claim_by_id(before.draft, claim_id)
+    old_text = clip(old.text) if old is not None else ""
+    if name == "drop_claim":
+        return header + f"删除 claim {claim_id}\n原文：{old_text}"
+    new = claim_by_id(after.draft, claim_id)
+    new_text = clip(new.text) if new is not None else ""
+    return header + f"替换 claim {claim_id}\n改前：{old_text}\n改后：{new_text}"
 
 
 # The rule version production copy runs store; the shared workbench fixture keeps an older one.
@@ -142,6 +201,11 @@ async def load_run_workspace(
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Copy repair tools over stdio MCP.")
     parser.add_argument("--copy-run-id", type=UUID, default=None)
+    parser.add_argument(
+        "--require-confirmation",
+        action="store_true",
+        help="refuse edits when the client cannot ask the operator (no form elicitation)",
+    )
     args = parser.parse_args(argv)
     if get_agent_workbench_settings().app_env == "production":
         raise RuntimeError("the copy repair MCP server is local-only")
@@ -151,7 +215,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         else load_fixture_workspace()
     )
     build_copy_repair_mcp_server(
-        workspace, call_budget=call_budget_from_environment(os.environ)
+        workspace,
+        call_budget=call_budget_from_environment(os.environ),
+        require_confirmation=args.require_confirmation,
     ).run(transport="stdio")
 
 
