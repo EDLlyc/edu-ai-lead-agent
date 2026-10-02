@@ -1,6 +1,7 @@
 # 本机 MCP 工具（运维只读 + 文案修复）
 
-三个 MCP 服务都在本机运行，通过标准输入输出和 Claude Code 通信，服务器上不开任何端口。
+三个 MCP 服务都在本机运行，默认通过标准输入输出和 Claude Code 通信，服务器上不开任何端口。
+`ops` 也可以走 Streamable HTTP（只听 127.0.0.1，要带令牌），见下文“HTTP 方式”。
 
 | 服务 | 工具 | 数据 |
 |---|---|---|
@@ -38,6 +39,48 @@ claude mcp add edu-repair -- /root/projects/edu-ai-lead-agent/scripts/ops/run_mc
 `scripts/ops/run_mcp.sh repair --copy-run-id <run_id>`（一次只处理一份草稿）。
 
 本机开发库可以用 `--target local` 和 `OPS_TARGET=local`，但本机数据停在 8 月，只适合测试。
+
+### 资源和提示词（ops）
+
+- 资源：`ops://trace/{日期}` 是某天的全链路追踪（和 get_day_trace 相同，也计入调用上限）；
+  `ops://server/info` 列出工具、调用上限和版本。
+- 提示词：`diagnose_slot(business_date, slot)` 按 选题 → 文案 → 发送 排查某个时段，
+  `explain_blocked_copy(run_id)` 解释一条文案为什么被拦，`daily_usage(business_date)` 汇总当天用量。
+  在 Claude Code 里输入 `/` 可以看到这些提示词。
+
+### 改稿前确认（repair）
+
+`repair` 的三个改稿工具（replace_claim、drop_claim、rewrite_hook）执行前，会先在一份副本上试改，
+再通过 MCP 表单确认（elicitation）把“改前/改后”发给客户端，由你确认：
+
+- 确认：照常修改，结果的 `_meta["edu-ai/confirmation"]` 记为 `accepted`。
+- 拒绝或关闭：返回 `operator_declined`（不可重试），草稿不变。
+- 工具本来就会拒绝的修改（编号不存在、不是证据原文等）不弹确认，直接返回原来的拒绝原因。
+- 客户端不支持表单确认时，按原来的方式直接修改，并记为 `not_supported`；
+  想在这种情况下拒绝修改，启动时加 `--require-confirmation`。
+- 新协议（2026-07-28）用 `InputRequiredResult` 一问一答，旧协议在调用中途发 `elicitation/create`，
+  两种都由 SDK 自动选择，确认的问答不算一次工具调用。
+
+### HTTP 方式（ops）
+
+```bash
+# 1. 生成令牌（只做一次，至少 32 个字符）
+umask 077; python -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.config/edu-ai/ops-mcp.token
+
+# 2. 启动（需要 SSH 通道开着），默认 http://127.0.0.1:8765/mcp
+scripts/ops/run_mcp.sh ops --transport http
+
+# 3. 在 Claude Code 里注册
+claude mcp add --transport http edu-ops-http http://127.0.0.1:8765/mcp \
+  --header "Authorization: Bearer $(cat ~/.config/edu-ai/ops-mcp.token)"
+```
+
+- 没有令牌或令牌不对返回 401；令牌只在本机比较，不出现在日志和响应里。不提供 OAuth 发现。
+- 只允许监听回环地址（127.0.0.1、localhost、::1），其他地址要显式加 `--allow-remote`，不建议用。
+  从别的机器用，保持只听 127.0.0.1，再用 `ssh -L 8765:127.0.0.1:8765 <这台机器>` 转发。
+- 启动时检查一次只读账号，不合格就不启动。
+- Claude Desktop 用 stdio 方式最简单（配置里写 `run_mcp.sh ops`）；要走 HTTP，需要客户端能带
+  `Authorization` 请求头。
 
 ## 对话式运维助手
 
