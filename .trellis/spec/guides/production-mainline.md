@@ -39,6 +39,20 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-02 21:54 (approved actions, propose-only; image `sha256:8f14b771…`)
+
+- `/usr/local/sbin/edu-ai-delivery-watchdog` and the new `/usr/local/sbin/edu-ai-ops-action`
+  run `…@sha256:8f14b771fe2eab9e170d936e3092c6afbd684ca335f11e9216624983695cf640` = report image
+  9c9d1c01 + 8 files from feat/repair-agent-20260930 @ 944f37a (not on mainline yet).
+- When the diagnosis suggests a resend, the watchdog writes proposals for the slot's failed
+  deliveries to `reports/delivery-watchdog/action-proposals.jsonl`. Operators run
+  `sudo edu-ai-ops-action list | approve <id> --by <name> | reject | verify` on the server.
+- Propose-only: `scripts/ops-actions.env` does not exist, so `OPS_ACTIONS_ENABLED` is false and an
+  approval is only recorded. Enable after a week of proposals by writing
+  `OPS_ACTIONS_ENABLED=true` there (root, 0600). Only `retry_delivery`; 3 executions per day.
+- Backup `/usr/local/sbin/edu-ai-delivery-watchdog.before-944f37a-20261002T215401`. Rollback:
+  restore it and remove `edu-ai-ops-action`.
+
 ## Live since 2026-10-02 21:23 (quality-report cron image `sha256:9c9d1c01…`)
 
 - The daily quality report had failed since 09-30 21:40: its pinned image (518b16d8) rejected the
