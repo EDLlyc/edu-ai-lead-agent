@@ -57,3 +57,11 @@ Acceptance: deterministic tests for the scorers; one paid run outside slot hours
 
 Part A ships as an overlay on the running image with `COPY_REPAIR_MODE=agent_first` in `.env`,
 after the owner confirms. Parts B and C are local tools and evals; no production change.
+
+## Result (2026-10-02)
+
+- A: LIVE 19:30 (image 32c89fe6, release de22d32, owner "同意"); gate PASS; mainline 8915673.
+- B: ops assistant on LangGraph (interrupt approvals, Postgres checkpointer, restart-safe), merged
+  58060ef; C: trajectory eval + GenAI-convention traces. Paid run (18 scenarios incl. delegation,
+  157 calls): glm-5.2 18/18, glm-4.5-air 15/18 (2 real errors), 0 approval violations
+  (`backend/evals/ops_assistant/reports/2026-10-02-trajectory.md`).

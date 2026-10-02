@@ -42,3 +42,12 @@ structured refusal). stdio stays as is.
 
 Acceptance: in-process client tests for HTTP auth (missing/wrong token refused), resources,
 prompts, elicitation accept/decline/unsupported client.
+
+## Status (2026-10-02 evening)
+
+- D (41853ef, 92c80df): diagnosis agent + watchdog wiring. Eval v1 6/8 (drifted to another slot),
+  v2 8/8; 4 real past incidents diagnosed in dry-run, consistent with the records. Watchdog-only
+  image d996df96 built and smoke-tested; repinning the cron needs the owner's confirmation.
+- E (merged b48cf92): delegate_repair, one approval per change set; covered by the trajectory run.
+- F (merged 4796543): ops MCP over Streamable HTTP with a bearer token, resources, prompts;
+  elicitation before repair edits. Local tools; nothing deployed.
