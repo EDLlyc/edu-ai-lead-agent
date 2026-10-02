@@ -206,4 +206,11 @@ Open gaps kept visible in `canonical-report.md`:
   failures); offline smoke ok; no job running, 0 human picks ever; six services healthy, 0
   restarts, 0 errors; push route 422 (validation only). Backups `*.before-765fe1e-20261001T231206`.
   Cron images (watchdog, shadow, regression, quality report) unchanged, as the runbook says.
+- 10-02 13:31 pool-aware cast planning + resized action images, release 11ad19c (owner: "确认"):
+  image `…@sha256:b8fa7adaecbf24b0c5371245b9f8fec40ca3ad31b43c1cb5e23d36427117cba2` = 5887bce7 + 3 app
+  files + plan_sim; base hashes 3/3 matched; gate `predeploy gate PASS @ 11ad19c`; host manifest and
+  the 12 originals were byte-identical to the local ones; smoke on staged and then live materials:
+  41 assets verified, 26 action images within budget (largest 3,494,296 B); no job running; six
+  services healthy, 0 restarts, 0 errors. Backups `before-visual-pool-20261002T133009` (materials)
+  and `*.before-visual-pool-20261002T133121` (env).
 

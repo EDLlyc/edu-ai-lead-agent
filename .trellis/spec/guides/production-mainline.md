@@ -39,6 +39,20 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-02 13:31 (image `sha256:b8fa7ada…`, release 11ad19c)
+
+- The controlled planner knows the action pool: a subject+cast with no fresh approved action image
+  (prop gate, exact cast, within the 6 MiB reference budget, outside the 12-pick cooldown) loses
+  1,500 points, one left loses 300. Active only with selector v3 and a prop-labelled manifest.
+- The 12 action PNGs over 3.5 MB were resized to a 1536 px longest edge (all ≤ 3.5 MB) and the host
+  manifest rebuilt; their asset ids changed, so their cooldown history restarted once. Backups:
+  `/var/backups/edu-ai/brand-materials/before-visual-pool-20261002T133009/` (12 PNGs + manifest)
+  and `visual-assets.manifest.json.before-visual-pool-20261002T133009`.
+- Replay over 186 production briefs (`backend/evals/visual_replay/plan_sim.py`): reuse of a cooled
+  image 56% → 2%, distinct action images 15 → 21, top image share 16% → 8%.
+- Env backups `*.before-visual-pool-20261002T133121`. Rollback: restore the 12 PNGs and the
+  manifest, restore both env files, recreate the six services.
+
 ## Live since 2026-10-01 23:12 (image `sha256:5887bce7…`, release 765fe1e)
 
 - Selection scores the freshest events (about 200), not the first 500 by id.

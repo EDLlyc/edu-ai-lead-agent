@@ -1,0 +1,6 @@
+# Overlay on the running image 5887bce7 (= mainline 60bc652 app). base = sha256 in the running container, new = sha256 after the overlay.
+# path | base | new
+app/application/services/material_package.py | 7cfac436a791225b6784816fc5ff2713bb55138c8debed5dbec8e80c690f6c53 | 1681facf1747781aca86f12f5e0a19b5b5ebca612c77b2b6416cb560a30d9257
+app/domain/visual_assets.py | 6353267867250440673310629aa05177f21a961f09232ecd392466b9a8b294d6 | 37ee55ef56ef7088fb9fa538a8cd8f767c14765834e8bf74ed20cbfc7016858d
+app/domain/visual_diversity.py | 0d9bb3e3482280b8f3baa936c9ea075d8317f5fff94b5716a89aa45dddc240c9 | 6db829c586adb0f2912fd6c3d209fb3cbb38763de61a73a3388f74028ea7254d
+evals/visual_replay/plan_sim.py | absent | 857c366c067a728747f2e7fd193f3e869a298713dd14392178cc89f930f2e33a
