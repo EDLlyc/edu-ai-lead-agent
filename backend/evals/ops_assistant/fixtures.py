@@ -188,9 +188,12 @@ class FixtureOpsReader:
                         DraftItem(
                             version=2,
                             created_at=created + timedelta(minutes=2),
-                            hook="世界模型让机器人学会预测，和孩子聊聊🔭",
+                            # The repair kept the promise hook: open_draft loads exactly this.
+                            hook=PROMISE_HOOK
+                            if run == BLOCKED_RUN
+                            else "世界模型让机器人学会预测，和孩子聊聊🔭",
                             claim_count=2,
-                            audit_accepted=run != BLOCKED_RUN,
+                            audit_accepted=None if run == BLOCKED_RUN else True,
                             audit_prompt_version=AUDITOR,
                             issues=_blocked_issues(2) if run == BLOCKED_RUN else (),
                         )
