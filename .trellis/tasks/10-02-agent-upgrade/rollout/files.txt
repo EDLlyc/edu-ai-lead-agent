@@ -1,0 +1,7 @@
+# Overlay on the running image b8fa7ada (= mainline ff398b2 app). base = sha256 in the running container, new = sha256 after the overlay.
+# path | base | new
+app/application/ports/copy_generation.py | ab0959d5ca7370c93d2da00fae6e2bbc5846eb12bec9609065f4dce9730b8cb4 | e5ea50398316484305fd38501abc277428406da625e05f185eaf92cd40f55d17
+app/application/services/copy_generation.py | 7542ff3c71ed0c2524153ed94eb9b65b93d7f2a1fc4dacfd979b4ee6f4e06135 | ce31752fbf1704756e56a957279243a4ba995c371d892170fdb325d1f184f052
+app/content_worker_main.py | 1ad7944ceaccc0fcbd10d45bae00970e81ac28d67f099b9c57eb84f6eb231c3b | e656156f5ee7d13ed6c90cdccc74de7042180c0b5e9e262963b4749c526100a2
+app/core/config.py | 891d72f1581635ffbfc072a06803bda5eb8061c532c26dcf1f622ad355fdd5d4 | 74f4fd977c813522dd269a4fd171b9328c6a2e321a3086f088e2d6c559a957d6
+app/infrastructure/db/copy_generation.py | 5441a07ae48ed563d4412d75bb07e26189255991f224cc6ecff8695b18e0ad56 | 41f4dc3b5ff787f50f4f88d222f16956531f974b25cdf1f3f50517de251de0f0
