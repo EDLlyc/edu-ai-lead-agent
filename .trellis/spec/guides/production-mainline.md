@@ -39,6 +39,18 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-02 19:55 (delivery-watchdog cron image `sha256:d996df96…`)
+
+- Only the delivery-watchdog cron changed: `/usr/local/sbin/edu-ai-delivery-watchdog` runs
+  `…@sha256:d996df96668d60e981a69180936cf3f58dcc6a34ebea355de35b85ea3a55b174` = 32c89fe6 +
+  `agent_tracing.py`, `ops_diagnosis.py`, `delivery_watchdog_main.py` from
+  feat/repair-agent-20260930 @ 92c80df (not on mainline yet; merge with the branch). The six app
+  services stay on 32c89fe6; the shadow and regression crons are unchanged.
+- On a slot problem, a read-only diagnosis agent (glm-5.2, ops role, ~5 calls) appends stage,
+  cause and a suggested action to the alert and the JSONL record; reruns are suggestions only.
+- Backup `/usr/local/sbin/edu-ai-delivery-watchdog.before-92c80df-20261002T195533`. Rollback:
+  restore it.
+
 ## Live since 2026-10-02 19:30 (image `sha256:32c89fe6…`, release de22d32)
 
 - A blocked first draft is repaired by the tool-using repair agent first (`COPY_REPAIR_MODE`

@@ -218,4 +218,9 @@ Open gaps kept visible in `canonical-report.md`:
   base hashes 5/5 matched; gate `predeploy gate PASS @ de22d32`; offline smoke ok; evening slot 9/9
   delivered and no job running before the switch; six services healthy, 0 restarts, 0 errors; live
   settings agent_first / 150 s / v28 / v22. Backups `*.before-de22d32-20261002T193042`.
+- 10-02 19:55 watchdog diagnosis agent (owner: "同意"): only the delivery-watchdog cron repinned to
+  `…@sha256:d996df96668d60e981a69180936cf3f58dcc6a34ebea355de35b85ea3a55b174` (32c89fe6 + 3 files
+  from 92c80df); diagnosis eval v2 8/8 on synthetic failures; 4 real past incidents diagnosed in
+  dry-run, consistent with the records; a run of the repinned wrapper wrote the new record format.
+  Backup `edu-ai-delivery-watchdog.before-92c80df-20261002T195533`.
 
