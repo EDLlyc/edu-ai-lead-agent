@@ -63,7 +63,12 @@ from app.domain.image_validation import (
     validate_image_output,
 )
 from app.domain.value_objects import stable_key
-from app.domain.visual_assets import AssetSelectionRequest, SelectedVisualAsset, VisualAssetRole
+from app.domain.visual_assets import (
+    AssetSelectionRequest,
+    SelectedVisualAsset,
+    VisualAssetRole,
+    action_pool_capacity,
+)
 from app.domain.visual_brief import (
     AcceptedVisualContext,
     VisualBrief,
@@ -1049,6 +1054,16 @@ async def _enqueue_controlled_material_package(
                 VisualReferenceRole.STYLE_REFERENCE.value,
             }
         )
+        action_capacity = (
+            action_pool_capacity(
+                loaded_catalog.catalog,
+                recent_action_sequence=recent_action_sequence,
+                max_reference_bytes=image_reference_budget_bytes,
+            )
+            if effective_selector_version == VISUAL_SELECTOR_V3_VERSION
+            and _catalog_has_prop_labels(loaded_catalog)
+            else None
+        )
         bundle = build_visual_plan_bundle(
             category=brief.category,
             business_date=business_date,
@@ -1056,6 +1071,7 @@ async def _enqueue_controlled_material_package(
             stable_seed=str(accepted.run.selected_event_version_id or accepted.run.id),
             recent=recent_plans,
             history_days=history_days,
+            action_capacity=action_capacity,
         )
         try:
             primary = _prepare_controlled_plan_input(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # ruff: noqa: RUF001
 import hashlib
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
@@ -198,6 +198,10 @@ SUBJECT_ALLOWED_PROPS: Final[dict[VisualSubject, frozenset[str]]] = {
 
 # Each post reserves a primary and an alternate plan, so twelve history rows is about six posts.
 ACTION_COOLDOWN_REFERENCES: Final = 12
+# Planner penalties when selector v3 has no fresh (or only one fresh) action image for a plan's
+# subject and cast. Below a same-plan repeat (4,000 per day of recency), above scene/camera taste.
+POOL_EXHAUSTED_PENALTY: Final = 1_500
+POOL_LOW_PENALTY: Final = 300
 
 
 def category_subjects(category: VisualCategory) -> tuple[VisualSubject, ...]:
@@ -417,8 +421,17 @@ def _candidate_score(
     business_date: date,
     content_slot: ContentSlot | None,
     recent: tuple[RecentVisualPlan, ...],
+    action_capacity: Mapping[tuple[VisualSubject, VisualCast], int] | None = None,
 ) -> int:
     score = 10_000
+    if action_capacity is not None:
+        # Selector v3 can only reuse a cooled image (least recently used) when no action image of
+        # this subject and cast is fresh; prefer a cast that still has fresh images.
+        available = action_capacity.get((plan.subject, plan.cast), 0)
+        if available == 0:
+            score -= POOL_EXHAUSTED_PENALTY
+        elif available == 1:
+            score -= POOL_LOW_PENALTY
     composition_preferences = _SLOT_COMPOSITION_PREFERENCES[content_slot]
     camera_preferences = _SLOT_CAMERA_PREFERENCES[content_slot]
     if plan.composition in composition_preferences:
@@ -492,6 +505,7 @@ def _select_plan(
     seed: str,
     attempt: str,
     forbidden_major_signature: tuple[VisualScene, VisualComposition, VisualCamera] | None = None,
+    action_capacity: Mapping[tuple[VisualSubject, VisualCast], int] | None = None,
 ) -> ControlledVisualPlan:
     base_eligible = tuple(
         plan
@@ -542,6 +556,7 @@ def _select_plan(
                 business_date=business_date,
                 content_slot=content_slot,
                 recent=recent,
+                action_capacity=action_capacity,
             ),
             _candidate_tie_key(plan, seed, attempt),
             plan.fingerprint,
@@ -584,6 +599,7 @@ def build_visual_plan_bundle(
     stable_seed: str,
     recent: tuple[RecentVisualPlan, ...] = (),
     history_days: int = 7,
+    action_capacity: Mapping[tuple[VisualSubject, VisualCast], int] | None = None,
 ) -> VisualPlanBundle:
     if not stable_seed.strip() or len(stable_seed) > 200:
         raise ValueError("visual plan stable seed must be non-blank and bounded")
@@ -599,6 +615,7 @@ def build_visual_plan_bundle(
         recent=bounded_recent,
         seed=stable_seed,
         attempt="primary",
+        action_capacity=action_capacity,
     )
     primary_history = (
         *bounded_recent,
@@ -621,6 +638,7 @@ def build_visual_plan_bundle(
         seed=stable_seed,
         attempt="alternate",
         forbidden_major_signature=primary.major_signature,
+        action_capacity=action_capacity,
     )
     return VisualPlanBundle(
         primary=primary,

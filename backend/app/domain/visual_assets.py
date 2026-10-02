@@ -18,6 +18,7 @@ from app.domain.visual_diversity import (
     SUBJECT_ALLOWED_PROPS,
     VISUAL_SELECTOR_V2_VERSION,
     VISUAL_SELECTOR_V3_VERSION,
+    VisualCast,
     VisualSubject,
 )
 from app.domain.visual_retrieval import VISUAL_SELECTOR_VERSION as VISUAL_SEMANTIC_SELECTOR_VERSION
@@ -1359,3 +1360,43 @@ class AssetSelector:
 
 
 VisualAssetSelector = AssetSelector
+
+
+def action_pool_capacity(
+    catalog: VisualAssetCatalog,
+    *,
+    recent_action_sequence: Sequence[str],
+    max_reference_bytes: int,
+) -> dict[tuple[VisualSubject, VisualCast], int]:
+    """Action images selector v3 could still pick for each plan subject and cast.
+
+    Counts approved action references that pass the prop gate for the subject, show exactly the
+    cast, fit the reference byte budget and are outside the rotation cooldown. The controlled
+    planner uses it to avoid casts whose pool is exhausted (two-person plans otherwise alternate
+    between the only two prop-free two-person images).
+    """
+
+    last_seen = {asset_id: index for index, asset_id in enumerate(recent_action_sequence)}
+    length = len(recent_action_sequence)
+    actions = [
+        asset
+        for asset in catalog.assets
+        if asset.approved
+        and VisualAssetRole.ACTION_REFERENCE in asset.roles
+        and asset.media_type == "image/png"
+        and asset.byte_size <= min(MAX_VISUAL_ASSET_BYTES, max_reference_bytes)
+        and (
+            asset.asset_id not in last_seen
+            or length - last_seen[asset.asset_id] > ACTION_COOLDOWN_REFERENCES
+        )
+    ]
+    capacity: dict[tuple[VisualSubject, VisualCast], int] = {}
+    for subject, allowed in SUBJECT_ALLOWED_PROPS.items():
+        for cast in VisualCast:
+            capacity[(subject, cast)] = sum(
+                1
+                for asset in actions
+                if set(asset.characters) == set(cast.characters)
+                and (not asset.props or set(asset.props) <= allowed)
+            )
+    return capacity

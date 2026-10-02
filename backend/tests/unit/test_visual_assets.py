@@ -914,3 +914,31 @@ def test_recent_action_sequence_keeps_order_and_repeats() -> None:
     assert request.recent_action_sequence == (second, first, second)
     with pytest.raises(VisualAssetError, match="recent action sequence"):
         AssetSelectionRequest(recent_action_sequence=("not-a-digest",))
+
+
+def test_action_pool_capacity_counts_fresh_gated_exact_cast_images_per_subject() -> None:
+    from app.domain.visual_assets import action_pool_capacity
+    from app.domain.visual_diversity import VisualCast, VisualSubject
+
+    talk = _action("duo-talk")
+    think = _action("duo-think")
+    space = _action("duo-space", props=("astronaut",))
+    huge = _action("duo-huge", byte_size=5_000)
+    sai = _action("sai-microscope", props=("microscope",), characters=("sai-xiansheng",))
+    catalog = _catalog(talk, think, space, huge, sai)
+
+    fresh = action_pool_capacity(catalog, recent_action_sequence=(), max_reference_bytes=1_000)
+    cooled = action_pool_capacity(
+        catalog,
+        recent_action_sequence=(talk.asset_id, think.asset_id),
+        max_reference_bytes=1_000,
+    )
+
+    experiment = VisualSubject.EXPERIMENT_APPARATUS
+    assert (
+        fresh[(experiment, VisualCast.DUO)] == 2
+    )  # pose-only duo; astronaut and oversize excluded
+    assert fresh[(VisualSubject.TELESCOPE_STAR_MAP, VisualCast.DUO)] == 3
+    assert fresh[(experiment, VisualCast.SAI_XIANSHENG_SOLO)] == 1
+    assert fresh[(VisualSubject.ROBOT_ARM, VisualCast.SAI_XIANSHENG_SOLO)] == 0  # wrong prop
+    assert cooled[(experiment, VisualCast.DUO)] == 0  # both inside the 12-pick cooldown

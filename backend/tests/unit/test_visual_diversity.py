@@ -355,3 +355,25 @@ def test_v2_artifact_fingerprint_binds_both_reserved_plans_and_history() -> None
 
     assert first == controlled_image_request_fingerprint(**common)
     assert first != changed
+
+
+def test_planner_avoids_a_cast_whose_action_pool_is_exhausted() -> None:
+    from app.domain.visual_diversity import VisualCast, VisualSubject
+
+    arguments = {
+        "category": VisualCategory.ROBOTICS,
+        "business_date": date(2026, 10, 2),
+        "content_slot": ContentSlot.NOON,
+        "stable_seed": "event-version-pool",
+    }
+    baseline = build_visual_plan_bundle(**arguments)
+    exhausted = {
+        (subject, cast): 0 if cast is baseline.primary.cast else 5
+        for subject in VisualSubject
+        for cast in VisualCast
+    }
+
+    aware = build_visual_plan_bundle(**arguments, action_capacity=exhausted)
+
+    assert aware.primary.cast is not baseline.primary.cast
+    assert build_visual_plan_bundle(**arguments, action_capacity=None) == baseline
