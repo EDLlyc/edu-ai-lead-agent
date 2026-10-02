@@ -51,3 +51,6 @@ prompts, elicitation accept/decline/unsupported client.
 - E (merged b48cf92): delegate_repair, one approval per change set; covered by the trajectory run.
 - F (merged 4796543): ops MCP over Streamable HTTP with a bearer token, resources, prompts;
   elicitation before repair edits. Local tools; nothing deployed.
+
+- D LIVE 2026-10-02 19:55 (owner "同意"): watchdog cron repinned to d996df96; backup
+  `edu-ai-delivery-watchdog.before-92c80df-20261002T195533`; mainline docs 752407a.
