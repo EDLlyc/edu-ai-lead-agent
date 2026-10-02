@@ -1,0 +1,7 @@
+# Quality-report-only overlay on the running app image 32c89fe6 (= mainline 8915673 app).
+# path | base | new
+app/domain/repair_metrics.py | absent | 93e76cafa0ba73fd282c4b142066a3b41f0fb46463a9d2371cd0722f50a6d4bf
+app/infrastructure/db/repair_metrics.py | absent | 5dbb5e29e6b3cdab869c9edeef9dc6a951ed2bf728c325211e12795a88ff42a6
+app/domain/quality_report.py | 091afb10fc9fc8d2451ab4b1a2bda10bb4d3410ac281cb0b3ac862c08c3ef534 | 5397dd0ad8ef9dace13cb0303c017c08c0c23a63eda014e318a5c4153ef2bd5d
+app/infrastructure/db/quality_report.py | 367300f7c77d79ff6c6345159e4ad75001891ca76b6af757bf1b9136861a2905 | 8114754999b3f21aa0c6f1e4695f9f7ad05892512e972a5453bde12fac7102d1
+app/application/services/quality_report.py | b27ff68e170a11e31e59ed825d89929d7d633f1f7fde76fa329cc1a87a5ae0c2 | 8af8c1ce564cb0879886bcc8e37f64b1d68330fe06720ea1d2d4ee3dda2a408f
