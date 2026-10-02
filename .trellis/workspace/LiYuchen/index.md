@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 88
-- **Last Active**: 2026-09-17
+- **Total Sessions**: 90
+- **Last Active**: 2026-10-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~41 | Active |
+| `journal-2.md` | ~134 | Active |
 | `journal-1.md` | ~1999 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 90 | 2026-10-02 | Pool-aware visual planning live; Trellis records backfilled | `11ad19c`, `ff398b2`, `0cb0eca` | `feat/repair-agent-20260930` |
+| 89 | 2026-10-01 | Repair agent, read-only ops tools, auditor v22 and two releases | `d15cf11`, `42e636e`, `4c330d8`, `ff70cb8`, `c9d12f9`, `2236e58`, `ae0825a`, `a6d5115`, `13cf91d`, `d9b534b`, `fc3e732`, `9644d63`, `72a4930`, `cc958d8`, `1d4d8b2`, `60bc652` | `feat/repair-agent-20260930` |
 | 88 | 2026-09-17 | Deploy WeChat marketing-header spacing | `abfb89d` | `release/wechat-two-banner-framing-20260914` |
 | 87 | 2026-09-16 | Activate resilient Official Account visuals | `ee5ff70f7b91fa3da21906ed7dc18c591ff92898`, `af137ca` | `release/wechat-two-banner-framing-20260914` |
 | 86 | 2026-09-15 | Deploy WeChat no-source-link rule | `01ff75e`, `d0b9e0a`, `69a203d`, `d3e3340` | `release/wechat-two-banner-framing-20260914` |
