@@ -227,4 +227,9 @@ Open gaps kept visible in `canonical-report.md`:
   since 09-30 on the selector-v3 `.env`; repinned to `…@sha256:9c9d1c0117d2de62f06bcaa13a94f6f232d5e950d1b134b199e5c4a1a4ae6e9d`
   (32c89fe6 + report files + repair_metrics @ e8805a4); 09-30 and 10-01 backfilled; the report
   now has a 修复 Agent section. Backup `edu-ai-quality-report.before-e8805a4-20261002T212335`.
+- 10-02 21:54 approved actions, propose-only (owner: "确认"): watchdog cron and the new
+  `edu-ai-ops-action` on `…@sha256:8f14b771fe2eab9e170d936e3092c6afbd684ca335f11e9216624983695cf640`
+  (9c9d1c01 + 8 files @ 944f37a); gate PASS @ 944f37a; bases 8/8; smoke ok; `list` shows the switch
+  off; a watchdog run wrote the new record with `proposals: []`. Backup
+  `edu-ai-delivery-watchdog.before-944f37a-20261002T215401`.
 
