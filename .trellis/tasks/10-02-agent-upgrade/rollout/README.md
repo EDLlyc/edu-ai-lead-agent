@@ -1,5 +1,7 @@
 # Rollout: agent-first copy repair (release de22d32)
 
+LIVE 2026-10-02 19:30 (owner: "同意"); env backups `*.before-de22d32-20261002T193042`.
+
 Image `sha256:32c89fe63a7f3d4ca47e2e08a4db269e861606df9f36dd788f059b2fa5e1a060` = b8fa7ada + 5 app
 files (`files.txt`), built on the host as `edu-ai-lead-agent-backend:release-de22d32`; base hashes
 5/5 matched the running container; `smoke.py` passed offline (`--network none`). Gate

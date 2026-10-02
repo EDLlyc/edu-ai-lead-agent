@@ -213,4 +213,9 @@ Open gaps kept visible in `canonical-report.md`:
   41 assets verified, 26 action images within budget (largest 3,494,296 B); no job running; six
   services healthy, 0 restarts, 0 errors. Backups `before-visual-pool-20261002T133009` (materials)
   and `*.before-visual-pool-20261002T133121` (env).
+- 10-02 19:30 agent-first copy repair, release de22d32 (owner: "同意"): image
+  `…@sha256:32c89fe63a7f3d4ca47e2e08a4db269e861606df9f36dd788f059b2fa5e1a060` = b8fa7ada + 5 app files;
+  base hashes 5/5 matched; gate `predeploy gate PASS @ de22d32`; offline smoke ok; evening slot 9/9
+  delivered and no job running before the switch; six services healthy, 0 restarts, 0 errors; live
+  settings agent_first / 150 s / v28 / v22. Backups `*.before-de22d32-20261002T193042`.
 

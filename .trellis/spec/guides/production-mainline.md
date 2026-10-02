@@ -39,6 +39,17 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-02 19:30 (image `sha256:32c89fe6…`, release de22d32)
+
+- A blocked first draft is repaired by the tool-using repair agent first (`COPY_REPAIR_MODE`
+  code default `agent_first`; compose and `.env` do not set it). The agent's draft becomes draft 2
+  only after the same rules and the run's auditor; otherwise a `workflow`/`failed` attempt with a
+  `repair_agent_*` code records why and the full regeneration runs as before. `repair_count` stays 1.
+- Look for `copy_generation_attempts.safe_metadata->>'repair_method' = 'agent'` on an accepted
+  draft 2, or a `repair_agent_*` error code on a workflow attempt.
+- Env backups `*.before-de22d32-20261002T193042`. Rollback: restore both env files and recreate the
+  six services. Cron images are unchanged.
+
 ## Live since 2026-10-02 13:31 (image `sha256:b8fa7ada…`, release 11ad19c)
 
 - The controlled planner knows the action pool: a subject+cast with no fresh approved action image
