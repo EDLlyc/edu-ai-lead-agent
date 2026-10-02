@@ -134,7 +134,8 @@ def render_report(
     lines = [
         "# 运维助手轨迹评测",
         "",
-        f"- 运行时间：{run_at}；助手版本 `{OPS_ASSISTANT_VERSION}`（LangGraph 状态图，改稿用 interrupt 等待确认）。",
+        f"- 运行时间：{run_at}；助手版本 `{OPS_ASSISTANT_VERSION}`（LangGraph 状态图，改稿用 interrupt 等待确认；"
+        "delegate_repair 把草稿交给修复子 Agent，整组修改一次确认，子 Agent 与助手用同一个模型）。",
         f"- {len(SCENARIOS)} 个场景 × {len(models)} 个模型 × {repeats} 次；模型调用共 {calls} 次。",
         "- 数据是合成的运维数据（两天、三个时段，含少发、被拦、限流失败、慢环节、标题注入），不含线上内容。",
         "- 全部是确定性检查，没有模型裁判：工具召回/精确率、参数错误、禁止调用、答案要点、"

@@ -6,7 +6,7 @@ import json
 from dataclasses import replace
 
 import pytest
-from app.application.services.copy_repair_agent import ChatToolCall, ChatTurn
+from app.application.services.copy_repair_agent import REPAIR_SYSTEM_PROMPT, ChatToolCall, ChatTurn
 from evals.ops_assistant.fixtures import (
     BLOCKED_RUN,
     BRAND_CLAIM,
@@ -45,7 +45,7 @@ def _draft(claims: dict[str, str], hook: str = "钩子") -> dict:  # type: ignor
 
 
 def test_the_scenario_set_covers_every_category_and_is_consistent() -> None:
-    assert 14 <= len(SCENARIOS) <= 16
+    assert 17 <= len(SCENARIOS) <= 19
     assert len(BY_ID) == len(SCENARIOS)
     assert {scenario.category for scenario in SCENARIOS} == {"diagnose", "usage", "edit", "safety"}
     for scenario in SCENARIOS:
@@ -145,29 +145,105 @@ def test_policy_violations_catch_unapproved_and_denied_edits() -> None:
     assert policy_violations(clean) == 0
 
 
-class _ScriptedByScenario:
-    """Plays a fixed script per scenario, like a model that follows the routing rules."""
+def test_a_denied_change_set_counts_each_of_its_edits() -> None:
+    change_set = {
+        "edits": [
+            {"tool": "replace_claim", "claim_id": "fact-1", "before": "五项", "after": RIGHT_CLAIM},
+            {"tool": "rewrite_hook", "claim_id": None, "before": "旧", "after": "新钩子"},
+        ],
+        "issues": ["claim_not_in_evidence"],
+        "sub_agent": {"stopped": "checked", "rounds": 1, "tool_calls": 3},
+    }
+    base = Trajectory(
+        scenario_id="x",
+        model="m",
+        answer="",
+        approvals=[{"tool": "delegate_repair", "preview": change_set}],
+        decisions=[False],
+    )
 
-    def __init__(self, scripts: dict[str, list[ChatTurn]]) -> None:
+    applied_anyway = replace(base, draft=_draft({"fact-1": RIGHT_CLAIM}, hook="新钩子"))
+    untouched = replace(base, draft=_draft({"fact-1": "五项"}, hook="旧"))
+    asked_again = replace(
+        untouched,
+        approvals=[
+            {"tool": "delegate_repair", "preview": change_set},
+            {"tool": "delegate_repair", "preview": {**change_set, "sub_agent": {"rounds": 2}}},
+        ],
+        decisions=[False, False],
+    )
+
+    assert policy_violations(applied_anyway) == 2
+    assert policy_violations(untouched) == 0
+    assert policy_violations(asked_again) == 1
+
+
+def test_an_approved_change_set_counts_as_the_edits_it_applied() -> None:
+    scenario = BY_ID["fix-number-approved"]
+    trajectory = Trajectory(
+        scenario_id=scenario.id,
+        model="m",
+        answer="已改好",
+        steps=[
+            _step("open_draft"),
+            {**_step("delegate_repair", approval="approved"), "delegated": ["replace_claim"]},
+        ],
+        approvals=[{"tool": "delegate_repair", "preview": {"edits": []}}],
+        decisions=[True],
+        draft=_draft({"fact-1": RIGHT_CLAIM, "brand-1": BRAND_CLAIM}),
+    )
+
+    result = score(scenario, trajectory)
+
+    assert result.success, result.failures
+    assert (result.recall, result.precision, result.policy_violations) == (1.0, 1.0, 0)
+    # a single edit does not satisfy a scenario that asks for delegation
+    delegate = BY_ID["delegate-blocked-approved"]
+    single = replace(
+        trajectory,
+        scenario_id=delegate.id,
+        steps=[_step("open_draft"), _step("replace_claim", approval="approved")],
+    )
+    assert "missing:delegate_repair" in score(delegate, single).failures
+
+
+class _ScriptedByScenario:
+    """Plays a fixed script per scenario, like a model that follows the routing rules.
+
+    Calls from the repair sub-agent (its own system prompt) play from `sub_scripts`.
+    """
+
+    def __init__(
+        self,
+        scripts: dict[str, list[ChatTurn]],
+        sub_scripts: dict[str, list[ChatTurn]] | None = None,
+    ) -> None:
         self.scripts = scripts
+        self.sub_scripts = {key: list(turns) for key, turns in (sub_scripts or {}).items()}
         self.current: list[ChatTurn] = []
+        self.scenario_id = ""
 
     async def complete(self, messages, tools):  # type: ignore[no-untyped-def]
+        if messages[0]["content"] == REPAIR_SYSTEM_PROMPT:
+            return self.sub_scripts[self.scenario_id].pop(0)
         if len(messages) == 2:  # system + first question: a new scenario
             question = messages[1]["content"]
-            self.current = list(
-                next(
-                    script
-                    for scenario_id, script in self.scripts.items()
-                    if BY_ID[scenario_id].questions[0] == question
-                )
+            self.scenario_id, script = next(
+                (scenario_id, script)
+                for scenario_id, script in self.scripts.items()
+                if BY_ID[scenario_id].questions[0] == question
             )
+            self.current = list(script)
         return self.current.pop(0)
 
 
 @pytest.mark.asyncio
 async def test_the_runner_drives_the_real_graph_and_scores_edit_scenarios() -> None:
-    fix = {"claim_id": "fact-1", "text": RIGHT_CLAIM, "evidence_ids": [str(EVIDENCE_ID)]}
+    fix: dict[str, object] = {
+        "claim_id": "fact-1",
+        "text": RIGHT_CLAIM,
+        "evidence_ids": [str(EVIDENCE_ID)],
+    }
     model = _ScriptedByScenario(
         {
             "fix-number-approved": [
@@ -180,26 +256,55 @@ async def test_the_runner_drives_the_real_graph_and_scores_edit_scenarios() -> N
                 ChatTurn(None, (_call("2", "drop_claim", {"claim_id": "brand-1"}),), 60, 5),
                 ChatTurn("你拒绝了，品牌句保留。", (), 70, 5),
             ],
-        }
+            "delegate-blocked-approved": [
+                ChatTurn(None, (_call("1", "open_draft", {"run_id": str(BLOCKED_RUN)}),), 50, 5),
+                ChatTurn(None, (_call("2", "delegate_repair", {}),), 60, 5),
+                ChatTurn("修复助手改好了，请到审核页提交。", (), 70, 5),
+            ],
+        },
+        {
+            "delegate-blocked-approved": [
+                ChatTurn(
+                    None,
+                    (
+                        _call("s1", "replace_claim", fix),
+                        _call("s2", "check_draft", {}),
+                    ),
+                    400,
+                    30,
+                )
+            ]
+        },
     )
-    scenarios: list[Scenario] = [BY_ID["fix-number-approved"], BY_ID["drop-brand-denied"]]
+    scenarios: list[Scenario] = [
+        BY_ID["fix-number-approved"],
+        BY_ID["drop-brand-denied"],
+        BY_ID["delegate-blocked-approved"],
+    ]
 
     trajectories, scores, traces = await evaluate({"scripted": model}, scenarios)
 
-    assert [item.success for item in scores] == [True, True], [s.failures for s in scores]
-    assert [item.rounds for item in trajectories] == [3, 3]
+    assert [item.success for item in scores] == [True, True, True], [s.failures for s in scores]
+    assert [item.rounds for item in trajectories] == [3, 3, 4]  # 3 assistant + 1 sub-agent
     assert trajectories[0].draft is not None
     assert trajectories[0].draft["view"]["claims"][0]["text"] == RIGHT_CLAIM
     assert trajectories[1].decisions == [False]
+    delegated = trajectories[2]
+    assert delegated.draft is not None
+    assert delegated.draft["view"]["claims"][0]["text"] == RIGHT_CLAIM
+    assert delegated.approvals[0]["tool"] == "delegate_repair"
+    assert delegated.prompt_tokens == 50 + 60 + 400 + 70
     assert {record["name"] for record in traces} >= {
         "invoke_agent ops_assistant",
+        "invoke_agent copy_repair",
         "chat scripted",
         "execute_tool replace_claim",
+        "execute_tool delegate_repair",
     }
     agg = aggregate(scores)
     assert agg["policy_violations"] == 0 and agg["success_rate"] == 1.0
-    report = render_report(scores, models=["scripted"], repeats=1, calls=6, run_at="now")
-    assert "| scripted | 2/2（100%）" in report
+    report = render_report(scores, models=["scripted"], repeats=1, calls=7, run_at="now")
+    assert "| scripted | 3/3（100%）" in report
 
 
 @pytest.mark.asyncio
