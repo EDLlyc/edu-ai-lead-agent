@@ -63,7 +63,7 @@ aside .empty { color: var(--ink-2); font-size: 13px; }
 <body>
 <div class="app">
   <section class="chat" aria-label="对话">
-    <div class="bar"><h1>推送运维助手</h1><small>只读查询 · 改稿需确认 · 不写线上</small><button id="reset" type="button">新对话</button></div>
+    <div class="bar"><h1>推送运维助手</h1><small>只读查询 · 改稿需确认 · 不写线上</small><small id="thread" title="对话编号：用 --thread 重启后可继续"></small><button id="reset" type="button">新对话</button></div>
     <div class="log" id="log" aria-live="polite">
       <div class="msg bot"><div class="text">可以问我某天各时段推送的情况、哪条文案被拦以及原因、耗时和 token 用量；也可以让我打开一条文案，在沙盒里帮你改，每次修改都会先给你确认。</div></div>
     </div>
@@ -182,12 +182,25 @@ aside .empty { color: var(--ink-2); font-size: 13px; }
   document.getElementById("form").addEventListener("submit", (event) => { event.preventDefault(); ask(input.value); });
   input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); ask(input.value); } });
   document.getElementById("chips").addEventListener("click", (event) => { if (event.target.tagName === "BUTTON") ask(event.target.textContent); });
+  const threadLabel = document.getElementById("thread");
+  const showThread = (id) => { threadLabel.textContent = id ? "对话 " + id.slice(-8) : ""; threadLabel.title = id || ""; };
+
   document.getElementById("reset").addEventListener("click", async () => {
     if (busy) return;
-    await post("/api/reset", {});
+    const state = await post("/api/reset", {});
+    showThread(state.thread_id);
     log.replaceChildren(log.firstElementChild);
     draftBox.replaceChildren(el("p", "empty", "还没有打开草稿。"));
   });
+
+  // After a restart with --thread (and a database checkpointer) the waiting approval is restored.
+  fetch("/api/state").then((response) => response.json()).then((state) => {
+    showThread(state.thread_id);
+    if (state.pending) {
+      log.append(el("div", "msg bot meta", "继续上次的对话：有一个修改在等你确认。"));
+      renderReply({ kind: "approval", approval: state.pending, steps: [] });
+    }
+  }).catch(() => {});
 })();
 </script>
 </body>
