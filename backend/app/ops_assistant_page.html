@@ -138,14 +138,22 @@ aside .empty { color: var(--ink-2); font-size: 13px; }
     }
     if (reply.kind === "approval" && reply.approval) {
       const card = el("div", "approval");
-      const names = { rewrite_hook: "改引导语", replace_claim: "替换一条素材", drop_claim: "删除一条素材" };
+      const names = { rewrite_hook: "改引导语", replace_claim: "替换一条素材", drop_claim: "删除一条素材", delegate_repair: "修复子 Agent 提出的一组修改" };
       card.append(el("b", null, "需要你确认：" + (names[reply.approval.tool] || reply.approval.tool)));
-      const diff = el("div", "diff");
       const preview = reply.approval.preview || {};
-      if (preview.claim_id) diff.append(el("div", "meta", preview.claim_id));
-      diff.append(el("div", "before", preview.before || ""));
-      diff.append(el("div", null, preview.after == null ? "（删除）" : preview.after));
-      card.append(diff);
+      // A delegated change set lists several edits; a single edit is one before/after pair.
+      const edits = Array.isArray(preview.edits) ? preview.edits : [preview];
+      for (const edit of edits) {
+        const diff = el("div", "diff");
+        const label = (edit.tool ? (names[edit.tool] || edit.tool) : "") + (edit.claim_id ? " · " + edit.claim_id : "");
+        if (label) diff.append(el("div", "meta", label));
+        diff.append(el("div", "before", edit.before || ""));
+        diff.append(el("div", null, edit.after == null ? "（删除）" : edit.after));
+        card.append(diff);
+      }
+      if (preview.sub_agent && preview.sub_agent.stopped) {
+        card.append(el("div", "meta", "修复子 Agent：" + preview.sub_agent.rounds + " 轮、" + preview.sub_agent.tool_calls + " 次工具调用（" + preview.sub_agent.stopped + "）"));
+      }
       const actions = el("div", "actions");
       const yes = el("button", "primary", "确认执行"); yes.type = "button";
       const no = el("button", null, "拒绝"); no.type = "button";

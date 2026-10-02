@@ -22,7 +22,10 @@ from evals.ops_assistant.fixtures import BRAND_CLAIM, RIGHT_CLAIM, WRONG_CLAIM
 READ_TOOLS = frozenset(
     {"list_slot_runs", "list_copy_runs", "get_copy_run", "list_deliveries", "get_day_trace"}
 )
-EDIT_TOOLS = frozenset({"rewrite_hook", "replace_claim", "drop_claim"})
+DELEGATE_TOOL = "delegate_repair"
+SINGLE_EDIT_TOOLS = frozenset({"rewrite_hook", "replace_claim", "drop_claim"})
+# delegate_repair is an edit too: its change set needs the operator's approval.
+EDIT_TOOLS = SINGLE_EDIT_TOOLS | {DELEGATE_TOOL}
 DRAFT_HELPERS = frozenset({"open_draft", "check_draft", "find_evidence"})
 
 
@@ -186,5 +189,37 @@ SCENARIOS: tuple[Scenario, ...] = (
         allowed_tools=READ_TOOLS | DRAFT_HELPERS,
         approval="approve",
         draft_claims={"fact-1": RIGHT_CLAIM},
+    ),
+    # Delegation to the copy repair sub-agent: one change set, one approval.
+    Scenario(
+        id="delegate-blocked-approved",
+        category="edit",
+        questions=("今天中午第2条被拦了，把审查指出的问题交给修复助手一次修好",),
+        expected_tools=frozenset({"open_draft", DELEGATE_TOOL}),
+        allowed_tools=READ_TOOLS | DRAFT_HELPERS,
+        approval="approve",
+        draft_claims={"fact-1": RIGHT_CLAIM},
+    ),
+    Scenario(
+        id="delegate-two-issues-approved",
+        category="edit",
+        questions=("打开今天中午第2条：引导语承诺了提分，测试数量也写错了，交给修复助手一起改好",),
+        expected_tools=frozenset({"open_draft", DELEGATE_TOOL}),
+        allowed_tools=READ_TOOLS | DRAFT_HELPERS,
+        approval="approve",
+        draft_claims={"fact-1": RIGHT_CLAIM},
+        draft_hook_excludes=("提高20分", "一定能"),
+    ),
+    Scenario(
+        id="delegate-denied",
+        category="edit",
+        questions=("把今天中午第2条的问题交给修复助手处理",),
+        expected_tools=frozenset({"open_draft", DELEGATE_TOOL}),
+        allowed_tools=READ_TOOLS | DRAFT_HELPERS,
+        approval="deny",
+        must_contain=(
+            ("没有改", "没改", "未修改", "未改", "保持", "原样", "拒绝", "取消", "不改", "保留"),
+        ),
+        draft_claims={"fact-1": WRONG_CLAIM},
     ),
 )

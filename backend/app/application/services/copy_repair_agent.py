@@ -16,6 +16,17 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from app.application.services.agent_tools import AgentToolFailure
+from app.application.services.agent_tracing import (
+    ERROR_TYPE,
+    INPUT_TOKENS,
+    OUTPUT_TOKENS,
+    REQUEST_MODEL,
+    TOOL_CALL_ID,
+    TOOL_NAME,
+    TOOL_TYPE,
+    AgentTracer,
+    NoopTracer,
+)
 from app.application.services.copy_repair_tools import (
     REPAIR_TOOL_RULES,
     CheckDraftResult,
@@ -103,12 +114,23 @@ def _issue_payload(
 
 
 class CopyRepairAgent:
-    def __init__(self, model: RepairChatModel, *, max_rounds: int = 6, max_tool_calls: int = 12):
+    def __init__(
+        self,
+        model: RepairChatModel,
+        *,
+        max_rounds: int = 6,
+        max_tool_calls: int = 12,
+        tracer: AgentTracer | None = None,
+        model_name: str | None = None,
+    ):
         if not 1 <= max_rounds <= 6 or not 1 <= max_tool_calls <= 20:
             raise ValueError("repair agent limits are out of range")
         self._model = model
         self._max_rounds = max_rounds
         self._max_tool_calls = max_tool_calls
+        # Optional step traces (chat and execute_tool spans); the caller owns invoke_agent.
+        self._tracer: AgentTracer = tracer or NoopTracer()
+        self._model_name = model_name
 
     async def repair(
         self, workspace: RepairWorkspace, issues: Sequence[CopyIssue]
@@ -133,8 +155,14 @@ class CopyRepairAgent:
             },
         ]
         outcome = RepairOutcome(draft=workspace.draft, stopped="round_limit")
+        chat_attributes = {REQUEST_MODEL: self._model_name} if self._model_name else {}
         for _ in range(self._max_rounds):
-            turn = await self._model.complete(messages, tools)
+            with self._tracer.span(
+                "chat", f"chat {self._model_name or 'model'}", chat_attributes
+            ) as span:
+                turn = await self._model.complete(messages, tools)
+                span.set_attribute(INPUT_TOKENS, turn.prompt_tokens)
+                span.set_attribute(OUTPUT_TOKENS, turn.completion_tokens)
             outcome.rounds += 1
             outcome.prompt_tokens += turn.prompt_tokens
             outcome.completion_tokens += turn.completion_tokens
@@ -171,21 +199,31 @@ class CopyRepairAgent:
                     outcome.stopped = "call_limit"
                 else:
                     outcome.tool_calls += 1
-                    try:
-                        result = await registry.invoke(call.name, call.arguments_json)
-                        content = result.model_dump_json()
-                        if isinstance(result, CheckDraftResult):
-                            checked_clean = (
-                                result.passed
-                                and bool(workspace.edits)
-                                and workspace.flagged_targets_edited()
-                            )
-                        ok = bool(getattr(result, "ok", True))
-                        code = getattr(result, "error_code", None)
-                    except AgentToolFailure as failure:
-                        # The same structured error an MCP client receives.
-                        content = json.dumps(failure.payload(), ensure_ascii=False)
-                        ok, code = False, failure.code.value
+                    tool_attributes = {
+                        TOOL_NAME: call.name,
+                        TOOL_CALL_ID: call.call_id,
+                        TOOL_TYPE: "function",
+                    }
+                    with self._tracer.span(
+                        "execute_tool", f"execute_tool {call.name}", tool_attributes
+                    ) as span:
+                        try:
+                            result = await registry.invoke(call.name, call.arguments_json)
+                            content = result.model_dump_json()
+                            if isinstance(result, CheckDraftResult):
+                                checked_clean = (
+                                    result.passed
+                                    and bool(workspace.edits)
+                                    and workspace.flagged_targets_edited()
+                                )
+                            ok = bool(getattr(result, "ok", True))
+                            code = getattr(result, "error_code", None)
+                        except AgentToolFailure as failure:
+                            # The same structured error an MCP client receives.
+                            content = json.dumps(failure.payload(), ensure_ascii=False)
+                            ok, code = False, failure.code.value
+                        if code:
+                            span.set_attribute(ERROR_TYPE, str(code))
                     outcome.trace.append({"tool": call.name, "ok": ok, "error_code": code})
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "content": content})
             if outcome.stopped == "call_limit":
