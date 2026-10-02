@@ -39,6 +39,18 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-02 21:23 (quality-report cron image `sha256:9c9d1c01…`)
+
+- The daily quality report had failed since 09-30 21:40: its pinned image (518b16d8) rejected the
+  production `.env` (selector v3). `/usr/local/sbin/edu-ai-quality-report` now runs
+  `…@sha256:9c9d1c0117d2de62f06bcaa13a94f6f232d5e950d1b134b199e5c4a1a4ae6e9d` = 32c89fe6 + the
+  report files and `repair_metrics` from feat/repair-agent-20260930 @ e8805a4 (not on mainline
+  yet). The report gains a 修复 Agent section (agent attempted / fixed, fallbacks by reason,
+  regeneration-only, tokens). 09-30 and 10-01 were backfilled.
+- When the app image's Settings change, rebuild the cron images (report, watchdog, shadow,
+  regression) from it: an old cron image can fail on the new `.env`.
+- Backup `/usr/local/sbin/edu-ai-quality-report.before-e8805a4-20261002T212335`.
+
 ## Live since 2026-10-02 19:55 (delivery-watchdog cron image `sha256:d996df96…`)
 
 - Only the delivery-watchdog cron changed: `/usr/local/sbin/edu-ai-delivery-watchdog` runs

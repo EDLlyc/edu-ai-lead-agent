@@ -223,4 +223,8 @@ Open gaps kept visible in `canonical-report.md`:
   from 92c80df); diagnosis eval v2 8/8 on synthetic failures; 4 real past incidents diagnosed in
   dry-run, consistent with the records; a run of the repinned wrapper wrote the new record format.
   Backup `edu-ai-delivery-watchdog.before-92c80df-20261002T195533`.
+- 10-02 21:23 quality report repaired (owner: "好的，请你处理"): the cron image 518b16d8 had failed
+  since 09-30 on the selector-v3 `.env`; repinned to `…@sha256:9c9d1c0117d2de62f06bcaa13a94f6f232d5e950d1b134b199e5c4a1a4ae6e9d`
+  (32c89fe6 + report files + repair_metrics @ e8805a4); 09-30 and 10-01 backfilled; the report
+  now has a 修复 Agent section. Backup `edu-ai-quality-report.before-e8805a4-20261002T212335`.
 
