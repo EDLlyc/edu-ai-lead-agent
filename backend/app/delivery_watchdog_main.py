@@ -8,6 +8,11 @@ read-only ops role:
 Any miss produces one short alert. The alert goes to a dedicated ops webhook
 (OPS_ALERT_WEBHOOK_KEY, a separate internal group, never the formal delivery group); without a
 key it is only logged. Every check writes one JSON line, and an alert is sent once per slot and day.
+
+On a miss, a read-only diagnosis agent (app/application/services/ops_diagnosis.py) investigates
+with the same ops tools and its structured report (stage, cause, suggested action) is appended to
+the alert. It never acts; a suggested rerun needs an operator. Without copy-model settings, or when
+the agent fails or times out, the plain alert goes out unchanged.
 """
 
 # ruff: noqa: RUF001
@@ -25,11 +30,22 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from app.application.services.ops_tools import CopyRunsResult, DeliveriesResult, SlotRunsResult
+from app.application.services.ops_diagnosis import (
+    DiagnosisAgent,
+    DiagnosisOutcome,
+    format_diagnosis,
+)
+from app.application.services.ops_tools import (
+    CopyRunsResult,
+    DeliveriesResult,
+    OpsReader,
+    SlotRunsResult,
+)
 
 TZ = ZoneInfo("Asia/Shanghai")
 SLOT_LABELS = {"morning": "早间", "noon": "午间", "evening": "晚间"}
 WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send"
+DIAGNOSIS_TIMEOUT_SECONDS = 150
 
 
 @dataclass(slots=True)
@@ -90,7 +106,9 @@ def check_slot(
     return result
 
 
-async def load(business_date: date) -> tuple[SlotRunsResult, CopyRunsResult, DeliveriesResult]:
+async def check_and_diagnose(
+    business_date: date, slot: str, *, diagnose: bool
+) -> tuple[SlotCheck, DiagnosisOutcome | None]:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.infrastructure.db.ops_reader import (
@@ -104,13 +122,72 @@ async def load(business_date: date) -> tuple[SlotRunsResult, CopyRunsResult, Del
     try:
         await verify_read_only_role(engine)
         reader = PostgresOpsReader(async_sessionmaker(engine, expire_on_commit=False))
-        return (
+        check = check_slot(
+            business_date,
+            slot,
             await reader.list_slot_runs(business_date),
             await reader.list_copy_runs(business_date, 30),
             await reader.list_deliveries(business_date),
         )
+        diagnosis = await diagnose_check(check, reader) if diagnose and not check.ok else None
+        return check, diagnosis
     finally:
         await engine.dispose()
+
+
+async def diagnose_check(check: SlotCheck, reader: OpsReader) -> DiagnosisOutcome | None:
+    """Run the read-only diagnosis agent on the copy model; None when it is not configured."""
+
+    import httpx
+    from pydantic import SecretStr
+
+    from app.core.config import get_settings
+    from app.infrastructure.ai.copy_generation import create_zhipu_copy_models
+    from app.infrastructure.ai.copy_repair import ZhipuRepairChatModel
+
+    settings = get_settings()
+    if (
+        settings.ai_provider_mode != "zhipu"
+        or settings.ai_platform_base_url is None
+        or settings.ai_platform_api_key is None
+    ):
+        return None
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        generator, _ = create_zhipu_copy_models(
+            client=client,
+            base_url=settings.ai_platform_base_url,
+            api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
+            model=settings.ai_chat_model,
+            connect_timeout_seconds=settings.ai_connect_timeout_seconds,
+            read_timeout_seconds=settings.ai_read_timeout_seconds,
+            total_timeout_seconds=settings.ai_total_timeout_seconds,
+            concurrency=1,
+            max_attempts=settings.ai_max_attempts,
+            max_input_characters=settings.ai_max_input_characters,
+            max_output_tokens=settings.copy_max_output_tokens,
+            max_validation_corrections=settings.ai_max_validation_corrections,
+        )
+        agent = DiagnosisAgent(
+            ZhipuRepairChatModel(generator._client), reader, model_name=settings.ai_chat_model
+        )
+        try:
+            return await asyncio.wait_for(
+                agent.diagnose(check.business_date, check.slot, check.problems),
+                timeout=DIAGNOSIS_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return DiagnosisOutcome(report=None, stopped="model_error", error_code="timeout")
+        except Exception as error:  # the plain alert must still go out
+            return DiagnosisOutcome(
+                report=None, stopped="model_error", error_code=type(error).__name__
+            )
+
+
+def alert_text(check: SlotCheck, diagnosis: DiagnosisOutcome | None) -> str:
+    text = check.message()
+    if diagnosis is not None and diagnosis.report is not None:
+        text += "\n\n" + format_diagnosis(diagnosis.report)
+    return text
 
 
 async def send_alert(text: str, key: str) -> bool:
@@ -132,16 +209,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--date", type=date.fromisoformat, default=None)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true", help="never send, only log")
+    parser.add_argument(
+        "--no-diagnose", action="store_true", help="skip the diagnosis agent (no model calls)"
+    )
     args = parser.parse_args(argv)
     business_date = args.date or datetime.now(UTC).astimezone(TZ).date()
-    slots, copies, deliveries = asyncio.run(load(business_date))
-    check = check_slot(business_date, args.slot, slots, copies, deliveries)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     marker = args.output_dir / f"alerted-{business_date.isoformat()}-{args.slot}"
+    check, diagnosis = asyncio.run(
+        check_and_diagnose(
+            business_date, args.slot, diagnose=not args.no_diagnose and not marker.exists()
+        )
+    )
+    message = alert_text(check, diagnosis)
     key = os.environ.get("OPS_ALERT_WEBHOOK_KEY", "").strip()
     sent: bool | None = None
     if not check.ok and not marker.exists() and key and not args.dry_run:
-        sent = asyncio.run(send_alert(check.message(), key))
+        sent = asyncio.run(send_alert(message, key))
         if sent:
             marker.write_text(datetime.now(UTC).isoformat(), encoding="utf-8")
     record = {
@@ -152,6 +236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "problems": check.problems,
         "alert_channel": "webhook" if key else "log_only",
         "sent": sent,
+        "diagnosis": diagnosis.record() if diagnosis is not None else None,
     }
     with (args.output_dir / f"watchdog-{business_date.isoformat()}.jsonl").open(
         "a", encoding="utf-8"
@@ -159,7 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(json.dumps(record, ensure_ascii=False), file=sys.stderr)
     if not check.ok:
-        print(check.message())
+        print(message)
     return 0
 
 
