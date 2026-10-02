@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -21,6 +22,7 @@ from app.application.ports.copy_generation import (
     CopyGenerationRepository,
     DraftAuditRequest,
     DraftGenerationRequest,
+    DraftGenerationResult,
     MaterialDraftAuditor,
     MaterialDraftGenerator,
     RecentBrandUsage,
@@ -33,6 +35,13 @@ from app.application.services.copy_generation_graph import (
     copy_generation_graph_input,
     copy_generation_thread_id,
 )
+from app.application.services.copy_repair_agent import (
+    REPAIR_AGENT_VERSION,
+    CopyRepairAgent,
+    RepairChatModel,
+    RepairOutcome,
+)
+from app.application.services.copy_repair_tools import RepairWorkspace
 from app.core.config import Settings
 from app.core.errors import (
     AppError,
@@ -354,12 +363,14 @@ class CopyGenerationExecutor:
         auditor: MaterialDraftAuditor | None,
         settings: Settings,
         checkpointer: Checkpointer = None,
+        repair_model: RepairChatModel | None = None,
     ) -> None:
         self._repository = repository
         self._brand_retriever = brand_retriever
         self._generator = generator
         self._auditor = auditor
         self._settings = settings
+        self._repair_model = repair_model
         self._lease_events: dict[UUID, asyncio.Event] = {}
         self._claimed_jobs: dict[UUID, ClaimedCopyGenerationJob] = {}
         self._graph = build_copy_generation_graph(
@@ -524,6 +535,16 @@ class CopyGenerationExecutor:
                 )
 
         repaired = _draft_by_version(drafts, 2)
+        if repaired is None and self._agent_repair_applies(claimed):
+            repaired = await self._repair_with_agent(
+                claimed=claimed,
+                topic=topic,
+                brand_context=brand_context,
+                current=current,
+                repair_issues=repair_issues,
+                recent_usage=recent_usage,
+                lease_lost=lease_lost,
+            )
         if repaired is None:
             try:
                 repaired = await self._generate_and_persist(
@@ -579,6 +600,200 @@ class CopyGenerationExecutor:
             repair_count=1,
             draft_id=repaired.id,
         )
+
+    def _agent_repair_applies(self, claimed: ClaimedCopyGenerationJob) -> bool:
+        return (
+            self._settings.copy_repair_mode == "agent_first"
+            and self._repair_model is not None
+            and self._auditor is not None
+            # The repair tools edit the headline-hook template only.
+            and claimed.version_bundle.rule_version in HEADLINE_HOOK_COPY_RULE_VERSIONS
+        )
+
+    async def _repair_with_agent(
+        self,
+        *,
+        claimed: ClaimedCopyGenerationJob,
+        topic: LockedTopicContext,
+        brand_context: tuple[ActiveBrandContext, ...],
+        current: StoredDraft,
+        repair_issues: tuple[CopyIssue, ...],
+        recent_usage: RecentBrandUsage | None,
+        lease_lost: asyncio.Event,
+    ) -> StoredDraft | None:
+        """Agent first: keep its draft only if it passes the same rules and auditor as draft 2.
+
+        Returns the persisted, audited and accepted draft 2, or None so the full regeneration runs
+        exactly as before. A draft the agent produced but the gate refused is never stored; the
+        attempt is recorded with its stop reason, rounds, tool calls, tokens and leftover codes.
+        """
+
+        if self._repair_model is None or self._auditor is None:
+            return None
+        rule_version = claimed.version_bundle.rule_version
+        started = time.monotonic()
+        stats: dict[str, object] = {"repair_agent_version": REPAIR_AGENT_VERSION}
+        outcome: RepairOutcome | None = None
+        audit_tokens = (0, 0)
+
+        async def give_up(error_code: str, **extra: object) -> None:
+            self._ensure_lease(lease_lost)
+            agent_tokens = (outcome.prompt_tokens, outcome.completion_tokens) if outcome else (0, 0)
+            metadata = {
+                **stats,
+                **extra,
+                "agent_prompt_tokens": agent_tokens[0],
+                "agent_completion_tokens": agent_tokens[1],
+                "gate_audit_prompt_tokens": audit_tokens[0],
+                "gate_audit_completion_tokens": audit_tokens[1],
+            }
+            if not await self._repository.record_repair_agent_attempt(
+                claimed=claimed,
+                error_code=error_code,
+                prompt_tokens=agent_tokens[0] + audit_tokens[0],
+                completion_tokens=agent_tokens[1] + audit_tokens[1],
+                latency_ms=int((time.monotonic() - started) * 1000),
+                safe_metadata=metadata,
+            ):
+                raise CopyGenerationLeaseLostError()
+            logger.info(
+                "copy_generation_repair_agent_fallback",
+                copy_run_id=str(claimed.run_id),
+                job_id=str(claimed.job_id),
+                error_code=error_code,
+                **{key: value for key, value in metadata.items() if key != "repair_agent_version"},
+            )
+
+        self._ensure_lease(lease_lost)
+        try:
+            workspace = RepairWorkspace(
+                topic=topic,
+                brand_context=brand_context,
+                rule_version=rule_version,
+                draft=current.draft,
+            )
+            outcome = await asyncio.wait_for(
+                CopyRepairAgent(self._repair_model).repair(workspace, repair_issues),
+                timeout=self._settings.copy_repair_agent_timeout_seconds,
+            )
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            await give_up("repair_agent_timeout")
+            return None
+        except Exception as error:
+            await give_up(
+                error.code if isinstance(error, AppError) else "repair_agent_error",
+                exception_type=type(error).__name__,
+            )
+            return None
+        stats.update(
+            stopped=outcome.stopped,
+            rounds=outcome.rounds,
+            tool_calls=outcome.tool_calls,
+            edits=list(outcome.edits),
+            tool_errors=sorted(
+                {str(step["error_code"]) for step in outcome.trace if step.get("error_code")}
+            ),
+        )
+        if outcome.stopped == "gave_up" or not outcome.edits:
+            await give_up("repair_agent_no_fix")
+            return None
+        self._ensure_lease(lease_lost)
+        issues = validate_material_draft(
+            outcome.draft, topic=topic, brand_context=brand_context, rule_version=rule_version
+        )
+        if recent_usage is not None:
+            # Same as a regenerated draft 2: a repeated brand sentence only warns on the repair.
+            issues = (
+                *issues,
+                *repeated_brand_claim_issues(
+                    outcome.draft, recent_usage.claim_texts, severity="warning"
+                ),
+            )
+        rule_errors = sorted({issue.code for issue in issues if issue.severity == "error"})
+        if rule_errors:
+            await give_up("repair_agent_rules_failed", issue_codes=rule_errors)
+            return None
+        try:
+            audit = await self._auditor.audit(
+                DraftAuditRequest(
+                    run_id=claimed.run_id,
+                    # Not stored yet: only an accepted agent draft becomes draft 2.
+                    draft_version_id=uuid4(),
+                    topic=topic,
+                    brand_context=brand_context,
+                    draft=outcome.draft,
+                    version_bundle=claimed.version_bundle,
+                    max_output_tokens=self._settings.copy_audit_max_output_tokens,
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            # A provider failure here must not fail the run: the regeneration still gets its turn.
+            await give_up(
+                "repair_agent_gate_error",
+                exception_type=type(error).__name__,
+                provider_error_code=error.code if isinstance(error, AppError) else None,
+            )
+            return None
+        _ensure_provider_identity(
+            provider=audit.provider, model=audit.model, version_bundle=claimed.version_bundle
+        )
+        audit = replace(
+            audit, verdict=apply_copy_audit_policy(audit.verdict, rule_version=rule_version)
+        )
+        audit_tokens = (audit.prompt_tokens, audit.completion_tokens)
+        if not audit.verdict.accepted:
+            await give_up(
+                "repair_agent_audit_blocked",
+                issue_codes=sorted(
+                    {issue.code for issue in audit.verdict.issues if issue.severity == "error"}
+                ),
+            )
+            return None
+        self._ensure_lease(lease_lost)
+        stored = await self._repository.persist_draft(
+            claimed=claimed,
+            result=DraftGenerationResult(
+                draft=outcome.draft,
+                provider=claimed.version_bundle.provider,
+                model=claimed.version_bundle.model,
+                request_fingerprint=stable_key(
+                    claimed.run_id, current.id, REPAIR_AGENT_VERSION, *outcome.edits
+                ),
+                provider_request_id=None,
+                prompt_tokens=outcome.prompt_tokens,
+                completion_tokens=outcome.completion_tokens,
+                reasoning_tokens=0,
+                latency_ms=int((time.monotonic() - started) * 1000),
+            ),
+            draft_version=2,
+            repair_of_version_id=current.id,
+            validation_issues=issues,
+            evidence_by_id={item.evidence_id: item for item in topic.evidence},
+            brand_context=brand_context,
+            attempt_metadata={**stats, "repair_method": "agent"},
+        )
+        if stored is None:
+            raise CopyGenerationLeaseLostError()
+        persisted = await self._repository.persist_audit(
+            claimed=claimed, draft=stored, result=audit
+        )
+        if persisted is None:
+            raise CopyGenerationLeaseLostError()
+        logger.info(
+            "copy_generation_repair_agent_accepted",
+            copy_run_id=str(claimed.run_id),
+            job_id=str(claimed.job_id),
+            stopped=outcome.stopped,
+            rounds=outcome.rounds,
+            tool_calls=outcome.tool_calls,
+            agent_prompt_tokens=outcome.prompt_tokens,
+            gate_audit_prompt_tokens=audit.prompt_tokens,
+        )
+        return persisted
 
     async def _recent_brand_usage(
         self, claimed: ClaimedCopyGenerationJob

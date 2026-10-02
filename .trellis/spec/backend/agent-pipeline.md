@@ -31,7 +31,7 @@ schedule/enqueue
   -> draft typed claims/copy/image prompt
   -> deterministic validation
   -> LLM brand/risk audit
-  -> bounded regeneration when allowed
+  -> one bounded repair: tool-using repair agent first, full regeneration as fallback
   -> image generation
   -> material package ready for manual use
 ```
@@ -454,6 +454,23 @@ provider adapter.
 The auditor is not a retrieval tool and cannot add evidence from model memory. It cannot override
 a hard veto or deterministic failure. Regeneration receives structured issues and is bounded by a
 configured maximum; exhaustion produces a terminal, reviewable run state.
+
+### Agent-first repair (`COPY_REPAIR_MODE=agent_first`, default since 2026-10-02)
+
+The single product repair (draft 2) may first be attempted by the tool-using repair agent
+(`copy_repair_agent.py`, headline-hook rule versions only). Contract:
+
+- The agent edits an in-memory copy of draft 1 through the repair tool registry, scoped to the
+  flagged claims and hook, bounded by rounds, tool calls and `COPY_REPAIR_AGENT_TIMEOUT_SECONDS`.
+- Its draft passes the same gate as a regenerated draft 2 before anything is stored: deterministic
+  rules (a repeated brand sentence only warns), then the run's auditor with the audit policy.
+- Accepted: stored as draft 2 (`repair_of` = draft 1) with its audit; the generation attempt keeps
+  `repair_method=agent`, stop reason, rounds, tool calls and edits in `safe_metadata`.
+- Anything else (no fix, rules or audit block, agent or gate provider error, timeout): nothing
+  from the agent is stored, one `workflow`/`failed` attempt records the reason and tokens, and the
+  full regeneration runs exactly as in `regenerate` mode. `repair_count` stays 1 either way; this
+  is not a second repair loop.
+- `regenerate` mode, the fake provider, or older rule versions never call the agent.
 
 ## Automatic daily copy boundary
 

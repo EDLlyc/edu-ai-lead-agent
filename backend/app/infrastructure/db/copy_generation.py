@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal, cast
@@ -412,6 +413,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
         validation_issues: tuple[CopyIssue, ...],
         evidence_by_id: dict[UUID, EligibleEvidence],
         brand_context: tuple[ActiveBrandContext, ...],
+        attempt_metadata: Mapping[str, object] | None = None,
     ) -> StoredDraft | None:
         version_bundle = claimed.version_bundle
         async with self._session_factory() as session:
@@ -537,6 +539,7 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                     latency_ms=result.latency_ms,
                     error_code=None,
                     safe_metadata={
+                        **(attempt_metadata or {}),
                         "draft_version": draft_version,
                         "validation_corrections": result.validation_corrections,
                         "brand_chunk_ids": [str(item.chunk_id) for item in brand_context],
@@ -727,6 +730,57 @@ class PostgresCopyGenerationRepository(CopyGenerationRepository):
                 stage=status,
                 draft_version_id=active_draft_version_id,
                 issue_codes=(run.error_code,) if run.error_code else (),
+            )
+            await session.commit()
+            return True
+
+    async def record_repair_agent_attempt(
+        self,
+        *,
+        claimed: ClaimedCopyGenerationJob,
+        error_code: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: int,
+        safe_metadata: Mapping[str, object],
+    ) -> bool:
+        safe_error = _safe_error(error_code) or "repair_agent_failed"
+        fingerprint = stable_key(claimed.run_id, claimed.attempt_number, "repair_agent", safe_error)
+        async with self._session_factory() as session:
+            job = await _locked_fenced_job(session, claimed)
+            if job is None:
+                return False
+            existing = await session.scalar(
+                select(CopyGenerationAttemptModel.id).where(
+                    CopyGenerationAttemptModel.capability == "workflow",
+                    CopyGenerationAttemptModel.request_fingerprint == fingerprint,
+                )
+            )
+            if existing is not None:
+                return True
+            session.add(
+                CopyGenerationAttemptModel(
+                    id=uuid4(),
+                    job_id=job.id,
+                    # The agent's draft was not kept; the regeneration that follows owns draft 2.
+                    draft_version_id=None,
+                    capability="workflow",
+                    status="failed",
+                    provider=claimed.version_bundle.provider,
+                    model=claimed.version_bundle.model,
+                    request_fingerprint=fingerprint,
+                    provider_request_id=None,
+                    prompt_version=claimed.version_bundle.generator_prompt_version,
+                    schema_version=claimed.version_bundle.draft_schema_version,
+                    rule_version=claimed.version_bundle.rule_version,
+                    prompt_tokens=max(0, prompt_tokens),
+                    completion_tokens=max(0, completion_tokens),
+                    reasoning_tokens=0,
+                    latency_ms=max(0, latency_ms),
+                    error_code=safe_error,
+                    safe_metadata={**safe_metadata, "repair_method": "agent"},
+                    completed_at=datetime.now(UTC),
+                )
             )
             await session.commit()
             return True

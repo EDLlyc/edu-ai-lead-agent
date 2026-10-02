@@ -239,6 +239,10 @@ class Settings(BaseSettings):
     copy_brand_context_limit: int = Field(default=6, ge=1, le=20)
     copy_max_output_tokens: int = Field(default=2_048, ge=512, le=8_192)
     copy_audit_max_output_tokens: int = Field(default=1_024, ge=256, le=4_096)
+    # agent_first: a blocked first draft goes to the tool-using repair agent; its draft must pass
+    # the same rules and auditor, otherwise the full regeneration runs exactly as before.
+    copy_repair_mode: Literal["regenerate", "agent_first"] = "agent_first"
+    copy_repair_agent_timeout_seconds: float = Field(default=150.0, ge=10, le=600)
 
     official_account_local_enabled: bool = False
     official_account_editor_handoff_enabled: bool = False

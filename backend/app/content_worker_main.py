@@ -23,6 +23,7 @@ from app.application.services.copy_generation import (
     CopyGenerationExecutor,
     build_copy_version_bundle,
 )
+from app.application.services.copy_repair_agent import RepairChatModel
 from app.application.services.material_package import MaterialPackageExecutor
 from app.application.services.topic_selection import TopicSelectionExecutor
 from app.application.services.visual_retrieval import VisualRetrievalService
@@ -33,6 +34,7 @@ from app.infrastructure.ai.copy_generation import (
     DeterministicFakeMaterialDraftGenerator,
     create_zhipu_copy_models,
 )
+from app.infrastructure.ai.copy_repair import ZhipuRepairChatModel
 from app.infrastructure.ai.factory import (
     create_brand_embedding_model,
     create_brand_ocr_model,
@@ -233,6 +235,7 @@ async def run_content_worker() -> None:
         ):
             generator: MaterialDraftGenerator
             auditor: MaterialDraftAuditor
+            repair_model: RepairChatModel | None = None
             if settings.ai_provider_mode == "fake":
                 generator = DeterministicFakeMaterialDraftGenerator(model=settings.ai_chat_model)
                 auditor = DeterministicFakeMaterialDraftAuditor(model=settings.ai_chat_model)
@@ -243,7 +246,7 @@ async def run_content_worker() -> None:
                     or settings.ai_platform_api_key is None
                 ):
                     raise RuntimeError("validated Zhipu copy settings are unavailable")
-                generator, auditor = create_zhipu_copy_models(
+                zhipu_generator, auditor = create_zhipu_copy_models(
                     client=embedding_client,
                     base_url=settings.ai_platform_base_url,
                     api_key=SecretStr(settings.ai_platform_api_key.get_secret_value()),
@@ -257,6 +260,9 @@ async def run_content_worker() -> None:
                     max_output_tokens=settings.copy_max_output_tokens,
                     max_validation_corrections=settings.ai_max_validation_corrections,
                 )
+                generator = zhipu_generator
+                # The repair agent shares the copy client: endpoint, key, timeouts, concurrency.
+                repair_model = ZhipuRepairChatModel(zhipu_generator._client)
             copy_executor = CopyGenerationExecutor(
                 repository=copy_repository,
                 brand_retriever=BrandRagContextRetriever(
@@ -269,6 +275,7 @@ async def run_content_worker() -> None:
                 auditor=auditor,
                 settings=settings,
                 checkpointer=copy_saver,
+                repair_model=repair_model,
             )
         worker_prefix = f"{socket.gethostname()}:{os.getpid()}:{uuid4()}"
         logger.info(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
@@ -181,6 +182,7 @@ class CopyGenerationRepository(Protocol):
         validation_issues: tuple[CopyIssue, ...],
         evidence_by_id: dict[UUID, EligibleEvidence],
         brand_context: tuple[ActiveBrandContext, ...],
+        attempt_metadata: Mapping[str, object] | None = None,
     ) -> StoredDraft | None: ...
 
     async def persist_audit(
@@ -201,6 +203,19 @@ class CopyGenerationRepository(Protocol):
         error_code: str | None = None,
         provider_validation_issues: tuple[ProviderValidationIssue, ...] | None = None,
     ) -> bool: ...
+
+    async def record_repair_agent_attempt(
+        self,
+        *,
+        claimed: ClaimedCopyGenerationJob,
+        error_code: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: int,
+        safe_metadata: Mapping[str, object],
+    ) -> bool:
+        """Record a repair-agent attempt whose draft was not kept (the regeneration follows)."""
+        ...
 
     async def fail_job(
         self,

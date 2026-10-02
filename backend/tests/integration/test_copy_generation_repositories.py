@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -360,3 +361,90 @@ async def test_daily_copy_reconciliation_serializes_versions_but_preserves_expli
         version_bundle=explicit_bundle,
     )
     assert explicit_run_id != automatic_runs[0].id
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+async def test_repair_agent_attempt_is_recorded_once_and_fenced_by_the_lease(
+    integration_context: IntegrationContext,
+) -> None:
+    suffix = uuid4().hex[:12]
+    profile = f"copy-agent-attempt-{suffix}"
+    business_date = date(2097, 8, 2)
+    cutoff = datetime(2000, 1, 1, tzinfo=UTC)
+    config = TopicScoringConfig(version=f"copy-agent-attempt-scoring-{suffix}", profile=profile)
+    async with integration_context.session_factory() as session:
+        topic_run, _ = await enqueue_topic_selection_run(
+            session,
+            business_date=business_date,
+            timezone="Asia/Shanghai",
+            config=config,
+            governed_event_cutoff=cutoff,
+        )
+        claimed_topic = await claim_topic_selection_job(
+            session,
+            run_id=topic_run.id,
+            worker_id="copy-agent-attempt-selection",
+            lease_seconds=60,
+            max_attempts=3,
+        )
+        assert claimed_topic is not None
+        candidates = await load_topic_candidates(session, topic_run.id)
+        decision = select_daily_topic(candidates, as_of=cutoff, config=config)
+        assert await persist_topic_selection_decision(
+            session, claimed=claimed_topic, config=config, decision=decision
+        )
+        assert await complete_topic_selection_job(session, claimed=claimed_topic)
+    settings = integration_context.settings.model_copy(
+        update={"content_enabled": True, "content_scoring_profile": profile}
+    )
+    repository = PostgresCopyGenerationRepository(integration_context.session_factory)
+    await repository.enqueue_for_daily_topic(
+        business_date=business_date,
+        timezone="Asia/Shanghai",
+        scoring_profile=profile,
+        version_bundle=build_copy_version_bundle(settings),
+    )
+    claimed = await repository.claim(
+        worker_id="copy-agent-attempt-worker",
+        business_date=business_date,
+        lease_seconds=60,
+        max_attempts=1,
+    )
+    assert claimed is not None
+    record = {
+        "error_code": "repair_agent_audit_blocked",
+        "prompt_tokens": 1_300,
+        "completion_tokens": 70,
+        "latency_ms": 2_000,
+        "safe_metadata": {"stopped": "checked", "issue_codes": ["evidence_mismatch"]},
+    }
+
+    assert await repository.record_repair_agent_attempt(claimed=claimed, **record)
+    assert await repository.record_repair_agent_attempt(claimed=claimed, **record)
+    stale = replace(claimed, lease_token=uuid4())
+    assert not await repository.record_repair_agent_attempt(
+        claimed=stale, **{**record, "error_code": "repair_agent_timeout"}
+    )
+
+    async with integration_context.session_factory() as session:
+        attempts = (
+            await session.scalars(
+                select(CopyGenerationAttemptModel).where(
+                    CopyGenerationAttemptModel.job_id == claimed.job_id
+                )
+            )
+        ).all()
+    (attempt,) = attempts
+    assert (attempt.capability, attempt.status, attempt.draft_version_id) == (
+        "workflow",
+        "failed",
+        None,
+    )
+    assert attempt.error_code == "repair_agent_audit_blocked"
+    assert (attempt.prompt_tokens, attempt.completion_tokens) == (1_300, 70)
+    assert attempt.safe_metadata == {
+        "stopped": "checked",
+        "issue_codes": ["evidence_mismatch"],
+        "repair_method": "agent",
+    }
