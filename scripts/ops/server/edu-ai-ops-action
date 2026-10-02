@@ -1,0 +1,20 @@
+#!/bin/sh
+# Approved ops actions (backend/app/ops_actions_main.py): list, approve, reject and verify the
+# action proposals the delivery watchdog's diagnosis agent wrote. Run by an operator over SSH:
+#   sudo edu-ai-ops-action list
+#   sudo edu-ai-ops-action approve <id> --by <name>
+#   sudo edu-ai-ops-action reject <id> --by <name> [--note ...]
+#   sudo edu-ai-ops-action verify
+# One-off container of the pinned image with the application's own database role. Nothing executes
+# unless /opt/edu-ai-lead-agent/scripts/ops-actions.env sets OPS_ACTIONS_ENABLED=true; otherwise an
+# approval is only recorded (propose-only).
+set -eu
+IMAGE="__IMAGE__"
+LOGDIR=/opt/edu-ai-lead-agent/reports/delivery-watchdog
+OPS_ACTIONS_ENABLED=false
+[ -r /opt/edu-ai-lead-agent/scripts/ops-actions.env ] && . /opt/edu-ai-lead-agent/scripts/ops-actions.env
+export OPS_ACTIONS_ENABLED
+cd /opt/edu-ai-lead-agent
+APP_IMAGE="$IMAGE" exec timeout 120 docker compose -p edu-ai-lead-agent --env-file .env --env-file .release.env \
+  run --rm --no-deps -T -e OPS_ACTIONS_ENABLED -v "$LOGDIR:/out" \
+  --entrypoint python content-worker -m app.ops_actions_main --log /out/action-proposals.jsonl "$@"

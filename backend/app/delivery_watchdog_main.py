@@ -24,13 +24,23 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app.application.services.ops_actions import (
+    ActionLog,
+    ActionProposal,
+    ActionTarget,
+    FailedDelivery,
+    proposal_lines,
+    propose_resends,
+    slot_window_end,
+)
 from app.application.services.ops_diagnosis import (
+    DIAGNOSIS_AGENT_VERSION,
     DiagnosisAgent,
     DiagnosisOutcome,
     format_diagnosis,
@@ -46,6 +56,7 @@ TZ = ZoneInfo("Asia/Shanghai")
 SLOT_LABELS = {"morning": "早间", "noon": "午间", "evening": "晚间"}
 WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send"
 DIAGNOSIS_TIMEOUT_SECONDS = 150
+ACTION_LOG_NAME = "action-proposals.jsonl"
 
 
 @dataclass(slots=True)
@@ -108,7 +119,7 @@ def check_slot(
 
 async def check_and_diagnose(
     business_date: date, slot: str, *, diagnose: bool
-) -> tuple[SlotCheck, DiagnosisOutcome | None]:
+) -> tuple[SlotCheck, DiagnosisOutcome | None, DeliveriesResult]:
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.infrastructure.db.ops_reader import (
@@ -122,15 +133,16 @@ async def check_and_diagnose(
     try:
         await verify_read_only_role(engine)
         reader = PostgresOpsReader(async_sessionmaker(engine, expire_on_commit=False))
+        deliveries = await reader.list_deliveries(business_date)
         check = check_slot(
             business_date,
             slot,
             await reader.list_slot_runs(business_date),
             await reader.list_copy_runs(business_date, 30),
-            await reader.list_deliveries(business_date),
+            deliveries,
         )
         diagnosis = await diagnose_check(check, reader) if diagnose and not check.ok else None
-        return check, diagnosis
+        return check, diagnosis, deliveries
     finally:
         await engine.dispose()
 
@@ -183,11 +195,76 @@ async def diagnose_check(check: SlotCheck, reader: OpsReader) -> DiagnosisOutcom
             )
 
 
-def alert_text(check: SlotCheck, diagnosis: DiagnosisOutcome | None) -> str:
+def alert_text(
+    check: SlotCheck,
+    diagnosis: DiagnosisOutcome | None,
+    proposals: Sequence[ActionProposal] = (),
+) -> str:
     text = check.message()
     if diagnosis is not None and diagnosis.report is not None:
         text += "\n\n" + format_diagnosis(diagnosis.report)
+    if proposals:
+        lines = ["【待批准动作】（批准后才会执行）", *proposal_lines(proposals)]
+        lines.append("批准：sudo edu-ai-ops-action approve <编号> --by <姓名>")
+        text += "\n\n" + "\n".join(lines)
     return text
+
+
+def propose_actions(
+    check: SlotCheck,
+    diagnosis: DiagnosisOutcome | None,
+    deliveries: DeliveriesResult,
+    log: ActionLog,
+    *,
+    now: datetime,
+    window_end: Callable[[ActionTarget], datetime] | None = None,
+) -> list[ActionProposal]:
+    """Turn a suggested resend into proposals for the slot's failed deliveries."""
+
+    report = diagnosis.report if diagnosis is not None else None
+    if report is None or report.action != "rerun_delivery":
+        return []
+    if window_end is None:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        target_times = {
+            "morning": time(
+                settings.content_morning_target_hour, settings.content_morning_target_minute
+            ),
+            "noon": time(settings.content_noon_target_hour, settings.content_noon_target_minute),
+            "evening": time(
+                settings.content_evening_target_hour, settings.content_evening_target_minute
+            ),
+        }
+
+        def window_end(target: ActionTarget) -> datetime:
+            return slot_window_end(
+                target,
+                target_times=target_times,
+                late_minutes=settings.content_slot_delivery_late_minutes,
+                timezone=settings.business_timezone,
+            )
+
+    return propose_resends(
+        log,
+        business_date=check.business_date,
+        slot=check.slot,
+        deliveries=(
+            FailedDelivery(
+                content_slot=item.content_slot or "",
+                sequence_ordinal=item.sequence_ordinal or 0,
+                status=item.status,
+                last_error_code=item.last_error_code,
+            )
+            for item in deliveries.deliveries
+            if item.sequence_ordinal
+        ),
+        reason=report.cause,
+        proposed_by=DIAGNOSIS_AGENT_VERSION,
+        now=now,
+        window_end=window_end,
+    )
 
 
 async def send_alert(text: str, key: str) -> bool:
@@ -216,12 +293,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     business_date = args.date or datetime.now(UTC).astimezone(TZ).date()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     marker = args.output_dir / f"alerted-{business_date.isoformat()}-{args.slot}"
-    check, diagnosis = asyncio.run(
+    check, diagnosis, deliveries = asyncio.run(
         check_and_diagnose(
             business_date, args.slot, diagnose=not args.no_diagnose and not marker.exists()
         )
     )
-    message = alert_text(check, diagnosis)
+    proposals = (
+        []
+        if args.dry_run
+        else propose_actions(
+            check,
+            diagnosis,
+            deliveries,
+            ActionLog(args.output_dir / ACTION_LOG_NAME),
+            now=datetime.now(UTC),
+        )
+    )
+    message = alert_text(check, diagnosis, proposals)
     key = os.environ.get("OPS_ALERT_WEBHOOK_KEY", "").strip()
     sent: bool | None = None
     if not check.ok and not marker.exists() and key and not args.dry_run:
@@ -237,6 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "alert_channel": "webhook" if key else "log_only",
         "sent": sent,
         "diagnosis": diagnosis.record() if diagnosis is not None else None,
+        "proposals": [proposal.id for proposal in proposals],
     }
     with (args.output_dir / f"watchdog-{business_date.isoformat()}.jsonl").open(
         "a", encoding="utf-8"

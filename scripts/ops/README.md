@@ -137,3 +137,26 @@ REASSIGN OWNED BY edu_ai_ops_ro TO edu_ai;
 DROP OWNED BY edu_ai_ops_ro;
 DROP ROLE edu_ai_ops_ro;
 ```
+
+## Approved actions (diagnosis → approval → execution)
+
+When the watchdog's diagnosis agent suggests a resend, the watchdog writes one proposal per failed
+delivery of that slot to `reports/delivery-watchdog/action-proposals.jsonl` and lists them in the
+alert. The agent never executes anything. An operator decides on the server:
+
+```
+ssh edu-ai-production
+sudo edu-ai-ops-action list
+sudo edu-ai-ops-action approve <id> --by <name>     # or: reject <id> --by <name>
+sudo edu-ai-ops-action verify                       # 10+ minutes after an execution
+```
+
+- Only `retry_delivery` exists; the app's own retry re-checks the job's state and window.
+- One proposal per target; it expires with the slot's delivery window (target + 60 minutes);
+  at most 3 executions per day.
+- Propose-only by default: nothing executes until `scripts/ops-actions.env` contains
+  `OPS_ACTIONS_ENABLED=true`. Every event (proposed, approved, rejected, executed, failed,
+  expired, verified) is appended to the log with who and when.
+- Approval is on the server command line on purpose: the local ops assistant only has the
+  read-only role, and a web approval would need a new authenticated write endpoint.
+
