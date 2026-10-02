@@ -1,0 +1,38 @@
+{
+  "id": "repair-shadow-ops",
+  "name": "repair-shadow-ops",
+  "title": "修复 Agent 影子模式、只读运维账号、全链路追踪、注入评测",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-10-01",
+  "completedAt": null,
+  "branch": "feat/repair-agent-20260930",
+  "base_branch": "mainline",
+  "worktree_path": null,
+  "commit": "13cf91d",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "scripts/ops/ops_readonly_role.py",
+    "backend/app/infrastructure/db/ops_reader.py",
+    "backend/app/application/services/ops_tools.py",
+    "backend/app/copy_repair_shadow_main.py",
+    "backend/app/ops_mcp_main.py",
+    "backend/app/ops_trace_report_main.py",
+    "backend/app/application/services/ops_assistant.py",
+    "backend/evals/copy_injection/",
+    "backend/evals/operator_edits/extract.py"
+  ],
+  "notes": "Repair-agent rollout waits for shadow data.",
+  "meta": {
+    "backfilled": "2026-10-02"
+  }
+}

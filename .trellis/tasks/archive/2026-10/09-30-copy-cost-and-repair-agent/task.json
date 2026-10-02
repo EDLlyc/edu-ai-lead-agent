@@ -1,0 +1,34 @@
+{
+  "id": "copy-cost-and-repair-agent",
+  "name": "copy-cost-and-repair-agent",
+  "title": "文案降本与会用工具的修复 Agent",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-09-30",
+  "completedAt": "2026-10-02",
+  "branch": "feat/repair-agent-20260930",
+  "base_branch": "mainline",
+  "worktree_path": null,
+  "commit": "42e636e",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/application/services/copy_repair_tools.py",
+    "backend/app/application/services/copy_repair_agent.py",
+    "backend/app/copy_repair_mcp_main.py",
+    "backend/evals/copy_repair/runner.py",
+    "backend/evals/copy_cost/"
+  ],
+  "notes": "",
+  "meta": {
+    "backfilled": "2026-10-02"
+  }
+}

@@ -92,3 +92,14 @@ then the rest of the list (4: prompt-injection eval).
   ungranted. `evals/operator_edits/extract.py` turns edits into before/after examples; on production it
   ran and found 0 edits so far (the release is not live).
 
+## Status (2026-10-02)
+
+Live: role `edu_ai_ops_ro`, shadow job 21:10, day trace, ops MCP servers, ops assistant (local,
+approval-gated). The edit pairs are live since 10-01 23:12 (release 765fe1e), so the extractor
+starts finding data with the first operator edit.
+
+Open (keeps this task in progress):
+- Decide a gradual rollout of the repair agent (agent first, regeneration as fallback) once the
+  nightly shadow has enough valid cases; criteria: agent pass rate not below regeneration on the
+  same runs, no new fact outside cited evidence, cost per repair not higher.
+- Weekly look at `operator_edits` once real edits exist.

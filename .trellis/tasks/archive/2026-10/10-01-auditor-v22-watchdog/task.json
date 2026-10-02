@@ -1,0 +1,33 @@
+{
+  "id": "auditor-v22-watchdog",
+  "name": "auditor-v22-watchdog",
+  "title": "审查 v22、品牌句去重、漏发告警、评测回归",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-10-01",
+  "completedAt": "2026-10-02",
+  "branch": "feat/repair-agent-20260930",
+  "base_branch": "mainline",
+  "worktree_path": null,
+  "commit": "1d4d8b2",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/delivery_watchdog_main.py",
+    "backend/app/domain/copy_generation.py",
+    "backend/evals/copy_audit_compare/",
+    "backend/tests/known-failures.txt"
+  ],
+  "notes": "Alert webhook key pending from the owner.",
+  "meta": {
+    "backfilled": "2026-10-02"
+  }
+}

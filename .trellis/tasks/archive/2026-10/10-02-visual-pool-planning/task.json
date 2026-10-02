@@ -1,0 +1,33 @@
+{
+  "id": "visual-pool-planning",
+  "name": "visual-pool-planning",
+  "title": "选图：按素材余量选人物 + 压缩超大动作图",
+  "description": "",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "LiYuchen",
+  "assignee": "LiYuchen",
+  "createdAt": "2026-10-02",
+  "completedAt": "2026-10-02",
+  "branch": "feat/repair-agent-20260930",
+  "base_branch": "mainline",
+  "worktree_path": null,
+  "commit": "ff398b2",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "backend/app/domain/visual_assets.py",
+    "backend/app/domain/visual_diversity.py",
+    "backend/app/application/services/material_package.py",
+    "backend/evals/visual_replay/plan_sim.py"
+  ],
+  "notes": "",
+  "meta": {
+    "backfilled": "2026-10-02"
+  }
+}
