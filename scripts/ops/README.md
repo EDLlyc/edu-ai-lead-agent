@@ -53,6 +53,17 @@ scripts/ops/run_ops_assistant.sh        # 打开 http://127.0.0.1:4190
 模型密钥放在 `~/.config/edu-ai/model.env`（0600），建议在智谱后台单独建一个本机工具专用的密钥。
 不想在本机放密钥时，可以在服务器一次性容器里用 `python -m app.ops_assistant_main --ask "…"` 跑。
 
+助手是一张 LangGraph 状态图：改稿走到 approval 节点时用 `interrupt()` 暂停，你的确认/拒绝用
+`Command(resume=…)` 继续。每段对话是一个 thread（页面顶部显示编号）：
+
+- 想让“等你确认”的修改在重启后还在：设 `OPS_ASSISTANT_CHECKPOINT_URL` 为本机开发库的
+  `postgresql://…`（可写；指向只读运维库会被拒绝），重启时加 `--thread <编号>`，页面会恢复待确认卡片。
+  不设时检查点只在内存里。草稿正文不进检查点，重启后按“打开的任务 + 已确认的修改”重放出来。
+- `OPS_ASSISTANT_TRACE_FILE=/tmp/ops-assistant-trace.jsonl`：每一步记一行（invoke_agent / chat /
+  execute_tool，OpenTelemetry GenAI 命名，只有名称、编号、token 和耗时，没有消息内容）；
+  装了 opentelemetry 时走它的 tracer。
+- 轨迹评测（合成数据，不连线上）：`cd backend && python -m evals.ops_assistant.runner --help`。
+
 ## 全链路追踪看板
 
 和 `ops` 的 get_day_trace 用同一个读取器，生成一个独立的 HTML 文件：

@@ -1,11 +1,15 @@
 """Run the ops assistant: a local chat page, or a one-shot conversation from the command line.
 
   # local page on http://127.0.0.1:4190 (needs the SSH tunnel and a model key in the environment)
-  python -m app.ops_assistant_main --serve
+  python -m app.ops_assistant_main --serve [--thread ops-assistant:...]
   # non-interactive, e.g. in a one-off server container; edits are denied unless approved
   python -m app.ops_assistant_main --ask "今天中午的推送都发出去了吗？" [--approve-edits]
 
 The database is read only through OPS_DATABASE_URL (the SELECT-only ops role, checked first).
+Conversations are LangGraph threads. With OPS_ASSISTANT_CHECKPOINT_URL (a separate, writable
+local database) a pending approval survives a restart: start again with `--thread <id>` and the
+page shows the waiting approval. OPS_ASSISTANT_TRACE_FILE appends one JSON line per agent step
+(invoke_agent / chat / execute_tool, OpenTelemetry GenAI names; no message bodies).
 The page listens on 127.0.0.1 only, accepts JSON only and checks the Host header, so another
 website open in the browser cannot drive it.
 """
@@ -19,6 +23,7 @@ import asyncio
 import json
 import os
 import sys
+from contextlib import AsyncExitStack
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,12 +31,11 @@ from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from app.application.services.agent_tracing import AgentTracer, default_tracer
 from app.application.services.ops_assistant import (
     OPS_ASSISTANT_VERSION,
     AssistantReply,
-    AssistantSession,
     OpsAssistant,
-    build_assistant_registry,
 )
 
 TZ = ZoneInfo("Asia/Shanghai")
@@ -39,14 +43,20 @@ PAGE = Path(__file__).with_name("ops_assistant_page.html")
 
 
 class AssistantRuntime:
-    """Owns the database engine, the HTTP client and one conversation at a time."""
+    """Owns the database engine, the HTTP client, the checkpointer and one conversation."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, thread_id: str | None = None) -> None:
         self._engine: Any = None
         self._client: Any = None
         self._model: Any = None
+        self._model_name: str | None = None
         self._reader: Any = None
         self._factory: Any = None
+        self._checkpointer: Any = None
+        self.checkpointer_kind = "memory"
+        self._tracer: AgentTracer | None = None
+        self._stack = AsyncExitStack()
+        self._initial_thread = thread_id
         self.assistant: OpsAssistant | None = None
         self.lock = asyncio.Lock()
 
@@ -58,6 +68,10 @@ class AssistantRuntime:
         from app.core.config import get_settings
         from app.infrastructure.ai.copy_generation import create_zhipu_copy_models
         from app.infrastructure.ai.copy_repair import ZhipuRepairChatModel
+        from app.infrastructure.db.ops_assistant_checkpointer import (
+            ops_assistant_checkpoint_url,
+            ops_assistant_checkpointer,
+        )
         from app.infrastructure.db.ops_reader import (
             PostgresOpsReader,
             create_ops_engine,
@@ -88,25 +102,37 @@ class AssistantRuntime:
             max_validation_corrections=settings.ai_max_validation_corrections,
         )
         self._model = ZhipuRepairChatModel(generator._client, max_output_tokens=1_500)
-        self.reset()
+        self._model_name = settings.ai_chat_model
+        checkpoint_url = ops_assistant_checkpoint_url(os.environ)
+        self._checkpointer = await self._stack.enter_async_context(
+            ops_assistant_checkpointer(checkpoint_url)
+        )
+        self.checkpointer_kind = "postgres" if checkpoint_url else "memory"
+        trace_file = os.environ.get("OPS_ASSISTANT_TRACE_FILE", "").strip()
+        self._tracer = default_tracer(Path(trace_file)) if trace_file else None
+        self.reset(self._initial_thread)
         return role
 
-    def reset(self) -> None:
+    def reset(self, thread_id: str | None = None) -> None:
         from app.infrastructure.db.copy_repair_workspace import load_repair_workspace
-
-        session = AssistantSession()
 
         async def load(run_id: UUID) -> Any:
             return await load_repair_workspace(self._factory, run_id)
 
         self.assistant = OpsAssistant(
             self._model,
-            build_assistant_registry(self._reader, session, load),
-            session,
+            self._reader,
+            load,
             today=datetime.now(UTC).astimezone(TZ).date(),
+            checkpointer=self._checkpointer,
+            thread_id=thread_id,
+            tracer=self._tracer,
+            model_name=self._model_name,
+            provider_name="zhipu",
         )
 
     async def stop(self) -> None:
+        await self._stack.aclose()
         if self._client is not None:
             await self._client.aclose()
         if self._engine is not None:
@@ -148,6 +174,18 @@ def create_app(runtime: AssistantRuntime, *, port: int) -> Any:
     async def page() -> str:
         return PAGE.read_text(encoding="utf-8")
 
+    @app.get("/api/state")
+    async def state() -> dict[str, Any]:
+        async with runtime.lock:
+            assert runtime.assistant is not None
+            pending = await runtime.assistant.pending()
+            return {
+                "version": OPS_ASSISTANT_VERSION,
+                "thread_id": runtime.assistant.thread_id,
+                "checkpointer": runtime.checkpointer_kind,
+                "pending": asdict(pending) if pending is not None else None,
+            }
+
     @app.post("/api/message")
     async def message(body: dict[str, Any]) -> dict[str, Any]:
         text = str(body.get("text", "")).strip()
@@ -155,7 +193,7 @@ def create_app(runtime: AssistantRuntime, *, port: int) -> Any:
             raise HTTPException(422, "empty message")
         async with runtime.lock:
             assert runtime.assistant is not None
-            if runtime.assistant.awaiting is not None:
+            if await runtime.assistant.pending() is not None:
                 raise HTTPException(409, "answer the pending approval first")
             return reply_json(await runtime.assistant.send(text))
 
@@ -163,7 +201,7 @@ def create_app(runtime: AssistantRuntime, *, port: int) -> Any:
     async def decision(body: dict[str, Any]) -> dict[str, Any]:
         async with runtime.lock:
             assert runtime.assistant is not None
-            if runtime.assistant.awaiting is None:
+            if await runtime.assistant.pending() is None:
                 raise HTTPException(409, "nothing is waiting for approval")
             return reply_json(await runtime.assistant.decide(bool(body.get("approve"))))
 
@@ -171,7 +209,9 @@ def create_app(runtime: AssistantRuntime, *, port: int) -> Any:
     async def reset(_: dict[str, Any]) -> dict[str, str]:
         async with runtime.lock:
             runtime.reset()
-        return {"status": "reset", "version": OPS_ASSISTANT_VERSION}
+            assert runtime.assistant is not None
+            thread_id = runtime.assistant.thread_id
+        return {"status": "reset", "version": OPS_ASSISTANT_VERSION, "thread_id": thread_id}
 
     return app
 
@@ -180,7 +220,11 @@ async def ask(questions: list[str], *, approve_edits: bool) -> int:
     runtime = AssistantRuntime()
     try:
         role = await runtime.start()
-        print(f"# ops assistant ({OPS_ASSISTANT_VERSION}), database role {role}\n")
+        assert runtime.assistant is not None
+        print(
+            f"# ops assistant ({OPS_ASSISTANT_VERSION}), database role {role}, "
+            f"thread {runtime.assistant.thread_id}\n"
+        )
         assert runtime.assistant is not None
         for question in questions:
             print(f"## 运营：{question}\n")
@@ -217,12 +261,14 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--ask", action="append", help="question; repeat for a conversation")
     parser.add_argument("--approve-edits", action="store_true", help="--ask mode: approve edits")
     parser.add_argument("--port", type=int, default=4190)
+    parser.add_argument("--thread", default=None, help="--serve: resume this conversation thread")
     args = parser.parse_args(argv)
     if args.ask:
         return asyncio.run(ask(args.ask, approve_edits=args.approve_edits))
     import uvicorn
 
-    uvicorn.run(create_app(AssistantRuntime(), port=args.port), host="127.0.0.1", port=args.port)
+    runtime = AssistantRuntime(thread_id=args.thread)
+    uvicorn.run(create_app(runtime, port=args.port), host="127.0.0.1", port=args.port)
     return 0
 
 
