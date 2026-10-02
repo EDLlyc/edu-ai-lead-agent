@@ -1,0 +1,10 @@
+# Watchdog + ops-action overlay on the report image 9c9d1c01 (= 32c89fe6 + report files + repair_metrics @ e8805a4).
+# path | base (mainline 8915673 = 32c89fe6) | new
+app/application/services/agent_tracing.py | absent | 557a8392d9c8d327b439224aa42cc6ef5790e6ad520eddc80bb564eed01ec845
+app/application/services/ops_diagnosis.py | absent | ede7b47c0a57cfcb17d11f090d3ac40b430011ba42617bf9dee248c70ceb7001
+app/delivery_watchdog_main.py | cb087b83a0cc2cfa2d425f5d49bad0a0510a4cd49f7eaef722be7c89cc1ef3ea | 71c049b95d73823a172d42c3108b569f8076a45c5afb02246b6b8cad11e54bc8
+app/application/services/ops_actions.py | absent | 5e2702d7f4e89499bc3f73ef46dad0788043f666cc7bea1d582a901eec1b84bf
+app/infrastructure/db/ops_actions.py | absent | dcbcbf5afae1fd20949ab31255a32d6a5e86635051b2fc231742dfc83e86e1ab
+app/ops_actions_main.py | absent | 5ad73d03b1754a6832f5302ffd1bad695a350ef72cc4320f31b7131d5185a85a
+app/application/services/ops_tools.py | ea5782e550e6d6a46ea25ea836a9bc1d6e52383e259465ffbb84cf7d6d1092b0 | ae66f3e178db0f1bdf49bbf8a0eb18f67bae9d72450a58f4606399220d763270
+app/infrastructure/db/ops_reader.py | f85542cea968d3e8c1a588ebfda3a009586201c3debe23e8ea847c34a8a44215 | af23a17bf97700856431276b2571607e08de7b29db16283ffbe704b713043799
