@@ -34,10 +34,12 @@ from app.application.services.ops_tools import (
     DeliveryItem,
     DraftItem,
     PostTrace,
+    RepairStatsResult,
     SlotRunItem,
     SlotRunsResult,
     StageSpan,
     UsageRow,
+    repair_stats_result,
 )
 from app.core.errors import NotFoundError
 from app.infrastructure.db.models import (
@@ -59,6 +61,7 @@ from app.infrastructure.db.models import (
     WeComDeliveryJobModel,
     WeComDeliveryWindowModel,
 )
+from app.infrastructure.db.repair_metrics import load_repair_stats
 from app.schemas.copy_generation import extract_headline_hook
 
 # Tables the ops role may read: the four ops tools plus the copy repair workspace loader.
@@ -160,6 +163,13 @@ class PostgresOpsReader:
                 yield session
             finally:
                 await session.rollback()
+
+    async def get_repair_stats(self, start: date, end: date) -> RepairStatsResult:
+        async with self._read() as session:
+            stats = await load_repair_stats(
+                session, start=start, end=end, timezone=str(_BUSINESS_TZ)
+            )
+        return repair_stats_result(stats)
 
     async def list_slot_runs(self, business_date: date) -> SlotRunsResult:
         async with self._read() as session:

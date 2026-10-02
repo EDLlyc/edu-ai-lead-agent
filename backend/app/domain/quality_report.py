@@ -13,6 +13,7 @@ from app.domain.content_slots import (
     _cosine,
     _share_title_phrase,
 )
+from app.domain.repair_metrics import RepairStats
 
 # Which clause of the same-topic rule matched, strongest first. Headline-only matches are the
 # weakest evidence (evals/same_topic_golden), so they are shown but never raised.
@@ -152,4 +153,5 @@ class QualitySnapshot:
     supplement_status: Counter[str] = field(default_factory=Counter)
     official_account_draft_status: Counter[str] = field(default_factory=Counter)
     copy_model_usage: ModelUsage = field(default_factory=ModelUsage)
+    repair_stats: RepairStats | None = None
     governance_model_usage: ModelUsage = field(default_factory=ModelUsage)

@@ -12,6 +12,7 @@ from app.application.services.ops_tools import (
     CopyRunsResult,
     DayTraceResult,
     DeliveriesResult,
+    RepairStatsResult,
     SlotRunsResult,
 )
 from app.core.errors import NotFoundError
@@ -51,6 +52,26 @@ class Reader:
         self.trace_dates.append(business_date)
         return DayTraceResult(business_date=business_date, posts=(), usage=())
 
+    async def get_repair_stats(self, start: date, end: date) -> RepairStatsResult:
+        return RepairStatsResult(
+            start_date=start,
+            end_date=end,
+            repaired_runs=0,
+            agent_attempted=0,
+            agent_accepted=0,
+            agent_accept_rate=None,
+            fallbacks={},
+            fallback_then_accepted=0,
+            regeneration_only=0,
+            regeneration_only_accepted=0,
+            final_accepted=0,
+            final_review_required=0,
+            avg_rounds=None,
+            avg_tool_calls=None,
+            avg_agent_prompt_tokens=None,
+            stop_reasons={},
+        )
+
 
 async def test_day_trace_resource_template_and_server_info() -> None:
     reader = Reader()
@@ -73,6 +94,7 @@ async def test_day_trace_resource_template_and_server_info() -> None:
     assert {tool["name"] for tool in info_json["tools"]} == {
         "get_copy_run",
         "get_day_trace",
+        "get_repair_stats",
         "list_copy_runs",
         "list_deliveries",
         "list_slot_runs",
@@ -140,7 +162,7 @@ async def test_http_requires_the_bearer_token() -> None:
     assert "resource_metadata" not in missing.headers["www-authenticate"]
     assert metadata.status_code == 404
     assert TOKEN not in missing.text and TOKEN not in wrong.text
-    assert len(tools.tools) == 5
+    assert len(tools.tools) == 6
     assert runs.structured_content == {"runs": []}
 
 

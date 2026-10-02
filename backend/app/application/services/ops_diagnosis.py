@@ -43,6 +43,10 @@ from app.core.errors import AppError
 DIAGNOSIS_AGENT_VERSION = "ops-diagnosis-v2-slot-scope"
 AGENT_NAME = "ops-diagnosis"
 REPORT_TOOL = "report_diagnosis"
+# The investigation tools; usage statistics (get_repair_stats) do not explain a missed slot.
+DIAGNOSIS_TOOLS = frozenset(
+    {"list_slot_runs", "list_copy_runs", "get_copy_run", "list_deliveries", "get_day_trace"}
+)
 
 Stage = Literal["selection", "copy", "image", "delivery", "unknown"]
 Action = Literal["wait", "rerun_copy", "rerun_delivery", "manual_review", "none"]
@@ -214,7 +218,11 @@ class DiagnosisAgent:
 
         registry = TypedToolRegistry(
             (
-                *build_ops_tool_registry(self._reader),
+                *(
+                    definition
+                    for definition in build_ops_tool_registry(self._reader)
+                    if definition.name in DIAGNOSIS_TOOLS
+                ),
                 ToolDefinition(
                     name=REPORT_TOOL,
                     description="提交诊断结论并结束排查。只在查清楚之后调用一次。",

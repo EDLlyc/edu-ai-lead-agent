@@ -14,9 +14,10 @@ from datetime import date, datetime
 from typing import Protocol, cast
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.application.services.agent_tools import ToolDefinition, TypedToolRegistry
+from app.domain.repair_metrics import RepairStats
 
 OPS_TOOLSET_VERSION = "ops-tools-v1"
 OPS_TOOL_RULES = (
@@ -174,7 +175,61 @@ class DayTraceResult(_Model):
     usage: tuple[UsageRow, ...] = Field(max_length=24, description="当天按环节和模型汇总的调用")
 
 
+class RepairStatsArguments(_Model):
+    start_date: date = Field(description="起始业务日期（含），格式 YYYY-MM-DD")
+    end_date: date = Field(description="结束业务日期（含），最多 31 天")
+
+    @model_validator(mode="after")
+    def _window(self) -> RepairStatsArguments:
+        if self.end_date < self.start_date or (self.end_date - self.start_date).days > 30:
+            raise ValueError("the window must be 1 to 31 days")
+        return self
+
+
+class RepairStatsResult(_Model):
+    start_date: date
+    end_date: date
+    repaired_runs: int = Field(description="用掉修复机会的文案条数")
+    agent_attempted: int = Field(description="先交给修复 Agent 的条数")
+    agent_accepted: int = Field(description="Agent 修好并通过同一套规则和审查的条数")
+    agent_accept_rate: float | None = Field(description="Agent 修好的比例")
+    fallbacks: dict[str, int] = Field(description="退回整篇重写的原因和条数")
+    fallback_then_accepted: int = Field(description="退回重写后通过的条数")
+    regeneration_only: int = Field(description="没走 Agent、直接整篇重写的条数")
+    regeneration_only_accepted: int
+    final_accepted: int
+    final_review_required: int
+    avg_rounds: float | None
+    avg_tool_calls: float | None
+    avg_agent_prompt_tokens: float | None
+    stop_reasons: dict[str, int] = Field(description="Agent 停下的原因")
+
+
+def repair_stats_result(stats: RepairStats) -> RepairStatsResult:
+    averages = stats.averages()
+    return RepairStatsResult(
+        start_date=stats.start,
+        end_date=stats.end,
+        repaired_runs=stats.repaired_runs,
+        agent_attempted=stats.agent_attempted,
+        agent_accepted=stats.agent_accepted,
+        agent_accept_rate=stats.agent_accept_rate,
+        fallbacks=dict(stats.fallbacks),
+        fallback_then_accepted=stats.fallback_then_accepted,
+        regeneration_only=stats.regeneration_only,
+        regeneration_only_accepted=stats.regeneration_only_accepted,
+        final_accepted=stats.final_accepted,
+        final_review_required=stats.final_review_required,
+        avg_rounds=averages.get("rounds"),
+        avg_tool_calls=averages.get("tool_calls"),
+        avg_agent_prompt_tokens=averages.get("prompt_tokens"),
+        stop_reasons=dict(stats.stop_reasons),
+    )
+
+
 class OpsReader(Protocol):
+    async def get_repair_stats(self, start: date, end: date) -> RepairStatsResult: ...
+
     async def get_day_trace(self, business_date: date) -> DayTraceResult: ...
 
     async def list_slot_runs(self, business_date: date) -> SlotRunsResult: ...
@@ -203,6 +258,10 @@ def build_ops_tool_registry(reader: OpsReader) -> TypedToolRegistry:
     async def get_day_trace(raw: BaseModel) -> BaseModel:
         return await reader.get_day_trace(cast(DateArguments, raw).business_date)
 
+    async def get_repair_stats(raw: BaseModel) -> BaseModel:
+        arguments = cast(RepairStatsArguments, raw)
+        return await reader.get_repair_stats(arguments.start_date, arguments.end_date)
+
     return TypedToolRegistry(
         (
             ToolDefinition(
@@ -224,6 +283,16 @@ def build_ops_tool_registry(reader: OpsReader) -> TypedToolRegistry:
                 argument_model=DateArguments,
                 result_model=DayTraceResult,
                 handler=get_day_trace,
+            ),
+            ToolDefinition(
+                name="get_repair_stats",
+                description=(
+                    "修复 Agent 的线上效果：一段日期内用掉修复机会的文案里，Agent 先修了几条、"
+                    "修好几条、退回整篇重写几条及原因、最终通过几条，平均轮数、工具调用和 token。"
+                ),
+                argument_model=RepairStatsArguments,
+                result_model=RepairStatsResult,
+                handler=get_repair_stats,
             ),
             ToolDefinition(
                 name="list_copy_runs",

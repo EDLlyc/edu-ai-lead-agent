@@ -19,6 +19,7 @@ from app.domain.quality_report import (
     QualitySnapshot,
     SelectedTopicRow,
 )
+from app.domain.repair_metrics import render_lines as render_repair_lines
 from app.domain.topic_safety_signals import (
     evaluate_government_yaowen_topic,
     evaluate_negative_incident,
@@ -385,6 +386,9 @@ def render_markdown(snapshot: QualitySnapshot, findings: list[Finding]) -> str:
             if snapshot.brand_usage
             else "无"
         ),
+        "",
+        f"**修复 Agent（近 {snapshot.lookback_days} 天）**",
+        *(render_repair_lines(snapshot.repair_stats) if snapshot.repair_stats else ["- 无数据"]),
         "",
         "**配图与推送**",
         f"- 配图：{dict(snapshot.image_status) or '无'}，修复 {snapshot.image_repairs} 次",

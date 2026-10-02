@@ -18,6 +18,7 @@ from app.infrastructure.db.copy_generation import (
     get_copy_generation_projection,
 )
 from app.infrastructure.db.models import CopyGenerationAttemptModel, CopyGenerationRunModel
+from app.infrastructure.db.repair_metrics import load_repair_stats
 from app.infrastructure.db.topic_selection import (
     claim_topic_selection_job,
     complete_topic_selection_job,
@@ -448,3 +449,12 @@ async def test_repair_agent_attempt_is_recorded_once_and_fenced_by_the_lease(
         "issue_codes": ["evidence_mismatch"],
         "repair_method": "agent",
     }
+
+    # The online statistics read the same rows through plain SELECTs.
+    async with integration_context.session_factory() as session:
+        stats = await load_repair_stats(
+            session, start=business_date, end=business_date, timezone="Asia/Shanghai"
+        )
+    assert (stats.repaired_runs, stats.agent_attempted, stats.agent_accepted) == (1, 1, 0)
+    assert dict(stats.fallbacks) == {"repair_agent_audit_blocked": 1}
+    assert dict(stats.stop_reasons) == {"checked": 1}

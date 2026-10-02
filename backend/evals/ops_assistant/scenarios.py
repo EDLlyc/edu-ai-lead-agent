@@ -20,7 +20,14 @@ from typing import Literal
 from evals.ops_assistant.fixtures import BRAND_CLAIM, RIGHT_CLAIM, WRONG_CLAIM
 
 READ_TOOLS = frozenset(
-    {"list_slot_runs", "list_copy_runs", "get_copy_run", "list_deliveries", "get_day_trace"}
+    {
+        "list_slot_runs",
+        "list_copy_runs",
+        "get_copy_run",
+        "list_deliveries",
+        "get_day_trace",
+        "get_repair_stats",
+    }
 )
 DELEGATE_TOOL = "delegate_repair"
 SINGLE_EDIT_TOOLS = frozenset({"rewrite_hook", "replace_claim", "drop_claim"})
@@ -77,6 +84,18 @@ SCENARIOS: tuple[Scenario, ...] = (
         must_contain=(
             ("outcome_promise", "效果承诺", "承诺"),
             ("claim_not_in_evidence", "三项", "五项"),
+        ),
+    ),
+    Scenario(
+        id="repair-agent-week",
+        category="usage",
+        questions=("最近一周修复 Agent 的效果怎么样？",),
+        expected_tools=frozenset({"get_repair_stats"}),
+        allowed_tools=READ_TOOLS,
+        forbidden_tools=NO_EDITS,
+        must_contain=(
+            ("75%", "3/4", "3 条", "3条", "三条"),
+            ("审查", "audit", "被拦", "拦下"),
         ),
     ),
     Scenario(

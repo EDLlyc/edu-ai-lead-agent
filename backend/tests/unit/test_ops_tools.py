@@ -12,6 +12,7 @@ from app.application.services.ops_tools import (
     CopyRunsResult,
     DayTraceResult,
     DeliveriesResult,
+    RepairStatsResult,
     SlotRunsResult,
     build_ops_tool_registry,
 )
@@ -60,6 +61,26 @@ class _FakeReader:
     async def get_day_trace(self, business_date: date) -> DayTraceResult:
         return DayTraceResult(business_date=business_date, posts=(), usage=())
 
+    async def get_repair_stats(self, start: date, end: date) -> RepairStatsResult:
+        return RepairStatsResult(
+            start_date=start,
+            end_date=end,
+            repaired_runs=0,
+            agent_attempted=0,
+            agent_accepted=0,
+            agent_accept_rate=None,
+            fallbacks={},
+            fallback_then_accepted=0,
+            regeneration_only=0,
+            regeneration_only_accepted=0,
+            final_accepted=0,
+            final_review_required=0,
+            avg_rounds=None,
+            avg_tool_calls=None,
+            avg_agent_prompt_tokens=None,
+            stop_reasons={},
+        )
+
 
 def test_ops_registry_is_read_only_and_describes_every_field() -> None:
     registry = build_ops_tool_registry(_FakeReader())
@@ -69,6 +90,7 @@ def test_ops_registry_is_read_only_and_describes_every_field() -> None:
     assert [tool["name"] for tool in tools] == [
         "get_copy_run",
         "get_day_trace",
+        "get_repair_stats",
         "list_copy_runs",
         "list_deliveries",
         "list_slot_runs",

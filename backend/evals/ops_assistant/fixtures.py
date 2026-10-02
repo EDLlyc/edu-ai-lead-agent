@@ -25,6 +25,7 @@ from app.application.services.ops_tools import (
     DeliveryItem,
     DraftItem,
     PostTrace,
+    RepairStatsResult,
     SlotRunItem,
     SlotRunsResult,
     StageSpan,
@@ -237,6 +238,28 @@ class FixtureOpsReader:
                     )
                 )
         return DeliveriesResult(deliveries=tuple(items))
+
+    async def get_repair_stats(self, start: date, end: date) -> RepairStatsResult:
+        self.calls.append("get_repair_stats")
+        # A synthetic week: four drafts went to the repair agent first, three were fixed.
+        return RepairStatsResult(
+            start_date=start,
+            end_date=end,
+            repaired_runs=5,
+            agent_attempted=4,
+            agent_accepted=3,
+            agent_accept_rate=0.75,
+            fallbacks={"repair_agent_audit_blocked": 1},
+            fallback_then_accepted=0,
+            regeneration_only=1,
+            regeneration_only_accepted=1,
+            final_accepted=4,
+            final_review_required=1,
+            avg_rounds=2.5,
+            avg_tool_calls=3.0,
+            avg_agent_prompt_tokens=6_100.0,
+            stop_reasons={"checked": 3, "finished": 1},
+        )
 
     async def get_day_trace(self, business_date: date) -> DayTraceResult:
         self.calls.append("get_day_trace")

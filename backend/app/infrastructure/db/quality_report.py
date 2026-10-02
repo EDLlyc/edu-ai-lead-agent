@@ -25,6 +25,7 @@ from app.domain.quality_report import (
     topic_match_kind,
 )
 from app.infrastructure.db.content_slots import _fingerprints_for_versions
+from app.infrastructure.db.repair_metrics import load_repair_stats
 
 
 def business_day_bounds(business_date: date, timezone: str) -> tuple[datetime, datetime]:
@@ -517,5 +518,11 @@ async def load_quality_snapshot(
         )
     )
     snapshot.copy_model_usage = await _model_usage(session, "copy_generation_attempts", start, end)
+    snapshot.repair_stats = await load_repair_stats(
+        session,
+        start=business_date - timedelta(days=lookback_days - 1),
+        end=business_date,
+        timezone=timezone,
+    )
     snapshot.governance_model_usage = await _model_usage(session, "model_invocations", start, end)
     return snapshot
