@@ -39,6 +39,21 @@
   `*.before-visual-v3-20260930T152039`. Without labels it falls back to v2-novelty with a warning.
   `VISUAL_SEMANTIC_ENABLED` stays false.
 
+## Live since 2026-10-03 14:24 (image `sha256:1f238fc2…`, release 6a4d660); mainline = feat/repair-agent-20260930
+
+- Incident 10-03 noon #1: the repair agent dropped the only brand statement of a draft blocked
+  for `brand_claim_repeated`; the draft was delivered, but the long-image producer requires a
+  brand binding and silently skipped the post. Fix: `drop_claim` refuses the last brand
+  statement (`brand_claim_required`), rule 2 says swap instead, and the executor gate falls back
+  to regeneration with `brand_claim_missing`. Agent version `copy-repair-agent-v4-keep-brand`.
+- The six app services run `…@sha256:1f238fc2c1e2f86f7b7769057b3e0679d351ac458c3fdd40a5e58a1fda7052ec`
+  = 32c89fe6 + `agent_tracing.py`, `copy_repair_agent.py`, `copy_repair_tools.py`,
+  `copy_generation.py` from 6a4d660. Backups `*.before-6a4d660-20261003T142446`.
+- From this point mainline is fast-forwarded to the branch: every deployed image is built from
+  it. Images in use: app services 1f238fc2; delivery watchdog + `edu-ai-ops-action` 8f14b771;
+  quality report 9c9d1c01; repair shadow and eval regression 7bffe4ed. Local-only tools on the
+  branch (ops assistant on LangGraph, MCP over HTTP, evals) run in no service.
+
 ## Live since 2026-10-02 21:54 (approved actions, propose-only; image `sha256:8f14b771…`)
 
 - `/usr/local/sbin/edu-ai-delivery-watchdog` and the new `/usr/local/sbin/edu-ai-ops-action`

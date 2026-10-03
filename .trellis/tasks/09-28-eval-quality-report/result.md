@@ -232,4 +232,9 @@ Open gaps kept visible in `canonical-report.md`:
   (9c9d1c01 + 8 files @ 944f37a); gate PASS @ 944f37a; bases 8/8; smoke ok; `list` shows the switch
   off; a watchdog run wrote the new record with `proposals: []`. Backup
   `edu-ai-delivery-watchdog.before-944f37a-20261002T215401`.
+- 10-03 14:24 repair agent keeps a brand statement, release 6a4d660 (owner: "好的，请你处理"): image
+  `…@sha256:1f238fc2c1e2f86f7b7769057b3e0679d351ac458c3fdd40a5e58a1fda7052ec` = 32c89fe6 + 4 files;
+  bases 4/4; gate PASS @ 6a4d660; smoke ok; no job running; six services healthy, 0 restarts,
+  0 errors; live `copy-repair-agent-v4-keep-brand` / agent_first. Fixes the 10-03 noon #1 post
+  delivered without a long image. Backups `*.before-6a4d660-20261003T142446`.
 
