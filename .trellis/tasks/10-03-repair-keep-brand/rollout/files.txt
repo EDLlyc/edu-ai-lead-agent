@@ -1,0 +1,6 @@
+# Overlay on the running app image 32c89fe6 (= de22d32). base = sha256 in the running image, new = after the overlay.
+# path | base | new
+app/application/services/agent_tracing.py | absent | 557a8392d9c8d327b439224aa42cc6ef5790e6ad520eddc80bb564eed01ec845
+app/application/services/copy_repair_agent.py | 9ce4c7726aa7550ef52ae2a92533a96078c96b45207dfb7d57f6a3136846053e | b9c5162b430ea86b75786892255c14a1c8227445900baeb73d8629edbf1ea8ea
+app/application/services/copy_repair_tools.py | 95609006bc54772d8a77b3e5de8c9c2b20bd885b2cb0ea632b5b66fc7f77a824 | 319db8c2fa90cfa5ad3c496aa6ee4263d5c628152ba47e84b4e977a320edce49
+app/application/services/copy_generation.py | ce31752fbf1704756e56a957279243a4ba995c371d892170fdb325d1f184f052 | 1e2c231daf732a69dba0097215052cc69e0d84e618c074bfe8fd09bb667cb930
