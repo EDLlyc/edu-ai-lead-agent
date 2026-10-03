@@ -28,3 +28,8 @@ repair agent). Deploy before the evening slot prepares (17:00), owner confirmati
   delivered post that has no long-image job (owned with the long-image session).
 - The repair eval never checked downstream requirements (long image); add a "brand statement
   kept" check to evals/copy_repair.
+
+## Rollout
+
+LIVE 2026-10-03 14:24 (owner "好的，请你处理"): image 1f238fc2; six services healthy, 0 restarts, 0 errors;
+backups `*.before-6a4d660-20261003T142446`. Verify after the evening slot.
