@@ -712,6 +712,10 @@ class CopyGenerationExecutor:
                 ),
             )
         rule_errors = sorted({issue.code for issue in issues if issue.severity == "error"})
+        had_brand = any(claim.kind == "brand_statement" for claim in current.draft.claims)
+        if had_brand and not any(claim.kind == "brand_statement" for claim in outcome.draft.claims):
+            # A regenerated draft always keeps a brand statement; the long image requires one.
+            rule_errors.append("brand_claim_missing")
         if rule_errors:
             await give_up("repair_agent_rules_failed", issue_codes=rule_errors)
             return None

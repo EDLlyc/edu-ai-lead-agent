@@ -269,3 +269,34 @@ async def test_regenerate_mode_never_calls_the_agent() -> None:
     assert generator.calls == 2
     assert repository.status == "accepted"
     assert repository.agent_attempts == []
+
+
+@pytest.mark.asyncio
+async def test_an_agent_draft_without_a_brand_statement_falls_back_to_regeneration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.application.services import copy_generation as module
+    from app.application.services.copy_repair_agent import RepairOutcome
+
+    class DropsBrand:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def repair(self, workspace: object, issues: object) -> RepairOutcome:
+            draft = _draft(RIGHT)
+            draft = draft.model_copy(
+                update={"claims": tuple(c for c in draft.claims if c.kind != "brand_statement")}
+            )
+            return RepairOutcome(draft=draft, stopped="checked", edits=("drop_claim:brand-1",))
+
+    monkeypatch.setattr(module, "CopyRepairAgent", DropsBrand)
+    repository, generator, auditor = Repository(), Generator(WRONG, RIGHT), Auditor()
+
+    assert await _executor(repository, generator, auditor, Agent()).execute_next("w") is True
+
+    assert generator.calls == 2  # the regeneration ran
+    (attempt,) = repository.agent_attempts
+    assert attempt["error_code"] == "repair_agent_rules_failed"
+    metadata = attempt["safe_metadata"]
+    assert isinstance(metadata, dict) and "brand_claim_missing" in metadata["issue_codes"]
+    assert any(c.kind == "brand_statement" for c in repository.drafts[1].draft.claims)

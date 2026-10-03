@@ -176,9 +176,45 @@ async def test_drop_claim_keeps_at_least_one_claim_and_check_draft_reports() -> 
     checked = await registry.invoke("check_draft", {})
 
     assert isinstance(dropped, EditResult) and dropped.ok
-    assert isinstance(last, EditResult) and last.error_code == "last_claim"
+    assert isinstance(last, EditResult) and last.error_code in {
+        "last_claim",
+        "brand_claim_required",
+    }
     assert [claim.id for claim in workspace.draft.claims] == ["brand-1"]
     assert "passed" in checked.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_the_only_brand_statement_cannot_be_dropped_but_can_be_replaced() -> None:
+    # 2026-10-03 noon: the agent dropped a repeated brand sentence, and the post lost its long
+    # image (which needs one brand statement). Now it must swap in another brand sentence.
+    workspace = _workspace()
+    other = ActiveBrandContext(
+        chunk_id=uuid4(),
+        document_id=uuid4(),
+        version_id=uuid4(),
+        document_title="赛先生课程理念",
+        document_kind="positioning",
+        text="在赛先生科学，孩子亲手做实验，把观察到的现象说清楚。",
+    )
+    workspace.brand_context = (*workspace.brand_context, other)
+    registry = build_repair_tool_registry(workspace)
+
+    refused = await registry.invoke("drop_claim", {"claim_id": "brand-1"})
+    replaced = await registry.invoke(
+        "replace_claim",
+        {
+            "claim_id": "brand-1",
+            "text": "在赛先生科学，孩子亲手做实验，把观察到的现象说清楚。",
+            "brand_chunk_ids": [str(other.chunk_id)],
+        },
+    )
+
+    assert isinstance(refused, EditResult) and refused.error_code == "brand_claim_required"
+    assert any(str(other.chunk_id) in candidate for candidate in refused.candidates)
+    assert isinstance(replaced, EditResult) and replaced.ok
+    brand = [claim for claim in workspace.draft.claims if claim.kind == "brand_statement"]
+    assert len(brand) == 1 and brand[0].brand_chunk_ids == (other.chunk_id,)
 
 
 def test_repair_registry_describes_every_field_and_marks_workspace_tools() -> None:

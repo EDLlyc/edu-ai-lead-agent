@@ -35,7 +35,7 @@ from app.application.services.copy_repair_tools import (
 )
 from app.schemas.copy_generation import CopyIssue, MaterialDraft
 
-REPAIR_AGENT_VERSION = "copy-repair-agent-v3-checked-hook"
+REPAIR_AGENT_VERSION = "copy-repair-agent-v4-keep-brand"
 
 REPAIR_SYSTEM_PROMPT = (
     "你是赛先生朋友圈文案的修复节点。审查拦下了这份草稿，你只能通过工具修改工作稿，"

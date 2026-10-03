@@ -42,7 +42,9 @@ REPAIR_TOOLSET_VERSION = "copy-repair-tools-v3-checked-hook"
 REPAIR_TOOL_RULES = (
     "1. 不得加入新闻里没有的事实。事实 claim 只能用 find_evidence 找到的原文句子，原样复制，"
     "并填入对应的 evidence_ids。\n"
-    "2. 品牌说法只能原样取自它已引用的品牌资料；找不到合适的就用 drop_claim 删除这条。\n"
+    "2. 品牌说法只能原样取自提供的品牌资料（可在 brand_chunk_ids 里换用另一份品牌资料）。"
+    "草稿必须保留至少一条品牌说法：品牌句有问题（重复、不当）时用 replace_claim 换一句，"
+    "不能删光。\n"
     "3. 引导语的问题（与新闻无关、承诺效果、制造焦虑、生硬）用 rewrite_hook 解决：一句话，"
     "从这条新闻本身出发引出一次亲子交流，以一个表情结尾，不承诺效果、不制造焦虑、不加新事实。\n"
     "4. 只改被标出的地方：点名了 claim 的问题只改那条 claim，没点名 claim 的问题只改引导语。\n"
@@ -223,6 +225,23 @@ def _rejected(
     )
 
 
+def _other_brand_sentences(
+    workspace: RepairWorkspace, current: str, limit: int = 3
+) -> tuple[str, ...]:
+    """Whole sentences from the brand material that differ from the current brand claim."""
+
+    picked: list[str] = []
+    for chunk in workspace.brand_context:
+        for sentence in _SENTENCE_END.split(chunk.text):
+            sentence = sentence.strip()
+            if 8 <= len(sentence) <= 120 and sentence not in current and sentence not in picked:
+                picked.append(f"[{chunk.chunk_id}] {sentence}")
+                break
+        if len(picked) == limit:
+            break
+    return tuple(picked)
+
+
 def _closest_sentences(texts: Sequence[str], *targets: str, limit: int = 3) -> tuple[str, ...]:
     """Source sentences most like what the model tried to write, to copy verbatim next time."""
 
@@ -385,6 +404,18 @@ def repair_tool_definitions(
             return scoped
         if not remaining:
             return _rejected(workspace, "last_claim", "至少要保留一条 claim")
+        dropped = next(c for c in workspace.draft.claims if c.id == arguments.claim_id)
+        if dropped.kind == "brand_statement" and not any(
+            c.kind == "brand_statement" for c in remaining
+        ):
+            # Downstream (the long image, the brand rotation) needs one brand statement.
+            return _rejected(
+                workspace,
+                "brand_claim_required",
+                "必须保留一条品牌说法：用 replace_claim 换成品牌资料里的另一句，"
+                "brand_chunk_ids 填那句所在的品牌资料编号",
+                _other_brand_sentences(workspace, dropped.text),
+            )
         workspace.draft = workspace.draft.model_copy(update={"claims": remaining})
         workspace.edits.append(f"drop_claim:{arguments.claim_id}")
         return EditResult(ok=True, draft=workspace.view())
