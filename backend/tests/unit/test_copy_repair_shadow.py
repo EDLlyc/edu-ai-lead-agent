@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from uuid import uuid4
 
 import pytest
-from app.application.ports.copy_generation import DraftAuditRequest, DraftAuditResult
+from app.application.ports.copy_generation import (
+    DraftAuditRequest,
+    DraftAuditResult,
+    DraftGenerationRequest,
+    DraftGenerationResult,
+)
 from app.application.services.copy_repair_agent import ChatTurn
 from app.copy_repair_shadow_main import (
     CallCap,
@@ -116,10 +122,13 @@ async def test_shadow_case_records_agent_and_production_outcomes_side_by_side() 
     assert agent["model_calls"] == 1 and cap.used == 2  # one agent round, one gate audit
     assert agent["edits"] == ["replace_claim:fact-1"]
     assert record["production"] == {
+        "method": "regenerate",
         "regenerated": True,
         "passed": False,
         "run_status": "review_required",
+        "agent_fallback": None,
     }
+    assert record["regeneration"] == {"source": "production", "passed": False}
     assert record["blocking_codes"] == ["evidence_mismatch"]
     assert auditor.requests[0].version_bundle.auditor_prompt_version == (
         "moments-auditor-v21-lean-context"
@@ -154,3 +163,109 @@ def test_summary_counts_where_agent_and_regeneration_differ() -> None:
     assert "| 只有重写修好 | 1 |" in text
     assert "| 都没修好 | 0 |" in text
     assert "还没有记录" in summarize([])
+
+
+class _Generator:
+    def __init__(self, claim_text: str) -> None:
+        self.claim_text = claim_text
+        self.requests: list[DraftGenerationRequest] = []
+
+    async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult:
+        self.requests.append(request)
+        draft = _workspace(claim_text=self.claim_text).draft
+        return DraftGenerationResult(
+            draft=draft.model_copy(
+                update={"copywriting": "和孩子聊聊机器人怎样认识世界🔭\n#赛先生科学 #人工智能"}
+            ),
+            provider="zhipu",
+            model="glm-test",
+            request_fingerprint="g" * 64,
+            provider_request_id=None,
+            prompt_tokens=7_000,
+            completion_tokens=600,
+            reasoning_tokens=0,
+            latency_ms=10,
+        )
+
+
+@pytest.mark.asyncio
+async def test_when_production_used_the_agent_the_shadow_runs_the_regeneration() -> None:
+    case = replace(
+        _case(),
+        production=ProductionRepair(
+            regenerated=True, passed=True, run_status="accepted", method="agent"
+        ),
+    )
+    generator = _Generator(claim_text="该模型在三项测试中表现领先。")
+    cap = CallCap(limit=5)
+
+    record = await shadow_case(
+        case,
+        model=_Scripted([]),  # the agent is not called again
+        auditor=_Auditor(),
+        cap=cap,
+        max_rounds=6,
+        audit_max_output_tokens=512,
+        generator=generator,
+    )
+
+    assert record["agent"] == {"source": "production", "passed": True}
+    regeneration = record["regeneration"]
+    assert isinstance(regeneration, dict)
+    assert regeneration["source"] == "shadow" and regeneration["passed"] is True
+    assert regeneration["brand_statement_kept"] is True
+    assert cap.used == 2  # one generation, one gate audit
+    (request,) = generator.requests
+    assert request.draft_version == 2 and request.previous_draft == case.workspace.draft
+    assert [issue.code for issue in request.repair_issues] == ["evidence_mismatch"]
+
+
+@pytest.mark.asyncio
+async def test_a_production_agent_fallback_needs_no_shadow_call() -> None:
+    case = replace(
+        _case(),
+        production=ProductionRepair(
+            regenerated=True,
+            passed=True,
+            run_status="accepted",
+            agent_fallback="repair_agent_no_fix",
+        ),
+    )
+    cap = CallCap(limit=5)
+
+    record = await shadow_case(
+        case,
+        model=_Scripted([]),
+        auditor=_Auditor(),
+        cap=cap,
+        max_rounds=6,
+        audit_max_output_tokens=512,
+    )
+
+    assert cap.used == 0
+    assert record["agent"] == {
+        "source": "production",
+        "passed": False,
+        "fallback": "repair_agent_no_fix",
+    }
+    assert record["regeneration"] == {"source": "production", "passed": True}
+
+
+def test_summary_reads_both_directions() -> None:
+    v1 = {
+        "business_date": "2026-09-30",
+        "agent": {"passed": True, "prompt_tokens": 6000},
+        "production": {"passed": False},
+    }
+    v2 = {
+        "business_date": "2026-10-03",
+        "agent": {"source": "production", "passed": True},
+        "regeneration": {"source": "shadow", "passed": True, "prompt_tokens": 7000},
+        "production": {"method": "agent", "passed": True},
+    }
+
+    text = summarize([v1, v2])
+
+    assert "| Agent 修好 | 2（100%） |" in text and "| 整篇重写修好 | 1（50%） |" in text
+    assert "线上用 Agent 修的 1 份" in text
+    assert "6,000（1 份）" in text and "7,000（1 份）" in text

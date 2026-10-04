@@ -1,10 +1,15 @@
-"""Shadow mode for the copy repair agent: replay it on drafts production actually blocked.
+"""Shadow mode for the copy repair: replay the arm production did not use on blocked drafts.
 
-Production keeps repairing by full regeneration; nothing here changes a run, a draft or a push.
-For each selected copy run in the date range that production repaired, this job takes draft 1
-(the blocked one) with its stored blocking issues, lets the repair agent fix it through the
-repair tool registry, and gates the result with the same rules and the run's own auditor
-version. It records the agent's outcome next to production's (draft 2) as one JSON line.
+Nothing here changes a run, a draft or a push. For each selected copy run in the date range that
+production repaired (a draft version 2), this job takes draft 1 (the blocked one) with its stored
+blocking issues and production's brand context, and runs the other repair arm:
+
+- production used the repair agent (agent_first) -> the full regeneration runs in shadow;
+- production regenerated without trying the agent -> the repair agent runs in shadow;
+- production tried the agent, dropped it and regenerated -> both outcomes are already known.
+
+The shadow draft goes through the same rules and the run's own auditor version, so every blocked
+draft has both arms. One JSON line per run.
 
 Safety: the database is read through OPS_DATABASE_URL, the SELECT-only ops role, and the job
 refuses to start if that role can write. Model calls are capped per run of the job. Results are
@@ -27,7 +32,12 @@ from pathlib import Path
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
-from app.application.ports.copy_generation import DraftAuditRequest, DraftAuditResult
+from app.application.ports.copy_generation import (
+    DraftAuditRequest,
+    DraftAuditResult,
+    DraftGenerationRequest,
+    DraftGenerationResult,
+)
 from app.application.services.copy_repair_agent import (
     REPAIR_AGENT_VERSION,
     ChatTurn,
@@ -41,9 +51,13 @@ from app.application.services.copy_repair_tools import (
 )
 from app.domain.copy_generation import apply_copy_audit_policy, validate_material_draft
 from app.infrastructure.db.copy_repair_workspace import BlockedCase
-from app.schemas.copy_generation import MaterialDraft, extract_headline_hook
+from app.schemas.copy_generation import (
+    MaterialDraft,
+    extract_headline_hook,
+    render_headline_hook_copy,
+)
 
-SHADOW_SCHEMA = "copy-repair-shadow-v1"
+SHADOW_SCHEMA = "copy-repair-shadow-v2"
 BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
@@ -64,6 +78,10 @@ class CallCap:
 
 class Auditor(Protocol):
     async def audit(self, request: DraftAuditRequest) -> DraftAuditResult: ...
+
+
+class Generator(Protocol):
+    async def generate(self, request: DraftGenerationRequest) -> DraftGenerationResult: ...
 
 
 class _CappedChat:
@@ -120,7 +138,11 @@ def _hook(workspace: RepairWorkspace, draft: MaterialDraft) -> str:
     return extract_headline_hook(draft.copywriting, title=workspace.topic.title or "")
 
 
-async def shadow_case(
+def _has_brand(draft: MaterialDraft) -> bool:
+    return any(claim.kind == "brand_statement" for claim in draft.claims)
+
+
+async def agent_arm(
     case: BlockedCase,
     *,
     model: RepairChatModel,
@@ -137,12 +159,127 @@ async def shadow_case(
     )
     agent_calls = cap.used - agent_cap_before
     ok, left, audit_in, audit_out = await gate(
-        outcome.draft,
-        case,
-        auditor,
-        cap=cap,
-        max_output_tokens=audit_max_output_tokens,
+        outcome.draft, case, auditor, cap=cap, max_output_tokens=audit_max_output_tokens
     )
+    return {
+        "source": "shadow",
+        "passed": ok,
+        "left_codes": left,
+        "stopped": outcome.stopped,
+        "rounds": outcome.rounds,
+        "tool_calls": outcome.tool_calls,
+        "model_calls": agent_calls,
+        "prompt_tokens": outcome.prompt_tokens,
+        "completion_tokens": outcome.completion_tokens,
+        "gate_audit_prompt_tokens": audit_in,
+        "gate_audit_completion_tokens": audit_out,
+        "edits": list(outcome.edits),
+        "trace": outcome.trace,
+        "brand_statement_kept": _has_brand(outcome.draft),
+        "hook_before": _hook(workspace, before),
+        "hook_after": _hook(workspace, outcome.draft),
+    }
+
+
+async def regeneration_arm(
+    case: BlockedCase,
+    *,
+    generator: Generator,
+    auditor: Auditor,
+    cap: CallCap,
+    max_output_tokens: int,
+    audit_max_output_tokens: int,
+) -> dict[str, object]:
+    """Production's full regeneration (draft 2 with the issues and draft 1), not stored.
+
+    Differences from production: recent brand sentences are not passed to the generator, and the
+    repair issues are draft 1's errors only (production may add advisory warnings).
+    """
+
+    workspace = case.workspace
+    cap.take()
+    result = await generator.generate(
+        DraftGenerationRequest(
+            run_id=case.run_id,
+            topic=workspace.topic,
+            brand_context=workspace.brand_context,
+            version_bundle=case.version_bundle,
+            draft_version=2,
+            max_output_tokens=max_output_tokens,
+            repair_issues=case.blocking_issues,
+            previous_draft=workspace.draft,
+        )
+    )
+    evidence = workspace.topic.evidence[0]
+    draft = result.draft.model_copy(
+        update={
+            "copywriting": render_headline_hook_copy(
+                result.draft.copywriting,
+                title=workspace.topic.title or "",
+                source_name=evidence.source_name,
+                source_url=evidence.source_url,
+            )
+        }
+    )
+    ok, left, audit_in, audit_out = await gate(
+        draft, case, auditor, cap=cap, max_output_tokens=audit_max_output_tokens
+    )
+    return {
+        "source": "shadow",
+        "passed": ok,
+        "left_codes": left,
+        "model_calls": 1,
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+        "gate_audit_prompt_tokens": audit_in,
+        "gate_audit_completion_tokens": audit_out,
+        "brand_statement_kept": _has_brand(draft),
+        "hook_after": _hook(workspace, draft),
+    }
+
+
+async def shadow_case(
+    case: BlockedCase,
+    *,
+    model: RepairChatModel,
+    auditor: Auditor,
+    cap: CallCap,
+    max_rounds: int,
+    audit_max_output_tokens: int,
+    generator: Generator | None = None,
+    max_output_tokens: int = 2_048,
+) -> dict[str, object]:
+    workspace = case.workspace
+    production = case.production
+    from_production: dict[str, object] = {"source": "production", "passed": production.passed}
+    agent: dict[str, object]
+    regeneration: dict[str, object]
+    if production.method == "agent":
+        if generator is None:
+            raise RuntimeError("a generator is needed to replay the regeneration")
+        agent = from_production
+        regeneration = await regeneration_arm(
+            case,
+            generator=generator,
+            auditor=auditor,
+            cap=cap,
+            max_output_tokens=max_output_tokens,
+            audit_max_output_tokens=audit_max_output_tokens,
+        )
+    elif production.agent_fallback is not None:
+        # Production already tried the agent and dropped its draft, then regenerated.
+        agent = {"source": "production", "passed": False, "fallback": production.agent_fallback}
+        regeneration = from_production
+    else:
+        agent = await agent_arm(
+            case,
+            model=model,
+            auditor=auditor,
+            cap=cap,
+            max_rounds=max_rounds,
+            audit_max_output_tokens=audit_max_output_tokens,
+        )
+        regeneration = from_production
     return {
         "schema": SHADOW_SCHEMA,
         "run_id": str(case.run_id),
@@ -154,26 +291,14 @@ async def shadow_case(
         "agent_version": REPAIR_AGENT_VERSION,
         "toolset_version": REPAIR_TOOLSET_VERSION,
         "blocking_codes": [issue.code for issue in case.blocking_issues],
-        "agent": {
-            "passed": ok,
-            "left_codes": left,
-            "stopped": outcome.stopped,
-            "rounds": outcome.rounds,
-            "tool_calls": outcome.tool_calls,
-            "model_calls": agent_calls,
-            "prompt_tokens": outcome.prompt_tokens,
-            "completion_tokens": outcome.completion_tokens,
-            "gate_audit_prompt_tokens": audit_in,
-            "gate_audit_completion_tokens": audit_out,
-            "edits": list(outcome.edits),
-            "trace": outcome.trace,
-            "hook_before": _hook(workspace, before),
-            "hook_after": _hook(workspace, outcome.draft),
-        },
+        "agent": agent,
+        "regeneration": regeneration,
         "production": {
-            "regenerated": case.production.regenerated,
-            "passed": case.production.passed,
-            "run_status": case.production.run_status,
+            "method": production.method,
+            "regenerated": production.regenerated,
+            "passed": production.passed,
+            "run_status": production.run_status,
+            "agent_fallback": production.agent_fallback,
         },
         "recorded_at": datetime.now(UTC).isoformat(),
     }
@@ -188,39 +313,56 @@ def read_records(output_dir: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _arms(record: Mapping[str, Any]) -> tuple[bool, bool]:
+    """(agent passed, regeneration passed); v1 records compared the agent with production."""
+
+    agent = bool(record["agent"]["passed"])
+    regeneration = record.get("regeneration") or {"passed": record["production"]["passed"]}
+    return agent, bool(regeneration["passed"])
+
+
+def _shadow_average(records: Sequence[Mapping[str, Any]], arm: str, key: str) -> str:
+    values = [
+        r[arm][key]
+        for r in records
+        if isinstance(r.get(arm), dict)
+        and r[arm].get("source", "shadow") == "shadow"
+        and key in r[arm]
+    ]
+    return f"{sum(values) / len(values):,.0f}（{len(values)} 份）" if values else "-"
+
+
 def summarize(records: Sequence[Mapping[str, Any]]) -> str:
     total = len(records)
     if not total:
-        return "# 修复 Agent 影子模式\n\n还没有记录。\n"
-    agent = sum(1 for r in records if r["agent"]["passed"])
-    production = sum(1 for r in records if r["production"]["passed"])
-    both = sum(1 for r in records if r["agent"]["passed"] and r["production"]["passed"])
-    agent_only = agent - both
-    production_only = production - both
-    neither = total - agent - production_only
-    calls = sum(r["agent"]["model_calls"] for r in records) / total
-    tokens = sum(r["agent"]["prompt_tokens"] for r in records) / total
+        return "# 修复影子对照\n\n还没有记录。\n"
+    arms = [_arms(r) for r in records]
+    agent = sum(a for a, _ in arms)
+    regeneration = sum(g for _, g in arms)
+    both = sum(1 for a, g in arms if a and g)
+    by_agent = sum(1 for r in records if r["production"].get("method") == "agent")
     dates = sorted({r["business_date"] for r in records})
+    agent_tokens = _shadow_average(records, "agent", "prompt_tokens")
+    regen_tokens = _shadow_average(records, "regeneration", "prompt_tokens")
     return "\n".join(
         [
-            "# 修复 Agent 影子模式",
+            "# 修复影子对照（Agent 修 vs 整篇重写）",
             "",
-            f"- 业务日期 {dates[0]} 至 {dates[-1]}，生产上被拦下并整篇重写过的草稿 {total} 份。",
-            "- 生产照旧用整篇重写；Agent 在后台修同一份被拦稿，"
-            "再过同样的规则和该任务当时的审查版本。",
-            "- 审查是模型判断，不是人工标注。",
+            f"- 业务日期 {dates[0]} 至 {dates[-1]}，被拦下并用掉修复机会的草稿 {total} 份；"
+            f"线上用 Agent 修的 {by_agent} 份，后台补跑整篇重写；其余后台补跑 Agent。",
+            "- 两种做法都过同样的规则和该任务当时的审查版本。审查是模型判断，不是人工标注。",
             "",
             "| | 份数 |",
             "|---|---|",
             f"| Agent 修好 | {agent}（{agent / total:.0%}） |",
-            f"| 生产整篇重写修好 | {production}（{production / total:.0%}） |",
+            f"| 整篇重写修好 | {regeneration}（{regeneration / total:.0%}） |",
             f"| 两者都修好 | {both} |",
-            f"| 只有 Agent 修好 | {agent_only} |",
-            f"| 只有重写修好 | {production_only} |",
-            f"| 都没修好 | {neither} |",
+            f"| 只有 Agent 修好 | {agent - both} |",
+            f"| 只有重写修好 | {regeneration - both} |",
+            f"| 都没修好 | {total - agent - regeneration + both} |",
             "",
-            f"- Agent 平均每份 {calls:.1f} 次模型调用、"
-            f"输入 {tokens:,.0f} token（不含之后的审查）。",
+            f"- 后台补跑的 Agent 平均输入 token：{agent_tokens}；"
+            f"后台补跑的整篇重写：{regen_tokens}。",
             "",
         ]
     )
@@ -311,6 +453,8 @@ async def run(args: argparse.Namespace, *, output_dir: Path, done: set[str]) -> 
                     cap=cap,
                     max_rounds=args.max_rounds,
                     audit_max_output_tokens=settings.copy_audit_max_output_tokens,
+                    generator=generator,
+                    max_output_tokens=settings.copy_max_output_tokens,
                 )
             except CallCapReachedError:
                 _log(event="copy_repair_shadow_cap_reached", used=cap.used)

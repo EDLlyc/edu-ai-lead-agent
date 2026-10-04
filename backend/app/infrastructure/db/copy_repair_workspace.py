@@ -24,6 +24,8 @@ from app.infrastructure.db.copy_generation import _load_stored_drafts
 from app.infrastructure.db.models import (
     ContentSlotSelectionModel,
     CopyDraftVersionModel,
+    CopyGenerationAttemptModel,
+    CopyGenerationJobModel,
     CopyGenerationRunModel,
 )
 from app.schemas.copy_generation import CopyIssue, MaterialDraft
@@ -39,11 +41,18 @@ class _NoBrandSearch:
 
 @dataclass(frozen=True, slots=True)
 class ProductionRepair:
-    """What production did with the blocked draft: one full regeneration (draft version 2)."""
+    """What production did with the blocked draft (draft version 2).
+
+    `method` is "agent" when the repair agent's draft became draft 2 (agent_first), otherwise
+    "regenerate". `agent_fallback` is the error code of an agent attempt production dropped
+    before regenerating (None when there was none).
+    """
 
     regenerated: bool
     passed: bool
     run_status: str
+    method: str = "regenerate"
+    agent_fallback: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,16 +98,24 @@ async def _read_only(session: AsyncSession) -> None:
 
 
 async def _workspace_for(
-    session_factory: async_sessionmaker[AsyncSession], run_id: UUID, draft: StoredDraft
+    session_factory: async_sessionmaker[AsyncSession],
+    run_id: UUID,
+    draft: StoredDraft,
+    *,
+    brand_ids: tuple[UUID, ...] = (),
 ) -> RepairWorkspace:
+    """`brand_ids`: the brand context production gave the run (defaults to what the draft cites)."""
+
     reader = PostgresAgentKnowledgeReader(
         session_factory,
         brand_embeddings=_NoBrandSearch(),
         brand_retrieval_version="not-used-by-copy-repair",
     )
+    cited = brand_chunk_ids(draft.draft)
     try:
         context = await reader.load_copy_validation_context(
-            copy_run_id=run_id, brand_chunk_ids=brand_chunk_ids(draft.draft)
+            copy_run_id=run_id,
+            brand_chunk_ids=tuple(dict.fromkeys((*cited, *brand_ids))),
         )
     except NotFoundError:
         raise RuntimeError(
@@ -186,17 +203,51 @@ async def load_blocked_case(
     if first is None or not was_blocked(first):
         return None
     second = next((draft for draft in drafts if draft.version == 2), None)
+    async with session_factory() as session:
+        await _read_only(session)
+        first_meta = await _generation_metadata(session, first.id)
+        second_meta = await _generation_metadata(session, second.id) if second else {}
+        fallback = await session.scalar(
+            select(CopyGenerationAttemptModel.error_code)
+            .join(
+                CopyGenerationJobModel,
+                CopyGenerationJobModel.id == CopyGenerationAttemptModel.job_id,
+            )
+            .where(
+                CopyGenerationJobModel.run_id == run_id,
+                CopyGenerationAttemptModel.capability == "workflow",
+                CopyGenerationAttemptModel.error_code.like("repair\\_agent\\_%"),
+            )
+            .order_by(CopyGenerationAttemptModel.created_at.desc())
+            .limit(1)
+        )
+        await session.rollback()
+    raw_ids = first_meta.get("brand_chunk_ids")
+    context_ids = tuple(UUID(str(item)) for item in raw_ids) if isinstance(raw_ids, list) else ()
     return BlockedCase(
         run_id=run_id,
         business_date=business_date,
         content_slot=content_slot,
         ordinal=ordinal,
         version_bundle=bundle,
-        workspace=await _workspace_for(session_factory, run_id, first),
+        workspace=await _workspace_for(session_factory, run_id, first, brand_ids=context_ids),
         blocking_issues=blocking_issues(first),
         production=ProductionRepair(
             regenerated=second is not None,
             passed=second is not None and passed(second),
             run_status=run_status,
+            method="agent" if second_meta.get("repair_method") == "agent" else "regenerate",
+            agent_fallback=fallback,
         ),
     )
+
+
+async def _generation_metadata(session: AsyncSession, draft_id: UUID) -> dict[str, object]:
+    metadata = await session.scalar(
+        select(CopyGenerationAttemptModel.safe_metadata).where(
+            CopyGenerationAttemptModel.draft_version_id == draft_id,
+            CopyGenerationAttemptModel.capability == "generation",
+            CopyGenerationAttemptModel.status == "succeeded",
+        )
+    )
+    return dict(metadata) if isinstance(metadata, dict) else {}
